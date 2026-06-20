@@ -3,8 +3,6 @@
             <button class="on" data-view-btn="overview"><i data-lucide="layout-dashboard"></i>概览</button>
             <button data-view-btn="providers"><i data-lucide="route"></i>Provider</button>
             <button data-view-btn="models"><i data-lucide="box"></i>模型</button>
-            <button data-view-btn="accounts"><i data-lucide="users"></i>账号池</button>
-            <button data-view-btn="apps"><i data-lucide="terminal"></i>客户端接入</button>
             <button data-view-btn="usage"><i data-lucide="bar-chart-3"></i>用量</button>
           </div>
 
@@ -138,6 +136,10 @@
                     <button class="btn-primary btn-sm" id="openProviderCfg"><i data-lucide="settings-2"></i>配置</button>
                     <button class="btn-ghost btn-sm" data-smoke="GLM 默认路由"><i data-lucide="activity"></i>连通检查</button>
                     <button class="btn-ghost btn-sm danger-text" id="deleteProviderBtn"><i data-lucide="trash-2"></i>删除</button>
+                  </div>
+                  <div class="row-actions" id="providerSubViews" data-show-when="account" hidden>
+                    <button class="btn-ghost btn-sm" data-view-btn="accounts"><i data-lucide="users"></i>账号池</button>
+                    <span class="help-text" style="align-self:center;">仅账号制 Provider 显示</span>
                   </div>
                 </div>
                 <div class="detail-body" data-tabpanel="ep" hidden>

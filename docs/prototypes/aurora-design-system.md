@@ -206,6 +206,23 @@ Tracevane 是本地优先的 AI Agent 控制工作台。设计目标是让用户
 - 模型网关「客户端接入」不重复 Agent 实例管理；涉及工作目录/权限/会话时跳转 CLI Agents。
 - 两页互相 cross-link，让用户清楚“在哪改什么”。
 
+## 8.2 模型网关内部信息架构（分层，不堆叠）
+
+模型网关早期在一个片段里平铺 7 个同级视图（概览/Provider/配置/模型/账号池/接入/用量），违反 §7.2“主界面堆一切”。收敛为**分层**：
+
+**主区（viewbar，4 个并列 tab）**——模型网关的一级关注：
+- 概览（Status Console）：路由态势、健康、接入摘要、下一步动作。
+- Provider（List-Detail）：Provider 列表 + 检视器，是网关的核心工作面。
+- 模型（List）：所有 Provider 暴露的模型目录、alias、能力定价。
+- 用量（Console）：请求/token/延迟分布。
+
+**子视图（深度，从 Provider 进入）**——不占主 viewbar：
+- Provider 配置：从选中 Provider 的“配置”按钮进入子页。
+- 账号池：账号制 Provider 的从属管理，进入条件是该 Provider 是账号制；非账号制 Provider 不暴露此入口。
+- 客户端接入（App Connection）：apply/rollback 是针对客户端的写操作，作为概览的“接入摘要”区的下钻，或 Provider 检视器里的动作，而非并列主区。
+
+规则：viewbar 主 tab ≤ 4；任何“只对某类对象才有”的管理降级为该对象的子视图。这样主区永远回答“网关整体怎么样”，细节按需下钻。
+
 ---
 
 ## 9. 落地映射（原型概念 → React）

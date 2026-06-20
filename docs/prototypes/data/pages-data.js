@@ -32,12 +32,16 @@ window.AURORA_PAGE_MOUNT["model-gateway"] = function (stage, shell) {
     }));
   }
   // provider row select -> update detail header
-  const provs = { glm: ["GLM 智谱","native + openai · 2 endpoint"], codex: ["Codex 账号","responses · 账号池 ×2"], anthropic: ["Anthropic","messages · claude-3.7-sonnet"], local: ["本地 vLLM","openai 兼容 · 熔断"] };
+  const provs = { glm: ["GLM 智谱","native + openai · 2 endpoint","manual"], codex: ["Codex 账号","responses · 账号池 ×2","account"], anthropic: ["Anthropic","messages · claude-3.7-sonnet","manual"], local: ["本地 vLLM","openai 兼容 · 熔断","manual"] };
   stage.querySelectorAll(".trow[data-row]").forEach(r => r.addEventListener("click", () => {
     stage.querySelectorAll(".trow[data-row]").forEach(x => x.classList.remove("sel"));
     r.classList.add("sel");
-    const p = provs[r.getAttribute("data-row")];
+    const key = r.getAttribute("data-row");
+    const p = provs[key];
     if (p) { const n = stage.querySelector("#dName"); const sb = stage.querySelector("#dSub"); if (n) n.textContent = p[0]; if (sb) sb.textContent = p[1]; }
+    // 账号制 Provider 才显示“账号池”子视图入口
+    const sub = stage.querySelector("#providerSubViews");
+    if (sub) sub.hidden = !(p && p[2] === "account");
   }));
 };
 
