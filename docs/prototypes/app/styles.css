@@ -456,6 +456,8 @@
    ============================================================ */
 .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; flex-wrap:wrap; }
 .page-head .htitle h2 { font-size:18px; color:var(--ink-strong); letter-spacing:-.01em; }
+.page-head .htitle h2 { position: relative; padding-left: 10px; }
+.page-head .htitle h2::before { content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 999px; background: var(--primary); opacity: .55; }
 .page-head .htitle p { font-size:13px; color:var(--muted); margin-top:3px; }
 .page-head .actions { display:flex; gap:9px; flex-wrap:wrap; }
 
