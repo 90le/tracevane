@@ -102,7 +102,59 @@ rowSelectUpdater("external", { mcp: ["MCP · shadcn registry","stdio · 本地"]
 rowSelectUpdater("files", { diff: ["ai-edit.diff","Codex 生成 · routes.ts"], png: ["preview-01.png","预览截图 · 工作区"], json: ["smoke-200.json","smoke 证据 · 模型网关"], att: ["error.log","IM 附件 · 飞书"] });
 rowSelectUpdater("long-tasks", { index: ["索引整个项目","Codex · 后台 run"], cron: ["每日依赖检查","cron · 02:00"], recover: ["Gateway 自愈重试","recovery · 后台"], fail: ["批量翻译文档","OpenCode · run"] });
 
-// approvals: 搜索 + empty 态（纯展示页，无行选中）
+// approvals: 行选中联动详情 + 批准/拒绝状态流转 + tab 切换 + 搜索 empty 态
 window.AURORA_PAGE_MOUNT["approvals"] = function (stage, shell) {
-  if (shell && shell.bindListSearch) shell.bindListSearch(stage, { emptyTitle: "无待审批项", emptyDesc: "当前没有需要审批的操作。", icon: "shield-check" });
+  const S = window.AuroraStates;
+  const DATA = {
+    write: { title: "文件写入 · 3 个文件", sub: "Codex · 修复网关降级", risk: "中风险", rc: "warn", diff: '<div class="dl ctx">routes.ts</div><div class="dl add">+ router.post("/active-route-smoke", smoke);</div><div class="dl ctx">service.ts</div><div class="dl add">+ private fallbackActive = true;</div>', impact: "3 个文件 · 可回滚", by: "Codex Agent", rel: "修复网关降级会话" },
+    cmd: { title: "命令执行 · rm -rf dist", sub: "OpenCode · 构建清理", risk: "高风险", rc: "bad", diff: '<div class="dl del">- rm -rf dist/</div><div class="dl ctx"># 将删除构建输出目录</div>', impact: "删除目录 · 不可撤销", by: "OpenCode Agent", rel: "构建任务" },
+    cred: { title: "凭据访问 · glm.api_key", sub: "Claude Code · 测试连接", risk: "低风险", rc: "info", diff: '<div class="dl ctx">read secretRef glm.api_key</div><div class="dl add">+ 用于一次性测试连接</div>', impact: "读取密钥引用", by: "Claude Code Agent", rel: "测试连接" },
+  };
+  const list = stage.querySelector(".panel-body");
+  const renderDetail = (key) => {
+    const d = DATA[key]; if (!d) return;
+    const t = stage.querySelector("#apTitle"); if (t) t.textContent = d.title;
+    const sb = stage.querySelector("#apSub"); if (sb) sb.textContent = d.sub;
+    const rk = stage.querySelector("#apRisk"); if (rk) { rk.textContent = d.risk; rk.className = "tag " + d.rc; }
+    const df = stage.querySelector("#apDiff"); if (df) df.innerHTML = d.diff;
+    const kvs = stage.querySelectorAll("#apprDetail .kv dd");
+    if (kvs.length >= 3) { kvs[0].textContent = d.impact; kvs[1].textContent = d.by; kvs[2].textContent = d.rel; }
+  };
+  // 行选中
+  stage.querySelectorAll(".trow[data-appr]").forEach(r => r.addEventListener("click", () => {
+    stage.querySelectorAll(".trow[data-appr]").forEach(x => x.classList.remove("sel"));
+    r.classList.add("sel");
+    renderDetail(r.getAttribute("data-appr"));
+  }));
+  // 批准 / 拒绝：把行标记为对应状态，从待审批列表移除
+  const act = (decision) => {
+    const sel = stage.querySelector(".trow.sel[data-appr]");
+    if (!sel) { S && S.toast("请先选择一个审批项", "info"); return; }
+    sel.classList.remove("sel");
+    sel.style.opacity = ".45";
+    sel.setAttribute("data-status", decision);
+    sel.querySelector(".tag")?.remove();
+    const tag = document.createElement("span"); tag.className = "tag " + (decision === "approved" ? "ok" : "bad");
+    tag.textContent = decision === "approved" ? "已批准" : "已拒绝";
+    sel.appendChild(tag);
+    S && S.toast(decision === "approved" ? "已批准" : "已拒绝", decision === "approved" ? "ok" : "warn");
+    refreshTab(stage);
+  };
+  const approveBtn = stage.querySelector("#approveBtn"); approveBtn && approveBtn.addEventListener("click", () => act("approved"));
+  const rejectBtn = stage.querySelector("#rejectBtn"); rejectBtn && rejectBtn.addEventListener("click", () => act("rejected"));
+  // 跳工作区
+  const wsBtn = stage.querySelector("#diffWsBtn"); wsBtn && wsBtn.addEventListener("click", () => { location.hash = "#/ide"; });
+  // tab 切换：待审批 / 已批准 / 已拒绝
+  function refreshTab(st) {
+    const active = st.querySelector(".toolbar .seg button.on")?.textContent?.trim() || "待审批";
+    st.querySelectorAll(".trow[data-appr]").forEach(r => {
+      const status = r.getAttribute("data-status") || "pending";
+      const show = (active.startsWith("待") && status === "pending") || (active.startsWith("已批") && status === "approved") || (active.startsWith("已拒") && status === "rejected");
+      r.style.display = show ? "" : "none";
+    });
+  }
+  const seg = stage.querySelector(".toolbar .seg");
+  seg && seg.addEventListener("click", () => setTimeout(() => refreshTab(stage), 0));
+  // 搜索 empty
+  if (shell && shell.bindListSearch) shell.bindListSearch(stage, { emptyTitle: "无匹配审批项", emptyDesc: "尝试更换关键词。", icon: "shield-check" });
 };
