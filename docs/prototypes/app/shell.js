@@ -27,10 +27,17 @@
   function buildCommandPalette() {
     const list = $("#cmdList");
     if (!list) return;
-    const flat = [];
-    (window.AURORA_NAV || []).forEach(g => g.items.forEach(it => flat.push({ g: "导航", label: it.label, icon: it.icon, act: () => (location.hash = "#/" + it.path) })));
-    (window.AURORA_COMMANDS || []).forEach(c => flat.push(c));
     const input = $("#cmdInput");
+    let flat = [];
+    const rebuild = () => {
+      flat = [];
+      (window.AURORA_NAV || []).forEach(g => g.items.forEach(it => flat.push({ g: "导航", label: it.label, icon: it.icon, act: () => (location.hash = "#/" + it.path) })));
+      (window.AURORA_COMMANDS || []).forEach(c => flat.push(c));
+      // 合并当前页的页面级命令
+      const path = window.AuroraRouter && AuroraRouter.current && AuroraRouter.current().path;
+      const pc = (window.AURORA_PAGE_COMMANDS || {})[path || ""];
+      if (pc) pc.forEach(c => flat.push(c));
+    };
     let cur = 0, filtered = flat;
     const render = () => {
       const q = (input.value || "").trim().toLowerCase();
@@ -45,7 +52,7 @@
     };
     const move = d => { const items = $$(".cmd-item", list); if (!items.length) return; cur = (cur + d + items.length) % items.length; items.forEach((x, i) => x.classList.toggle("cur", i === cur)); items[cur].scrollIntoView({ block: "nearest" }); };
     const run = i => { const c = filtered[i]; if (!c) return; closeCmd(); if (c.act) c.act(); };
-    const openCmd = () => { const m = $("#cmdMask"); if (!m) return; m.classList.add("show"); input.value = ""; render(); setTimeout(() => input.focus(), 30); };
+    const openCmd = () => { const m = $("#cmdMask"); if (!m) return; rebuild(); m.classList.add("show"); input.value = ""; render(); setTimeout(() => input.focus(), 30); };
     const closeCmd = () => { const m = $("#cmdMask"); if (m) m.classList.remove("show"); };
 
     $("#cmdTrigger") && $("#cmdTrigger").addEventListener("click", openCmd);
@@ -121,7 +128,39 @@
       else if (e.key === "Escape") { window.AuroraCmd && window.AuroraCmd.close(); S.closeSheet(); S.closeDialog(); $$(".split.detail-open").forEach(x => x.classList.remove("detail-open")); }
     });
 
-    window.AuroraShell = Object.assign({}, S, { refreshIcons, setMobile });
+    // 通用列表搜索：输入关键词过滤 .trow，无匹配时显示 empty 态
+    const bindListSearch = (stage, opts) => {
+      opts = opts || {};
+      const input = stage.querySelector(".search-input input");
+      const wrap = stage.querySelector(".tablewrap");
+      if (!input || !wrap) return;
+      const rows = () => Array.from(wrap.querySelectorAll(".trow"));
+      const empty = () => {
+        let el = wrap.querySelector(".list-empty");
+        if (!el) { el = document.createElement("div"); el.className = "list-empty"; wrap.appendChild(el); }
+        return el;
+      };
+      const apply = () => {
+        const q = input.value.trim().toLowerCase();
+        let visible = 0;
+        rows().forEach(r => {
+          const text = r.textContent.toLowerCase();
+          const show = !q || text.includes(q);
+          r.style.display = show ? "" : "none";
+          if (show) visible++;
+        });
+        const e = empty();
+        if (visible === 0) {
+          S.states(e, "empty", { title: opts.emptyTitle || "无匹配结果", desc: opts.emptyDesc || "尝试更换关键词或清除筛选。", icon: opts.icon || "search-x" });
+        } else {
+          e.innerHTML = "";
+        }
+      };
+      input.addEventListener("input", apply);
+      apply();
+    };
+
+    window.AuroraShell = Object.assign({}, S, { refreshIcons, setMobile, bindListSearch });
   }
 
   function init() {

@@ -33,6 +33,25 @@
   ];
 
   // 注册各页（fragment 加载 + 可选 mount）
+
+  // 页面级命令：打开命令面板时合并当前页的动作
+  window.AURORA_PAGE_COMMANDS = {
+    "model-gateway": [
+      { g: "本页动作", label: "新增 Provider", icon: "plus", act: () => window.AuroraStates && AuroraStates.toast("新增 Provider（演示）", "info") },
+      { g: "本页动作", label: "全部连通检查", icon: "activity", act: () => window.AuroraStates && AuroraStates.toast("全部路由连通检查通过", "ok") },
+      { g: "本页动作", label: "探测 Provider", icon: "scan-search", act: () => window.AuroraStates && AuroraStates.toast("正在探测本地 Provider", "info") },
+    ],
+    "chat": [
+      { g: "本页动作", label: "新建会话", icon: "plus", kbd: "⌘N", act: () => window.AuroraStates && AuroraStates.toast("新建会话（演示）", "info") },
+    ],
+    "approvals": [
+      { g: "本页动作", label: "批准全部", icon: "check", act: () => window.AuroraStates && AuroraStates.toast("已批准全部待审批", "ok") },
+    ],
+    "recovery": [
+      { g: "本页动作", label: "重新巡检", icon: "scan-search", act: () => window.AuroraStates && AuroraStates.toast("巡检完成 · 2 项可修复", "info") },
+    ],
+  };
+
   const defs = [
     { path: "dashboard", label: "仪表盘", group: "总览", fragment: "dashboard" },
     { path: "model-gateway", label: "模型网关", group: "连接", fragment: "model-gateway" },

@@ -88,6 +88,7 @@ window.AURORA_PAGE_MOUNT["chat"] = function (stage, shell) {
 // ---- 通用 List-Detail: 行选中更新检视器标题（cli-agents / im-channels / external / files / long-tasks）----
 function rowSelectUpdater(path, data) {
   window.AURORA_PAGE_MOUNT[path] = function (stage, shell) {
+    if (shell && shell.bindListSearch) shell.bindListSearch(stage, { emptyTitle: "无匹配结果", emptyDesc: "尝试更换关键词。" });
     stage.querySelectorAll(".trow[data-row]").forEach(r => r.addEventListener("click", () => {
       stage.querySelectorAll(".trow[data-row]").forEach(x => x.classList.remove("sel")); r.classList.add("sel");
       const d = data[r.getAttribute("data-row")];
@@ -100,3 +101,8 @@ rowSelectUpdater("im-channels", { feishu: ["飞书","tracevane-bot · 长连接 
 rowSelectUpdater("external", { mcp: ["MCP · shadcn registry","stdio · 本地"], gh: ["GitHub App","repo · issues 授权"], fs: ["对象存储","S3 兼容"], ws: ["webhook 中继","HTTP · 外部回调"] });
 rowSelectUpdater("files", { diff: ["ai-edit.diff","Codex 生成 · routes.ts"], png: ["preview-01.png","预览截图 · 工作区"], json: ["smoke-200.json","smoke 证据 · 模型网关"], att: ["error.log","IM 附件 · 飞书"] });
 rowSelectUpdater("long-tasks", { index: ["索引整个项目","Codex · 后台 run"], cron: ["每日依赖检查","cron · 02:00"], recover: ["Gateway 自愈重试","recovery · 后台"], fail: ["批量翻译文档","OpenCode · run"] });
+
+// approvals: 搜索 + empty 态（纯展示页，无行选中）
+window.AURORA_PAGE_MOUNT["approvals"] = function (stage, shell) {
+  if (shell && shell.bindListSearch) shell.bindListSearch(stage, { emptyTitle: "无待审批项", emptyDesc: "当前没有需要审批的操作。", icon: "shield-check" });
+};
