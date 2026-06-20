@@ -4481,8 +4481,8 @@ test("model gateway app connections preview and apply client config files with r
   assert.match(codexConfig, /model = "gpt-alt"/);
   assert.match(codexConfig, /model_reasoning_effort = "high"/);
   const codexTopLevelConfig = codexConfig.split(/\n\[/)[0];
-  assert.doesNotMatch(codexTopLevelConfig, /^model_context_window\s*=/m);
-  assert.doesNotMatch(codexTopLevelConfig, /^model_auto_compact_token_limit\s*=/m);
+  assert.match(codexTopLevelConfig, /^model_context_window = 200000$/m);
+  assert.match(codexTopLevelConfig, /^model_auto_compact_token_limit = 150000$/m);
   assert.match(codexConfig, /enable_request_compression = true/);
   assert.match(codexConfig, /\[model_providers\.tracevane_gateway\]/);
   assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
@@ -4681,8 +4681,8 @@ test("model gateway app connections resolve budgets from each selected app model
   service.applyAppConnection(undefined, { appId: "codex" });
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-small"/);
-  assert.doesNotMatch(codexConfig, /^model_context_window\s*=/m);
-  assert.doesNotMatch(codexConfig, /^model_auto_compact_token_limit\s*=/m);
+  assert.match(codexConfig, /^model_context_window = 64000$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 47436$/m);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
@@ -4790,8 +4790,8 @@ test("model gateway app connections apply through HTTP routes against an isolate
     assert.match(codexConfig, /model = "model-b"/);
     assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
     assert.match(codexConfig, /experimental_bearer_token = "sk-local-isolated"/);
-    assert.doesNotMatch(codexConfig, /^model_context_window\s*=/m);
-    assert.doesNotMatch(codexConfig, /^model_auto_compact_token_limit\s*=/m);
+    assert.match(codexConfig, /^model_context_window = 128000$/m);
+    assert.match(codexConfig, /^model_auto_compact_token_limit = 100000$/m);
 
     const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
     assert.equal(claudeConfig.env.KEEP, "claude");

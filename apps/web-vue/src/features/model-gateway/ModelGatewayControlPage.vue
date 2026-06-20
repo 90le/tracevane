@@ -348,7 +348,7 @@
                 <section class="mgw-config-section">
                   <div class="mgw-config-section__head">
                     <h4>{{ text('默认运行配置', 'Default runtime') }}</h4>
-                    <span>{{ text('统一写入 Codex、Claude Code、OpenCode、OpenClaw 的模型和运行偏好。', 'Write the same model and runtime preferences into Codex, Claude Code, OpenCode, and OpenClaw.') }}</span>
+                    <span>{{ text('统一写入 Codex、Claude Code、OpenCode、OpenClaw 的模型、预算和运行偏好。', 'Write model, budget, and runtime preferences into Codex, Claude Code, OpenCode, and OpenClaw.') }}</span>
                   </div>
                   <div class="mgw-profile-grid">
                     <label class="form-field form-field-full">
