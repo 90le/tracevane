@@ -26,6 +26,10 @@
               </div>
               <div class="detail-body" data-tabpanel="ov">
                 <div class="metric-row"><div class="m"><span>暴露工具</span><strong>18</strong></div><div class="m"><span>今日调用</span><strong>96</strong></div><div class="m"><span>失败</span><strong>0</strong></div></div>
+                <div class="section-label">最近调用</div>
+                <button class="row" data-sheet="工具调用|add_component · 18:40|成功|外部连接|查看 trace|添加 button 组件到项目。|tool add_component, component button, exit 0"><span class="rico r-green"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>add_component</strong><span>button 组件 · 18:40</span></span><span class="tag ok">成功</span></button>
+                <button class="row" data-sheet="工具调用|list_components · 18:22|成功|外部连接|查看 trace|列出可用组件。|tool list_components, returned 18"><span class="rico r-green"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>list_components</strong><span>18 个组件 · 18:22</span></span><span class="tag ok">成功</span></button>
+                <button class="row" data-sheet="工具调用|get_registry · 17:55|成功|外部连接|查看 trace|读取 registry 元数据。|tool get_registry, synced"><span class="rico r-green"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>get_registry</strong><span>registry 同步 · 17:55</span></span><span class="tag ok">成功</span></button>
                 <div class="field"><label>transport</label><div class="ctrl">stdio（本地进程）</div></div>
                 <div class="field"><label>命令</label><div class="cell-mono" style="padding:4px 0;">npx -y shadcn@latest mcp</div></div>
                 <div class="row-actions"><button class="btn-ghost btn-sm" id="testBtn"><i data-lucide="activity"></i>测试连接</button><button class="btn-ghost btn-sm" id="logsBtn"><i data-lucide="scroll-text"></i>日志</button><button class="btn-ghost btn-sm danger-text" id="delBtn"><i data-lucide="trash-2"></i>移除</button></div>
