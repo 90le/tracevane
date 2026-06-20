@@ -9,15 +9,16 @@
 <body data-theme="light" data-palette="blue">
   <div class="aurora"></div>
   <div class="app" id="app" data-nav="expanded" data-mobile="closed">
+    <a class="skip-link" href="#stage">跳到主内容</a>
     <div class="scrim" id="scrim"></div>
     <aside class="sidebar">
       <div class="brand"><div class="logo">TV</div><div class="brand-copy"><strong>Tracevane</strong><span>本地 AI Agent 工作台</span></div></div>
       <button class="cmd-trigger" id="cmdTrigger"><i data-lucide="search"></i><span>搜索页面或命令</span><span class="kbd">⌘K</span></button>
       <nav class="nav" id="nav" aria-label="主导航"></nav>
       <div class="nav-foot">
-        <button class="btn-icon btn-ghost" id="collapseBtn" title="折叠导航"><i data-lucide="panel-left-close"></i></button>
-        <button class="btn-icon btn-ghost" id="themeBtn" title="切换深浅主题"><i data-lucide="sun-moon"></i></button>
-        <button class="btn-icon btn-ghost" id="settingsBtn" title="视图设置" data-toast="视图设置（占位）" data-toast-tone="info"><i data-lucide="settings-2"></i></button>
+        <button class="btn-icon btn-ghost" id="collapseBtn" title="折叠导航" aria-label="折叠导航"><i data-lucide="panel-left-close"></i></button>
+        <button class="btn-icon btn-ghost" id="themeBtn" title="切换深浅主题" aria-label="切换深浅主题"><i data-lucide="sun-moon"></i></button>
+        <button class="btn-icon btn-ghost" id="settingsBtn" title="视图设置" aria-label="视图设置" data-toast="视图设置（占位）" data-toast-tone="info"><i data-lucide="settings-2"></i></button>
       </div>
     </aside>
     <main class="main">
@@ -27,17 +28,17 @@
           <div class="crumb"><span id="crumbPath">总览 / 仪表盘</span><strong id="crumbTitle">仪表盘</strong></div>
         </div>
         <div class="top-actions">
-          <button class="top-search" id="topSearch"><i data-lucide="search"></i><span>搜索</span><span class="kbd">⌘K</span></button>
+          <button class="top-search" id="topSearch" aria-label="打开命令面板"><i data-lucide="search"></i><span>搜索</span><span class="kbd">⌘K</span></button>
           <button class="btn-primary" data-route="chat" style="text-decoration:none"><i data-lucide="plus"></i><span>新建会话</span></button>
         </div>
       </header>
-      <section class="page"><div class="wrap" id="stage"></div></section>
+      <section class="page"><div class="wrap" id="stage" role="main" aria-live="polite" aria-busy="false" tabindex="-1"></div></section>
     </main>
   </div>
 
   <!-- overlays：全应用唯一一套 -->
-  <div class="mask" id="sheetMask"></div>
-  <aside class="sheet" id="sheet" aria-label="详情">
+  <div class="mask" id="sheetMask" role="presentation" aria-hidden="true"></div>
+  <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="详情">
     <div class="sheet-head"><div class="htitle"><strong id="shTitle">详情</strong><span id="shSub">来源</span></div><button class="btn-icon btn-ghost" id="shClose" aria-label="关闭"><i data-lucide="x"></i></button></div>
     <div class="sheet-body"><p class="sheet-note" id="shNote"></p><dl class="kv"><dt>状态</dt><dd id="shStatus">-</dd><dt>来源</dt><dd id="shOwner">-</dd><dt>建议动作</dt><dd id="shAction">-</dd></dl><div id="shExtra"></div><div class="logbox" id="shLog">waiting...</div></div>
     <div class="sheet-foot"><button class="btn-ghost" id="shCancel">关闭</button><button class="btn-primary" id="shGo"><i data-lucide="arrow-right"></i><span>执行建议动作</span></button></div>

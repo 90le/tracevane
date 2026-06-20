@@ -38,13 +38,16 @@
     // 切换时先显示骨架，避免 fetch 期间 stage 闪白；用 token 防快速切换竞态
     render._token = (render._token || 0) + 1;
     const token = render._token;
+    if (stage) stage.setAttribute("aria-busy", "true");
     if (window.AuroraStates) {
       const sk = page.shape === "console" ? "skeleton-cards" : "skeleton-rows";
       AuroraStates.states(stage, sk, { count: page.shape === "console" ? 3 : 5 });
     }
     // 标记导航 active
     document.querySelectorAll("[data-route]").forEach(a => {
-      a.classList.toggle("active", a.getAttribute("data-route") === page.path);
+      const isActive = a.getAttribute("data-route") === page.path;
+      a.classList.toggle("active", isActive);
+      if (isActive) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
     // 更新面包屑
     const crumbPath = document.getElementById("crumbPath");
@@ -64,6 +67,7 @@
       if (token !== render._token) return;
     } catch (e) {
       if (token !== render._token) return;
+      if (stage) stage.setAttribute("aria-busy", "false");
       stage.innerHTML = '<div class="statebox error"><span class="si"><i data-lucide="circle-alert"></i></span><strong>页面加载失败</strong><span>' + esc(e.message) + '</span><div class="row-actions"><button class="btn-ghost btn-sm retry" data-retry><i data-lucide="refresh-cw"></i>重试</button></div></div>';
       const rb = stage.querySelector("[data-retry]");
       if (rb) rb.addEventListener("click", () => render());
@@ -71,6 +75,7 @@
       return;
     }
     // 2) 渲染图标 + 执行 mount（mount 抛错不影响内容，仅控制台告警）
+    if (stage) stage.setAttribute("aria-busy", "false");
     if (window.AuroraShell) AuroraShell.refreshIcons();
     try {
       if (typeof page.mount === "function") page.mount(stage, window.AuroraShell);
