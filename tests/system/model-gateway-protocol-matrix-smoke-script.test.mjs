@@ -210,6 +210,8 @@ test("model gateway protocol matrix fails when GLM Anthropic endpoint is not sel
         assert.equal(parsed.ok, false);
         assert.equal(parsed.stages[0].ok, false);
         assert.equal(parsed.stages[0].activeRoutes.expectationFailures[0].code, "model_gateway_endpoint_expectation_failed");
+        assert.equal(parsed.stages[1].ok, true);
+        assert.equal(parsed.stages[2].ok, true);
         assert.deepEqual(gateway.activeProviders, {});
         return true;
       },

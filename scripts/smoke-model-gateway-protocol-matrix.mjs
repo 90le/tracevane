@@ -87,20 +87,36 @@ Options:
 function stageDefinitions(options) {
   return [
     {
-      id: "glm-native-protocols",
-      label: "GLM native Chat + Anthropic protocol proof",
+      id: "glm-anthropic-messages",
+      label: "GLM native Anthropic Messages proof",
       provider: options.glmProvider,
       model: options.glmModel,
       args: [
         "--provider", options.glmProvider,
         "--model", options.glmModel,
-        "--scopes", "claude-code,opencode",
-        "--expect-endpoints", "claude-code=coding-anthropic,opencode=coding-chat",
-        "--expect-routes", "claude-code=anthropic_messages,opencode=openai_chat_completions",
-        "--expect-api-formats", "claude-code=anthropic_messages,opencode=openai_chat",
+        "--scopes", "claude-code",
+        "--expect-endpoints", "claude-code=coding-anthropic",
+        "--expect-routes", "claude-code=anthropic_messages",
+        "--expect-api-formats", "claude-code=anthropic_messages",
       ],
       expectedProofs: [
         { id: "anthropic_messages", scope: "claude-code", provider: options.glmProvider, endpointProfile: "coding-anthropic" },
+      ],
+    },
+    {
+      id: "glm-chat-completions",
+      label: "GLM native Chat Completions proof",
+      provider: options.glmProvider,
+      model: options.glmModel,
+      args: [
+        "--provider", options.glmProvider,
+        "--model", options.glmModel,
+        "--scopes", "opencode",
+        "--expect-endpoints", "opencode=coding-chat",
+        "--expect-routes", "opencode=openai_chat_completions",
+        "--expect-api-formats", "opencode=openai_chat",
+      ],
+      expectedProofs: [
         { id: "openai_chat_completions", scope: "opencode", provider: options.glmProvider, endpointProfile: "coding-chat" },
       ],
     },

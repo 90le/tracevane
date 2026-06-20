@@ -269,8 +269,8 @@ function mapChatToolCallToResponsesFunctionCall(toolCall: unknown): JsonRecord |
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
-  if (!name) return null;
-  const callId = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
+  const callId = stringOrNull(toolCall.id);
+  if (!name || !callId) return null;
   return {
     type: "function_call",
     id: responsesFunctionCallItemId(callId),
@@ -288,8 +288,8 @@ function responsesFunctionCallItemId(callId: string): string {
 function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | null {
   if (!isRecord(item) || item.type !== "function_call") return null;
   const name = stringOrNull(item.name);
-  if (!name) return null;
-  const id = stringOrNull(item.call_id) || stringOrNull(item.id) || `call_${Date.now().toString(36)}`;
+  const id = stringOrNull(item.call_id);
+  if (!name || !id) return null;
   return {
     id,
     type: "function",

@@ -572,8 +572,8 @@ function mapChatToolCallToAnthropicToolUse(toolCall: unknown): JsonRecord | null
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
-  if (!name) return null;
-  const id = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
+  const id = stringOrNull(toolCall.id);
+  if (!name || !id) return null;
   return {
     type: "tool_use",
     id,
@@ -591,9 +591,10 @@ function firstChoice(response: JsonRecord): JsonRecord | null {
 function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
   if (!isRecord(part) || part.type !== "tool_use") return null;
   const name = stringOrNull(part.name);
-  if (!name) return null;
+  const id = stringOrNull(part.id);
+  if (!name || !id) return null;
   return {
-    id: stringOrNull(part.id) || `call_${Date.now().toString(36)}`,
+    id,
     type: "function",
     function: {
       name,

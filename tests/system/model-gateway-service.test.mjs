@@ -7842,6 +7842,219 @@ test("model gateway ignores anthropic tool stop reason without tool uses for cha
   }
 });
 
+test("model gateway ignores incomplete anthropic tool identities for chat completions", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-incomplete-tool-identity",
+      name: "Anthropic Incomplete Tool Identity",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-incomplete-tool-identity.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-anthropic-incomplete-tool-identity-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async () => {
+    upstreamCalls.push(upstreamCalls.length + 1);
+    if (upstreamCalls.length === 2) {
+      const upstreamSse = [
+        "event: message_start",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_incomplete_tool_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":6,\"output_tokens\":0}}}",
+        "",
+        "event: content_block_start",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"name\":\"lookup\",\"input\":{}}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"docs\\\"}\"}}",
+        "",
+        "event: message_delta",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}",
+        "",
+        "event: message_stop",
+        "data: {\"type\":\"message_stop\"}",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "msg_incomplete_tool",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [{ type: "tool_use", name: "lookup", input: { query: "docs" } }],
+      stop_reason: "tool_use",
+      usage: {
+        input_tokens: 6,
+        output_tokens: 1,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "incomplete anthropic tool please" }],
+        },
+      });
+
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+      assert.deepEqual(chat.body.choices[0].message, {
+        role: "assistant",
+        content: "",
+      });
+      assert.equal(JSON.stringify(chat.body).includes("tool_calls"), false);
+
+      const stream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "incomplete anthropic tool stream please" }],
+        },
+      });
+
+      assert.equal(stream.status, 200);
+      const events = parseSseEvents(stream.body);
+      assert.equal(events.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
+      assert.equal(events[1].data.choices[0].finish_reason, "stop");
+      assert.equal(events[2].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway ignores incomplete responses function calls for chat completions", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-incomplete-function-call",
+      name: "Responses Incomplete Function Call",
+      appScopes: ["openclaw"],
+      baseUrl: "https://responses-incomplete-function-call.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-incomplete-function-call-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push(body);
+    if (body.stream === true) {
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_incomplete_stream\",\"object\":\"response\",\"created_at\":1710000042,\"status\":\"in_progress\",\"model\":\"gpt-responses\",\"output\":[]}}",
+        "",
+        "event: response.output_item.added",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_incomplete\",\"type\":\"function_call\",\"status\":\"in_progress\",\"name\":\"lookup\",\"arguments\":\"\"}}",
+        "",
+        "event: response.function_call_arguments.delta",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_incomplete\",\"output_index\":0,\"delta\":\"{\\\"query\\\":\\\"docs\\\"}\"}",
+        "",
+        "event: response.completed",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_incomplete_stream\",\"object\":\"response\",\"created_at\":1710000042,\"status\":\"completed\",\"model\":\"gpt-responses\",\"output\":[{\"id\":\"fc_incomplete\",\"type\":\"function_call\",\"status\":\"completed\",\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}],\"usage\":{\"input_tokens\":6,\"output_tokens\":1,\"total_tokens\":7}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_incomplete",
+      object: "response",
+      created_at: 1_710_000_042,
+      model: "gpt-responses",
+      status: "completed",
+      output: [{
+        id: "fc_incomplete",
+        type: "function_call",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }],
+      usage: {
+        input_tokens: 6,
+        output_tokens: 1,
+        total_tokens: 7,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          messages: [{ role: "user", content: "incomplete responses function call please" }],
+        },
+      });
+
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+      assert.deepEqual(chat.body.choices[0].message, {
+        role: "assistant",
+        content: "",
+      });
+      assert.equal(JSON.stringify(chat.body).includes("tool_calls"), false);
+
+      const stream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "incomplete responses function stream please" }],
+        },
+      });
+
+      assert.equal(stream.status, 200);
+      const events = parseSseEvents(stream.body);
+      assert.equal(events.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
+      assert.equal(events[1].data.choices[0].finish_reason, "stop");
+      assert.equal(events[2].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+});
+
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

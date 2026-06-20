@@ -1592,7 +1592,7 @@ function isResponsesToolCallItem(item: JsonRecord): boolean {
 }
 
 function isUsableAnthropicToolUseBlock(block: JsonRecord): boolean {
-  return block.type === "tool_use" && Boolean(stringOrNull(block.id) || stringOrNull(block.name));
+  return block.type === "tool_use" && Boolean(stringOrNull(block.id) && stringOrNull(block.name));
 }
 
 function isUsableResponsesToolCallItem(item: JsonRecord): boolean {
@@ -1601,12 +1601,8 @@ function isUsableResponsesToolCallItem(item: JsonRecord): boolean {
 
 function hasResponsesToolIdentity(payload: JsonRecord, item: JsonRecord | null): boolean {
   return Boolean(
-    stringOrNull(item?.id)
-    || stringOrNull(item?.call_id)
-    || stringOrNull(item?.name)
-    || stringOrNull(payload.item_id)
-    || stringOrNull(payload.call_id)
-    || stringOrNull(payload.name),
+    (stringOrNull(item?.call_id) || stringOrNull(payload.call_id))
+    && (stringOrNull(item?.name) || stringOrNull(payload.name)),
   );
 }
 
