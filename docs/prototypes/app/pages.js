@@ -53,17 +53,17 @@
   };
 
   const defs = [
-    { path: "dashboard", label: "仪表盘", group: "总览", fragment: "dashboard" },
-    { path: "model-gateway", label: "模型网关", group: "连接", fragment: "model-gateway" },
-    { path: "ide", label: "工作区 IDE", group: "运行", fragment: "ide" },
-    { path: "chat", label: "会话任务", group: "运行", fragment: "chat" },
-    { path: "cli-agents", label: "CLI Agents", group: "运行", fragment: "cli-agents" },
-    { path: "im-channels", label: "IM 渠道", group: "连接", fragment: "im-channels" },
-    { path: "external", label: "外部连接", group: "连接", fragment: "external" },
-    { path: "files", label: "文件证据", group: "证据", fragment: "files" },
-    { path: "approvals", label: "审批", group: "证据", fragment: "approvals" },
-    { path: "recovery", label: "自愈守护", group: "系统", fragment: "recovery" },
-    { path: "long-tasks", label: "长任务", group: "运行", fragment: "long-tasks" },
+    { path: "dashboard", label: "仪表盘", group: "总览", fragment: "dashboard", shape: "console" },
+    { path: "model-gateway", label: "模型网关", group: "连接", fragment: "model-gateway", shape: "list" },
+    { path: "ide", label: "工作区 IDE", group: "运行", fragment: "ide", shape: "list" },
+    { path: "chat", label: "会话任务", group: "运行", fragment: "chat", shape: "list" },
+    { path: "cli-agents", label: "CLI Agents", group: "运行", fragment: "cli-agents", shape: "list" },
+    { path: "im-channels", label: "IM 渠道", group: "连接", fragment: "im-channels", shape: "list" },
+    { path: "external", label: "外部连接", group: "连接", fragment: "external", shape: "list" },
+    { path: "files", label: "文件证据", group: "证据", fragment: "files", shape: "list" },
+    { path: "approvals", label: "审批", group: "证据", fragment: "approvals", shape: "list" },
+    { path: "recovery", label: "自愈守护", group: "系统", fragment: "recovery", shape: "console" },
+    { path: "long-tasks", label: "长任务", group: "运行", fragment: "long-tasks", shape: "list" },
   ];
   defs.forEach(d => window.AuroraDefinePage(d));
 })();

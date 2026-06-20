@@ -38,7 +38,10 @@
     // 切换时先显示骨架，避免 fetch 期间 stage 闪白；用 token 防快速切换竞态
     render._token = (render._token || 0) + 1;
     const token = render._token;
-    if (window.AuroraStates) AuroraStates.states(stage, "skeleton-cards", { count: 3 });
+    if (window.AuroraStates) {
+      const sk = page.shape === "console" ? "skeleton-cards" : "skeleton-rows";
+      AuroraStates.states(stage, sk, { count: page.shape === "console" ? 3 : 5 });
+    }
     // 标记导航 active
     document.querySelectorAll("[data-route]").forEach(a => {
       a.classList.toggle("active", a.getAttribute("data-route") === page.path);
