@@ -235,11 +235,13 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
   if (!isRecord(item)) return null;
 
   if (isResponsesToolOutputItem(item)) {
+    const toolCallId = stringOrNull(item.call_id) || stringOrNull(item.id);
+    if (!toolCallId) return null;
     const output = canonicalizeJsonStringIfParseable(contentToText(item.output));
     return {
       role: "tool",
       content: output,
-      tool_call_id: stringOrNull(item.call_id) || stringOrNull(item.id) || undefined,
+      tool_call_id: toolCallId,
     };
   }
 
@@ -251,6 +253,7 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
     };
     const toolCallId = stringOrNull(item.tool_call_id) || stringOrNull(item.call_id);
     if (role === "tool" && toolCallId) message.tool_call_id = toolCallId;
+    if (role === "tool" && !toolCallId) return null;
     return message;
   }
 

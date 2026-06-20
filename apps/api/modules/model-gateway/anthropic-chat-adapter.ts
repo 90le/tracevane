@@ -313,11 +313,13 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
   if (message.role === "system" || message.role === "developer") return [];
 
   if (message.role === "tool") {
+    const toolUseId = stringOrNull(message.tool_call_id) || stringOrNull(message.id);
+    if (!toolUseId) return [];
     return [{
       role: "user",
       content: [{
         type: "tool_result",
-        tool_use_id: stringOrNull(message.tool_call_id) || stringOrNull(message.id) || "",
+        tool_use_id: toolUseId,
         content: chatContentToText(message.content),
       }],
     }];
@@ -470,11 +472,16 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
   }
   const toolMessages = blocks
     .filter((block) => block.type === "tool_result")
-    .map((block) => ({
-      role: "tool",
-      tool_call_id: stringOrNull(block.tool_use_id) || "",
-      content: anthropicContentToText(block.content),
-    }));
+    .flatMap((block) => {
+      const toolCallId = stringOrNull(block.tool_use_id);
+      return toolCallId
+        ? [{
+          role: "tool",
+          tool_call_id: toolCallId,
+          content: anthropicContentToText(block.content),
+        }]
+        : [];
+    });
   chatMessages.push(...toolMessages);
   if (!chatMessages.length) chatMessages.push({ role: "user", content: "" });
   return chatMessages;

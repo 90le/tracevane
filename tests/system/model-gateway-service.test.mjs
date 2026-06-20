@@ -8055,6 +8055,179 @@ test("model gateway ignores incomplete responses function calls for chat complet
   assert.equal(upstreamCalls.length, 2);
 });
 
+test("model gateway drops orphan tool results before provider adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    if (String(url).endsWith("/responses")) {
+      return new Response(JSON.stringify({
+        id: `resp_orphan_tool_result_${upstreamCalls.length}`,
+        object: "response",
+        created_at: 1_710_000_043,
+        model: body.model,
+        status: "completed",
+        output: [{
+          id: "msg_orphan_tool_result",
+          type: "message",
+          status: "completed",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (String(url).endsWith("/messages")) {
+      return new Response(JSON.stringify({
+        id: `msg_orphan_tool_result_${upstreamCalls.length}`,
+        type: "message",
+        role: "assistant",
+        model: body.model,
+        content: [{ type: "text", text: "ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: `chatcmpl_orphan_tool_result_${upstreamCalls.length}`,
+      created: 1_710_000_043,
+      model: body.model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "chat-to-responses-orphan-tool-result",
+          name: "Chat To Responses Orphan Tool Result",
+          appScopes: ["openclaw"],
+          baseUrl: "https://chat-to-responses-orphan-tool-result.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-chat-to-responses-orphan-tool-result" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToResponses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          messages: [
+            { role: "user", content: "hello" },
+            { role: "tool", content: "orphan result" },
+          ],
+        },
+      });
+      assert.equal(chatToResponses.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "chat-to-anthropic-orphan-tool-result",
+          name: "Chat To Anthropic Orphan Tool Result",
+          appScopes: ["openclaw"],
+          baseUrl: "https://chat-to-anthropic-orphan-tool-result.example.test/v1",
+          apiFormat: "anthropic_messages",
+          authStrategy: "anthropic_api_key",
+        },
+        secret: { apiKey: "sk-chat-to-anthropic-orphan-tool-result" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToAnthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [
+            { role: "user", content: "hello" },
+            { role: "tool", content: "orphan result" },
+          ],
+        },
+      });
+      assert.equal(chatToAnthropic.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-to-chat-orphan-tool-result",
+          name: "Anthropic To Chat Orphan Tool Result",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-to-chat-orphan-tool-result.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-to-chat-orphan-tool-result" },
+        setActiveScopes: ["claude-code"],
+      });
+      const anthropicToChat = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          max_tokens: 128,
+          messages: [{
+            role: "user",
+            content: [{ type: "tool_result", content: "orphan result" }],
+          }],
+        },
+      });
+      assert.equal(anthropicToChat.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "responses-to-chat-orphan-tool-result",
+          name: "Responses To Chat Orphan Tool Result",
+          appScopes: ["codex"],
+          baseUrl: "https://responses-to-chat-orphan-tool-result.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-responses-to-chat-orphan-tool-result" },
+        setActiveScopes: ["codex"],
+      });
+      const responsesToChat = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: [
+            { role: "user", content: "hello" },
+            { type: "function_call_output", output: "orphan result" },
+          ],
+        },
+      });
+      assert.equal(responsesToChat.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 4);
+  assert.equal(upstreamCalls[0].url, "https://chat-to-responses-orphan-tool-result.example.test/v1/responses");
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("function_call_output"), false);
+  assert.equal(upstreamCalls[1].url, "https://chat-to-anthropic-orphan-tool-result.example.test/v1/messages");
+  assert.equal(JSON.stringify(upstreamCalls[1].body).includes("tool_result"), false);
+  assert.equal(upstreamCalls[2].url, "https://anthropic-to-chat-orphan-tool-result.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[2].body.messages.some((message) => message.role === "tool"), false);
+  assert.equal(upstreamCalls[3].url, "https://responses-to-chat-orphan-tool-result.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[3].body.messages.some((message) => message.role === "tool"), false);
+});
+
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

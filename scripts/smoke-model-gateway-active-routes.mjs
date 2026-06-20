@@ -10,6 +10,7 @@ const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_INPUT = "Reply with GATEWAY_OK only.";
 const DEFAULT_LOCK_TIMEOUT_MS = 300_000;
 const DEFAULT_LOCK_STALE_MS = 30 * 60_000;
+const DEFAULT_SMOKE_RETRIES = 1;
 
 function parseArgs(argv) {
   const options = {
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     input: DEFAULT_INPUT,
     temporaryEnable: false,
     lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
+    smokeRetries: DEFAULT_SMOKE_RETRIES,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -43,6 +45,8 @@ function parseArgs(argv) {
     else if (arg === "--temporary-enable") options.temporaryEnable = true;
     else if (arg === "--lock-timeout-ms") options.lockTimeoutMs = nonNegativeInt(argv[++index], DEFAULT_LOCK_TIMEOUT_MS);
     else if (arg.startsWith("--lock-timeout-ms=")) options.lockTimeoutMs = nonNegativeInt(arg.slice("--lock-timeout-ms=".length), DEFAULT_LOCK_TIMEOUT_MS);
+    else if (arg === "--smoke-retries") options.smokeRetries = nonNegativeInt(argv[++index], DEFAULT_SMOKE_RETRIES);
+    else if (arg.startsWith("--smoke-retries=")) options.smokeRetries = nonNegativeInt(arg.slice("--smoke-retries=".length), DEFAULT_SMOKE_RETRIES);
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
     else if (arg === "--expect-routes") options.expectRoutes = parseScopeMap(argv[++index] || "");
@@ -109,6 +113,8 @@ Options:
   --temporary-enable enable a disabled provider for the smoke, then restore it
   --lock-timeout-ms <n>
                     wait this long for the local active-route smoke lock
+  --smoke-retries <n>
+                    retry transient active-route smoke fetch failures; default: ${DEFAULT_SMOKE_RETRIES}
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -427,6 +433,18 @@ async function updateProviderEnabled(options, key, providerId, enabled) {
 }
 
 async function runActiveRouteSmoke(options, key, scope) {
+  const maxAttempts = Math.max(1, 1 + options.smokeRetries);
+  let lastSmoke = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const smoke = await runActiveRouteSmokeOnce(options, key, scope, attempt);
+    lastSmoke = smoke;
+    if (smoke.ok || !isTransientActiveRouteSmokeFailure(smoke) || attempt >= maxAttempts) return smoke;
+    await sleep(Math.min(1_000 * attempt, 3_000));
+  }
+  return lastSmoke;
+}
+
+async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
   let result;
   try {
     result = await requestJson(options.endpoint, key, "/api/model-gateway/active-route-smoke", {
@@ -442,6 +460,8 @@ async function runActiveRouteSmoke(options, key, scope) {
   } catch (error) {
     return {
       scope,
+      attempt,
+      attempts: attempt,
       status: 0,
       ok: false,
       providerId: null,
@@ -459,6 +479,8 @@ async function runActiveRouteSmoke(options, key, scope) {
   }
   return {
     scope,
+    attempt,
+    attempts: attempt,
     status: result.status,
     ok: Boolean(result.body?.ok),
     providerId: result.body?.providerId || null,
@@ -469,7 +491,20 @@ async function runActiveRouteSmoke(options, key, scope) {
     upstreamUrl: result.body?.route?.upstreamUrl || null,
     responsePreview: result.body?.responsePreview || null,
     error: result.body?.error || null,
+    transient: result.status === 0 || isTransientActiveRouteSmokeText(result.text),
   };
+}
+
+function isTransientActiveRouteSmokeFailure(smoke) {
+  if (smoke.status === 0) return true;
+  if (smoke.transient) return true;
+  const message = `${smoke.error?.code || ""} ${smoke.error?.message || ""} ${smoke.responsePreview || ""}`;
+  return isTransientActiveRouteSmokeText(message);
+}
+
+function isTransientActiveRouteSmokeText(value) {
+  const text = String(value || "").toLowerCase();
+  return text.includes("fetch failed") || text.includes("econnreset") || text.includes("etimedout");
 }
 
 function activeProviderValue(activeProviders, scope) {

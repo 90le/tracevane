@@ -176,9 +176,11 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
   if (message.role === "system" || message.role === "developer") return [];
 
   if (message.role === "tool") {
+    const callId = stringOrNull(message.tool_call_id) || stringOrNull(message.id);
+    if (!callId) return [];
     return [{
       type: "function_call_output",
-      call_id: stringOrNull(message.tool_call_id) || stringOrNull(message.id) || "",
+      call_id: callId,
       output: chatContentToText(message.content),
     }];
   }

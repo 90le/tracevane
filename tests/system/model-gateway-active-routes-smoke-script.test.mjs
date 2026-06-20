@@ -33,6 +33,7 @@ async function startMockGateway(options = {}) {
   const requests = [];
   const activeProviders = { ...(options.activeProviders || { codex: "old-codex" }) };
   let providerEnabled = options.providerEnabled !== false;
+  const smokeAttemptsByScope = {};
   const server = http.createServer(async (req, res) => {
     const rawBody = await readRequestBody(req);
     let body = {};
@@ -97,6 +98,22 @@ async function startMockGateway(options = {}) {
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/model-gateway/active-route-smoke") {
+      smokeAttemptsByScope[body.scope] = (smokeAttemptsByScope[body.scope] || 0) + 1;
+      if (options.transientFailScope === body.scope && smokeAttemptsByScope[body.scope] === 1) {
+        sendJson(res, 502, {
+          ok: false,
+          providerId: "glm",
+          route: {
+            routeId: body.scope === "claude-code" ? "anthropic_messages" : "openai_chat_completions",
+            mode: "passthrough",
+            endpointProfile: { id: body.scope === "claude-code" ? "coding-anthropic" : "coding-chat" },
+            provider: { apiFormat: body.scope === "claude-code" ? "anthropic_messages" : "openai_chat" },
+          },
+          responsePreview: "{\"error\":{\"code\":\"model_gateway_upstream_failed\",\"message\":\"fetch failed\"}}",
+          error: { code: "model_gateway_active_route_smoke_failed", message: "Active route smoke returned HTTP 502." },
+        });
+        return;
+      }
       if (options.failScope && body.scope === options.failScope) {
         sendJson(res, 502, {
           ok: false,
@@ -139,6 +156,7 @@ async function startMockGateway(options = {}) {
     activeProviders,
     requests,
     getProviderEnabled: () => providerEnabled,
+    smokeAttemptsByScope,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
   };
 }
@@ -255,6 +273,31 @@ test("model gateway active route smoke waits on a lock before mutating active pr
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
   } finally {
     lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke retries transient fetch failures", async () => {
+  const gateway = await startMockGateway({ transientFailScope: "claude-code" });
+  try {
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "claude-code",
+      "--expect-endpoints", "claude-code=coding-anthropic",
+      "--expect-routes", "claude-code=anthropic_messages",
+      "--expect-api-formats", "claude-code=anthropic_messages",
+      "--json",
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.routeSmokes.length, 1);
+    assert.equal(parsed.routeSmokes[0].scope, "claude-code");
+    assert.equal(parsed.routeSmokes[0].ok, true);
+    assert.equal(parsed.routeSmokes[0].attempts, 2);
+    assert.equal(gateway.smokeAttemptsByScope["claude-code"], 2);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
     await gateway.close();
   }
 });
