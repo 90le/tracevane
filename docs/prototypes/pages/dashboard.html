@@ -2,15 +2,22 @@
   <div style="display:grid;gap:18px;">
     <section class="hero">
       <div class="hero-top">
-        <span class="ready-chip warn"><i data-lucide="alert-triangle"></i>可工作 · 1 项待确认</span>
-        <span class="hero-time">主路由降级 · 备用接管</span>
+        <span class="ready-chip" style="background:var(--panel-2);color:var(--muted);border-color:var(--line);"><i data-lucide="refresh-cw"></i>实时 · 6 秒前更新</span>
+        <span class="hero-time">Gateway 127.0.0.1:8787 · loopback</span>
       </div>
-      <h1>现在可以继续工作，先确认 <em>渠道投递队列</em> 再运行模型检查。</h1>
-      <p class="hero-sub">主路由已降级但备用路由接管，请求仍可用；2 条外部消息等待确认。</p>
-      <div class="hero-actions">
-        <button class="btn-primary" data-sheet="处理投递队列|IM 渠道 · 2 条待确认|需处理|IM 渠道|查看队列并选择重试或丢弃|飞书与 webhook 各有 1 条消息等待确认。|queue 2, oldest 6m, channels feishu/webhook"><i data-lucide="send-horizontal"></i><span>处理投递队列</span></button>
-        <button class="btn-ghost" data-sheet="运行模型检查|模型网关 · 主路由降级|观察|模型网关|运行 smoke 校验默认路径|主路由延迟升高，建议运行 smoke。|primary degraded, fallback active, p95 820ms"><i data-lucide="activity"></i><span>运行模型检查</span></button>
-        <button class="btn-ghost" data-route="ide"><i data-lucide="square-terminal"></i><span>打开工作区</span></button>
+      <div class="hero-cf">
+        <div class="hero-status warn">
+          <span class="pulse"></span>
+          <div class="st-copy">
+            <strong>可工作 · 1 项待确认</strong>
+            <span>主路由降级已由备用接管，请求可用；2 条外部消息待确认</span>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button class="btn-primary" data-sheet="处理投递队列|IM 渠道 · 2 条待确认|需处理|IM 渠道|查看队列并选择重试或丢弃|飞书与 webhook 各有 1 条消息等待确认。|queue 2, oldest 6m, channels feishu/webhook"><i data-lucide="send-horizontal"></i><span>处理投递队列</span></button>
+          <button class="btn-ghost" data-sheet="运行模型检查|模型网关 · 主路由降级|观察|模型网关|运行 smoke 校验默认路径|主路由延迟升高，建议运行 smoke。|primary degraded, fallback active, p95 820ms"><i data-lucide="activity"></i><span>模型检查</span></button>
+          <button class="btn-ghost" data-route="ide"><i data-lucide="square-terminal"></i><span>工作区</span></button>
+        </div>
       </div>
       <div class="hero-stats">
         <div class="hero-stat"><span class="lab"><i data-lucide="route"></i>模型可用率</span><span class="val">99.1<small>%</small></span><span class="trend down"><i data-lucide="trending-down"></i>主路由 -0.6%</span></div>
@@ -61,7 +68,7 @@
       <div class="seg"><button class="on" data-tab="pending">待处理</button><button data-tab="activity">动态</button></div>
     </div>
     <div class="panel-body" data-tabpanel="pending">
-      <button class="row" data-sheet="渠道投递队列|IM 渠道 · 2 条|需处理|IM 渠道|查看队列|飞书与 webhook 各 1 条待确认。|queue 2, oldest 6m"><span class="rico r-red"><i data-lucide="send-horizontal"></i></span><span class="rcopy"><strong>渠道投递队列</strong><span>2 条消息等待确认</span></span><span class="tag bad">阻塞</span></button>
+      <button class="row urgent" data-sheet="渠道投递队列|IM 渠道 · 2 条|需处理|IM 渠道|查看队列|飞书与 webhook 各 1 条待确认。|queue 2, oldest 6m"><span class="rico r-red"><i data-lucide="send-horizontal"></i></span><span class="rcopy"><strong>渠道投递队列</strong><span>2 条消息等待确认</span></span><span class="tag bad">阻塞</span></button>
       <button class="row" data-sheet="模型连通检查|模型网关 · 降级|观察|模型网关|运行 smoke|主路由延迟升高。|primary degraded, p95 820ms"><span class="rico r-amber"><i data-lucide="route-off"></i></span><span class="rcopy"><strong>模型连通检查</strong><span>主路由延迟升高</span></span><span class="tag warn">观察</span></button>
       <button class="row" data-sheet="刷新 GitHub 授权|外部链接 · 即将过期|24h 内|外部连接|刷新授权|GitHub App token 将过期。|github expires soon, scope repo/issues"><span class="rico r-primary"><i data-lucide="key-round"></i></span><span class="rcopy"><strong>刷新 GitHub 授权</strong><span>24 小时内过期</span></span><span class="tag info">即将</span></button>
     </div>
