@@ -92,6 +92,11 @@
       if (row && row.closest(".split") && window.matchMedia("(max-width:1080px)").matches) {
         row.closest(".split").classList.add("detail-open");
       }
+      // 点击 detail 抽屉遮罩或检视器外部 → 关闭抽屉（≤1080px）；排除点击行本身（那是打开动作）
+      const split = e.target.closest && e.target.closest(".split.detail-open");
+      if (split && window.matchMedia("(max-width:1080px)").matches && !e.target.closest(".detail") && !e.target.closest(".trow")) {
+        split.classList.remove("detail-open");
+      }
     });
 
     // data-route 跨页跳转（兼容 button/a，无 href 时补 hash）
