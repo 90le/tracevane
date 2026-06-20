@@ -3,8 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import ui from '@nuxt/ui/vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { createStandaloneTracevaneConfig, createTracevaneContext, createTracevaneRequestHandler, syncStandaloneTracevaneConfig } from '../api/index.js';
 
 function normalizePort(value: string | undefined, fallback: number): number {
@@ -91,23 +91,6 @@ function tracevaneManualChunk(id: string): string | undefined {
     return 'vendor-markdown';
   }
 
-  if (
-    id.includes('/reka-ui/')
-    || id.includes('/aria-hidden/')
-    || id.includes('/@floating-ui/')
-  ) {
-    return 'vendor-ui';
-  }
-
-  if (
-    id.includes('/motion-v/')
-    || id.includes('/framer-motion/')
-    || id.includes('/motion-dom/')
-    || id.includes('/motion-utils/')
-  ) {
-    return 'vendor-motion';
-  }
-
   return undefined;
 }
 
@@ -148,22 +131,8 @@ export default defineConfig({
   },
   plugins: [
     createKatexOptimizedDepFallbackPlugin(),
-    vue(),
-    ui({
-      ui: {
-        colors: {
-          primary: 'cyan',
-          neutral: 'slate',
-        },
-      },
-      theme: {
-        colors: ['primary', 'secondary', 'success', 'info', 'warning', 'error'],
-        defaultVariants: {
-          color: 'neutral',
-          size: 'sm',
-        },
-      },
-    }),
+    react(),
+    tailwindcss(),
     !useExternalApi && {
       name: 'tracevane-dev-api',
       configureServer(server) {

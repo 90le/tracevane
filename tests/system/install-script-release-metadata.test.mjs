@@ -78,7 +78,7 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
   assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{TRACEVANE_API_PORT\}\/api\/system\/health"/);
 });
 
-test('pack script syncs landing page versions and includes the current App.vue source snapshot', () => {
+test('pack script syncs landing page versions and includes the current React app source snapshot', () => {
   const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
 
   assert.match(packScript, /同步 package\/workspace 版本/);
@@ -91,7 +91,7 @@ test('pack script syncs landing page versions and includes the current App.vue s
   assert.match(packScript, /rewrite-landing-version/);
   assert.match(packScript, /clean-build-output\.mjs" all/);
   assert.match(packScript, /cp "\$\{LANDING_PAGE_PATH\}" "\$\{ROOT_LANDING_PATH\}"/);
-  assert.match(packScript, /cp "\$\{APP_VUE_SOURCE_PATH\}" "\$\{PACKAGE_DIR\}\/apps\/web-vue\/src\/App\.vue"/);
+  assert.match(packScript, /cp "\$\{APP_REACT_SOURCE_PATH\}" "\$\{PACKAGE_DIR\}\/apps\/web-vue\/src\/app\/App\.tsx"/);
   assert.match(packScript, /release-build\.json/);
 });
 

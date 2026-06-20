@@ -15,18 +15,13 @@ function exists(relativePath) {
 }
 
 test("Tracevane shell no longer exposes Dreaming memory or Plugins management routes", () => {
-  const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
-  const sidebarRail = read("apps/web-vue/src/components/TracevaneSidebarRail.vue");
-  const sidebarIcon = read("apps/web-vue/src/components/SidebarIcon.vue");
-  const managementManifest = read("apps/web-vue/src/features/management/management-domain-manifest.ts");
+  const routeManifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const shell = read("apps/web-vue/src/app/AuroraShell.tsx");
 
   assert.doesNotMatch(routeManifest, /DreamingView|PluginsView/);
-  assert.doesNotMatch(routeManifest, /path:\s*"\/dreaming"|path:\s*"\/plugins"/);
-  assert.doesNotMatch(routeManifest, /key:\s*"dreaming"|key:\s*"plugins"/);
-  assert.doesNotMatch(routeManifest, /icon:\s*"dreaming"|icon:\s*"plugins"/);
-  assert.doesNotMatch(sidebarRail, /'dreaming'|'plugins'/);
-  assert.doesNotMatch(sidebarIcon, /"dreaming"|"plugins"|MoonStar/);
-  assert.doesNotMatch(managementManifest, /"plugins"|PluginsView\.vue|tracevane-web-plugins-\*\.test\.mjs/);
+  assert.doesNotMatch(routeManifest, /path:\s*"dreaming"|path:\s*"plugins"/);
+  assert.doesNotMatch(routeManifest, /label:\s*"梦境"|label:\s*"插件"/);
+  assert.doesNotMatch(shell, /dreaming|plugins|MoonStar/i);
 });
 
 test("Tracevane backend no longer registers Dreaming memory or Plugins management APIs", () => {

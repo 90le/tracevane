@@ -14169,9 +14169,6 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.match(routesSource, /\/api\/channel-connectors\/agent-sessions/);
     assert.match(routesSource, /getAgentSessions/);
     assert.match(routesSource, /manageAgentSessions/);
-    const webApiSource = fs.readFileSync(path.resolve("apps/web-vue/src/features/channel-connectors/api.ts"), "utf8");
-    assert.match(webApiSource, /fetchChannelConnectorAgentSessions/);
-    assert.match(webApiSource, /manageChannelConnectorAgentSessions/);
   });
 });
 

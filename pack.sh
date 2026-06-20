@@ -83,7 +83,7 @@ PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
 ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-tracevane.sh"
 ROOT_LANDING_PATH="${OUTPUT_DIR}/index.html"
 LANDING_PAGE_PATH="${SCRIPT_DIR}/index.html"
-APP_VUE_SOURCE_PATH="${SCRIPT_DIR}/apps/web-vue/src/App.vue"
+APP_REACT_SOURCE_PATH="${SCRIPT_DIR}/apps/web-vue/src/app/App.tsx"
 OPENCLAW_TARGET_VERSION="$(
   node - "${SCRIPT_DIR}/package.json" <<'NODE'
 const fs = require('node:fs');
@@ -203,7 +203,8 @@ if [[ -d "${SCRIPT_DIR}/resources" ]]; then
   cp -r "${SCRIPT_DIR}/resources" "${PACKAGE_DIR}/"
 fi
 mkdir -p "${PACKAGE_DIR}/apps/web-vue/src"
-cp "${APP_VUE_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web-vue/src/App.vue"
+mkdir -p "${PACKAGE_DIR}/apps/web-vue/src/app"
+cp "${APP_REACT_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web-vue/src/app/App.tsx"
 
 echo "[5/6] 复制元数据..."
 cp "${SCRIPT_DIR}/package.json" "${PACKAGE_DIR}/"
@@ -255,7 +256,7 @@ fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 NODE
 
 echo "[5.6/6] 记录发布源码快照..."
-node - "${PACKAGE_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" "${APP_VUE_SOURCE_PATH}" <<'NODE'
+node - "${PACKAGE_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" "${APP_REACT_SOURCE_PATH}" <<'NODE'
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -263,17 +264,17 @@ const path = require('node:path');
 const packageDir = process.argv[2];
 const version = process.argv[3];
 const targetVersion = process.argv[4];
-const appVuePath = process.argv[5];
-const appVue = fs.readFileSync(appVuePath);
+const appReactPath = process.argv[5];
+const appReact = fs.readFileSync(appReactPath);
 const payload = {
   version,
   minOpenClawVersion: targetVersion,
   builtAt: new Date().toISOString(),
   sourceSnapshot: {
-    appVue: {
-      path: 'apps/web-vue/src/App.vue',
-      sha256: crypto.createHash('sha256').update(appVue).digest('hex'),
-      bytes: appVue.length,
+    appReact: {
+      path: 'apps/web-vue/src/app/App.tsx',
+      sha256: crypto.createHash('sha256').update(appReact).digest('hex'),
+      bytes: appReact.length,
     },
   },
 };

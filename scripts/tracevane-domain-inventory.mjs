@@ -2,13 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const routerFilePath = path.join(rootDir, "apps/web-vue/src/router.ts");
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const routeManifestPath = path.join(rootDir, "apps/web-vue/src/app/route-manifest.ts");
 const apiModulesDir = path.join(rootDir, "apps/api/modules");
-const webFeaturesDir = path.join(rootDir, "apps/web-vue/src/features");
+const webSrcDir = path.join(rootDir, "apps/web-vue/src");
 const testsDir = path.join(rootDir, "tests");
 const outputPath = path.join(
   rootDir,
@@ -16,10 +13,7 @@ const outputPath = path.join(
 );
 
 function listDirectoryNames(targetDir) {
-  if (!fs.existsSync(targetDir)) {
-    return [];
-  }
-
+  if (!fs.existsSync(targetDir)) return [];
   return fs
     .readdirSync(targetDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -28,10 +22,7 @@ function listDirectoryNames(targetDir) {
 }
 
 function listTestSuites(targetDir) {
-  if (!fs.existsSync(targetDir)) {
-    return [];
-  }
-
+  if (!fs.existsSync(targetDir)) return [];
   const suites = [];
 
   function walk(dir) {
@@ -41,18 +32,9 @@ function listTestSuites(targetDir) {
         walk(absolutePath);
         continue;
       }
-
-      if (!entry.isFile()) {
-        continue;
+      if (entry.isFile() && /\.test\.(mjs|ts)$/.test(entry.name)) {
+        suites.push(path.relative(rootDir, absolutePath).split(path.sep).join("/"));
       }
-
-      if (!/\.test\.(mjs|ts)$/.test(entry.name)) {
-        continue;
-      }
-
-      suites.push(
-        path.relative(rootDir, absolutePath).split(path.sep).join("/"),
-      );
     }
   }
 
@@ -60,70 +42,8 @@ function listTestSuites(targetDir) {
   return suites.sort((a, b) => a.localeCompare(b));
 }
 
-function extractPathsFromSource(source) {
-  const paths = [];
-  const routePathPattern = /path\s*:\s*['"]([^'"]+)['"]/g;
-  let match;
-  while ((match = routePathPattern.exec(source)) !== null) {
-    paths.push(match[1]);
-  }
-  return paths;
-}
-
-function resolveLocalTypeScriptImport(fromFile, importSpecifier) {
-  const fromDir = path.dirname(fromFile);
-  const candidate = path.resolve(fromDir, importSpecifier);
-  const candidates = [
-    candidate,
-    `${candidate}.ts`,
-    `${candidate}.tsx`,
-    path.join(candidate, "index.ts"),
-  ];
-  for (const filePath of candidates) {
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      return filePath;
-    }
-  }
-  return null;
-}
-
-function parseNamedImports(source) {
-  const imports = new Map();
-  const importPattern = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g;
-  let match;
-  while ((match = importPattern.exec(source)) !== null) {
-    const [, rawBindings, importSpecifier] = match;
-    for (const part of rawBindings.split(",")) {
-      const binding = part.trim();
-      if (!binding) {
-        continue;
-      }
-
-      const aliasMatch = binding.match(
-        /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/,
-      );
-      if (!aliasMatch) {
-        continue;
-      }
-
-      const importedName = aliasMatch[1];
-      const localName = aliasMatch[2] || importedName;
-      imports.set(localName, importSpecifier);
-    }
-  }
-  return imports;
-}
-
-function extractRoutesBindingName(source) {
-  const routesPropertyMatch = source.match(/routes\s*:\s*([A-Za-z_$][\w$]*)/);
-  return routesPropertyMatch ? routesPropertyMatch[1] : null;
-}
-
 function readInventoryFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-
+  if (!fs.existsSync(filePath)) return null;
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch {
@@ -131,11 +51,35 @@ function readInventoryFile(filePath) {
   }
 }
 
+function extractAuroraRoutes() {
+  if (!fs.existsSync(routeManifestPath)) return [];
+  const source = fs.readFileSync(routeManifestPath, "utf8");
+  const routes = [];
+  const routePattern =
+    /\{\s*path:\s*"([^"]+)",\s*label:\s*"([^"]+)",\s*group:\s*"([^"]+)",\s*icon:\s*"([^"]+)",\s*shape:\s*"([^"]+)"/g;
+  let match;
+  while ((match = routePattern.exec(source)) !== null) {
+    const [, routePath, label, group, icon, shape] = match;
+    routes.push({
+      path: `/${routePath}`,
+      label,
+      group,
+      icon,
+      shape,
+    });
+  }
+  return routes.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 function createStructuralPayload() {
+  const routes = extractAuroraRoutes();
   return {
-    webRoutes: extractWebRoutes(routerFilePath),
+    webRoutes: routes.map((route) => route.path),
     apiModules: listDirectoryNames(apiModulesDir),
-    webFeatures: listDirectoryNames(webFeaturesDir),
+    webSurfaces: {
+      sourceDirs: listDirectoryNames(webSrcDir),
+      routes,
+    },
     testSuites: listTestSuites(testsDir),
   };
 }
@@ -148,61 +92,21 @@ function serializePayload(payload) {
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
-function extractWebRoutes(routerPath) {
-  if (!fs.existsSync(routerPath)) {
-    return [];
-  }
-
-  const collected = new Set();
-  const routerSource = fs.readFileSync(routerPath, "utf8");
-  for (const routePath of extractPathsFromSource(routerSource)) {
-    if (routePath.startsWith("/")) {
-      collected.add(routePath);
-    }
-  }
-
-  const routesBindingName = extractRoutesBindingName(routerSource);
-  if (!routesBindingName) {
-    return Array.from(collected).sort((a, b) => a.localeCompare(b));
-  }
-
-  const imports = parseNamedImports(routerSource);
-  const routeModuleImport = imports.get(routesBindingName);
-  if (!routeModuleImport || !routeModuleImport.startsWith(".")) {
-    return Array.from(collected).sort((a, b) => a.localeCompare(b));
-  }
-
-  const routeModulePath = resolveLocalTypeScriptImport(
-    routerPath,
-    routeModuleImport,
-  );
-  if (!routeModulePath) {
-    return Array.from(collected).sort((a, b) => a.localeCompare(b));
-  }
-
-  const routeModuleSource = fs.readFileSync(routeModulePath, "utf8");
-  for (const routePath of extractPathsFromSource(routeModuleSource)) {
-    if (routePath.startsWith("/")) {
-      collected.add(routePath);
-    }
-  }
-
-  return Array.from(collected).sort((a, b) => a.localeCompare(b));
-}
-
 function main() {
   const structuralPayload = createStructuralPayload();
   const previousPayload = readInventoryFile(outputPath);
+  const previousUsesCurrentSchema = previousPayload && "webSurfaces" in previousPayload;
   const previousStructuralPayload = previousPayload
     ? {
         webRoutes: previousPayload.webRoutes || [],
         apiModules: previousPayload.apiModules || [],
-        webFeatures: previousPayload.webFeatures || [],
+        webSurfaces: previousPayload.webSurfaces || { sourceDirs: [], routes: [] },
         testSuites: previousPayload.testSuites || [],
       }
     : null;
 
   if (
+    previousUsesCurrentSchema &&
     previousPayload &&
     previousStructuralPayload &&
     areStructuralPayloadsEqual(previousStructuralPayload, structuralPayload)

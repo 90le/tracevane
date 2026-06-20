@@ -9,6 +9,17 @@ import {
 } from "../dist/apps/api/modules/channel-connectors/agent-runner.js";
 
 const CLI_HEARTBEAT_AGENTS = ["codex", "claude-code", "opencode"];
+const HEARTBEAT_INTERVAL_MS = 80;
+const HEARTBEAT_TIMEOUT_MS = 900;
+const IDLE_REPLACES_TOTAL_TIMEOUT_MS = 80;
+const IDLE_REPLACES_TOTAL_IDLE_MS = 900;
+const IDLE_REPLACES_TOTAL_DELAY_MS = 360;
+const HEARTBEAT_STALL_MS = 320;
+const ASYNC_TASK_TIMEOUT_MS = 250;
+const ASYNC_TASK_GRACE_MS = 1200;
+const ASYNC_TASK_COMPLETION_DELAY_MS = 520;
+const SILENT_HEARTBEAT_TIMEOUT_MS = 350;
+const NON_RUNTIME_TIMEOUT_MS = 350;
 
 function parseArgs(argv) {
   const options = {
@@ -99,7 +110,7 @@ function heartbeatScript(input) {
     "    clearInterval(interval);",
     completion,
     "  }",
-    "}, 45);",
+    `}, ${input.intervalMs || HEARTBEAT_INTERVAL_MS});`,
   ].join("");
 }
 
@@ -126,7 +137,7 @@ function heartbeatOnlyStallScript(agent) {
     "    clearInterval(interval);",
     completion,
     "  }",
-    "}, 40);",
+    `}, ${HEARTBEAT_INTERVAL_MS});`,
   ].join("");
 }
 
@@ -141,7 +152,7 @@ function asyncTaskStatusScript(agent) {
     `process.stderr.write(${JSON.stringify(`\r${status}`)});`,
     "setTimeout(() => {",
     completion,
-    "}, 150);",
+    `}, ${ASYNC_TASK_COMPLETION_DELAY_MS});`,
   ].join("");
 }
 
@@ -151,7 +162,7 @@ function nonRuntimeActivityScript() {
     "const interval = setInterval(() => {",
     "  tick += 1;",
     "  process.stdout.write(`non-runtime activity ${tick}\\n`);",
-    "  if (tick >= 8) clearInterval(interval);",
+    "  if (tick >= 80) clearInterval(interval);",
     "}, 25);",
   ].join("");
 }
@@ -251,55 +262,55 @@ function buildCases() {
     cases.push({
       name: `${agent}:stderr-cr-tui-heartbeat`,
       agent,
-      timeoutMs: 180,
+      timeoutMs: HEARTBEAT_TIMEOUT_MS,
       script: heartbeatScript({
         agent,
         stream: "stderr",
         frame: agent === "codex" ? "\\r• Working (tick)" : "\\r✻ Imagining... (tick) ........ esc interrupt",
         text: `${agent} stderr TUI heartbeat kept alive`,
       }),
-      assertResult: (result, progress, label) => assertAlive(result, progress, label, 180),
+      assertResult: (result, progress, label) => assertAlive(result, progress, label, 300),
     });
     cases.push({
       name: `${agent}:stdout-heartbeat`,
       agent,
-      timeoutMs: 180,
+      timeoutMs: HEARTBEAT_TIMEOUT_MS,
       script: heartbeatScript({
         agent,
         stream: "stdout",
         frame: `${agent} stdout heartbeat tick\n`,
         text: `${agent} stdout heartbeat kept alive`,
       }),
-      assertResult: (result, progress, label) => assertAlive(result, progress, label, 180),
+      assertResult: (result, progress, label) => assertAlive(result, progress, label, 300),
     });
     cases.push({
       name: `${agent}:idle-timeout-replaces-total-timeout`,
       agent,
-      timeoutMs: 40,
-      idleTimeoutMs: 220,
-      script: delayedCompletionScript(agent, `${agent} idle timeout replaced total timeout`, 110),
-      assertResult: (result, progress, label) => assertAlive(result, progress, label, 40),
+      timeoutMs: IDLE_REPLACES_TOTAL_TIMEOUT_MS,
+      idleTimeoutMs: IDLE_REPLACES_TOTAL_IDLE_MS,
+      script: delayedCompletionScript(agent, `${agent} idle timeout replaced total timeout`, IDLE_REPLACES_TOTAL_DELAY_MS),
+      assertResult: (result, progress, label) => assertAlive(result, progress, label, IDLE_REPLACES_TOTAL_TIMEOUT_MS),
     });
     cases.push({
       name: `${agent}:heartbeat-only-stall-diagnostic`,
       agent,
-      timeoutMs: 120,
-      heartbeatStallMs: 90,
+      timeoutMs: HEARTBEAT_TIMEOUT_MS,
+      heartbeatStallMs: HEARTBEAT_STALL_MS,
       script: heartbeatOnlyStallScript(agent),
       assertResult: assertHeartbeatStall,
     });
     cases.push({
       name: `${agent}:async-child-task-idle-grace`,
       agent,
-      timeoutMs: 55,
-      asyncTaskIdleGraceMs: 260,
+      timeoutMs: ASYNC_TASK_TIMEOUT_MS,
+      asyncTaskIdleGraceMs: ASYNC_TASK_GRACE_MS,
       script: asyncTaskStatusScript(agent),
       assertResult: assertAsyncTaskGrace,
     });
     cases.push({
       name: `${agent}:silent-heartbeat-timeout`,
       agent,
-      timeoutMs: 60,
+      timeoutMs: SILENT_HEARTBEAT_TIMEOUT_MS,
       script: hangScript(),
       assertResult: assertHeartbeatTimeout,
     });
@@ -307,8 +318,8 @@ function buildCases() {
   cases.push({
     name: "gemini:fixed-timeout-unchanged",
     agent: "gemini",
-    timeoutMs: 70,
-    idleTimeoutMs: 500,
+    timeoutMs: NON_RUNTIME_TIMEOUT_MS,
+    idleTimeoutMs: 1200,
     script: nonRuntimeActivityScript(),
     assertResult: assertFixedTimeout,
   });

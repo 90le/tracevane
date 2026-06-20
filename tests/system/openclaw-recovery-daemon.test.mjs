@@ -826,11 +826,6 @@ test("system and event hot paths no longer call diagnostics by default", () => {
     path.join(rootDir, "apps/api/modules/system/service.ts"),
     "utf8",
   );
-  const systemPage = fs.readFileSync(
-    path.join(rootDir, "apps/web-vue/src/features/system/SystemControlPage.vue"),
-    "utf8",
-  );
-
   const runtimeSummaryBody = systemService.match(/async getRuntimeSummary\(\)[\s\S]*?\n    async getTerminalActionSuggestions/)?.[0] || "";
   const listEventsBody = systemService.match(/async listEvents\(limit = 100\)[\s\S]*?\n    async getEventSummary/)?.[0] || "";
   const eventSummaryBody = systemService.match(/async getEventSummary\(limit = 100\)[\s\S]*?\n  \};/)?.[0] || "";
@@ -841,5 +836,4 @@ test("system and event hot paths no longer call diagnostics by default", () => {
   assert.match(listEventsBody, /systemEventWriter\.listPersistedEvents\(limit\)/);
   assert.match(eventSummaryBody, /buildSystemEventSummaryCards\(/);
   assert.match(eventSummaryBody, /systemEventWriter\.listPersistedEvents\(limit\)/);
-  assert.doesNotMatch(systemPage, /fetchSystemDiagnostics/);
 });

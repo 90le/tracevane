@@ -1,8 +1,9 @@
 # Tracevane React 前端方向调研
 
 > 日期：2026-06-18
-> 范围：前端重新设计方向，仅用于原型阶段
-> 决策：新前端以 React 为目标实现方向。当前仍先用独立 HTML/CSS/JS 做原型，待视觉和信息架构确认后再讨论落代码。
+> 更新：2026-06-21
+> 范围：前端重新设计方向与 React 落地记录
+> 决策：新前端以 React + TypeScript + Vite + shadcn/ui ownership + Tailwind CSS v4 为目标实现方向。Aurora 独立原型已经落入 `apps/web-vue`，旧 Vue 源码已被 React 壳替换。
 
 ## 已核验来源
 
@@ -15,6 +16,14 @@
 - shadcn-vue 与 Reka UI 文档，作为 Vue 替代路径参考。
 - 2026-06-18 抓取 GitHub 仓库数据：shadcn/ui、shadcn-vue、Reka UI、MUI、Ant Design、Radix Primitives、Base UI、Tailwind CSS、TanStack Query、TanStack Table。
 - 2026-06-18 抓取 npm 最近一周下载数据：shadcn、shadcn-vue、reka-ui、tailwindcss、Radix、Base UI、MUI、Ant Design、TanStack React/Vue 包。
+- 2026-06-21 复核官方落地资料：
+  - React 新项目建议：`https://react.dev/learn/start-a-new-react-project`
+  - Vite 指南：`https://vite.dev/guide/`
+  - Tailwind CSS v4 + Vite：`https://tailwindcss.com/docs/installation/using-vite`
+  - shadcn/ui Vite 安装：`https://ui.shadcn.com/docs/installation/vite`
+  - shadcn/ui Tailwind v4：`https://ui.shadcn.com/docs/tailwind-v4`
+  - React Router：`https://reactrouter.com/start/declarative/installation`
+  - TanStack Query React：`https://tanstack.com/query/latest/docs/framework/react/overview`
 
 ## 当前证据
 
@@ -42,7 +51,7 @@
 
 ## 实现方向
 
-原型确认后，未来实现建议：
+当前实现方向：
 
 - React + TypeScript + Vite，作为纯客户端 SPA。
 - shadcn/ui 作为组件 ownership 和交互基线。
@@ -52,6 +61,19 @@
 - TanStack Table 承载密集表格和对象列表。
 - Zustand 或 TanStack Store 只在 React Context / URL state 不够时承载本地工作台状态。
 - xterm.js / Monaco / CodeMirror 这类专业引擎只用于维护终端和编辑器表面。
+
+2026-06-21 落地状态：
+
+- `apps/web-vue` 目录名暂保留，以避免同时改 workspace、release、installer 和 OpenClaw 静态资源路径；目录内部技术栈已经切换到 React。
+- Vite 升级到 Vite 8，React 插件使用 `@vitejs/plugin-react`，Tailwind v4 使用 `@tailwindcss/vite`。
+- Aurora 原型的 11 个 HTML 片段通过 Vite raw import 映射为 React page component，`pages-data.js` 的 mount 行为重写为 React `useEffect` DOM adapter。
+- React shell 负责 hash 路由、左侧分组导航、轻顶栏、命令面板、Sheet/Dialog/Toast、主题/配色切换、移动导航、状态三态和 health 查询。
+- 前端目标已经从“视觉重构”升级为“功能重做”。原型片段只作为视觉/交互合同；真实功能必须逐页迁移到 React component + TanStack Query + 现有后端 API。
+- 新增 `/runtime-admin` 和 `/runtime-admin/:section` 作为 OpenClaw Runtime Admin 子域，集中承载 OpenClaw 配置、扩展、Agent/渠道、服务、doctor/recovery 等支撑面；主导航继续保持 Tracevane 任务工作台。
+- 旧 Vue 源码、Vue Router、Nuxt UI、Reka UI、lucide-vue、motion-v 等 Vue 方向依赖已移除；保留 CodeMirror、xterm、markdown 相关库作为 Workspace IDE 后续专业表面基础。
+- lucide 图标改为实际用到的 subset，避免导入全部 icon 带来首包膨胀。
+
+功能迁移架构详见 `docs/frontend-functional-architecture.md`。
 
 ## 设计后果
 
@@ -82,19 +104,23 @@
 
 ## 验证计划
 
-原型阶段：
+React 落地阶段：
 
-- 先在 `docs/prototypes/` 产出独立 HTML 原型。
-- 实现前至少覆盖仪表盘、维护终端、会话工作台、Agent 管理。
-- 每个原型支持深浅主题和基础交互：导航折叠、tabs、drawer/sheet、选中行详情、右键菜单。
-- 检查桌面和移动截图，确认无文字溢出、无遮挡、层次可见。
-
-实现阶段，仅在原型确认后进入：
-
-- 新建独立 React 前端壳，和 `apps/web-vue` 分离。
-- 先用一个页面 spike shadcn/ui + Tailwind v4 + TanStack Query/Table。
+- 保留 `docs/prototypes/` 作为视觉和交互源，不再把它当作未落地实验。
+- React page 必须覆盖 11 个原型路由。
+- React functional route 必须覆盖 OpenClaw Runtime Admin 子域，并明确使用现有 API。
+- 每个页面支持深浅主题、基础交互、移动/桌面渲染和命令面板导航。
 - 确认只消费现有后端 API，不扩大后端范围。
-- 替换旧路由前，为用户可见流程补回归/冒烟测试。
+- 替换旧路由后，用 typecheck/build、Playwright 11 路由 smoke、状态流转 smoke 和截图检查作为当前验收。
+
+2026-06-21 已验证：
+
+- `npm run typecheck:web`
+- `npm run build:web`
+- `npm run typecheck:api`
+- `npm run build:api`
+- `git diff --check`
+- Playwright 本地 dev smoke：11 个 hash 路由、dashboard 三态、深色主题、命令面板、Sheet、Model Gateway Provider 选中、Approvals 批准、Recovery 应用修复、移动 IDE 导航；截图输出到 `.tmp/react-aurora-smoke/`。
 
 ## 2026-06-18 Codex 工具接入决策
 
@@ -104,4 +130,4 @@
 - 暂不运行：`shadcn` CLI 的 `init` / `add`。当前仍是 HTML 原型阶段，没有 React 前端壳和 `components.json`，运行 CLI 会提前创建/修改项目依赖。
 - 暂不安装：shadcn Skills。官方 Skills 适合已经有 shadcn 项目时读取 `components.json`、安装组件和约束实现；当前没有目标 React 项目，安装收益低，且容易把原型阶段推进到落地阶段。
 
-后续进入 React 实现阶段时，再在新的 React 前端目录内运行 `shadcn init`，生成 `components.json` 后再考虑 Skills。
+后续如果需要继续引入 shadcn 组件文件，再在当前 React 前端内生成 `components.json` 并按组件逐个落地；不要把 shadcn 官网 dashboard 皮肤原样复制进 Tracevane。

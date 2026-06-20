@@ -389,7 +389,7 @@ test("history page API windows messages and exposes search/date helpers", async 
         /transcript tail window/i,
       );
       assert.equal(bootstrapTranscriptReads, 0);
-      assert.equal(bootstrapHealthChecks, 1);
+      assert.equal(bootstrapHealthChecks, 0);
 
       cachedTranscriptReads = 0;
       const coldHistoryContext = createTracevaneContext({

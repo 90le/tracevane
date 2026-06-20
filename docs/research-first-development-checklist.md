@@ -1,6 +1,6 @@
 # Research-First Development Checklist
 
-> 更新：2026-06-19
+> 更新：2026-06-21
 > 原则：任何新功能、行为修改、协议/SDK/Provider/Channel/Agent 适配，都必须先核验当前外部合同，再设计和实现。
 
 ## 开工门禁
@@ -144,6 +144,7 @@
 | P0 | 产品战略重置文档 | 已完成本轮 | `product-strategy-reset-plan.md`、PRD、架构、进展和 README 改为 Tracevane 方向 |
 | P0 | 产品 benchmark 策略 | 已完成本轮 | `product-benchmark-strategy.md` 记录 AI IDE、CLI Agent、app builder、observability/eval、workflow/runtime 的市场吸收和拒绝规则 |
 | P0 | 产品命名门禁 | 已完成本轮 | 本文件和战略重置文档记录查重流程、禁止直接采用的高风险名称族和分批落地规则 |
+| P0 | React 前端重做基线 | 已完成本轮 | `apps/web-vue` 已从 Vue 切换为 React + TypeScript + Vite 8 + Tailwind v4，Aurora 11 页原型映射为 React routes |
 | P1 | Agent session 判断稳定性 | 进行中 | Codex/Claude Code/OpenCode 默认 persistent；one-shot fallback 覆盖 heartbeat、async child task、idle timeout、unknown event 和终态 race |
 | P1 | Gateway unsupported 合同 | 进行中 | 未验证的 image edits、audio、Realtime/WebSocket 返回结构化 unsupported，错误说明当前缺少稳定合同和替代路径 |
 | P1 | Gateway endpoint profile 回归 | 已补本地回归 | 原生协议优选、passthrough 错误归属和 adapter-required 错误归属均锁定 endpoint profile |
@@ -178,6 +179,8 @@
 - 2026-06-20：继续收紧 Anthropic Messages SSE 终态合同。Anthropic streaming 的正常结束必须有 `message_stop`，不能把网络 close 当成模型成功完成；否则 partial `content_block_delta` 会被 Chat adapter 伪装成 `finish_reason=stop`。Gateway 现在在 Anthropic SSE -> Chat adapter 中遇到缺失 `message_stop` 的流会输出协议内 error 并记录 runtime failure，错误码 `model_gateway_anthropic_stream_missing_message_stop`；本地回归覆盖 partial 后断流不再成功 finalize。
 - 2026-06-20：重新核验 Codex app connection 的自动 compact 预算。OpenAI/codex 官方仓库 issue #10365 中有 maintainer 说明 `model_auto_compact_token_limit` 存在但不建议随意修改，因为阈值随模型变化；issue #16033 报告显式 `model_context_window` / `model_auto_compact_token_limit` 后 auto-compaction 不触发；issue #14456 说明 profile-scoped context/compact 键不受支持；issue #19409 专门记录 `gpt-5.5` 在 Codex Desktop/App 中出现 400k/1M catalog 与 session effective window 不一致。Tracevane runtime 也记录到一次 `gpt-5.5` 经 Gateway `/v1/responses` 返回 `context_length_exceeded`，且同段日志没有 `/v1/responses/compact` 请求；这些证据只能证明当时的有效窗口/阈值需要继续校准，不能证明 Codex 不支持顶层预算键。
 - 2026-06-21：纠正上一轮“Codex 不写 context/compact”的阶段性结论。OpenAI Codex 官方 manual 示例明确保留 `model_context_window` 与 `model_auto_compact_token_limit`；本地源码核验 `ModelInfo::auto_compact_token_limit()` 会在显式值缺省时按 resolved context 的 90% 派生，并把显式 compact limit clamp 到 context 的 90%，`model_auto_compact_token_limit_scope` 的有效值为 `total` / `body_after_prefix`。真实 `codex exec` 小预算测试用 `model_context_window=2000`、`model_auto_compact_token_limit=200`、`scope=total` 跑通并在 session JSONL 中记录 `model_context_window:1900` 与 `context_compacted` 事件，证明这些键会进入运行时并能触发 auto compact。因此 Gateway 继续按 App Connection 所选模型的解析预算写入 Codex 顶层 `model_context_window` / `model_auto_compact_token_limit`；前端恢复统一预算语义，回归覆盖 Codex 预算写入和模型级预算合并。
+- 2026-06-21：核验 React/Vite/Tailwind/shadcn/TanStack 当前官方资料后落地 Aurora React 前端。来源包括 React 新项目建议（`https://react.dev/learn/start-a-new-react-project`）、Vite 指南（`https://vite.dev/guide/`）、Tailwind v4 Vite 安装（`https://tailwindcss.com/docs/installation/using-vite`）、shadcn/ui Vite 与 Tailwind v4 文档（`https://ui.shadcn.com/docs/installation/vite`、`https://ui.shadcn.com/docs/tailwind-v4`）、React Router（`https://reactrouter.com/start/declarative/installation`）和 TanStack Query React（`https://tanstack.com/query/latest/docs/framework/react/overview`）。结论：React + Vite + Tailwind v4 + shadcn ownership 与用户指定方向一致，Vite 8 需要 `@vitejs/plugin-react@6`，因此本轮连同 Vite 升级。验证通过 web/api typecheck/build、diff check 和 Playwright 11 路由 smoke。
+- 2026-06-21：前端目标从“原型重构”升级为“真实功能重做”。继续核验 React Router nested route、TanStack Query、Tailwind v4、shadcn/ui 方向，并用本机 OpenClaw 2026.6.8 CLI help 核验 `dashboard`、`config get/set/patch/schema/validate`、`doctor --lint/--repair`、`gateway status/restart/diagnostics`、`plugins`、`skills`、`agents`、`channels`、`secrets` 等官方管理面已存在。结论：Tracevane 主导航不复制完整 OpenClaw 控制台；新增 `/runtime-admin` 子域集中承载 OpenClaw 配置、扩展、Agent/渠道、服务和 doctor/recovery 支撑面，页面默认只读，只允许安全 `probe` 动作，repair/restart 需要后续确认流。架构记录见 `docs/frontend-functional-architecture.md`。
 - 2026-06-21：继续优化大模型目录识别后的选择合同。本次不改变外部 provider API，只修正本地 UI 对已获取模型候选的批量选择语义：候选列表保持分页渲染，批量按钮从“选择当前筛选”收窄为“选择当前可见”，只勾选当前已渲染窗口，避免几百个模型时一次误选整套筛选结果并造成保存/管理混乱。静态回归锁定 `selectVisibleDetectedModels` 只遍历 `visibleDetectedCandidateModels`。
 - 2026-06-21：继续收窄模型配置表的批量编辑范围。Provider 模型表支持分页渲染后，批量预算/能力按钮不能再默认修改隐藏行；本轮把“应用到全部”改为“应用到可见”，实现只遍历 `visibleDraftModelRowEntries`，降低大目录编辑时误改未渲染模型预算/能力的风险。静态回归锁定文案和遍历对象。
 - 2026-06-21：继续加固 provider 自动识别的卡顿边界。本次不改变外部协议，仅修正本地探测实现：`detect-provider` 的 `timeoutMs` 后端统一 clamp 到 1s-30s，且 `/models` 和协议 probe 的响应正文读取也纳入同一个 timeout，并限制单个探测响应 body 最大 2MB；避免上游只返回 headers 后用超大/慢速 body 让管理接口长时间挂起。系统回归覆盖超大 `/models` body 会成为结构化 probe failure，且不会持久化 registry/secrets。

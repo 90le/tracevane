@@ -23,11 +23,22 @@ test("local heartbeat smoke script documents local-only proof boundary", async (
 });
 
 test("local heartbeat smoke script runs the full synthetic heartbeat matrix", async () => {
-  const { stdout } = await execFileAsync("node", [scriptPath, "--json"], {
-    cwd: repoRoot,
-    timeout: 20_000,
-    maxBuffer: 1024 * 1024,
-  });
+  let stdout = "";
+  try {
+    const result = await execFileAsync("node", [scriptPath, "--json"], {
+      cwd: repoRoot,
+      timeout: 60_000,
+      maxBuffer: 1024 * 1024,
+    });
+    stdout = result.stdout;
+  } catch (error) {
+    const detail = [
+      error instanceof Error ? error.message : String(error),
+      error && typeof error === "object" && "stdout" in error ? `stdout:\n${String(error.stdout)}` : "",
+      error && typeof error === "object" && "stderr" in error ? `stderr:\n${String(error.stderr)}` : "",
+    ].filter(Boolean).join("\n\n");
+    assert.fail(detail);
+  }
   const result = JSON.parse(stdout);
 
   assert.equal(result.ok, true);

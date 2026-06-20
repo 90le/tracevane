@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "../../../../docs/prototypes/app/styles.css";
+
+.sheet-content {
+  display: grid;
+  gap: 14px;
+}
+
+.sheet-content .kv {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px 14px;
+}
+
+.sheet-content dt {
+  color: var(--subtle);
+}
+
+.sheet-content dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sheet-log {
+  min-height: 160px;
+  white-space: pre-wrap;
+}
+
+.dialog-mask,
+.sheet-mask,
+.mobile-scrim,
+.cmd-mask {
+  border: 0;
+  padding: 0;
+}
+
+.cmd-list {
+  max-height: min(420px, 62dvh);
+  overflow: auto;
+  padding: 10px;
+}
+
+.cmd-item mark {
+  color: var(--primary);
+  background: transparent;
+}
+
+.toast-wrap {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+}
+
+.page-stage {
+  min-height: 100%;
+}
+
+.skip-link {
+  position: fixed;
+  left: 14px;
+  top: 10px;
+  z-index: 120;
+  transform: translateY(-140%);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.route-error {
+  max-width: 760px;
+  margin: 60px auto;
+}
+
+.runtime-admin {
+  align-content: start;
+}
+
+.runtime-subnav {
+  margin-top: -4px;
+}
+
+.runtime-hero h1 {
+  max-width: 34ch;
+}
+
+.runtime-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.runtime-panel {
+  margin-top: 18px;
+}
+
+.runtime-status-grid {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.runtime-row {
+  min-height: 58px;
+}
+
+.runtime-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.runtime-list {
+  display: grid;
+  gap: 4px;
+}
+
+.runtime-config-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.runtime-keygrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.runtime-json {
+  max-height: min(460px, 58dvh);
+  overflow: auto;
+}
+
+@media (max-width: 860px) {
+  .runtime-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .runtime-stats {
+    grid-template-columns: 1fr;
+  }
+}

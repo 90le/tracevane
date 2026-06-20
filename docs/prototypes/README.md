@@ -2,6 +2,9 @@
 
 本地优先的 AI Agent 控制工作台的前端原型。基于 Aurora 设计体系，单入口 SPA 框架。
 
+> 2026-06-21：Aurora 原型已落入 `apps/web-vue` 的 React + TypeScript + Vite 前端。本文仍保留原型运行方式，作为视觉/交互源和后续页面调整的参考。
+> 同日更新：生产前端目标不是停留在 raw HTML 原型渲染。原型只作为视觉/交互合同，真实功能逐页迁移到 React component + TanStack Query + 现有 API。详见 `../frontend-functional-architecture.md`。
+
 ## 快速开始
 
 ```bash
@@ -62,6 +65,22 @@ shell.openSheet({ title, sub, status, owner, action, note, log: ["a", "b"] });
 | `pages-data.js` mount | useEffect |
 | `states.js` | shadcn Sheet/Dialog + toast + TanStack Query |
 | `pages.js` 导航 | Sidebar manifest + 路由配置 |
+
+当前实现：
+
+- `apps/web-vue/src/app/route-manifest.ts` 对应 `app/pages.js`。
+- `apps/web-vue/src/app/PrototypePage.tsx` 把 11 个 HTML 片段作为 raw fragments 渲染为 React page。
+- `apps/web-vue/src/app/page-mounts.ts` 对应 `data/pages-data.js` 的交互 mount。
+- `apps/web-vue/src/app/AuroraShell.tsx` 对应 shell / overlay / command / theme / navigation。
+- `apps/web-vue/src/app/RuntimeAdminPage.tsx` 是第一个真实 React 功能子域，挂载 `/runtime-admin` 和 `/runtime-admin/:section`，消费现有系统、配置、Agent、渠道、Skills、服务和 OpenClaw Recovery API。
+
+迁移规则：
+
+1. 先保留 Aurora 布局和路由合同。
+2. 明确页面需要的现有 API 数据。
+3. 用 TanStack Query 接入真实数据和 loading/empty/error。
+4. 再删除对应 prototype-only DOM mount 行为。
+5. 为每个完成迁移的页面补系统合同测试。
 
 ## 相关文档
 

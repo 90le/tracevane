@@ -1,0 +1,140 @@
+{
+  "frontend": "react-aurora",
+  "routeManifest": "apps/web-vue/src/app/route-manifest.ts",
+  "coreFiles": [
+    "apps/web-vue/src/main.tsx",
+    "apps/web-vue/src/app/App.tsx",
+    "apps/web-vue/src/app/AuroraShell.tsx",
+    "apps/web-vue/src/app/RuntimeAdminPage.tsx",
+    "apps/web-vue/src/app/PrototypePage.tsx",
+    "apps/web-vue/src/app/api-client.ts",
+    "apps/web-vue/src/app/page-mounts.ts",
+    "apps/web-vue/src/app/shell-context.tsx",
+    "apps/web-vue/src/styles/app.css"
+  ],
+  "routes": [
+    {
+      "path": "dashboard",
+      "hashRoute": "#/dashboard",
+      "label": "仪表盘",
+      "group": "总览",
+      "icon": "layout-dashboard",
+      "shape": "console",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/dashboard.html"
+    },
+    {
+      "path": "chat",
+      "hashRoute": "#/chat",
+      "label": "会话任务",
+      "group": "运行",
+      "icon": "messages-square",
+      "shape": "chat",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/chat.html"
+    },
+    {
+      "path": "ide",
+      "hashRoute": "#/ide",
+      "label": "工作区 IDE",
+      "group": "运行",
+      "icon": "square-terminal",
+      "shape": "workbench",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/ide.html"
+    },
+    {
+      "path": "long-tasks",
+      "hashRoute": "#/long-tasks",
+      "label": "长任务",
+      "group": "运行",
+      "icon": "timer",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/long-tasks.html"
+    },
+    {
+      "path": "cli-agents",
+      "hashRoute": "#/cli-agents",
+      "label": "CLI Agents",
+      "group": "运行",
+      "icon": "bot",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/cli-agents.html"
+    },
+    {
+      "path": "model-gateway",
+      "hashRoute": "#/model-gateway",
+      "label": "模型网关",
+      "group": "连接",
+      "icon": "route",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/model-gateway.html"
+    },
+    {
+      "path": "im-channels",
+      "hashRoute": "#/im-channels",
+      "label": "IM 渠道",
+      "group": "连接",
+      "icon": "radio-tower",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/im-channels.html"
+    },
+    {
+      "path": "external",
+      "hashRoute": "#/external",
+      "label": "外部连接",
+      "group": "连接",
+      "icon": "plug-zap",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/external.html"
+    },
+    {
+      "path": "files",
+      "hashRoute": "#/files",
+      "label": "文件证据",
+      "group": "证据",
+      "icon": "folder-check",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/files.html"
+    },
+    {
+      "path": "approvals",
+      "hashRoute": "#/approvals",
+      "label": "审批",
+      "group": "证据",
+      "icon": "shield-check",
+      "shape": "list",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/approvals.html"
+    },
+    {
+      "path": "recovery",
+      "hashRoute": "#/recovery",
+      "label": "自愈守护",
+      "group": "系统",
+      "icon": "heart-pulse",
+      "shape": "console",
+      "surface": "prototype",
+      "prototype": "docs/prototypes/pages/recovery.html"
+    },
+    {
+      "path": "runtime-admin",
+      "hashRoute": "#/runtime-admin",
+      "label": "运行时管理",
+      "group": "系统",
+      "icon": "file-cog",
+      "shape": "console",
+      "surface": "react",
+      "prototype": null
+    }
+  ],
+  "verification": [
+    "tests/system/tracevane-react-aurora-frontend.test.mjs"
+  ]
+}

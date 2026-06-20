@@ -32,11 +32,14 @@ test("tracevane inventory script writes a machine-readable baseline for routes, 
   assert.equal(typeof payload.generatedAt, "string");
   assert.ok(Array.isArray(payload.webRoutes));
   assert.ok(Array.isArray(payload.apiModules));
-  assert.ok(Array.isArray(payload.webFeatures));
+  assert.ok(Array.isArray(payload.webSurfaces?.routes));
+  assert.ok(Array.isArray(payload.webSurfaces?.sourceDirs));
   assert.ok(Array.isArray(payload.testSuites));
   assert.ok(payload.webRoutes.includes("/dashboard"));
+  assert.ok(payload.webRoutes.includes("/model-gateway"));
   assert.ok(payload.apiModules.includes("config"));
-  assert.ok(payload.webFeatures.includes("chat"));
+  assert.ok(payload.webSurfaces.sourceDirs.includes("app"));
+  assert.ok(payload.webSurfaces.routes.some((route) => route.path === "/chat"));
   assert.ok(
     payload.testSuites.includes("tests/system/config-service.test.mjs"),
   );
@@ -59,13 +62,14 @@ test("tracevane inventory script keeps the baseline file stable when structure d
   assert.equal(secondPayload.generatedAt, firstPayload.generatedAt);
 });
 
-test("tracevane inventory script resolves route imports without a hardcoded route-manifest path", () => {
+test("tracevane inventory script reads the Aurora route manifest instead of the retired Vue router", () => {
   const scriptSource = fs.readFileSync(
     path.join(rootDir, "scripts/tracevane-domain-inventory.mjs"),
     "utf8",
   );
 
-  assert.match(scriptSource, /function\s+extractRoutesBindingName/);
-  assert.match(scriptSource, /routes\\s\*:\\s\*\(\[A-Za-z_\$\]\[\\w\$\]\*\)/);
-  assert.doesNotMatch(scriptSource, /features\/shell\/route-manifest/);
+  assert.match(scriptSource, /apps\/web-vue\/src\/app\/route-manifest\.ts/);
+  assert.match(scriptSource, /function\s+extractAuroraRoutes/);
+  assert.doesNotMatch(scriptSource, /apps\/web-vue\/src\/router\.ts/);
+  assert.doesNotMatch(scriptSource, /apps\/web-vue\/src\/features/);
 });
