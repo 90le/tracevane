@@ -38,8 +38,8 @@ docs/prototypes/
 | `styles.css` | 全部 token 与组件样式 | 不含页面专属类堆叠 |
 | `states.js` | `openSheet/openDialog/toast/states` + `refreshIcons` | 不绑定全局事件 |
 | `router.js` | hash 路由、fetch 片段、调用 mount | 不含 UI |
-| `pages.js` | 注册页面（path/label/group/fragment）+ 导航分组 | 不含逻辑 |
-| `shell.js` | 构建导航/命令面板、绑定 shell 事件、dispatch data-sheet/data-toast | 不含业务 mount |
+| `pages.js` | 注册页面（path/label/group/fragment）+ 导航分组 + 全局命令 + `AURORA_PAGE_COMMANDS`（页面级命令） | 不含逻辑 |
+| `shell.js` | 构建导航/命令面板（含页面级命令）、绑定 shell 事件、dispatch data-sheet/data-toast、`bindListSearch`（列表搜索+empty） | 不含业务 mount |
 | `pages/*.html` | 单页主体内容 | 不含 shell、overlay、script |
 | `pages-data.js` | 每页 `AURORA_PAGE_MOUNT[path]` | 不重复绑定 overlay |
 
@@ -51,6 +51,10 @@ docs/prototypes/
 - `data-sheet` 仍是管道分隔，但**第 7 段 log 一律用逗号/空格**，禁止 `\n` / `__NL__`。
 - `states.openSheet(obj)` 接受结构化对象：`{ title, sub, status, owner, action, note, log:[...] , diff }`。log 用数组，渲染时 `join("\n")` 产生真实换行——**换行只发生在 JS 运行时，绝不进 HTML 属性**。
 - 复杂对象（diff、多字段）走 `openSheet({ diff: '<div class="dl add">…</div>' })`，不再拼字符串。
+
+### 4.1 测试坑：DOM value 赋值 ≠ 真实输入
+
+在 headless Chrome（CDP）里用 `Runtime.evaluate` 执行 `input.value = ''` **不会触发原生 input 事件**，导致看似"清空搜索后列表没恢复"的假象。验证输入相关逻辑必须用 `Input.dispatchKeyEvent` / `Input.insertText` 模拟真实键盘，或直接在交互式浏览器里测。`bindListSearch` 已用真实键盘输入验证通过。
 
 ## 5. 路由
 
