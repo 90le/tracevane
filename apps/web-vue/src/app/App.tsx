@@ -6,6 +6,7 @@ import { CliAgentsPage } from "./CliAgentsPage";
 import { DashboardPage } from "./DashboardPage";
 import { routeDefs } from "./route-manifest";
 import { ImChannelsPage } from "./ImChannelsPage";
+import { LongTasksPage } from "./LongTasksPage";
 import { PrototypePage } from "./PrototypePage";
 import { ModelGatewayPage } from "./ModelGatewayPage";
 import { OpenClawPlatformPage } from "./OpenClawPlatformPage";
@@ -22,6 +23,7 @@ function routeElement(route: (typeof routeDefs)[number]) {
   if (route.path === "dashboard") return <DashboardPage />;
   if (route.path === "chat") return <ChatWorkbenchPage />;
   if (route.path === "ide") return <WorkspaceIdePage />;
+  if (route.path === "long-tasks") return <LongTasksPage />;
   if (route.path === "cli-agents") return <CliAgentsPage />;
   if (route.path === "im-channels") return <ImChannelsPage />;
   if (route.path === "model-gateway") return <ModelGatewayPage />;

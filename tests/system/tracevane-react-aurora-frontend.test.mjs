@@ -49,7 +49,6 @@ test("React entry uses the Aurora app root", () => {
 test("Aurora route manifest maps all prototype fragments", () => {
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const expectedRoutes = [
-    "long-tasks",
     "external",
     "files",
     "approvals",
@@ -64,10 +63,11 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 4);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 3);
   assert.match(manifest, /path: "dashboard"/);
   assert.match(manifest, /path: "chat"/);
   assert.match(manifest, /path: "ide"/);
+  assert.match(manifest, /path: "long-tasks"[\s\S]*surface: "react"/);
   assert.match(manifest, /path: "cli-agents"/);
   assert.match(manifest, /path: "model-gateway"/);
   assert.match(manifest, /path: "im-channels"/);
@@ -90,7 +90,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "prototype").map((route) => route.path),
     [
-      "long-tasks",
       "external",
       "files",
       "approvals",
@@ -98,13 +97,14 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["dashboard", "chat", "ide", "cli-agents", "model-gateway", "im-channels", "recovery", "platforms"],
+    ["dashboard", "chat", "ide", "long-tasks", "cli-agents", "model-gateway", "im-channels", "recovery", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ChatWorkbenchPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/CliAgentsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/DashboardPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/LongTasksPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/OpenClawPlatformPage.tsx"));
@@ -116,6 +116,33 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       .filter((route) => route.surface === "prototype")
       .every((route) => route.prototype?.startsWith("docs/prototypes/pages/")),
   );
+});
+
+test("Long Tasks is a real React supervision page backed by read-only runtime evidence APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/LongTasksPage.tsx");
+
+  assert.match(app, /LongTasksPage/);
+  assert.match(manifest, /path: "long-tasks"[\s\S]*surface: "react"/);
+  assert.doesNotMatch(manifest, /longTasksHtml/);
+  assert.doesNotMatch(manifest, /docs\/prototypes\/pages\/long-tasks\.html\?raw/);
+  for (const endpoint of [
+    "/api/chat/bootstrap?recentLimit=40&historyLimit=30",
+    "/api/channel-connectors/agent-sessions",
+    "/api/terminal/sessions",
+    "/api/openclaw-recovery/status",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["长任务", "无输出超时", "只读", "任务空闲判定", "Chat / IM / Terminal / Recovery"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /\/api\/terminal\/end/);
+  assert.doesNotMatch(page, /\/api\/channel-connectors\/agent-sessions[\\s\\S]*method:\\s*"POST"/);
+  assert.doesNotMatch(page, /\/api\/chat\/abort/);
+  assert.doesNotMatch(page, /openclaw-recovery\/run/);
+  assert.doesNotMatch(page, /method:\s*"POST"/);
 });
 
 test("Recovery is a real React system guard backed by read-only recovery APIs", () => {

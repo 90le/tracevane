@@ -9,6 +9,7 @@
     "apps/web-vue/src/app/CliAgentsPage.tsx",
     "apps/web-vue/src/app/DashboardPage.tsx",
     "apps/web-vue/src/app/ImChannelsPage.tsx",
+    "apps/web-vue/src/app/LongTasksPage.tsx",
     "apps/web-vue/src/app/ModelGatewayPage.tsx",
     "apps/web-vue/src/app/PlatformIntegrationsPage.tsx",
     "apps/web-vue/src/app/OpenClawPlatformPage.tsx",
@@ -58,8 +59,8 @@
       "group": "运行",
       "icon": "timer",
       "shape": "list",
-      "surface": "prototype",
-      "prototype": "docs/prototypes/pages/long-tasks.html"
+      "surface": "react",
+      "prototype": null
     },
     {
       "path": "cli-agents",

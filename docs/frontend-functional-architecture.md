@@ -71,8 +71,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 4 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 3 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/long-tasks` uses `LongTasksPage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Dashboard sections:
 
@@ -114,6 +114,14 @@ CLI Agents sections:
 - `channels`: Channel Connectors async agent-session evidence and recent events.
 
 CLI Agents first React pass is intentionally read-only. Terminal launch/end, Channel Connector command actions, session kill/reap and chat send/cancel need confirmation/evidence flows before exposure.
+
+Long Tasks sections:
+
+- `hero`: running/planned/failed counts and evidence-source coverage.
+- `task list`: synthesized long-running work from Chat runtime overlays/sessions/queue, Channel Connector active sessions/events, Terminal sessions and Recovery status.
+- `detail`: selected task progress, status/source metrics, recent evidence and locked control boundary.
+
+Long Tasks first React pass is intentionally read-only. It reads `/api/chat/bootstrap`, `/api/channel-connectors/agent-sessions`, `/api/terminal/sessions` and `/api/openclaw-recovery/status`. It does not pause, stop, retry, reap, abort, restart or launch work. This is intentional because TUI silence, child-agent fan-out, detached terminal sessions and recovery probes cannot be classified safely by output timeout alone.
 
 Model Gateway sections:
 
@@ -173,7 +181,7 @@ Each route graduates from prototype to real functionality in this order:
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
 2. Chat: real session list, run progress, artifacts and cancellation.
-3. Long tasks / external / files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
+3. External / files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks

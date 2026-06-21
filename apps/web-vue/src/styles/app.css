@@ -91,6 +91,7 @@
 .cli-agents-page,
 .dashboard-page,
 .im-channels-page,
+.long-tasks-page,
 .model-gateway-page,
 .platforms-page,
 .recovery-page,
@@ -186,6 +187,10 @@
   margin-top: -4px;
 }
 
+.long-task-filter {
+  margin-top: -4px;
+}
+
 .chat-work-viewbar {
   margin: 0;
   padding: 10px;
@@ -216,6 +221,10 @@
   max-width: 38ch;
 }
 
+.long-task-hero h1 {
+  max-width: 38ch;
+}
+
 .workspace-hero h1 {
   max-width: 36ch;
 }
@@ -241,6 +250,10 @@
 }
 
 .recovery-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.long-task-stats {
   grid-template-columns: repeat(4, 1fr);
 }
 
@@ -1146,6 +1159,102 @@
   white-space: nowrap;
 }
 
+.long-task-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.long-task-list-panel,
+.long-task-detail-panel {
+  min-width: 0;
+}
+
+.long-task-table {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.long-task-row {
+  display: grid;
+  grid-template-columns: 38px minmax(180px, 1fr) minmax(92px, 0.22fr) minmax(128px, 0.28fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.long-task-row:hover,
+.long-task-row.is-selected {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--primary), transparent 92%);
+}
+
+.long-task-copy,
+.long-task-detail-title span {
+  min-width: 0;
+}
+
+.long-task-copy strong,
+.long-task-detail-title strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.long-task-copy small,
+.long-task-detail-title small,
+.long-task-progress small {
+  display: block;
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.long-task-progress {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.long-task-progress .bar,
+.long-task-detail-bar {
+  min-width: 0;
+}
+
+.long-task-detail {
+  display: grid;
+  gap: 16px;
+  padding: 14px;
+}
+
+.long-task-detail-title {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.long-task-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.long-task-log {
+  max-height: min(320px, 42dvh);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .platform-stats {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -1186,6 +1295,7 @@
   .chat-work-stats,
   .dashboard-stats,
   .recovery-stats,
+  .long-task-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1201,7 +1311,8 @@
   .platform-stats,
   .platform-grid,
   .recovery-overview-grid,
-  .recovery-guard-grid {
+  .recovery-guard-grid,
+  .long-task-shell {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -1232,6 +1343,19 @@
   .recovery-action .recovery-lock {
     justify-self: start;
     grid-column: 2;
+  }
+
+  .long-task-row {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .long-task-row .cell-mono,
+  .long-task-progress {
+    grid-column: 2;
+  }
+
+  .long-task-row .tag {
+    justify-self: start;
   }
 
   .cli-agent-row {
@@ -1278,6 +1402,7 @@
   .chat-work-stats,
   .dashboard-stats,
   .recovery-stats,
+  .long-task-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1293,7 +1418,8 @@
   .platform-stats,
   .platform-grid,
   .recovery-overview-grid,
-  .recovery-guard-grid {
+  .recovery-guard-grid,
+  .long-task-shell {
     grid-template-columns: 1fr;
   }
 
@@ -1333,6 +1459,19 @@
   .recovery-row .tag {
     justify-self: start;
     grid-column: 2;
+  }
+
+  .long-task-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .long-task-row .tag {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .long-task-metrics {
+    grid-template-columns: 1fr;
   }
 
   .workspace-shell {
