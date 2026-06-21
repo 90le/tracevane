@@ -50,7 +50,6 @@ test("Aurora route manifest maps all prototype fragments", () => {
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const expectedRoutes = [
     "dashboard",
-    "chat",
     "long-tasks",
     "external",
     "files",
@@ -67,7 +66,8 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 7);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 6);
+  assert.match(manifest, /path: "chat"/);
   assert.match(manifest, /path: "ide"/);
   assert.match(manifest, /path: "cli-agents"/);
   assert.match(manifest, /path: "model-gateway"/);
@@ -91,7 +91,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
     parsed.routes.filter((route) => route.surface === "prototype").map((route) => route.path),
     [
       "dashboard",
-      "chat",
       "long-tasks",
       "external",
       "files",
@@ -101,9 +100,10 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
+    ["chat", "ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ChatWorkbenchPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/CliAgentsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
@@ -290,6 +290,24 @@ test("CLI Agents is a real React page backed by read-only runtime APIs", () => {
   assert.doesNotMatch(page, /\/api\/channel-connectors\/agent-sessions[\\s\\S]*method:\\s*"POST"/);
   assert.doesNotMatch(page, /\/api\/terminal\/launch/);
   assert.doesNotMatch(page, /\/api\/terminal\/end/);
+  assert.doesNotMatch(page, /method:\\s*"POST"/);
+});
+
+test("Chat workbench is a real React page backed by read-only chat bootstrap", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/ChatWorkbenchPage.tsx");
+
+  assert.match(app, /ChatWorkbenchPage/);
+  assert.match(manifest, /path: "chat"[\s\S]*surface: "react"/);
+  assert.match(page, /\/api\/chat\/bootstrap/);
+  for (const label of ["会话任务", "Tracevane Agent 工作台", "消息", "运行", "队列", "诊断", "发送入口暂时锁定"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /\/api\/chat\/send/);
+  assert.doesNotMatch(page, /\/api\/chat\/abort/);
+  assert.doesNotMatch(page, /\/api\/chat\/reset/);
+  assert.doesNotMatch(page, /\/api\/chat\/sessions[\\s\\S]*method:\\s*"POST"/);
   assert.doesNotMatch(page, /method:\\s*"POST"/);
 });
 

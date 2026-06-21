@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AuroraShell } from "./AuroraShell";
+import { ChatWorkbenchPage } from "./ChatWorkbenchPage";
 import { CliAgentsPage } from "./CliAgentsPage";
 import { routeDefs } from "./route-manifest";
 import { ImChannelsPage } from "./ImChannelsPage";
@@ -16,6 +17,7 @@ function LegacyRuntimeRedirect() {
 }
 
 function routeElement(route: (typeof routeDefs)[number]) {
+  if (route.path === "chat") return <ChatWorkbenchPage />;
   if (route.path === "ide") return <WorkspaceIdePage />;
   if (route.path === "cli-agents") return <CliAgentsPage />;
   if (route.path === "im-channels") return <ImChannelsPage />;

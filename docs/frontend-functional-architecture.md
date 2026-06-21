@@ -71,8 +71,19 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 7 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 6 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+
+Chat sections:
+
+- `sessions`: recent Tracevane Agent sessions from `/api/chat/bootstrap`.
+- `messages`: history messages, empty states and tool-call summaries for the selected session.
+- `runs`: run overlays and lifecycle preview.
+- `queue`: queued/blocked outbound messages.
+- `diagnostics`: Gateway reachability, transport, auth and truncation diagnostics.
+- `inspector`: runtime state, controls, tool cards and observability timeline.
+
+Chat first React pass is intentionally read-only. Send, abort, reset, delete, queue mutation and host-management controls need explicit confirmation, duplicate-request handling, runtime evidence and rollback/visibility rules before exposure.
 
 Workspace IDE sections:
 
