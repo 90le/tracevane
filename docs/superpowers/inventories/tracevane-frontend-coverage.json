@@ -12,6 +12,7 @@
     "apps/web-vue/src/app/ModelGatewayPage.tsx",
     "apps/web-vue/src/app/PlatformIntegrationsPage.tsx",
     "apps/web-vue/src/app/OpenClawPlatformPage.tsx",
+    "apps/web-vue/src/app/RecoveryPage.tsx",
     "apps/web-vue/src/app/WorkspaceIdePage.tsx",
     "apps/web-vue/src/app/PrototypePage.tsx",
     "apps/web-vue/src/app/api-client.ts",
@@ -127,8 +128,8 @@
       "group": "系统",
       "icon": "heart-pulse",
       "shape": "console",
-      "surface": "prototype",
-      "prototype": "docs/prototypes/pages/recovery.html"
+      "surface": "react",
+      "prototype": null
     },
     {
       "path": "platforms",

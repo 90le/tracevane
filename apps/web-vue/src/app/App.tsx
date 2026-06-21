@@ -10,6 +10,7 @@ import { PrototypePage } from "./PrototypePage";
 import { ModelGatewayPage } from "./ModelGatewayPage";
 import { OpenClawPlatformPage } from "./OpenClawPlatformPage";
 import { PlatformIntegrationsPage } from "./PlatformIntegrationsPage";
+import { RecoveryPage } from "./RecoveryPage";
 import { WorkspaceIdePage } from "./WorkspaceIdePage";
 
 function LegacyRuntimeRedirect() {
@@ -24,6 +25,7 @@ function routeElement(route: (typeof routeDefs)[number]) {
   if (route.path === "cli-agents") return <CliAgentsPage />;
   if (route.path === "im-channels") return <ImChannelsPage />;
   if (route.path === "model-gateway") return <ModelGatewayPage />;
+  if (route.path === "recovery") return <RecoveryPage />;
   if (route.path === "platforms") return <PlatformIntegrationsPage />;
   return <PrototypePage route={route} />;
 }

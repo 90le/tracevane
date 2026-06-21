@@ -93,6 +93,7 @@
 .im-channels-page,
 .model-gateway-page,
 .platforms-page,
+.recovery-page,
 .workspace-ide-page {
   align-content: start;
 }
@@ -181,6 +182,10 @@
   margin-top: -4px;
 }
 
+.recovery-viewbar {
+  margin-top: -4px;
+}
+
 .chat-work-viewbar {
   margin: 0;
   padding: 10px;
@@ -207,6 +212,10 @@
   max-width: 36ch;
 }
 
+.recovery-hero h1 {
+  max-width: 38ch;
+}
+
 .workspace-hero h1 {
   max-width: 36ch;
 }
@@ -228,6 +237,10 @@
 }
 
 .dashboard-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.recovery-stats {
   grid-template-columns: repeat(4, 1fr);
 }
 
@@ -1034,6 +1047,105 @@
   opacity: 0.78;
 }
 
+.recovery-overview-grid,
+.recovery-guard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.recovery-panel {
+  min-width: 0;
+}
+
+.recovery-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.recovery-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
+.recovery-tile strong,
+.recovery-action strong {
+  display: block;
+  color: var(--text);
+}
+
+.recovery-tile span,
+.recovery-action .route-copy span,
+.recovery-row .route-copy span {
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.recovery-tile-value {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 78px;
+}
+
+.recovery-tile-value b {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recovery-policy-list,
+.recovery-list,
+.recovery-risk-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.recovery-row {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  min-height: 60px;
+}
+
+.recovery-action-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.recovery-action {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 40%);
+}
+
+.recovery-action.is-locked {
+  opacity: 0.8;
+}
+
+.recovery-lock {
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .platform-stats {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -1073,6 +1185,7 @@
   .openclaw-stats,
   .chat-work-stats,
   .dashboard-stats,
+  .recovery-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1081,11 +1194,14 @@
   .cli-agent-tile-grid,
   .im-tile-grid,
   .gateway-tile-grid,
+  .recovery-tile-grid,
   .cli-agent-overview-grid,
   .im-overview-grid,
   .gateway-overview-grid,
   .platform-stats,
-  .platform-grid {
+  .platform-grid,
+  .recovery-overview-grid,
+  .recovery-guard-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -1104,6 +1220,16 @@
 
   .openclaw-action .tag,
   .openclaw-action button {
+    justify-self: start;
+    grid-column: 2;
+  }
+
+  .recovery-action {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .recovery-action .tag,
+  .recovery-action .recovery-lock {
     justify-self: start;
     grid-column: 2;
   }
@@ -1151,6 +1277,7 @@
   .openclaw-stats,
   .chat-work-stats,
   .dashboard-stats,
+  .recovery-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1159,11 +1286,14 @@
   .cli-agent-tile-grid,
   .im-tile-grid,
   .gateway-tile-grid,
+  .recovery-tile-grid,
   .cli-agent-overview-grid,
   .im-overview-grid,
   .gateway-overview-grid,
   .platform-stats,
-  .platform-grid {
+  .platform-grid,
+  .recovery-overview-grid,
+  .recovery-guard-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1185,15 +1315,23 @@
   .openclaw-tile,
   .cli-agent-tile,
   .im-tile,
-  .gateway-tile {
+  .gateway-tile,
+  .recovery-tile,
+  .recovery-row {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
   .openclaw-tile-value,
   .cli-agent-tile-value,
   .im-tile-value,
-  .gateway-tile-value {
+  .gateway-tile-value,
+  .recovery-tile-value {
     justify-items: start;
+    grid-column: 2;
+  }
+
+  .recovery-row .tag {
+    justify-self: start;
     grid-column: 2;
   }
 

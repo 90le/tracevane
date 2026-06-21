@@ -1,7 +1,6 @@
 import externalHtml from "../../../../docs/prototypes/pages/external.html?raw";
 import filesHtml from "../../../../docs/prototypes/pages/files.html?raw";
 import approvalsHtml from "../../../../docs/prototypes/pages/approvals.html?raw";
-import recoveryHtml from "../../../../docs/prototypes/pages/recovery.html?raw";
 import longTasksHtml from "../../../../docs/prototypes/pages/long-tasks.html?raw";
 
 export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统" | "平台";
@@ -45,7 +44,7 @@ export const routeDefs: RouteDef[] = [
   { path: "external", label: "外部连接", group: "连接", icon: "plug-zap", shape: "list", surface: "prototype", html: externalHtml },
   { path: "files", label: "文件证据", group: "证据", icon: "folder-check", shape: "list", surface: "prototype", html: filesHtml },
   { path: "approvals", label: "审批", group: "证据", icon: "shield-check", shape: "list", surface: "prototype", html: approvalsHtml, count: 3 },
-  { path: "recovery", label: "自愈守护", group: "系统", icon: "heart-pulse", shape: "console", surface: "prototype", html: recoveryHtml },
+  { path: "recovery", label: "自愈守护", group: "系统", icon: "heart-pulse", shape: "console", surface: "react" },
   { path: "platforms", label: "平台集成", group: "平台", icon: "boxes", shape: "console", surface: "react" },
 ];
 

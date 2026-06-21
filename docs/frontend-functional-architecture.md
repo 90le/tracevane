@@ -71,8 +71,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 5 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 4 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Dashboard sections:
 
@@ -149,6 +149,15 @@ Safe action policy:
 - `/api/openclaw-recovery/run` is only called with `action: "probe"` from OpenClaw Platform.
 - Repair/config-repair/restore-backup/service restart actions are displayed as locked actions until explicit confirmation, schema/diff preview, backup path, task-idle checks and rollback evidence are implemented.
 
+Recovery sections:
+
+- `overview`: Tracevane System Guard status, Gateway probe, Recovery daemon, service snapshot, system runtime and policy guard score.
+- `events`: paged Recovery event evidence from `/api/openclaw-recovery/events`.
+- `backups`: paged backup evidence from `/api/openclaw-recovery/backups`.
+- `guardrails`: locked action matrix and explicit risks for long-running TUI/child-agent workflows.
+
+Recovery first React pass is intentionally read-only. It reads `/api/openclaw-recovery/status`, `/api/openclaw-recovery/events`, `/api/openclaw-recovery/backups`, `/api/openclaw-recovery/daemon-service` and `/api/system/health`. It does not call repair, config repair, backup restore, daemon-service mutation or any POST action. This keeps the main Tracevane System Guard focused on evidence and prevents accidental interruption of active Codex/Claude/OpenCode tasks.
+
 ## Migration Rule
 
 Each route graduates from prototype to real functionality in this order:
@@ -164,7 +173,7 @@ Each route graduates from prototype to real functionality in this order:
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
 2. Chat: real session list, run progress, artifacts and cancellation.
-3. Long tasks / external / files / approvals / recovery: graduate remaining prototype routes without turning them into OpenClaw CRUD.
+3. Long tasks / external / files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks

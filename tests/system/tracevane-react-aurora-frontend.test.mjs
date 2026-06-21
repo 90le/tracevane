@@ -53,7 +53,6 @@ test("Aurora route manifest maps all prototype fragments", () => {
     "external",
     "files",
     "approvals",
-    "recovery",
   ];
 
   for (const route of expectedRoutes) {
@@ -65,7 +64,7 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 5);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 4);
   assert.match(manifest, /path: "dashboard"/);
   assert.match(manifest, /path: "chat"/);
   assert.match(manifest, /path: "ide"/);
@@ -73,6 +72,7 @@ test("Aurora route manifest maps all prototype fragments", () => {
   assert.match(manifest, /path: "model-gateway"/);
   assert.match(manifest, /path: "im-channels"/);
   assert.match(manifest, /path: "platforms"/);
+  assert.match(manifest, /path: "recovery"[\s\S]*surface: "react"/);
   assert.match(manifest, /surface: "react"/);
   assert.match(manifest, /openClawPlatformSections/);
 });
@@ -94,12 +94,11 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       "external",
       "files",
       "approvals",
-      "recovery",
     ],
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["dashboard", "chat", "ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
+    ["dashboard", "chat", "ide", "cli-agents", "model-gateway", "im-channels", "recovery", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ChatWorkbenchPage.tsx"));
@@ -109,6 +108,7 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/OpenClawPlatformPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/RecoveryPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/WorkspaceIdePage.tsx"));
   assert.ok(parsed.verification.includes("tests/system/tracevane-react-aurora-frontend.test.mjs"));
   assert.ok(
@@ -116,6 +116,33 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       .filter((route) => route.surface === "prototype")
       .every((route) => route.prototype?.startsWith("docs/prototypes/pages/")),
   );
+});
+
+test("Recovery is a real React system guard backed by read-only recovery APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/RecoveryPage.tsx");
+
+  assert.match(app, /RecoveryPage/);
+  assert.match(manifest, /path: "recovery"[\s\S]*surface: "react"/);
+  assert.doesNotMatch(manifest, /recoveryHtml/);
+  assert.doesNotMatch(manifest, /docs\/prototypes\/pages\/recovery\.html\?raw/);
+  for (const endpoint of [
+    "/api/openclaw-recovery/status",
+    "/api/openclaw-recovery/events?page=1&pageSize=20",
+    "/api/openclaw-recovery/backups?page=1&pageSize=8",
+    "/api/openclaw-recovery/daemon-service",
+    "/api/system/health",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["自愈守护", "System Guard", "守护事件", "备份与回滚证据", "锁定动作矩阵", "待确认流"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /openclaw-recovery\/run/);
+  assert.doesNotMatch(page, /restore-backup/);
+  assert.doesNotMatch(page, /apiJson\("\/api\/openclaw-recovery\/daemon-service"[\s\S]*method:\s*"POST"/);
+  assert.doesNotMatch(page, /method:\s*"POST"/);
 });
 
 test("Aurora React shell owns navigation, overlays, command palette and page mounts", () => {
