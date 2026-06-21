@@ -54,7 +54,6 @@ test("Aurora route manifest maps all prototype fragments", () => {
     "ide",
     "long-tasks",
     "cli-agents",
-    "model-gateway",
     "im-channels",
     "external",
     "files",
@@ -71,7 +70,8 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 11);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 10);
+  assert.match(manifest, /path: "model-gateway"/);
   assert.match(manifest, /path: "platforms"/);
   assert.match(manifest, /surface: "react"/);
   assert.match(manifest, /openClawPlatformSections/);
@@ -95,7 +95,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       "ide",
       "long-tasks",
       "cli-agents",
-      "model-gateway",
       "im-channels",
       "external",
       "files",
@@ -105,9 +104,10 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["platforms"],
+    ["model-gateway", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/OpenClawPlatformPage.tsx"));
   assert.ok(parsed.verification.includes("tests/system/tracevane-react-aurora-frontend.test.mjs"));
@@ -188,6 +188,31 @@ test("Platform integrations and OpenClaw are real React subdomains backed by exi
   assert.doesNotMatch(page, /action:\s*"config-repair"/);
   assert.match(api, /class ApiError/);
   assert.match(api, /JSON\.stringify\(body\)/);
+});
+
+test("Model Gateway is a real React page backed by read-only existing APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/ModelGatewayPage.tsx");
+
+  assert.match(app, /ModelGatewayPage/);
+  assert.match(manifest, /path: "model-gateway"[\s\S]*surface: "react"/);
+  for (const endpoint of [
+    "/api/model-gateway/status",
+    "/api/model-gateway/runtime",
+    "/api/model-gateway/providers",
+    "/api/model-gateway/app-connections",
+    "/api/model-gateway/usage",
+    "/api/model-gateway/daemon-service",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["概览", "Provider", "模型", "用量", "写入动作进入下钻确认流"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /active-route-smoke/);
+  assert.doesNotMatch(page, /app-connections\/apply/);
+  assert.doesNotMatch(page, /rollback/);
 });
 
 test("old Vue source tree is removed from the active web source", () => {

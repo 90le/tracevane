@@ -87,6 +87,7 @@
 }
 
 .platform-openclaw,
+.model-gateway-page,
 .platforms-page {
   align-content: start;
 }
@@ -163,26 +164,88 @@
   background: color-mix(in srgb, var(--panel-2), transparent 42%);
 }
 
+.gateway-viewbar {
+  margin-top: -4px;
+}
+
+.gateway-hero h1 {
+  max-width: 38ch;
+}
+
+.gateway-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.gateway-panel {
+  margin-top: 18px;
+}
+
+.gateway-list,
+.gateway-table {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.gateway-row {
+  min-height: 58px;
+}
+
+.gateway-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.gateway-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.gateway-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.gateway-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
 .openclaw-tile strong,
+.gateway-tile strong,
 .openclaw-action strong {
   display: block;
   color: var(--text);
 }
 
 .openclaw-tile span,
+.gateway-tile span,
 .openclaw-action .route-copy span {
   color: var(--subtle);
   overflow-wrap: anywhere;
 }
 
-.openclaw-tile-value {
+.openclaw-tile-value,
+.gateway-tile-value {
   display: grid;
   justify-items: end;
   gap: 6px;
   min-width: 74px;
 }
 
-.openclaw-tile-value b {
+.openclaw-tile-value b,
+.gateway-tile-value b {
   max-width: 180px;
   overflow: hidden;
   color: var(--text);
@@ -263,7 +326,10 @@
 
 @media (max-width: 860px) {
   .openclaw-stats,
+  .gateway-stats,
   .openclaw-tile-grid,
+  .gateway-tile-grid,
+  .gateway-overview-grid,
   .platform-stats,
   .platform-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -282,17 +348,22 @@
 
 @media (max-width: 540px) {
   .openclaw-stats,
+  .gateway-stats,
   .openclaw-tile-grid,
+  .gateway-tile-grid,
+  .gateway-overview-grid,
   .platform-stats,
   .platform-grid {
     grid-template-columns: 1fr;
   }
 
-  .openclaw-tile {
+  .openclaw-tile,
+  .gateway-tile {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
-  .openclaw-tile-value {
+  .openclaw-tile-value,
+  .gateway-tile-value {
     justify-items: start;
     grid-column: 2;
   }

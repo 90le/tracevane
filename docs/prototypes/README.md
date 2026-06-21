@@ -69,11 +69,12 @@ shell.openSheet({ title, sub, status, owner, action, note, log: ["a", "b"] });
 当前实现：
 
 - `apps/web-vue/src/app/route-manifest.ts` 对应 `app/pages.js`。
-- `apps/web-vue/src/app/PrototypePage.tsx` 把 11 个 HTML 片段作为 raw fragments 渲染为 React page。
+- `apps/web-vue/src/app/PrototypePage.tsx` 继续把未迁移的 HTML 片段作为 raw fragments 渲染为 React page；当前 `/model-gateway` 已迁移到真实 React 页面。
 - `apps/web-vue/src/app/page-mounts.ts` 对应 `data/pages-data.js` 的交互 mount。
 - `apps/web-vue/src/app/AuroraShell.tsx` 对应 shell / overlay / command / theme / navigation。
 - `apps/web-vue/src/app/PlatformIntegrationsPage.tsx` 是平台集成总览，挂载 `/platforms`，只展示第三方平台身份、健康、权限和诊断边界。
 - `apps/web-vue/src/app/OpenClawPlatformPage.tsx` 是第一个深度平台子域，挂载 `/platforms/openclaw` 和 `/platforms/openclaw/:section`，消费现有系统、配置、Agent、渠道、Skills、服务和 OpenClaw Recovery API；旧 `/runtime-admin` 路由只做跳转。
+- `apps/web-vue/src/app/ModelGatewayPage.tsx` 是模型网关真实 React 页面，挂载 `/model-gateway`，以只读方式消费现有 Gateway status/runtime/providers/app-connections/usage/daemon-service API。
 
 迁移规则：
 

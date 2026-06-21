@@ -5,6 +5,7 @@
     "apps/web-vue/src/main.tsx",
     "apps/web-vue/src/app/App.tsx",
     "apps/web-vue/src/app/AuroraShell.tsx",
+    "apps/web-vue/src/app/ModelGatewayPage.tsx",
     "apps/web-vue/src/app/PlatformIntegrationsPage.tsx",
     "apps/web-vue/src/app/OpenClawPlatformPage.tsx",
     "apps/web-vue/src/app/PrototypePage.tsx",
@@ -71,8 +72,8 @@
       "group": "连接",
       "icon": "route",
       "shape": "list",
-      "surface": "prototype",
-      "prototype": "docs/prototypes/pages/model-gateway.html"
+      "surface": "react",
+      "prototype": null
     },
     {
       "path": "im-channels",
