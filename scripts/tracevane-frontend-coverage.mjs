@@ -54,6 +54,7 @@ const payload = {
     "apps/web-vue/src/app/ModelGatewayPage.tsx",
     "apps/web-vue/src/app/PlatformIntegrationsPage.tsx",
     "apps/web-vue/src/app/OpenClawPlatformPage.tsx",
+    "apps/web-vue/src/app/WorkspaceIdePage.tsx",
     "apps/web-vue/src/app/PrototypePage.tsx",
     "apps/web-vue/src/app/api-client.ts",
     "apps/web-vue/src/app/page-mounts.ts",

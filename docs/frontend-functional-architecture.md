@@ -67,8 +67,19 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 9 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 8 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/ide` uses `WorkspaceIdePage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+
+Workspace IDE sections:
+
+- `workspace`: project-root file browser and read-only file content.
+- `preview`: Markdown/plain text preview for the currently selected text-like file.
+- `diff`: file-scoped Git diff, when available.
+- `git`: branch, cleanliness and changed-file summary.
+- `terminal`: Terminal runtime/agent CLI status and persisted sessions.
+- `evidence/ai`: recent commits and locked AI-edit intent.
+
+Workspace IDE first React pass is intentionally read-only. File writes, Git stage/commit, terminal launch/end and AI diff apply need explicit confirmation, rollback/evidence and mobile-safe interaction design before exposure.
 
 Model Gateway sections:
 
@@ -118,9 +129,9 @@ Each route graduates from prototype to real functionality in this order:
 ## Priority Order
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
-2. Workspace IDE: real file tree, editor, terminal, Git, Markdown/HTML preview and diff review.
-3. Chat / CLI Agent sessions: real session list, run progress, artifacts and cancellation.
-4. Dashboard: live operations cockpit assembled from the above domains.
+2. Chat / CLI Agent sessions: real session list, run progress, artifacts and cancellation.
+3. Dashboard: live operations cockpit assembled from the above domains.
+4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks
 
