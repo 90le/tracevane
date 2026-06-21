@@ -180,6 +180,12 @@ test("Platform integrations and OpenClaw are real React subdomains backed by exi
   for (const section of ["overview", "config", "extensions", "agents-channels", "services", "recovery"]) {
     assert.match(page, new RegExp(section));
   }
+  for (const guardedCopy of ["写入策略", "安全动作", "Config repair", "Full repair", "Restore backup", "待确认流"]) {
+    assert.match(page, new RegExp(guardedCopy));
+  }
+  assert.match(page, /action:\s*"probe"/);
+  assert.doesNotMatch(page, /action:\s*"repair"/);
+  assert.doesNotMatch(page, /action:\s*"config-repair"/);
   assert.match(api, /class ApiError/);
   assert.match(api, /JSON\.stringify\(body\)/);
 });

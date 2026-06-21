@@ -145,6 +145,87 @@
   overflow: auto;
 }
 
+.openclaw-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.openclaw-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
+.openclaw-tile strong,
+.openclaw-action strong {
+  display: block;
+  color: var(--text);
+}
+
+.openclaw-tile span,
+.openclaw-action .route-copy span {
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.openclaw-tile-value {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 74px;
+}
+
+.openclaw-tile-value b {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openclaw-safety-note {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warn), var(--line) 72%);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn), transparent 92%);
+}
+
+.openclaw-safety-note span {
+  color: var(--subtle);
+  line-height: 1.55;
+}
+
+.openclaw-action-list {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.openclaw-action {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 40%);
+}
+
+.openclaw-action.is-locked {
+  opacity: 0.78;
+}
+
 .platform-stats {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -182,16 +263,37 @@
 
 @media (max-width: 860px) {
   .openclaw-stats,
+  .openclaw-tile-grid,
   .platform-stats,
   .platform-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .openclaw-action {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .openclaw-action .tag,
+  .openclaw-action button {
+    justify-self: start;
+    grid-column: 2;
   }
 }
 
 @media (max-width: 540px) {
   .openclaw-stats,
+  .openclaw-tile-grid,
   .platform-stats,
   .platform-grid {
     grid-template-columns: 1fr;
+  }
+
+  .openclaw-tile {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .openclaw-tile-value {
+    justify-items: start;
+    grid-column: 2;
   }
 }

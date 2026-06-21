@@ -62,6 +62,21 @@ function countAt(value: unknown, keys: string[]): number {
   return 0;
 }
 
+function recordAt(value: unknown, path: string[]): AnyRecord {
+  let current: unknown = value;
+  for (const key of path) {
+    current = asRecord(current)[key];
+  }
+  return asRecord(current);
+}
+
+function formatTime(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 function jsonPreview(value: unknown, maxLength = 1400): string {
   const text = JSON.stringify(value ?? {}, null, 2);
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
@@ -107,6 +122,36 @@ function RuntimeRow({ icon, title, sub, status }: { icon: string; title: string;
       <span className="rico r-primary"><i data-lucide={icon} /></span>
       <span className="route-copy"><strong>{title}</strong><span>{sub}</span></span>
       <StatusTag value={status} />
+    </div>
+  );
+}
+
+function SummaryTile({ icon, title, value, sub, status }: { icon: string; title: string; value: React.ReactNode; sub: React.ReactNode; status?: unknown }) {
+  return (
+    <div className="openclaw-tile">
+      <span className="rico r-primary"><i data-lucide={icon} /></span>
+      <div>
+        <strong>{title}</strong>
+        <span>{sub}</span>
+      </div>
+      <div className="openclaw-tile-value">
+        <b>{value}</b>
+        {status !== undefined ? <StatusTag value={status} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function GuardedAction({ icon, title, sub, status, onClick, disabled = false, busy = false }: { icon: string; title: string; sub: string; status: string; onClick?: () => void; disabled?: boolean; busy?: boolean }) {
+  return (
+    <div className={`openclaw-action ${disabled ? "is-locked" : ""}`}>
+      <span className="rico r-primary"><i data-lucide={icon} /></span>
+      <span className="route-copy"><strong>{title}</strong><span>{sub}</span></span>
+      <StatusTag value={status} />
+      <button className={disabled ? "btn-ghost btn-sm" : "btn-primary btn-sm"} onClick={onClick} disabled={disabled || busy}>
+        <i data-lucide={disabled ? "lock" : "play"} />
+        {busy ? "运行中" : disabled ? "待确认流" : "执行"}
+      </button>
     </div>
   );
 }
@@ -182,6 +227,22 @@ export function OpenClawPlatformPage() {
 
   const runtimeState = textAt(recoveryStatus.data, ["state", "status"], textAt(health.data, ["ok"], "unknown"));
   const healthVersion = textAt(health.data, ["version"], "unknown");
+  const configSummary = useMemo(() => {
+    const configData = asRecord(config.data);
+    const agentsDefaults = recordAt(config.data, ["agents", "defaults"]);
+    const toolsExec = recordAt(config.data, ["tools", "exec"]);
+    const pluginsEntries = recordAt(config.data, ["plugins", "entries"]);
+    const channels = recordAt(config.data, ["channels"]);
+    return {
+      topLevel: Object.keys(configData).length,
+      agentDefaultKeys: Object.keys(agentsDefaults).length,
+      toolsExecKeys: Object.keys(toolsExec).length,
+      pluginEntries: Object.keys(pluginsEntries).length,
+      channelGroups: Object.keys(channels).length,
+      toolsSecurity: textAt(toolsExec, ["security"], "未返回"),
+      toolsAsk: textAt(toolsExec, ["ask"], "未返回"),
+    };
+  }, [config.data]);
 
   const renderOverview = () => (
     <>
@@ -213,11 +274,22 @@ export function OpenClawPlatformPage() {
 
   const renderConfig = () => (
     <section className="panel openclaw-panel">
-      <div className="panel-head"><div className="htitle"><h3>OpenClaw 配置</h3><span className="sub">当前阶段只做摘要和安全审计入口；写入动作必须走专用表单和校验。</span></div><StatusTag value={config.isError ? "error" : "read-only"} /></div>
+      <div className="panel-head"><div className="htitle"><h3>OpenClaw 配置</h3><span className="sub">配置页先给结构化摘要和安全审计入口；写入必须走 schema 校验、预览和回滚证据。</span></div><StatusTag value={config.isError ? "error" : "read-only"} /></div>
       <div className="panel-body openclaw-config-body">
         <QueryNotice query={config} label="配置" />
         {!config.isLoading && !config.isError ? (
           <>
+            <div className="openclaw-tile-grid">
+              <SummaryTile icon="file-cog" title="顶层配置区块" value={configSummary.topLevel} sub="OpenClaw config summary" status="read-only" />
+              <SummaryTile icon="bot" title="Agent defaults" value={configSummary.agentDefaultKeys} sub="只展示 key 数量，不在这里直接写入" />
+              <SummaryTile icon="terminal" title="工具执行策略" value={configSummary.toolsExecKeys} sub={`security=${configSummary.toolsSecurity} · ask=${configSummary.toolsAsk}`} />
+              <SummaryTile icon="sparkles" title="插件条目" value={configSummary.pluginEntries} sub="OpenClaw generic plugin CRUD 继续委托 Control UI" />
+              <SummaryTile icon="radio-tower" title="渠道配置组" value={configSummary.channelGroups} sub="Tracevane IM 任务流仍在 IM 渠道页" />
+            </div>
+            <div className="openclaw-safety-note">
+              <strong>写入策略</strong>
+              <span>后续如果开放编辑，必须先读取 OpenClaw 当前 schema，展示 diff、备份路径和回滚动作；本页不会直接保存未知字段。</span>
+            </div>
             <div className="openclaw-keygrid">
               {Object.keys(asRecord(config.data)).slice(0, 16).map((key) => <span key={key} className="chip">{key}</span>)}
             </div>
@@ -278,6 +350,10 @@ export function OpenClawPlatformPage() {
   const renderRecovery = () => {
     const events = listAt(recoveryEvents.data, ["events", "items"]);
     const backups = listAt(recoveryBackups.data, ["backups", "items"]);
+    const policy = asRecord(asRecord(recoveryStatus.data).policy);
+    const daemon = asRecord(asRecord(recoveryStatus.data).daemon);
+    const probe = asRecord(asRecord(recoveryStatus.data).probe);
+    const lastRepair = asRecord(asRecord(recoveryStatus.data).lastRepair);
     return (
       <div className="openclaw-stack">
         <section className="panel openclaw-panel">
@@ -286,6 +362,24 @@ export function OpenClawPlatformPage() {
             <RuntimeRow icon="heart-pulse" title="Recovery state" sub={textAt(recoveryStatus.data, ["endpoint", "checkedAt", "updatedAt"], "status")} status={runtimeState} />
             <RuntimeRow icon="history" title="Backups" sub={`${backups.length} recent backups`} status={backups.length ? "available" : "empty"} />
             <RuntimeRow icon="scroll-text" title="Events" sub={`${events.length} recent events`} status={events.length ? "available" : "empty"} />
+          </div>
+        </section>
+        <section className="panel openclaw-panel">
+          <div className="panel-head"><div className="htitle"><h3>安全动作</h3><span className="sub">只把确定无破坏的 probe 作为直接动作；repair / restore 需要确认流、diff 和回滚证据。</span></div><StatusTag value="guarded" /></div>
+          <div className="panel-body openclaw-action-list">
+            <GuardedAction icon="scan-search" title="Probe" sub="轻量检测 Gateway 与 Recovery 状态，不改写配置。" status="safe" onClick={() => probeRecovery.mutate()} busy={probeRecovery.isPending} />
+            <GuardedAction icon="file-warning" title="Config repair" sub="会清理不兼容字段；必须先展示 schema、diff 和备份路径。" status="locked" disabled />
+            <GuardedAction icon="wrench" title="Full repair" sub="可能重装 CLI、修复服务并重启 Gateway；需要任务空闲检查和人工确认。" status="locked" disabled />
+            <GuardedAction icon="rotate-ccw" title="Restore backup" sub="会回滚运行时配置；需要选择备份、预览影响并确认。" status="locked" disabled />
+          </div>
+        </section>
+        <section className="panel openclaw-panel">
+          <div className="panel-head"><div className="htitle"><h3>守护策略</h3><span className="sub">当前 Recovery daemon 返回的策略和最后一次修复摘要。</span></div></div>
+          <div className="panel-body openclaw-tile-grid">
+            <SummaryTile icon="activity" title="Heartbeat" value={formatTime(daemon.heartbeatAt)} sub={`pid=${textAt(daemon, ["pid"], "-")}`} status={runtimeState} />
+            <SummaryTile icon="timer" title="下一次 probe" value={formatTime(probe.nextCheckAt)} sub={`timeout=${textAt(policy, ["probeTimeoutMs"], "-")}ms`} />
+            <SummaryTile icon="shield-check" title="自动修复阈值" value={`${textAt(policy, ["failureThresholdMs"], "-")}ms`} sub={`cooldown=${textAt(policy, ["repairCooldownMs"], "-")}ms`} />
+            <SummaryTile icon="history" title="最近修复" value={textAt(lastRepair, ["finishedAt"], "none")} sub={textAt(lastRepair, ["error"], "没有最近修复错误")} status={lastRepair.ok ?? "idle"} />
           </div>
         </section>
         <section className="panel openclaw-panel">

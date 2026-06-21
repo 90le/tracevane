@@ -73,17 +73,17 @@ Current page classes:
 OpenClaw Platform sections:
 
 - `overview`: health, config, runtime, recovery summary.
-- `config`: read-only OpenClaw config summary and raw preview.
+- `config`: read-only OpenClaw config summary, policy/section counts and raw preview.
 - `extensions`: skills/extensions inventory.
 - `agents-channels`: generic Agent and Channel inventory.
 - `services`: Tracevane-managed daemon status.
-- `recovery`: recovery status, recent events, backups and safe manual probe.
+- `recovery`: recovery status, recent events, backups, guard policy and safe manual probe.
 
 Safe action policy:
 
 - Default queries are read-only.
 - `/api/openclaw-recovery/run` is only called with `action: "probe"` from OpenClaw Platform.
-- Repair/config-repair/service restart actions must use explicit confirmation flows before being exposed here.
+- Repair/config-repair/restore-backup/service restart actions are displayed as locked actions until explicit confirmation, schema/diff preview, backup path, task-idle checks and rollback evidence are implemented.
 
 ## Migration Rule
 
