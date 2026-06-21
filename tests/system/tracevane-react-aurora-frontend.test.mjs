@@ -54,7 +54,6 @@ test("Aurora route manifest maps all prototype fragments", () => {
     "ide",
     "long-tasks",
     "cli-agents",
-    "im-channels",
     "external",
     "files",
     "approvals",
@@ -70,8 +69,9 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 10);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 9);
   assert.match(manifest, /path: "model-gateway"/);
+  assert.match(manifest, /path: "im-channels"/);
   assert.match(manifest, /path: "platforms"/);
   assert.match(manifest, /surface: "react"/);
   assert.match(manifest, /openClawPlatformSections/);
@@ -95,7 +95,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       "ide",
       "long-tasks",
       "cli-agents",
-      "im-channels",
       "external",
       "files",
       "approvals",
@@ -104,9 +103,10 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["model-gateway", "platforms"],
+    ["model-gateway", "im-channels", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/OpenClawPlatformPage.tsx"));
@@ -213,6 +213,30 @@ test("Model Gateway is a real React page backed by read-only existing APIs", () 
   assert.doesNotMatch(page, /active-route-smoke/);
   assert.doesNotMatch(page, /app-connections\/apply/);
   assert.doesNotMatch(page, /rollback/);
+});
+
+test("IM Channels is a real React page backed by read-only existing APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/ImChannelsPage.tsx");
+
+  assert.match(app, /ImChannelsPage/);
+  assert.match(manifest, /path: "im-channels"[\s\S]*surface: "react"/);
+  for (const endpoint of [
+    "/api/channels",
+    "/api/channel-connectors/status",
+    "/api/channel-connectors/daemon/config",
+    "/api/channel-connectors/agent-sessions",
+    "/api/channel-connectors/daemon/logs",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["概览", "渠道", "绑定", "会话", "日志", "kill/reap 属写动作"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /transport-smoke/);
+  assert.doesNotMatch(page, /commands\/action/);
+  assert.doesNotMatch(page, /agent-sessions[\\s\\S]*method:\\s*"POST"/);
 });
 
 test("old Vue source tree is removed from the active web source", () => {

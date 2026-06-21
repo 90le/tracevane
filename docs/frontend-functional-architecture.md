@@ -67,8 +67,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 10 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/model-gateway` uses `ModelGatewayPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 9 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Model Gateway sections:
 
@@ -78,6 +78,16 @@ Model Gateway sections:
 - `usage`: model request/token totals from `/api/model-gateway/usage`.
 
 Model Gateway first React pass is intentionally read-only. Provider mutation, route smoke, app connection apply/rollback and destructive actions must enter focused child flows with confirmation and regression tests.
+
+IM Channels sections:
+
+- `overview`: native daemon reachability, pending replay, Feishu/Octo connection counts and recent session events.
+- `channels`: configured channel/account summary from `/api/channels`, without raw credentials.
+- `bindings`: Tracevane channel bindings and native daemon platform bindings.
+- `sessions`: persistent CLI Agent sessions; kill/reap are locked out of this first pass.
+- `logs`: daemon log tail.
+
+IM Channels first React pass is intentionally read-only. Transport smoke, command actions and session kill/reap need confirmation/evidence flows before being exposed.
 
 OpenClaw Platform sections:
 
@@ -108,10 +118,9 @@ Each route graduates from prototype to real functionality in this order:
 ## Priority Order
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
-2. IM Channels / Channel Connectors: show live daemon config, bindings, service health and session evidence.
-3. Workspace IDE: real file tree, editor, terminal, Git, Markdown/HTML preview and diff review.
-4. Chat / CLI Agent sessions: real session list, run progress, artifacts and cancellation.
-5. Dashboard: live operations cockpit assembled from the above domains.
+2. Workspace IDE: real file tree, editor, terminal, Git, Markdown/HTML preview and diff review.
+3. Chat / CLI Agent sessions: real session list, run progress, artifacts and cancellation.
+4. Dashboard: live operations cockpit assembled from the above domains.
 
 ## Risks
 

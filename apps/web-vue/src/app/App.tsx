@@ -2,6 +2,7 @@ import * as React from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AuroraShell } from "./AuroraShell";
 import { routeDefs } from "./route-manifest";
+import { ImChannelsPage } from "./ImChannelsPage";
 import { PrototypePage } from "./PrototypePage";
 import { ModelGatewayPage } from "./ModelGatewayPage";
 import { OpenClawPlatformPage } from "./OpenClawPlatformPage";
@@ -13,6 +14,7 @@ function LegacyRuntimeRedirect() {
 }
 
 function routeElement(route: (typeof routeDefs)[number]) {
+  if (route.path === "im-channels") return <ImChannelsPage />;
   if (route.path === "model-gateway") return <ModelGatewayPage />;
   if (route.path === "platforms") return <PlatformIntegrationsPage />;
   return <PrototypePage route={route} />;
