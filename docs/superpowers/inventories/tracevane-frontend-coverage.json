@@ -5,7 +5,8 @@
     "apps/web-vue/src/main.tsx",
     "apps/web-vue/src/app/App.tsx",
     "apps/web-vue/src/app/AuroraShell.tsx",
-    "apps/web-vue/src/app/RuntimeAdminPage.tsx",
+    "apps/web-vue/src/app/PlatformIntegrationsPage.tsx",
+    "apps/web-vue/src/app/OpenClawPlatformPage.tsx",
     "apps/web-vue/src/app/PrototypePage.tsx",
     "apps/web-vue/src/app/api-client.ts",
     "apps/web-vue/src/app/page-mounts.ts",
@@ -124,11 +125,11 @@
       "prototype": "docs/prototypes/pages/recovery.html"
     },
     {
-      "path": "runtime-admin",
-      "hashRoute": "#/runtime-admin",
-      "label": "运行时管理",
-      "group": "系统",
-      "icon": "file-cog",
+      "path": "platforms",
+      "hashRoute": "#/platforms",
+      "label": "平台集成",
+      "group": "平台",
+      "icon": "boxes",
       "shape": "console",
       "surface": "react",
       "prototype": null

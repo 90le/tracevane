@@ -67,14 +67,14 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`docs/prototypes/pages/${route}\\.html\\?raw`));
   }
 
-  for (const group of ["总览", "运行", "连接", "证据", "系统"]) {
+  for (const group of ["总览", "运行", "连接", "证据", "系统", "平台"]) {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
   assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 11);
-  assert.match(manifest, /path: "runtime-admin"/);
+  assert.match(manifest, /path: "platforms"/);
   assert.match(manifest, /surface: "react"/);
-  assert.match(manifest, /runtimeAdminSections/);
+  assert.match(manifest, /openClawPlatformSections/);
 });
 
 test("Aurora frontend coverage script records prototype-backed routes", () => {
@@ -105,10 +105,11 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["runtime-admin"],
+    ["platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
-  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/RuntimeAdminPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/OpenClawPlatformPage.tsx"));
   assert.ok(parsed.verification.includes("tests/system/tracevane-react-aurora-frontend.test.mjs"));
   assert.ok(
     parsed.routes
@@ -150,13 +151,20 @@ test("Aurora React shell owns navigation, overlays, command palette and page mou
   assert.match(css, /docs\/prototypes\/app\/styles\.css/);
 });
 
-test("Runtime Admin is a real React subdomain backed by existing APIs", () => {
+test("Platform integrations and OpenClaw are real React subdomains backed by existing APIs", () => {
   const app = read("apps/web-vue/src/app/App.tsx");
-  const page = read("apps/web-vue/src/app/RuntimeAdminPage.tsx");
+  const platforms = read("apps/web-vue/src/app/PlatformIntegrationsPage.tsx");
+  const page = read("apps/web-vue/src/app/OpenClawPlatformPage.tsx");
   const api = read("apps/web-vue/src/app/api-client.ts");
 
-  assert.match(app, /RuntimeAdminPage/);
+  assert.match(app, /PlatformIntegrationsPage/);
+  assert.match(app, /OpenClawPlatformPage/);
+  assert.match(app, /path="\/platforms\/openclaw\/:section"/);
   assert.match(app, /path="\/runtime-admin\/:section"/);
+  assert.match(app, /LegacyRuntimeRedirect/);
+  assert.match(platforms, /primaryRoute: "\/platforms\/openclaw"/);
+  assert.match(platforms, /primaryRoute: "\/model-gateway"/);
+  assert.match(platforms, /primaryRoute: "\/im-channels"/);
   for (const endpoint of [
     "/api/config",
     "/api/agents",

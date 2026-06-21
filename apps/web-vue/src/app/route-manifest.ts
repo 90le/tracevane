@@ -10,7 +10,7 @@ import approvalsHtml from "../../../../docs/prototypes/pages/approvals.html?raw"
 import recoveryHtml from "../../../../docs/prototypes/pages/recovery.html?raw";
 import longTasksHtml from "../../../../docs/prototypes/pages/long-tasks.html?raw";
 
-export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统";
+export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统" | "平台";
 export type RouteSurface = "prototype" | "react";
 
 export interface RouteDef {
@@ -25,7 +25,7 @@ export interface RouteDef {
   alert?: boolean;
 }
 
-export interface RuntimeAdminSection {
+export interface OpenClawPlatformSection {
   path: "overview" | "config" | "extensions" | "agents-channels" | "services" | "recovery";
   label: string;
   icon: string;
@@ -37,6 +37,7 @@ export const navGroups: Array<{ label: RouteGroup; items: RouteDef[] }> = [
   { label: "连接", items: [] },
   { label: "证据", items: [] },
   { label: "系统", items: [] },
+  { label: "平台", items: [] },
 ];
 
 export const routeDefs: RouteDef[] = [
@@ -51,10 +52,10 @@ export const routeDefs: RouteDef[] = [
   { path: "files", label: "文件证据", group: "证据", icon: "folder-check", shape: "list", surface: "prototype", html: filesHtml },
   { path: "approvals", label: "审批", group: "证据", icon: "shield-check", shape: "list", surface: "prototype", html: approvalsHtml, count: 3 },
   { path: "recovery", label: "自愈守护", group: "系统", icon: "heart-pulse", shape: "console", surface: "prototype", html: recoveryHtml },
-  { path: "runtime-admin", label: "运行时管理", group: "系统", icon: "file-cog", shape: "console", surface: "react" },
+  { path: "platforms", label: "平台集成", group: "平台", icon: "boxes", shape: "console", surface: "react" },
 ];
 
-export const runtimeAdminSections: RuntimeAdminSection[] = [
+export const openClawPlatformSections: OpenClawPlatformSection[] = [
   { path: "overview", label: "总览", icon: "layout-dashboard" },
   { path: "config", label: "配置", icon: "file-cog" },
   { path: "extensions", label: "扩展", icon: "sparkles" },

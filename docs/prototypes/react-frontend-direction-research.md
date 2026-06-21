@@ -69,7 +69,7 @@
 - Aurora 原型的 11 个 HTML 片段通过 Vite raw import 映射为 React page component，`pages-data.js` 的 mount 行为重写为 React `useEffect` DOM adapter。
 - React shell 负责 hash 路由、左侧分组导航、轻顶栏、命令面板、Sheet/Dialog/Toast、主题/配色切换、移动导航、状态三态和 health 查询。
 - 前端目标已经从“视觉重构”升级为“功能重做”。原型片段只作为视觉/交互合同；真实功能必须逐页迁移到 React component + TanStack Query + 现有后端 API。
-- 新增 `/runtime-admin` 和 `/runtime-admin/:section` 作为 OpenClaw Runtime Admin 子域，集中承载 OpenClaw 配置、扩展、Agent/渠道、服务、doctor/recovery 等支撑面；主导航继续保持 Tracevane 任务工作台。
+- 新增 `/platforms` 平台集成总览和 `/platforms/openclaw`、`/platforms/openclaw/:section` OpenClaw 子域，集中承载 OpenClaw 配置、扩展、Agent/渠道、服务、doctor/recovery 等支撑面；MCP、IM 渠道、CLI Agents、模型网关等 Tracevane 主工作流仍保留在各自主域。
 - 旧 Vue 源码、Vue Router、Nuxt UI、Reka UI、lucide-vue、motion-v 等 Vue 方向依赖已移除；保留 CodeMirror、xterm、markdown 相关库作为 Workspace IDE 后续专业表面基础。
 - lucide 图标改为实际用到的 subset，避免导入全部 icon 带来首包膨胀。
 
@@ -108,7 +108,7 @@ React 落地阶段：
 
 - 保留 `docs/prototypes/` 作为视觉和交互源，不再把它当作未落地实验。
 - React page 必须覆盖 11 个原型路由。
-- React functional route 必须覆盖 OpenClaw Runtime Admin 子域，并明确使用现有 API。
+- React functional route 必须覆盖平台集成总览和 OpenClaw Platform 子域，并明确使用现有 API。
 - 每个页面支持深浅主题、基础交互、移动/桌面渲染和命令面板导航。
 - 确认只消费现有后端 API，不扩大后端范围。
 - 替换旧路由后，用 typecheck/build、Playwright 11 路由 smoke、状态流转 smoke 和截图检查作为当前验收。

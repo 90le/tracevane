@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-20T17:48:37.926Z",
+  "generatedAt": "2026-06-21T02:14:44.976Z",
   "webRoutes": [
     "/approvals",
     "/chat",
@@ -11,8 +11,8 @@
     "/im-channels",
     "/long-tasks",
     "/model-gateway",
-    "/recovery",
-    "/runtime-admin"
+    "/platforms",
+    "/recovery"
   ],
   "apiModules": [
     "agents",
@@ -109,17 +109,17 @@
         "shape": "list"
       },
       {
+        "path": "/platforms",
+        "label": "平台集成",
+        "group": "平台",
+        "icon": "boxes",
+        "shape": "console"
+      },
+      {
         "path": "/recovery",
         "label": "自愈守护",
         "group": "系统",
         "icon": "heart-pulse",
-        "shape": "console"
-      },
-      {
-        "path": "/runtime-admin",
-        "label": "运行时管理",
-        "group": "系统",
-        "icon": "file-cog",
         "shape": "console"
       }
     ]
