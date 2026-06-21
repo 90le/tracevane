@@ -71,8 +71,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 3 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/long-tasks` uses `LongTasksPage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 2 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/long-tasks` uses `LongTasksPage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/external` uses `ExternalConnectionsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Dashboard sections:
 
@@ -142,6 +142,15 @@ IM Channels sections:
 
 IM Channels first React pass is intentionally read-only. Transport smoke, command actions and session kill/reap need confirmation/evidence flows before being exposed.
 
+External Connections sections:
+
+- `overview`: external connection count, Skills readiness, Gateway app connections and IM transport evidence.
+- `connections`: synthesized read-only connection list from OpenClaw config MCP summary, Skills, Gateway App Connections, Channel Connector runtime and Tracevane HTTP diagnostics.
+- `capabilities`: top Skills/tool capability rows from `/api/skills`.
+- `auth`: masked authorization and ownership boundaries; no browser-visible secret material.
+
+External Connections first React pass is intentionally read-only. It reads `/api/config`, `/api/skills`, `/api/model-gateway/app-connections`, `/api/channel-connectors/status` and `/api/system/diagnostics`. It does not add/remove connections, test transports, refresh OAuth, apply App Connections or mutate MCP servers. Writes remain owned by Model Gateway, IM Channels, Platform/OpenClaw or a future confirmation-backed connector flow.
+
 OpenClaw Platform sections:
 
 - `overview`: health, config, runtime, recovery summary.
@@ -181,7 +190,7 @@ Each route graduates from prototype to real functionality in this order:
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
 2. Chat: real session list, run progress, artifacts and cancellation.
-3. External / files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
+3. Files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks

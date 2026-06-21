@@ -53,6 +53,7 @@ const payload = {
     "apps/web-vue/src/app/ChatWorkbenchPage.tsx",
     "apps/web-vue/src/app/CliAgentsPage.tsx",
     "apps/web-vue/src/app/DashboardPage.tsx",
+    "apps/web-vue/src/app/ExternalConnectionsPage.tsx",
     "apps/web-vue/src/app/ImChannelsPage.tsx",
     "apps/web-vue/src/app/LongTasksPage.tsx",
     "apps/web-vue/src/app/ModelGatewayPage.tsx",

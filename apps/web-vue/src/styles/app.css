@@ -90,6 +90,7 @@
 .chat-workbench-page,
 .cli-agents-page,
 .dashboard-page,
+.external-page,
 .im-channels-page,
 .long-tasks-page,
 .model-gateway-page,
@@ -191,6 +192,10 @@
   margin-top: -4px;
 }
 
+.external-viewbar {
+  margin-top: -4px;
+}
+
 .chat-work-viewbar {
   margin: 0;
   padding: 10px;
@@ -225,6 +230,10 @@
   max-width: 38ch;
 }
 
+.external-hero h1 {
+  max-width: 38ch;
+}
+
 .workspace-hero h1 {
   max-width: 36ch;
 }
@@ -254,6 +263,10 @@
 }
 
 .long-task-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.external-stats {
   grid-template-columns: repeat(4, 1fr);
 }
 
@@ -1255,6 +1268,139 @@
   overflow-wrap: anywhere;
 }
 
+.external-overview-grid,
+.external-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.44fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.external-panel,
+.external-list-panel,
+.external-detail-panel {
+  min-width: 0;
+}
+
+.external-tile-grid,
+.external-auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.external-boundary-list {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.external-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
+.external-tile strong,
+.external-detail-title strong,
+.external-copy strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-tile span,
+.external-detail-title small,
+.external-copy small,
+.external-static-row .route-copy span {
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.external-tile-value {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 76px;
+}
+
+.external-tile-value b {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-table {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.external-row {
+  display: grid;
+  grid-template-columns: 38px minmax(180px, 1fr) minmax(100px, 0.24fr) minmax(92px, 0.2fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.external-row:hover,
+.external-row.is-selected {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--primary), transparent 92%);
+}
+
+.external-copy,
+.external-detail-title span {
+  min-width: 0;
+}
+
+.external-detail {
+  display: grid;
+  gap: 16px;
+  padding: 14px;
+}
+
+.external-detail-title {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.external-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.external-log {
+  max-height: min(320px, 42dvh);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.external-auth-note {
+  grid-column: 1 / -1;
+}
+
 .platform-stats {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -1296,6 +1442,7 @@
   .dashboard-stats,
   .recovery-stats,
   .long-task-stats,
+  .external-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1312,8 +1459,15 @@
   .platform-grid,
   .recovery-overview-grid,
   .recovery-guard-grid,
-  .long-task-shell {
+  .long-task-shell,
+  .external-overview-grid,
+  .external-shell {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .external-tile-grid,
+  .external-auth-grid {
+    grid-template-columns: 1fr;
   }
 
   .dashboard-grid,
@@ -1355,6 +1509,18 @@
   }
 
   .long-task-row .tag {
+    justify-self: start;
+  }
+
+  .external-row {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .external-row .cell-mono {
+    grid-column: 2;
+  }
+
+  .external-row .tag {
     justify-self: start;
   }
 
@@ -1403,6 +1569,7 @@
   .dashboard-stats,
   .recovery-stats,
   .long-task-stats,
+  .external-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1419,7 +1586,9 @@
   .platform-grid,
   .recovery-overview-grid,
   .recovery-guard-grid,
-  .long-task-shell {
+  .long-task-shell,
+  .external-overview-grid,
+  .external-shell {
     grid-template-columns: 1fr;
   }
 
@@ -1471,6 +1640,21 @@
   }
 
   .long-task-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .external-row,
+  .external-tile {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .external-row .tag,
+  .external-tile-value {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .external-metrics {
     grid-template-columns: 1fr;
   }
 

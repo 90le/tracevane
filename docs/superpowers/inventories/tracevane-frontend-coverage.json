@@ -8,6 +8,7 @@
     "apps/web-vue/src/app/ChatWorkbenchPage.tsx",
     "apps/web-vue/src/app/CliAgentsPage.tsx",
     "apps/web-vue/src/app/DashboardPage.tsx",
+    "apps/web-vue/src/app/ExternalConnectionsPage.tsx",
     "apps/web-vue/src/app/ImChannelsPage.tsx",
     "apps/web-vue/src/app/LongTasksPage.tsx",
     "apps/web-vue/src/app/ModelGatewayPage.tsx",
@@ -99,8 +100,8 @@
       "group": "连接",
       "icon": "plug-zap",
       "shape": "list",
-      "surface": "prototype",
-      "prototype": "docs/prototypes/pages/external.html"
+      "surface": "react",
+      "prototype": null
     },
     {
       "path": "files",
