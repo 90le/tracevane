@@ -67,8 +67,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 8 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/ide` uses `WorkspaceIdePage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 7 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Workspace IDE sections:
 
@@ -80,6 +80,16 @@ Workspace IDE sections:
 - `evidence/ai`: recent commits and locked AI-edit intent.
 
 Workspace IDE first React pass is intentionally read-only. File writes, Git stage/commit, terminal launch/end and AI diff apply need explicit confirmation, rollback/evidence and mobile-safe interaction design before exposure.
+
+CLI Agents sections:
+
+- `overview`: persona agent count, installed agent CLIs, chat session count, Channel Connector active run count and Gateway health.
+- `agents`: Tracevane/OpenClaw persona agents from `/api/agents`.
+- `cli`: Codex, Claude Code and OpenCode binary install/version state from Terminal status.
+- `sessions`: persisted terminal sessions and recent Tracevane chat sessions.
+- `channels`: Channel Connectors async agent-session evidence and recent events.
+
+CLI Agents first React pass is intentionally read-only. Terminal launch/end, Channel Connector command actions, session kill/reap and chat send/cancel need confirmation/evidence flows before exposure.
 
 Model Gateway sections:
 
@@ -129,7 +139,7 @@ Each route graduates from prototype to real functionality in this order:
 ## Priority Order
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
-2. Chat / CLI Agent sessions: real session list, run progress, artifacts and cancellation.
+2. Chat: real session list, run progress, artifacts and cancellation.
 3. Dashboard: live operations cockpit assembled from the above domains.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 

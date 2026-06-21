@@ -1,6 +1,5 @@
 import dashboardHtml from "../../../../docs/prototypes/pages/dashboard.html?raw";
 import chatHtml from "../../../../docs/prototypes/pages/chat.html?raw";
-import cliAgentsHtml from "../../../../docs/prototypes/pages/cli-agents.html?raw";
 import externalHtml from "../../../../docs/prototypes/pages/external.html?raw";
 import filesHtml from "../../../../docs/prototypes/pages/files.html?raw";
 import approvalsHtml from "../../../../docs/prototypes/pages/approvals.html?raw";
@@ -42,7 +41,7 @@ export const routeDefs: RouteDef[] = [
   { path: "chat", label: "会话任务", group: "运行", icon: "messages-square", shape: "chat", surface: "prototype", html: chatHtml, count: 6 },
   { path: "ide", label: "工作区 IDE", group: "运行", icon: "square-terminal", shape: "workbench", surface: "react" },
   { path: "long-tasks", label: "长任务", group: "运行", icon: "timer", shape: "list", surface: "prototype", html: longTasksHtml, count: 2 },
-  { path: "cli-agents", label: "CLI Agents", group: "运行", icon: "bot", shape: "list", surface: "prototype", html: cliAgentsHtml },
+  { path: "cli-agents", label: "CLI Agents", group: "运行", icon: "bot", shape: "list", surface: "react" },
   { path: "model-gateway", label: "模型网关", group: "连接", icon: "route", shape: "list", surface: "react" },
   { path: "im-channels", label: "IM 渠道", group: "连接", icon: "radio-tower", shape: "list", surface: "react", count: 2, alert: true },
   { path: "external", label: "外部连接", group: "连接", icon: "plug-zap", shape: "list", surface: "prototype", html: externalHtml },

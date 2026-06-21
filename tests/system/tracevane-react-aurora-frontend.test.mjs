@@ -52,7 +52,6 @@ test("Aurora route manifest maps all prototype fragments", () => {
     "dashboard",
     "chat",
     "long-tasks",
-    "cli-agents",
     "external",
     "files",
     "approvals",
@@ -68,8 +67,9 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 8);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 7);
   assert.match(manifest, /path: "ide"/);
+  assert.match(manifest, /path: "cli-agents"/);
   assert.match(manifest, /path: "model-gateway"/);
   assert.match(manifest, /path: "im-channels"/);
   assert.match(manifest, /path: "platforms"/);
@@ -93,7 +93,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       "dashboard",
       "chat",
       "long-tasks",
-      "cli-agents",
       "external",
       "files",
       "approvals",
@@ -102,9 +101,10 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["ide", "model-gateway", "im-channels", "platforms"],
+    ["ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/CliAgentsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
@@ -263,6 +263,33 @@ test("Workspace IDE is a real React page backed by read-only workspace APIs", ()
   assert.doesNotMatch(page, /\/api\/files\/content/);
   assert.doesNotMatch(page, /\/api\/git\/commit/);
   assert.doesNotMatch(page, /\/api\/terminal\/launch/);
+  assert.doesNotMatch(page, /method:\\s*"POST"/);
+});
+
+test("CLI Agents is a real React page backed by read-only runtime APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/CliAgentsPage.tsx");
+
+  assert.match(app, /CliAgentsPage/);
+  assert.match(manifest, /path: "cli-agents"[\s\S]*surface: "react"/);
+  for (const endpoint of [
+    "/api/agents",
+    "/api/terminal/status",
+    "/api/terminal/sessions",
+    "/api/channel-connectors/agent-sessions",
+    "/api/model-gateway/status",
+    "/api/chat/bootstrap?recentLimit=20&historyLimit=1",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["CLI Agents", "概览", "Agents", "CLI", "会话", "IM 证据", "只读", "kill/reap"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /\/api\/channel-connectors\/commands\/action/);
+  assert.doesNotMatch(page, /\/api\/channel-connectors\/agent-sessions[\\s\\S]*method:\\s*"POST"/);
+  assert.doesNotMatch(page, /\/api\/terminal\/launch/);
+  assert.doesNotMatch(page, /\/api\/terminal\/end/);
   assert.doesNotMatch(page, /method:\\s*"POST"/);
 });
 

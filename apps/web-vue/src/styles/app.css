@@ -87,6 +87,7 @@
 }
 
 .platform-openclaw,
+.cli-agents-page,
 .im-channels-page,
 .model-gateway-page,
 .platforms-page,
@@ -174,12 +175,20 @@
   margin-top: -4px;
 }
 
+.cli-agent-viewbar {
+  margin-top: -4px;
+}
+
 .gateway-hero h1 {
   max-width: 38ch;
 }
 
 .im-hero h1 {
   max-width: 34ch;
+}
+
+.cli-agent-hero h1 {
+  max-width: 36ch;
 }
 
 .workspace-hero h1 {
@@ -191,6 +200,10 @@
 }
 
 .im-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.cli-agent-stats {
   grid-template-columns: repeat(4, 1fr);
 }
 
@@ -471,6 +484,10 @@
   margin-top: 18px;
 }
 
+.cli-agent-panel {
+  margin-top: 18px;
+}
+
 .gateway-list,
 .gateway-table {
   display: grid;
@@ -485,12 +502,30 @@
   padding: 6px;
 }
 
+.cli-agent-list,
+.cli-agent-table {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
 .gateway-row {
   min-height: 58px;
 }
 
 .im-row {
   min-height: 58px;
+}
+
+.cli-agent-row {
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  min-height: 58px;
+}
+
+.cli-agent-meta {
+  color: var(--subtle);
+  font: 12px/1.4 var(--mono);
+  white-space: nowrap;
 }
 
 .gateway-overview-grid {
@@ -507,12 +542,24 @@
   margin-top: 18px;
 }
 
+.cli-agent-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
 .gateway-stack {
   display: grid;
   gap: 18px;
 }
 
 .im-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.cli-agent-stack {
   display: grid;
   gap: 18px;
 }
@@ -525,6 +572,13 @@
 }
 
 .im-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.cli-agent-tile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -555,7 +609,20 @@
   background: color-mix(in srgb, var(--panel-2), transparent 42%);
 }
 
+.cli-agent-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
 .openclaw-tile strong,
+.cli-agent-tile strong,
 .im-tile strong,
 .gateway-tile strong,
 .openclaw-action strong {
@@ -564,6 +631,7 @@
 }
 
 .openclaw-tile span,
+.cli-agent-tile span,
 .im-tile span,
 .gateway-tile span,
 .openclaw-action .route-copy span {
@@ -572,6 +640,7 @@
 }
 
 .openclaw-tile-value,
+.cli-agent-tile-value,
 .im-tile-value,
 .gateway-tile-value {
   display: grid;
@@ -581,6 +650,7 @@
 }
 
 .openclaw-tile-value b,
+.cli-agent-tile-value b,
 .im-tile-value b,
 .gateway-tile-value b {
   max-width: 180px;
@@ -668,12 +738,15 @@
 
 @media (max-width: 860px) {
   .openclaw-stats,
+  .cli-agent-stats,
   .im-stats,
   .workspace-stats,
   .gateway-stats,
   .openclaw-tile-grid,
+  .cli-agent-tile-grid,
   .im-tile-grid,
   .gateway-tile-grid,
+  .cli-agent-overview-grid,
   .im-overview-grid,
   .gateway-overview-grid,
   .platform-stats,
@@ -689,6 +762,15 @@
   .openclaw-action button {
     justify-self: start;
     grid-column: 2;
+  }
+
+  .cli-agent-row {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .cli-agent-meta {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .workspace-shell {
@@ -708,12 +790,15 @@
 
 @media (max-width: 540px) {
   .openclaw-stats,
+  .cli-agent-stats,
   .im-stats,
   .workspace-stats,
   .gateway-stats,
   .openclaw-tile-grid,
+  .cli-agent-tile-grid,
   .im-tile-grid,
   .gateway-tile-grid,
+  .cli-agent-overview-grid,
   .im-overview-grid,
   .gateway-overview-grid,
   .platform-stats,
@@ -722,12 +807,14 @@
   }
 
   .openclaw-tile,
+  .cli-agent-tile,
   .im-tile,
   .gateway-tile {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
   .openclaw-tile-value,
+  .cli-agent-tile-value,
   .im-tile-value,
   .gateway-tile-value {
     justify-items: start;
