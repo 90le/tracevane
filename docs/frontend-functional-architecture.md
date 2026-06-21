@@ -71,8 +71,17 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 6 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 5 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+
+Dashboard sections:
+
+- `hero`: overall Tracevane readiness from system health, Gateway health, Chat sessions, Channel Connector sessions and Terminal status.
+- `domains`: main Tracevane workbench shortcuts with live status.
+- `attention`: recovery, Gateway health, Channel replay and system runtime evidence.
+- `summary`: dashboard summary counts and runtime metadata.
+
+Dashboard first React pass is intentionally read-only. It does not subscribe to dashboard SSE or execute repair/smoke actions until stream lifecycle, task-idle checks and evidence rules are designed.
 
 Chat sections:
 
@@ -155,7 +164,7 @@ Each route graduates from prototype to real functionality in this order:
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
 2. Chat: real session list, run progress, artifacts and cancellation.
-3. Dashboard: live operations cockpit assembled from the above domains.
+3. Long tasks / external / files / approvals / recovery: graduate remaining prototype routes without turning them into OpenClaw CRUD.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks

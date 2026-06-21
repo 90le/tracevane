@@ -49,7 +49,6 @@ test("React entry uses the Aurora app root", () => {
 test("Aurora route manifest maps all prototype fragments", () => {
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const expectedRoutes = [
-    "dashboard",
     "long-tasks",
     "external",
     "files",
@@ -66,7 +65,8 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 6);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 5);
+  assert.match(manifest, /path: "dashboard"/);
   assert.match(manifest, /path: "chat"/);
   assert.match(manifest, /path: "ide"/);
   assert.match(manifest, /path: "cli-agents"/);
@@ -90,7 +90,6 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "prototype").map((route) => route.path),
     [
-      "dashboard",
       "long-tasks",
       "external",
       "files",
@@ -100,11 +99,12 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["chat", "ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
+    ["dashboard", "chat", "ide", "cli-agents", "model-gateway", "im-channels", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ChatWorkbenchPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/CliAgentsPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/DashboardPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/PlatformIntegrationsPage.tsx"));
@@ -188,6 +188,33 @@ test("Platform integrations and OpenClaw are real React subdomains backed by exi
   assert.doesNotMatch(page, /action:\s*"config-repair"/);
   assert.match(api, /class ApiError/);
   assert.match(api, /JSON\.stringify\(body\)/);
+});
+
+test("Dashboard is a real React cockpit backed by read-only core status APIs", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/DashboardPage.tsx");
+
+  assert.match(app, /DashboardPage/);
+  assert.match(manifest, /path: "dashboard"[\s\S]*surface: "react"/);
+  for (const endpoint of [
+    "/api/dashboard/summary",
+    "/api/system/health",
+    "/api/model-gateway/status",
+    "/api/chat/bootstrap?recentLimit=12&historyLimit=1",
+    "/api/channel-connectors/status",
+    "/api/channel-connectors/agent-sessions",
+    "/api/terminal/status",
+    "/api/openclaw-recovery/status",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["仪表盘", "Tracevane 运行态驾驶舱", "主线工作域", "需要关注", "OpenClaw 仍是平台支撑"]) {
+    assert.match(page, new RegExp(label));
+  }
+  assert.doesNotMatch(page, /\/api\/stream\/dashboard/);
+  assert.doesNotMatch(page, /openclaw-recovery\/run/);
+  assert.doesNotMatch(page, /method:\\s*"POST"/);
 });
 
 test("Model Gateway is a real React page backed by read-only existing APIs", () => {

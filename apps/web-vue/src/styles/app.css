@@ -89,6 +89,7 @@
 .platform-openclaw,
 .chat-workbench-page,
 .cli-agents-page,
+.dashboard-page,
 .im-channels-page,
 .model-gateway-page,
 .platforms-page,
@@ -202,6 +203,10 @@
   max-width: 38ch;
 }
 
+.dashboard-hero h1 {
+  max-width: 36ch;
+}
+
 .workspace-hero h1 {
   max-width: 36ch;
 }
@@ -219,6 +224,10 @@
 }
 
 .chat-work-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.dashboard-stats {
   grid-template-columns: repeat(4, 1fr);
 }
 
@@ -455,6 +464,98 @@
 .chat-work-timeline span {
   color: var(--subtle);
   overflow-wrap: anywhere;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.dashboard-wide {
+  grid-column: 1 / -1;
+}
+
+.dashboard-domain-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.dashboard-domain-card,
+.dashboard-evidence-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 44%);
+  color: var(--text);
+  text-align: left;
+}
+
+.dashboard-domain-card:hover,
+.dashboard-evidence-row:hover {
+  background: color-mix(in srgb, var(--primary), transparent 91%);
+}
+
+.dashboard-domain-card span,
+.dashboard-evidence-row span {
+  min-width: 0;
+}
+
+.dashboard-domain-card strong,
+.dashboard-evidence-row strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-domain-card small,
+.dashboard-evidence-row small {
+  display: block;
+  overflow: hidden;
+  color: var(--subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-evidence-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.dashboard-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+
+.dashboard-summary-cell {
+  display: grid;
+  gap: 5px;
+  min-height: 70px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 44%);
+}
+
+.dashboard-summary-cell span {
+  color: var(--subtle);
+}
+
+.dashboard-summary-cell strong {
+  color: var(--text);
+  font: 700 20px/1.1 var(--sans);
 }
 
 .workspace-rail {
@@ -971,6 +1072,7 @@
 @media (max-width: 860px) {
   .openclaw-stats,
   .chat-work-stats,
+  .dashboard-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -985,6 +1087,15 @@
   .platform-stats,
   .platform-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-grid,
+  .dashboard-domain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .openclaw-action {
@@ -1039,6 +1150,7 @@
 @media (max-width: 540px) {
   .openclaw-stats,
   .chat-work-stats,
+  .dashboard-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1053,6 +1165,21 @@
   .platform-stats,
   .platform-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-domain-card,
+  .dashboard-evidence-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .dashboard-domain-card .tag,
+  .dashboard-evidence-row .tag {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .openclaw-tile,
