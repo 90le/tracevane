@@ -17,6 +17,8 @@ Tracevane = local-first AI Agent control plane + Workspace IDE + Gateway + Chann
 
 The product should feel like one integrated operating surface for real Agent work, not a menu of unrelated admin pages.
 
+Tracevane's center of gravity is not OpenClaw management. OpenClaw can power runtime, compatibility and recovery paths, but product language, navigation and daily workflow must be Tracevane-first: Agent workbench, Gateway, Channel runtime, Workspace IDE, evidence and recovery. OpenClaw-specific pages are support surfaces, not the product spine.
+
 This means "one product = the useful parts of many products" only when those parts converge into one coherent workflow:
 
 - decide what should run

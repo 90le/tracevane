@@ -15,6 +15,8 @@ The durable structure is:
 4. **API Data Layer**: TanStack Query hooks consume existing backend APIs first. Backend changes require a separate contract note and tests.
 5. **Aurora Design System**: visual tokens, shell behavior, density and interaction patterns remain the design baseline.
 
+Product hierarchy is strict: Tracevane is not an OpenClaw console skin. OpenClaw is a supported runtime substrate and platform integration. It must not define Tracevane's primary navigation, page hierarchy, product wording, or workflow ownership.
+
 ## Research Checked
 
 - React Router nested/layout routing docs: `https://reactrouter.com/start/declarative/installation`
@@ -31,6 +33,8 @@ The durable structure is:
 ## Product Boundary
 
 Tracevane must not become a duplicate OpenClaw web console.
+
+Main workflow pages must be named and shaped around Tracevane jobs-to-be-done, not OpenClaw administration. If a page primarily answers "how do I run, supervise, recover, review, route, approve, or inspect an AI Agent task?", it belongs in the Tracevane workbench. If it primarily answers "how do I configure or diagnose the underlying OpenClaw host/runtime?", it belongs under `/platforms/openclaw` or should link out to the official OpenClaw UI.
 
 Keep in the main Tracevane workbench:
 
@@ -84,7 +88,7 @@ Workspace IDE first React pass is intentionally read-only. File writes, Git stag
 CLI Agents sections:
 
 - `overview`: persona agent count, installed agent CLIs, chat session count, Channel Connector active run count and Gateway health.
-- `agents`: Tracevane/OpenClaw persona agents from `/api/agents`.
+- `agents`: Tracevane-facing persona/runtime agent inventory from `/api/agents`; generic OpenClaw CRUD remains delegated to platform support.
 - `cli`: Codex, Claude Code and OpenCode binary install/version state from Terminal status.
 - `sessions`: persisted terminal sessions and recent Tracevane chat sessions.
 - `channels`: Channel Connectors async agent-session evidence and recent events.
@@ -146,7 +150,7 @@ Each route graduates from prototype to real functionality in this order:
 ## Risks
 
 - Raw HTML fragments are useful for visual parity but are not an acceptable long-term functional implementation.
-- OpenClaw or any third-party generic management can bloat the product if it appears as a main Tracevane workflow.
+- OpenClaw or any third-party generic management can bloat and confuse the product if it appears as a main Tracevane workflow or influences core page structure.
 - Config writes are high-risk because OpenClaw schema changes over time; write flows must validate against current schema before saving.
 - Service restart/repair actions can interrupt active tasks; they need confirmation, preview and rollback evidence.
 - A route is not considered complete until both frontend behavior and backend API contract are tested.
