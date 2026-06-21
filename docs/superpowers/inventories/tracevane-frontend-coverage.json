@@ -9,6 +9,7 @@
     "apps/web-vue/src/app/CliAgentsPage.tsx",
     "apps/web-vue/src/app/DashboardPage.tsx",
     "apps/web-vue/src/app/ExternalConnectionsPage.tsx",
+    "apps/web-vue/src/app/FileEvidencePage.tsx",
     "apps/web-vue/src/app/ImChannelsPage.tsx",
     "apps/web-vue/src/app/LongTasksPage.tsx",
     "apps/web-vue/src/app/ModelGatewayPage.tsx",
@@ -110,8 +111,8 @@
       "group": "证据",
       "icon": "folder-check",
       "shape": "list",
-      "surface": "prototype",
-      "prototype": "docs/prototypes/pages/files.html"
+      "surface": "react",
+      "prototype": null
     },
     {
       "path": "approvals",

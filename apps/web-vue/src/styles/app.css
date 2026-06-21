@@ -91,6 +91,7 @@
 .cli-agents-page,
 .dashboard-page,
 .external-page,
+.file-evidence-page,
 .im-channels-page,
 .long-tasks-page,
 .model-gateway-page,
@@ -196,6 +197,10 @@
   margin-top: -4px;
 }
 
+.file-evidence-viewbar {
+  margin-top: -4px;
+}
+
 .chat-work-viewbar {
   margin: 0;
   padding: 10px;
@@ -232,6 +237,10 @@
 
 .external-hero h1 {
   max-width: 38ch;
+}
+
+.file-evidence-hero h1 {
+  max-width: 36ch;
 }
 
 .workspace-hero h1 {
@@ -1401,6 +1410,171 @@
   grid-column: 1 / -1;
 }
 
+.file-evidence-overview-grid,
+.file-evidence-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.46fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.file-evidence-panel,
+.file-evidence-list-panel,
+.file-evidence-detail-panel {
+  min-width: 0;
+}
+
+.file-evidence-stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.file-evidence-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.file-evidence-tile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 42%);
+}
+
+.file-evidence-tile strong,
+.file-evidence-detail-title strong,
+.file-evidence-copy strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-evidence-tile span,
+.file-evidence-detail-title small,
+.file-evidence-copy small {
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.file-evidence-tile-value {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 76px;
+}
+
+.file-evidence-tile-value b {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-evidence-table {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.file-evidence-row {
+  display: grid;
+  grid-template-columns: 38px minmax(190px, 1fr) minmax(84px, 0.18fr) minmax(130px, 0.24fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.file-evidence-row:hover,
+.file-evidence-row.is-selected {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--primary), transparent 92%);
+}
+
+.file-evidence-copy,
+.file-evidence-detail-title span {
+  min-width: 0;
+}
+
+.file-evidence-detail {
+  display: grid;
+  gap: 16px;
+  padding: 14px;
+}
+
+.file-evidence-detail-title {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.file-evidence-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.file-evidence-log {
+  display: grid;
+  gap: 6px;
+  max-height: min(260px, 36dvh);
+  overflow: auto;
+}
+
+.file-evidence-log span {
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}
+
+.file-evidence-preview,
+.file-evidence-diff {
+  max-height: min(360px, 42dvh);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 25%);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-evidence-searchbar {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 35%);
+}
+
+.file-evidence-searchbar input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
 .platform-stats {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -1443,6 +1617,7 @@
   .recovery-stats,
   .long-task-stats,
   .external-stats,
+  .file-evidence-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1461,12 +1636,15 @@
   .recovery-guard-grid,
   .long-task-shell,
   .external-overview-grid,
-  .external-shell {
+  .external-shell,
+  .file-evidence-overview-grid,
+  .file-evidence-shell {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .external-tile-grid,
-  .external-auth-grid {
+  .external-auth-grid,
+  .file-evidence-tile-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1524,6 +1702,18 @@
     justify-self: start;
   }
 
+  .file-evidence-row {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .file-evidence-row .cell-mono {
+    grid-column: 2;
+  }
+
+  .file-evidence-row .tag {
+    justify-self: start;
+  }
+
   .cli-agent-row {
     grid-template-columns: 38px minmax(0, 1fr) auto;
   }
@@ -1570,6 +1760,7 @@
   .recovery-stats,
   .long-task-stats,
   .external-stats,
+  .file-evidence-stats,
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
@@ -1588,7 +1779,9 @@
   .recovery-guard-grid,
   .long-task-shell,
   .external-overview-grid,
-  .external-shell {
+  .external-shell,
+  .file-evidence-overview-grid,
+  .file-evidence-shell {
     grid-template-columns: 1fr;
   }
 
@@ -1644,17 +1837,22 @@
   }
 
   .external-row,
-  .external-tile {
+  .external-tile,
+  .file-evidence-row,
+  .file-evidence-tile {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
   .external-row .tag,
-  .external-tile-value {
+  .external-tile-value,
+  .file-evidence-row .tag,
+  .file-evidence-tile-value {
     grid-column: 2;
     justify-self: start;
   }
 
-  .external-metrics {
+  .external-metrics,
+  .file-evidence-metrics {
     grid-template-columns: 1fr;
   }
 

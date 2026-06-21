@@ -5,6 +5,7 @@ import { ChatWorkbenchPage } from "./ChatWorkbenchPage";
 import { CliAgentsPage } from "./CliAgentsPage";
 import { DashboardPage } from "./DashboardPage";
 import { ExternalConnectionsPage } from "./ExternalConnectionsPage";
+import { FileEvidencePage } from "./FileEvidencePage";
 import { routeDefs } from "./route-manifest";
 import { ImChannelsPage } from "./ImChannelsPage";
 import { LongTasksPage } from "./LongTasksPage";
@@ -30,6 +31,7 @@ function routeElement(route: (typeof routeDefs)[number]) {
   if (route.path === "model-gateway") return <ModelGatewayPage />;
   if (route.path === "recovery") return <RecoveryPage />;
   if (route.path === "external") return <ExternalConnectionsPage />;
+  if (route.path === "files") return <FileEvidencePage />;
   if (route.path === "platforms") return <PlatformIntegrationsPage />;
   return <PrototypePage route={route} />;
 }

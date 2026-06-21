@@ -49,7 +49,6 @@ test("React entry uses the Aurora app root", () => {
 test("Aurora route manifest maps all prototype fragments", () => {
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const expectedRoutes = [
-    "files",
     "approvals",
   ];
 
@@ -62,7 +61,7 @@ test("Aurora route manifest maps all prototype fragments", () => {
     assert.match(manifest, new RegExp(`label: "${group}"`));
   }
 
-  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 2);
+  assert.equal((manifest.match(/surface: "prototype", html:/g) || []).length, 1);
   assert.match(manifest, /path: "dashboard"/);
   assert.match(manifest, /path: "chat"/);
   assert.match(manifest, /path: "ide"/);
@@ -71,6 +70,7 @@ test("Aurora route manifest maps all prototype fragments", () => {
   assert.match(manifest, /path: "model-gateway"/);
   assert.match(manifest, /path: "im-channels"/);
   assert.match(manifest, /path: "external"[\s\S]*surface: "react"/);
+  assert.match(manifest, /path: "files"[\s\S]*surface: "react"/);
   assert.match(manifest, /path: "platforms"/);
   assert.match(manifest, /path: "recovery"[\s\S]*surface: "react"/);
   assert.match(manifest, /surface: "react"/);
@@ -90,19 +90,19 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "prototype").map((route) => route.path),
     [
-      "files",
       "approvals",
     ],
   );
   assert.deepEqual(
     parsed.routes.filter((route) => route.surface === "react").map((route) => route.path),
-    ["dashboard", "chat", "ide", "long-tasks", "cli-agents", "model-gateway", "im-channels", "external", "recovery", "platforms"],
+    ["dashboard", "chat", "ide", "long-tasks", "cli-agents", "model-gateway", "im-channels", "external", "files", "recovery", "platforms"],
   );
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/AuroraShell.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ChatWorkbenchPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/CliAgentsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/DashboardPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ExternalConnectionsPage.tsx"));
+  assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/FileEvidencePage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ImChannelsPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/LongTasksPage.tsx"));
   assert.ok(parsed.coreFiles.includes("apps/web-vue/src/app/ModelGatewayPage.tsx"));
@@ -116,6 +116,44 @@ test("Aurora frontend coverage script records prototype-backed routes", () => {
       .filter((route) => route.surface === "prototype")
       .every((route) => route.prototype?.startsWith("docs/prototypes/pages/")),
   );
+});
+
+test("File Evidence is a real React read-only file and git evidence browser", () => {
+  const app = read("apps/web-vue/src/app/App.tsx");
+  const manifest = read("apps/web-vue/src/app/route-manifest.ts");
+  const page = read("apps/web-vue/src/app/FileEvidencePage.tsx");
+
+  assert.match(app, /FileEvidencePage/);
+  assert.match(manifest, /path: "files"[\s\S]*surface: "react"/);
+  assert.doesNotMatch(manifest, /filesHtml/);
+  assert.doesNotMatch(manifest, /docs\/prototypes\/pages\/files\.html\?raw/);
+  for (const endpoint of [
+    "/api/files/summary",
+    "/api/files/browse",
+    "/api/files/read",
+    "/api/files/search",
+    "/api/git/status",
+    "/api/git/diff",
+  ]) {
+    assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const label of ["文件证据", "只读", "Git", "搜索", "证据", "动作边界"]) {
+    assert.match(page, new RegExp(label));
+  }
+  for (const forbidden of [
+    "/api/files/content",
+    "/api/files/upload",
+    "/api/files/rename",
+    "/api/files/archive",
+    "/api/files/unarchive",
+    "/api/files/files",
+    "/api/files/directories",
+    "method: \"POST\"",
+    "method: \"PUT\"",
+    "method: \"DELETE\"",
+  ]) {
+    assert.doesNotMatch(page, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("External Connections is a real React read-only integration evidence page", () => {

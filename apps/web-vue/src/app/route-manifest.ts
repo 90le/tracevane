@@ -1,4 +1,3 @@
-import filesHtml from "../../../../docs/prototypes/pages/files.html?raw";
 import approvalsHtml from "../../../../docs/prototypes/pages/approvals.html?raw";
 
 export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统" | "平台";
@@ -40,7 +39,7 @@ export const routeDefs: RouteDef[] = [
   { path: "model-gateway", label: "模型网关", group: "连接", icon: "route", shape: "list", surface: "react" },
   { path: "im-channels", label: "IM 渠道", group: "连接", icon: "radio-tower", shape: "list", surface: "react", count: 2, alert: true },
   { path: "external", label: "外部连接", group: "连接", icon: "plug-zap", shape: "list", surface: "react" },
-  { path: "files", label: "文件证据", group: "证据", icon: "folder-check", shape: "list", surface: "prototype", html: filesHtml },
+  { path: "files", label: "文件证据", group: "证据", icon: "folder-check", shape: "list", surface: "react" },
   { path: "approvals", label: "审批", group: "证据", icon: "shield-check", shape: "list", surface: "prototype", html: approvalsHtml, count: 3 },
   { path: "recovery", label: "自愈守护", group: "系统", icon: "heart-pulse", shape: "console", surface: "react" },
   { path: "platforms", label: "平台集成", group: "平台", icon: "boxes", shape: "console", surface: "react" },

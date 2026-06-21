@@ -23,6 +23,9 @@ Product hierarchy is strict: Tracevane is not an OpenClaw console skin. OpenClaw
 - TanStack Query React docs: `https://tanstack.com/query/latest/docs/framework/react/overview`
 - Tailwind CSS v4 + Vite docs: `https://tailwindcss.com/docs/installation/using-vite`
 - shadcn/ui Vite and Tailwind v4 docs: `https://ui.shadcn.com/docs/installation/vite`, `https://ui.shadcn.com/docs/tailwind-v4`
+- React Router HashRouter docs: `https://reactrouter.com/main/api/declarative-routers/HashRouter`
+- TanStack Query `useQuery` docs: `https://tanstack.com/query/latest/docs/framework/react/reference/useQuery`
+- MDN File System API and user activation docs: `https://developer.mozilla.org/docs/Web/API/File_System_API`, `https://developer.mozilla.org/en-US/docs/Web/Security/User_activation`
 - Local OpenClaw 2026.6.8 CLI help:
   - `openclaw dashboard` opens the Control UI.
   - `openclaw config` supports `get/set/patch/unset/file/schema/validate`.
@@ -71,8 +74,8 @@ Delegate or link out instead of rebuilding:
 
 Current page classes:
 
-- **Prototype-backed routes**: 2 Aurora HTML fragments rendered through `PrototypePage`. These preserve visual structure and route coverage while functionality is migrated.
-- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/long-tasks` uses `LongTasksPage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/external` uses `ExternalConnectionsPage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
+- **Prototype-backed routes**: 1 Aurora HTML fragment rendered through `PrototypePage`. This preserves visual structure and route coverage while functionality is migrated.
+- **React functional routes**: `/dashboard` uses `DashboardPage`; `/chat` uses `ChatWorkbenchPage`; `/ide` uses `WorkspaceIdePage`; `/long-tasks` uses `LongTasksPage`; `/cli-agents` uses `CliAgentsPage`; `/model-gateway` uses `ModelGatewayPage`; `/im-channels` uses `ImChannelsPage`; `/external` uses `ExternalConnectionsPage`; `/files` uses `FileEvidencePage`; `/recovery` uses `RecoveryPage`; `/platforms` uses `PlatformIntegrationsPage`; `/platforms/openclaw` and `/platforms/openclaw/:section` use `OpenClawPlatformPage`, TanStack Query and existing APIs. Legacy `/runtime-admin` routes redirect to the OpenClaw child domain.
 
 Dashboard sections:
 
@@ -151,6 +154,16 @@ External Connections sections:
 
 External Connections first React pass is intentionally read-only. It reads `/api/config`, `/api/skills`, `/api/model-gateway/app-connections`, `/api/channel-connectors/status` and `/api/system/diagnostics`. It does not add/remove connections, test transports, refresh OAuth, apply App Connections or mutate MCP servers. Writes remain owned by Model Gateway, IM Channels, Platform/OpenClaw or a future confirmation-backed connector flow.
 
+File Evidence sections:
+
+- `overview`: project-root file/directory counts, text-like count, Git cleanliness and root path.
+- `files`: project-root browse results sorted by modified time.
+- `search`: recursive file search for locating evidence, without invoking browser file-system access.
+- `git`: Git status changes and recent commit evidence.
+- `detail`: selected file metadata, bounded text preview and file-scoped Git diff.
+
+File Evidence first React pass is intentionally read-only. It reads `/api/files/summary`, `/api/files/browse`, `/api/files/search`, `/api/files/read`, `/api/git/status` and `/api/git/diff`. It does not call file write, upload, rename, copy/move, archive, delete or download endpoints. MDN's File System Access security model requires explicit user permission and user activation for local file access/write-style capabilities; Tracevane therefore keeps file mutation under Workspace IDE and future approval/rollback flows instead of exposing generic file management in the evidence page.
+
 OpenClaw Platform sections:
 
 - `overview`: health, config, runtime, recovery summary.
@@ -190,7 +203,7 @@ Each route graduates from prototype to real functionality in this order:
 
 1. Platform Integrations / OpenClaw Platform: finish safe read-only management and confirmed repair actions.
 2. Chat: real session list, run progress, artifacts and cancellation.
-3. Files / approvals: graduate remaining prototype routes without turning them into OpenClaw CRUD.
+3. Approvals: graduate the remaining prototype route without turning it into OpenClaw CRUD.
 4. Workspace IDE edit depth: controlled write, preview-time edit, task launch and AI diff apply flows after confirmation/rollback contracts.
 
 ## Risks
