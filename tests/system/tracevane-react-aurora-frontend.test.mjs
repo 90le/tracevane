@@ -343,6 +343,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   const overviewSource = page.slice(page.indexOf("const renderOverview"), page.indexOf("const renderProviders"));
   const providerRowSource = page.slice(page.indexOf("function GatewayProviderTableRow"), page.indexOf("export function ModelGatewayPage"));
   const modelsSource = page.slice(page.indexOf("const renderModels"), page.indexOf("const renderUsage"));
+  const usageSource = page.slice(page.indexOf("const renderUsage"), page.indexOf("const renderApps"));
 
   assert.match(app, /ModelGatewayPage/);
   assert.match(manifest, /path: "model-gateway"[\s\S]*surface: "react"/);
@@ -400,6 +401,10 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.doesNotMatch(providerRowSource, /trash-2/);
   assert.doesNotMatch(modelsSource, /openProviderEdit/);
   assert.doesNotMatch(modelsSource, /添加 alias/);
+  assert.match(usageSource, /暂无用量记录/);
+  for (const fakeUsage of ["12_400", "3_800_000", "2_400_000", "1_400_000", "glm-4-plus", "claude-3.7"]) {
+    assert.doesNotMatch(usageSource, new RegExp(fakeUsage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("IM Channels is a real React page backed by read-only existing APIs", () => {

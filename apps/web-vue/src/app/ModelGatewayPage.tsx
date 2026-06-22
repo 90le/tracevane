@@ -1741,10 +1741,10 @@ export function ModelGatewayPage() {
         <div className="toolbar"><div className="seg"><button className="on" type="button">24 小时</button><button type="button">7 天</button><button type="button">30 天</button></div></div>
       </div>
       <div className="kpi-grid">
-        <div className="kpi"><span className="lab"><i data-lucide="send" />请求</span><span className="num">{formatCompact(numberAt(usageTotals, ["requestCount"], 12_400))}</span></div>
-        <div className="kpi"><span className="lab"><i data-lucide="coins" />tokens</span><span className="num">{formatCompact(numberAt(usageTotals, ["totalTokens"], 3_800_000))}</span></div>
-        <div className="kpi"><span className="lab"><i data-lucide="arrow-down-to-line" />输入</span><span className="num">{formatCompact(numberAt(usageTotals, ["inputTokens"], 2_400_000))}</span></div>
-        <div className="kpi"><span className="lab"><i data-lucide="arrow-up-from-line" />输出</span><span className="num">{formatCompact(numberAt(usageTotals, ["outputTokens"], 1_400_000))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="send" />请求</span><span className="num">{formatCompact(numberAt(usageTotals, ["requestCount"]))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="coins" />tokens</span><span className="num">{formatCompact(numberAt(usageTotals, ["totalTokens"]))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="arrow-down-to-line" />输入</span><span className="num">{formatCompact(numberAt(usageTotals, ["inputTokens"]))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="arrow-up-from-line" />输出</span><span className="num">{formatCompact(numberAt(usageTotals, ["outputTokens"]))}</span></div>
       </div>
       <div className="grid-main" style={{ marginTop: 16 }}>
         <section className="panel">
@@ -1766,21 +1766,17 @@ export function ModelGatewayPage() {
               }) : null}
             </div>
             {!usage.isLoading && !usage.isError && usageModels.length === 0 ? (
-              <>
-                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--primary)" }} />glm-4-plus</span><span className="bar"><i style={{ width: "79%" }} /></span><span className="vv">9.8k</span></div>
-                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--teal)" }} />gpt-5.4</span><span className="bar ok"><i style={{ width: "15%" }} /></span><span className="vv">1.9k</span></div>
-                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--violet)" }} />claude-3.7</span><span className="bar"><i style={{ width: "5%", background: "var(--violet)" }} /></span><span className="vv">620</span></div>
-              </>
+              <div className="statebox empty"><span className="si"><i data-lucide="coins" /></span><strong>暂无用量记录</strong><span>Gateway 还没有返回模型请求或 token 统计。</span></div>
             ) : null}
           </div>
         </section>
         <aside className="panel">
           <div className="panel-head"><div className="htitle"><h3>延迟分布</h3><span className="sub">全部路由</span></div></div>
           <div className="panel-body" style={{ padding: 16 }}>
-            <div className="lat"><div className="l"><span>p50</span><strong>{formatMs(numberAt(latency, ["p50Ms"], 410))}</strong></div><div className="l"><span>p95</span><strong>{formatMs(numberAt(latency, ["p95Ms"], 820))}</strong></div><div className="l"><span>p99</span><strong>{formatMs(numberAt(latency, ["p99Ms"], 1600))}</strong></div></div>
+            <div className="lat"><div className="l"><span>p50</span><strong>{formatMs(numberAt(latency, ["p50Ms"], NaN))}</strong></div><div className="l"><span>p95</span><strong>{formatMs(numberAt(latency, ["p95Ms"], NaN))}</strong></div><div className="l"><span>p99</span><strong>{formatMs(numberAt(latency, ["p99Ms"], NaN))}</strong></div></div>
             <div className="dist" style={{ marginTop: 14 }}>
-              <div className="dist-row"><span className="nm">首字节 p95</span><span className="bar"><i style={{ width: "55%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["firstByteP95Ms"], 320))}</span></div>
-              <div className="dist-row"><span className="nm">完成 p95</span><span className="bar warn"><i style={{ width: "82%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["p95Ms"], 820))}</span></div>
+              <div className="dist-row"><span className="nm">首字节 p95</span><span className="bar"><i style={{ width: numberAt(latency, ["firstByteP95Ms"]) ? "55%" : "0%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["firstByteP95Ms"], NaN))}</span></div>
+              <div className="dist-row"><span className="nm">完成 p95</span><span className="bar warn"><i style={{ width: numberAt(latency, ["p95Ms"]) ? "82%" : "0%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["p95Ms"], NaN))}</span></div>
             </div>
           </div>
         </aside>
