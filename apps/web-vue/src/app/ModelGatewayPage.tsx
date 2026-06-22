@@ -71,6 +71,11 @@ function formatTime(value: unknown): string {
   return date.toLocaleString();
 }
 
+function compactList(values: unknown[], fallback = "-"): string {
+  const cleaned = values.map((value) => String(value ?? "").trim()).filter(Boolean);
+  return cleaned.length ? cleaned.join(" · ") : fallback;
+}
+
 function stateTone(value: unknown): "ok" | "warn" | "bad" | "info" {
   const text = String(value ?? "").toLowerCase();
   if (/(healthy|running|active|ok|ready|closed|success|online|applied|configured|fixed|auto|fallback)/.test(text)) return "ok";
@@ -113,6 +118,38 @@ function GatewayRow({ icon, title, sub, status }: { icon: string; title: string;
   );
 }
 
+function GatewayProviderButton({
+  provider,
+  selected,
+  onSelect,
+}: {
+  provider: AnyRecord;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const health = recordAt(provider, ["health"]);
+  const models = listAt(provider, ["models", "models"]);
+  const endpointProfiles = listAt(provider, ["endpointProfiles"]);
+  const appScopes = listAt(provider, ["appScopes"]);
+  const accountProvider = asRecord(provider.accountProvider);
+  const icon = provider.accountProvider ? "bot" : endpointProfiles.length > 1 ? "route" : "plug-zap";
+
+  return (
+    <button className={`gateway-provider-row ${selected ? "on" : ""}`} type="button" onClick={onSelect}>
+      <span className="rico r-primary"><i data-lucide={icon} /></span>
+      <span className="gateway-provider-copy">
+        <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
+        <small>{compactList([textAt(provider, ["apiFormat"], "-"), `${models.length} models`, `${endpointProfiles.length} endpoints`, accountProvider.kind || "api-key"])}</small>
+        <span className="gateway-provider-scopes">{appScopes.length ? appScopes.map(String).join(" / ") : "no client scope"}</span>
+      </span>
+      <span className="gateway-provider-meta">
+        <StatusTag value={provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled"} />
+        <small>{formatMs(numberAt(health, ["lastLatencyMs"], NaN))}</small>
+      </span>
+    </button>
+  );
+}
+
 function GatewayTile({ icon, title, value, sub, status }: { icon: string; title: string; value: React.ReactNode; sub: React.ReactNode; status?: unknown }) {
   return (
     <div className="gateway-tile">
@@ -126,9 +163,80 @@ function GatewayTile({ icon, title, value, sub, status }: { icon: string; title:
   );
 }
 
+function ProviderInspector({ provider }: { provider: AnyRecord | null }) {
+  if (!provider) {
+    return (
+      <aside className="panel gateway-provider-inspector">
+        <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>选择一个 Provider</strong><span>这里显示 endpoint、模型、账号池和健康证据。</span></div>
+      </aside>
+    );
+  }
+
+  const health = recordAt(provider, ["health"]);
+  const modelsPayload = recordAt(provider, ["models"]);
+  const models = listAt(modelsPayload, ["models"]).map(asRecord);
+  const endpoints = listAt(provider, ["endpointProfiles"]).map(asRecord);
+  const appScopes = listAt(provider, ["appScopes"]);
+  const accountProvider = asRecord(provider.accountProvider);
+  const defaultModel = textAt(modelsPayload, ["defaultModel"], "-");
+
+  return (
+    <aside className="panel gateway-provider-inspector">
+      <div className="gateway-inspector-head">
+        <span className="rico r-primary"><i data-lucide={provider.accountProvider ? "bot" : "route"} /></span>
+        <span>
+          <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
+          <small>{compactList([textAt(provider, ["apiFormat"], "-"), textAt(provider, ["category"], "-"), provider.enabled ? "enabled" : "disabled"])}</small>
+        </span>
+        <StatusTag value={provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled"} />
+      </div>
+
+      <div className="gateway-inspector-grid">
+        <GatewayTile icon="box" title="默认模型" value={defaultModel} sub={`${models.length} models`} />
+        <GatewayTile icon="timer" title="最近延迟" value={formatMs(numberAt(health, ["lastLatencyMs"], NaN))} sub={`success ${formatTime(textAt(health, ["lastSuccessAt"], ""))}`} status={textAt(health, ["circuitState"], "unknown")} />
+      </div>
+
+      <section className="gateway-inspector-section">
+        <div className="section-label">Endpoint</div>
+        <div className="gateway-mini-list">
+          {endpoints.slice(0, 4).map((endpoint) => (
+            <div className="gateway-mini-row" key={textAt(endpoint, ["id"], "endpoint")}>
+              <span><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><small>{compactList([textAt(endpoint, ["apiFormat"], "-"), textAt(endpoint, ["baseUrl"], "-")])}</small></span>
+              <StatusTag value={endpoint.enabled ? textAt(recordAt(endpoint, ["health"]), ["circuitState"], "enabled") : "disabled"} />
+            </div>
+          ))}
+          {!endpoints.length ? <div className="statebox empty"><span className="si"><i data-lucide="plug-zap" /></span><strong>无独立 endpoint</strong><span>该 Provider 使用基础 endpoint 配置。</span></div> : null}
+        </div>
+      </section>
+
+      <section className="gateway-inspector-section">
+        <div className="section-label">模型能力</div>
+        <div className="gateway-chip-grid">
+          {models.slice(0, 10).map((model) => {
+            const features = asRecord(model.features);
+            const enabledFeatures = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key);
+            return <span className="chip" key={textAt(model, ["id"], "model")}>{textAt(model, ["id"], "model")} · {enabledFeatures.slice(0, 2).join("/") || "text"}</span>;
+          })}
+          {!models.length ? <span className="chip">暂无模型目录</span> : null}
+        </div>
+      </section>
+
+      <section className="gateway-inspector-section">
+        <div className="section-label">下钻入口</div>
+        <div className="gateway-locked-actions">
+          <div><strong>配置</strong><span>进入 Provider 子页面；保存前校验，危险变更确认。</span></div>
+          <div><strong>账号池</strong><span>{accountProvider.kind ? "账号制 Provider 的从属管理。" : "非账号制 Provider 不显示账号池入口。"}</span></div>
+          <div><strong>客户端接入</strong><span>{appScopes.length ? `${appScopes.map(String).join(" / ")} 可引用该 Provider。` : "暂无绑定 scope。"}</span></div>
+        </div>
+      </section>
+    </aside>
+  );
+}
+
 export function ModelGatewayPage() {
   const shell = useShell();
   const [view, setView] = useState<GatewayView>("overview");
+  const [selectedProviderId, setSelectedProviderId] = useState<string>("");
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
@@ -153,6 +261,14 @@ export function ModelGatewayPage() {
   const clientAuth = recordAt(status.data, ["registry", "clientAuth"]);
   const lifecycle = recordAt(status.data, ["lifecycle"]);
   const daemon = recordAt(lifecycle, ["localDaemon"]);
+  const selectedProvider = useMemo(() => {
+    if (!providerRows.length) return null;
+    return providerRows.find((provider) => textAt(provider, ["id"], "") === selectedProviderId) ?? providerRows[0];
+  }, [providerRows, selectedProviderId]);
+
+  useEffect(() => {
+    if (!selectedProviderId && providerRows.length) setSelectedProviderId(textAt(providerRows[0], ["id"], ""));
+  }, [providerRows, selectedProviderId]);
 
   const modelCatalog = useMemo(() => {
     const rows: Array<{ provider: string; model: AnyRecord; health: string }> = [];
@@ -179,8 +295,8 @@ export function ModelGatewayPage() {
           <span className={`ready-chip ${stateTone(gatewayState) === "ok" ? "ok" : "warn"}`}><i data-lucide="route" />模型网关 · {gatewayState}</span>
           <span className="hero-time">Gateway {textAt(status.data, ["listener"], "loopback")} · {formatTime(textAt(status.data, ["checkedAt"], ""))}</span>
         </div>
-        <h1>模型、Provider、客户端接入和用量统一在这里读，危险写动作下钻确认。</h1>
-        <p className="hero-sub">这版只消费现有后端 API，先把真实状态、路由、模型目录、客户端接入和模型用量从原型替换为可验证数据。</p>
+        <h1>模型网关只回答一件事：当前流量会走向哪里。</h1>
+        <p className="hero-sub">Provider、模型目录、客户端接入和用量是路由的证据层；配置、账号池和写入动作进入子流程，不在主界面平铺。</p>
         <div className="hero-stats gateway-stats">
           <Metric icon="circle-check" label="健康 Provider" value={<>{numberAt(healthSummary, ["okProviders"])}<small>/{numberAt(status.data, ["registry", "providerCount"])}</small></>} sub={`${numberAt(healthSummary, ["degradedProviders"])} degraded · ${numberAt(healthSummary, ["openCircuits"])} open`} />
           <Metric icon="activity" label="请求" value={formatCompact(numberAt(runtimeUsage, ["requestCount"]))} sub={`latest ${formatTime(textAt(runtimeUsage, ["latestRequestAt"], ""))}`} />
@@ -188,8 +304,8 @@ export function ModelGatewayPage() {
           <Metric icon="coins" label="tokens" value={formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["totalTokens"]))} sub={`${formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["inputTokens"]))} in · ${formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["outputTokens"]))} out`} />
         </div>
       </section>
-      <section className="panel gateway-panel">
-        <div className="panel-head"><div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端 scope 的 Provider / endpoint / 模型解析结果。</span></div><StatusTag value={activeRouteAlerts.length ? "degraded" : "ok"} /></div>
+      <section className="panel gateway-panel gateway-routes-panel">
+        <div className="panel-head"><div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端 scope 最终解析到的 Provider / 协议 / 模型。</span></div><StatusTag value={activeRouteAlerts.length ? "degraded" : "ok"} /></div>
         <div className="panel-body gateway-list">
           <QueryNotice query={providers} label="路由" />
           {!providers.isLoading && !providers.isError && activeRoutes.length ? activeRoutes.map((route) => (
@@ -206,7 +322,7 @@ export function ModelGatewayPage() {
       </section>
       <div className="gateway-overview-grid">
         <section className="panel gateway-panel">
-          <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection 状态，只读摘要。</span></div><button className="btn-ghost btn-sm" onClick={() => setView("providers")}><i data-lucide="arrow-right" />Provider</button></div>
+          <div className="panel-head"><div className="htitle"><h3>客户端接入摘要</h3><span className="sub">App Connection 只显示状态；应用 / 回退必须进入确认流。</span></div><button className="btn-ghost btn-sm" onClick={() => setView("providers")}><i data-lucide="arrow-right" />查看 Provider</button></div>
           <div className="panel-body gateway-list">
             <QueryNotice query={appConnections} label="客户端接入" />
             {!appConnections.isLoading && !appConnections.isError ? connectionRows.map((connection) => (
@@ -232,27 +348,27 @@ export function ModelGatewayPage() {
   );
 
   const renderProviders = () => (
-    <section className="panel gateway-panel">
-      <div className="panel-head"><div className="htitle"><h3>Provider</h3><span className="sub">列表优先；深度编辑、探测和删除后续进入子页/确认流。</span></div><StatusTag value={`${providerRows.length} providers`} /></div>
-      <div className="panel-body gateway-table">
-        <QueryNotice query={providers} label="Provider" />
-        {!providers.isLoading && !providers.isError ? providerRows.map((provider) => {
-          const health = recordAt(provider, ["health"]);
-          const models = listAt(provider, ["models", "models"]);
-          const endpointProfiles = listAt(provider, ["endpointProfiles"]);
-          const accountProvider = asRecord(provider.accountProvider);
-          return (
-            <GatewayRow
+    <div className="gateway-provider-shell">
+      <section className="panel gateway-provider-list-panel">
+        <div className="panel-head">
+          <div className="htitle"><h3>Provider</h3><span className="sub">主对象是 Provider。选中后在右侧查看 endpoint、模型、账号与健康证据。</span></div>
+          <StatusTag value={`${providerRows.length} providers`} />
+        </div>
+        <div className="panel-body gateway-provider-list">
+          <QueryNotice query={providers} label="Provider" />
+          {!providers.isLoading && !providers.isError ? providerRows.map((provider) => (
+            <GatewayProviderButton
               key={textAt(provider, ["id"], "provider")}
-              icon={provider.accountProvider ? "bot" : "route"}
-              title={textAt(provider, ["name", "id"], "Provider")}
-              sub={`${textAt(provider, ["apiFormat"], "-")} · ${models.length} models · ${endpointProfiles.length} endpoint profiles · ${accountProvider.kind || "api-key"}`}
-              status={provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled"}
+              provider={provider}
+              selected={textAt(provider, ["id"], "") === textAt(selectedProvider, ["id"], "")}
+              onSelect={() => setSelectedProviderId(textAt(provider, ["id"], ""))}
             />
-          );
-        }) : null}
-      </div>
-    </section>
+          )) : null}
+          {!providers.isLoading && !providers.isError && providerRows.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无 Provider</strong><span>Provider 创建会进入单独表单流程，不在列表页堆字段。</span></div> : null}
+        </div>
+      </section>
+      <ProviderInspector provider={selectedProvider} />
+    </div>
   );
 
   const renderModels = () => (

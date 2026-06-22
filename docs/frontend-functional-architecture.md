@@ -128,12 +128,12 @@ Long Tasks first React pass is intentionally read-only. It reads `/api/chat/boot
 
 Model Gateway sections:
 
-- `overview`: Gateway state, active route resolution, client connection summary and daemon/auth lifecycle.
-- `providers`: read-only Provider list with protocol, endpoint profile, account-provider and circuit state summaries.
+- `overview`: Gateway state, active route resolution, reduced client connection summary and daemon/auth lifecycle.
+- `providers`: read-only Provider List-Detail workbench. The Provider list is the primary object layer; the selected inspector shows endpoint, model, account-provider and health evidence without exposing write controls.
 - `models`: aggregated configured model catalog across Providers.
 - `usage`: model request/token totals from `/api/model-gateway/usage`.
 
-Model Gateway first React pass is intentionally read-only. Provider mutation, route smoke, app connection apply/rollback and destructive actions must enter focused child flows with confirmation and regression tests.
+Model Gateway first React pass is intentionally read-only and follows the Aurora model-gateway IA from `docs/prototypes/aurora-design-system.md`: main tabs stay limited to `overview / providers / models / usage`; Provider configuration, account pools and App Connection apply/rollback remain child flows rather than peer tabs or permanently visible sections. Provider mutation, route smoke, app connection apply/rollback and destructive actions must enter focused child flows with confirmation and regression tests.
 
 IM Channels sections:
 

@@ -63,6 +63,12 @@
 
 ## 当前能力边界
 
+- 2026-06-22 Model Gateway 前端设计收口：
+  - 范围：只调整 `/model-gateway` 的 React 前端信息架构与响应式布局，不新增后端写接口，不启用 Provider 创建/编辑、App Connection 应用/回退或 destructive action。
+  - 来源核验：本地设计约束 `docs/界面设计守则.md` 和 `docs/prototypes/aurora-design-system.md` 明确要求模型网关主 tab 收敛为 `概览 / Provider / 模型 / 用量`，Provider 配置、账号池和客户端接入降为子流程；原型片段 `docs/prototypes/pages/model-gateway.html` 给出 Provider List-Detail + inspector 形态。外部资料复核了 MDN ARIA tab/listbox 可访问性约束、TanStack Query React 服务端状态查询边界、React Router 当前路由落地模型，结论是这次前端行为应保持现有 GET 查询、tab `aria-selected` 和本地选中态，不引入未验证写入。
+  - 稳定结论：模型网关主页面只承载 Gateway 路由事实、Provider 主对象、模型目录和用量证据；客户端接入只显示摘要，apply/rollback 类写入必须等确认流、diff/backup/rollback 证据和测试完成后进入子页面或 Drawer。
+  - 拒绝方案：拒绝继续把 Provider 创建、Endpoint 表单、账号池、客户端接入和删除操作堆在同一屏；拒绝把 OpenClaw 管理态混入模型网关主流程；拒绝为了“看起来完整”放置不可验证的假按钮。
+  - 风险与验证：风险是 Provider inspector 信息过多再次变成堆叠页，后续新增字段必须按主对象/关联层/配置层判断是否下钻。已覆盖 `typecheck:web`、React Aurora 页面契约测试、`build:web`、`typecheck:api`、`build:api`、dev restart、live Gateway API checks，以及真实浏览器桌面/移动 smoke 验证无横向溢出。
 - 2026-06-19 Model Gateway Codex Chat adapter 点号噪声收口：
   - 范围：Codex 通过 Gateway `/v1/responses` 使用 OpenAI Chat-compatible endpoint profile 承载 `claude-opus-4-8` 等模型时的流式/非流式响应适配，以及 Codex CLI 刷新模型元数据时的 `/v1/models` 响应形态。
   - 来源核验：本机真实 Codex CLI `exec --json --model claude-opus-4-8` 和用户给出的 Codex resume session `019ed8c6-6761-74a0-9fbe-be3ad4652bfc` 复现了两类 Codex-only 噪声：Chat->Responses 适配可能把上游 `reasoning_content` / `reasoning` 点号占位变成 `response.reasoning_summary_text.delta`，也可能把正文 `content` 末尾或独立消息里的 `...\n\n...` 点号段原样转成 `output_text`；本机 usage ledger 中 mlamp/`claude-opus-4-8` 出现 247k/257k 级输出 token，证明不是 UI 渲染误差。Codex 0.141.0 当前模型管理器仍要求 `/v1/models` 顶层存在 `models` 字段和一组 Codex catalog 字段（例如 `slug`、`shell_type`、`supported_in_api`、`priority`、`input_modalities`）；本机 `~/.codex/models_cache.json` 用作字段形状样例，真实 `codex exec` 用作最终合同验证。
