@@ -131,7 +131,7 @@ Model Gateway sections:
 - `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary.
 - `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider search/filter/detect/new, configuration, smoke, default route and delete actions stay in the original toolbar or inspector action rows.
 - `providercfg`: Aurora `subpage / subpage-grid / cfg / save-bar` Provider create/edit child view for base URL, API format, auth, structured endpoint profile rows, structured model catalog rows, network, reasoning, metadata and app scopes.
-- `models`: Aurora model table plus capability/price `cfg` panel, backed by Provider model catalog and usage rows.
+- `models`: Aurora model table plus capability/price `cfg` panel, backed by Provider model catalog and usage rows. Alias cells are inline editable and save by rewriting the owning Provider catalog through the guarded Provider PUT flow.
 - `usage`: Aurora KPI, distribution and latency panels.
 - `accounts`: Aurora account-pool child view for account-backed Providers, backed by real `accountProvider.accounts` with refresh, enable/disable and cooldown-clear actions.
 - `apps`: Aurora client-connection child view reached from the Overview "管理" action, not a fifth primary tab. Preview/apply/rollback call the existing Gateway App Connection APIs and destructive writes require confirmation.

@@ -467,6 +467,24 @@ function providerInputFromDraft(draft: ProviderDraft): AnyRecord {
   };
 }
 
+function validateProviderDraft(draft: ProviderDraft): string | null {
+  const id = draft.id.trim();
+  const name = draft.name.trim();
+  if (!id || !name) return "Provider ID 和名称不能为空";
+  const invalidEndpoint = draft.endpointProfiles.find((endpoint) => (
+    !endpoint.id.trim() || !endpoint.name.trim() || !endpoint.baseUrl.trim()
+  ));
+  if (invalidEndpoint) return "Endpoint 的 ID、名称和 baseUrl 都不能为空";
+  const modelIds = draft.models.map((model) => model.id.trim()).filter(Boolean);
+  if (!modelIds.length) return "至少需要一个模型 ID";
+  if (new Set(modelIds).size !== modelIds.length) return "模型 ID 不能重复";
+  const defaultModel = draft.defaultModel.trim();
+  if (defaultModel && !modelIds.includes(defaultModel)) return "默认模型必须来自模型目录";
+  const aliases = draft.models.flatMap((model) => model.aliasesText.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean));
+  if (new Set(aliases).size !== aliases.length) return "模型 alias 不能重复";
+  return null;
+}
+
 function stateTone(value: unknown): "ok" | "warn" | "bad" | "info" {
   const text = String(value ?? "").toLowerCase();
   if (/(healthy|running|active|ok|ready|closed|success|online|applied|configured|fixed|auto|fallback)/.test(text)) return "ok";
@@ -584,6 +602,7 @@ function ProviderInspector({
   onDelete,
   onAccounts,
   onSetRoute,
+  onSetDefaultModel,
 }: {
   provider: AnyRecord | null;
   detailTab: ProviderDetailTab;
@@ -594,6 +613,7 @@ function ProviderInspector({
   onDelete: (provider: AnyRecord) => void;
   onAccounts: () => void;
   onSetRoute: (scope: string, provider: AnyRecord) => void;
+  onSetDefaultModel: (provider: AnyRecord, modelId: string) => void;
 }) {
   if (!provider) {
     return (
@@ -710,7 +730,7 @@ function ProviderInspector({
                 <div className="model-row" key={id}>
                   <span className="rico r-primary"><i data-lucide="box" /></span>
                   <span className="rcopy"><strong>{id}</strong><span>{enabledFeatures.slice(0, 3).join(" / ") || "text"}</span></span>
-                  {id === defaultModel ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}>设为默认</button>}
+                  {id === defaultModel ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" onClick={() => onSetDefaultModel(provider, id)}>设为默认</button>}
                 </div>
               );
             })}
@@ -735,6 +755,8 @@ export function ModelGatewayPage() {
   const [providerBusy, setProviderBusy] = useState(false);
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const [editingAliasKey, setEditingAliasKey] = useState("");
+  const [modelAliasDraft, setModelAliasDraft] = useState("");
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
@@ -861,35 +883,9 @@ export function ModelGatewayPage() {
 
   const saveProviderDraft = async () => {
     const id = providerDraft.id.trim();
-    const name = providerDraft.name.trim();
-    if (!id || !name) {
-      shell.toast("Provider ID 和名称不能为空", "warn");
-      return;
-    }
-    const invalidEndpoint = providerDraft.endpointProfiles.find((endpoint) => (
-      !endpoint.id.trim() || !endpoint.name.trim() || !endpoint.baseUrl.trim()
-    ));
-    if (invalidEndpoint) {
-      shell.toast("Endpoint 的 ID、名称和 baseUrl 都不能为空", "warn");
-      return;
-    }
-    const modelIds = providerDraft.models.map((model) => model.id.trim()).filter(Boolean);
-    if (!modelIds.length) {
-      shell.toast("至少需要一个模型 ID", "warn");
-      return;
-    }
-    if (new Set(modelIds).size !== modelIds.length) {
-      shell.toast("模型 ID 不能重复", "warn");
-      return;
-    }
-    const defaultModel = providerDraft.defaultModel.trim();
-    if (defaultModel && !modelIds.includes(defaultModel)) {
-      shell.toast("默认模型必须来自模型目录", "warn");
-      return;
-    }
-    const aliases = providerDraft.models.flatMap((model) => model.aliasesText.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean));
-    if (new Set(aliases).size !== aliases.length) {
-      shell.toast("模型 alias 不能重复", "warn");
+    const validation = validateProviderDraft(providerDraft);
+    if (validation) {
+      shell.toast(validation, "warn");
       return;
     }
     setProviderBusy(true);
@@ -916,6 +912,11 @@ export function ModelGatewayPage() {
   const updateProviderFromDraft = async (draft: ProviderDraft, successMessage: string) => {
     const id = draft.id.trim();
     if (!id) return;
+    const validation = validateProviderDraft(draft);
+    if (validation) {
+      shell.toast(validation, "warn");
+      return;
+    }
     setProviderBusy(true);
     try {
       await apiJson(`/api/model-gateway/providers/${encodeURIComponent(id)}`, {
@@ -929,6 +930,55 @@ export function ModelGatewayPage() {
     } finally {
       setProviderBusy(false);
     }
+  };
+
+  const updateProviderModelCatalog = async (
+    providerId: string,
+    mutate: (draft: ProviderDraft) => ProviderDraft,
+    successMessage: string,
+  ) => {
+    const provider = providerRows.find((row) => textAt(row, ["id"], "") === providerId);
+    if (!provider) {
+      shell.toast("未找到 Provider", "warn");
+      return;
+    }
+    await updateProviderFromDraft(mutate(draftFromProvider(provider)), successMessage);
+  };
+
+  const setProviderDefaultModel = (provider: AnyRecord, modelId: string) => {
+    const providerId = textAt(provider, ["id"], "");
+    if (!providerId || !modelId.trim()) return;
+    void updateProviderModelCatalog(
+      providerId,
+      (draft) => ({ ...draft, defaultModel: modelId.trim() }),
+      "默认模型已更新",
+    );
+  };
+
+  const startModelAliasEdit = (rowKey: string, aliases: string[]) => {
+    setEditingAliasKey(rowKey);
+    setModelAliasDraft(aliases.join(", "));
+  };
+
+  const cancelModelAliasEdit = () => {
+    setEditingAliasKey("");
+    setModelAliasDraft("");
+  };
+
+  const saveModelAlias = async (row: { key: string; providerId: string; model: AnyRecord }) => {
+    const modelId = textAt(row.model, ["id"], "");
+    if (!modelId) return;
+    await updateProviderModelCatalog(
+      row.providerId,
+      (draft) => ({
+        ...draft,
+        models: draft.models.map((model) => (
+          model.id.trim() === modelId ? { ...model, aliasesText: modelAliasDraft } : model
+        )),
+      }),
+      "模型 alias 已保存",
+    );
+    cancelModelAliasEdit();
   };
 
   const toggleProviderEnabled = (provider: AnyRecord) => {
@@ -1359,6 +1409,7 @@ export function ModelGatewayPage() {
           onDelete={confirmDeleteProvider}
           onAccounts={() => setView("accounts")}
           onSetRoute={setActiveProvider}
+          onSetDefaultModel={setProviderDefaultModel}
         />
       </div>
     </div>
@@ -1622,12 +1673,14 @@ export function ModelGatewayPage() {
       <div className="tablewrap">
         <div className="thead" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }}><span>模型 / alias</span><span>Provider</span><span>能力</span><span>24h</span></div>
         <QueryNotice query={providers} label="模型目录" />
-        {!providers.isLoading && !providers.isError ? filteredModelCatalog.slice(0, 80).map(({ key, provider, model }) => {
+        {!providers.isLoading && !providers.isError ? filteredModelCatalog.slice(0, 80).map((row) => {
+          const { key, provider, model } = row;
           const features = asRecord(model.features);
           const featureNames = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key).slice(0, 2);
           const modelId = textAt(model, ["id"], "model");
           const modelUsage = usageModels.find((row) => textAt(row, ["model"], "") === modelId);
           const aliases = listAt(model, ["aliases"]).map(String);
+          const isEditingAlias = editingAliasKey === key;
           return (
             <div className={`trow ${selectedModel?.key === key ? "sel" : ""}`} style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }} key={key} role="button" tabIndex={0} onClick={() => setSelectedModelKey(key)} onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -1635,7 +1688,38 @@ export function ModelGatewayPage() {
                 setSelectedModelKey(key);
               }
             }}>
-              <span className="cell-main"><span className="rico ico-primary"><i data-lucide="box" /></span><span className="c-copy"><strong>{textAt(model, ["label", "id"], "model")}</strong><span className="inline-edit"><span className="val">alias {aliases[0] || "default"}</span><i data-lucide="pencil" className="pen" /></span></span></span>
+              <span className="cell-main"><span className="rico ico-primary"><i data-lucide="box" /></span><span className="c-copy"><strong>{textAt(model, ["label", "id"], "model")}</strong>
+                {isEditingAlias ? (
+                  <span className="alias-editor" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      className="input"
+                      aria-label={`${modelId} alias`}
+                      value={modelAliasDraft}
+                      onChange={(event) => setModelAliasDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void saveModelAlias(row);
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelModelAliasEdit();
+                        }
+                      }}
+                      placeholder="alias，逗号分隔"
+                    />
+                    <button className="btn-ghost btn-sm" type="button" disabled={providerBusy} onClick={() => void saveModelAlias(row)}><i data-lucide="check" />保存 alias</button>
+                    <button className="btn-ghost btn-sm" type="button" disabled={providerBusy} onClick={cancelModelAliasEdit}><i data-lucide="x" />取消</button>
+                  </span>
+                ) : (
+                  <button className="inline-edit alias-trigger" type="button" onClick={(event) => {
+                    event.stopPropagation();
+                    startModelAliasEdit(key, aliases);
+                  }}>
+                    <span className="val">alias {aliases.length ? aliases.join(", ") : "未设置"}</span><i data-lucide="pencil" className="pen" />
+                  </button>
+                )}
+              </span></span>
               <span className="cell-mono">{provider}</span>
               <span><span className="tag info">{featureNames.join(" / ") || "text"}</span></span>
               <span className="cell-mono">{formatCompact(numberAt(modelUsage, ["requestCount"]))}</span>
