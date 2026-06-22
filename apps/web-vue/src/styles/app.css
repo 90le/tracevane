@@ -891,9 +891,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
   white-space: nowrap;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 600;
 }
 
 .status-dot > i {
@@ -906,6 +908,10 @@
 .status-dot.s-ok > i { background: var(--green); }
 .status-dot.s-warn > i { background: var(--amber); }
 .status-dot.s-bad > i { background: var(--red); }
+
+.model-gateway-page .trow.sel::before {
+  content: none;
+}
 
 
 .im-overview-grid {

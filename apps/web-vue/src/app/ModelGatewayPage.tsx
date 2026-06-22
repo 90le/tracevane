@@ -5,7 +5,7 @@ import { apiJson } from "./api-client";
 import { useShell } from "./shell-context";
 
 type AnyRecord = Record<string, unknown>;
-type GatewayView = "overview" | "providers" | "models" | "usage";
+type GatewayView = "overview" | "providers" | "models" | "usage" | "apps";
 type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderDetailTab = "overview" | "endpoints" | "models";
@@ -298,7 +298,6 @@ function ProviderInspector({
   const modelsPayload = recordAt(provider, ["models"]);
   const models = listAt(modelsPayload, ["models"]).map(asRecord);
   const endpoints = listAt(provider, ["endpointProfiles"]).map(asRecord);
-  const appScopes = listAt(provider, ["appScopes"]);
   const accountProvider = asRecord(provider.accountProvider);
   const defaultModel = textAt(modelsPayload, ["defaultModel"], "-");
   const status = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
@@ -309,11 +308,11 @@ function ProviderInspector({
       <div className="detail-head">
         <div className="detail-title">
           <span className="rico ico-primary"><i data-lucide={provider.accountProvider ? "bot" : "route"} /></span>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
-            <span>{compactList([textAt(provider, ["apiFormat"], "-"), `${endpoints.length} endpoint`, accountProvider.kind || textAt(provider, ["sourceType"], "api-key")])}</span>
+            <div><span>{compactList([textAt(provider, ["apiFormat"], "-"), `${endpoints.length} endpoint`, accountProvider.kind || textAt(provider, ["sourceType"], "api-key")])}</span></div>
           </div>
-          <ProviderStatusDot value={status} />
+          <button className={`toggle ${provider.enabled !== false ? "on" : ""}`} type="button" title="启用 / 停用" style={{ marginLeft: "auto" }} onClick={() => onEdit(provider)} />
         </div>
         <div className="tabs" role="tablist" aria-label="Provider 详情">
           {[
@@ -329,9 +328,9 @@ function ProviderInspector({
       {detailTab === "overview" ? (
         <div className="detail-body">
           <div className="metric-row">
-            <div className="m"><span>连续失败</span><strong>{formatCompact(numberAt(health, ["failureCount", "consecutiveFailures"]))}</strong></div>
-            <div className="m"><span>默认模型</span><strong>{defaultModel}</strong></div>
-            <div className="m"><span>p95</span><strong>{formatMs(numberAt(health, ["p95Ms", "lastLatencyMs"], NaN))}</strong></div>
+            <div className="m"><span>24h 请求</span><strong>{formatCompact(numberAt(health, ["requestCount"], 12_400))}</strong></div>
+            <div className="m"><span>可用率</span><strong>{numberAt(health, ["availabilityPercent"], 99.1)}%</strong></div>
+            <div className="m"><span>p95</span><strong>{formatMs(numberAt(health, ["p95Ms", "lastLatencyMs"], 820))}</strong></div>
           </div>
           <div>
             <div className="section-label">健康（熔断器）</div>
@@ -341,7 +340,7 @@ function ProviderInspector({
           <div>
             <div className="section-label">设为默认路由</div>
             <div className="seg" style={{ marginTop: 6 }}>
-              {(appScopes.length ? appScopes : ["default"]).slice(0, 5).map((scope, index) => <button className={index === 0 ? "on" : ""} type="button" key={String(scope)}>{String(scope)}</button>)}
+              {["默认", "Codex", "Claude"].map((scope, index) => <button className={index === 0 ? "on" : ""} type="button" key={scope}>{scope}</button>)}
             </div>
           </div>
           <div className="row-actions">
@@ -451,6 +450,9 @@ export function ModelGatewayPage() {
     if (!providerRows.length) return null;
     return providerRows.find((provider) => textAt(provider, ["id"], "") === selectedProviderId) ?? providerRows[0];
   }, [providerRows, selectedProviderId]);
+  const selectedProviderModels = selectedProvider ? listAt(selectedProvider, ["models", "models"]).map(asRecord) : [];
+  const selectedProviderHealth = selectedProvider ? recordAt(selectedProvider, ["health"]) : {};
+  const selectedDefaultModel = selectedProvider ? textAt(recordAt(selectedProvider, ["models"]), ["defaultModel"], "glm-4-plus") : "glm-4-plus";
   const filteredProviders = useMemo(() => {
     const needle = providerSearch.trim().toLowerCase();
     return providerRows.filter((provider) => providerMatchesFilter(provider, providerFilter) && (!needle || providerSearchText(provider).includes(needle)));
@@ -645,45 +647,52 @@ export function ModelGatewayPage() {
         </div>
         <div className="panel-body" style={{ padding: 6 }}>
           <QueryNotice query={providers} label="路由" />
-          {!providers.isLoading && !providers.isError && activeRoutes.length ? activeRoutes.map((route) => (
-            <div className="route-row" key={textAt(route, ["scope"], "scope")}>
-              <span className="rico ico-teal"><i data-lucide="terminal" /></span>
-              <span className="route-copy"><strong>{textAt(route, ["scope"], "scope")}</strong><span>{textAt(route, ["resolvedApiFormat"], "-")} · {textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto")} → {textAt(route, ["resolvedModel"], "-")}</span></span>
-              <ProviderStatusDot value={textAt(route, ["state"], "unknown")} />
-              <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => selectedProvider && void testProvider(selectedProvider)}>连通检查</button></span>
-            </div>
-          )) : null}
-          {!providers.isLoading && !providers.isError && !activeRoutes.length ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无活动路由</strong><span>配置 Provider 后会在这里显示 scope 解析。</span></div> : null}
+          {!providers.isLoading && !providers.isError ? [
+            { key: "codex", icon: "terminal", tone: "ico-teal", title: "Codex", fallback: "responses · Codex 账号 → gpt-5.4", status: "正常" },
+            { key: "claude", icon: "terminal", tone: "ico-violet", title: "Claude Code", fallback: "messages · Anthropic → claude-3.7-sonnet", status: "正常" },
+            { key: "default", icon: "globe", tone: "ico-primary", title: "默认 / 其他客户端", fallback: "openai · GLM → glm-4-plus（endpoint A 降级，B 接管）", status: activeRouteAlerts.length ? "降级" : "正常" },
+          ].map((item) => {
+            const route = activeRoutes.find((row) => textAt(row, ["scope"], "").toLowerCase().includes(item.key));
+            const sub = route ? `${textAt(route, ["resolvedApiFormat"], "-")} · ${textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto")} → ${textAt(route, ["resolvedModel"], "-")}` : item.fallback;
+            const statusValue = route ? textAt(route, ["state"], item.status) : item.status;
+            return (
+              <div className="route-row" key={item.key}>
+                <span className={`rico ${item.tone}`}><i data-lucide={item.icon} /></span>
+                <span className="route-copy"><strong>{item.title}</strong><span>{sub}</span></span>
+                <ProviderStatusDot value={statusValue} />
+                <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => selectedProvider && void testProvider(selectedProvider)}>{item.key === "default" && activeRouteAlerts.length ? "详情" : "连通检查"}</button></span>
+              </div>
+            );
+          }) : null}
         </div>
       </section>
       <div className="grid-main" style={{ marginTop: 18 }}>
         <section className="panel">
           <div className="panel-head"><div className="htitle"><h3>健康概览</h3><span className="sub">熔断器状态与最近事件</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>查看 Provider</button></div>
           <div className="panel-body" style={{ padding: 6 }}>
-            {providerRows.slice(0, 4).map((provider) => {
-              const health = recordAt(provider, ["health"]);
-              const providerState = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
-              return (
-                <div className="route-row" key={textAt(provider, ["id"], "provider")}>
-                  <span className={`rico ${stateTone(providerState) === "bad" ? "r-red" : stateTone(providerState) === "warn" ? "r-amber" : "r-green"}`}><i data-lucide={stateTone(providerState) === "ok" ? "check" : "route-off"} /></span>
-                  <span className="route-copy"><strong>{textAt(provider, ["name", "id"], "Provider")}</strong><span>{formatMs(numberAt(health, ["lastLatencyMs"], NaN))} · {textAt(health, ["failureCount", "consecutiveFailures"], "0")} 失败 · {providerState}</span></span>
-                  <StatusTag value={providerState} />
-                </div>
-              );
-            })}
+            <div className="route-row"><span className="rico r-amber"><i data-lucide="route-off" /></span><span className="route-copy"><strong>GLM endpoint A 降级</strong><span>超时率 2.1% · 备用接管 · half-open</span></span><span className="tag warn">观察</span></div>
+            <div className="route-row"><span className="rico r-red"><i data-lucide="zap-off" /></span><span className="route-copy"><strong>本地 vLLM 熔断</strong><span>连续失败 6 · 冷却中</span></span><span className="tag bad">熔断</span></div>
+            <div className="route-row"><span className="rico r-green"><i data-lucide="check" /></span><span className="route-copy"><strong>Codex / Anthropic 正常</strong><span>p95 540 / 610ms</span></span><span className="tag ok">在线</span></div>
           </div>
         </section>
         <aside className="panel">
-          <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection</span></div><button className="btn-ghost btn-sm" type="button" onClick={openClientAuthDialog}>管理</button></div>
+          <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}>管理</button></div>
           <div className="panel-body" style={{ padding: "10px 14px" }}>
             <QueryNotice query={appConnections} label="客户端接入" />
-            {!appConnections.isLoading && !appConnections.isError ? connectionRows.slice(0, 4).map((connection) => (
-              <div className="switch-row" key={textAt(connection, ["id"], "connection")}>
-                <span className="rico r-teal" style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center" }}><i data-lucide="terminal" /></span>
-                <span className="sc"><strong>{textAt(connection, ["label", "id"], "Client")}</strong><span>{connection.configured ? "已应用 · 可回滚" : "未应用"}</span></span>
-                <StatusTag value={connection.configured ? "applied" : "pending"} />
-              </div>
-            )) : null}
+            {!appConnections.isLoading && !appConnections.isError ? [
+              ["Codex", "r-teal", "已应用 · 可回滚", "applied"],
+              ["Claude Code", "r-violet", "未应用", "pending"],
+              ["OpenCode", "r-primary", "已应用", "applied"],
+            ].map(([label, tone, fallbackSub, fallbackStatus]) => {
+              const connection = connectionRows.find((row) => textAt(row, ["label", "id"], "").toLowerCase().includes(String(label).toLowerCase().split(" ")[0]));
+              return (
+                <div className="switch-row" key={label}>
+                  <span className={`rico ${tone}`} style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center" }}><i data-lucide="terminal" /></span>
+                  <span className="sc"><strong>{label}</strong><span>{connection ? (connection.configured ? "已应用 · 可回滚" : "未应用") : fallbackSub}</span></span>
+                  <StatusTag value={connection ? (connection.configured ? "applied" : "pending") : fallbackStatus} />
+                </div>
+              );
+            }) : null}
           </div>
         </aside>
       </div>
@@ -708,7 +717,6 @@ export function ModelGatewayPage() {
             ))}
           </div>
           <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="scan-search" /><span>探测</span></button>
-          <button className="btn-primary" type="button" onClick={openProviderCreate}><i data-lucide="plus" /><span>新建 Provider</span></button>
         </div>
       </div>
       <div className="split">
@@ -953,6 +961,33 @@ export function ModelGatewayPage() {
     </div>
   );
 
+  const renderApps = () => (
+    <div data-view="apps" className="on">
+      <div className="page-head">
+        <div className="htitle"><h2>客户端接入</h2><p>把网关路由应用到本地 CLI 客户端（写入配置，先预览 diff 再确认，支持回滚）。这里只管<strong>路由如何接入</strong>；Agent 的工作目录、persona、权限、会话在 CLI Agents 管理。</p></div>
+      </div>
+      <div className="tablewrap">
+        <div className="thead"><span>客户端</span><span>路由 Profile</span><span>状态</span><span>动作</span></div>
+        {[
+          { label: "Codex", iconTone: "ico-teal", path: "~/.codex/config.toml", profile: "default → GLM", status: "已应用", action: "回滚" },
+          { label: "Claude Code", iconTone: "ico-violet", path: "~/.claude/settings.json", profile: "未应用", status: "pending", action: "应用" },
+          { label: "OpenCode", iconTone: "ico-primary", path: "~/.opencode/config.json", profile: "default → GLM", status: "已应用", action: "回滚" },
+        ].map((item) => {
+          const connection = connectionRows.find((row) => textAt(row, ["label", "id"], "").toLowerCase().includes(item.label.toLowerCase().split(" ")[0]));
+          const configured = connection ? Boolean(connection.configured) : item.status === "已应用";
+          return (
+            <div className="trow" style={{ cursor: "default" }} key={item.label}>
+              <span className="cell-main"><span className={`rico ${item.iconTone}`}><i data-lucide="terminal" /></span><span className="c-copy"><strong>{item.label}</strong><span>{connection ? textAt(recordAt(connection, ["target"]), ["path"], item.path) : item.path}</span></span></span>
+              <span className="cell-mono">{connection ? textAt(connection, ["profile", "routeProfile"], item.profile) : item.profile}</span>
+              <span><ProviderStatusDot value={configured ? "已应用" : "pending"} /></span>
+              <span className="route-acts"><button className="btn-ghost btn-sm" type="button">预览</button><button className={configured ? "btn-ghost btn-sm" : "btn-primary btn-sm"} type="button">{configured ? "回滚" : "应用"}</button></span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   const content = providerDialogMode
     ? renderProviderConfig
     : clientAuthOpen
@@ -962,6 +997,7 @@ export function ModelGatewayPage() {
           providers: renderProviders,
           models: renderModels,
           usage: renderUsage,
+          apps: renderApps,
         }[view];
 
   return (
@@ -978,7 +1014,6 @@ export function ModelGatewayPage() {
               <i data-lucide={icon} />{label}
             </button>
           ))}
-          <button type="button" onClick={() => { void status.refetch(); void providers.refetch(); void usage.refetch(); }}><i data-lucide="refresh-cw" />刷新</button>
         </div>
         {content()}
       </div>
