@@ -130,10 +130,11 @@ Model Gateway sections:
 
 - `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary.
 - `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider configuration, smoke and delete actions live in the original inspector action row.
+- `providercfg`: Aurora `subpage / subpage-grid / cfg / save-bar` Provider configuration child view for base URL, API format, auth, network, reasoning and metadata.
 - `models`: Aurora model table plus capability/price `cfg` panel.
 - `usage`: Aurora KPI, distribution and latency panels.
 
-Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. Main tabs stay limited to `overview / Provider / models / usage`; Provider configuration, account pools and App Connection apply/rollback remain child flows rather than peer tabs or permanently visible sections. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
+Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. Main tabs stay limited to `overview / Provider / models / usage`; Provider configuration uses the prototype `providercfg` child view, while account pools and App Connection apply/rollback remain child flows rather than peer tabs or permanently visible sections. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
 
 IM Channels sections:
 

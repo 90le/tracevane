@@ -735,6 +735,132 @@ export function ModelGatewayPage() {
     </div>
   );
 
+  const closeProviderConfig = () => {
+    setProviderDialogMode(null);
+    setView("providers");
+  };
+
+  const renderProviderConfig = () => {
+    const selectedHealth = recordAt(selectedProvider, ["health"]);
+    const selectedEndpoints = listAt(selectedProvider, ["endpointProfiles"]).map(asRecord);
+    const statusText = selectedProvider && selectedProvider.enabled !== false ? textAt(selectedHealth, ["circuitState"], "enabled") : "disabled";
+    return (
+      <div data-view="providercfg" className="on">
+        <div className="subpage">
+          <div className="subpage-head">
+            <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
+            <div className="htitle"><h2>{providerDialogMode === "create" ? "新建 Provider" : `配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
+          </div>
+          <div className="subpage-grid">
+            <div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="info" /></span><strong>基础</strong><span className="sub">必填</span></div>
+                <div className="cfg-body">
+                  <div className="form-row2">
+                    <div className="fieldset"><label>Provider ID</label><input className="input" value={providerDraft.id} disabled={providerDialogMode === "edit"} onChange={(event) => setProviderDraft((draft) => ({ ...draft, id: event.target.value }))} placeholder="my-provider" /></div>
+                    <div className="fieldset"><label>名称</label><input className="input" value={providerDraft.name} onChange={(event) => setProviderDraft((draft) => ({ ...draft, name: event.target.value }))} placeholder="主力模型服务" /></div>
+                  </div>
+                  <div className="fieldset"><label>默认 baseUrl</label><input className="input" value={providerDraft.baseUrl} onChange={(event) => setProviderDraft((draft) => ({ ...draft, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" /></div>
+                  <div className="fieldset"><label>API 格式</label><div className="seg-radio">{apiFormatOptions.map(([value, label]) => <button key={value} className={providerDraft.apiFormat === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, apiFormat: value }))}>{label}</button>)}</div></div>
+                  <div className="fieldset"><label>鉴权方式</label><div className="seg-radio">{authStrategyOptions.map(([value, label]) => <button key={value} className={providerDraft.authStrategy === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, authStrategy: value }))}>{label}</button>)}</div></div>
+                  <div className="switch-row"><span className="sc"><strong>启用 Provider</strong><span>关闭后客户端 scope 不应再路由到该 Provider</span></span><button className={`toggle ${providerDraft.enabled ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} /></div>
+                </div>
+              </div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>密钥</strong><span className="sub">仅引用，不存明文</span></div>
+                <div className="cfg-body">
+                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={providerDialogMode === "edit" ? "留空则不修改" : "写入本地 secret store"} /><button className="btn-ghost" type="button"><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：{providerDialogMode === "edit" ? "已保存密钥引用" : "新建后写入本地密钥库"}。浏览器只显示掩码或占位。</span></div>
+                </div>
+              </div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="settings-2" /></span><strong>网络</strong><span className="sub">高级</span></div>
+                <div className="cfg-body">
+                  <div className="form-row2">
+                    <div className="fieldset"><label>请求超时 (ms)</label><input className="input" value="30000" readOnly /></div>
+                    <div className="fieldset"><label>首字节超时 (ms)</label><input className="input" value="8000" readOnly /></div>
+                  </div>
+                  <div className="form-row2">
+                    <div className="fieldset"><label>流空闲超时 (ms)</label><input className="input" value="60000" readOnly /></div>
+                    <div className="fieldset"><label>代理 (proxyUrl)</label><input className="input" placeholder="可留空" readOnly /></div>
+                  </div>
+                  <div className="switch-row"><span className="sc"><strong>TLS 校验</strong><span>关闭仅用于本地自签证书</span></span><button className="toggle on" type="button" /></div>
+                </div>
+              </div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="brain" /></span><strong>推理能力</strong><span className="sub">thinking / effort</span></div>
+                <div className="cfg-body">
+                  <div className="switch-row"><span className="sc"><strong>支持 thinking</strong><span>透传思考过程参数</span></span><button className="toggle on" type="button" /></div>
+                  <div className="switch-row"><span className="sc"><strong>支持 effort 等级</strong><span>low / medium / high</span></span><button className="toggle on" type="button" /></div>
+                  <div className="form-row2">
+                    <div className="fieldset"><label>thinking 参数名</label><input className="input" value="thinking" readOnly /></div>
+                    <div className="fieldset"><label>effort 参数名</label><input className="input" value="reasoning_effort" readOnly /></div>
+                  </div>
+                </div>
+              </div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="tag" /></span><strong>元数据</strong></div>
+                <div className="cfg-body">
+                  <div className="fieldset"><label>默认模型</label><input className="input" value={providerDraft.defaultModel} onChange={(event) => setProviderDraft((draft) => ({ ...draft, defaultModel: event.target.value }))} placeholder="model-id" /></div>
+                  <div className="fieldset"><label>模型列表</label><textarea className="input" value={providerDraft.modelsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, modelsText: event.target.value }))} placeholder="每行一个模型 ID" /></div>
+                  <div className="fieldset"><label>客户端范围</label><div className="chips">{appScopeOptions.map(([scope, label]) => <button key={scope} className={`chip ${providerDraft.appScopes[scope] ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, appScopes: { ...draft.appScopes, [scope]: !draft.appScopes[scope] } }))}>{label}</button>)}</div></div>
+                </div>
+                <div className="save-bar"><span className="dirty"><i data-lucide="circle-dot" />有未保存改动</span><span className="filler" /><button className="btn-ghost" type="button" disabled={providerBusy} onClick={closeProviderConfig}>取消</button><button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}><i data-lucide="check" />{providerBusy ? "保存中..." : "保存配置"}</button></div>
+              </div>
+            </div>
+            <div>
+              <div className="aside-card">
+                <div className="section-label">当前状态</div>
+                <div className="switch-row" style={{ border: "none", padding: 0 }}><ProviderStatusDot value={statusText} /><span className="filler" /><StatusTag value={statusText} /></div>
+                <div className="metric-row" style={{ gridTemplateColumns: "1fr 1fr" }}><div className="m"><span>p95</span><strong>{formatMs(numberAt(selectedHealth, ["p95Ms", "lastLatencyMs"], 820))}</strong></div><div className="m"><span>失败</span><strong>{formatCompact(numberAt(selectedHealth, ["failureCount", "consecutiveFailures"]))}</strong></div></div>
+              </div>
+              <div className="aside-card">
+                <div className="section-label">Endpoint</div>
+                {(selectedEndpoints.length ? selectedEndpoints : [{ id: "endpoint A", apiFormat: providerDraft.apiFormat, baseUrl: providerDraft.baseUrl, enabled: providerDraft.enabled }]).slice(0, 3).map((endpoint) => (
+                  <div className="switch-row" key={textAt(endpoint, ["id"], "endpoint")}><span className="sc"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], providerDraft.apiFormat), textAt(endpoint, ["baseUrl"], providerDraft.baseUrl || "baseUrl")])}</span></span><StatusTag value={endpoint.enabled === false ? "disabled" : "online"} /></div>
+                ))}
+                <button className="btn-ghost btn-sm" type="button"><i data-lucide="pencil" />编辑 endpoint</button>
+              </div>
+              <div className="aside-card">
+                <div className="section-label">危险操作</div>
+                {selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : <span className="help-text">新建 Provider 尚无危险操作</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderClientAuthConfig = () => (
+    <div data-view="clientauth" className="on">
+      <div className="subpage">
+        <div className="subpage-head">
+          <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={clientAuthBusy} onClick={() => { setClientAuthOpen(false); setView("overview"); }}><i data-lucide="arrow-left" /></button>
+          <div className="htitle"><h2>Gateway key</h2><p>客户端接入鉴权沿用原型配置子页样式；密钥只显示本次生成值或掩码。</p></div>
+        </div>
+        <div className="subpage-grid">
+          <div>
+            <div className="cfg">
+              <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>客户端鉴权</strong><span className="sub">Gateway</span></div>
+              <div className="cfg-body">
+                <div className="switch-row"><span className="sc"><strong>启用客户端鉴权</strong><span>{textAt(recordAt(clientAuth, ["secret"]), ["masked"], clientAuth.enabled ? "已启用" : "未启用")}</span></span><button className={`toggle ${clientAuthEnabled ? "on" : ""}`} type="button" onClick={() => setClientAuthEnabled((value) => !value)} /></div>
+                <div className="fieldset"><label>新 Gateway key</label><input className="input" type="password" value={clientKeyDraft} onChange={(event) => setClientKeyDraft(event.target.value)} placeholder="留空则只修改启用状态" /></div>
+                {clientKeyReveal ? <div className="aside-card"><div className="section-label">本次生成的新 key</div><div className="cell-mono">{clientKeyReveal}</div></div> : null}
+              </div>
+              <div className="save-bar"><span className="dirty"><i data-lucide="circle-dot" />鉴权配置变更</span><span className="filler" /><button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => { setClientAuthOpen(false); setView("overview"); }}>取消</button><button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(true)}>生成新 key</button><button className="btn-primary" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(false)}><i data-lucide="check" />{clientAuthBusy ? "保存中..." : "保存 key"}</button></div>
+            </div>
+          </div>
+          <div>
+            <div className="aside-card">
+              <div className="section-label">当前状态</div>
+              <div className="switch-row" style={{ border: "none", padding: 0 }}><ProviderStatusDot value={clientAuth.enabled ? "enabled" : "disabled"} /><span className="filler" /><StatusTag value={clientAuth.enabled ? "enabled" : "disabled"} /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderModels = () => (
     <div data-view="models" className="on">
       <div className="page-head">
@@ -827,12 +953,16 @@ export function ModelGatewayPage() {
     </div>
   );
 
-  const content = {
-    overview: renderOverview,
-    providers: renderProviders,
-    models: renderModels,
-    usage: renderUsage,
-  }[view];
+  const content = providerDialogMode
+    ? renderProviderConfig
+    : clientAuthOpen
+      ? renderClientAuthConfig
+      : {
+          overview: renderOverview,
+          providers: renderProviders,
+          models: renderModels,
+          usage: renderUsage,
+        }[view];
 
   return (
     <div id="stage" className="page-stage" role="main" aria-live="polite" tabIndex={-1}>
@@ -851,85 +981,6 @@ export function ModelGatewayPage() {
           <button type="button" onClick={() => { void status.refetch(); void providers.refetch(); void usage.refetch(); }}><i data-lucide="refresh-cw" />刷新</button>
         </div>
         {content()}
-        {providerDialogMode ? (
-          <div className="gateway-config-overlay" role="presentation" onClick={() => !providerBusy && setProviderDialogMode(null)}>
-            <section className="gateway-config-dialog" role="dialog" aria-modal="true" aria-labelledby="gateway-provider-dialog-title" onClick={(event) => event.stopPropagation()}>
-              <header className="gateway-config-head">
-                <div>
-                  <p className="eyebrow">Provider</p>
-                  <h3 id="gateway-provider-dialog-title">{providerDialogMode === "create" ? "新建 Provider" : "编辑 Provider"}</h3>
-                </div>
-                <button className="btn-icon btn-ghost" type="button" disabled={providerBusy} onClick={() => setProviderDialogMode(null)}><i data-lucide="x" /></button>
-              </header>
-              <div className="gateway-config-body">
-                <section className="gateway-config-section">
-                  <div className="gateway-config-section-head">
-                    <strong>基础配置</strong>
-                    <span>常用字段只保留名称、上游地址、协议、默认模型和密钥。</span>
-                  </div>
-                  <div className="gateway-form-grid">
-                    <label className="gateway-field"><span>Provider ID</span><input value={providerDraft.id} disabled={providerDialogMode === "edit"} onChange={(event) => setProviderDraft((draft) => ({ ...draft, id: event.target.value }))} placeholder="my-provider" /></label>
-                    <label className="gateway-field"><span>名称</span><input value={providerDraft.name} onChange={(event) => setProviderDraft((draft) => ({ ...draft, name: event.target.value }))} placeholder="主力模型服务" /></label>
-                    <label className="gateway-field gateway-switch-field"><span>启用</span><input type="checkbox" checked={providerDraft.enabled} onChange={(event) => setProviderDraft((draft) => ({ ...draft, enabled: event.target.checked }))} /></label>
-                    <label className="gateway-field gateway-field-full"><span>Base URL</span><input value={providerDraft.baseUrl} onChange={(event) => setProviderDraft((draft) => ({ ...draft, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" /></label>
-                    <label className="gateway-field"><span>协议</span><select value={providerDraft.apiFormat} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiFormat: event.target.value }))}>{apiFormatOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="gateway-field"><span>认证</span><select value={providerDraft.authStrategy} onChange={(event) => setProviderDraft((draft) => ({ ...draft, authStrategy: event.target.value }))}>{authStrategyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="gateway-field"><span>默认模型</span><input value={providerDraft.defaultModel} onChange={(event) => setProviderDraft((draft) => ({ ...draft, defaultModel: event.target.value }))} placeholder="model-id" /></label>
-                    <label className="gateway-field"><span>API key</span><input type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={providerDialogMode === "edit" ? "留空则不修改" : "写入本地 secret store"} /></label>
-                    <label className="gateway-field gateway-field-full"><span>模型列表</span><textarea value={providerDraft.modelsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, modelsText: event.target.value }))} placeholder="每行一个模型 ID" /></label>
-                  </div>
-                </section>
-                <section className="gateway-config-section">
-                  <div className="gateway-config-section-head">
-                    <strong>客户端范围</strong>
-                    <span>选择该 Provider 可服务的客户端 scope。</span>
-                  </div>
-                  <div className="gateway-scope-grid">
-                    {appScopeOptions.map(([scope, label]) => (
-                      <label key={scope} className="gateway-check">
-                        <input type="checkbox" checked={Boolean(providerDraft.appScopes[scope])} onChange={(event) => setProviderDraft((draft) => ({ ...draft, appScopes: { ...draft.appScopes, [scope]: event.target.checked } }))} />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              </div>
-              <footer className="gateway-config-actions">
-                <button className="btn-ghost" type="button" disabled={providerBusy} onClick={() => setProviderDialogMode(null)}>取消</button>
-                <button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}>{providerBusy ? "保存中..." : "保存 Provider"}</button>
-              </footer>
-            </section>
-          </div>
-        ) : null}
-        {clientAuthOpen ? (
-          <div className="gateway-config-overlay" role="presentation" onClick={() => !clientAuthBusy && setClientAuthOpen(false)}>
-            <section className="gateway-config-dialog gateway-config-dialog-narrow" role="dialog" aria-modal="true" aria-labelledby="gateway-client-key-dialog-title" onClick={(event) => event.stopPropagation()}>
-              <header className="gateway-config-head">
-                <div>
-                  <p className="eyebrow">Gateway key</p>
-                  <h3 id="gateway-client-key-dialog-title">客户端 Gateway key</h3>
-                </div>
-                <button className="btn-icon btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => setClientAuthOpen(false)}><i data-lucide="x" /></button>
-              </header>
-              <div className="gateway-config-body">
-                <section className="gateway-config-section">
-                  <div className="gateway-config-section-head">
-                    <strong>当前状态</strong>
-                    <span>{textAt(recordAt(clientAuth, ["secret"]), ["masked"], clientAuth.enabled ? "已启用" : "未启用")}</span>
-                  </div>
-                  <label className="gateway-check"><input type="checkbox" checked={clientAuthEnabled} onChange={(event) => setClientAuthEnabled(event.target.checked)} /><span>启用客户端鉴权</span></label>
-                  <label className="gateway-field"><span>新 Gateway key</span><input type="password" value={clientKeyDraft} onChange={(event) => setClientKeyDraft(event.target.value)} placeholder="留空则只修改启用状态" /></label>
-                  {clientKeyReveal ? <div className="gateway-secret-output"><span>本次生成的新 key</span><strong>{clientKeyReveal}</strong></div> : null}
-                </section>
-              </div>
-              <footer className="gateway-config-actions">
-                <button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => setClientAuthOpen(false)}>关闭</button>
-                <button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(true)}>生成新 key</button>
-                <button className="btn-primary" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(false)}>{clientAuthBusy ? "保存中..." : "保存 key"}</button>
-              </footer>
-            </section>
-          </div>
-        ) : null}
       </div>
     </div>
   );
