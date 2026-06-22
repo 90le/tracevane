@@ -50,6 +50,13 @@ import {
   type ModelGatewayUpsertProviderRequest,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import {
+  ModelCatalogEditor,
+  newModelRow,
+  type DetectedCandidate,
+  type ModelRow,
+} from "./ModelCatalogEditor";
+import { ProviderPresetChooser, type ProviderCreatePreset } from "./ProviderPresetChooser";
 
 type Section = "basic" | "endpoint" | "models" | "advanced";
 
@@ -76,17 +83,6 @@ interface EndpointRow {
   apiFormat: ModelGatewayApiFormat;
   authStrategy: ModelGatewayAuthStrategy;
   enabled: boolean;
-}
-
-interface ModelRow {
-  id: string;
-  alias: string;
-  contextWindow: string;
-  maxOutput: string;
-  isDefault: boolean;
-  reasoning: boolean;
-  vision: boolean;
-  tools: boolean;
 }
 
 interface FormState {
@@ -126,6 +122,37 @@ function emptyForm(): FormState {
     notes: "",
     endpoints: [],
     models: [],
+  };
+}
+
+function formFromPreset(preset: ProviderCreatePreset): FormState {
+  const base = emptyForm();
+  const models: ModelRow[] = preset.modelId
+    ? [{ ...newModelRow(true), id: preset.modelId, alias: preset.modelAlias ?? "" }]
+    : [];
+  const endpoints: EndpointRow[] = preset.endpointName
+    ? [
+        {
+          id: "",
+          name: preset.endpointName,
+          baseUrl: preset.baseUrl,
+          apiFormat: preset.apiFormat,
+          authStrategy: preset.authStrategy,
+          enabled: true,
+        },
+      ]
+    : [];
+  return {
+    ...base,
+    name: preset.name,
+    category: preset.category,
+    baseUrl: preset.baseUrl,
+    apiFormat: preset.apiFormat,
+    authStrategy: preset.authStrategy,
+    supportsThinking: preset.supportsThinking ?? false,
+    supportsEffort: preset.supportsEffort ?? false,
+    endpoints,
+    models,
   };
 }
 
@@ -410,6 +437,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const [showErrors, setShowErrors] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState(false);
+  // Create-mode step 1: pick a protocol preset before the segmented form.
+  const [presetChosen, setPresetChosen] = React.useState(false);
+  // Detected-but-not-added models, surfaced as opt-in candidates.
+  const [candidates, setCandidates] = React.useState<DetectedCandidate[]>([]);
 
   // Baseline snapshot of the hydrated form, used to detect unsaved edits.
   const baselineRef = React.useRef<string | null>(null);
@@ -436,6 +467,18 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // Create-mode step 1 → step 2: prefill the form from the chosen preset and
+  // reset the dirty baseline so a fresh preset isn't flagged as unsaved drift.
+  const choosePreset = (preset: ProviderCreatePreset) => {
+    const next = formFromPreset(preset);
+    setForm(next);
+    baselineRef.current = JSON.stringify(next);
+    setCandidates([]);
+    setShowErrors(false);
+    setSection("basic");
+    setPresetChosen(true);
+  };
 
   const validation = React.useMemo(() => validate(form), [form]);
 
@@ -501,6 +544,25 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
 
   const saving = createMutation.isPending || updateMutation.isPending;
 
+  // Create-mode step 1: protocol-preset chooser, shown before the full form.
+  // Edit mode skips this entirely.
+  if (isCreate && !presetChosen) {
+    return (
+      <div className="grid gap-4">
+        <div className="flex items-start gap-3">
+          <Button variant="ghost" size="icon" onClick={() => goToView("providers")} title="返回" aria-label="返回">
+            <ArrowLeft />
+          </Button>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-ink-strong">新建 API Provider</h2>
+            <p className="text-sm text-muted">选择一个协议预设作为起点，下一步进入分段配置。</p>
+          </div>
+        </div>
+        <ProviderPresetChooser onChoose={choosePreset} />
+      </div>
+    );
+  }
+
   const handleSave = () => {
     setShowErrors(true);
     if (validation.errors.length > 0) {
@@ -541,36 +603,59 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       {
         onSuccess: (result) => {
           const rec = result.recommendations[0];
-          setForm((f) => {
-            const next = { ...f };
-            if (rec) {
-              next.apiFormat = rec.apiFormat;
-              next.authStrategy = rec.authStrategy;
-            }
-            // Merge detected models that aren't already present.
-            const existing = new Set(f.models.map((m) => m.id.trim()));
-            const detected: ModelRow[] = result.models
-              .filter((m) => m.id && !existing.has(m.id))
-              .map((m) => ({
-                id: m.id,
-                alias: "",
-                contextWindow: m.contextWindow != null ? String(m.contextWindow) : "",
-                maxOutput: m.maxOutputTokens != null ? String(m.maxOutputTokens) : "",
-                isDefault: false,
-                reasoning: m.features?.reasoning ?? false,
-                vision: m.features?.vision ?? false,
-                tools: m.features?.tools ?? false,
-              }));
-            next.models = [...f.models, ...detected];
-            return next;
-          });
+          if (rec) {
+            setForm((f) => ({ ...f, apiFormat: rec.apiFormat, authStrategy: rec.authStrategy }));
+          }
+          // Surface detected models not already present as opt-in candidates
+          // (preserves the old "merge not-present" set, but user-controlled).
+          const existing = new Set(form.models.map((m) => m.id.trim()).filter(Boolean));
+          const detected: DetectedCandidate[] = result.models
+            .filter((m) => m.id && !existing.has(m.id))
+            .map((m) => ({
+              id: m.id,
+              contextWindow: m.contextWindow != null ? String(m.contextWindow) : "",
+              maxOutput: m.maxOutputTokens != null ? String(m.maxOutputTokens) : "",
+              reasoning: m.features?.reasoning ?? false,
+              vision: m.features?.vision ?? false,
+              tools: m.features?.tools ?? false,
+            }));
+          setCandidates(detected);
+          if (detected.length > 0) setSection("models");
           toast.success(`探测完成 · ${result.models.length} 个模型`, {
-            description: rec ? `推荐协议 ${API_FORMAT_LABEL[rec.apiFormat]}` : undefined,
+            description: detected.length
+              ? `${detected.length} 个新模型可在「模型」中加入${rec ? ` · 推荐协议 ${API_FORMAT_LABEL[rec.apiFormat]}` : ""}`
+              : rec
+                ? `推荐协议 ${API_FORMAT_LABEL[rec.apiFormat]}`
+                : undefined,
           });
         },
         onError: (error) => toast.error("探测失败", { description: error.message }),
       },
     );
+  };
+
+  // Opt-in detected candidates: append the chosen ids as model rows.
+  const addCandidates = (ids: string[]) => {
+    const chosen = new Set(ids);
+    const present = new Set(form.models.map((m) => m.id.trim()).filter(Boolean));
+    const toAdd = candidates.filter((c) => chosen.has(c.id) && !present.has(c.id));
+    if (toAdd.length === 0) return;
+    setForm((f) => ({
+      ...f,
+      models: [
+        ...f.models,
+        ...toAdd.map((c) => ({
+          ...newModelRow(),
+          id: c.id,
+          contextWindow: c.contextWindow,
+          maxOutput: c.maxOutput,
+          reasoning: c.reasoning,
+          vision: c.vision,
+          tools: c.tools,
+        })),
+      ],
+    }));
+    setCandidates((prev) => prev.filter((c) => !chosen.has(c.id)));
   };
 
   const handleSetSecret = () => {
@@ -773,139 +858,15 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   );
 
   const modelsSection = (
-    <CfgCard icon={Box} title="模型" sub="结构化行编辑 · 保存前校验">
-      {form.models.length === 0 ? (
-        <p className="text-sm text-muted">还没有模型，新增一行或在「基础」用「探测」自动发现。</p>
-      ) : (
-        <div className="grid gap-3">
-          {form.models.map((m, i) => {
-            const rowError = showErrors ? validation.modelErrors[i] : undefined;
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "grid gap-2.5 rounded-sm border bg-panel-2 p-3",
-                  rowError ? "border-red" : "border-line",
-                )}
-              >
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  <Field label="模型 id">
-                    <Input
-                      value={m.id}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))
-                      }
-                      placeholder="例如 glm-4-plus"
-                    />
-                  </Field>
-                  <Field label="alias">
-                    <Input
-                      value={m.alias}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, alias: e.target.value } : x)))
-                      }
-                      placeholder="可选"
-                    />
-                  </Field>
-                </div>
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  <Field label="上下文窗口">
-                    <Input
-                      inputMode="numeric"
-                      value={m.contextWindow}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, contextWindow: e.target.value } : x)))
-                      }
-                      placeholder="tokens"
-                    />
-                  </Field>
-                  <Field label="最大输出">
-                    <Input
-                      inputMode="numeric"
-                      value={m.maxOutput}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, maxOutput: e.target.value } : x)))
-                      }
-                      placeholder="tokens"
-                    />
-                  </Field>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="radio"
-                      name="default-model"
-                      checked={m.isDefault}
-                      onChange={() =>
-                        update("models", form.models.map((x, j) => ({ ...x, isDefault: j === i })))
-                      }
-                    />
-                    默认模型
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={m.reasoning}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, reasoning: e.target.checked } : x)))
-                      }
-                    />
-                    reasoning
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={m.vision}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, vision: e.target.checked } : x)))
-                      }
-                    />
-                    vision
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={m.tools}
-                      onChange={(e) =>
-                        update("models", form.models.map((x, j) => (j === i ? { ...x, tools: e.target.checked } : x)))
-                      }
-                    />
-                    tools
-                  </label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() =>
-                      update("models", form.models.filter((_, j) => j !== i))
-                    }
-                  >
-                    <Trash2 />
-                    移除
-                  </Button>
-                </div>
-                {rowError && <span className="text-sm text-red">{rowError}</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="justify-self-start"
-        onClick={() =>
-          update("models", [
-            ...form.models,
-            { id: "", alias: "", contextWindow: "", maxOutput: "", isDefault: form.models.length === 0, reasoning: false, vision: false, tools: false },
-          ])
-        }
-      >
-        <Plus />
-        新增模型
-      </Button>
+    <CfgCard icon={Box} title="模型" sub="搜索 / 批量导入 / 保存前校验">
+      <ModelCatalogEditor
+        models={form.models}
+        onChange={(models) => update("models", models)}
+        modelErrors={validation.modelErrors}
+        showErrors={showErrors}
+        candidates={candidates}
+        onAddCandidates={addCandidates}
+      />
     </CfgCard>
   );
 
@@ -972,6 +933,17 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
             baseUrl / 协议 / 模型 / 网络 / 推理。保存前内联校验，危险变更需确认。
           </p>
         </div>
+        {isCreate && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto shrink-0"
+            onClick={() => setPresetChosen(false)}
+          >
+            <ArrowLeft />
+            返回选择预设
+          </Button>
+        )}
       </div>
 
       {/* Section nav */}

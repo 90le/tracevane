@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Box, Check, Loader2, Pencil, X } from "lucide-react";
+import { Box, Check, Loader2, Pencil, Search, X } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -117,9 +117,20 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
   const [editingKey, setEditingKey] = React.useState<string | null>(null);
   const [aliasDraft, setAliasDraft] = React.useState("");
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
 
   const providers = providersQuery.data?.providers ?? [];
-  const rows = React.useMemo(() => aggregateModels(providers), [providers]);
+  const allRows = React.useMemo(() => aggregateModels(providers), [providers]);
+  const q = search.trim().toLowerCase();
+  const rows = React.useMemo(() => {
+    if (!q) return allRows;
+    return allRows.filter(
+      (r) =>
+        r.model.id.toLowerCase().includes(q) ||
+        (r.model.aliases ?? []).some((a) => a.toLowerCase().includes(q)) ||
+        r.providerName.toLowerCase().includes(q),
+    );
+  }, [allRows, q]);
 
   const findProvider = (providerId: string) =>
     providers.find((p) => p.id === providerId) ?? null;
@@ -210,10 +221,33 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
         </p>
       </div>
 
-      {rows.length === 0 ? (
+      {allRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索模型 id / alias / Provider"
+              className="pl-8"
+              aria-label="搜索模型"
+            />
+          </div>
+          <span className="text-xs text-subtle">
+            {q ? `${rows.length} / ${allRows.length}` : `${allRows.length} 个模型`}
+          </span>
+        </div>
+      )}
+
+      {allRows.length === 0 ? (
         <EmptyState
           title="尚无模型"
           description="启用的 Provider 还没有配置任何模型，前往 Provider 配置补充模型目录。"
+        />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="没有匹配的模型"
+          description={`没有匹配「${search}」的模型，试试其它关键词。`}
         />
       ) : (
         <Table>
