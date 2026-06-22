@@ -79,6 +79,8 @@ import {
   type ModelGatewayProviderAccountUpdateResponse,
   type ModelGatewayProviderModel,
   type ModelGatewayProviderModelCatalog,
+  type ModelGatewayProviderModelPricing,
+  type ModelGatewayUnsupportedRoute,
   type ModelGatewayModelFeatures,
   type ModelGatewayProviderNetwork,
   type ModelGatewayProviderReasoning,
@@ -160,6 +162,7 @@ import {
 import { normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
 import { sanitizeOpenAIChatUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
+import { MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS } from "./unsupported-endpoints.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DETECT_PROVIDER_DEFAULT_TIMEOUT_MS = 20_000;
@@ -294,6 +297,39 @@ export interface ModelGatewayPaths {
   logs: string;
 }
 
+const MODEL_GATEWAY_SERVICE_ERROR_DETAIL_ALLOWLIST = new Set([
+  "endpoint",
+  "routeId",
+  "providerId",
+  "scope",
+  "appScope",
+  "requestedPath",
+  "requestedModel",
+  "statusCode",
+  "upstreamStatusCode",
+  "retryAfterMs",
+  "feasibility",
+  "reference",
+]);
+
+function serviceErrorDetailValueIsSafe(value: unknown): value is string | number | boolean | null {
+  return value === null
+    || typeof value === "string"
+    || (typeof value === "number" && Number.isFinite(value))
+    || typeof value === "boolean";
+}
+
+function sanitizeModelGatewayServiceErrorDetails(details: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!details) return null;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (!MODEL_GATEWAY_SERVICE_ERROR_DETAIL_ALLOWLIST.has(key)) continue;
+    if (!serviceErrorDetailValueIsSafe(value)) continue;
+    sanitized[key] = value;
+  }
+  return Object.keys(sanitized).length ? sanitized : null;
+}
+
 export class ModelGatewayServiceError extends Error {
   constructor(
     readonly code: string,
@@ -305,11 +341,12 @@ export class ModelGatewayServiceError extends Error {
     this.name = "ModelGatewayServiceError";
   }
 
-  toShape(): { code: string; message: string; statusCode: number } {
+  toShape(): { code: string; message: string; statusCode: number; details: Record<string, unknown> | null } {
     return {
       code: this.code,
       message: this.message,
       statusCode: this.statusCode,
+      details: sanitizeModelGatewayServiceErrorDetails(this.details),
     };
   }
 }
@@ -759,6 +796,9 @@ function normalizeModelPricing(value: unknown): ModelGatewayProviderModel["prici
     "outputPer1M",
     "cacheReadPer1M",
     "cacheCreationPer1M",
+    "longContextInputThreshold",
+    "longContextInputMultiplier",
+    "longContextOutputMultiplier",
     "imageGenerationPerImage",
     "imageEditPerRequest",
     "audioInputPerRequest",
@@ -1029,6 +1069,20 @@ function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel>
       },
     };
   }
+  if (modelNameMatches(modelId, [/^gpt-realtime-2(?:\b|-|_|\.)/, /^gpt-realtime-2$/])) {
+    return {
+      contextWindow: 128_000,
+      maxOutputTokens: 32_000,
+      features: {
+        ...features,
+        vision: true,
+        tools: true,
+        reasoning: true,
+        audioInput: true,
+        audioOutput: true,
+      },
+    };
+  }
   if (modelNameMatches(modelId, [/^gpt-realtime(?:\b|-|_|\.)/])) {
     return {
       contextWindow: 32_000,
@@ -1037,13 +1091,20 @@ function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel>
         ...features,
         vision: true,
         tools: true,
-        reasoning: modelNameMatches(modelId, [/realtime-2/]),
+        reasoning: false,
         audioInput: true,
         audioOutput: true,
       },
     };
   }
 
+  if (modelNameMatches(modelId, [/^gpt-5\.(?:4|5)-mini(?:\b|-|_|\.)/, /^gpt-5\.3-codex(?:\b|-|_|\.)/, /^gpt-5\.3-codex$/])) {
+    return {
+      contextWindow: 400_000,
+      maxOutputTokens: 128_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
   if (modelNameMatches(modelId, [/^gpt-5\.(?:4|5)(?:\b|-|_)/, /^gpt-5\.(?:4|5)$/])) {
     return {
       contextWindow: 1_050_000,
@@ -2519,6 +2580,14 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
       contextWindow: 1_050_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 5,
+        outputPer1M: 30,
+        longContextInputThreshold: 272_000,
+        longContextInputMultiplier: 2,
+        longContextOutputMultiplier: 1.5,
+      },
     },
     {
       id: "gpt-5.4",
@@ -2526,20 +2595,35 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
       contextWindow: 1_050_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 2.5,
+        outputPer1M: 15,
+      },
     },
     {
       id: "gpt-5.4-mini",
       aliases: ["gpt5.4-mini"],
-      contextWindow: 272_000,
+      contextWindow: 400_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 0.75,
+        outputPer1M: 4.5,
+      },
     },
     {
       id: "gpt-5.3-codex",
       aliases: ["gpt5.3-codex", "gpt-5.3-codex-spark"],
-      contextWindow: 272_000,
+      contextWindow: 400_000,
       maxOutputTokens: 128_000,
-      features: { text: true, streaming: true, tools: true, vision: false, reasoning: true, responses: true },
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 1.75,
+        outputPer1M: 14,
+      },
     },
     {
       id: "gpt-image-2",
@@ -2715,8 +2799,8 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
       id: "gpt-realtime-2",
       label: "GPT Realtime 2",
       aliases: ["realtime-2"],
-      contextWindow: 32_000,
-      maxOutputTokens: 4_096,
+      contextWindow: 128_000,
+      maxOutputTokens: 32_000,
       features: {
         text: true,
         streaming: true,
@@ -2773,6 +2857,7 @@ function mergeModelCatalogWithDefaults(
         ...(defaultModel.features || {}),
         ...(existing.features || {}),
       }),
+      pricing: existing.pricing || defaultModel.pricing,
     });
   }
   return {
@@ -2802,7 +2887,27 @@ function mergeManagedModelCatalogWithDefaults(
       ),
     }
     : undefined;
-  return mergeModelCatalogWithDefaults(source, defaults);
+  const merged = mergeModelCatalogWithDefaults(source, defaults);
+  const defaultsByKey = new Map((defaults.models || [])
+    .map((model) => [normalizeModelLookupKey(model.id), model] as const)
+    .filter(([key]) => Boolean(key)));
+  return {
+    ...merged,
+    models: (merged.models || []).map((model) => {
+      const defaultModel = defaultsByKey.get(normalizeModelLookupKey(model.id));
+      if (!defaultModel) return model;
+      return {
+        ...model,
+        contextWindow: positiveIntegerOrNull(defaultModel.contextWindow) ?? positiveIntegerOrNull(model.contextWindow),
+        maxOutputTokens: positiveIntegerOrNull(defaultModel.maxOutputTokens) ?? positiveIntegerOrNull(model.maxOutputTokens),
+        pricing: defaultModel.pricing || model.pricing,
+        features: compactModelFeatures({
+          ...(model.features || {}),
+          ...(defaultModel.features || {}),
+        }),
+      };
+    }),
+  };
 }
 
 function isCodexAccountBackedProvider(provider: ModelGatewayProvider): boolean {
@@ -2930,6 +3035,127 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
   return "unsupported";
 }
 
+function modelGatewayUnsupportedRoute(
+  code: string,
+  reason: string,
+  routeId?: ModelGatewayRouteId,
+  endpoint?: string,
+): ModelGatewayUnsupportedRoute {
+  return {
+    ...(routeId ? { routeId } : {}),
+    ...(endpoint ? { endpoint } : {}),
+    code,
+    reason,
+  };
+}
+
+function modelGatewayRouteSupportForProviderModel(
+  provider: ModelGatewayProvider,
+  model: ModelGatewayProviderModel,
+): { supported: ModelGatewayRouteId[]; unsupported: ModelGatewayUnsupportedRoute[] } {
+  const features = compactModelFeatures({ ...(model.features || {}) });
+  const supported = new Set<ModelGatewayRouteId>();
+  const unsupported: ModelGatewayUnsupportedRoute[] = [];
+  const textCapable = features.text !== false && features.imageGeneration !== true;
+  const codexAccount = isCodexAccountBackedProvider(provider);
+
+  if (textCapable) {
+    supported.add("openai_chat_completions");
+    supported.add("openai_responses");
+    supported.add("openai_responses_compact");
+    supported.add("anthropic_messages");
+  }
+
+  if (features.imageGeneration === true) {
+    if (provider.apiFormat === "anthropic_messages") {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_image_generation_adapter_unverified",
+        "Gateway has no verified Anthropic Messages image generation adapter for this model.",
+        "openai_images_generations",
+      ));
+    } else {
+      supported.add("openai_images_generations");
+    }
+
+    if (codexAccount) {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_codex_account_image_edits_unsupported",
+        "Codex account image edits are not exposed by the verified Codex Responses image_generation bridge.",
+        "openai_images_edits",
+      ));
+    } else if (provider.apiFormat === "anthropic_messages") {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_image_edits_adapter_unverified",
+        "Gateway has no verified Anthropic Messages image edit adapter for this model.",
+        "openai_images_edits",
+      ));
+    } else {
+      supported.add("openai_images_edits");
+    }
+  }
+
+  if (features.audioInput === true) {
+    if (codexAccount) {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_codex_account_audio_unsupported",
+        "Codex account request-based audio input routes are not exposed by a verified Gateway backend contract.",
+        "openai_audio_transcriptions",
+      ));
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_codex_account_audio_unsupported",
+        "Codex account request-based audio translation routes are not exposed by a verified Gateway backend contract.",
+        "openai_audio_translations",
+      ));
+    } else if (provider.apiFormat === "anthropic_messages") {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_audio_adapter_unverified",
+        "Gateway has no verified Anthropic Messages request-based audio adapter for this model.",
+        "openai_audio_transcriptions",
+      ));
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_audio_adapter_unverified",
+        "Gateway has no verified Anthropic Messages request-based audio translation adapter for this model.",
+        "openai_audio_translations",
+      ));
+    } else {
+      supported.add("openai_audio_transcriptions");
+      supported.add("openai_audio_translations");
+    }
+  }
+
+  if (features.audioOutput === true) {
+    if (codexAccount) {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_codex_account_audio_unsupported",
+        "Codex account request-based speech output is not exposed by a verified Gateway backend contract.",
+        "openai_audio_speech",
+      ));
+    } else if (provider.apiFormat === "anthropic_messages") {
+      unsupported.push(modelGatewayUnsupportedRoute(
+        "model_gateway_audio_adapter_unverified",
+        "Gateway has no verified Anthropic Messages request-based speech adapter for this model.",
+        "openai_audio_speech",
+      ));
+    } else {
+      supported.add("openai_audio_speech");
+    }
+  }
+
+  if (modelNameMatches(model.id, [/^gpt-realtime(?:\b|-|_|\.)/]) || features.audioInput === true || features.audioOutput === true) {
+    unsupported.push(modelGatewayUnsupportedRoute(
+      "model_gateway_realtime_unsupported",
+      "Gateway does not expose verified Realtime/WebSocket/WebRTC/SIP proxying for this model yet.",
+      undefined,
+      "/v1/realtime",
+    ));
+  }
+
+  return {
+    supported: [...supported],
+    unsupported,
+  };
+}
+
 function defaultTestRouteId(provider: ModelGatewayProvider): ModelGatewayRouteId | null {
   if (provider.apiFormat === "openai_chat") return "openai_chat_completions";
   if (provider.apiFormat === "openai_responses") return "openai_responses";
@@ -3040,7 +3266,12 @@ function enabledEndpointProfiles(provider: ModelGatewayProvider): ModelGatewayPr
 }
 
 function healthIsDegraded(health: ModelGatewayProviderHealth): boolean {
-  return Boolean(health.lastFailureAt || health.retryAfterUntil || health.circuitState !== "closed");
+  return Boolean(
+    health.circuitState !== "closed"
+    || health.retryAfterUntil
+    || health.consecutiveFailures > 0
+    || health.lastError,
+  );
 }
 
 function providerHasHealthyRoutingSurface(provider: ModelGatewayProvider): boolean {
@@ -4197,7 +4428,17 @@ function consumeSseJsonPayloads(
 
 function buildCodexAccountResponsesJsonFromSseText(responseText: string): Record<string, unknown> {
   const direct = parseJsonObjectOrNull(responseText);
-  if (direct) return direct;
+  if (direct) {
+    const directError = responsesStreamErrorFromPayload(direct);
+    if (directError) {
+      throw new ModelGatewayServiceError(
+        directError.code || directError.type || "model_gateway_codex_account_stream_error",
+        directError.message,
+        upstreamErrorStatusCodeForHealth(directError.code, directError.message),
+      );
+    }
+    return direct;
+  }
 
   const payloads = extractJsonPayloadsFromSseText(responseText);
   const outputByIndex = new Map<number, unknown>();
@@ -4205,6 +4446,14 @@ function buildCodexAccountResponsesJsonFromSseText(responseText: string): Record
   let completedResponse: Record<string, unknown> | null = null;
   for (const payload of payloads) {
     if (!isRecord(payload)) continue;
+    const streamError = responsesStreamErrorFromPayload(payload);
+    if (streamError) {
+      throw new ModelGatewayServiceError(
+        streamError.code || streamError.type || "model_gateway_codex_account_stream_error",
+        streamError.message,
+        upstreamErrorStatusCodeForHealth(streamError.code, streamError.message),
+      );
+    }
     if (payload.error !== undefined) {
       throw new ModelGatewayServiceError(
         "model_gateway_codex_account_stream_error",
@@ -4524,6 +4773,29 @@ function isProviderHealthSuccess(statusCode: number | null, errorCode: string | 
   return statusCode < 500 && statusCode !== 429;
 }
 
+function upstreamErrorStatusCodeForHealth(errorCode: string | null | undefined, errorMessage: string | null | undefined): number {
+  return providerHealthNeutralUpstreamError(errorCode, errorMessage) ? 400 : 502;
+}
+
+function providerHealthNeutralUpstreamError(errorCode: string | null | undefined, errorMessage: string | null | undefined): boolean {
+  const haystack = `${normalizeString(errorCode)} ${normalizeString(errorMessage)}`.toLowerCase();
+  return haystack.includes("context_length_exceeded")
+    || haystack.includes("context window")
+    || haystack.includes("input exceeds")
+    || haystack.includes("prompt too long")
+    || haystack.includes("maximum context")
+    || haystack.includes("max context");
+}
+
+function providerHealthSuccessForUpstreamResult(
+  statusCode: number | null,
+  errorCode: string | null | undefined,
+  errorMessage: string | null | undefined,
+): boolean {
+  if (providerHealthNeutralUpstreamError(errorCode, errorMessage)) return true;
+  return isProviderHealthSuccess(statusCode, errorCode || null);
+}
+
 function providerCircuitRetryReady(provider: ModelGatewayProvider, nowMs = Date.now()): boolean {
   return healthCircuitRetryReady(provider.health, nowMs);
 }
@@ -4723,10 +4995,12 @@ function buildCodexConfig(source: string, options: {
   endpoint: string;
   key: string;
   profile: ModelGatewayAppConnectionProfile;
+  modelCatalogPath?: string | null;
 }): string {
   let next = stripCodexManagedBlock(source);
   next = upsertTopLevelTomlString(next, "model_provider", CODEX_GATEWAY_PROVIDER_ID);
   if (options.profile.model) next = upsertTopLevelTomlString(next, "model", options.profile.model);
+  if (options.modelCatalogPath) next = upsertTopLevelTomlString(next, "model_catalog_json", options.modelCatalogPath);
   if (options.profile.reasoningEffort) {
     next = upsertTopLevelTomlString(next, "model_reasoning_effort", options.profile.reasoningEffort);
   } else {
@@ -4861,32 +5135,63 @@ function buildClaudeSettingsConfig(source: string | null, targetPath: string, op
   };
 }
 
+type AppConnectionModelCatalogEntry = {
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  features: ModelGatewayModelFeatures;
+};
+
+function appConnectionModelCatalogIds(modelIds: string[], profile: ModelGatewayAppConnectionProfile): string[] {
+  return Array.from(new Set([
+    ...modelIds,
+    ...(profile.model ? [profile.model] : []),
+    ...Object.values(profile.appModels || {}).map((value) => normalizeString(value)).filter(Boolean),
+  ]));
+}
+
+function appConnectionModelCatalogEntry(
+  modelId: string,
+  profile: ModelGatewayAppConnectionProfile,
+  entries: Record<string, AppConnectionModelCatalogEntry> | undefined,
+): AppConnectionModelCatalogEntry {
+  return entries?.[modelId] || {
+    contextWindow: positiveIntegerOrNull(profile.contextWindow),
+    maxOutputTokens: positiveIntegerOrNull(profile.maxOutputTokens),
+    features: {},
+  };
+}
+
+function appConnectionInputModalities(features: ModelGatewayModelFeatures): string[] {
+  return features.vision === true ? ["text", "image"] : ["text"];
+}
+
 function buildOpenCodeConfig(source: string | null, targetPath: string, options: {
   endpoint: string;
   key: string;
   profile: ModelGatewayAppConnectionProfile;
   modelIds: string[];
+  modelCatalogEntries?: Record<string, AppConnectionModelCatalogEntry>;
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
-  const modelCatalogIds = Array.from(new Set([
-    ...options.modelIds,
-    ...(options.profile.model ? [options.profile.model] : []),
-  ]));
-  const models = Object.fromEntries(modelCatalogIds.map((id) => [id, {
-    id,
-    name: id,
-    ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
-    ...(options.profile.maxOutputTokens ? { maxOutputTokens: options.profile.maxOutputTokens } : {}),
-    limit: {
-      ...(options.profile.contextWindow ? { context: options.profile.contextWindow } : {}),
-      ...(options.profile.maxOutputTokens ? { output: options.profile.maxOutputTokens } : {}),
-    },
-    tool_call: true,
-    reasoning: false,
-    temperature: true,
-  }]));
+  const modelCatalogIds = appConnectionModelCatalogIds(options.modelIds, options.profile);
+  const models = Object.fromEntries(modelCatalogIds.map((id) => {
+    const entry = appConnectionModelCatalogEntry(id, options.profile, options.modelCatalogEntries);
+    return [id, {
+      id,
+      name: id,
+      ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+      ...(entry.maxOutputTokens ? { maxOutputTokens: entry.maxOutputTokens } : {}),
+      limit: {
+        ...(entry.contextWindow ? { context: entry.contextWindow } : {}),
+        ...(entry.maxOutputTokens ? { output: entry.maxOutputTokens } : {}),
+      },
+      tool_call: entry.features.tools !== false,
+      reasoning: entry.features.reasoning === true,
+      temperature: true,
+    }];
+  }));
   const model = options.profile.model
     ? gatewayModelReference(options.profile.model)
     : null;
@@ -4917,23 +5222,25 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
   key: string;
   profile: ModelGatewayAppConnectionProfile;
   modelIds: string[];
+  modelCatalogEntries?: Record<string, AppConnectionModelCatalogEntry>;
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const modelsRoot = isRecord(parsed.value.models) ? parsed.value.models : {};
   const providers = isRecord(modelsRoot.providers) ? modelsRoot.providers : {};
-  const modelCatalogIds = Array.from(new Set([
-    ...options.modelIds,
-    ...(options.profile.model ? [options.profile.model] : []),
-  ]));
-  const modelItems = modelCatalogIds.map((id) => ({
-    id,
-    name: id,
-    input: ["text"],
-    reasoning: true,
-    ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
-    ...(options.profile.maxOutputTokens ? { maxTokens: options.profile.maxOutputTokens } : {}),
-  }));
+  const modelCatalogIds = appConnectionModelCatalogIds(options.modelIds, options.profile);
+  const modelItems = modelCatalogIds.map((id) => {
+    const entry = appConnectionModelCatalogEntry(id, options.profile, options.modelCatalogEntries);
+    return {
+      id,
+      name: id,
+      input: appConnectionInputModalities(entry.features),
+      reasoning: entry.features.reasoning === true,
+      tools: entry.features.tools !== false,
+      ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+      ...(entry.maxOutputTokens ? { maxTokens: entry.maxOutputTokens } : {}),
+    };
+  });
   return {
     error: null,
     content: stringifyConnectionJson({
@@ -5017,6 +5324,29 @@ function latestAppConnectionBackupPath(backupsRoot: string, appId: ModelGatewayA
     .filter((item): item is { filePath: string; mtimeMs: number } => item !== null)
     .sort((left, right) => right.mtimeMs - left.mtimeMs);
   return candidates[0]?.filePath || null;
+}
+
+function codexAppConnectionModelCatalogPath(targetPath: string): string {
+  return path.join(path.dirname(targetPath), "tracevane-gateway-models.json");
+}
+
+function buildCodexAppConnectionModelCatalog(models: ModelGatewayModelListItem[]): string {
+  return `${JSON.stringify({
+    fetched_at: nowIso(),
+    client_version: "tracevane-gateway",
+    models: models.filter(modelGatewayModelSupportsAgentConnection),
+  }, null, 2)}\n`;
+}
+
+function modelGatewayModelSupportsAgentConnection(model: Pick<ModelGatewayModelListItem, "supportedGatewayRoutes" | "routeSupport">): boolean {
+  const supported = new Set([
+    ...(model.supportedGatewayRoutes || []),
+    ...(model.routeSupport?.supported || []),
+  ]);
+  return supported.has("openai_responses")
+    || supported.has("openai_responses_compact")
+    || supported.has("openai_chat_completions")
+    || supported.has("anthropic_messages");
 }
 
 export interface ModelGatewayService {
@@ -5685,6 +6015,23 @@ export function createModelGatewayService(
     if (activeId) {
       const activeCandidate = candidates.find((item) => item.provider.id === activeId);
       if (activeCandidate && healthyCandidate(activeCandidate)) {
+        const preferredProtocolCandidate = candidates.find((item) => (
+          item.protocolPenalty === 0
+          && healthyCandidate(item)
+        ));
+        if (
+          preferredProtocolCandidate
+          && activeCandidate.provider.appScopes.length > 1
+          && activeCandidate.protocolPenalty > preferredProtocolCandidate.protocolPenalty
+        ) {
+          const activeEndpoint = activeCandidate.endpointProfile ? `/${activeCandidate.endpointProfile.id}` : "";
+          const preferredEndpoint = preferredProtocolCandidate.endpointProfile ? `/${preferredProtocolCandidate.endpointProfile.id}` : "";
+          const modelHint = effectiveRequestedModel ? ` for model '${effectiveRequestedModel}'` : "";
+          return selected(
+            preferredProtocolCandidate,
+            `Active provider '${activeCandidate.provider.id}${activeEndpoint}' requires protocol adaptation; selected preferred native protocol '${preferredProtocolCandidate.provider.id}${preferredEndpoint}'${modelHint}.`,
+          );
+        }
         return selected(activeCandidate, null);
       }
       if (activeCandidate) {
@@ -6657,6 +7004,7 @@ export function createModelGatewayService(
         openaiAudioTranslations: ROUTES.openai_audio_translations.paths,
         openaiAudioSpeech: ROUTES.openai_audio_speech.paths,
         anthropicMessages: ROUTES.anthropic_messages.paths,
+        unsupportedEndpoints: MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
       },
       registry: {
         providerCount: registry.providers.length,
@@ -7441,14 +7789,24 @@ export function createModelGatewayService(
     return "openai_chat_completions";
   }
 
+  function appConnectionRequestedModelForScope(
+    registry: ModelGatewayRegistryState,
+    scope: ModelGatewayAppScope,
+  ): string | null {
+    const profile = normalizeAppConnectionProfile(registry.appConnectionProfile);
+    return normalizeString(profile.appModels[scope as ModelGatewayAppConnectionId] || profile.model || "") || null;
+  }
+
   function buildActiveRouteStatuses(registry: ModelGatewayRegistryState): ModelGatewayActiveRouteStatus[] {
     return MODEL_GATEWAY_APP_SCOPES.map((scope) => {
       const selectedProviderId = registry.activeProviders[scope] || null;
       const routeId = defaultRouteIdForScope(scope);
-      const selection = resolveProviderSelection(registry, scope, routeId, null);
+      const requestedModel = appConnectionRequestedModelForScope(registry, scope);
+      const selection = resolveProviderSelection(registry, scope, routeId, requestedModel);
       const resolvedProvider = selection.provider;
       const effectiveProvider = selection.effectiveProvider || resolvedProvider;
       const resolvedModel = selection.resolvedModel
+        || requestedModel
         || effectiveProvider?.models.defaultModel
         || effectiveProvider?.models.models[0]?.id
         || null;
@@ -7613,6 +7971,9 @@ export function createModelGatewayService(
       openCircuitProviderIds: Set<string>;
       priority: number;
       features: ModelGatewayModelFeatures;
+      supportedGatewayRoutes: Set<ModelGatewayRouteId>;
+      unsupportedGatewayRoutes: Map<string, ModelGatewayUnsupportedRoute>;
+      pricing?: ModelGatewayProviderModelPricing;
     }>();
 
     for (const provider of registry.providers.filter((item) => item.enabled)) {
@@ -7635,6 +7996,12 @@ export function createModelGatewayService(
         const key = normalizeModelLookupKey(id);
         const current = byModelId.get(key);
         const sourceHealthy = source.effectiveProvider.health.circuitState !== "open";
+        const routeSupport = modelGatewayRouteSupportForProviderModel(source.effectiveProvider, model);
+        const unsupportedByKey = new Map(routeSupport.unsupported.map((item) => [
+          item.routeId ? `route:${item.routeId}` : `endpoint:${item.endpoint || item.code}`,
+          item,
+        ] as const));
+        for (const routeId of routeSupport.supported) unsupportedByKey.delete(`route:${routeId}`);
         if (!current) {
           byModelId.set(key, {
             id,
@@ -7647,6 +8014,9 @@ export function createModelGatewayService(
             openCircuitProviderIds: new Set(sourceHealthy ? [] : [provider.id]),
             priority: Math.min(provider.failover.priority, source.effectiveProvider.failover.priority),
             features: compactModelFeatures({ ...(model.features || {}) }),
+            supportedGatewayRoutes: new Set(routeSupport.supported),
+            unsupportedGatewayRoutes: unsupportedByKey,
+            pricing: model.pricing,
           });
           continue;
         }
@@ -7660,12 +8030,24 @@ export function createModelGatewayService(
         for (const alias of model.aliases || []) current.aliases.add(alias);
         current.contextWindow = mergeModelBudgetMinimum(current.contextWindow, model.contextWindow);
         current.maxOutputTokens = mergeModelBudgetMinimum(current.maxOutputTokens, model.maxOutputTokens);
+        if (!current.pricing && model.pricing) current.pricing = model.pricing;
         mergeModelFeatures(current.features, model.features);
+        for (const routeId of routeSupport.supported) {
+          current.supportedGatewayRoutes.add(routeId);
+          current.unsupportedGatewayRoutes.delete(`route:${routeId}`);
+        }
+        for (const [unsupportedKey, unsupportedRoute] of unsupportedByKey) {
+          if (unsupportedRoute.routeId && current.supportedGatewayRoutes.has(unsupportedRoute.routeId)) continue;
+          if (!current.unsupportedGatewayRoutes.has(unsupportedKey)) {
+            current.unsupportedGatewayRoutes.set(unsupportedKey, unsupportedRoute);
+          }
+        }
         const sourcePriority = Math.min(provider.failover.priority, source.effectiveProvider.failover.priority);
         if (sourcePriority < current.priority) {
           current.id = id;
           current.label = model.label || current.label;
           current.priority = sourcePriority;
+          current.pricing = model.pricing || current.pricing;
         }
       }
       }
@@ -7677,6 +8059,19 @@ export function createModelGatewayService(
         const features = compactModelFeatures(item.features);
         const contextWindow = item.contextWindow || CODEX_CATALOG_DEFAULT_CONTEXT_WINDOW;
         const maxOutputTokens = item.maxOutputTokens || CODEX_CATALOG_DEFAULT_MAX_OUTPUT_TOKENS;
+        const supportedGatewayRoutes = [...item.supportedGatewayRoutes].sort();
+        const unsupportedGatewayRoutes = [...item.unsupportedGatewayRoutes.values()]
+          .filter((route) => !route.routeId || !item.supportedGatewayRoutes.has(route.routeId))
+          .sort((left, right) =>
+            (left.routeId || left.endpoint || left.code).localeCompare(right.routeId || right.endpoint || right.code)
+          );
+        const agentSelectable = modelGatewayModelSupportsAgentConnection({
+          supportedGatewayRoutes,
+          routeSupport: {
+            supported: supportedGatewayRoutes,
+            unsupported: unsupportedGatewayRoutes,
+          },
+        });
         return {
           id: item.id,
           slug: item.id,
@@ -7722,6 +8117,15 @@ export function createModelGatewayService(
           healthyProviderIds: [...item.healthyProviderIds].sort(),
           openCircuitProviderIds: [...item.openCircuitProviderIds].sort(),
           features,
+          agentSelectable,
+          endpointOnly: !agentSelectable,
+          routeSupport: {
+            supported: supportedGatewayRoutes,
+            unsupported: unsupportedGatewayRoutes,
+          },
+          supportedGatewayRoutes,
+          unsupportedGatewayRoutes,
+          ...(item.pricing ? { pricing: item.pricing } : {}),
         };
       });
     return {
@@ -7738,16 +8142,18 @@ export function createModelGatewayService(
     return readSecrets().secrets[auth.apiKeyRef]?.value || null;
   }
 
-  function gatewayModelIds(): string[] {
+  function gatewayAgentModelIds(): string[] {
     const registry = readRegistry();
+    const models = listGatewayModels().data.filter(modelGatewayModelSupportsAgentConnection);
+    const agentModelIds = new Set(models.map((model) => model.id));
     const defaultIds = registry.providers
       .filter((provider) => provider.enabled)
       .sort((left, right) => left.failover.priority - right.failover.priority || left.name.localeCompare(right.name))
       .map((provider) => normalizeString(provider.models.defaultModel || provider.models.models[0]?.id || ""))
-      .filter(Boolean);
+      .filter((modelId) => Boolean(modelId) && agentModelIds.has(modelId));
     return [
       ...defaultIds,
-      ...listGatewayModels().data.map((model) => model.id),
+      ...models.map((model) => model.id),
     ].filter((model, index, list) => list.indexOf(model) === index);
   }
 
@@ -7758,7 +8164,7 @@ export function createModelGatewayService(
     return selection.resolvedModel
       || selection.effectiveProvider?.models.defaultModel
       || selection.effectiveProvider?.models.models[0]?.id
-      || gatewayModelIds()[0]
+      || gatewayAgentModelIds()[0]
       || null;
   }
 
@@ -7871,12 +8277,13 @@ export function createModelGatewayService(
       || item.aliases.some((alias) => normalizeModelLookupKey(alias) === tail);
   }
 
-  function modelBudgetForAppConnectionModel(modelId: string | null): { contextWindow: number | null; maxOutputTokens: number | null } {
+  function modelCatalogEntryForAppConnectionModel(modelId: string | null): AppConnectionModelCatalogEntry {
     const requested = normalizeString(modelId);
     if (!requested) {
       return {
         contextWindow: null,
         maxOutputTokens: null,
+        features: {},
       };
     }
     const item = listGatewayModels().data.find((model) => modelListItemMatchesRequest(model, requested));
@@ -7888,7 +8295,35 @@ export function createModelGatewayService(
       maxOutputTokens: positiveIntegerOrNull(item?.maxOutputTokens)
         ?? positiveIntegerOrNull(known.maxOutputTokens)
         ?? null,
+      features: compactModelFeatures({
+        ...(known.features || {}),
+        ...(item?.features || {}),
+      }),
     };
+  }
+
+  function modelBudgetForAppConnectionModel(modelId: string | null): { contextWindow: number | null; maxOutputTokens: number | null } {
+    const entry = modelCatalogEntryForAppConnectionModel(modelId);
+    return {
+      contextWindow: entry.contextWindow,
+      maxOutputTokens: entry.maxOutputTokens,
+    };
+  }
+
+  function modelCatalogEntriesForAppConnection(
+    modelIds: string[],
+    profile: ModelGatewayAppConnectionProfile,
+  ): Record<string, AppConnectionModelCatalogEntry> {
+    const normalized = normalizeAppConnectionProfile(profile);
+    return Object.fromEntries(appConnectionModelCatalogIds(modelIds, profile)
+      .map((modelId) => {
+        const entry = modelCatalogEntryForAppConnectionModel(modelId);
+        return [modelId, {
+          ...entry,
+          contextWindow: mergeAppConnectionBudget(normalized.contextWindow, entry.contextWindow),
+          maxOutputTokens: mergeAppConnectionBudget(normalized.maxOutputTokens, entry.maxOutputTokens),
+        }] as const;
+      }));
   }
 
   function mergeAppConnectionBudget(profileValue: number | null, modelValue: number | null): number | null {
@@ -7927,6 +8362,7 @@ export function createModelGatewayService(
     profile: ModelGatewayAppConnectionProfile;
     modelIds: string[];
     source: string | null;
+    modelCatalogEntries?: Record<string, AppConnectionModelCatalogEntry>;
   }): { content: string; error: string | null } {
     if (spec.id === "codex") {
       return {
@@ -7935,6 +8371,7 @@ export function createModelGatewayService(
           endpoint: spec.endpoint,
           key: options.key,
           profile: options.profile,
+          modelCatalogPath: codexAppConnectionModelCatalogPath(spec.targetPath),
         }),
       };
     }
@@ -7951,6 +8388,7 @@ export function createModelGatewayService(
         key: options.key,
         profile: options.profile,
         modelIds: options.modelIds,
+        modelCatalogEntries: options.modelCatalogEntries,
       });
     }
     return buildOpenClawConfig(options.source, spec.targetPath, {
@@ -7958,6 +8396,7 @@ export function createModelGatewayService(
       key: options.key,
       profile: options.profile,
       modelIds: options.modelIds,
+      modelCatalogEntries: options.modelCatalogEntries,
     });
   }
 
@@ -7993,6 +8432,7 @@ export function createModelGatewayService(
     source: string | null;
     sourceError: string | null;
     modelIds: string[];
+    modelCatalogEntries?: Record<string, AppConnectionModelCatalogEntry>;
   }): ModelGatewayAppConnection {
     const model = options.profile.model;
     const content = buildAppConnectionContent(spec, {
@@ -8000,6 +8440,7 @@ export function createModelGatewayService(
       profile: options.profile,
       modelIds: options.modelIds,
       source: options.source,
+      modelCatalogEntries: options.modelCatalogEntries,
     });
     const lastBackupPath = latestAppConnectionBackupPath(paths.backups, spec.id);
     const issues = [
@@ -8039,8 +8480,9 @@ export function createModelGatewayService(
 
   function listAppConnections(): ModelGatewayAppConnectionsResponse {
     const key = readGatewayClientSecret();
-    const modelIds = gatewayModelIds();
+    const modelIds = gatewayAgentModelIds();
     const storedProfile = readRegistry().appConnectionProfile;
+    const modelCatalogEntries = modelCatalogEntriesForAppConnection(modelIds, storedProfile);
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -8055,6 +8497,7 @@ export function createModelGatewayService(
           source: source.source,
           sourceError: source.error,
           modelIds,
+          modelCatalogEntries,
         });
       }),
     };
@@ -8081,7 +8524,7 @@ export function createModelGatewayService(
         400,
       );
     }
-    const modelIds = gatewayModelIds();
+    const modelIds = gatewayAgentModelIds();
     if (!modelIds.length) {
       throw new ModelGatewayServiceError(
         "model_gateway_app_connection_models_required",
@@ -8107,11 +8550,13 @@ export function createModelGatewayService(
     }
     const storedProfile = updateStoredAppConnectionProfile(payload);
     const profile = defaultAppConnectionProfileForSpec(spec, storedProfile);
+    const modelCatalogEntries = modelCatalogEntriesForAppConnection(modelIds, storedProfile);
     const next = buildAppConnectionContent(spec, {
       key,
       profile,
       modelIds,
       source: source.source,
+      modelCatalogEntries,
     });
     if (next.error) {
       throw new ModelGatewayServiceError(
@@ -8121,6 +8566,13 @@ export function createModelGatewayService(
       );
     }
     const backupPath = backupFileIfExists(spec.targetPath, paths.backups, appId);
+    if (spec.id === "codex") {
+      writeTextAtomic(
+        codexAppConnectionModelCatalogPath(spec.targetPath),
+        buildCodexAppConnectionModelCatalog(listGatewayModels().data),
+        0o600,
+      );
+    }
     writeTextAtomic(spec.targetPath, next.content, 0o600);
     const updatedSource = readConnectionSource(spec.targetPath);
     return {
@@ -8132,6 +8584,7 @@ export function createModelGatewayService(
         source: updatedSource.source,
         sourceError: updatedSource.error,
         modelIds,
+        modelCatalogEntries,
       }),
       applied: true,
       backupPath,
@@ -8145,7 +8598,8 @@ export function createModelGatewayService(
     requireManagement(req);
     const profile = updateStoredAppConnectionProfile(payload);
     const key = readGatewayClientSecret();
-    const modelIds = gatewayModelIds();
+    const modelIds = gatewayAgentModelIds();
+    const modelCatalogEntries = modelCatalogEntriesForAppConnection(modelIds, profile);
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -8158,6 +8612,7 @@ export function createModelGatewayService(
           source: source.source,
           sourceError: source.error,
           modelIds,
+          modelCatalogEntries,
         });
       }),
     };
@@ -8218,7 +8673,7 @@ export function createModelGatewayService(
       // Best effort for filesystems that do not support chmod.
     }
     const source = readConnectionSource(spec.targetPath);
-    const modelIds = gatewayModelIds();
+    const modelIds = gatewayAgentModelIds();
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -9741,7 +10196,12 @@ export function createModelGatewayService(
               upstream.headers,
             );
           }
-          updateSelectedProviderHealth(false, latencyMs, message, upstreamRetryAfterUntil);
+          updateSelectedProviderHealth(
+            providerHealthSuccessForUpstreamResult(502, streamError?.code || streamError?.type || null, message),
+            latencyMs,
+            message,
+            upstreamRetryAfterUntil,
+          );
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9818,7 +10278,9 @@ export function createModelGatewayService(
           });
           const observedStreamError = streamUpstreamError.current;
           updateSelectedProviderHealth(
-            !observedStreamError,
+            observedStreamError
+              ? providerHealthSuccessForUpstreamResult(upstream.status, observedStreamError.code || observedStreamError.type, observedStreamError.message)
+              : true,
             latencyMs,
             observedStreamError?.message || null,
             observedStreamError ? upstreamRetryAfterUntil : null,
@@ -9939,7 +10401,11 @@ export function createModelGatewayService(
             adapterError.statusCode,
             { code: adapterError.code, message: adapterError.message, type: adapterError.code },
           );
-          updateSelectedProviderHealth(false, latencyMs, adapterError.message);
+          updateSelectedProviderHealth(
+            providerHealthSuccessForUpstreamResult(adapterError.statusCode, adapterError.code, adapterError.message),
+            latencyMs,
+            adapterError.message,
+          );
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,

@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:18796";
 const DEFAULT_TIMEOUT_MS = 240_000;
+const MIN_STAGE_TIMEOUT_MS = 30_000;
+const STAGE_TIMEOUT_GRACE_MS = 15_000;
 const DEFAULT_GLM_PROVIDER = "glm";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_CODEX_PROVIDER = "codex-account";
@@ -23,6 +25,7 @@ function parseArgs(argv) {
     codexProvider: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || DEFAULT_CODEX_PROVIDER,
     codexModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || DEFAULT_CODEX_MODEL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    stageTimeoutMs: 0,
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -39,6 +42,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--codex-model=")) options.codexModel = arg.slice("--codex-model=".length);
     else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(argv[++index], DEFAULT_TIMEOUT_MS);
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
+    else if (arg === "--stage-timeout-ms") options.stageTimeoutMs = positiveInt(argv[++index], 0);
+    else if (arg.startsWith("--stage-timeout-ms=")) options.stageTimeoutMs = positiveInt(arg.slice("--stage-timeout-ms=".length), 0);
     else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -56,12 +61,18 @@ function parseArgs(argv) {
   if (!options.glmModel) throw new Error("--glm-model is required.");
   if (!options.codexProvider) throw new Error("--codex-provider is required.");
   if (!options.codexModel) throw new Error("--codex-model is required.");
+  if (!options.stageTimeoutMs) options.stageTimeoutMs = defaultStageTimeoutMs(options.timeoutMs);
   return options;
 }
 
 function positiveInt(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function defaultStageTimeoutMs(timeoutMs) {
+  const parsed = positiveInt(timeoutMs, DEFAULT_TIMEOUT_MS);
+  return Math.max(MIN_STAGE_TIMEOUT_MS, parsed + STAGE_TIMEOUT_GRACE_MS);
 }
 
 function printHelp() {
@@ -79,6 +90,7 @@ Options:
   --codex-provider <id>   default: ${DEFAULT_CODEX_PROVIDER}
   --codex-model <id>      default: ${DEFAULT_CODEX_MODEL}
   --timeout-ms <n>        per active-route smoke timeout
+  --stage-timeout-ms <n>  per child process watchdog; default: max(${MIN_STAGE_TIMEOUT_MS}, --timeout-ms + ${STAGE_TIMEOUT_GRACE_MS})
   --json                  machine-readable output
   -h, --help              Show this help
 `);
@@ -153,6 +165,8 @@ async function runActiveRoutesStage(options, stage) {
       env: process.env,
       encoding: "utf8",
       maxBuffer: 1024 * 1024 * 16,
+      timeout: options.stageTimeoutMs,
+      killSignal: "SIGTERM",
     });
     return {
       id: stage.id,
@@ -178,6 +192,8 @@ async function runActiveRoutesStage(options, stage) {
       error: {
         message: error instanceof Error ? error.message : String(error),
         stderr: typeof error?.stderr === "string" ? error.stderr.trim() : "",
+        timedOut: Boolean(error?.killed && error?.signal === "SIGTERM"),
+        timeoutMs: options.stageTimeoutMs,
       },
     };
   }
@@ -225,6 +241,8 @@ async function main() {
     ok: stages.every((stage) => stage.ok) && proofs.every((proof) => proof.ok),
     endpoint: options.endpoint,
     checkedAt: new Date().toISOString(),
+    timeoutMs: options.timeoutMs,
+    stageTimeoutMs: options.stageTimeoutMs,
     protocolProofs: proofs,
     stages,
   };

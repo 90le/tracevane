@@ -15,9 +15,14 @@ import {
 } from "../../dist/apps/api/index.js";
 import {
   createModelGatewayService,
+  ModelGatewayServiceError,
   resolveModelGatewayPaths,
 } from "../../dist/apps/api/modules/model-gateway/service.js";
 import { createModelGatewayDaemon } from "../../dist/apps/api/modules/model-gateway/daemon.js";
+import {
+  MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
+  MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES,
+} from "../../dist/apps/api/modules/model-gateway/unsupported-endpoints.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-model-gateway-"));
@@ -177,6 +182,55 @@ function requestRaw(url, options = {}) {
     req.end();
   });
 }
+
+function concreteUnsupportedRoutePath(pathPattern) {
+  return pathPattern.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, (_match, name) => {
+    const normalized = String(name).replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+    return `${normalized}_test`;
+  });
+}
+
+function unsupportedRouteRequestBody(route) {
+  if (route.method !== "POST" && route.method !== "PUT" && route.method !== "PATCH") return undefined;
+  if (route.path.includes("/embeddings")) return { model: "text-embedding-3-large", input: "hello" };
+  if (route.path.includes("/moderations")) return { model: "omni-moderation-latest", input: "hello" };
+  if (route.path.includes("/completions")) return { model: "gpt-3.5-turbo-instruct", prompt: "hello" };
+  if (route.path.includes("/videos")) return { model: "sora-2", prompt: "hello" };
+  if (route.path.includes("/fine-tuning/jobs")) return { model: "gpt-5.5", training_file: "file_test" };
+  if (route.path.includes("/batches")) return { input_file_id: "file_test", endpoint: "/v1/responses" };
+  if (route.path.includes("/threads")) return { model: "gpt-5.5", messages: [] };
+  if (route.path.includes("/realtime")) return { model: "gpt-realtime-2" };
+  return { model: "gpt-5.5" };
+}
+
+test("model gateway service errors expose only sanitized client-safe details", () => {
+  const error = new ModelGatewayServiceError(
+    "model_gateway_test_error",
+    "test message",
+    400,
+    {
+      endpoint: "/v1/models",
+      retryAfterMs: 1000,
+      accountRouting: { accounts: [{ accountId: "acct_secret", email: "user@example.test" }] },
+      apiKey: "sk-secret",
+      authorization: "Bearer secret",
+      token: "secret-token",
+      rawBody: "{\"access_token\":\"secret\"}",
+      nested: { safe: false },
+      alternatives: ["not allowlisted here"],
+    },
+  );
+
+  assert.deepEqual(error.toShape(), {
+    code: "model_gateway_test_error",
+    message: "test message",
+    statusCode: 400,
+    details: {
+      endpoint: "/v1/models",
+      retryAfterMs: 1000,
+    },
+  });
+});
 
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
@@ -717,6 +771,37 @@ test("model gateway starts Codex account login and creates an account-backed pro
         "gpt-realtime-1.5",
         "gpt-realtime-2",
       ]);
+      const gpt55Model = poll.body.provider.models.models.find((model) => model.id === "gpt-5.5");
+      assert.equal(gpt55Model.contextWindow, 1050000);
+      assert.equal(gpt55Model.maxOutputTokens, 128000);
+      assert.deepEqual(gpt55Model.pricing, {
+        currency: "USD",
+        inputPer1M: 5,
+        outputPer1M: 30,
+        longContextInputThreshold: 272000,
+        longContextInputMultiplier: 2,
+        longContextOutputMultiplier: 1.5,
+      });
+      const gpt54MiniModel = poll.body.provider.models.models.find((model) => model.id === "gpt-5.4-mini");
+      assert.equal(gpt54MiniModel.contextWindow, 400000);
+      assert.equal(gpt54MiniModel.maxOutputTokens, 128000);
+      assert.deepEqual(gpt54MiniModel.pricing, {
+        currency: "USD",
+        inputPer1M: 0.75,
+        outputPer1M: 4.5,
+      });
+      const gpt53CodexModel = poll.body.provider.models.models.find((model) => model.id === "gpt-5.3-codex");
+      assert.equal(gpt53CodexModel.contextWindow, 400000);
+      assert.equal(gpt53CodexModel.maxOutputTokens, 128000);
+      assert.equal(gpt53CodexModel.features.vision, true);
+      assert.deepEqual(gpt53CodexModel.pricing, {
+        currency: "USD",
+        inputPer1M: 1.75,
+        outputPer1M: 14,
+      });
+      const realtime2Model = poll.body.provider.models.models.find((model) => model.id === "gpt-realtime-2");
+      assert.equal(realtime2Model.contextWindow, 128000);
+      assert.equal(realtime2Model.maxOutputTokens, 32000);
       const imageModel = poll.body.provider.models.models.find((model) => model.id === "gpt-image-2");
       assert.equal(imageModel.features.imageGeneration, true);
       assert.equal(imageModel.features.text, false);
@@ -731,6 +816,43 @@ test("model gateway starts Codex account login and creates an account-backed pro
       const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
       assert.equal(providers.body.activeProviders.codex, "codex-owned");
       assert.equal(providers.body.activeProviders["claude-code"], "codex-owned");
+
+      const models = await requestJson(`${baseUrl}/v1/models`);
+      const gpt55CatalogModel = models.body.data.find((model) => model.id === "gpt-5.5");
+      assert.equal(gpt55CatalogModel.context_window, 1050000);
+      assert.equal(gpt55CatalogModel.contextWindow, 1050000);
+      assert.equal(gpt55CatalogModel.pricing.longContextInputThreshold, 272000);
+      assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("openai_chat_completions"));
+      assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("openai_responses"));
+      assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("anthropic_messages"));
+      assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("openai_responses_compact"));
+      assert.deepEqual(gpt55CatalogModel.routeSupport.supported, gpt55CatalogModel.supportedGatewayRoutes);
+      assert.equal(gpt55CatalogModel.agentSelectable, true);
+      assert.equal(gpt55CatalogModel.endpointOnly, false);
+      const gpt54MiniCatalogModel = models.body.data.find((model) => model.id === "gpt-5.4-mini");
+      assert.equal(gpt54MiniCatalogModel.context_window, 400000);
+      assert.equal(gpt54MiniCatalogModel.max_output_tokens, 128000);
+      const imageCatalogModel = models.body.data.find((model) => model.id === "gpt-image-2");
+      assert.equal(imageCatalogModel.agentSelectable, false);
+      assert.equal(imageCatalogModel.endpointOnly, true);
+      assert.ok(imageCatalogModel.supportedGatewayRoutes.includes("openai_images_generations"));
+      assert.ok(!imageCatalogModel.supportedGatewayRoutes.includes("openai_images_edits"));
+      assert.ok(imageCatalogModel.unsupportedGatewayRoutes.some((route) =>
+        route.routeId === "openai_images_edits"
+        && route.code === "model_gateway_codex_account_image_edits_unsupported"
+      ));
+      const transcribeCatalogModel = models.body.data.find((model) => model.id === "gpt-4o-transcribe");
+      assert.equal(transcribeCatalogModel.agentSelectable, false);
+      assert.equal(transcribeCatalogModel.endpointOnly, true);
+      assert.ok(transcribeCatalogModel.unsupportedGatewayRoutes.some((route) =>
+        route.routeId === "openai_audio_transcriptions"
+        && route.code === "model_gateway_codex_account_audio_unsupported"
+      ));
+      const realtimeCatalogModel = models.body.data.find((model) => model.id === "gpt-realtime-2");
+      assert.ok(realtimeCatalogModel.unsupportedGatewayRoutes.some((route) =>
+        route.endpoint === "/v1/realtime"
+        && route.code === "model_gateway_realtime_unsupported"
+      ));
 
       const registryRaw = fs.readFileSync(paths.registry, "utf8");
       const secretsRaw = fs.readFileSync(paths.secrets, "utf8");
@@ -863,14 +985,38 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
       const wsHttp = await requestJson(`${baseUrl}/v1/responses/ws`);
       assert.equal(wsHttp.status, 501);
-      assert.equal(wsHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
+      assert.equal(wsHttp.body.error.code, "model_gateway_realtime_unsupported");
       assert.match(wsHttp.body.error.details.reference, /Responses WebSocket mode/);
-      assert.ok(wsHttp.body.error.details.alternatives.some((item) => item.includes("verified WebSocket bridge")));
+      assert.ok(wsHttp.body.error.details.alternatives.some((item) => item.includes("verified WebSocket/WebRTC bridge")));
 
       const realtimeHttp = await requestJson(`${baseUrl}/v1/realtime`);
       assert.equal(realtimeHttp.status, 501);
-      assert.equal(realtimeHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
-      assert.match(realtimeHttp.body.error.details.reference, /Realtime WebSocket/);
+      assert.equal(realtimeHttp.body.error.code, "model_gateway_realtime_unsupported");
+      assert.match(realtimeHttp.body.error.details.reference, /Realtime voice, translation, and transcription sessions/);
+
+      const realtimeTranslationHttp = await requestJson(`${baseUrl}/v1/realtime/translations`);
+      assert.equal(realtimeTranslationHttp.status, 501);
+      assert.equal(realtimeTranslationHttp.body.error.code, "model_gateway_realtime_unsupported");
+      assert.match(realtimeTranslationHttp.body.error.details.reference, /Realtime voice, translation, and transcription sessions/);
+
+      const realtimeCallsHttp = await requestJson(`${baseUrl}/v1/realtime/calls`, {
+        method: "POST",
+        body: { model: "gpt-realtime-2" },
+      });
+      assert.equal(realtimeCallsHttp.status, 501);
+      assert.equal(realtimeCallsHttp.body.error.code, "model_gateway_realtime_unsupported");
+
+      const realtimeClientSecretsHttp = await requestJson(`${baseUrl}/v1/realtime/client_secrets`, {
+        method: "POST",
+        body: { session: { model: "gpt-realtime-2" } },
+      });
+      assert.equal(realtimeClientSecretsHttp.status, 501);
+      assert.equal(realtimeClientSecretsHttp.body.error.code, "model_gateway_realtime_unsupported");
+
+      const realtimeTranscriptionHttp = await requestJson(`${baseUrl}/v1/realtime/transcription_sessions`);
+      assert.equal(realtimeTranscriptionHttp.status, 501);
+      assert.equal(realtimeTranscriptionHttp.body.error.code, "model_gateway_realtime_unsupported");
+      assert.match(realtimeTranscriptionHttp.body.error.details.reference, /Realtime voice, translation, and transcription sessions/);
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       const imageEntry = runtime.body.runtime.requestLog.find((entry) => entry.routeId === "openai_images_generations");
@@ -933,6 +1079,213 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
 });
 
+test("model gateway repairs stale managed Codex account model context metadata", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stale-catalog",
+      name: "Codex Stale Catalog",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{
+          id: "gpt-5.5",
+          aliases: ["gpt5.5"],
+          contextWindow: 272000,
+          maxOutputTokens: 8192,
+          pricing: { currency: "USD", inputPer1M: 5 },
+        }, {
+          id: "gpt-5.4-mini",
+          aliases: ["gpt5.4-mini"],
+          contextWindow: 272000,
+          maxOutputTokens: 8192,
+          pricing: { currency: "USD", inputPer1M: 0.75 },
+        }, {
+          id: "gpt-5.3-codex",
+          aliases: ["gpt5.3-codex"],
+          contextWindow: 272000,
+          maxOutputTokens: 8192,
+          pricing: { currency: "USD", inputPer1M: 1.75 },
+        }],
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const models = service.listGatewayModels();
+  const gpt55 = models.data.find((model) => model.id === "gpt-5.5");
+  assert.equal(gpt55.context_window, 1050000);
+  assert.equal(gpt55.max_context_window, 1050000);
+  assert.equal(gpt55.max_output_tokens, 128000);
+  assert.equal(gpt55.contextWindow, 1050000);
+  assert.equal(gpt55.maxOutputTokens, 128000);
+  assert.equal(gpt55.pricing.longContextInputThreshold, 272000);
+  assert.equal(gpt55.pricing.longContextInputMultiplier, 2);
+  assert.equal(gpt55.pricing.longContextOutputMultiplier, 1.5);
+  const gpt54Mini = models.data.find((model) => model.id === "gpt-5.4-mini");
+  assert.equal(gpt54Mini.context_window, 400000);
+  assert.equal(gpt54Mini.max_output_tokens, 128000);
+  assert.equal(gpt54Mini.pricing.inputPer1M, 0.75);
+  assert.equal(gpt54Mini.pricing.outputPer1M, 4.5);
+  const gpt53Codex = models.data.find((model) => model.id === "gpt-5.3-codex");
+  assert.equal(gpt53Codex.context_window, 400000);
+  assert.equal(gpt53Codex.max_output_tokens, 128000);
+  assert.equal(gpt53Codex.features.vision, true);
+  assert.equal(gpt53Codex.pricing.inputPer1M, 1.75);
+  assert.equal(gpt53Codex.pricing.outputPer1M, 14);
+});
+
+test("model gateway treats Codex context length responses as request-scoped failures", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const authRef = "provider:codex-context:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "context@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_context",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-context-access",
+      refresh_token: "codex-context-refresh",
+      account_id: "acct_context",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-context",
+      name: "Codex Context",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-context-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "context-a",
+          emailMasked: "co***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    return new Response([
+      "event: response.failed",
+      `data: ${JSON.stringify({
+        type: "response.failed",
+        response: {
+          id: "resp_context",
+          status: "failed",
+          error: {
+            code: "context_length_exceeded",
+            type: "invalid_request_error",
+            message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          },
+        },
+      })}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n"), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withTracevaneServer(ctx, async (baseUrl) => {
+      for (let index = 0; index < 3; index += 1) {
+        const response = await requestJson(`${baseUrl}/v1/responses`, {
+          method: "POST",
+          body: {
+            model: "gpt-5.5",
+            input: `too long ${index}`,
+          },
+        });
+        assert.equal(response.status, 400);
+        assert.equal(response.body.error.code, "context_length_exceeded");
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls, 3);
+  const provider = ctx.services.modelGateway.listProviders().providers.find((item) => item.id === "codex-context");
+  assert.equal(provider.health.circuitState, "closed");
+  assert.equal(provider.health.consecutiveFailures, 0);
+  assert.equal(provider.health.lastError, null);
+  const runtime = ctx.services.modelGateway.getRuntime();
+  assert.equal(runtime.runtime.requestLog.filter((entry) => entry.errorCode === "context_length_exceeded").length, 3);
+});
+
 test("model gateway returns structured unsupported for Codex account realtime websocket routes", async () => {
   const root = makeTempRoot();
   const ctx = createTracevaneContext({
@@ -941,8 +1294,8 @@ test("model gateway returns structured unsupported for Codex account realtime we
   });
 
   await withTracevaneServer(ctx, async (baseUrl) => {
-    const wsUrl = `ws${baseUrl.slice("http".length)}/v1/responses/ws`;
-    const payload = await new Promise((resolve, reject) => {
+    const readUnsupportedWebSocketPayload = (path) => new Promise((resolve, reject) => {
+      const wsUrl = `ws${baseUrl.slice("http".length)}${path}`;
       const ws = new WebSocket(wsUrl, {
         headers: { authorization: "Bearer sk-tracevane-smoke-local" },
       });
@@ -952,10 +1305,25 @@ test("model gateway returns structured unsupported for Codex account realtime we
       });
       ws.once("error", reject);
     });
+
+    const payload = await readUnsupportedWebSocketPayload("/v1/responses/ws");
     assert.equal(payload.type, "error");
-    assert.equal(payload.error.code, "model_gateway_codex_account_realtime_unsupported");
+    assert.equal(payload.error.code, "model_gateway_realtime_unsupported");
+    assert.equal(payload.error.details.endpoint, "/v1/responses/ws");
     assert.match(payload.error.details.reference, /OpenAI documents Responses WebSocket mode/);
-    assert.ok(payload.error.details.alternatives.some((item) => item.includes("verified WebSocket bridge")));
+    assert.ok(payload.error.details.alternatives.some((item) => item.includes("verified WebSocket/WebRTC bridge")));
+
+    const responsesPayload = await readUnsupportedWebSocketPayload("/v1/responses");
+    assert.equal(responsesPayload.type, "error");
+    assert.equal(responsesPayload.error.code, "model_gateway_realtime_unsupported");
+    assert.equal(responsesPayload.error.details.endpoint, "/v1/responses#websocket");
+    assert.match(responsesPayload.error.details.reference, /OpenAI documents Responses WebSocket mode/);
+
+    const translationPayload = await readUnsupportedWebSocketPayload("/v1/realtime/translations");
+    assert.equal(translationPayload.type, "error");
+    assert.equal(translationPayload.error.code, "model_gateway_realtime_unsupported");
+    assert.equal(translationPayload.error.details.endpoint, "/v1/realtime/translations");
+    assert.match(translationPayload.error.details.reference, /Realtime voice, translation, and transcription sessions/);
   });
 });
 
@@ -2867,7 +3235,7 @@ test("model gateway detects provider protocols without persisting probe secrets"
       ]);
       assert.deepEqual(
         response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
-        [[128000, 8192], [256000, 16384], [1050000, 128000], [1000000, 128000], [1000000, 128000], [1000000, 64000], [64000, 8000]],
+        [[128000, 8192], [256000, 16384], [400000, 128000], [1000000, 128000], [1000000, 128000], [1000000, 64000], [64000, 8000]],
       );
       assert.deepEqual(response.body.models[0].features, {
         text: true,
@@ -3335,6 +3703,224 @@ test("model gateway endpoint profiles prefer native protocol and fall back by en
   assert.match(fallback.failoverReason || "", /coding-anthropic.*fallback 'glm\/coding-chat'/);
 });
 
+test("model gateway prefers native protocols without replacing the requested model", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-account",
+      name: "Codex Account",
+      enabled: true,
+      sourceType: "account-backed",
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }, { id: "shared-model" }],
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-ready",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: "provider:codex-account:account:ready:codex-token",
+          credentialSource: "codex-device-auth",
+          accountHash: "ready",
+          emailMasked: "co***@example.com",
+          plan: "pro",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex", "claude-code", "opencode", "openclaw"],
+  });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "chat-native",
+      name: "Chat Native",
+      appScopes: ["opencode", "openclaw"],
+      baseUrl: "https://chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model" }],
+      },
+    },
+  });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-native",
+      name: "Anthropic Native",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic.example.test",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+      endpoints: { anthropic_messages: "/v1/messages" },
+      models: {
+        defaultModel: "shared-model",
+        models: [{ id: "shared-model" }],
+      },
+    },
+  });
+  for (const scope of ["codex", "claude-code", "opencode", "openclaw"]) {
+    service.setActiveProvider(undefined, {
+      scope,
+      providerId: "codex-account",
+    });
+  }
+
+  const openclawShared = service.resolveRouteDecision("POST", "/v1/chat/completions", {
+    "x-tracevane-app-scope": "openclaw",
+  }, "shared-model");
+  assert.equal(openclawShared.provider?.id, "chat-native");
+  assert.equal(openclawShared.mode, "passthrough");
+  assert.equal(openclawShared.model?.resolved, "shared-model");
+
+  const claudeShared = service.resolveRouteDecision("POST", "/v1/messages", {
+    "x-tracevane-app-scope": "claude-code",
+  }, "shared-model");
+  assert.equal(claudeShared.provider?.id, "anthropic-native");
+  assert.equal(claudeShared.mode, "passthrough");
+  assert.equal(claudeShared.model?.resolved, "shared-model");
+
+  const openclawGpt55 = service.resolveRouteDecision("POST", "/v1/chat/completions", {
+    "x-tracevane-app-scope": "openclaw",
+  }, "gpt-5.5");
+  assert.equal(openclawGpt55.provider?.id, "codex-account");
+  assert.equal(openclawGpt55.mode, "adapter-required");
+  assert.equal(openclawGpt55.model?.resolved, "gpt-5.5");
+  assert.equal(openclawGpt55.failoverReason, null);
+
+  const explicitCodexGpt55 = service.resolveRouteDecision("POST", "/v1/chat/completions", {
+    "x-tracevane-app-scope": "openclaw",
+  }, "codex-account/gpt-5.5");
+  assert.equal(explicitCodexGpt55.provider?.id, "codex-account");
+  assert.equal(explicitCodexGpt55.mode, "adapter-required");
+  assert.equal(explicitCodexGpt55.model?.resolved, "gpt-5.5");
+});
+
+test("model gateway active route status resolves app-selected models instead of provider defaults", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-account",
+      name: "Codex Account",
+      enabled: true,
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://codex.example.test",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "glm",
+      name: "GLM",
+      enabled: true,
+      appScopes: ["claude-code", "opencode", "openclaw"],
+      baseUrl: "https://glm.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-4.5",
+        models: [{ id: "glm-4.5" }],
+      },
+      endpointProfiles: [{
+        id: "coding-chat",
+        name: "Coding Chat",
+        appScopes: ["opencode", "openclaw"],
+        baseUrl: "https://glm-chat.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+      }, {
+        id: "coding-anthropic",
+        name: "Coding Anthropic",
+        appScopes: ["claude-code"],
+        baseUrl: "https://glm-anthropic.example.test",
+        apiFormat: "anthropic_messages",
+        authStrategy: "anthropic_api_key",
+        endpoints: { anthropic_messages: "/v1/messages" },
+      }],
+    },
+    setActiveScopes: ["claude-code", "opencode", "openclaw"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-native",
+      name: "Anthropic Native",
+      enabled: true,
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic.example.test",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+      endpoints: { anthropic_messages: "/v1/messages" },
+      models: {
+        defaultModel: "claude-opus-4-8",
+        models: [{ id: "claude-opus-4-8" }],
+      },
+    },
+  });
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-5.5",
+      appModels: {
+        codex: "gpt-5.5",
+        "claude-code": "claude-opus-4-8",
+      },
+    },
+  });
+
+  const routes = service.listProviders().activeRoutes;
+  const codex = routes.find((route) => route.scope === "codex");
+  assert.equal(codex?.selectedProviderId, "codex-account");
+  assert.equal(codex?.resolvedProviderId, "codex-account");
+  assert.equal(codex?.resolvedModel, "gpt-5.5");
+  assert.equal(codex?.routeMode, "passthrough");
+
+  const claude = routes.find((route) => route.scope === "claude-code");
+  assert.equal(claude?.selectedProviderId, "glm");
+  assert.equal(claude?.resolvedProviderId, "anthropic-native");
+  assert.equal(claude?.resolvedModel, "claude-opus-4-8");
+  assert.equal(claude?.routeMode, "passthrough");
+  assert.equal(claude?.state, "fallback");
+
+  const opencode = routes.find((route) => route.scope === "opencode");
+  assert.equal(opencode?.selectedProviderId, "glm");
+  assert.equal(opencode?.resolvedProviderId, "codex-account");
+  assert.equal(opencode?.resolvedModel, "gpt-5.5");
+  assert.equal(opencode?.routeMode, "adapter-required");
+  assert.equal(opencode?.state, "fallback");
+
+  const openclaw = routes.find((route) => route.scope === "openclaw");
+  assert.equal(openclaw?.selectedProviderId, "glm");
+  assert.equal(openclaw?.resolvedProviderId, "codex-account");
+  assert.equal(openclaw?.resolvedModel, "gpt-5.5");
+  assert.equal(openclaw?.routeMode, "adapter-required");
+  assert.equal(openclaw?.state, "fallback");
+});
+
 test("model gateway responses to anthropic adapter uses native endpoint override", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -3586,6 +4172,41 @@ test("model gateway endpoint profiles prefer same-provider model endpoint fallba
   assert.equal(status.healthSummary.openCircuits, 2);
   assert.equal(status.healthSummary.degradedProviders, 1);
   assert.equal(status.healthSummary.okProviders, 1);
+});
+
+test("model gateway health summary does not treat recovered historical failures as degraded", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "recovered-provider",
+      name: "Recovered Provider",
+      enabled: true,
+      appScopes: ["openclaw"],
+      sourceType: "api-key",
+      apiFormat: "openai_chat",
+      baseUrl: "https://recovered.example.test",
+      authRef: null,
+      models: {
+        defaultModel: "recovered-model",
+        models: [{ id: "recovered-model" }],
+      },
+      health: {
+        circuitState: "closed",
+        lastSuccessAt: new Date().toISOString(),
+        lastFailureAt: new Date(Date.now() - 60_000).toISOString(),
+        lastError: null,
+        consecutiveFailures: 0,
+      },
+    },
+  });
+
+  const status = service.getStatus();
+  assert.equal(status.healthSummary.okProviders, 1);
+  assert.equal(status.healthSummary.degradedProviders, 0);
+  assert.equal(status.healthSummary.openCircuits, 0);
 });
 
 test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {
@@ -4225,12 +4846,24 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
     vision: true,
     reasoning: true,
   });
+  assert.ok(shared?.supportedGatewayRoutes.includes("openai_chat_completions"));
+  assert.ok(shared?.supportedGatewayRoutes.includes("openai_responses"));
+  assert.ok(shared?.supportedGatewayRoutes.includes("anthropic_messages"));
+  assert.ok(shared?.supportedGatewayRoutes.includes("openai_responses_compact"));
+  assert.equal(shared?.agentSelectable, true);
+  assert.equal(shared?.endpointOnly, false);
+  assert.equal(shared?.unsupportedGatewayRoutes.some((route) =>
+    route.routeId === "openai_chat_completions"
+    || route.routeId === "openai_responses"
+    || route.routeId === "anthropic_messages"
+  ), false);
   assert.equal(direct.data.find((model) => model.id === "a-only")?.contextWindow, 32000);
   assert.equal(direct.data.find((model) => model.id === "a-only")?.maxOutputTokens, 2048);
   assert.deepEqual(direct.data.find((model) => model.id === "a-only")?.features, {
     text: true,
     responses: true,
   });
+  assert.ok(direct.data.find((model) => model.id === "a-only")?.supportedGatewayRoutes.includes("openai_chat_completions"));
   assert.deepEqual(direct.data.find((model) => model.id === "b-only")?.features, {
     vision: true,
     streaming: true,
@@ -4310,7 +4943,9 @@ test("model gateway client key protects client endpoints and stays separate from
 
       const missingAuth = await requestJson(`${baseUrl}/v1/models`);
       assert.equal(missingAuth.status, 401);
-      assert.equal(missingAuth.body.error, "model_gateway_client_auth_required");
+      assert.equal(missingAuth.body.error.code, "model_gateway_client_auth_required");
+      assert.match(missingAuth.body.error.message, /configured local Gateway key/);
+      assert.equal(missingAuth.headers["www-authenticate"], 'Bearer realm="Tracevane Gateway"');
 
       const wrongAuth = await requestJson(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -4318,6 +4953,8 @@ test("model gateway client key protects client endpoints and stays separate from
         body: { model: "auth-model", messages: [{ role: "user", content: "hello" }] },
       });
       assert.equal(wrongAuth.status, 401);
+      assert.equal(wrongAuth.body.error.code, "model_gateway_client_auth_required");
+      assert.match(wrongAuth.body.error.message, /configured local Gateway key/);
 
       const models = await requestJson(`${baseUrl}/v1/models`, {
         headers: { "x-api-key": "sk-local-client-one" },
@@ -4410,7 +5047,22 @@ test("model gateway app connections preview and apply client config files with r
       authStrategy: "bearer",
       models: {
         defaultModel: "gpt-main",
-        models: [{ id: "gpt-main" }, { id: "gpt-alt" }],
+        models: [
+          { id: "gpt-main" },
+          { id: "gpt-alt" },
+          {
+            id: "gpt-image-2",
+            features: {
+              text: false,
+              streaming: false,
+              tools: false,
+              vision: true,
+              reasoning: false,
+              responses: true,
+              imageGeneration: true,
+            },
+          },
+        ],
       },
     },
     secret: { apiKey: "sk-upstream-app-connection" },
@@ -4459,6 +5111,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(preview.ok, true);
   assert.equal(preview.profile.model, null);
   assert.deepEqual(preview.availableModels, ["gpt-main", "gpt-alt"]);
+  assert.equal(preview.availableModels.includes("gpt-image-2"), false);
   assert.deepEqual(preview.connections.map((connection) => connection.id), ["codex", "claude-code", "opencode", "openclaw"]);
   assert.equal(preview.connections.every((connection) => connection.canApply), true);
   assert.equal(preview.connections.every((connection) => connection.canRollback), false);
@@ -4523,10 +5176,16 @@ test("model gateway app connections preview and apply client config files with r
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
   assert.match(codexConfig, /model = "gpt-alt"/);
+  assert.match(codexConfig, /model_catalog_json = ".*tracevane-gateway-models\.json"/);
   assert.match(codexConfig, /model_reasoning_effort = "high"/);
   const codexTopLevelConfig = codexConfig.split(/\n\[/)[0];
   assert.match(codexTopLevelConfig, /^model_context_window = 200000$/m);
   assert.match(codexTopLevelConfig, /^model_auto_compact_token_limit = 150000$/m);
+  const codexCatalogPath = path.join(path.dirname(codexPath), "tracevane-gateway-models.json");
+  const codexCatalog = JSON.parse(fs.readFileSync(codexCatalogPath, "utf8"));
+  assert.deepEqual(codexCatalog.models.map((model) => model.id).sort(), ["gpt-alt", "gpt-main"]);
+  assert.equal(codexCatalog.models.some((model) => model.id === "gpt-image-2"), false);
+  assert.equal(codexCatalog.models.find((model) => model.id === "gpt-main").context_window, 128000);
   assert.match(codexConfig, /enable_request_compression = true/);
   assert.match(codexConfig, /\[model_providers\.tracevane_gateway\]/);
   assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
@@ -4733,6 +5392,84 @@ test("model gateway app connections resolve budgets from each selected app model
   assert.equal(opencodeConfig.model, "tracevane-gateway/small");
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].contextWindow, 64000);
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].maxOutputTokens, 8192);
+});
+
+test("model gateway app connections keep per-model catalog budgets for mixed agent models", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "mixed-agent-provider",
+      name: "Mixed Agent Provider",
+      appScopes: ["opencode", "openclaw"],
+      baseUrl: "https://mixed.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [
+          { id: "gpt-5.5" },
+          { id: "gpt-5.4-mini" },
+          {
+            id: "local-small",
+            contextWindow: 64000,
+            maxOutputTokens: 8192,
+            features: { text: true, tools: true, vision: false, reasoning: false },
+          },
+        ],
+      },
+    },
+    secret: { apiKey: "sk-upstream-mixed-agent" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-mixed-agent" });
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-5.5",
+      appModels: {
+        opencode: "gpt-5.5",
+        openclaw: "gpt-5.5",
+      },
+    },
+  });
+
+  const opencodePath = path.join(homeDir, ".config", "opencode", "opencode.json");
+  fs.mkdirSync(path.dirname(opencodePath), { recursive: true });
+  fs.mkdirSync(path.dirname(config.openclawConfigFile), { recursive: true });
+  fs.writeFileSync(opencodePath, "{}\n", "utf8");
+  fs.writeFileSync(config.openclawConfigFile, "{}\n", "utf8");
+
+  service.applyAppConnection(undefined, { appId: "opencode" });
+  const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
+  const opencodeModels = opencodeConfig.provider["tracevane-gateway"].models;
+  assert.equal(opencodeModels["gpt-5.5"].contextWindow, 1050000);
+  assert.equal(opencodeModels["gpt-5.5"].maxOutputTokens, 128000);
+  assert.equal(opencodeModels["gpt-5.5"].reasoning, true);
+  assert.equal(opencodeModels["gpt-5.4-mini"].contextWindow, 400000);
+  assert.equal(opencodeModels["gpt-5.4-mini"].maxOutputTokens, 128000);
+  assert.equal(opencodeModels["local-small"].contextWindow, 64000);
+  assert.equal(opencodeModels["local-small"].maxOutputTokens, 8192);
+  assert.equal(opencodeModels["local-small"].reasoning, false);
+
+  service.applyAppConnection(undefined, { appId: "openclaw" });
+  const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const openclawModels = openclawConfig.models.providers["tracevane-gateway"].models;
+  const gpt55 = openclawModels.find((model) => model.id === "gpt-5.5");
+  const gpt54Mini = openclawModels.find((model) => model.id === "gpt-5.4-mini");
+  const localSmall = openclawModels.find((model) => model.id === "local-small");
+  assert.equal(gpt55.contextWindow, 1050000);
+  assert.equal(gpt55.maxTokens, 128000);
+  assert.deepEqual(gpt55.input, ["text", "image"]);
+  assert.equal(gpt55.reasoning, true);
+  assert.equal(gpt54Mini.contextWindow, 400000);
+  assert.equal(gpt54Mini.maxTokens, 128000);
+  assert.deepEqual(gpt54Mini.input, ["text", "image"]);
+  assert.equal(localSmall.contextWindow, 64000);
+  assert.equal(localSmall.maxTokens, 8192);
+  assert.deepEqual(localSmall.input, ["text"]);
+  assert.equal(localSmall.reasoning, false);
 });
 
 test("model gateway app connections apply through HTTP routes against an isolated home", async () => {
@@ -12643,6 +13380,24 @@ test("model gateway routes expose status/providers and forward chat passthrough"
       assert.equal(status.status, 200);
       assert.equal(status.body.ok, true);
       assert.equal(status.body.registry.providerCount, 1);
+      assert.ok(status.body.capabilities.unsupportedEndpoints.some((endpoint) =>
+        endpoint.endpoint === "/v1/embeddings"
+        && endpoint.code === "model_gateway_endpoint_unsupported"
+      ));
+      assert.ok(status.body.capabilities.unsupportedEndpoints.some((endpoint) =>
+        endpoint.endpoint === "/v1/realtime"
+        && endpoint.code === "model_gateway_realtime_unsupported"
+      ));
+      assert.ok(status.body.capabilities.unsupportedEndpoints.some((endpoint) =>
+        endpoint.method === "WS"
+        && endpoint.path === "/v1/responses"
+        && endpoint.endpoint === "/v1/responses#websocket"
+        && endpoint.code === "model_gateway_realtime_unsupported"
+      ));
+      assert.ok(status.body.capabilities.unsupportedEndpoints.some((endpoint) =>
+        endpoint.endpoint === "/v1/responses/ws"
+        && endpoint.code === "model_gateway_realtime_unsupported"
+      ));
 
       const providers = await requestJson(`${baseUrl}/gateway/providers`);
       assert.equal(providers.status, 200);
@@ -12801,4 +13556,104 @@ test("model gateway can opt into openai chat metadata passthrough for compatible
     messages: [{ role: "user", content: "hello" }],
     metadata: { trace: "trusted-provider" },
   });
+});
+
+test("model gateway returns structured unsupported for unimplemented OpenAI endpoint families", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    return new Response("unexpected", { status: 500 });
+  };
+
+  const probes = [
+    { path: "/v1/embeddings", method: "POST", body: { model: "text-embedding-3-large", input: "hello" } },
+    { path: "/v1/moderations", method: "POST", body: { model: "omni-moderation-latest", input: "hello" } },
+    { path: "/v1/completions", method: "POST", body: { model: "gpt-3.5-turbo-instruct", prompt: "hello" } },
+    { path: "/v1/batches", method: "POST", body: { input_file_id: "file_1", endpoint: "/v1/responses" } },
+    { path: "/v1/fine-tuning/jobs", method: "POST", body: { model: "gpt-5.5", training_file: "file_1" } },
+    { path: "/v1/assistants", method: "POST", body: { model: "gpt-5.5" } },
+    { path: "/v1/threads/thread_1/messages", method: "GET" },
+    { path: "/v1/files/file_1", method: "GET" },
+    { path: "/v1/vector_stores", method: "GET" },
+    { path: "/v1/videos", method: "POST", body: { model: "sora-2", prompt: "test" } },
+  ];
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      for (const probe of probes) {
+        const response = await requestJson(`${baseUrl}${probe.path}`, {
+          method: probe.method,
+          body: probe.body,
+        });
+        assert.equal(response.status, 501, probe.path);
+        assert.equal(response.body.error.code, "model_gateway_endpoint_unsupported", probe.path);
+        assert.equal(response.body.error.details.feasibility, "blocked-no-verified-gateway-adapter-contract");
+        assert.match(response.body.error.details.reference, /verified request\/response adapter/);
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls, 0);
+});
+
+test("model gateway unsupported endpoint inventory matches every registered HTTP 501 route", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const status = await requestJson(`${baseUrl}/gateway/status`);
+      assert.equal(status.status, 200);
+      assert.deepEqual(
+        status.body.capabilities.unsupportedEndpoints,
+        MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
+        "status capabilities must be generated from the unsupported endpoint source of truth",
+      );
+
+      for (const route of MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES) {
+        const path = concreteUnsupportedRoutePath(route.path);
+        const response = await requestRaw(`${baseUrl}${path}`, {
+          method: route.method,
+          body: unsupportedRouteRequestBody(route),
+        });
+        assert.equal(response.status, 501, `${route.method} ${route.path}`);
+        let body;
+        assert.doesNotThrow(() => {
+          body = JSON.parse(response.body);
+        }, `${route.method} ${route.path} must return JSON, got ${response.body}`);
+        assert.equal(typeof body.error.message, "string", `${route.method} ${route.path}`);
+        assert.match(body.error.message, /Tracevane Gateway does not expose|Realtime or Responses WebSocket/);
+        assert.equal(body.error.code, route.code, `${route.method} ${route.path}`);
+        assert.equal(body.error.details.endpoint, route.endpoint, `${route.method} ${route.path}`);
+        assert.equal(typeof body.error.details.reference, "string", `${route.method} ${route.path}`);
+        assert.ok(body.error.details.reference.length > 40, `${route.method} ${route.path}`);
+        assert.ok(Array.isArray(body.error.details.alternatives), `${route.method} ${route.path}`);
+        assert.ok(body.error.details.alternatives.length > 0, `${route.method} ${route.path}`);
+        if (route.code === "model_gateway_realtime_unsupported") {
+          assert.equal(body.error.details.feasibility, "blocked-no-verified-gateway-websocket-proxy-contract");
+        } else {
+          assert.equal(body.error.details.feasibility, "blocked-no-verified-gateway-adapter-contract");
+        }
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls, 0);
 });

@@ -114,7 +114,7 @@ import {
   createIcons,
 } from "lucide";
 import { useQuery } from "@tanstack/react-query";
-import { navGroups, routeByPath, routeDefs } from "./route-manifest";
+import { navGroups, routeByPath, routeDefs, platformGroups } from "./route-manifest";
 import { ShellContext, type DialogPayload, type SheetPayload, type ShellApi, type StateOptions } from "./shell-context";
 
 interface ToastItem {
@@ -322,6 +322,7 @@ export function AuroraShell({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [palette, setPalette] = useState("blue");
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [platformOpen, setPlatformOpen] = useState<Record<string, boolean>>({});
   const [mobileOpen, setMobileOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
@@ -570,6 +571,44 @@ export function AuroraShell({ children }: { children: ReactNode }) {
                 ))}
               </div>
             ))}
+            {/* 平台 / 外部 runtime 分组（独立隔离，淡化，二级可折叠） */}
+            <div className="nav-platform-divider" />
+            <div className="nav-platform-label">平台 / 外部 runtime</div>
+            {platformGroups.map((pg) => {
+              const isOpen = platformOpen[pg.id] ?? true;
+              return (
+                <div key={pg.id} className={`nav-platform-group${isOpen ? " open" : ""}`}>
+                  <button
+                    className="nav-platform-head"
+                    aria-expanded={isOpen}
+                    onClick={() => setPlatformOpen((prev) => ({ ...prev, [pg.id]: !isOpen }))}
+                  >
+                    <i data-lucide={pg.icon} />
+                    <span>{pg.label}</span>
+                    <i data-lucide="chevron-right" className="chev" />
+                  </button>
+                  <div className="nav-platform-body">
+                    {pg.sections.map((sec) => {
+                      const to = `/${pg.basePath}/${sec.path}`;
+                      const full = `${pg.basePath}/${sec.path}`;
+                      const active = path === full;
+                      return (
+                        <Link
+                          key={sec.path}
+                          className={`nav-item${active ? " active" : ""}`}
+                          to={to}
+                          aria-current={active ? "page" : undefined}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <i data-lucide={sec.icon} />
+                          <span>{sec.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
           <div className="nav-foot">
             <button className="btn-icon btn-ghost" title="折叠导航" aria-label="折叠导航" onClick={() => setNavCollapsed((value) => !value)}><i data-lucide="panel-left-close" /></button>

@@ -18,6 +18,12 @@ import type {
 } from "../../../../types/model-gateway.js";
 import { sendModelGatewayRealtimeUnsupported } from "./realtime.js";
 import { isModelGatewayServiceError } from "./service.js";
+import {
+  MODEL_GATEWAY_ENDPOINT_UNSUPPORTED_CODE,
+  MODEL_GATEWAY_REALTIME_UNSUPPORTED_CODE,
+  MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES,
+  modelGatewayEndpointUnsupportedPayload,
+} from "./unsupported-endpoints.js";
 
 function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isModelGatewayServiceError(error)) {
@@ -26,17 +32,57 @@ function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unkno
       res.setHeader("WWW-Authenticate", "Bearer realm=\"Tracevane Gateway\"");
     }
     sendJson(res, shape.statusCode, {
-      error: shape.code,
-      message: shape.message,
+      error: {
+        code: shape.code,
+        message: shape.message,
+        ...(shape.details ? { details: shape.details } : {}),
+      },
     });
     return;
   }
 
   const message = error instanceof Error ? error.message : "Unexpected Model Gateway service failure";
   sendJson(res, 500, {
-    error: "model_gateway_service_failed",
-    message,
+    error: {
+      code: "model_gateway_service_failed",
+      message,
+    },
   });
+}
+
+function sendModelGatewayUnsupportedEndpoint(
+  res: Parameters<typeof sendJson>[0],
+  endpoint: string,
+  alternatives: string[] = [],
+): void {
+  sendJson(res, 501, modelGatewayEndpointUnsupportedPayload(endpoint, alternatives));
+}
+
+function registerUnsupportedEndpoint(
+  router: TracevaneRouter,
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  endpoint = path,
+  code = MODEL_GATEWAY_ENDPOINT_UNSUPPORTED_CODE,
+): void {
+  const handler = (_req: unknown, res: Parameters<typeof sendJson>[0]) => {
+    if (code === MODEL_GATEWAY_REALTIME_UNSUPPORTED_CODE) {
+      sendModelGatewayRealtimeUnsupported(res, endpoint);
+      return;
+    }
+    sendModelGatewayUnsupportedEndpoint(res, endpoint);
+  };
+  if (method === "GET") router.get(path, handler);
+  else if (method === "POST") router.post(path, handler);
+  else if (method === "PUT") router.put(path, handler);
+  else if (method === "PATCH") router.patch(path, handler);
+  else router.delete(path, handler);
+}
+
+function registerModelGatewayUnsupportedEndpoints(router: TracevaneRouter): void {
+  for (const route of MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES) {
+    registerUnsupportedEndpoint(router, route.method, route.path, route.endpoint, route.code);
+  }
 }
 
 export function registerModelGatewayRoutes(router: TracevaneRouter): void {
@@ -336,22 +382,6 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
 
-  router.get("/v1/responses/ws", (_req, res) => {
-    sendModelGatewayRealtimeUnsupported(res);
-  });
-
-  router.post("/v1/responses/ws", (_req, res) => {
-    sendModelGatewayRealtimeUnsupported(res);
-  });
-
-  router.get("/v1/realtime", (_req, res) => {
-    sendModelGatewayRealtimeUnsupported(res);
-  });
-
-  router.post("/v1/realtime", (_req, res) => {
-    sendModelGatewayRealtimeUnsupported(res);
-  });
-
   router.post("/v1/images/generations", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
@@ -379,4 +409,6 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
   router.post("/claude/v1/messages", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
+
+  registerModelGatewayUnsupportedEndpoints(router);
 }

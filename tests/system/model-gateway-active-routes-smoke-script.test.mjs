@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -27,6 +27,19 @@ function sendJson(res, statusCode, body) {
     "content-length": Buffer.byteLength(raw),
   });
   res.end(raw);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate, timeoutMs = 5_000) {
+  const startedAt = Date.now();
+  for (;;) {
+    if (predicate()) return;
+    if (Date.now() - startedAt >= timeoutMs) throw new Error("Timed out waiting for condition");
+    await sleep(25);
+  }
 }
 
 async function startMockGateway(options = {}) {
@@ -99,6 +112,9 @@ async function startMockGateway(options = {}) {
     }
     if (req.method === "POST" && url.pathname === "/api/model-gateway/active-route-smoke") {
       smokeAttemptsByScope[body.scope] = (smokeAttemptsByScope[body.scope] || 0) + 1;
+      if (options.slowSmokeScope === body.scope) {
+        await sleep(options.slowSmokeDelayMs || 1_000);
+      }
       if (options.transientFailScope === body.scope && smokeAttemptsByScope[body.scope] === 1) {
         sendJson(res, 502, {
           ok: false,
@@ -165,6 +181,7 @@ function makeTempLockDir() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-active-route-smoke-"));
   return {
     lockDir: path.join(root, "active-route-smoke.lock"),
+    markerPath: path.join(root, "active-route-smoke.marker.json"),
     cleanup() {
       fs.rmSync(root, { recursive: true, force: true });
     },
@@ -180,6 +197,7 @@ async function runScript(args, env = {}) {
         ...process.env,
         TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         ...(lock ? { TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir } : {}),
+        ...(lock ? { TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath } : {}),
         ...env,
       },
       encoding: "utf8",
@@ -232,7 +250,7 @@ test("model gateway active route smoke waits on a lock before mutating active pr
   try {
     fs.mkdirSync(lock.lockDir, { recursive: true });
     fs.writeFileSync(path.join(lock.lockDir, "owner.json"), `${JSON.stringify({
-      pid: 12345,
+      pid: process.pid,
       createdAt: new Date().toISOString(),
       script: "existing-smoke.mjs",
       lockDir: lock.lockDir,
@@ -271,6 +289,112 @@ test("model gateway active route smoke waits on a lock before mutating active pr
     );
     assert.equal(gateway.requests.length, 0);
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke removes a fresh lock owned by a dead pid", async () => {
+  const gateway = await startMockGateway();
+  const lock = makeTempLockDir();
+  try {
+    fs.mkdirSync(lock.lockDir, { recursive: true });
+    fs.writeFileSync(path.join(lock.lockDir, "owner.json"), `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      script: "dead-smoke.mjs",
+      lockDir: lock.lockDir,
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--lock-timeout-ms", "0",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+    });
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.lock?.acquired, true);
+    assert.equal(parsed.lock?.attempts >= 2, true);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+    assert.equal(fs.existsSync(lock.lockDir), false);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke restores stale marker residue from a dead owner", async () => {
+  const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "glm" } });
+  const lock = makeTempLockDir();
+  try {
+    fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
+    fs.writeFileSync(lock.markerPath, `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      endpoint: gateway.endpoint,
+      providerId: "glm",
+      scopes: ["opencode"],
+      originalActiveProviders: { codex: "old-codex" },
+      script: "dead-smoke.mjs",
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath,
+    });
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.staleMarkerRecovery?.restoredScopes, [
+      { scope: "opencode", original: "" },
+    ]);
+    assert.deepEqual(parsed.staleMarkerRecovery?.failures, []);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+    assert.equal(fs.existsSync(lock.markerPath), false);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke does not overwrite active providers changed after a stale marker", async () => {
+  const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "manual-provider" } });
+  const lock = makeTempLockDir();
+  try {
+    fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
+    fs.writeFileSync(lock.markerPath, `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      endpoint: gateway.endpoint,
+      providerId: "glm",
+      scopes: ["opencode"],
+      originalActiveProviders: { codex: "old-codex" },
+      script: "dead-smoke.mjs",
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath,
+    });
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.staleMarkerRecovery?.restoredScopes, []);
+    assert.deepEqual(parsed.staleMarkerRecovery?.skippedScopes, [
+      { scope: "opencode", current: "manual-provider", original: "" },
+    ]);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex", opencode: "manual-provider" });
+    assert.equal(fs.existsSync(lock.markerPath), false);
   } finally {
     lock.cleanup();
     await gateway.close();
@@ -446,6 +570,96 @@ test("model gateway active route smoke restores active providers after failure",
     );
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
   } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke times out slow probes and still restores active providers", async () => {
+  const gateway = await startMockGateway({ slowSmokeScope: "opencode", slowSmokeDelayMs: 1_000 });
+  const lock = makeTempLockDir();
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--provider", "glm",
+        "--model", "glm-5.2",
+        "--scopes", "opencode",
+        "--timeout-ms", "250",
+        "--smoke-retries", "0",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+        },
+        encoding: "utf8",
+        timeout: 5_000,
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.routeSmokes.length, 1);
+        assert.equal(parsed.routeSmokes[0].scope, "opencode");
+        assert.equal(parsed.routeSmokes[0].status, 0);
+        assert.equal(parsed.routeSmokes[0].error?.code, "model_gateway_active_route_smoke_request_failed");
+        assert.match(parsed.routeSmokes[0].error?.message || "", /aborted|timeout/i);
+        assert.deepEqual(parsed.restoreFailures, []);
+        assert.deepEqual(parsed.restoreMismatches, []);
+        assert.deepEqual(parsed.restoredActiveProviders, { codex: "old-codex" });
+        return true;
+      },
+    );
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+    assert.equal(fs.existsSync(lock.lockDir), false);
+    assert.equal(fs.existsSync(lock.markerPath), false);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke restores active providers and lock on SIGTERM", async () => {
+  const gateway = await startMockGateway({ slowSmokeScope: "opencode", slowSmokeDelayMs: 2_000 });
+  const lock = makeTempLockDir();
+  const child = spawn(process.execPath, [
+    scriptPath,
+    "--endpoint", gateway.endpoint,
+    "--provider", "glm",
+    "--model", "glm-5.2",
+    "--scopes", "opencode",
+    "--timeout-ms", "5000",
+    "--json",
+  ], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = [];
+  const stderr = [];
+  child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+  child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
+  try {
+    await waitFor(() => gateway.requests.some((request) => request.path === "/api/model-gateway/active-route-smoke"));
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex", opencode: "glm" });
+    child.kill("SIGTERM");
+    const exit = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+    assert.equal(exit.code, 143, Buffer.concat(stderr).toString("utf8"));
+    assert.equal(exit.signal, null);
+    await waitFor(() => gateway.activeProviders.opencode === undefined);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+    assert.equal(fs.existsSync(lock.lockDir), false);
+    assert.equal(fs.existsSync(lock.markerPath), false);
+    assert.equal(Buffer.concat(stdout).toString("utf8"), "");
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    lock.cleanup();
     await gateway.close();
   }
 });

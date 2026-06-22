@@ -342,8 +342,11 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   const page = read("apps/web-vue/src/app/ModelGatewayPage.tsx");
   const overviewSource = page.slice(page.indexOf("const renderOverview"), page.indexOf("const renderProviders"));
   const providerRowSource = page.slice(page.indexOf("function GatewayProviderTableRow"), page.indexOf("export function ModelGatewayPage"));
+  const providerActionsSource = page.slice(page.indexOf("const testProvider"), page.indexOf("const previewAppConnection"));
   const modelsSource = page.slice(page.indexOf("const renderModels"), page.indexOf("const renderUsage"));
   const usageSource = page.slice(page.indexOf("const renderUsage"), page.indexOf("const renderApps"));
+  const accountSource = page.slice(page.indexOf("const accountEvidenceRows"), page.indexOf("const startCodexAccountLogin"));
+  const loginSource = page.slice(page.indexOf("const startCodexAccountLogin"), page.indexOf("const previewAppConnection"));
   const appConnectionSource = page.slice(page.indexOf("const previewAppConnection"), page.indexOf("const modelCatalog"));
 
   assert.match(app, /ModelGatewayPage/);
@@ -361,7 +364,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "选择 Provider 类型", "GLM 编程端点 · OpenAI Chat", "GLM 编程端点 · Anthropic Messages", "OpenAI 兼容 API", "重新选择类型", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略", "当前 Provider 不是账号制"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "选择 Provider 类型", "GLM 编程端点 · OpenAI Chat", "GLM 编程端点 · Anthropic Messages", "OpenAI 兼容 API", "重新选择类型", "保存配置", "账号池", "客户端接入", "刷新证据", "复制路径", "保存模型", "配置预览", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略", "当前 Provider 不是账号制"]) {
     assert.match(page, new RegExp(label));
   }
   for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
@@ -395,15 +398,38 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /provider-table/);
   assert.match(page, /provider-row-actions/);
   assert.match(page, /provider-config-flow/);
+  assert.match(page, /gateway-action-result/);
+  assert.match(page, /GatewayActionResult/);
   assert.match(page, /createIcons\(\{ icons: modelGatewayIcons, root \}\)/);
+  assert.match(providerActionsSource, /gatewayResultPayload/);
+  assert.match(providerActionsSource, /Provider 连通检查/);
+  assert.match(providerActionsSource, /Provider 探测结果/);
+  assert.doesNotMatch(providerActionsSource, /openSheet/);
+  assert.match(accountSource, /accountEvidenceRows/);
+  assert.match(accountSource, /操作/);
+  assert.match(accountSource, /Provider/);
+  assert.match(accountSource, /账号/);
+  assert.match(accountSource, /冷却至/);
+  assert.match(accountSource, /错误/);
+  assert.match(accountSource, /refetchGatewayData/);
+  assert.match(loginSource, /gatewayResultPayload/);
+  assert.match(loginSource, /登录新账号/);
+  assert.match(loginSource, /primaryHref/);
+  assert.doesNotMatch(loginSource, /openSheet/);
+  assert.match(page, /app-connection-workbench/);
+  assert.match(page, /app-connection-preview-code/);
   assert.match(appConnectionSource, /appConnectionTargetPath/);
-  assert.match(appConnectionSource, /appConnectionEvidenceNote/);
+  assert.match(appConnectionSource, /appConnectionResultRows/);
+  assert.match(appConnectionSource, /saveAppConnectionModelProfile/);
+  assert.match(appConnectionSource, /copyAppConnectionTarget/);
+  assert.match(appConnectionSource, /\/api\/model-gateway\/app-connections\/profile/);
   assert.match(appConnectionSource, /targetPath/);
   assert.match(appConnectionSource, /backupPath/);
   assert.match(appConnectionSource, /restoredFrom/);
   assert.match(appConnectionSource, /后端会先备份当前文件/);
   assert.match(appConnectionSource, /最新预览证据/);
   assert.match(appConnectionSource, /Promise\.all\(\[appConnections\.refetch\(\), providers\.refetch\(\)\]\)/);
+  assert.doesNotMatch(appConnectionSource, /openSheet/);
   for (const forbiddenOverviewAction of ["新建 API Provider", "登录 Codex", "新增 endpoint", "新增模型", "登录新账号"]) {
     assert.doesNotMatch(overviewSource, new RegExp(forbiddenOverviewAction));
   }

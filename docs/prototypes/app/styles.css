@@ -927,3 +927,17 @@
 .flow-step.fail .fs-ico { background: var(--red-soft); color: var(--red); }
 .flow-step.fail .fs-state { color: var(--red); }
 .flow-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* platform nav: 二级可折叠分组（第三方 runtime 配置入口，与主链路隔离） */
+.nav-platform-divider { border-top: 1px solid var(--line); margin: 8px 4px 6px; }
+.nav-platform-label { padding: 6px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--subtle); opacity: .8; }
+.nav-platform-group { margin-bottom: 2px; }
+.nav-platform-head { display: flex; align-items: center; gap: 10px; width: 100%; height: 35px; padding: 0 10px; border: none; background: transparent; box-shadow: none; color: var(--muted); font-size: 13px; cursor: pointer; border-radius: var(--radius-sm); transition: background .14s ease, color .14s ease; }
+.nav-platform-head:hover { background: var(--panel-2); color: var(--ink); }
+.nav-platform-head .chev { margin-left: auto; transition: transform .16s ease; color: var(--subtle); flex: none; }
+.nav-platform-group.open .nav-platform-head .chev { transform: rotate(90deg); }
+.nav-platform-body { display: none; padding-left: 8px; }
+.nav-platform-group.open .nav-platform-body { display: block; }
+.nav-platform-body .nav-item { height: 32px; font-size: 12.5px; color: var(--subtle); }
+.nav-platform-body .nav-item:hover { color: var(--muted); }
+.nav-platform-body .nav-item.active { color: var(--ink-strong); }

@@ -2,10 +2,13 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import { sendJson } from "../../core/http.js";
+import {
+  MODEL_GATEWAY_REALTIME_UNSUPPORTED_CODE,
+  MODEL_GATEWAY_REALTIME_UNSUPPORTED_MESSAGE,
+  MODEL_GATEWAY_REALTIME_UNSUPPORTED_UPGRADE_PATHS,
+} from "./unsupported-endpoints.js";
 
-const REALTIME_UNSUPPORTED_CODE = "model_gateway_codex_account_realtime_unsupported";
-const REALTIME_UNSUPPORTED_MESSAGE =
-  "Tracevane Gateway does not expose Codex account Realtime or Responses WebSocket yet; use /v1/responses, /v1/chat/completions, /v1/messages, or connect directly to an official realtime provider until a Gateway WebSocket bridge is verified.";
+const MODEL_GATEWAY_REALTIME_PATHS = new Set(MODEL_GATEWAY_REALTIME_UNSUPPORTED_UPGRADE_PATHS);
 
 const realtimeUnsupportedServer = new WebSocketServer({ noServer: true });
 
@@ -16,31 +19,32 @@ function requestPath(req: http.IncomingMessage): string {
 
 export function isModelGatewayRealtimePath(req: http.IncomingMessage): boolean {
   const pathname = requestPath(req);
-  return pathname === "/v1/responses/ws" || pathname === "/v1/realtime";
+  return MODEL_GATEWAY_REALTIME_PATHS.has(pathname);
 }
 
-export function modelGatewayRealtimeUnsupportedPayload(): Record<string, unknown> {
+export function modelGatewayRealtimeUnsupportedPayload(endpoint?: string): Record<string, unknown> {
   return {
     error: {
-      code: REALTIME_UNSUPPORTED_CODE,
-      message: REALTIME_UNSUPPORTED_MESSAGE,
+      code: MODEL_GATEWAY_REALTIME_UNSUPPORTED_CODE,
+      message: MODEL_GATEWAY_REALTIME_UNSUPPORTED_MESSAGE,
       details: {
-        providerType: "codex-account",
-        feasibility: "blocked-no-stable-codex-account-realtime-contract",
+        ...(endpoint ? { endpoint } : {}),
+        providerType: "gateway",
+        feasibility: "blocked-no-verified-gateway-websocket-proxy-contract",
         reference:
-          "OpenAI documents Responses WebSocket mode and Realtime WebSocket, but no official or directly verified Codex account backend Realtime/WebSocket contract is available for Tracevane Gateway yet; this route stays explicit unsupported until a full turn-state contract is verified and tested.",
+          "OpenAI documents Responses WebSocket mode plus Realtime voice, translation, and transcription sessions, but Tracevane Gateway has not verified a safe WebSocket/WebRTC/SIP proxy contract yet; these routes stay explicit unsupported until turn state, binary/audio frames, and session lifecycle are tested end-to-end.",
         alternatives: [
           "Use /v1/responses for Codex account text and tool workflows.",
           "Use /v1/chat/completions or /v1/messages through Gateway protocol conversion.",
-          "For realtime sessions, connect directly to an official/OpenAI-compatible realtime provider until Tracevane Gateway has a verified WebSocket bridge.",
+          "For realtime voice, translation, or transcription sessions, connect directly to an official/OpenAI-compatible realtime provider until Tracevane Gateway has a verified WebSocket/WebRTC bridge.",
         ],
       },
     },
   };
 }
 
-export function sendModelGatewayRealtimeUnsupported(res: http.ServerResponse): void {
-  sendJson(res, 501, modelGatewayRealtimeUnsupportedPayload());
+export function sendModelGatewayRealtimeUnsupported(res: http.ServerResponse, endpoint?: string): void {
+  sendJson(res, 501, modelGatewayRealtimeUnsupportedPayload(endpoint));
 }
 
 export function handleModelGatewayRealtimeUnsupportedUpgrade(
@@ -49,11 +53,12 @@ export function handleModelGatewayRealtimeUnsupportedUpgrade(
   head: Buffer,
 ): boolean {
   if (!isModelGatewayRealtimePath(req)) return false;
+  const endpoint = requestPath(req) === "/v1/responses" ? "/v1/responses#websocket" : requestPath(req);
 
   realtimeUnsupportedServer.handleUpgrade(req, socket, head, (ws) => {
     ws.send(JSON.stringify({
       type: "error",
-      ...modelGatewayRealtimeUnsupportedPayload(),
+      ...modelGatewayRealtimeUnsupportedPayload(endpoint),
     }), () => {
       ws.close(1003, "realtime unsupported");
     });

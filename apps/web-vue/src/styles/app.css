@@ -954,6 +954,83 @@
   background: color-mix(in srgb, var(--panel), transparent 20%);
 }
 
+.model-gateway-page .gateway-action-result {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.model-gateway-page .gateway-action-result.ok {
+  border-color: color-mix(in srgb, var(--green), transparent 60%);
+}
+
+.model-gateway-page .gateway-action-result.warn {
+  border-color: color-mix(in srgb, var(--amber), transparent 58%);
+}
+
+.model-gateway-page .gateway-action-result.bad {
+  border-color: color-mix(in srgb, var(--danger), transparent 58%);
+}
+
+.model-gateway-page .gateway-action-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-gateway-page .gateway-action-title {
+  display: grid;
+  gap: 2px;
+}
+
+.model-gateway-page .gateway-action-title strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+}
+
+.model-gateway-page .gateway-action-title span,
+.model-gateway-page .gateway-action-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.model-gateway-page .gateway-action-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.model-gateway-page .gateway-action-facts dt {
+  color: var(--subtle);
+}
+
+.model-gateway-page .gateway-action-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.model-gateway-page .gateway-action-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .model-gateway-page .search-input {
   flex: 1 1 240px;
   min-width: min(100%, 220px);
@@ -1102,6 +1179,74 @@
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.model-gateway-page .app-connection-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.model-gateway-page .app-connection-detail,
+.model-gateway-page .app-connection-preview-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.model-gateway-page .app-connection-detail {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.model-gateway-page .app-connection-facts {
+  padding: 0;
+}
+
+.model-gateway-page .app-connection-profile {
+  margin: 0;
+}
+
+.model-gateway-page .app-connection-budget {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 38px;
+}
+
+.model-gateway-page .app-connection-budget span {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.model-gateway-page .app-connection-preview-panel {
+  display: grid;
+  grid-template-rows: auto minmax(260px, 1fr) auto;
+  overflow: hidden;
+}
+
+.model-gateway-page .app-connection-preview-code {
+  min-width: 0;
+  margin: 0;
+  padding: 13px 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink);
+  font: 12px/1.55 var(--mono);
+  overflow: auto;
+  white-space: pre;
+}
+
+.model-gateway-page .app-connection-preview-panel > .row-actions {
+  padding: 10px 12px;
 }
 
 .model-gateway-page .danger-zone {
@@ -1334,6 +1479,15 @@
     justify-content: flex-end;
   }
 
+  .model-gateway-page .gateway-action-result {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .model-gateway-page .gateway-action-controls {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
   .model-gateway-page .alias-editor {
     align-items: stretch;
   }
@@ -1356,6 +1510,14 @@
   .model-gateway-page .provider-config-sections,
   .model-gateway-page .app-connection-summary {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .model-gateway-page .app-connection-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .model-gateway-page .app-connection-preview-panel {
+    grid-template-rows: auto minmax(220px, 56vh) auto;
   }
 
   .model-gateway-page .provider-repick {

@@ -1,6 +1,6 @@
 import approvalsHtml from "../../../../docs/prototypes/pages/approvals.html?raw";
 
-export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统" | "平台";
+export type RouteGroup = "总览" | "运行" | "连接" | "证据" | "系统";
 export type RouteSurface = "prototype" | "react";
 
 export interface RouteDef {
@@ -20,6 +20,20 @@ export interface OpenClawPlatformSection {
   label: string;
   icon: string;
 }
+// 平台/外部 runtime 二级分组：每个三方平台是一个可折叠子组，下面是三级配置页。
+// 未来新增其它三方强集成（如 Dify/n8n）也加到这里，和主链路隔离。
+export interface PlatformSubSection {
+  path: string;
+  label: string;
+  icon: string;
+}
+export interface PlatformGroup {
+  id: string;
+  label: string;
+  icon: string;
+  basePath: string;       // 如 "platforms/openclaw"
+  sections: PlatformSubSection[];
+}
 
 export const navGroups: Array<{ label: RouteGroup; items: RouteDef[] }> = [
   { label: "总览", items: [] },
@@ -27,7 +41,6 @@ export const navGroups: Array<{ label: RouteGroup; items: RouteDef[] }> = [
   { label: "连接", items: [] },
   { label: "证据", items: [] },
   { label: "系统", items: [] },
-  { label: "平台", items: [] },
 ];
 
 export const routeDefs: RouteDef[] = [
@@ -42,7 +55,6 @@ export const routeDefs: RouteDef[] = [
   { path: "files", label: "文件证据", group: "证据", icon: "folder-check", shape: "list", surface: "react" },
   { path: "approvals", label: "审批", group: "证据", icon: "shield-check", shape: "list", surface: "prototype", html: approvalsHtml, count: 3 },
   { path: "recovery", label: "自愈守护", group: "系统", icon: "heart-pulse", shape: "console", surface: "react" },
-  { path: "platforms", label: "平台集成", group: "平台", icon: "boxes", shape: "console", surface: "react" },
 ];
 
 export const openClawPlatformSections: OpenClawPlatformSection[] = [
@@ -52,6 +64,16 @@ export const openClawPlatformSections: OpenClawPlatformSection[] = [
   { path: "agents-channels", label: "Agent / 渠道", icon: "radio-tower" },
   { path: "services", label: "服务", icon: "server" },
   { path: "recovery", label: "Doctor / 自愈", icon: "heart-pulse" },
+];
+export const platformGroups: PlatformGroup[] = [
+  {
+    id: "openclaw",
+    label: "OpenClaw",
+    icon: "server",
+    basePath: "platforms/openclaw",
+    sections: openClawPlatformSections.map((s) => ({ path: s.path, label: s.label, icon: s.icon })),
+  },
+  // 未来示例：{ id: "dify", label: "Dify", icon: "workflow", basePath: "platforms/dify", sections: [...] }
 ];
 
 for (const group of navGroups) {

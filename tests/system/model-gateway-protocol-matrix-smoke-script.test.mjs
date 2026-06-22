@@ -27,6 +27,10 @@ function sendJson(res, statusCode, body) {
   res.end(raw);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function startMockGateway(options = {}) {
   const requests = [];
   const activeProviders = {};
@@ -89,6 +93,9 @@ async function startMockGateway(options = {}) {
     }
     if (req.method === "POST" && url.pathname === "/api/model-gateway/active-route-smoke") {
       const providerId = activeProviders[body.scope] || "";
+      if (options.slowSmokeScope === body.scope) {
+        await sleep(options.slowSmokeDelayMs || 1_000);
+      }
       if (providerId === "glm" && body.scope === "claude-code") {
         const endpointId = options.wrongClaudeEndpoint ? "coding-chat" : "coding-anthropic";
         sendJson(res, 200, {
@@ -210,6 +217,85 @@ test("model gateway protocol matrix fails when GLM Anthropic endpoint is not sel
         assert.equal(parsed.ok, false);
         assert.equal(parsed.stages[0].ok, false);
         assert.equal(parsed.stages[0].activeRoutes.expectationFailures[0].code, "model_gateway_endpoint_expectation_failed");
+        assert.equal(parsed.stages[1].ok, true);
+        assert.equal(parsed.stages[2].ok, true);
+        assert.deepEqual(gateway.activeProviders, {});
+        return true;
+      },
+    );
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix bounds slow child stages and restores routes", async () => {
+  const gateway = await startMockGateway({ slowSmokeScope: "claude-code", slowSmokeDelayMs: 1_000 });
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--timeout-ms", "250",
+        "--stage-timeout-ms", "5000",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        },
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024 * 16,
+        timeout: 10_000,
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.timeoutMs, 250);
+        assert.equal(parsed.stageTimeoutMs, 5000);
+        assert.equal(parsed.stages[0].ok, false);
+        assert.equal(parsed.stages[0].activeRoutes.routeSmokes[0].status, 0);
+        assert.equal(
+          parsed.stages[0].activeRoutes.routeSmokes[0].error?.code,
+          "model_gateway_active_route_smoke_request_failed",
+        );
+        assert.equal(parsed.stages[1].ok, true);
+        assert.equal(parsed.stages[2].ok, true);
+        assert.deepEqual(gateway.activeProviders, {});
+        return true;
+      },
+    );
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix stage watchdog lets the child restore active routes", async () => {
+  const gateway = await startMockGateway({ slowSmokeScope: "claude-code", slowSmokeDelayMs: 2_000 });
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--timeout-ms", "5000",
+        "--stage-timeout-ms", "500",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        },
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024 * 16,
+        timeout: 10_000,
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.stageTimeoutMs, 500);
+        assert.equal(parsed.stages[0].ok, false);
+        assert.equal(parsed.stages[0].error.timeoutMs, 500);
         assert.equal(parsed.stages[1].ok, true);
         assert.equal(parsed.stages[2].ok, true);
         assert.deepEqual(gateway.activeProviders, {});

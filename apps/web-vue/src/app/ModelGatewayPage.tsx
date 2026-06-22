@@ -56,6 +56,7 @@ type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderConfigSection = "base" | "endpoints" | "models" | "advanced";
 type ProviderCreateStep = "preset" | "form";
+type GatewayActionTone = "ok" | "warn" | "bad" | "info";
 
 interface ProviderEndpointDraft {
   localId: string;
@@ -130,6 +131,17 @@ interface ProviderCreatePreset {
   supportsEffort?: boolean;
   thinkingParam?: string;
   effortParam?: string;
+}
+
+interface GatewayActionResult {
+  title: string;
+  subtitle: string;
+  tone: GatewayActionTone;
+  icon: string;
+  rows: Array<[string, string]>;
+  note?: string;
+  primaryHref?: string;
+  primaryLabel?: string;
 }
 
 const gatewayQueries = {
@@ -876,6 +888,9 @@ export function ModelGatewayPage() {
   const [modelSearch, setModelSearch] = useState("");
   const [editingAliasKey, setEditingAliasKey] = useState("");
   const [modelAliasDraft, setModelAliasDraft] = useState("");
+  const [gatewayActionResult, setGatewayActionResult] = useState<GatewayActionResult | null>(null);
+  const [selectedAppConnectionId, setSelectedAppConnectionId] = useState("");
+  const [appConnectionModelDraft, setAppConnectionModelDraft] = useState("");
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
@@ -885,12 +900,15 @@ export function ModelGatewayPage() {
 
   useEffect(() => {
     shell.refreshIcons();
-  }, [shell, view, providerSearch, providerFilter, modelSearch, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
+  }, [shell, view, providerSearch, providerFilter, modelSearch, gatewayActionResult, selectedAppConnectionId, appConnectionModelDraft, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
 
   const providerRows = listAt(providers.data, ["providers"]).map(asRecord);
   const activeRoutes = listAt(providers.data, ["activeRoutes"]).map(asRecord);
   const activeRouteAlerts = listAt(providers.data, ["activeRouteAlerts"]);
   const connectionRows = listAt(appConnections.data, ["connections"]).map(asRecord);
+  const appConnectionProfile = recordAt(appConnections.data, ["profile"]);
+  const appConnectionAvailableModels = listAt(appConnections.data, ["availableModels"]).map(String);
+  const selectedAppConnection = connectionRows.find((connection) => textAt(connection, ["id"], "") === selectedAppConnectionId) ?? connectionRows[0] ?? null;
   const usageModels = listAt(usage.data, ["models"]).map(asRecord);
   const usageTotals = recordAt(usage.data, ["totals"]);
   const healthSummary = recordAt(status.data, ["healthSummary"]);
@@ -910,6 +928,18 @@ export function ModelGatewayPage() {
     if (!selectedProviderId && providerRows.length) setSelectedProviderId(textAt(providerRows[0], ["id"], ""));
   }, [providerRows, selectedProviderId]);
 
+  useEffect(() => {
+    if (!selectedAppConnectionId && connectionRows.length) {
+      setSelectedAppConnectionId(textAt(connectionRows[0], ["id"], ""));
+    }
+  }, [connectionRows, selectedAppConnectionId]);
+
+  useEffect(() => {
+    if (!selectedAppConnection) return;
+    const selectedModel = textAt(selectedAppConnection, ["model"], textAt(appConnectionProfile, ["model"], ""));
+    setAppConnectionModelDraft(selectedModel === "-" ? "" : selectedModel);
+  }, [selectedAppConnectionId, selectedAppConnection, appConnectionProfile]);
+
   const refetchGatewayData = async () => {
     await Promise.all([
       status.refetch(),
@@ -917,6 +947,10 @@ export function ModelGatewayPage() {
       appConnections.refetch(),
       usage.refetch(),
     ]);
+  };
+
+  const gatewayResultPayload = (payload: GatewayActionResult) => {
+    setGatewayActionResult(payload);
   };
 
   const openProviderEdit = (provider: AnyRecord) => {
@@ -1127,9 +1161,9 @@ export function ModelGatewayPage() {
   const testProvider = async (provider: AnyRecord) => {
     const providerId = textAt(provider, ["id"], "");
     if (!providerId) return;
+    const models = recordAt(provider, ["models"]);
     setProviderBusy(true);
     try {
-      const models = recordAt(provider, ["models"]);
       const result = await apiJson<AnyRecord>(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/test`, {
         method: "POST",
         body: {
@@ -1138,16 +1172,37 @@ export function ModelGatewayPage() {
           timeoutMs: 30000,
         },
       });
-      shell.openSheet({
+      gatewayResultPayload({
         title: "Provider 连通检查",
-        sub: textAt(provider, ["name", "id"], providerId),
-        status: result.ok ? "ok" : "failed",
-        owner: "Model Gateway",
-        action: "provider test",
-        note: JSON.stringify(result, null, 2).slice(0, 3000),
+        subtitle: textAt(provider, ["name", "id"], providerId),
+        tone: result.ok ? "ok" : "bad",
+        icon: result.ok ? "circle-check" : "circle-alert",
+        rows: [
+          ["Provider", providerId],
+          ["模型", textAt(models, ["defaultModel"], "-")],
+          ["状态", result.ok ? "通过" : "失败"],
+          ["HTTP", textAt(result, ["statusCode"], "-")],
+          ["延迟", formatMs(numberAt(result, ["latencyMs"], NaN))],
+          ["错误", textAt(recordAt(result, ["error"]), ["message"], "无")],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: textAt(result, ["responsePreview"], "没有返回预览。"),
       });
       await providers.refetch();
     } catch (error) {
+      gatewayResultPayload({
+        title: "Provider 连通检查失败",
+        subtitle: textAt(provider, ["name", "id"], providerId),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [
+          ["Provider", providerId],
+          ["模型", textAt(models, ["defaultModel"], "-")],
+          ["错误", error instanceof Error ? error.message : "连通检查失败"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "检查没有拿到可用响应。可先确认 Provider 配置、密钥和客户端接入，再重试检查。",
+      });
       shell.toast(error instanceof Error ? error.message : "连通检查失败", "warn");
     } finally {
       setProviderBusy(false);
@@ -1167,15 +1222,36 @@ export function ModelGatewayPage() {
           timeoutMs: 30000,
         },
       });
-      shell.openSheet({
+      gatewayResultPayload({
         title: "Provider 探测结果",
-        sub: textAt(selectedProvider, ["name", "id"], "Provider"),
-        status: "ok",
-        owner: "Model Gateway",
-        action: "provider detect",
-        note: JSON.stringify(result, null, 2).slice(0, 5000),
+        subtitle: textAt(selectedProvider, ["name", "id"], "Provider"),
+        tone: "ok",
+        icon: "scan-search",
+        rows: [
+          ["Provider", textAt(selectedProvider, ["id"], "-")],
+          ["baseUrl", textAt(selectedProvider, ["baseUrl"], "-")],
+          ["模型", textAt(models, ["defaultModel"], "-")],
+          ["协议结果", `${listAt(result, ["protocols"]).filter((item) => asRecord(item).ok).length}/${listAt(result, ["protocols"]).length}`],
+          ["模型列表", String(listAt(result, ["models"]).length)],
+          ["推荐", listAt(result, ["recommendations"]).map((item) => apiFormatLabel(textAt(asRecord(item), ["apiFormat"], ""))).join(" / ") || "无"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "探测只读取 Provider 能力，不会保存配置。需要采用推荐协议时，请进入 Provider 配置子页确认后保存。",
       });
     } catch (error) {
+      gatewayResultPayload({
+        title: "Provider 探测失败",
+        subtitle: textAt(selectedProvider, ["name", "id"], "Provider"),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [
+          ["Provider", textAt(selectedProvider, ["id"], "-")],
+          ["baseUrl", textAt(selectedProvider, ["baseUrl"], "-")],
+          ["错误", error instanceof Error ? error.message : "Provider 探测失败"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "探测失败不会修改 Provider 配置。请检查 baseUrl、网络和密钥后重试。",
+      });
       shell.toast(error instanceof Error ? error.message : "Provider 探测失败", "warn");
     } finally {
       setProviderBusy(false);
@@ -1219,19 +1295,54 @@ export function ModelGatewayPage() {
     });
   };
 
+  const accountEvidenceRows = (result: AnyRecord, providerId: string, accountId: string, operation: string): Array<[string, string]> => {
+    const account = recordAt(result, ["account"]);
+    return [
+      ["操作", operation],
+      ["Provider", providerId],
+      ["账号", accountId],
+      ["状态", textAt(account, ["state"], "-")],
+      ["启用", textAt(account, ["enabled"], "-")],
+      ["检查时间", textAt(account, ["lastCheckedAt"], "-")],
+      ["冷却至", textAt(account, ["cooldownUntil"], "无")],
+      ["错误", textAt(account, ["lastError"], "无")],
+    ];
+  };
+
   const updateProviderAccount = async (account: AnyRecord, payload: AnyRecord, message: string) => {
     const providerId = textAt(selectedProvider, ["id"], "");
     const accountId = textAt(account, ["id"], "");
     if (!providerId || !accountId) return;
     setProviderBusy(true);
     try {
-      await apiJson(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`, {
+      const result = await apiJson<AnyRecord>(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`, {
         method: "POST",
         body: payload,
       });
       shell.toast(message, "ok");
-      await providers.refetch();
+      gatewayResultPayload({
+        title: message,
+        subtitle: textAt(account, ["emailMasked", "accountHash", "id"], accountId),
+        tone: "ok",
+        icon: "users",
+        rows: accountEvidenceRows(result, providerId, accountId, message),
+        note: "账号状态已由后端写入 Provider registry，并已刷新 Gateway 路由证据。",
+      });
+      await refetchGatewayData();
     } catch (error) {
+      gatewayResultPayload({
+        title: "账号更新失败",
+        subtitle: textAt(account, ["emailMasked", "accountHash", "id"], accountId),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [
+          ["Provider", providerId],
+          ["账号", accountId],
+          ["错误", error instanceof Error ? error.message : "账号更新失败"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "账号状态没有确认写入。请根据错误处理后重试。",
+      });
       shell.toast(error instanceof Error ? error.message : "账号更新失败", "warn");
     } finally {
       setProviderBusy(false);
@@ -1244,12 +1355,33 @@ export function ModelGatewayPage() {
     if (!providerId || !accountId) return;
     setProviderBusy(true);
     try {
-      await apiJson(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/refresh`, {
+      const result = await apiJson<AnyRecord>(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/refresh`, {
         method: "POST",
       });
       shell.toast("账号刷新完成", "ok");
-      await providers.refetch();
+      gatewayResultPayload({
+        title: "账号刷新完成",
+        subtitle: textAt(account, ["emailMasked", "accountHash", "id"], accountId),
+        tone: "ok",
+        icon: "refresh-cw",
+        rows: accountEvidenceRows(result, providerId, accountId, "账号刷新"),
+        note: "账号令牌刷新完成，并已刷新 Gateway 路由证据。",
+      });
+      await refetchGatewayData();
     } catch (error) {
+      gatewayResultPayload({
+        title: "账号刷新失败",
+        subtitle: textAt(account, ["emailMasked", "accountHash", "id"], accountId),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [
+          ["Provider", providerId],
+          ["账号", accountId],
+          ["错误", error instanceof Error ? error.message : "账号刷新失败"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "刷新失败时不会改写账号为可用状态。需要重新登录时，请使用“登录 Codex”。",
+      });
       shell.toast(error instanceof Error ? error.message : "账号刷新失败", "warn");
     } finally {
       setProviderBusy(false);
@@ -1270,20 +1402,34 @@ export function ModelGatewayPage() {
           setActiveScopes: ["codex"],
         },
       });
-      shell.openSheet({
+      gatewayResultPayload({
         title: "登录新账号",
-        sub: "Codex 账号池",
-        status: "pending",
-        owner: "Model Gateway",
-        action: "codex account login",
-        note: [
-          `打开：${textAt(result, ["verificationUrl"], "-")}`,
-          `输入代码：${textAt(result, ["userCode"], "-")}`,
-          `loginId：${textAt(result, ["loginId"], "-")}`,
-          "完成浏览器授权后，重新进入账号池或刷新 Provider 列表查看账号状态。",
-        ].join("\n"),
+        subtitle: "Codex 账号池",
+        tone: "warn",
+        icon: "log-in",
+        rows: [
+          ["Provider", providerId],
+          ["打开地址", textAt(result, ["verificationUrl"], "-")],
+          ["验证码", textAt(result, ["userCode"], "-")],
+          ["loginId", textAt(result, ["loginId"], "-")],
+        ],
+        note: "完成浏览器授权后，回到账号池刷新 Provider 状态。普通 API Provider 创建不会进入 Codex 登录。",
+        primaryHref: textAt(result, ["verificationUrl"], ""),
+        primaryLabel: "打开登录页面",
       });
     } catch (error) {
+      gatewayResultPayload({
+        title: "账号登录启动失败",
+        subtitle: "Codex 账号池",
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [
+          ["Provider", providerId],
+          ["错误", error instanceof Error ? error.message : "账号登录启动失败"],
+          ["时间", new Date().toLocaleString()],
+        ],
+        note: "未获得 Codex 设备登录链接。请检查后端凭据、网络和 OpenAI 认证状态后重试。",
+      });
       shell.toast(error instanceof Error ? error.message : "账号登录启动失败", "warn");
     } finally {
       setProviderBusy(false);
@@ -1291,20 +1437,7 @@ export function ModelGatewayPage() {
   };
 
   const previewAppConnection = (connection: AnyRecord) => {
-    const preview = recordAt(connection, ["preview"]);
-    const targetPath = appConnectionTargetPath(connection);
-    shell.openSheet({
-      title: `${textAt(connection, ["label", "id"], "客户端")} 配置预览`,
-      sub: targetPath,
-      status: "pending",
-      owner: "Model Gateway",
-      action: "app connection preview",
-      note: [
-        `targetPath：${targetPath}`,
-        "",
-        textAt(preview, ["content"], "暂无预览内容"),
-      ].join("\n").slice(0, 5000),
-    });
+    setSelectedAppConnectionId(textAt(connection, ["id"], ""));
   };
 
   const appConnectionTargetPath = (connection: AnyRecord) => {
@@ -1312,17 +1445,88 @@ export function ModelGatewayPage() {
     return textAt(recordAt(connection, ["target"]), ["path"], textAt(preview, ["targetPath"], "目标配置文件"));
   };
 
-  const appConnectionEvidenceNote = (result: AnyRecord, fallbackTargetPath: string) => {
+  const appConnectionResultRows = (result: AnyRecord, fallbackTargetPath: string, operation: string): Array<[string, string]> => {
     const resultConnection = recordAt(result, ["connection"]);
     const resultTarget = recordAt(resultConnection, ["target"]);
     const targetPath = textAt(resultTarget, ["path"], fallbackTargetPath);
     return [
-      `targetPath：${targetPath}`,
-      `backupPath：${textAt(result, ["backupPath"], "未生成")}`,
-      `restoredFrom：${textAt(result, ["restoredFrom"], "不适用")}`,
-      "",
-      JSON.stringify(result, null, 2),
-    ].join("\n").slice(0, 3200);
+      ["操作", operation],
+      ["客户端", textAt(resultConnection, ["label", "id"], "-")],
+      ["targetPath", targetPath],
+      ["状态", resultConnection.configured ? "已接入" : "未接入"],
+      ["backupPath", textAt(result, ["backupPath"], "未生成")],
+      ["restoredFrom", textAt(result, ["restoredFrom"], "不适用")],
+      ["时间", textAt(result, ["checkedAt"], new Date().toLocaleString())],
+    ];
+  };
+
+  const copyAppConnectionTarget = async (connection: AnyRecord) => {
+    const targetPath = appConnectionTargetPath(connection);
+    try {
+      await navigator.clipboard.writeText(targetPath);
+      gatewayResultPayload({
+        title: "已复制目标路径",
+        subtitle: textAt(connection, ["label", "id"], "客户端"),
+        tone: "ok",
+        icon: "copy-check",
+        rows: [["targetPath", targetPath]],
+        note: "只复制路径，不读取或写入本地配置文件。",
+      });
+    } catch (error) {
+      gatewayResultPayload({
+        title: "复制目标路径失败",
+        subtitle: textAt(connection, ["label", "id"], "客户端"),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [["targetPath", targetPath], ["错误", error instanceof Error ? error.message : "clipboard unavailable"]],
+        note: "浏览器剪贴板不可用时，可以手动选中目标路径复制。",
+      });
+    }
+  };
+
+  const saveAppConnectionModelProfile = async (connection: AnyRecord) => {
+    const appId = textAt(connection, ["id"], "");
+    if (!appId) return;
+    setProviderBusy(true);
+    try {
+      const model = appConnectionModelDraft.trim() || null;
+      const result = await apiJson<AnyRecord>("/api/model-gateway/app-connections/profile", {
+        method: "POST",
+        body: {
+          profile: {
+            appModels: {
+              [appId]: model,
+            },
+          },
+        },
+      });
+      shell.toast("客户端接入模型已保存", "ok");
+      gatewayResultPayload({
+        title: "客户端接入模型已保存",
+        subtitle: textAt(connection, ["label", "id"], appId),
+        tone: "ok",
+        icon: "terminal",
+        rows: [
+          ["客户端", appId],
+          ["模型", model || textAt(recordAt(result, ["profile"]), ["model"], "默认模型")],
+          ["时间", textAt(result, ["checkedAt"], new Date().toLocaleString())],
+        ],
+        note: "Profile 已保存到 Gateway registry。应用前可继续在本页预览目标配置。",
+      });
+      await appConnections.refetch();
+    } catch (error) {
+      gatewayResultPayload({
+        title: "客户端接入模型保存失败",
+        subtitle: textAt(connection, ["label", "id"], appId),
+        tone: "bad",
+        icon: "circle-alert",
+        rows: [["客户端", appId], ["错误", error instanceof Error ? error.message : "保存失败"]],
+        note: "Profile 未确认写入。请检查模型目录或后端错误后重试。",
+      });
+      shell.toast(error instanceof Error ? error.message : "客户端接入模型保存失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
   };
 
   const applyAppConnection = (connection: AnyRecord) => {
@@ -1344,16 +1548,24 @@ export function ModelGatewayPage() {
               body: {},
             });
             shell.toast("客户端接入已应用", "ok");
-            shell.openSheet({
+            gatewayResultPayload({
               title: "客户端接入已应用",
-              sub: targetPath,
-              status: "ok",
-              owner: "Model Gateway",
-              action: "app connection apply",
-              note: appConnectionEvidenceNote(result, targetPath),
+              subtitle: textAt(connection, ["label"], appId),
+              tone: "ok",
+              icon: "terminal",
+              rows: appConnectionResultRows(result, targetPath, "应用"),
+              note: "后端已完成备份和写入。新的客户端配置可在本页继续预览。",
             });
             await Promise.all([appConnections.refetch(), providers.refetch()]);
           } catch (error) {
+            gatewayResultPayload({
+              title: "客户端接入应用失败",
+              subtitle: textAt(connection, ["label"], appId),
+              tone: "bad",
+              icon: "circle-alert",
+              rows: [["客户端", appId], ["targetPath", targetPath], ["错误", error instanceof Error ? error.message : "应用失败"]],
+              note: "未确认写入目标配置文件。请根据错误处理后重试。",
+            });
             shell.toast(error instanceof Error ? error.message : "客户端接入应用失败", "warn");
           } finally {
             setProviderBusy(false);
@@ -1382,16 +1594,24 @@ export function ModelGatewayPage() {
               body: {},
             });
             shell.toast("客户端接入已回滚", "ok");
-            shell.openSheet({
+            gatewayResultPayload({
               title: "客户端接入已回滚",
-              sub: targetPath,
-              status: "ok",
-              owner: "Model Gateway",
-              action: "app connection rollback",
-              note: appConnectionEvidenceNote(result, targetPath),
+              subtitle: textAt(connection, ["label"], appId),
+              tone: "ok",
+              icon: "rotate-ccw",
+              rows: appConnectionResultRows(result, targetPath, "回滚"),
+              note: "后端已先备份当前文件，再从最近备份恢复目标配置。",
             });
             await Promise.all([appConnections.refetch(), providers.refetch()]);
           } catch (error) {
+            gatewayResultPayload({
+              title: "客户端接入回滚失败",
+              subtitle: textAt(connection, ["label"], appId),
+              tone: "bad",
+              icon: "circle-alert",
+              rows: [["客户端", appId], ["targetPath", targetPath], ["错误", error instanceof Error ? error.message : "回滚失败"]],
+              note: "未确认恢复目标配置文件。请检查备份是否存在后重试。",
+            });
             shell.toast(error instanceof Error ? error.message : "客户端接入回滚失败", "warn");
           } finally {
             setProviderBusy(false);
@@ -1978,6 +2198,7 @@ export function ModelGatewayPage() {
       <div className="subpage-head app-connection-head">
         <button className="btn-icon btn-ghost back" type="button" title="返回概览" disabled={providerBusy} onClick={() => setView("overview")}><i data-lucide="arrow-left" /></button>
         <div className="htitle"><h2>客户端接入</h2><p>把 Gateway 路由写入本地 CLI 客户端。这里只管<strong>路由如何接入</strong>；Agent 工作目录、persona、权限和会话在 CLI Agents 管理。</p></div>
+        <button className="btn-ghost btn-sm" type="button" disabled={appConnections.isFetching} onClick={() => void appConnections.refetch()}><i data-lucide="refresh-cw" />刷新证据</button>
       </div>
       <div className="app-connection-summary">
         <div className="cap"><span className="ct">已接入</span><span className="cv">{connectionRows.filter((connection) => connection.configured).length}</span></div>
@@ -1991,18 +2212,24 @@ export function ModelGatewayPage() {
           const label = textAt(connection, ["label", "id"], "客户端");
           const appId = textAt(connection, ["id"], "");
           const configured = Boolean(connection.configured);
+          const selected = textAt(selectedAppConnection, ["id"], "") === appId;
           const iconTone = appId === "codex" ? "ico-teal" : appId === "claude-code" ? "ico-violet" : "ico-primary";
           return (
-            <div className="trow" style={{ cursor: "default" }} key={label}>
+            <div className={`trow ${selected ? "sel" : ""}`} key={label} role="button" tabIndex={0} onClick={() => previewAppConnection(connection)} onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                previewAppConnection(connection);
+              }
+            }}>
               <span className="cell-main"><span className={`rico ${iconTone}`}><i data-lucide="terminal" /></span><span className="c-copy"><strong>{label}</strong><span>{textAt(recordAt(connection, ["target"]), ["path"], "-")}</span></span></span>
-              <span className="cell-mono">{compactList([textAt(connection, ["model"], textAt(recordAt(appConnections.data, ["profile"]), ["model"], "")), textAt(connection, ["protocol"], "")], configured ? "default → Gateway" : "未应用")}</span>
+              <span className="cell-mono">{compactList([textAt(connection, ["model"], textAt(appConnectionProfile, ["model"], "")), textAt(connection, ["protocol"], "")], configured ? "default → Gateway" : "未应用")}</span>
               <span><ProviderStatusDot value={configured ? "已应用" : "pending"} /></span>
               <span className="route-acts">
-                <button className="btn-ghost btn-sm" type="button" onClick={() => previewAppConnection(connection)}>预览</button>
+                <button className="btn-ghost btn-sm" type="button" onClick={(event) => { event.stopPropagation(); previewAppConnection(connection); }}>查看</button>
                 {configured ? (
-                  <button className="btn-ghost btn-sm" type="button" disabled={providerBusy || connection.canRollback === false} onClick={() => rollbackAppConnection(connection)}>回滚</button>
+                  <button className="btn-ghost btn-sm" type="button" disabled={providerBusy || connection.canRollback === false} onClick={(event) => { event.stopPropagation(); rollbackAppConnection(connection); }}>回滚</button>
                 ) : (
-                  <button className="btn-primary btn-sm" type="button" disabled={providerBusy || connection.canApply === false} onClick={() => applyAppConnection(connection)}>应用</button>
+                  <button className="btn-primary btn-sm" type="button" disabled={providerBusy || connection.canApply === false} onClick={(event) => { event.stopPropagation(); applyAppConnection(connection); }}>应用</button>
                 )}
               </span>
             </div>
@@ -2012,6 +2239,70 @@ export function ModelGatewayPage() {
           <div className="statebox empty"><span className="si"><i data-lucide="terminal" /></span><strong>暂无客户端接入</strong><span>后端未返回可管理客户端。</span></div>
         ) : null}
       </div>
+      {selectedAppConnection ? (
+        <section className="app-connection-workbench" aria-label="客户端接入详情">
+          <div className="app-connection-detail">
+            <div className="detail-head">
+              <div className="detail-title">
+                <span className="rico ico-primary"><i data-lucide="terminal" /></span>
+                <div><strong>{textAt(selectedAppConnection, ["label", "id"], "客户端")}</strong><div>{appConnectionTargetPath(selectedAppConnection)}</div></div>
+              </div>
+              <ProviderStatusDot value={selectedAppConnection.configured ? "已应用" : "pending"} />
+            </div>
+            <dl className="gateway-action-facts app-connection-facts">
+              <dt>协议</dt><dd>{apiFormatLabel(textAt(selectedAppConnection, ["protocol"], ""))}</dd>
+              <dt>Endpoint</dt><dd>{textAt(selectedAppConnection, ["endpoint"], "-")}</dd>
+              <dt>模型</dt><dd>{textAt(selectedAppConnection, ["model"], textAt(appConnectionProfile, ["model"], "-"))}</dd>
+              <dt>目标格式</dt><dd>{textAt(recordAt(selectedAppConnection, ["target"]), ["format"], "-")}</dd>
+              <dt>目标文件</dt><dd>{boolAt(recordAt(selectedAppConnection, ["target"]), ["exists"], false) ? "存在" : "尚不存在"}</dd>
+              <dt>最近备份</dt><dd>{textAt(selectedAppConnection, ["lastBackupPath"], "无")}</dd>
+              <dt>启动提示</dt><dd>{textAt(selectedAppConnection, ["launchHint"], "无")}</dd>
+            </dl>
+            {listAt(selectedAppConnection, ["issues"]).length ? (
+              <div className="statebox error"><span className="si"><i data-lucide="circle-alert" /></span><strong>接入存在阻塞</strong><span>{listAt(selectedAppConnection, ["issues"]).join("；")}</span></div>
+            ) : null}
+            <div className="cfg app-connection-profile">
+              <div className="cfg-head"><span className="ci"><i data-lucide="settings-2" /></span><strong>路由 Profile</strong><span className="sub">保存后再预览 / 应用</span></div>
+              <div className="cfg-body">
+                <div className="form-row2">
+                  <div className="fieldset">
+                    <label>该客户端模型</label>
+                    <select className="input select" value={appConnectionModelDraft} onChange={(event) => setAppConnectionModelDraft(event.target.value)}>
+                      <option value="">使用默认模型（{textAt(appConnectionProfile, ["model"], "未设置")}）</option>
+                      {appConnectionAvailableModels.map((model) => <option key={model} value={model}>{model}</option>)}
+                    </select>
+                    <span className="help-text">只保存 Gateway App Connection Profile，不直接写客户端配置文件。</span>
+                  </div>
+                  <div className="fieldset">
+                    <label>预算</label>
+                    <div className="ctrl app-connection-budget"><span>context {formatTokens(numberAt(appConnectionProfile, ["contextWindow"], 0))}</span><span>compact {formatTokens(numberAt(appConnectionProfile, ["autoCompactTokenLimit"], 0))}</span><span>output {formatTokens(numberAt(appConnectionProfile, ["maxOutputTokens"], 0))}</span></div>
+                  </div>
+                </div>
+                <div className="row-actions">
+                  <button className="btn-primary btn-sm" type="button" disabled={providerBusy} onClick={() => void saveAppConnectionModelProfile(selectedAppConnection)}><i data-lucide="check" />保存模型</button>
+                  <button className="btn-ghost btn-sm" type="button" onClick={() => void copyAppConnectionTarget(selectedAppConnection)}><i data-lucide="copy-check" />复制路径</button>
+                  <button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}><i data-lucide="route" />配置 Provider</button>
+                  <button className="btn-ghost btn-sm" type="button" onClick={() => setView("models")}><i data-lucide="box" />模型目录</button>
+                  <button className="btn-ghost btn-sm" type="button" disabled={appConnections.isFetching} onClick={() => void appConnections.refetch()}><i data-lucide="refresh-cw" />刷新</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <aside className="app-connection-preview-panel">
+            <div className="panel-head">
+              <div className="htitle"><h3>配置预览</h3><span className="sub">已脱敏 · 不直接写入</span></div>
+              <span className="tag info">{textAt(recordAt(selectedAppConnection, ["preview"]), ["format"], "-")}</span>
+            </div>
+            <pre className="app-connection-preview-code">{textAt(recordAt(selectedAppConnection, ["preview"]), ["content"], "暂无预览内容")}</pre>
+            <div className="row-actions">
+              {selectedAppConnection.configured ? (
+                <button className="btn-ghost btn-sm" type="button" disabled={providerBusy || selectedAppConnection.canRollback === false} onClick={() => rollbackAppConnection(selectedAppConnection)}><i data-lucide="rotate-ccw" />回滚</button>
+              ) : null}
+              <button className="btn-primary btn-sm" type="button" disabled={providerBusy || selectedAppConnection.canApply === false} onClick={() => applyAppConnection(selectedAppConnection)}><i data-lucide="terminal" />应用</button>
+            </div>
+          </aside>
+        </section>
+      ) : null}
     </div>
   );
 
@@ -2025,6 +2316,36 @@ export function ModelGatewayPage() {
         accounts: renderAccounts,
         apps: renderApps,
       }[view];
+
+  const renderGatewayActionResult = () => {
+    if (!gatewayActionResult) return null;
+    return (
+      <section className={`gateway-action-result ${gatewayActionResult.tone}`} aria-label="模型网关操作结果">
+        <span className="rico ico-primary"><i data-lucide={gatewayActionResult.icon} /></span>
+        <div className="gateway-action-copy">
+          <div className="gateway-action-title">
+            <strong>{gatewayActionResult.title}</strong>
+            <span>{gatewayActionResult.subtitle}</span>
+          </div>
+          <dl className="gateway-action-facts">
+            {gatewayActionResult.rows.map(([label, value]) => (
+              <React.Fragment key={`${label}:${value}`}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </React.Fragment>
+            ))}
+          </dl>
+          {gatewayActionResult.note ? <p>{gatewayActionResult.note}</p> : null}
+        </div>
+        <div className="gateway-action-controls">
+          {gatewayActionResult.primaryHref ? (
+            <a className="btn-primary btn-sm" href={gatewayActionResult.primaryHref} target="_blank" rel="noreferrer"><i data-lucide="log-in" />{gatewayActionResult.primaryLabel || "打开"}</a>
+          ) : null}
+          <button className="btn-ghost btn-sm" type="button" onClick={() => setGatewayActionResult(null)}><i data-lucide="x" />关闭</button>
+        </div>
+      </section>
+    );
+  };
 
   return (
     <div id="stage" className="page-stage" role="main" aria-live="polite" tabIndex={-1}>
@@ -2041,6 +2362,7 @@ export function ModelGatewayPage() {
             </button>
           ))}
         </div>
+        {renderGatewayActionResult()}
         {content()}
       </div>
     </div>

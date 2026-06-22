@@ -11,6 +11,13 @@ const DEFAULT_INPUT = "Reply with GATEWAY_OK only.";
 const DEFAULT_LOCK_TIMEOUT_MS = 300_000;
 const DEFAULT_LOCK_STALE_MS = 30 * 60_000;
 const DEFAULT_SMOKE_RETRIES = 1;
+const MAX_ACTIVE_ROUTE_SMOKE_REQUEST_GRACE_MS = 5_000;
+const SIGNAL_CLEANUP_TIMEOUT_MS = 5_000;
+const SIGNAL_EXIT_CODES = {
+  SIGHUP: 129,
+  SIGINT: 130,
+  SIGTERM: 143,
+};
 
 function parseArgs(argv) {
   const options = {
@@ -168,6 +175,12 @@ async function requestJson(endpoint, key, pathName, options = {}) {
   return { status: response.status, body, text };
 }
 
+function activeRouteSmokeRequestTimeoutMs(timeoutMs) {
+  const base = positiveInt(timeoutMs, DEFAULT_TIMEOUT_MS);
+  const proportionalGraceMs = Math.max(100, Math.ceil(base * 0.1));
+  return base + Math.min(MAX_ACTIVE_ROUTE_SMOKE_REQUEST_GRACE_MS, proportionalGraceMs);
+}
+
 async function fetchProviders(options, key) {
   const result = await requestJson(options.endpoint, key, "/api/model-gateway/providers", {
     method: "GET",
@@ -231,6 +244,7 @@ function createResult(options, provider, originalActiveProviders) {
     restoredActiveProviders: null,
     restoreFailures: [],
     restoreMismatches: [],
+    staleMarkerRecovery: null,
     lock: null,
   };
 }
@@ -239,6 +253,12 @@ function activeRouteSmokeLockDir() {
   const envLockDir = process.env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR;
   if (envLockDir?.trim()) return path.resolve(envLockDir.trim());
   return path.join(os.homedir(), ".openclaw/tracevane/model-gateway/active-route-smoke.lock");
+}
+
+function activeRouteSmokeMarkerPath() {
+  const envMarkerPath = process.env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH;
+  if (envMarkerPath?.trim()) return path.resolve(envMarkerPath.trim());
+  return path.join(path.dirname(activeRouteSmokeLockDir()), "active-route-smoke.marker.json");
 }
 
 function lockMetadata(lockDir) {
@@ -258,6 +278,14 @@ function removeLockDir(lockDir) {
   }
 }
 
+function removeMarkerFile(markerPath) {
+  try {
+    fs.rmSync(markerPath, { force: true });
+  } catch {
+    // Best effort; recovery treats unreadable markers as absent.
+  }
+}
+
 function readLockCreatedAtMs(lockDir) {
   try {
     const raw = fs.readFileSync(path.join(lockDir, "owner.json"), "utf8");
@@ -267,6 +295,95 @@ function readLockCreatedAtMs(lockDir) {
   } catch {
     return null;
   }
+}
+
+function readLockOwnerMetadata(lockDir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(lockDir, "owner.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readActiveRouteSmokeMarker(markerPath = activeRouteSmokeMarkerPath()) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!Array.isArray(parsed.scopes)) return null;
+    if (!parsed.providerId || typeof parsed.providerId !== "string") return null;
+    if (!parsed.originalActiveProviders || typeof parsed.originalActiveProviders !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function processPidIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
+  }
+}
+
+function writeActiveRouteSmokeMarker(options, originalActiveProviders) {
+  const markerPath = activeRouteSmokeMarkerPath();
+  const marker = {
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    endpoint: options.endpoint,
+    providerId: options.providerId,
+    scopes: options.scopes,
+    originalActiveProviders,
+    script: path.basename(process.argv[1] || "smoke-model-gateway-active-routes.mjs"),
+  };
+  fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+  fs.writeFileSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
+  return markerPath;
+}
+
+async function recoverStaleActiveRouteSmokeMarker(options, key) {
+  const markerPath = activeRouteSmokeMarkerPath();
+  const marker = readActiveRouteSmokeMarker(markerPath);
+  if (!marker) return null;
+  if (processPidIsAlive(Number(marker.pid))) return { recovered: false, markerPath, reason: "owner-alive" };
+  const recovery = {
+    recovered: false,
+    markerPath,
+    providerId: marker.providerId,
+    scopes: marker.scopes,
+    restoredScopes: [],
+    skippedScopes: [],
+    failures: [],
+  };
+  try {
+    const providers = await fetchProviders(options, key);
+    const activeProviders = providers.activeProviders || {};
+    for (const scope of marker.scopes) {
+      const current = activeProviderValue(activeProviders, scope);
+      const original = activeProviderValue(marker.originalActiveProviders, scope);
+      if (current !== marker.providerId) {
+        recovery.skippedScopes.push({ scope, current, original });
+        continue;
+      }
+      try {
+        await setActiveProvider(options, key, scope, original);
+        recovery.restoredScopes.push({ scope, original });
+      } catch (error) {
+        recovery.failures.push({
+          scope,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    recovery.recovered = recovery.failures.length === 0 && recovery.restoredScopes.length > 0;
+  } finally {
+    if (recovery.failures.length === 0) removeMarkerFile(markerPath);
+  }
+  return recovery;
 }
 
 function sleep(ms) {
@@ -296,6 +413,11 @@ async function acquireActiveRouteSmokeLock(options) {
       if (error?.code !== "EEXIST") throw error;
       const createdAtMs = readLockCreatedAtMs(lockDir);
       if (createdAtMs !== null && Date.now() - createdAtMs > DEFAULT_LOCK_STALE_MS) {
+        removeLockDir(lockDir);
+        continue;
+      }
+      const owner = readLockOwnerMetadata(lockDir);
+      if (owner && processPidIsAlive(Number(owner.pid)) === false) {
         removeLockDir(lockDir);
         continue;
       }
@@ -455,7 +577,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         timeoutMs: options.timeoutMs,
         input: options.input,
       }),
-      timeoutMs: Math.max(options.timeoutMs + 5_000, DEFAULT_TIMEOUT_MS),
+      timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
     });
   } catch (error) {
     return {
@@ -557,23 +679,137 @@ function printResult(result, json) {
   }
 }
 
+async function restoreActiveRouteSmokeState(options, key, result, originalActiveProviders, cleanupOptions = options) {
+  if (!result) return;
+  if (result.preflightFailures.length === 0 || result.setupFailures.length > 0 || result.routeSmokes.length > 0) {
+    for (const scope of options.scopes) {
+      try {
+        await setActiveProvider(cleanupOptions, key, scope, originalActiveProviders[scope] || "");
+      } catch (error) {
+        result.restoreFailures.push({
+          scope,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+  if (result.temporaryEnable.attempted && result.temporaryEnable.originalEnabled === false) {
+    try {
+      await updateProviderEnabled(cleanupOptions, key, options.providerId, false);
+      const restoredProviders = await fetchProviders(cleanupOptions, key);
+      const restoredProvider = providerSummary(restoredProviders, options.providerId);
+      result.temporaryEnable.restoredEnabled = restoredProvider ? Boolean(restoredProvider.enabled) : null;
+    } catch (error) {
+      result.temporaryEnable.restoredEnabled = null;
+      result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
+      result.restoreFailures.push({
+        scope: "*",
+        error: result.temporaryEnable.error,
+      });
+    }
+  }
+  try {
+    const after = await fetchProviders(cleanupOptions, key);
+    result.restoredActiveProviders = after.activeProviders || {};
+    for (const scope of options.scopes) {
+      const expected = activeProviderValue(originalActiveProviders, scope);
+      const actual = activeProviderValue(result.restoredActiveProviders, scope);
+      if (actual !== expected && !result.restoreMismatches.some((item) => item.scope === scope)) {
+        result.restoreMismatches.push({ scope, expected, actual });
+      }
+    }
+  } catch (error) {
+    result.restoreFailures.push({
+      scope: "*",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function installSignalCleanup(cleanup) {
+  let cleanupStarted = false;
+  const handlers = new Map();
+  for (const signal of Object.keys(SIGNAL_EXIT_CODES)) {
+    const handler = () => {
+      if (cleanupStarted) return;
+      cleanupStarted = true;
+      cleanup(signal)
+        .catch((error) => {
+          console.error(`Model Gateway active-route smoke ${signal} cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => {
+          process.exit(SIGNAL_EXIT_CODES[signal] || 1);
+        });
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+  return () => {
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  };
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const key = readGatewayKey();
   let lock = null;
+  let result = null;
+  let originalActiveProviders = null;
+  let cleanupStarted = false;
+  let cleanupPromise = null;
+  let markerPath = null;
+  let cleanupState = async () => {
+    if (lock) {
+      lock.release();
+      lock = null;
+    }
+  };
+  const runCleanupOnce = (reason) => {
+    if (!cleanupStarted) {
+      cleanupStarted = true;
+      cleanupPromise = cleanupState(reason);
+    }
+    return cleanupPromise;
+  };
+  const removeSignalHandlers = installSignalCleanup(async (signal) => {
+    await runCleanupOnce(signal);
+  });
   try {
     lock = await acquireActiveRouteSmokeLock(options);
+    const staleMarkerRecovery = await recoverStaleActiveRouteSmokeMarker(options, key);
     const before = await fetchProviders(options, key);
-    const originalActiveProviders = { ...(before.activeProviders || {}) };
+    originalActiveProviders = { ...(before.activeProviders || {}) };
     let provider = providerSummary(before, options.providerId);
-    const result = createResult(options, provider, originalActiveProviders);
+    result = createResult(options, provider, originalActiveProviders);
+    result.staleMarkerRecovery = staleMarkerRecovery;
+    if (staleMarkerRecovery?.failures?.length) {
+      result.preflightFailures.push({
+        code: "model_gateway_active_route_smoke_stale_marker_recovery_failed",
+        message: "Previous active-route smoke marker could not be fully restored; refusing to mutate active providers.",
+      });
+    }
     result.lock = {
       acquired: true,
       lockDir: lock.lockDir,
       attempts: lock.attempts,
       waitedMs: lock.waitedMs,
     };
-    if (provider && !provider.enabled && options.temporaryEnable) {
+    if (result.preflightFailures.length === 0) markerPath = writeActiveRouteSmokeMarker(options, originalActiveProviders);
+    cleanupState = async (reason) => {
+      const cleanupOptions = typeof reason === "string" && reason.startsWith("SIG")
+        ? { ...options, timeoutMs: Math.min(options.timeoutMs, SIGNAL_CLEANUP_TIMEOUT_MS) }
+        : options;
+      await restoreActiveRouteSmokeState(options, key, result, originalActiveProviders, cleanupOptions);
+      if (markerPath) {
+        removeMarkerFile(markerPath);
+        markerPath = null;
+      }
+      if (lock) {
+        lock.release();
+        lock = null;
+      }
+    };
+    if (result.preflightFailures.length === 0 && provider && !provider.enabled && options.temporaryEnable) {
       result.temporaryEnable.attempted = true;
       result.preflightWarnings.push({
         code: "model_gateway_provider_temporarily_enabled",
@@ -615,49 +851,7 @@ async function main() {
         }
       }
     } finally {
-      if (result.preflightFailures.length === 0 || result.setupFailures.length > 0 || result.routeSmokes.length > 0) {
-        for (const scope of options.scopes) {
-          try {
-            await setActiveProvider(options, key, scope, originalActiveProviders[scope] || "");
-          } catch (error) {
-            result.restoreFailures.push({
-              scope,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-      }
-      if (result.temporaryEnable.attempted && result.temporaryEnable.originalEnabled === false) {
-        try {
-          await updateProviderEnabled(options, key, options.providerId, false);
-          const restoredProviders = await fetchProviders(options, key);
-          const restoredProvider = providerSummary(restoredProviders, options.providerId);
-          result.temporaryEnable.restoredEnabled = restoredProvider ? Boolean(restoredProvider.enabled) : null;
-        } catch (error) {
-          result.temporaryEnable.restoredEnabled = null;
-          result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
-          result.restoreFailures.push({
-            scope: "*",
-            error: result.temporaryEnable.error,
-          });
-        }
-      }
-      try {
-        const after = await fetchProviders(options, key);
-        result.restoredActiveProviders = after.activeProviders || {};
-        for (const scope of options.scopes) {
-          const expected = activeProviderValue(originalActiveProviders, scope);
-          const actual = activeProviderValue(result.restoredActiveProviders, scope);
-          if (actual !== expected) {
-            result.restoreMismatches.push({ scope, expected, actual });
-          }
-        }
-      } catch (error) {
-        result.restoreFailures.push({
-          scope: "*",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      await runCleanupOnce("finally");
     }
 
     result.ok = result.routeSmokes.length === options.scopes.length
@@ -683,7 +877,8 @@ async function main() {
     }
     throw error;
   } finally {
-    if (lock) lock.release();
+    removeSignalHandlers();
+    await runCleanupOnce("finally");
   }
 }
 

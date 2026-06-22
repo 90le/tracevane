@@ -166,6 +166,9 @@ export interface ModelGatewayProviderModelPricing {
   outputPer1M?: number | null;
   cacheReadPer1M?: number | null;
   cacheCreationPer1M?: number | null;
+  longContextInputThreshold?: number | null;
+  longContextInputMultiplier?: number | null;
+  longContextOutputMultiplier?: number | null;
   imageGenerationPerImage?: number | null;
   imageEditPerRequest?: number | null;
   audioInputPerRequest?: number | null;
@@ -182,6 +185,18 @@ export interface ModelGatewayModelFeatures {
   imageGeneration?: boolean;
   audioInput?: boolean;
   audioOutput?: boolean;
+}
+
+export interface ModelGatewayUnsupportedRoute {
+  routeId?: ModelGatewayRouteId;
+  endpoint?: string;
+  code: string;
+  reason: string;
+}
+
+export interface ModelGatewayRouteSupport {
+  supported: ModelGatewayRouteId[];
+  unsupported: ModelGatewayUnsupportedRoute[];
 }
 
 export interface ModelGatewayProviderModelCatalog {
@@ -398,6 +413,12 @@ export interface ModelGatewayModelListItem {
   healthyProviderIds?: string[];
   openCircuitProviderIds?: string[];
   features: ModelGatewayModelFeatures;
+  agentSelectable?: boolean;
+  endpointOnly?: boolean;
+  routeSupport?: ModelGatewayRouteSupport;
+  supportedGatewayRoutes?: ModelGatewayRouteId[];
+  unsupportedGatewayRoutes?: ModelGatewayUnsupportedRoute[];
+  pricing?: ModelGatewayProviderModelPricing;
 }
 
 export interface ModelGatewayModelListResponse {
@@ -1060,6 +1081,13 @@ export interface ModelGatewayStatusResponse {
     openaiAudioTranslations: string[];
     openaiAudioSpeech: string[];
     anthropicMessages: string[];
+    unsupportedEndpoints: Array<{
+      method: string;
+      path: string;
+      endpoint: string;
+      code: string;
+      reason: string;
+    }>;
   };
   registry: {
     providerCount: number;
