@@ -829,8 +829,8 @@ export function ModelGatewayPage() {
     const model = newProviderModelDraft(0);
     setProviderDraft({
       ...emptyProviderDraft(),
-      id: `provider-${Date.now().toString(36)}`,
-      name: "新 Provider",
+      id: "",
+      name: "",
       baseUrl,
       defaultModel: model.id,
       models: [model],
@@ -1469,15 +1469,29 @@ export function ModelGatewayPage() {
   };
 
   const renderProviderConfig = () => {
-    const selectedHealth = recordAt(selectedProvider, ["health"]);
-    const selectedEndpoints = listAt(selectedProvider, ["endpointProfiles"]).map(asRecord);
-    const statusText = selectedProvider && selectedProvider.enabled !== false ? textAt(selectedHealth, ["circuitState"], "enabled") : "disabled";
+    const isCreatingProvider = providerDialogMode === "create";
+    const selectedHealth = isCreatingProvider ? {} : recordAt(selectedProvider, ["health"]);
+    const selectedEndpoints = isCreatingProvider ? providerDraft.endpointProfiles.map((endpoint) => ({
+      id: endpoint.id,
+      name: endpoint.name,
+      apiFormat: endpoint.apiFormat,
+      baseUrl: endpoint.baseUrl,
+      enabled: endpoint.enabled,
+    })) : listAt(selectedProvider, ["endpointProfiles"]).map(asRecord);
+    const statusText = isCreatingProvider
+      ? "draft"
+      : selectedProvider && selectedProvider.enabled !== false
+        ? textAt(selectedHealth, ["circuitState"], "enabled")
+        : "disabled";
+    const providerConfigTitle = isCreatingProvider
+      ? `新建 · ${providerDraft.name.trim() || "Provider"}`
+      : `配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`;
     return (
       <div data-view="providercfg" className="on">
         <div className="subpage">
           <div className="subpage-head">
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
-            <div className="htitle"><h2>{`${providerDialogMode === "create" ? "新建" : "配置"} · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / endpoint / 模型目录 / 网络 / 推理。保存前内联校验，危险变更需确认。</p></div>
+            <div className="htitle"><h2>{providerConfigTitle}</h2><p>baseUrl / endpoint / 模型目录 / 网络 / 推理。保存前内联校验，危险变更需确认。</p></div>
           </div>
           <div className="subpage-grid">
             <div>
@@ -1501,7 +1515,7 @@ export function ModelGatewayPage() {
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>密钥</strong><span className="sub">仅引用，不存明文</span></div>
                 <div className="cfg-body">
-                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button" onClick={() => void saveProviderDraft()} disabled={providerBusy}><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
+                  <div className="fieldset"><label>API key</label><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={isCreatingProvider ? "可选：保存时写入密钥库" : "留空则不修改"} /><span className="help-text">{isCreatingProvider ? "填写后随 Provider 一起保存到服务端密钥库；浏览器不会回显明文。" : "填写后随“保存配置”更新；留空不会修改已保存密钥引用。"}</span></div>
                 </div>
               </div>
               <div className="cfg">
@@ -1628,14 +1642,25 @@ export function ModelGatewayPage() {
               <div className="aside-card">
                 <div className="section-label">当前状态</div>
                 <div className="switch-row" style={{ border: "none", padding: 0 }}><ProviderStatusDot value={statusText} /><span className="filler" /><StatusTag value={statusText} /></div>
-                <div className="metric-row" style={{ gridTemplateColumns: "1fr 1fr" }}><div className="m"><span>p95</span><strong>{formatMs(numberAt(selectedHealth, ["p95Ms", "lastLatencyMs"], 820))}</strong></div><div className="m"><span>失败</span><strong>{formatCompact(numberAt(selectedHealth, ["failureCount", "consecutiveFailures"]))}</strong></div></div>
+                <div className="metric-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  {isCreatingProvider ? (
+                    <>
+                      <div className="m"><span>Endpoint</span><strong>{providerDraft.endpointProfiles.length}</strong></div>
+                      <div className="m"><span>模型</span><strong>{providerDraft.models.length}</strong></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="m"><span>p95</span><strong>{formatMs(numberAt(selectedHealth, ["p95Ms", "lastLatencyMs"], 820))}</strong></div>
+                      <div className="m"><span>失败</span><strong>{formatCompact(numberAt(selectedHealth, ["failureCount", "consecutiveFailures"]))}</strong></div>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="aside-card">
                 <div className="section-label">Endpoint</div>
                 {(selectedEndpoints.length ? selectedEndpoints : [{ id: "endpoint A", apiFormat: providerDraft.apiFormat, baseUrl: providerDraft.baseUrl, enabled: providerDraft.enabled }]).slice(0, 3).map((endpoint) => (
                   <div className="switch-row" key={textAt(endpoint, ["id"], "endpoint")}><span className="sc"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], providerDraft.apiFormat), textAt(endpoint, ["baseUrl"], providerDraft.baseUrl || "baseUrl")])}</span></span><StatusTag value={endpoint.enabled === false ? "disabled" : "online"} /></div>
                 ))}
-                <button className="btn-ghost btn-sm" type="button"><i data-lucide="pencil" />编辑 endpoint</button>
               </div>
               <div className="aside-card">
                 <div className="section-label">模型目录</div>
@@ -1649,7 +1674,7 @@ export function ModelGatewayPage() {
               </div>
               <div className="aside-card">
                 <div className="section-label">危险操作</div>
-                {selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : null}
+                {!isCreatingProvider && selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : <span className="help-text">新建 Provider 尚未保存，无危险操作。</span>}
               </div>
             </div>
           </div>
