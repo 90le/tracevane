@@ -1,0 +1,356 @@
+import { Activity, Check, Globe, RouteOff, Terminal, ZapOff } from "lucide-react";
+
+import { cn } from "@/design/lib/utils";
+import { Badge } from "@/design/ui/badge";
+import { Button } from "@/design/ui/button";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
+
+import {
+  useModelGatewayAppConnectionsQuery,
+  useModelGatewayProvidersQuery,
+  useModelGatewayStatusQuery,
+} from "@/lib/query/model-gateway";
+import type {
+  ModelGatewayActiveRouteStatus,
+  ModelGatewayAppConnection,
+  ModelGatewayProviderView,
+} from "../types";
+import type { ModelGatewayViewProps } from "./types";
+
+/** Panel shell matching the prototype `.panel` block. */
+function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <section className={cn("rounded-md border border-line bg-panel shadow-sm", className)}>
+      {children}
+    </section>
+  );
+}
+
+function PanelHead({
+  title,
+  sub,
+  action,
+}: {
+  title: string;
+  sub?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+      <div className="min-w-0">
+        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
+        {sub && <span className="text-sm text-subtle">{sub}</span>}
+      </div>
+      {action && <div className="ml-auto">{action}</div>}
+    </div>
+  );
+}
+
+/** A single icon + two-line copy + trailing slot row (prototype `.route-row`). */
+function Row({
+  icon,
+  iconClass,
+  title,
+  subtitle,
+  trailing,
+}: {
+  icon: React.ReactNode;
+  iconClass?: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <span
+        className={cn(
+          "grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4",
+          iconClass,
+        )}
+      >
+        {icon}
+      </span>
+      <span className="grid min-w-0 flex-1">
+        <strong className="truncate text-base text-ink-strong">{title}</strong>
+        {subtitle && <span className="truncate text-sm text-muted">{subtitle}</span>}
+      </span>
+      {trailing && <span className="ml-auto shrink-0">{trailing}</span>}
+    </div>
+  );
+}
+
+const ROUTE_STATE_BADGE: Record<
+  ModelGatewayActiveRouteStatus["state"],
+  { variant: "ok" | "warn" | "bad" | "mute"; label: string }
+> = {
+  fixed: { variant: "ok", label: "正常" },
+  auto: { variant: "ok", label: "自动" },
+  fallback: { variant: "warn", label: "降级" },
+  missing: { variant: "bad", label: "未配置" },
+};
+
+/** Map a provider's circuit/health to a status badge built only from live data. */
+function providerHealthBadge(provider: ModelGatewayProviderView): {
+  variant: "ok" | "warn" | "bad";
+  label: string;
+} {
+  if (provider.health.circuitState === "open") return { variant: "bad", label: "熔断" };
+  if (provider.health.circuitState === "half-open") return { variant: "warn", label: "观察" };
+  if (!provider.enabled) return { variant: "warn", label: "停用" };
+  return { variant: "ok", label: "在线" };
+}
+
+function appConnectionBadge(connection: ModelGatewayAppConnection): {
+  variant: "ok" | "warn" | "mute";
+  label: string;
+} {
+  if (connection.configured) return { variant: "ok", label: "已应用" };
+  if (connection.issues.length > 0) return { variant: "warn", label: "待处理" };
+  return { variant: "mute", label: "未应用" };
+}
+
+export function OverviewView({ goToView }: ModelGatewayViewProps) {
+  const statusQuery = useModelGatewayStatusQuery();
+  const providersQuery = useModelGatewayProvidersQuery();
+  const connectionsQuery = useModelGatewayAppConnectionsQuery();
+
+  const isLoading =
+    statusQuery.isLoading || providersQuery.isLoading || connectionsQuery.isLoading;
+  const error = statusQuery.error ?? providersQuery.error ?? connectionsQuery.error;
+
+  if (isLoading) {
+    return <LoadingState title="加载网关状态…" />;
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        title="无法加载网关概览"
+        description={error.message}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void statusQuery.refetch();
+              void providersQuery.refetch();
+              void connectionsQuery.refetch();
+            }}
+          >
+            重试
+          </Button>
+        }
+      />
+    );
+  }
+
+  const status = statusQuery.data;
+  const providers = providersQuery.data;
+  const connections = connectionsQuery.data;
+
+  const activeRoutes = providers?.activeRoutes ?? [];
+  const routeAlerts = providers?.activeRouteAlerts ?? [];
+  const providerList = providers?.providers ?? [];
+  const appConnections = connections?.connections ?? [];
+
+  const health = status?.healthSummary;
+  const listener = status?.listener;
+  const clientAuthConfigured = status?.registry.clientAuth.enabled ?? false;
+
+  // Attention items are built ONLY from live provider health — no fabrication.
+  const attentionProviders = providerList.filter(
+    (p) => p.health.circuitState !== "closed" || !p.enabled,
+  );
+  const healthyProviders = providerList.filter(
+    (p) => p.health.circuitState === "closed" && p.enabled,
+  );
+
+  const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
+
+  return (
+    <div className="grid gap-[18px]">
+      {/* Hero: live listener + route-alert summary */}
+      <section className="rounded-md border border-line bg-panel-2 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          {routeAlerts.length > 0 ? (
+            <Badge variant="warn" className="gap-1.5">
+              <RouteOff className="size-3.5" />
+              {routeAlerts.length} 条路由告警
+            </Badge>
+          ) : (
+            <Badge variant="ok" className="gap-1.5">
+              <Check className="size-3.5" />
+              路由正常
+            </Badge>
+          )}
+          <span className="text-sm text-muted">
+            {listener
+              ? `Gateway ${listener.host}:${listener.port} · ${clientAuthConfigured ? "key 已配置" : "key 未配置"}`
+              : "Gateway 监听信息不可用"}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="rounded-sm border border-line bg-panel p-3">
+            <span className="text-xs text-subtle">健康 Provider</span>
+            <div className="mt-1 text-xl font-semibold text-ink-strong">
+              {health?.okProviders ?? 0}
+              <small className="ml-0.5 text-sm font-normal text-muted">
+                /{status?.registry.providerCount ?? providerList.length}
+              </small>
+            </div>
+            <span className="text-xs text-muted">
+              {health?.degradedProviders ?? 0} 降级 · {health?.openCircuits ?? 0} 熔断
+            </span>
+          </div>
+          <div className="rounded-sm border border-line bg-panel p-3">
+            <span className="text-xs text-subtle">当前路由</span>
+            <div className="mt-1 text-xl font-semibold text-ink-strong">
+              {activeRoutes.length}
+            </div>
+            <span className="text-xs text-muted">{routeAlerts.length} 条告警</span>
+          </div>
+          <div className="rounded-sm border border-line bg-panel p-3">
+            <span className="text-xs text-subtle">需关注</span>
+            <div className="mt-1 text-xl font-semibold text-ink-strong">{degraded}</div>
+            <span className="text-xs text-muted">降级 / 熔断 Provider</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Current routes — built from live activeRoutes */}
+      <Panel>
+        <PanelHead
+          title="当前路由"
+          sub="每个客户端解析到的 Provider / endpoint / 模型"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+              <Activity className="size-3.5" />
+              查看 Provider
+            </Button>
+          }
+        />
+        {activeRoutes.length === 0 ? (
+          <EmptyState
+            title="暂无解析路由"
+            description="尚未配置任何客户端路由，前往 Provider 设置默认路由。"
+          />
+        ) : (
+          <div className="py-1.5">
+            {activeRoutes.map((route) => {
+              const badge = ROUTE_STATE_BADGE[route.state];
+              const detail = [
+                route.resolvedApiFormat,
+                route.resolvedProviderName,
+                route.resolvedModel,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <Row
+                  key={route.scope}
+                  icon={route.resolvedProviderId ? <Terminal /> : <Globe />}
+                  title={route.scope}
+                  subtitle={detail || route.message}
+                  trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
+                />
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+        {/* Health overview — only live provider health */}
+        <Panel>
+          <PanelHead
+            title="健康概览"
+            sub="熔断器状态"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+                查看 Provider
+              </Button>
+            }
+          />
+          {providerList.length === 0 ? (
+            <EmptyState title="暂无 Provider" description="尚未配置任何 Provider。" />
+          ) : (
+            <div className="py-1.5">
+              {attentionProviders.map((provider) => {
+                const badge = providerHealthBadge(provider);
+                const isOpen = provider.health.circuitState === "open";
+                return (
+                  <Row
+                    key={provider.id}
+                    icon={isOpen ? <ZapOff /> : <RouteOff />}
+                    iconClass={isOpen ? "bg-red-soft text-red" : "bg-amber-soft text-amber"}
+                    title={provider.name}
+                    subtitle={
+                      provider.health.lastError
+                        ? `${provider.health.lastError} · 连续失败 ${provider.health.consecutiveFailures}`
+                        : `circuit ${provider.health.circuitState} · 连续失败 ${provider.health.consecutiveFailures}`
+                    }
+                    trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
+                  />
+                );
+              })}
+              {healthyProviders.length > 0 && (
+                <Row
+                  icon={<Check />}
+                  iconClass="bg-green-soft text-green"
+                  title={`${healthyProviders.length} 个 Provider 正常`}
+                  subtitle={healthyProviders.map((p) => p.name).join(" · ")}
+                  trailing={<Badge variant="ok">在线</Badge>}
+                />
+              )}
+            </div>
+          )}
+        </Panel>
+
+        {/* App connections — click navigates to apps sub-view */}
+        <Panel>
+          <PanelHead
+            title="客户端接入"
+            sub="App Connection"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
+                管理
+              </Button>
+            }
+          />
+          {appConnections.length === 0 ? (
+            <EmptyState title="暂无客户端" description="尚无可接入的本地客户端。" />
+          ) : (
+            <div className="py-1.5">
+              {appConnections.map((connection) => {
+                const badge = appConnectionBadge(connection);
+                return (
+                  <button
+                    key={connection.id}
+                    type="button"
+                    onClick={() => goToView("apps", { app: connection.id })}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                      <Terminal />
+                    </span>
+                    <span className="grid min-w-0 flex-1">
+                      <strong className="truncate text-base text-ink-strong">
+                        {connection.label}
+                      </strong>
+                      <span className="truncate text-sm text-muted">
+                        {connection.configured ? "已应用" : connection.issues[0] ?? "未应用"}
+                      </span>
+                    </span>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
