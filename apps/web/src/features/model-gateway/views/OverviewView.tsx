@@ -1,4 +1,5 @@
-import { Activity, Check, Globe, RouteOff, Terminal, ZapOff } from "lucide-react";
+import * as React from "react";
+import { Activity, Check, Globe, KeyRound, RouteOff, Terminal, ZapOff } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
@@ -18,6 +19,9 @@ import type {
   ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import { GatewayKeyDialog } from "./GatewayKeyDialog";
+import { RuntimeDiagnosticsPanel } from "./RuntimeDiagnosticsPanel";
+import { DaemonServicePanel } from "./DaemonServicePanel";
 
 /** Panel shell matching the prototype `.panel` block. */
 function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -116,6 +120,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const providersQuery = useModelGatewayProvidersQuery();
   const connectionsQuery = useModelGatewayAppConnectionsQuery();
 
+  const [keyDialogOpen, setKeyDialogOpen] = React.useState(false);
+
   const isLoading =
     statusQuery.isLoading || providersQuery.isLoading || connectionsQuery.isLoading;
   const error = statusQuery.error ?? providersQuery.error ?? connectionsQuery.error;
@@ -198,10 +204,20 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             </Badge>
           )}
           <span className="text-sm text-muted">
-            {listener
-              ? `Gateway ${listener.host}:${listener.port} · ${clientAuthConfigured ? "key 已配置" : "key 未配置"}`
-              : "Gateway 监听信息不可用"}
+            {listener ? `Gateway ${listener.host}:${listener.port}` : "Gateway 监听信息不可用"}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() => setKeyDialogOpen(true)}
+          >
+            <KeyRound />
+            网关密钥
+            <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="ml-0.5">
+              {clientAuthConfigured ? "已配置" : "未配置"}
+            </Badge>
+          </Button>
         </div>
         {/* At-a-glance health anchor — derived only from live status. */}
         <p className="mt-3 text-base text-ink-strong">
@@ -377,6 +393,23 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           )}
         </Panel>
       </div>
+
+      {/* Secondary cockpit diagnostics — collapsed by default so the route /
+          health summary above stays primary. */}
+      <RuntimeDiagnosticsPanel />
+      <DaemonServicePanel
+        onMutated={() => {
+          void statusQuery.refetch();
+        }}
+      />
+
+      <GatewayKeyDialog
+        open={keyDialogOpen}
+        onOpenChange={setKeyDialogOpen}
+        onMutated={() => {
+          void statusQuery.refetch();
+        }}
+      />
     </div>
   );
 }

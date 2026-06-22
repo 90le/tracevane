@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, Bot, KeyRound, Loader2, Plus, Settings2, Users } from "lucide-react";
+import { Activity, Bot, FlaskConical, KeyRound, Loader2, Plus, Settings2, Users } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -26,6 +26,7 @@ import {
   useModelGatewayProvidersQuery,
   useSmokeModelGatewayActiveRouteMutation,
   useStartCodexAccountLoginMutation,
+  useTestModelGatewayProviderMutation,
 } from "@/lib/query/model-gateway";
 import {
   MODEL_GATEWAY_API_FORMATS,
@@ -77,6 +78,22 @@ function providerIdentitySub(provider: ModelGatewayProviderView): string {
   return parts.join(" · ") || "未配置模型";
 }
 
+/**
+ * Media/vision/image/audio capability labels derived from the provider's own
+ * declared model features (real catalog data). The provider-test response does
+ * NOT carry capability flags, so this is the truthful source for them.
+ */
+function providerCapabilityLabels(provider: ModelGatewayProviderView): string[] {
+  const models = provider.models?.models ?? [];
+  const any = (pick: (f: NonNullable<(typeof models)[number]["features"]>) => boolean | undefined) =>
+    models.some((m) => (m.features ? pick(m.features) : false));
+  const labels: string[] = [];
+  if (any((f) => f.vision)) labels.push("视觉");
+  if (any((f) => f.imageGeneration)) labels.push("图像");
+  if (any((f) => f.audioInput || f.audioOutput)) labels.push("音频");
+  return labels;
+}
+
 function ProviderTypeBadge({ provider }: { provider: ModelGatewayProviderView }) {
   const format = (MODEL_GATEWAY_API_FORMATS as readonly string[]).includes(provider.apiFormat)
     ? API_FORMAT_LABEL[provider.apiFormat]
@@ -125,9 +142,11 @@ function IconAction({
 export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const providersQuery = useModelGatewayProvidersQuery();
   const smokeMutation = useSmokeModelGatewayActiveRouteMutation();
+  const testMutation = useTestModelGatewayProviderMutation();
   const codexLoginMutation = useStartCodexAccountLoginMutation();
 
   const [smokingId, setSmokingId] = React.useState<string | null>(null);
+  const [testingId, setTestingId] = React.useState<string | null>(null);
 
   const handleSmoke = (provider: ModelGatewayProviderView) => {
     setSmokingId(provider.id);
@@ -146,6 +165,37 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
       onError: (error) => toast.error("连通检查失败", { description: error.message }),
       onSettled: () => setSmokingId(null),
     });
+  };
+
+  const handleTest = (provider: ModelGatewayProviderView) => {
+    setTestingId(provider.id);
+    // Provider-targeted protocol smoke (distinct from the active-route 连通检查).
+    testMutation.mutate(
+      { providerId: provider.id, payload: { kind: "protocol" } },
+      {
+        onSuccess: (result) => {
+          // The test response carries pass/fail + latency + route; media/vision
+          // capability flags are NOT on this response, so we surface the
+          // provider's declared model features (real catalog data) instead.
+          const caps = providerCapabilityLabels(provider);
+          const capLine = caps.length > 0 ? `能力：${caps.join(" / ")}` : undefined;
+          if (result.ok) {
+            toast.success(`Smoke 通过 · ${result.latencyMs}ms`, {
+              description:
+                [result.route.model?.resolved ?? undefined, capLine, result.responsePreview ?? undefined]
+                  .filter(Boolean)
+                  .join(" · ") || undefined,
+            });
+          } else {
+            toast.error("Smoke 失败", {
+              description: [result.error?.message ?? "未知错误", capLine].filter(Boolean).join(" · "),
+            });
+          }
+        },
+        onError: (error) => toast.error("Smoke 测试失败", { description: error.message }),
+        onSettled: () => setTestingId(null),
+      },
+    );
   };
 
   const handleCodexLogin = () => {
@@ -278,6 +328,13 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                         onClick={() => handleSmoke(provider)}
                         disabled={smokeMutation.isPending && smokingId === provider.id}
                         busy={smokeMutation.isPending && smokingId === provider.id}
+                      />
+                      <IconAction
+                        icon={<FlaskConical />}
+                        label="测试 / smoke"
+                        onClick={() => handleTest(provider)}
+                        disabled={testMutation.isPending && testingId === provider.id}
+                        busy={testMutation.isPending && testingId === provider.id}
                       />
                       {isAccountProvider && (
                         <IconAction
