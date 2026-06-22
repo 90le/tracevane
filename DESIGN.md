@@ -38,7 +38,7 @@ The current visual baseline is **V8 durable shell**: a quiet, flat operations co
 
 ### Current Shell Baseline
 
-Use `docs/prototypes/dashboard-v3-balanced-workbench-theme-v8-durable-shell.html` as the current app-shell reference.
+Use the Aurora SPA prototype (`docs/prototypes/app.html` and `docs/prototypes/Aurora设计体系.md`) as the current app-shell reference. The earlier V8 HTML baseline has been retired and folded into Aurora.
 
 The shell baseline:
 

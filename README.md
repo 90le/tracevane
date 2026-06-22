@@ -26,19 +26,19 @@ OpenClaw remains a supported runtime. It is not the full product boundary.
 
 Start here:
 
-1. [docs/product-strategy-reset-plan.md](docs/product-strategy-reset-plan.md)
+1. [docs/产品战略重置方案.md](docs/产品战略重置方案.md)
 2. [docs/产品需求.md](docs/产品需求.md)
 3. [docs/系统架构.md](docs/系统架构.md)
 4. [docs/当前进展.md](docs/当前进展.md)
-5. [docs/research-first-development-checklist.md](docs/research-first-development-checklist.md)
+5. [docs/研究先行开发清单.md](docs/研究先行开发清单.md)
 
 Active track docs:
 
-- [docs/tracevane-gateway-goal.md](docs/tracevane-gateway-goal.md)
-- [docs/tracevane-gateway-progress.md](docs/tracevane-gateway-progress.md)
-- [docs/channel-connectors-native-agent-bot-plan.md](docs/channel-connectors-native-agent-bot-plan.md)
-- [docs/openclaw-recovery-daemon-goal.md](docs/openclaw-recovery-daemon-goal.md)
-- [docs/openclaw-recovery-daemon-progress.md](docs/openclaw-recovery-daemon-progress.md)
+- [docs/网关目标方案.md](docs/网关目标方案.md)
+- [docs/网关进度.md](docs/网关进度.md)
+- [docs/渠道连接器原生方案.md](docs/渠道连接器原生方案.md)
+- [docs/自愈守护进程目标.md](docs/自愈守护进程目标.md)
+- [docs/自愈守护进程进度.md](docs/自愈守护进程进度.md)
 
 ## Development
 

@@ -9,7 +9,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const webPackageJson = JSON.parse(fs.readFileSync(path.join(root, 'apps', 'web-vue', 'package.json'), 'utf-8'));
 const apiPackageJson = JSON.parse(fs.readFileSync(path.join(root, 'apps', 'api', 'package.json'), 'utf-8'));
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'openclaw.plugin.json'), 'utf-8'));
-const docs = fs.readFileSync(path.join(root, 'docs', 'chat-official-parity.md'), 'utf-8');
+const docs = fs.readFileSync(path.join(root, 'docs', '聊天官方对齐.md'), 'utf-8');
 
 test('package.json keeps official host install metadata authoritative', () => {
   assert.equal(packageJson.openclaw?.id, 'tracevane');

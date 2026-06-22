@@ -73,7 +73,7 @@
 - 旧 Vue 源码、Vue Router、Nuxt UI、Reka UI、lucide-vue、motion-v 等 Vue 方向依赖已移除；保留 CodeMirror、xterm、markdown 相关库作为 Workspace IDE 后续专业表面基础。
 - lucide 图标改为实际用到的 subset，避免导入全部 icon 带来首包膨胀。
 
-功能迁移架构详见 `docs/frontend-functional-architecture.md`。
+功能迁移架构详见 `docs/前端功能架构.md`。
 
 ## 设计后果
 

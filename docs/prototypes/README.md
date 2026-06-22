@@ -3,7 +3,7 @@
 本地优先的 AI Agent 控制工作台的前端原型。基于 Aurora 设计体系，单入口 SPA 框架。
 
 > 2026-06-21：Aurora 原型已落入 `apps/web-vue` 的 React + TypeScript + Vite 前端。本文仍保留原型运行方式，作为视觉/交互源和后续页面调整的参考。
-> 同日更新：生产前端目标不是停留在 raw HTML 原型渲染。原型只作为视觉/交互合同，真实功能逐页迁移到 React component + TanStack Query + 现有 API。详见 `../frontend-functional-architecture.md`。
+> 同日更新：生产前端目标不是停留在 raw HTML 原型渲染。原型只作为视觉/交互合同，真实功能逐页迁移到 React component + TanStack Query + 现有 API。详见 `../前端功能架构.md`。
 
 ## 快速开始
 
@@ -54,7 +54,7 @@ shell.openSheet({ title, sub, status, owner, action, note, log: ["a", "b"] });
 
 ## 交互模式（不一律抽屉）
 
-按 `aurora-design-system.md` §4.1/§8.2：行内控件做切换/编辑，Drawer 做表单，Dialog 做危险确认，Sheet 只承载只读详情，Toast 做即时反馈，列表选中就地更新检视器。
+按 `Aurora设计体系.md` §4.1/§8.2：行内控件做切换/编辑，Drawer 做表单，Dialog 做危险确认，Sheet 只承载只读详情，Toast 做即时反馈，列表选中就地更新检视器。
 
 ## 落地 React
 
@@ -87,5 +87,5 @@ shell.openSheet({ title, sub, status, owner, action, note, log: ["a", "b"] });
 ## 相关文档
 
 - `app/ARCHITECTURE.md` — 架构、模块职责、数据契约、验证清单
-- `aurora-design-system.md` — 设计体系（token / 组件 / 页面形态 / 验收）
+- `Aurora设计体系.md` — 设计体系（token / 组件 / 页面形态 / 验收）
 - `INDEX.md` — 文件清单与页面形态映射

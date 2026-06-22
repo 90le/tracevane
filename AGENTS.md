@@ -12,4 +12,4 @@ Before starting or changing any feature, adapter, provider, SDK/API integration,
 4. If network access is unavailable, do not invent a contract. Use only already documented verified contracts, mark the stale-data risk explicitly, and keep unsupported routes explicit until they are verified.
 5. Implement only after comparing current external evidence with the local TypeScript/runtime boundary. User-visible behavior must be protected by regression tests and, when behavior depends on real services or CLIs, by focused smoke verification.
 
-Keep `docs/research-first-development-checklist.md` updated whenever Gateway, Channel Connectors, CLI Agent runner, provider, SDK, protocol, or user-facing workflow scope changes. Commits that intentionally rely on an unverified or temporary contract must record that limitation in commit trailers.
+Keep `docs/研究先行开发清单.md` updated whenever Gateway, Channel Connectors, CLI Agent runner, provider, SDK, protocol, or user-facing workflow scope changes. Commits that intentionally rely on an unverified or temporary contract must record that limitation in commit trailers.
