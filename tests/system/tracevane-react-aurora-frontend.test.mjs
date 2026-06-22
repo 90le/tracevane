@@ -340,6 +340,9 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   const app = read("apps/web-vue/src/app/App.tsx");
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const page = read("apps/web-vue/src/app/ModelGatewayPage.tsx");
+  const overviewSource = page.slice(page.indexOf("const renderOverview"), page.indexOf("const renderProviders"));
+  const providerRowSource = page.slice(page.indexOf("function GatewayProviderTableRow"), page.indexOf("export function ModelGatewayPage"));
+  const modelsSource = page.slice(page.indexOf("const renderModels"), page.indexOf("const renderUsage"));
 
   assert.match(app, /ModelGatewayPage/);
   assert.match(manifest, /path: "model-gateway"[\s\S]*surface: "react"/);
@@ -356,7 +359,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "检查选中 Provider", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略", "当前 Provider 不是账号制"]) {
     assert.match(page, new RegExp(label));
   }
   for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
@@ -372,7 +375,6 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /ProviderModelDraft/);
   assert.match(page, /saveModelAlias/);
   assert.match(page, /setProviderDefaultModel/);
-  assert.match(page, /检查选中 Provider/);
   assert.match(page, /providerConfigSections/);
   assert.match(page, /provider-config-sections/);
   assert.match(page, /app-connection-summary/);
@@ -388,6 +390,16 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /provider-row-actions/);
   assert.match(page, /provider-config-flow/);
   assert.match(page, /createIcons\(\{ icons: modelGatewayIcons, root \}\)/);
+  for (const forbiddenOverviewAction of ["新建 API Provider", "登录 Codex", "新增 endpoint", "新增模型", "登录新账号"]) {
+    assert.doesNotMatch(overviewSource, new RegExp(forbiddenOverviewAction));
+  }
+  assert.doesNotMatch(overviewSource, /openProviderCreate/);
+  assert.doesNotMatch(overviewSource, /startCodexAccountLogin/);
+  assert.doesNotMatch(overviewSource, /检查选中 Provider/);
+  assert.doesNotMatch(providerRowSource, /删除/);
+  assert.doesNotMatch(providerRowSource, /trash-2/);
+  assert.doesNotMatch(modelsSource, /openProviderEdit/);
+  assert.doesNotMatch(modelsSource, /添加 alias/);
 });
 
 test("IM Channels is a real React page backed by read-only existing APIs", () => {

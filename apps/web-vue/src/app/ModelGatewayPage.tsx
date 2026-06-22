@@ -1305,7 +1305,6 @@ export function ModelGatewayPage() {
           <div className="row-actions">
             <button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}><i data-lucide="route" />Provider</button>
             <button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}><i data-lucide="terminal" />客户端接入</button>
-            <button className="btn-primary btn-sm" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" />检查选中 Provider</button>
           </div>
         </div>
         <div className="panel-body gateway-status-strip">
@@ -1597,6 +1596,17 @@ export function ModelGatewayPage() {
     const accountRows = listAt(accountProvider, ["accounts"]).map(asRecord);
     const title = `账号池 · ${textAt(selectedProvider, ["name"], "Codex 账号")}`;
     const routingStrategy = textAt(routing, ["strategy"], "round-robin");
+    if (!accountProvider.kind) {
+      return (
+        <div data-view="accounts" className="on">
+          <div className="subpage-head">
+            <button className="btn-icon btn-ghost back" type="button" title="返回 Provider" onClick={() => setView("providers")}><i data-lucide="arrow-left" /></button>
+            <div className="htitle"><h2>账号池</h2><p>账号池只属于账号制 Provider。普通 API Provider 不显示账号管理。</p></div>
+          </div>
+          <div className="statebox empty" style={{ marginTop: 14 }}><span className="si"><i data-lucide="users" /></span><strong>当前 Provider 不是账号制</strong><span>返回 Provider 列表，选择 Codex 账号等账号制 Provider 后再进入账号池。</span></div>
+        </div>
+      );
+    }
     return (
       <div data-view="accounts" className="on">
         <div className="page-head">
@@ -1649,7 +1659,7 @@ export function ModelGatewayPage() {
     <div data-view="models" className="on">
       <div className="page-head">
         <div className="htitle"><h2>模型</h2><p>所有 Provider 暴露的模型、alias、推理能力与定价。行内编辑 alias，点击查看能力。</p></div>
-        <div className="toolbar"><span className="search-input"><i data-lucide="search" /><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="搜索模型 / alias" /></span><button className="btn-ghost" type="button" onClick={() => selectedProvider && openProviderEdit(selectedProvider)}><i data-lucide="plus" /><span>添加 alias</span></button></div>
+        <div className="toolbar"><span className="search-input"><i data-lucide="search" /><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="搜索模型 / alias" /></span></div>
       </div>
       <div className="tablewrap">
         <div className="thead" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }}><span>模型 / alias</span><span>Provider</span><span>能力</span><span>24h</span></div>
