@@ -897,7 +897,7 @@ async function runTracevaneWebBundleRepairLayer(
   }
 
   const packagePath = path.join(config.projectRoot, "package.json");
-  const webPackagePath = path.join(config.projectRoot, "apps", "web-vue", "package.json");
+  const webPackagePath = path.join(config.projectRoot, "apps", "web", "package.json");
   if (!fs.existsSync(packagePath) || !fs.existsSync(webPackagePath)) {
     const error = "Tracevane source package is missing; web bundle cannot be rebuilt automatically";
     appendRecoveryEvent(

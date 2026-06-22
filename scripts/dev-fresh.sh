@@ -227,7 +227,7 @@ if ! kill -0 "$backend_pid" 2>/dev/null; then
 fi
 
 echo "Starting frontend on port $WEB_PORT (proxying to $API_PORT)"
-frontend_pid="$(start_background "TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$API_PORT TRACEVANE_WEB_PORT=$WEB_PORT npm run dev --workspace=apps/web-vue -- --host 127.0.0.1 --port $WEB_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE")"
+frontend_pid="$(start_background "TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$API_PORT TRACEVANE_WEB_PORT=$WEB_PORT npm run dev --workspace=apps/web -- --host 127.0.0.1 --port $WEB_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE")"
 wait_for_http "http://127.0.0.1:${WEB_PORT}" "Frontend"
 wait_for_http "http://127.0.0.1:${WEB_PORT}/api/system/health" "Frontend proxy"
 if ! kill -0 "$frontend_pid" 2>/dev/null; then

@@ -28,16 +28,16 @@
   },
   "workspaces": [
     "apps/api",
-    "apps/web-vue"
+    "apps/web"
   ],
   "scripts": {
     "build:api": "node scripts/clean-build-output.mjs api && tsc -p tsconfig.json",
     "build": "npm run build:web && npm run build:api",
-    "build:web": "node scripts/clean-build-output.mjs web && npm run build --workspace=apps/web-vue",
+    "build:web": "node scripts/clean-build-output.mjs web && npm run build --workspace=apps/web",
     "dev:api": "npm run build:api && node scripts/start-standalone-api.mjs",
     "dev:fresh": "bash scripts/dev-fresh.sh",
     "dev:restart": "bash scripts/restart-dev.sh",
-    "dev:web": "npm run dev --workspace=apps/web-vue",
+    "dev:web": "npm run dev --workspace=apps/web",
     "dev:web:smoke": "bash scripts/dev-web-smoke.sh",
     "smoke:model-gateway:cli": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs",
     "smoke:model-gateway:cli:strict": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs --strict",
@@ -85,8 +85,8 @@
     "test:chat:integration": "npm run build:api && TRACEVANE_ENABLE_REAL_CHAT_INTEGRATION=1 TRACEVANE_TEST_OPENCLAW_ROOT=/home/binbin/.openclaw node --test tests/chat/api.integration.test.mjs tests/chat/transport.integration.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:api": "tsc -p tsconfig.json --noEmit",
-    "typecheck:web": "npm run typecheck --workspace=apps/web-vue",
-    "install:all": "npm install && npm install --workspace=apps/web-vue",
+    "typecheck:web": "npm run typecheck --workspace=apps/web",
+    "install:all": "npm install && npm install --workspace=apps/web",
     "tracevane:frontend-coverage": "node scripts/tracevane-frontend-coverage.mjs",
     "tracevane:inventory": "node scripts/tracevane-domain-inventory.mjs"
   },

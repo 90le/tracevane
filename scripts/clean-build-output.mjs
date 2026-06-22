@@ -9,7 +9,7 @@ const projectRoot = process.env.TRACEVANE_CLEAN_ROOT
 
 const targetMap = new Map([
   ['api', ['dist']],
-  ['web', ['apps/web-vue/dist']],
+  ['web', ['apps/web/dist']],
 ]);
 
 function usage() {
