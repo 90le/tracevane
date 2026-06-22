@@ -105,6 +105,33 @@ const SidebarItem = React.forwardRef<HTMLButtonElement, SidebarItemProps>(
   ) => {
     const { collapsed } = useSidebar();
     const Comp = asChild ? Slot : "button";
+    // When asChild, `children` is a single element (e.g. <Link>label</Link>) that
+    // Slot merges onto. Radix Slot requires exactly one child, so we cannot emit
+    // icon/label/count as siblings — instead we compose them INTO that single
+    // child (its own children become the label), keeping a single Slot child.
+    const childIsElement = React.isValidElement(children);
+    const labelContent =
+      asChild && childIsElement
+        ? (children as React.ReactElement<{ children?: React.ReactNode }>).props.children
+        : children;
+    const inner = (
+      <>
+        {icon}
+        {!collapsed && (
+          <span className="min-w-0 flex-1 truncate text-left">{labelContent}</span>
+        )}
+        {!collapsed && count != null && (
+          <span
+            className={cn(
+              "ml-auto inline-grid h-[19px] min-w-[19px] place-items-center rounded-full px-[5px] font-mono text-2xs",
+              alert ? "bg-red-soft text-red" : "bg-panel-3 text-muted"
+            )}
+          >
+            {count}
+          </span>
+        )}
+      </>
+    );
     return (
       <Comp
         ref={ref}
@@ -120,18 +147,13 @@ const SidebarItem = React.forwardRef<HTMLButtonElement, SidebarItemProps>(
         )}
         {...props}
       >
-        {icon}
-        {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{children}</span>}
-        {!collapsed && count != null && (
-          <span
-            className={cn(
-              "ml-auto inline-grid h-[19px] min-w-[19px] place-items-center rounded-full px-[5px] font-mono text-2xs",
-              alert ? "bg-red-soft text-red" : "bg-panel-3 text-muted"
-            )}
-          >
-            {count}
-          </span>
-        )}
+        {asChild && childIsElement
+          ? React.cloneElement(
+              children as React.ReactElement,
+              undefined,
+              inner
+            )
+          : inner}
       </Comp>
     );
   }
