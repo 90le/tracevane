@@ -344,6 +344,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   const providerRowSource = page.slice(page.indexOf("function GatewayProviderTableRow"), page.indexOf("export function ModelGatewayPage"));
   const modelsSource = page.slice(page.indexOf("const renderModels"), page.indexOf("const renderUsage"));
   const usageSource = page.slice(page.indexOf("const renderUsage"), page.indexOf("const renderApps"));
+  const appConnectionSource = page.slice(page.indexOf("const previewAppConnection"), page.indexOf("const modelCatalog"));
 
   assert.match(app, /ModelGatewayPage/);
   assert.match(manifest, /path: "model-gateway"[\s\S]*surface: "react"/);
@@ -391,6 +392,14 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /provider-row-actions/);
   assert.match(page, /provider-config-flow/);
   assert.match(page, /createIcons\(\{ icons: modelGatewayIcons, root \}\)/);
+  assert.match(appConnectionSource, /appConnectionTargetPath/);
+  assert.match(appConnectionSource, /appConnectionEvidenceNote/);
+  assert.match(appConnectionSource, /targetPath/);
+  assert.match(appConnectionSource, /backupPath/);
+  assert.match(appConnectionSource, /restoredFrom/);
+  assert.match(appConnectionSource, /后端会先备份当前文件/);
+  assert.match(appConnectionSource, /最新预览证据/);
+  assert.match(appConnectionSource, /Promise\.all\(\[appConnections\.refetch\(\), providers\.refetch\(\)\]\)/);
   for (const forbiddenOverviewAction of ["新建 API Provider", "登录 Codex", "新增 endpoint", "新增模型", "登录新账号"]) {
     assert.doesNotMatch(overviewSource, new RegExp(forbiddenOverviewAction));
   }

@@ -1157,22 +1157,46 @@ export function ModelGatewayPage() {
 
   const previewAppConnection = (connection: AnyRecord) => {
     const preview = recordAt(connection, ["preview"]);
+    const targetPath = appConnectionTargetPath(connection);
     shell.openSheet({
       title: `${textAt(connection, ["label", "id"], "客户端")} 配置预览`,
-      sub: textAt(recordAt(connection, ["target"]), ["path"], textAt(preview, ["targetPath"], "")),
+      sub: targetPath,
       status: "pending",
       owner: "Model Gateway",
       action: "app connection preview",
-      note: textAt(preview, ["content"], "暂无预览内容").slice(0, 5000),
+      note: [
+        `targetPath：${targetPath}`,
+        "",
+        textAt(preview, ["content"], "暂无预览内容"),
+      ].join("\n").slice(0, 5000),
     });
+  };
+
+  const appConnectionTargetPath = (connection: AnyRecord) => {
+    const preview = recordAt(connection, ["preview"]);
+    return textAt(recordAt(connection, ["target"]), ["path"], textAt(preview, ["targetPath"], "目标配置文件"));
+  };
+
+  const appConnectionEvidenceNote = (result: AnyRecord, fallbackTargetPath: string) => {
+    const resultConnection = recordAt(result, ["connection"]);
+    const resultTarget = recordAt(resultConnection, ["target"]);
+    const targetPath = textAt(resultTarget, ["path"], fallbackTargetPath);
+    return [
+      `targetPath：${targetPath}`,
+      `backupPath：${textAt(result, ["backupPath"], "未生成")}`,
+      `restoredFrom：${textAt(result, ["restoredFrom"], "不适用")}`,
+      "",
+      JSON.stringify(result, null, 2),
+    ].join("\n").slice(0, 3200);
   };
 
   const applyAppConnection = (connection: AnyRecord) => {
     const appId = textAt(connection, ["id"], "");
     if (!appId) return;
+    const targetPath = appConnectionTargetPath(connection);
     shell.openDialog({
       title: `应用客户端接入：${textAt(connection, ["label"], appId)}`,
-      body: `将写入 ${textAt(recordAt(connection, ["target"]), ["path"], "目标配置文件")}，应用前会由后端自动备份。`,
+      body: `将写入 ${targetPath}。后端会先备份当前文件，再写入 Gateway 路由配置；成功后会返回 backupPath 和最新预览证据。`,
       tone: "info",
       icon: "terminal",
       okLabel: "应用",
@@ -1187,13 +1211,13 @@ export function ModelGatewayPage() {
             shell.toast("客户端接入已应用", "ok");
             shell.openSheet({
               title: "客户端接入已应用",
-              sub: textAt(connection, ["label"], appId),
+              sub: targetPath,
               status: "ok",
               owner: "Model Gateway",
               action: "app connection apply",
-              note: JSON.stringify(result, null, 2).slice(0, 3000),
+              note: appConnectionEvidenceNote(result, targetPath),
             });
-            await appConnections.refetch();
+            await Promise.all([appConnections.refetch(), providers.refetch()]);
           } catch (error) {
             shell.toast(error instanceof Error ? error.message : "客户端接入应用失败", "warn");
           } finally {
@@ -1207,9 +1231,10 @@ export function ModelGatewayPage() {
   const rollbackAppConnection = (connection: AnyRecord) => {
     const appId = textAt(connection, ["id"], "");
     if (!appId) return;
+    const targetPath = appConnectionTargetPath(connection);
     shell.openDialog({
       title: `回滚客户端接入：${textAt(connection, ["label"], appId)}`,
-      body: "将从最近一次备份恢复客户端配置。该操作会先备份当前文件。",
+      body: `将把 ${targetPath} 从最近一次备份恢复。后端会先备份当前文件，再执行恢复；成功后会返回 restoredFrom、backupPath 和最新预览证据。`,
       tone: "danger",
       icon: "rotate-ccw",
       okLabel: "回滚",
@@ -1224,13 +1249,13 @@ export function ModelGatewayPage() {
             shell.toast("客户端接入已回滚", "ok");
             shell.openSheet({
               title: "客户端接入已回滚",
-              sub: textAt(connection, ["label"], appId),
+              sub: targetPath,
               status: "ok",
               owner: "Model Gateway",
               action: "app connection rollback",
-              note: JSON.stringify(result, null, 2).slice(0, 3000),
+              note: appConnectionEvidenceNote(result, targetPath),
             });
-            await appConnections.refetch();
+            await Promise.all([appConnections.refetch(), providers.refetch()]);
           } catch (error) {
             shell.toast(error instanceof Error ? error.message : "客户端接入回滚失败", "warn");
           } finally {
