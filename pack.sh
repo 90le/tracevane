@@ -83,7 +83,7 @@ PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
 ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-tracevane.sh"
 ROOT_LANDING_PATH="${OUTPUT_DIR}/index.html"
 LANDING_PAGE_PATH="${SCRIPT_DIR}/index.html"
-APP_REACT_SOURCE_PATH="${SCRIPT_DIR}/apps/web-vue/src/app/App.tsx"
+APP_REACT_SOURCE_PATH="${SCRIPT_DIR}/apps/web/src/app/App.tsx"
 OPENCLAW_TARGET_VERSION="$(
   node - "${SCRIPT_DIR}/package.json" <<'NODE'
 const fs = require('node:fs');
@@ -115,7 +115,7 @@ const version = process.argv[3];
 const packageFiles = [
   'package.json',
   'apps/api/package.json',
-  'apps/web-vue/package.json',
+  'apps/web/package.json',
 ];
 
 for (const relativePath of packageFiles) {
@@ -130,7 +130,7 @@ const lockPath = path.join(scriptDir, 'package-lock.json');
 if (fs.existsSync(lockPath)) {
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
   lock.version = version;
-  for (const packageKey of ['', 'apps/api', 'apps/web-vue']) {
+  for (const packageKey of ['', 'apps/api', 'apps/web']) {
     if (lock.packages?.[packageKey]) {
       lock.packages[packageKey].version = version;
     }
@@ -154,7 +154,7 @@ function rewriteTextFile(relativePath, replacements) {
 rewriteTextFile('apps/api/config.ts', [
   [/const TRACEVANE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_VERSION_FALLBACK = '${version}';`],
 ]);
-rewriteTextFile('apps/web-vue/vite.config.ts', [
+rewriteTextFile('apps/web/vite.config.ts', [
   [/const TRACEVANE_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_PACKAGE_VERSION_FALLBACK = '${version}';`],
 ]);
 NODE
@@ -194,17 +194,17 @@ TRACEVANE_BUILD_VERSION="${VERSION}" npm run build:web
 
 echo "[3/6] 准备打包目录..."
 rm -rf "${PACKAGE_DIR}"
-mkdir -p "${PACKAGE_DIR}/apps/web-vue"
+mkdir -p "${PACKAGE_DIR}/apps/web"
 
 echo "[4/6] 复制构建产物..."
 cp -r "${SCRIPT_DIR}/dist" "${PACKAGE_DIR}/"
-cp -r "${SCRIPT_DIR}/apps/web-vue/dist" "${PACKAGE_DIR}/apps/web-vue/"
+cp -r "${SCRIPT_DIR}/apps/web/dist" "${PACKAGE_DIR}/apps/web/"
 if [[ -d "${SCRIPT_DIR}/resources" ]]; then
   cp -r "${SCRIPT_DIR}/resources" "${PACKAGE_DIR}/"
 fi
-mkdir -p "${PACKAGE_DIR}/apps/web-vue/src"
-mkdir -p "${PACKAGE_DIR}/apps/web-vue/src/app"
-cp "${APP_REACT_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web-vue/src/app/App.tsx"
+mkdir -p "${PACKAGE_DIR}/apps/web/src"
+mkdir -p "${PACKAGE_DIR}/apps/web/src/app"
+cp "${APP_REACT_SOURCE_PATH}" "${PACKAGE_DIR}/apps/web/src/app/App.tsx"
 
 echo "[5/6] 复制元数据..."
 cp "${SCRIPT_DIR}/package.json" "${PACKAGE_DIR}/"
@@ -272,7 +272,7 @@ const payload = {
   builtAt: new Date().toISOString(),
   sourceSnapshot: {
     appReact: {
-      path: 'apps/web-vue/src/app/App.tsx',
+      path: 'apps/web/src/app/App.tsx',
       sha256: crypto.createHash('sha256').update(appReact).digest('hex'),
       bytes: appReact.length,
     },

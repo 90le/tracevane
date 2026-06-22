@@ -83,7 +83,7 @@ test('pack script syncs landing page versions and includes the current React app
 
   assert.match(packScript, /同步 package\/workspace 版本/);
   assert.match(packScript, /apps\/api\/package\.json/);
-  assert.match(packScript, /apps\/web-vue\/package\.json/);
+  assert.match(packScript, /apps\/web\/package\.json/);
   assert.match(packScript, /package-lock\.json/);
   assert.match(packScript, /TRACEVANE_VERSION_FALLBACK/);
   assert.match(packScript, /TRACEVANE_PACKAGE_VERSION_FALLBACK/);
@@ -91,13 +91,13 @@ test('pack script syncs landing page versions and includes the current React app
   assert.match(packScript, /rewrite-landing-version/);
   assert.match(packScript, /clean-build-output\.mjs" all/);
   assert.match(packScript, /cp "\$\{LANDING_PAGE_PATH\}" "\$\{ROOT_LANDING_PATH\}"/);
-  assert.match(packScript, /cp "\$\{APP_REACT_SOURCE_PATH\}" "\$\{PACKAGE_DIR\}\/apps\/web-vue\/src\/app\/App\.tsx"/);
+  assert.match(packScript, /cp "\$\{APP_REACT_SOURCE_PATH\}" "\$\{PACKAGE_DIR\}\/apps\/web\/src\/app\/App\.tsx"/);
   assert.match(packScript, /release-build\.json/);
 });
 
 test('pack script provides a non-mutating test mode for release smoke checks', () => {
   const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
-  const viteConfig = fs.readFileSync(new URL('../../apps/web-vue/vite.config.ts', import.meta.url), 'utf8');
+  const viteConfig = fs.readFileSync(new URL('../../apps/web/vite.config.ts', import.meta.url), 'utf8');
 
   assert.match(packScript, /--no-source-sync/);
   assert.match(packScript, /--output-dir/);
@@ -115,7 +115,7 @@ test('build scripts clean generated output before compiling fresh artifacts', ()
   const rootPackage = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-clean-output-'));
   const apiStalePath = path.join(tmpRoot, 'dist', 'stale.js');
-  const webStalePath = path.join(tmpRoot, 'apps', 'web-vue', 'dist', 'stale.js');
+  const webStalePath = path.join(tmpRoot, 'apps', 'web', 'dist', 'stale.js');
   fs.mkdirSync(path.dirname(apiStalePath), { recursive: true });
   fs.mkdirSync(path.dirname(webStalePath), { recursive: true });
   fs.writeFileSync(apiStalePath, 'stale api output');
@@ -146,7 +146,7 @@ test('local source fallback versions stay aligned with package.json for dev debu
   const rootPackage = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const version = rootPackage.version;
   const apiConfig = fs.readFileSync(new URL('../../apps/api/config.ts', import.meta.url), 'utf8');
-  const viteConfig = fs.readFileSync(new URL('../../apps/web-vue/vite.config.ts', import.meta.url), 'utf8');
+  const viteConfig = fs.readFileSync(new URL('../../apps/web/vite.config.ts', import.meta.url), 'utf8');
 
   assert.match(apiConfig, new RegExp(`const TRACEVANE_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));
   assert.match(viteConfig, new RegExp(`const TRACEVANE_PACKAGE_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));

@@ -115,7 +115,7 @@ function makeConfig() {
     openclawRoot,
     openclawConfigFile,
     projectRoot,
-    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
+    webDistDir: path.join(root, "tracevane/apps/web/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "/tracevane",
