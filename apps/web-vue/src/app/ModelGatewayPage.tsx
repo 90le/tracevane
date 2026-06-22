@@ -10,6 +10,16 @@ type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderDetailTab = "overview" | "endpoints" | "models";
 
+interface ProviderEndpointDraft {
+  localId: string;
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiFormat: string;
+  authStrategy: string;
+  enabled: boolean;
+}
+
 interface ProviderDraft {
   id: string;
   name: string;
@@ -21,7 +31,7 @@ interface ProviderDraft {
   authStrategy: string;
   defaultModel: string;
   modelsText: string;
-  endpointProfilesText: string;
+  endpointProfiles: ProviderEndpointDraft[];
   appScopes: Record<string, boolean>;
   apiKey: string;
   timeoutMs: string;
@@ -210,6 +220,37 @@ function formatRelativeFuture(value: unknown): string {
   return `${Math.ceil(minutes / 60)}h`;
 }
 
+function providerEndpointDraft(
+  endpoint: AnyRecord,
+  provider: AnyRecord,
+  index: number,
+): ProviderEndpointDraft {
+  const fallbackId = index === 0 ? "primary" : `endpoint-${index + 1}`;
+  const id = textAt(endpoint, ["id"], fallbackId);
+  return {
+    localId: `${id}-${index}`,
+    id,
+    name: textAt(endpoint, ["name"], index === 0 ? "主 endpoint" : `Endpoint ${index + 1}`),
+    baseUrl: textAt(endpoint, ["baseUrl"], textAt(provider, ["baseUrl"], "")),
+    apiFormat: textAt(endpoint, ["apiFormat"], textAt(provider, ["apiFormat"], "openai_chat")),
+    authStrategy: textAt(endpoint, ["authStrategy"], textAt(provider, ["authStrategy"], "bearer")),
+    enabled: endpoint.enabled !== false,
+  };
+}
+
+function newProviderEndpointDraft(baseUrl: string, apiFormat: string, authStrategy: string, index: number): ProviderEndpointDraft {
+  const id = index === 0 ? "primary" : `endpoint-${index + 1}`;
+  return {
+    localId: `${id}-${Date.now().toString(36)}`,
+    id,
+    name: index === 0 ? "主 endpoint" : `Endpoint ${index + 1}`,
+    baseUrl,
+    apiFormat,
+    authStrategy,
+    enabled: true,
+  };
+}
+
 function emptyProviderDraft(): ProviderDraft {
   return {
     id: "",
@@ -222,7 +263,7 @@ function emptyProviderDraft(): ProviderDraft {
     authStrategy: "bearer",
     defaultModel: "",
     modelsText: "",
-    endpointProfilesText: "",
+    endpointProfiles: [],
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, true])),
     apiKey: "",
     timeoutMs: "30000",
@@ -259,14 +300,7 @@ function draftFromProvider(provider: AnyRecord | null): ProviderDraft {
     authStrategy: textAt(provider, ["authStrategy"], "bearer"),
     defaultModel: textAt(modelsPayload, ["defaultModel"], ""),
     modelsText: modelRows.map((model) => textAt(model, ["id"], "")).filter(Boolean).join("\n"),
-    endpointProfilesText: endpointRows.map((endpoint) => [
-      textAt(endpoint, ["id"], "primary"),
-      textAt(endpoint, ["name"], "Primary endpoint"),
-      textAt(endpoint, ["baseUrl"], textAt(provider, ["baseUrl"], "")),
-      textAt(endpoint, ["apiFormat"], textAt(provider, ["apiFormat"], "openai_chat")),
-      textAt(endpoint, ["authStrategy"], textAt(provider, ["authStrategy"], "bearer")),
-      endpoint.enabled === false ? "disabled" : "enabled",
-    ].join(" | ")).join("\n"),
+    endpointProfiles: endpointRows.map((endpoint, index) => providerEndpointDraft(endpoint, provider, index)),
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, listAt(provider, ["appScopes"]).map(String).includes(scope)])),
     apiKey: "",
     timeoutMs: String(numberAt(network, ["timeoutMs"], 30000)),
@@ -297,17 +331,18 @@ function modelCatalogFromDraft(draft: ProviderDraft): AnyRecord {
 }
 
 function endpointProfilesFromDraft(draft: ProviderDraft): AnyRecord[] | undefined {
-  const lines = draft.endpointProfilesText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
-  if (!lines.length) return undefined;
-  return lines.map((line, index) => {
-    const [id, name, baseUrl, apiFormat, authStrategy, enabled] = line.split("|").map((value) => value.trim());
+  const rows = draft.endpointProfiles.filter((endpoint) => (
+    endpoint.id.trim() || endpoint.name.trim() || endpoint.baseUrl.trim()
+  ));
+  if (!rows.length) return undefined;
+  return rows.map((endpoint, index) => {
     return {
-      id: id || `endpoint-${index + 1}`,
-      name: name || id || `Endpoint ${index + 1}`,
-      baseUrl: baseUrl || draft.baseUrl.trim(),
-      apiFormat: apiFormat || draft.apiFormat,
-      authStrategy: authStrategy || draft.authStrategy,
-      enabled: enabled ? !/^(disabled|false|off|停用)$/i.test(enabled) : true,
+      id: endpoint.id.trim() || `endpoint-${index + 1}`,
+      name: endpoint.name.trim() || endpoint.id.trim() || `Endpoint ${index + 1}`,
+      baseUrl: endpoint.baseUrl.trim() || draft.baseUrl.trim(),
+      apiFormat: endpoint.apiFormat || draft.apiFormat,
+      authStrategy: endpoint.authStrategy || draft.authStrategy,
+      enabled: endpoint.enabled,
       appScopes: appScopeOptions.filter(([scope]) => draft.appScopes[scope]).map(([scope]) => scope),
       models: null,
       network: {
@@ -679,16 +714,43 @@ export function ModelGatewayPage() {
   };
 
   const openProviderCreate = () => {
+    const baseUrl = "https://api.example.com/v1";
     setProviderDraft({
       ...emptyProviderDraft(),
       id: `provider-${Date.now().toString(36)}`,
       name: "新 Provider",
-      baseUrl: "https://api.example.com/v1",
+      baseUrl,
       defaultModel: "model-id",
       modelsText: "model-id",
-      endpointProfilesText: "primary | 主 endpoint | https://api.example.com/v1 | openai_chat | bearer | enabled",
+      endpointProfiles: [newProviderEndpointDraft(baseUrl, "openai_chat", "bearer", 0)],
     });
     setProviderDialogMode("create");
+  };
+
+  const updateEndpointDraft = (index: number, patch: Partial<ProviderEndpointDraft>) => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      endpointProfiles: draft.endpointProfiles.map((endpoint, itemIndex) => (
+        itemIndex === index ? { ...endpoint, ...patch } : endpoint
+      )),
+    }));
+  };
+
+  const addEndpointDraft = () => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      endpointProfiles: [
+        ...draft.endpointProfiles,
+        newProviderEndpointDraft(draft.baseUrl.trim(), draft.apiFormat, draft.authStrategy, draft.endpointProfiles.length),
+      ],
+    }));
+  };
+
+  const removeEndpointDraft = (index: number) => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      endpointProfiles: draft.endpointProfiles.filter((_, itemIndex) => itemIndex !== index),
+    }));
   };
 
   const saveProviderDraft = async () => {
@@ -696,6 +758,13 @@ export function ModelGatewayPage() {
     const name = providerDraft.name.trim();
     if (!id || !name) {
       shell.toast("Provider ID 和名称不能为空", "warn");
+      return;
+    }
+    const invalidEndpoint = providerDraft.endpointProfiles.find((endpoint) => (
+      !endpoint.id.trim() || !endpoint.name.trim() || !endpoint.baseUrl.trim()
+    ));
+    if (invalidEndpoint) {
+      shell.toast("Endpoint 的 ID、名称和 baseUrl 都不能为空", "warn");
       return;
     }
     setProviderBusy(true);
@@ -1208,22 +1277,40 @@ export function ModelGatewayPage() {
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>密钥</strong><span className="sub">仅引用，不存明文</span></div>
                 <div className="cfg-body">
-            <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button" onClick={() => void saveProviderDraft()} disabled={providerBusy}><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
+                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button" onClick={() => void saveProviderDraft()} disabled={providerBusy}><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
                 </div>
               </div>
               <div className="cfg">
-                <div className="cfg-head"><span className="ci"><i data-lucide="plug" /></span><strong>Endpoint</strong><span className="sub">一行一个</span></div>
+                <div className="cfg-head"><span className="ci"><i data-lucide="plug" /></span><strong>Endpoint</strong><span className="sub">多端点</span></div>
                 <div className="cfg-body">
-                  <div className="fieldset">
-                    <label>Endpoint 列表</label>
-                    <textarea
-                      className="input"
-                      value={providerDraft.endpointProfilesText}
-                      onChange={(event) => setProviderDraft((draft) => ({ ...draft, endpointProfilesText: event.target.value }))}
-                      placeholder="primary | 主 endpoint | https://api.example.com/v1 | openai_chat | bearer | enabled"
-                    />
-                    <span className="help-text">格式：id | 名称 | baseUrl | API 格式 | 鉴权方式 | enabled/disabled。留空则保留现有 endpoint。</span>
+                  <div className="endpoint-editor">
+                    {providerDraft.endpointProfiles.map((endpoint, index) => (
+                      <div className="endpoint-edit-row" key={endpoint.localId}>
+                        <div className="endpoint-edit-head">
+                          <span className="rico r-primary"><i data-lucide="plug" /></span>
+                          <span className="sc"><strong>{endpoint.name || endpoint.id || `Endpoint ${index + 1}`}</strong><span>{endpoint.enabled ? "已启用" : "已停用"}</span></span>
+                          <button className={`toggle ${endpoint.enabled ? "on" : ""}`} type="button" title="启用 / 停用 endpoint" onClick={() => updateEndpointDraft(index, { enabled: !endpoint.enabled })} />
+                        </div>
+                        <div className="endpoint-edit-grid">
+                          <div className="fieldset"><label>ID</label><input className="input" value={endpoint.id} onChange={(event) => updateEndpointDraft(index, { id: event.target.value })} placeholder="primary" /></div>
+                          <div className="fieldset"><label>名称</label><input className="input" value={endpoint.name} onChange={(event) => updateEndpointDraft(index, { name: event.target.value })} placeholder="主 endpoint" /></div>
+                          <div className="fieldset endpoint-url"><label>baseUrl</label><input className="input" value={endpoint.baseUrl} onChange={(event) => updateEndpointDraft(index, { baseUrl: event.target.value })} placeholder={providerDraft.baseUrl || "https://api.example.com/v1"} /></div>
+                          <div className="fieldset"><label>API 格式</label><select className="input select" value={endpoint.apiFormat} onChange={(event) => updateEndpointDraft(index, { apiFormat: event.target.value })}>{apiFormatOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                          <div className="fieldset"><label>鉴权</label><select className="input select" value={endpoint.authStrategy} onChange={(event) => updateEndpointDraft(index, { authStrategy: event.target.value })}>{authStrategyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                        </div>
+                        <div className="row-actions">
+                          <button className="btn-ghost btn-sm" type="button" onClick={() => updateEndpointDraft(index, {
+                            baseUrl: providerDraft.baseUrl,
+                            apiFormat: providerDraft.apiFormat,
+                            authStrategy: providerDraft.authStrategy,
+                          })}><i data-lucide="copy-check" />同步基础配置</button>
+                          <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => removeEndpointDraft(index)} disabled={providerDraft.endpointProfiles.length <= 1}><i data-lucide="trash-2" />移除 endpoint</button>
+                        </div>
+                      </div>
+                    ))}
+                    {!providerDraft.endpointProfiles.length ? <div className="statebox empty"><span className="si"><i data-lucide="plug-zap" /></span><strong>暂无 endpoint</strong><span>新增 endpoint 后才能保存多端点配置。</span></div> : null}
                   </div>
+                  <button className="btn-ghost btn-sm" type="button" onClick={addEndpointDraft}><i data-lucide="plus" />新增 endpoint</button>
                 </div>
               </div>
               <div className="cfg">

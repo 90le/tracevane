@@ -985,10 +985,55 @@
 }
 
 .model-gateway-page .acct-top,
+.model-gateway-page .endpoint-edit-row,
+.model-gateway-page .endpoint-edit-head,
 .model-gateway-page .switch-row,
 .model-gateway-page .model-row,
 .model-gateway-page .route-row {
   min-width: 0;
+}
+
+.model-gateway-page .endpoint-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.model-gateway-page .endpoint-edit-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-2), transparent 38%);
+}
+
+.model-gateway-page .endpoint-edit-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.model-gateway-page .endpoint-edit-head .rico {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+}
+
+.model-gateway-page .endpoint-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(150px, 0.9fr) minmax(220px, 1.5fr);
+  gap: 10px;
+}
+
+.model-gateway-page .endpoint-edit-grid .endpoint-url {
+  grid-column: span 1;
+}
+
+.model-gateway-page .endpoint-edit-grid select.input {
+  width: 100%;
 }
 
 @media (max-width: 1080px) {
@@ -1036,6 +1081,10 @@
 
   .model-gateway-page .route-acts {
     justify-content: flex-start;
+  }
+
+  .model-gateway-page .endpoint-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
