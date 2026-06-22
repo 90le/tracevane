@@ -372,6 +372,10 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /ProviderModelDraft/);
   assert.match(page, /saveModelAlias/);
   assert.match(page, /setProviderDefaultModel/);
+  assert.match(page, /检查选中 Provider/);
+  assert.doesNotMatch(page, /全部连通检查/);
+  assert.doesNotMatch(page, /GLM endpoint A 降级/);
+  assert.doesNotMatch(page, /本地 vLLM 熔断/);
   assert.doesNotMatch(page, /modelsText/);
 });
 

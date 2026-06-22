@@ -128,7 +128,7 @@ Long Tasks first React pass is intentionally read-only. It reads `/api/chat/boot
 
 Model Gateway sections:
 
-- `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary.
+- `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary. Route, health and client rows must come from live Gateway APIs; prototype sample incidents are not allowed as fallback data because they make the page look operational while describing nonexistent failures.
 - `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider search/filter/detect/new, configuration, smoke, default route and delete actions stay in the original toolbar or inspector action rows.
 - `providercfg`: Aurora `subpage / subpage-grid / cfg / save-bar` Provider create/edit child view for base URL, API format, auth, structured endpoint profile rows, structured model catalog rows, network, reasoning, metadata and app scopes.
 - `models`: Aurora model table plus capability/price `cfg` panel, backed by Provider model catalog and usage rows. Alias cells are inline editable and save by rewriting the owning Provider catalog through the guarded Provider PUT flow.

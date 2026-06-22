@@ -548,6 +548,25 @@ function providerMatchesFilter(provider: AnyRecord, filter: ProviderFilter): boo
   return tone === "warn" || tone === "bad";
 }
 
+function routeScopeLabel(value: unknown): string {
+  const scope = String(value ?? "");
+  if (scope === "codex") return "Codex";
+  if (scope === "claude-code") return "Claude Code";
+  if (scope === "opencode") return "OpenCode";
+  if (scope === "openclaw") return "OpenClaw";
+  if (scope === "default") return "默认 / 其他客户端";
+  return scope || "未命名客户端";
+}
+
+function routeScopeIcon(value: unknown): string {
+  const scope = String(value ?? "");
+  return scope === "default" || scope === "openclaw" ? "globe" : "terminal";
+}
+
+function routeScopeTone(index: number): string {
+  return ["ico-teal", "ico-violet", "ico-primary", "r-green"][index % 4] || "ico-primary";
+}
+
 function GatewayProviderTableRow({
   provider,
   selected,
@@ -1303,56 +1322,85 @@ export function ModelGatewayPage() {
       <section className="panel" style={{ marginTop: 18 }}>
         <div className="panel-head">
           <div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端解析到的 Provider / endpoint / 模型，可就地连通检查</span></div>
-          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" /><span>全部连通检查</span></button>
+          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" /><span>检查选中 Provider</span></button>
         </div>
         <div className="panel-body" style={{ padding: 6 }}>
           <QueryNotice query={providers} label="路由" />
-          {!providers.isLoading && !providers.isError ? [
-            { key: "codex", icon: "terminal", tone: "ico-teal", title: "Codex", fallback: "responses · Codex 账号 → gpt-5.4", status: "正常" },
-            { key: "claude", icon: "terminal", tone: "ico-violet", title: "Claude Code", fallback: "messages · Anthropic → claude-3.7-sonnet", status: "正常" },
-            { key: "default", icon: "globe", tone: "ico-primary", title: "默认 / 其他客户端", fallback: "openai · GLM → glm-4-plus（endpoint A 降级，B 接管）", status: activeRouteAlerts.length ? "降级" : "正常" },
-          ].map((item) => {
-            const route = activeRoutes.find((row) => textAt(row, ["scope"], "").toLowerCase().includes(item.key));
-            const sub = route ? `${textAt(route, ["resolvedApiFormat"], "-")} · ${textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto")} → ${textAt(route, ["resolvedModel"], "-")}` : item.fallback;
-            const statusValue = route ? textAt(route, ["state"], item.status) : item.status;
+          {!providers.isLoading && !providers.isError ? activeRoutes.map((route, index) => {
+            const scope = textAt(route, ["scope"], "");
+            const sub = compactList([
+              textAt(route, ["resolvedApiFormat"], "-"),
+              textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto"),
+              textAt(route, ["resolvedEndpointProfileName", "resolvedEndpointProfileId"], ""),
+              textAt(route, ["resolvedModel"], "-"),
+            ]);
+            const warningText = textAt(route, ["warning"], "");
+            const statusValue = warningText ? "warning" : textAt(route, ["state"], "resolved");
             return (
-              <div className="route-row" key={item.key}>
-                <span className={`rico ${item.tone}`}><i data-lucide={item.icon} /></span>
-                <span className="route-copy"><strong>{item.title}</strong><span>{sub}</span></span>
+              <div className="route-row" key={scope || index}>
+                <span className={`rico ${routeScopeTone(index)}`}><i data-lucide={routeScopeIcon(scope)} /></span>
+                <span className="route-copy"><strong>{routeScopeLabel(scope)}</strong><span>{sub}</span></span>
                 <ProviderStatusDot value={statusValue} />
-                <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => selectedProvider && void testProvider(selectedProvider)}>{item.key === "default" && activeRouteAlerts.length ? "详情" : "连通检查"}</button></span>
+                <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>详情</button></span>
               </div>
             );
           }) : null}
+          {!providers.isLoading && !providers.isError && activeRoutes.length === 0 ? (
+            <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无活动路由</strong><span>后端未返回 activeRoutes；请先配置 Provider 和客户端 scope。</span></div>
+          ) : null}
         </div>
       </section>
       <div className="grid-main" style={{ marginTop: 18 }}>
         <section className="panel">
           <div className="panel-head"><div className="htitle"><h3>健康概览</h3><span className="sub">熔断器状态与最近事件</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>查看 Provider</button></div>
           <div className="panel-body" style={{ padding: 6 }}>
-            <div className="route-row"><span className="rico r-amber"><i data-lucide="route-off" /></span><span className="route-copy"><strong>GLM endpoint A 降级</strong><span>超时率 2.1% · 备用接管 · half-open</span></span><span className="tag warn">观察</span></div>
-            <div className="route-row"><span className="rico r-red"><i data-lucide="zap-off" /></span><span className="route-copy"><strong>本地 vLLM 熔断</strong><span>连续失败 6 · 冷却中</span></span><span className="tag bad">熔断</span></div>
-            <div className="route-row"><span className="rico r-green"><i data-lucide="check" /></span><span className="route-copy"><strong>Codex / Anthropic 正常</strong><span>p95 540 / 610ms</span></span><span className="tag ok">在线</span></div>
+            <QueryNotice query={providers} label="Provider 健康" />
+            {!providers.isLoading && !providers.isError ? providerRows.slice(0, 6).map((provider) => {
+              const health = recordAt(provider, ["health"]);
+              const circuit = provider.enabled === false ? "disabled" : textAt(health, ["circuitState"], "closed");
+              const tone = stateTone(circuit);
+              const icon = tone === "bad" ? "zap-off" : tone === "warn" ? "route-off" : "check";
+              const rowTone = tone === "bad" ? "r-red" : tone === "warn" ? "r-amber" : "r-green";
+              return (
+                <div className="route-row" key={textAt(provider, ["id"], "provider")}>
+                  <span className={`rico ${rowTone}`}><i data-lucide={icon} /></span>
+                  <span className="route-copy"><strong>{textAt(provider, ["name", "id"], "Provider")}</strong><span>{compactList([formatMs(numberAt(health, ["lastLatencyMs"], NaN)), `失败 ${numberAt(health, ["consecutiveFailures", "failureCount"])}`, formatTime(textAt(health, ["lastSuccessAt"], ""))])}</span></span>
+                  <StatusTag value={circuit} />
+                </div>
+              );
+            }) : null}
+            {!providers.isLoading && !providers.isError && activeRouteAlerts.length ? activeRouteAlerts.slice(0, 4).map((alert, index) => (
+              <div className="route-row" key={`alert-${index}`}>
+                <span className="rico r-amber"><i data-lucide="circle-alert" /></span>
+                <span className="route-copy"><strong>{textAt(asRecord(alert), ["scope", "code"], "路由告警")}</strong><span>{textAt(asRecord(alert), ["message", "warning"], String(alert))}</span></span>
+                <span className="tag warn">告警</span>
+              </div>
+            )) : null}
+            {!providers.isLoading && !providers.isError && providerRows.length === 0 ? (
+              <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无 Provider</strong><span>请先在 Provider 页新建供应商。</span></div>
+            ) : null}
           </div>
         </section>
         <aside className="panel">
           <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}>管理</button></div>
           <div className="panel-body" style={{ padding: "10px 14px" }}>
             <QueryNotice query={appConnections} label="客户端接入" />
-            {!appConnections.isLoading && !appConnections.isError ? [
-              ["Codex", "r-teal", "已应用 · 可回滚", "applied"],
-              ["Claude Code", "r-violet", "未应用", "pending"],
-              ["OpenCode", "r-primary", "已应用", "applied"],
-            ].map(([label, tone, fallbackSub, fallbackStatus]) => {
-              const connection = connectionRows.find((row) => textAt(row, ["label", "id"], "").toLowerCase().includes(String(label).toLowerCase().split(" ")[0]));
+            {!appConnections.isLoading && !appConnections.isError ? connectionRows.map((connection, index) => {
+              const label = textAt(connection, ["label", "id"], "客户端");
+              const appId = textAt(connection, ["id"], "");
+              const tone = appId === "codex" ? "r-teal" : appId === "claude-code" ? "r-violet" : "r-primary";
+              const configured = Boolean(connection.configured);
               return (
                 <div className="switch-row" key={label}>
                   <span className={`rico ${tone}`} style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center" }}><i data-lucide="terminal" /></span>
-                  <span className="sc"><strong>{label}</strong><span>{connection ? (connection.configured ? "已应用 · 可回滚" : "未应用") : fallbackSub}</span></span>
-                  <StatusTag value={connection ? (connection.configured ? "applied" : "pending") : fallbackStatus} />
+                  <span className="sc"><strong>{label}</strong><span>{configured ? "已应用 · 可回滚" : "未应用"}</span></span>
+                  <StatusTag value={configured ? "applied" : "pending"} />
                 </div>
               );
             }) : null}
+            {!appConnections.isLoading && !appConnections.isError && connectionRows.length === 0 ? (
+              <div className="statebox empty"><span className="si"><i data-lucide="terminal" /></span><strong>暂无客户端接入</strong><span>后端未返回可管理客户端。</span></div>
+            ) : null}
           </div>
         </aside>
       </div>
