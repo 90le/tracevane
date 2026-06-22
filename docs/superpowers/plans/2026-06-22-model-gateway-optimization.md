@@ -1,5 +1,8 @@
 # Model Gateway 综合优化实现计划（P0 前端打磨 + P1/P2 App Connections 版本化/diff/源编辑）
 
+> **状态（2026-06-22）：已完成。** P0/P1/P2 全部落地于 `main`：App Connections 应用前 diff + 多版本回滚 + 源编辑（`fe34ac5c`）、后端 currentContent/备份历史/版本回滚/源内容 apply（`4fb4405b`）+ 备份保留与源编辑加固（`302550af`）、Provider 预设 + 模型目录搜索/批量（`5f57a86e`）、能力补齐（网关密钥/运行诊断/守护控制/Provider smoke，`059e3a45`）、全局 UX 打磨（`a953e772`）。验证：typecheck/build(api+web)、后端 130/130、web 合同 11/11、浏览器 smoke 全绿。
+
+
 > 日期：2026-06-22 · 分支：在 `main` 上迭代（已合并 frontend-rebuild）
 > 范围：Model Gateway 全局 UI/UX/交互/设计优化 + App Connections 应用前 diff、多版本回滚、源文件编辑（高风险写，带备份+确认+回滚）。
 > 验证：每阶段 `typecheck:web`/`build:web`（+ `build:api`/`typecheck:api` 后端阶段）+ `python3 scripts/smoke-web-model-gateway.py`（7 view × 桌面/移动）。
