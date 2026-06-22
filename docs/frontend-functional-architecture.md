@@ -128,12 +128,12 @@ Long Tasks first React pass is intentionally read-only. It reads `/api/chat/boot
 
 Model Gateway sections:
 
-- `overview`: Gateway state, active route resolution, reduced client connection summary and daemon/auth lifecycle.
-- `providers`: read-only Provider List-Detail workbench. The Provider list is the primary object layer; the selected inspector shows endpoint, model, account-provider and health evidence without exposing write controls.
-- `models`: aggregated configured model catalog across Providers.
-- `usage`: model request/token totals from `/api/model-gateway/usage`.
+- `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary.
+- `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider configuration, smoke and delete actions live in the original inspector action row.
+- `models`: Aurora model table plus capability/price `cfg` panel.
+- `usage`: Aurora KPI, distribution and latency panels.
 
-Model Gateway first React pass is intentionally read-only and follows the Aurora model-gateway IA from `docs/prototypes/aurora-design-system.md`: main tabs stay limited to `overview / providers / models / usage`; Provider configuration, account pools and App Connection apply/rollback remain child flows rather than peer tabs or permanently visible sections. Provider mutation, route smoke, app connection apply/rollback and destructive actions must enter focused child flows with confirmation and regression tests.
+Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. Main tabs stay limited to `overview / Provider / models / usage`; Provider configuration, account pools and App Connection apply/rollback remain child flows rather than peer tabs or permanently visible sections. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
 
 IM Channels sections:
 

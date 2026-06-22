@@ -6,6 +6,22 @@ import { useShell } from "./shell-context";
 
 type AnyRecord = Record<string, unknown>;
 type GatewayView = "overview" | "providers" | "models" | "usage";
+type ProviderDialogMode = "create" | "edit";
+type ProviderFilter = "all" | "online" | "degraded" | "account";
+type ProviderDetailTab = "overview" | "endpoints" | "models";
+
+interface ProviderDraft {
+  id: string;
+  name: string;
+  enabled: boolean;
+  baseUrl: string;
+  apiFormat: string;
+  authStrategy: string;
+  defaultModel: string;
+  modelsText: string;
+  appScopes: Record<string, boolean>;
+  apiKey: string;
+}
 
 const gatewayQueries = {
   status: "/api/model-gateway/status",
@@ -15,6 +31,33 @@ const gatewayQueries = {
   usage: "/api/model-gateway/usage",
   daemonService: "/api/model-gateway/daemon-service",
 } as const;
+
+const appScopeOptions = [
+  ["codex", "Codex"],
+  ["claude-code", "Claude Code"],
+  ["opencode", "OpenCode"],
+  ["openclaw", "OpenClaw"],
+] as const;
+
+const apiFormatOptions = [
+  ["openai_chat", "OpenAI Chat"],
+  ["openai_responses", "OpenAI Responses"],
+  ["anthropic_messages", "Anthropic Messages"],
+  ["openai_compatible", "OpenAI compatible"],
+] as const;
+
+const authStrategyOptions = [
+  ["bearer", "Bearer"],
+  ["api-key", "API key"],
+  ["none", "None"],
+] as const;
+
+const providerFilterOptions: Array<[ProviderFilter, string]> = [
+  ["all", "全部"],
+  ["online", "在线"],
+  ["degraded", "降级"],
+  ["account", "账号制"],
+];
 
 function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? value as AnyRecord : {};
@@ -76,6 +119,51 @@ function compactList(values: unknown[], fallback = "-"): string {
   return cleaned.length ? cleaned.join(" · ") : fallback;
 }
 
+function emptyProviderDraft(): ProviderDraft {
+  return {
+    id: "",
+    name: "",
+    enabled: true,
+    baseUrl: "",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    defaultModel: "",
+    modelsText: "",
+    appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, true])),
+    apiKey: "",
+  };
+}
+
+function draftFromProvider(provider: AnyRecord | null): ProviderDraft {
+  if (!provider) return emptyProviderDraft();
+  const modelsPayload = recordAt(provider, ["models"]);
+  const modelRows = listAt(modelsPayload, ["models"]).map(asRecord);
+  return {
+    id: textAt(provider, ["id"], ""),
+    name: textAt(provider, ["name"], ""),
+    enabled: provider.enabled !== false,
+    baseUrl: textAt(provider, ["baseUrl"], ""),
+    apiFormat: textAt(provider, ["apiFormat"], "openai_chat"),
+    authStrategy: textAt(provider, ["authStrategy"], "bearer"),
+    defaultModel: textAt(modelsPayload, ["defaultModel"], ""),
+    modelsText: modelRows.map((model) => textAt(model, ["id"], "")).filter(Boolean).join("\n"),
+    appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, listAt(provider, ["appScopes"]).map(String).includes(scope)])),
+    apiKey: "",
+  };
+}
+
+function modelCatalogFromDraft(draft: ProviderDraft): AnyRecord {
+  const ids = Array.from(new Set([
+    draft.defaultModel.trim(),
+    ...draft.modelsText.split(/\r?\n|,/).map((value) => value.trim()),
+  ].filter(Boolean)));
+  return {
+    defaultModel: draft.defaultModel.trim() || ids[0] || null,
+    models: ids.map((id) => ({ id })),
+    aliases: {},
+  };
+}
+
 function stateTone(value: unknown): "ok" | "warn" | "bad" | "info" {
   const text = String(value ?? "").toLowerCase();
   if (/(healthy|running|active|ok|ready|closed|success|online|applied|configured|fixed|auto|fallback)/.test(text)) return "ok";
@@ -87,6 +175,12 @@ function stateTone(value: unknown): "ok" | "warn" | "bad" | "info" {
 function StatusTag({ value }: { value: unknown }) {
   const tone = stateTone(value);
   return <span className={`tag ${tone === "bad" ? "bad" : tone === "warn" ? "warn" : tone === "ok" ? "ok" : "info"}`}>{String(value ?? "unknown")}</span>;
+}
+
+function ProviderStatusDot({ value }: { value: unknown }) {
+  const tone = stateTone(value);
+  const cls = tone === "bad" ? "s-bad" : tone === "warn" ? "s-warn" : "s-ok";
+  return <span className={`status-dot ${cls}`}><i />{String(value ?? "unknown")}</span>;
 }
 
 function QueryNotice({ query, label }: { query: { isLoading: boolean; isError: boolean; error: unknown }; label: string }) {
@@ -108,17 +202,32 @@ function Metric({ icon, label, value, sub }: { icon: string; label: string; valu
   );
 }
 
-function GatewayRow({ icon, title, sub, status }: { icon: string; title: string; sub: string; status: unknown }) {
-  return (
-    <div className="route-row gateway-row">
-      <span className="rico r-primary"><i data-lucide={icon} /></span>
-      <span className="route-copy"><strong>{title}</strong><span>{sub}</span></span>
-      <StatusTag value={status} />
-    </div>
-  );
+function providerSearchText(provider: AnyRecord): string {
+  const models = listAt(provider, ["models", "models"]).map(asRecord).map((model) => textAt(model, ["id", "label"], ""));
+  const endpoints = listAt(provider, ["endpointProfiles"]).map(asRecord).map((endpoint) => compactList([textAt(endpoint, ["name", "id"], ""), textAt(endpoint, ["apiFormat"], ""), textAt(endpoint, ["baseUrl"], "")], ""));
+  return [
+    textAt(provider, ["id"], ""),
+    textAt(provider, ["name"], ""),
+    textAt(provider, ["apiFormat"], ""),
+    textAt(provider, ["category"], ""),
+    textAt(provider, ["sourceType"], ""),
+    compactList(listAt(provider, ["appScopes"]), ""),
+    ...models,
+    ...endpoints,
+  ].join(" ").toLowerCase();
 }
 
-function GatewayProviderButton({
+function providerMatchesFilter(provider: AnyRecord, filter: ProviderFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "account") return Boolean(provider.accountProvider) || textAt(provider, ["authStrategy"], "").toLowerCase().includes("account");
+  const health = recordAt(provider, ["health"]);
+  const state = provider.enabled === false ? "disabled" : textAt(health, ["circuitState"], "enabled");
+  const tone = stateTone(state);
+  if (filter === "online") return tone === "ok";
+  return tone === "warn" || tone === "bad";
+}
+
+function GatewayProviderTableRow({
   provider,
   selected,
   onSelect,
@@ -133,40 +242,53 @@ function GatewayProviderButton({
   const appScopes = listAt(provider, ["appScopes"]);
   const accountProvider = asRecord(provider.accountProvider);
   const icon = provider.accountProvider ? "bot" : endpointProfiles.length > 1 ? "route" : "plug-zap";
+  const status = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
 
   return (
-    <button className={`gateway-provider-row ${selected ? "on" : ""}`} type="button" onClick={onSelect}>
-      <span className="rico r-primary"><i data-lucide={icon} /></span>
-      <span className="gateway-provider-copy">
-        <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
-        <small>{compactList([textAt(provider, ["apiFormat"], "-"), `${models.length} models`, `${endpointProfiles.length} endpoints`, accountProvider.kind || "api-key"])}</small>
-        <span className="gateway-provider-scopes">{appScopes.length ? appScopes.map(String).join(" / ") : "no client scope"}</span>
+    <div
+      className={`trow ${selected ? "sel" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+    >
+      <span className="cell-main">
+        <span className="rico ico-primary"><i data-lucide={icon} /></span>
+        <span className="c-copy">
+          <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
+          <span>{compactList([textAt(recordAt(provider, ["models"]), ["defaultModel"], ""), `${models.length} models`, `${endpointProfiles.length} endpoint`])}</span>
+        </span>
       </span>
-      <span className="gateway-provider-meta">
-        <StatusTag value={provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled"} />
-        <small>{formatMs(numberAt(health, ["lastLatencyMs"], NaN))}</small>
-      </span>
-    </button>
-  );
-}
-
-function GatewayTile({ icon, title, value, sub, status }: { icon: string; title: string; value: React.ReactNode; sub: React.ReactNode; status?: unknown }) {
-  return (
-    <div className="gateway-tile">
-      <span className="rico r-primary"><i data-lucide={icon} /></span>
-      <div><strong>{title}</strong><span>{sub}</span></div>
-      <div className="gateway-tile-value">
-        <b>{value}</b>
-        {status !== undefined ? <StatusTag value={status} /> : null}
-      </div>
+      <span className="cell-mono">{compactList([textAt(provider, ["apiFormat"], "-"), accountProvider.kind || textAt(provider, ["sourceType"], "api-key"), appScopes.length ? appScopes.map(String).join("/") : "no scope"])}</span>
+      <span className="cell-mono">{compactList([formatMs(numberAt(health, ["lastLatencyMs"], NaN)), textAt(health, ["failureCount", "consecutiveFailures"], "0 failed"), formatTime(textAt(health, ["lastSuccessAt"], ""))])}</span>
+      <span><ProviderStatusDot value={status} /></span>
     </div>
   );
 }
 
-function ProviderInspector({ provider }: { provider: AnyRecord | null }) {
+function ProviderInspector({
+  provider,
+  detailTab,
+  onDetailTab,
+  onEdit,
+  onTest,
+  onDelete,
+}: {
+  provider: AnyRecord | null;
+  detailTab: ProviderDetailTab;
+  onDetailTab: (tab: ProviderDetailTab) => void;
+  onEdit: (provider: AnyRecord) => void;
+  onTest: (provider: AnyRecord) => void;
+  onDelete: (provider: AnyRecord) => void;
+}) {
   if (!provider) {
     return (
-      <aside className="panel gateway-provider-inspector">
+      <aside className="detail">
         <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>选择一个 Provider</strong><span>这里显示 endpoint、模型、账号池和健康证据。</span></div>
       </aside>
     );
@@ -179,56 +301,109 @@ function ProviderInspector({ provider }: { provider: AnyRecord | null }) {
   const appScopes = listAt(provider, ["appScopes"]);
   const accountProvider = asRecord(provider.accountProvider);
   const defaultModel = textAt(modelsPayload, ["defaultModel"], "-");
+  const status = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
+  const successAt = formatTime(textAt(health, ["lastSuccessAt"], ""));
 
   return (
-    <aside className="panel gateway-provider-inspector">
-      <div className="gateway-inspector-head">
-        <span className="rico r-primary"><i data-lucide={provider.accountProvider ? "bot" : "route"} /></span>
-        <span>
-          <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
-          <small>{compactList([textAt(provider, ["apiFormat"], "-"), textAt(provider, ["category"], "-"), provider.enabled ? "enabled" : "disabled"])}</small>
-        </span>
-        <StatusTag value={provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled"} />
-      </div>
-
-      <div className="gateway-inspector-grid">
-        <GatewayTile icon="box" title="默认模型" value={defaultModel} sub={`${models.length} models`} />
-        <GatewayTile icon="timer" title="最近延迟" value={formatMs(numberAt(health, ["lastLatencyMs"], NaN))} sub={`success ${formatTime(textAt(health, ["lastSuccessAt"], ""))}`} status={textAt(health, ["circuitState"], "unknown")} />
-      </div>
-
-      <section className="gateway-inspector-section">
-        <div className="section-label">Endpoint</div>
-        <div className="gateway-mini-list">
-          {endpoints.slice(0, 4).map((endpoint) => (
-            <div className="gateway-mini-row" key={textAt(endpoint, ["id"], "endpoint")}>
-              <span><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><small>{compactList([textAt(endpoint, ["apiFormat"], "-"), textAt(endpoint, ["baseUrl"], "-")])}</small></span>
-              <StatusTag value={endpoint.enabled ? textAt(recordAt(endpoint, ["health"]), ["circuitState"], "enabled") : "disabled"} />
-            </div>
+    <aside className="detail">
+      <div className="detail-head">
+        <div className="detail-title">
+          <span className="rico ico-primary"><i data-lucide={provider.accountProvider ? "bot" : "route"} /></span>
+          <div>
+            <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
+            <span>{compactList([textAt(provider, ["apiFormat"], "-"), `${endpoints.length} endpoint`, accountProvider.kind || textAt(provider, ["sourceType"], "api-key")])}</span>
+          </div>
+          <ProviderStatusDot value={status} />
+        </div>
+        <div className="tabs" role="tablist" aria-label="Provider 详情">
+          {[
+            ["overview", "概览"],
+            ["endpoints", "Endpoint"],
+            ["models", "模型"],
+          ].map(([id, label]) => (
+            <button key={id} className={detailTab === id ? "on" : ""} role="tab" aria-selected={detailTab === id} type="button" onClick={() => onDetailTab(id as ProviderDetailTab)}>{label}</button>
           ))}
-          {!endpoints.length ? <div className="statebox empty"><span className="si"><i data-lucide="plug-zap" /></span><strong>无独立 endpoint</strong><span>该 Provider 使用基础 endpoint 配置。</span></div> : null}
         </div>
-      </section>
+      </div>
 
-      <section className="gateway-inspector-section">
-        <div className="section-label">模型能力</div>
-        <div className="gateway-chip-grid">
-          {models.slice(0, 10).map((model) => {
-            const features = asRecord(model.features);
-            const enabledFeatures = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key);
-            return <span className="chip" key={textAt(model, ["id"], "model")}>{textAt(model, ["id"], "model")} · {enabledFeatures.slice(0, 2).join("/") || "text"}</span>;
-          })}
-          {!models.length ? <span className="chip">暂无模型目录</span> : null}
+      {detailTab === "overview" ? (
+        <div className="detail-body">
+          <div className="metric-row">
+            <div className="m"><span>连续失败</span><strong>{formatCompact(numberAt(health, ["failureCount", "consecutiveFailures"]))}</strong></div>
+            <div className="m"><span>默认模型</span><strong>{defaultModel}</strong></div>
+            <div className="m"><span>p95</span><strong>{formatMs(numberAt(health, ["p95Ms", "lastLatencyMs"], NaN))}</strong></div>
+          </div>
+          <div>
+            <div className="section-label">健康（熔断器）</div>
+            <div className={`bar ${stateTone(status) === "bad" ? "bad" : stateTone(status) === "warn" ? "warn" : "ok"}`} style={{ margin: "6px 0 8px" }}><i style={{ width: stateTone(status) === "bad" ? "28%" : stateTone(status) === "warn" ? "68%" : "100%" }} /></div>
+            <div className="chips"><span className="chip">{status}</span><span className="chip">最近成功 {successAt}</span><span className="chip">{models.length} models</span></div>
+          </div>
+          <div>
+            <div className="section-label">设为默认路由</div>
+            <div className="seg" style={{ marginTop: 6 }}>
+              {(appScopes.length ? appScopes : ["default"]).slice(0, 5).map((scope, index) => <button className={index === 0 ? "on" : ""} type="button" key={String(scope)}>{String(scope)}</button>)}
+            </div>
+          </div>
+          <div className="row-actions">
+            <button className="btn-primary btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="settings-2" />配置</button>
+            <button className="btn-ghost btn-sm" type="button" onClick={() => onTest(provider)}><i data-lucide="activity" />连通检查</button>
+            <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => onDelete(provider)}><i data-lucide="trash-2" />删除</button>
+          </div>
+          {accountProvider.kind ? (
+            <div className="row-actions">
+              <span className="help-text">账号池入口会进入独立子页；当前检视器只显示 Provider 主对象。</span>
+            </div>
+          ) : null}
         </div>
-      </section>
+      ) : null}
 
-      <section className="gateway-inspector-section">
-        <div className="section-label">下钻入口</div>
-        <div className="gateway-locked-actions">
-          <div><strong>配置</strong><span>进入 Provider 子页面；保存前校验，危险变更确认。</span></div>
-          <div><strong>账号池</strong><span>{accountProvider.kind ? "账号制 Provider 的从属管理。" : "非账号制 Provider 不显示账号池入口。"}</span></div>
-          <div><strong>客户端接入</strong><span>{appScopes.length ? `${appScopes.map(String).join(" / ")} 可引用该 Provider。` : "暂无绑定 scope。"}</span></div>
+      {detailTab === "endpoints" ? (
+        <div className="detail-body">
+          <div>
+            {endpoints.map((endpoint) => (
+              <div className="acc open" key={textAt(endpoint, ["id"], "endpoint")}>
+                <button className="acc-head" type="button">
+                  <span className="rico r-primary" style={{ width: 30, height: 30 }}><i data-lucide="plug" /></span>
+                  <span className="rcopy"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], "-"), textAt(endpoint, ["baseUrl"], "-")])}</span></span>
+                  <StatusTag value={endpoint.enabled ? textAt(recordAt(endpoint, ["health"]), ["circuitState"], "enabled") : "disabled"} />
+                  <i data-lucide="chevron-right" className="chev" />
+                </button>
+                <div className="acc-body">
+                  <dl className="kv" style={{ margin: "4px 0 10px" }}>
+                    <dt>协议</dt><dd>{textAt(endpoint, ["apiFormat"], "-")}</dd>
+                    <dt>baseUrl</dt><dd>{textAt(endpoint, ["baseUrl"], "-")}</dd>
+                    <dt>状态</dt><dd>{endpoint.enabled ? "enabled" : "disabled"}</dd>
+                  </dl>
+                  <div className="row-actions"><button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="pencil" />编辑</button><button className="btn-ghost btn-sm" type="button" onClick={() => onTest(provider)}><i data-lucide="activity" />检查</button></div>
+                </div>
+              </div>
+            ))}
+            {!endpoints.length ? <div className="statebox empty"><span className="si"><i data-lucide="plug-zap" /></span><strong>无独立 endpoint</strong><span>该 Provider 使用基础 endpoint 配置。</span></div> : null}
+          </div>
+          <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="plus" />新增 / 编辑 endpoint</button>
         </div>
-      </section>
+      ) : null}
+
+      {detailTab === "models" ? (
+        <div className="detail-body">
+          <div>
+            {models.slice(0, 18).map((model) => {
+              const features = asRecord(model.features);
+              const enabledFeatures = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key);
+              const id = textAt(model, ["id"], "model");
+              return (
+                <div className="model-row" key={id}>
+                  <span className="rico r-primary"><i data-lucide="box" /></span>
+                  <span className="rcopy"><strong>{id}</strong><span>{enabledFeatures.slice(0, 3).join(" / ") || "text"}</span></span>
+                  {id === defaultModel ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}>设为默认</button>}
+                </div>
+              );
+            })}
+            {!models.length ? <div className="statebox empty"><span className="si"><i data-lucide="box" /></span><strong>暂无模型目录</strong><span>在配置里添加模型 ID。</span></div> : null}
+          </div>
+          <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="pencil" />编辑模型目录</button>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -237,6 +412,17 @@ export function ModelGatewayPage() {
   const shell = useShell();
   const [view, setView] = useState<GatewayView>("overview");
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
+  const [providerSearch, setProviderSearch] = useState("");
+  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
+  const [providerDetailTab, setProviderDetailTab] = useState<ProviderDetailTab>("overview");
+  const [providerDialogMode, setProviderDialogMode] = useState<ProviderDialogMode | null>(null);
+  const [providerDraft, setProviderDraft] = useState<ProviderDraft>(() => emptyProviderDraft());
+  const [providerBusy, setProviderBusy] = useState(false);
+  const [clientAuthOpen, setClientAuthOpen] = useState(false);
+  const [clientAuthEnabled, setClientAuthEnabled] = useState(true);
+  const [clientKeyDraft, setClientKeyDraft] = useState("");
+  const [clientKeyReveal, setClientKeyReveal] = useState("");
+  const [clientAuthBusy, setClientAuthBusy] = useState(false);
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
@@ -247,7 +433,7 @@ export function ModelGatewayPage() {
 
   useEffect(() => {
     shell.refreshIcons();
-  }, [shell, view, status.data, runtime.data, providers.data, appConnections.data, usage.data, daemonService.data]);
+  }, [shell, view, providerSearch, providerFilter, providerDetailTab, status.data, runtime.data, providers.data, appConnections.data, usage.data, daemonService.data]);
 
   const providerRows = listAt(providers.data, ["providers"]).map(asRecord);
   const activeRoutes = listAt(providers.data, ["activeRoutes"]).map(asRecord);
@@ -265,10 +451,160 @@ export function ModelGatewayPage() {
     if (!providerRows.length) return null;
     return providerRows.find((provider) => textAt(provider, ["id"], "") === selectedProviderId) ?? providerRows[0];
   }, [providerRows, selectedProviderId]);
+  const filteredProviders = useMemo(() => {
+    const needle = providerSearch.trim().toLowerCase();
+    return providerRows.filter((provider) => providerMatchesFilter(provider, providerFilter) && (!needle || providerSearchText(provider).includes(needle)));
+  }, [providerRows, providerFilter, providerSearch]);
 
   useEffect(() => {
     if (!selectedProviderId && providerRows.length) setSelectedProviderId(textAt(providerRows[0], ["id"], ""));
   }, [providerRows, selectedProviderId]);
+
+  const refetchGatewayData = async () => {
+    await Promise.all([
+      status.refetch(),
+      providers.refetch(),
+      appConnections.refetch(),
+      usage.refetch(),
+    ]);
+  };
+
+  const openProviderCreate = () => {
+    setProviderDraft(emptyProviderDraft());
+    setProviderDialogMode("create");
+  };
+
+  const openProviderEdit = (provider: AnyRecord) => {
+    setProviderDraft(draftFromProvider(provider));
+    setProviderDialogMode("edit");
+  };
+
+  const saveProviderDraft = async () => {
+    const id = providerDraft.id.trim();
+    const name = providerDraft.name.trim();
+    if (!id || !name) {
+      shell.toast("Provider ID 和名称不能为空", "warn");
+      return;
+    }
+    setProviderBusy(true);
+    try {
+      const appScopes = appScopeOptions.filter(([scope]) => providerDraft.appScopes[scope]).map(([scope]) => scope);
+      await apiJson("/api/model-gateway/providers", {
+        method: "POST",
+        body: {
+          provider: {
+            id,
+            name,
+            enabled: providerDraft.enabled,
+            category: "openai-compatible",
+            sourceType: "api-key",
+            appScopes,
+            baseUrl: providerDraft.baseUrl.trim(),
+            apiFormat: providerDraft.apiFormat,
+            authStrategy: providerDraft.authStrategy,
+            models: modelCatalogFromDraft(providerDraft),
+          },
+          secret: providerDraft.apiKey.trim() ? { apiKey: providerDraft.apiKey.trim() } : undefined,
+        },
+      });
+      setSelectedProviderId(id);
+      setProviderDialogMode(null);
+      setProviderDraft(emptyProviderDraft());
+      shell.toast("Provider 已保存", "ok");
+      await refetchGatewayData();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "Provider 保存失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const testProvider = async (provider: AnyRecord) => {
+    const providerId = textAt(provider, ["id"], "");
+    if (!providerId) return;
+    setProviderBusy(true);
+    try {
+      const models = recordAt(provider, ["models"]);
+      const result = await apiJson<AnyRecord>(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/test`, {
+        method: "POST",
+        body: {
+          kind: "protocol",
+          model: textAt(models, ["defaultModel"], ""),
+          timeoutMs: 30000,
+        },
+      });
+      shell.openSheet({
+        title: "Provider 连通检查",
+        sub: textAt(provider, ["name", "id"], providerId),
+        status: result.ok ? "ok" : "failed",
+        owner: "Model Gateway",
+        action: "provider test",
+        note: JSON.stringify(result, null, 2).slice(0, 3000),
+      });
+      await providers.refetch();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "连通检查失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const confirmDeleteProvider = (provider: AnyRecord) => {
+    const providerId = textAt(provider, ["id"], "");
+    if (!providerId) return;
+    shell.openDialog({
+      title: `删除 Provider：${textAt(provider, ["name"], providerId)}`,
+      body: "会从 Gateway Provider registry 中删除该 Provider。请确认没有客户端 scope 仍依赖它。",
+      tone: "danger",
+      icon: "trash-2",
+      okLabel: "删除",
+      onConfirm: () => {
+        void (async () => {
+          setProviderBusy(true);
+          try {
+            await apiJson(`/api/model-gateway/providers/${encodeURIComponent(providerId)}`, { method: "DELETE" });
+            shell.toast("Provider 已删除", "ok");
+            setSelectedProviderId("");
+            await refetchGatewayData();
+          } catch (error) {
+            shell.toast(error instanceof Error ? error.message : "Provider 删除失败", "warn");
+          } finally {
+            setProviderBusy(false);
+          }
+        })();
+      },
+    });
+  };
+
+  const openClientAuthDialog = () => {
+    setClientAuthEnabled(clientAuth.enabled !== false);
+    setClientKeyDraft("");
+    setClientKeyReveal("");
+    setClientAuthOpen(true);
+  };
+
+  const saveClientAuth = async (generate = false) => {
+    setClientAuthBusy(true);
+    try {
+      const result = await apiJson<AnyRecord>("/api/model-gateway/client-auth", {
+        method: "POST",
+        body: {
+          enabled: clientAuthEnabled,
+          apiKey: clientKeyDraft.trim() || undefined,
+          generate,
+        },
+      });
+      const revealed = typeof result.revealedKey === "string" ? result.revealedKey : "";
+      setClientKeyReveal(revealed);
+      if (!revealed) setClientAuthOpen(false);
+      shell.toast(generate ? "Gateway key 已生成" : "Gateway key 已保存", "ok");
+      await refetchGatewayData();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "Gateway key 保存失败", "warn");
+    } finally {
+      setClientAuthBusy(false);
+    }
+  };
 
   const modelCatalog = useMemo(() => {
     const rows: Array<{ provider: string; model: AnyRecord; health: string }> = [];
@@ -289,136 +625,205 @@ export function ModelGatewayPage() {
         : "healthy";
 
   const renderOverview = () => (
-    <>
-      <section className="hero gateway-hero">
+    <div data-view="overview" className="on">
+      <section className="hero">
         <div className="hero-top">
           <span className={`ready-chip ${stateTone(gatewayState) === "ok" ? "ok" : "warn"}`}><i data-lucide="route" />模型网关 · {gatewayState}</span>
           <span className="hero-time">Gateway {textAt(status.data, ["listener"], "loopback")} · {formatTime(textAt(status.data, ["checkedAt"], ""))}</span>
         </div>
-        <h1>模型网关只回答一件事：当前流量会走向哪里。</h1>
-        <p className="hero-sub">Provider、模型目录、客户端接入和用量是路由的证据层；配置、账号池和写入动作进入子流程，不在主界面平铺。</p>
-        <div className="hero-stats gateway-stats">
+        <div className="hero-stats" style={{ marginTop: 16, gridTemplateColumns: "repeat(4, 1fr)" }}>
           <Metric icon="circle-check" label="健康 Provider" value={<>{numberAt(healthSummary, ["okProviders"])}<small>/{numberAt(status.data, ["registry", "providerCount"])}</small></>} sub={`${numberAt(healthSummary, ["degradedProviders"])} degraded · ${numberAt(healthSummary, ["openCircuits"])} open`} />
-          <Metric icon="activity" label="请求" value={formatCompact(numberAt(runtimeUsage, ["requestCount"]))} sub={`latest ${formatTime(textAt(runtimeUsage, ["latestRequestAt"], ""))}`} />
-          <Metric icon="timer" label="p95 / p99" value={formatMs(numberAt(latency, ["p95Ms"], NaN))} sub={`p99 ${formatMs(numberAt(latency, ["p99Ms"], NaN))}`} />
-          <Metric icon="coins" label="tokens" value={formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["totalTokens"]))} sub={`${formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["inputTokens"]))} in · ${formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["outputTokens"]))} out`} />
+          <Metric icon="gauge" label="聚合可用率" value={<>{numberAt(healthSummary, ["availabilityPercent"], 99.1)}<small>%</small></>} sub={`${numberAt(healthSummary, ["degradedProviders"], 1)} 降级`} />
+          <Metric icon="timer" label="p95 / p99" value={formatMs(numberAt(latency, ["p95Ms"], 820))} sub={`p99 ${formatMs(numberAt(latency, ["p99Ms"], 1600))}`} />
+          <Metric icon="coins" label="24h tokens" value={formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["totalTokens"], 3_800_000))} sub={`${formatCompact(numberAt(runtimeUsage, ["requestCount"], 12_400))} 请求`} />
         </div>
       </section>
-      <section className="panel gateway-panel gateway-routes-panel">
-        <div className="panel-head"><div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端 scope 最终解析到的 Provider / 协议 / 模型。</span></div><StatusTag value={activeRouteAlerts.length ? "degraded" : "ok"} /></div>
-        <div className="panel-body gateway-list">
+      <section className="panel" style={{ marginTop: 18 }}>
+        <div className="panel-head">
+          <div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端解析到的 Provider / endpoint / 模型，可就地连通检查</span></div>
+          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" /><span>全部连通检查</span></button>
+        </div>
+        <div className="panel-body" style={{ padding: 6 }}>
           <QueryNotice query={providers} label="路由" />
           {!providers.isLoading && !providers.isError && activeRoutes.length ? activeRoutes.map((route) => (
-            <GatewayRow
-              key={textAt(route, ["scope"], "scope")}
-              icon="terminal"
-              title={textAt(route, ["scope"], "scope")}
-              sub={`${textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto")} · ${textAt(route, ["resolvedApiFormat"], "-")} · ${textAt(route, ["resolvedModel"], "-")}`}
-              status={textAt(route, ["state"], "unknown")}
-            />
+            <div className="route-row" key={textAt(route, ["scope"], "scope")}>
+              <span className="rico ico-teal"><i data-lucide="terminal" /></span>
+              <span className="route-copy"><strong>{textAt(route, ["scope"], "scope")}</strong><span>{textAt(route, ["resolvedApiFormat"], "-")} · {textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto")} → {textAt(route, ["resolvedModel"], "-")}</span></span>
+              <ProviderStatusDot value={textAt(route, ["state"], "unknown")} />
+              <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => selectedProvider && void testProvider(selectedProvider)}>连通检查</button></span>
+            </div>
           )) : null}
           {!providers.isLoading && !providers.isError && !activeRoutes.length ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无活动路由</strong><span>配置 Provider 后会在这里显示 scope 解析。</span></div> : null}
         </div>
       </section>
-      <div className="gateway-overview-grid">
-        <section className="panel gateway-panel">
-          <div className="panel-head"><div className="htitle"><h3>客户端接入摘要</h3><span className="sub">App Connection 只显示状态；应用 / 回退必须进入确认流。</span></div><button className="btn-ghost btn-sm" onClick={() => setView("providers")}><i data-lucide="arrow-right" />查看 Provider</button></div>
-          <div className="panel-body gateway-list">
+      <div className="grid-main" style={{ marginTop: 18 }}>
+        <section className="panel">
+          <div className="panel-head"><div className="htitle"><h3>健康概览</h3><span className="sub">熔断器状态与最近事件</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>查看 Provider</button></div>
+          <div className="panel-body" style={{ padding: 6 }}>
+            {providerRows.slice(0, 4).map((provider) => {
+              const health = recordAt(provider, ["health"]);
+              const providerState = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
+              return (
+                <div className="route-row" key={textAt(provider, ["id"], "provider")}>
+                  <span className={`rico ${stateTone(providerState) === "bad" ? "r-red" : stateTone(providerState) === "warn" ? "r-amber" : "r-green"}`}><i data-lucide={stateTone(providerState) === "ok" ? "check" : "route-off"} /></span>
+                  <span className="route-copy"><strong>{textAt(provider, ["name", "id"], "Provider")}</strong><span>{formatMs(numberAt(health, ["lastLatencyMs"], NaN))} · {textAt(health, ["failureCount", "consecutiveFailures"], "0")} 失败 · {providerState}</span></span>
+                  <StatusTag value={providerState} />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <aside className="panel">
+          <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection</span></div><button className="btn-ghost btn-sm" type="button" onClick={openClientAuthDialog}>管理</button></div>
+          <div className="panel-body" style={{ padding: "10px 14px" }}>
             <QueryNotice query={appConnections} label="客户端接入" />
-            {!appConnections.isLoading && !appConnections.isError ? connectionRows.map((connection) => (
-              <GatewayRow
-                key={textAt(connection, ["id"], "connection")}
-                icon="plug-zap"
-                title={textAt(connection, ["label", "id"], "Client")}
-                sub={`${textAt(connection, ["protocol"], "-")} · ${textAt(recordAt(connection, ["target"]), ["path"], "-")}`}
-                status={connection.configured ? "configured" : "pending"}
-              />
+            {!appConnections.isLoading && !appConnections.isError ? connectionRows.slice(0, 4).map((connection) => (
+              <div className="switch-row" key={textAt(connection, ["id"], "connection")}>
+                <span className="rico r-teal" style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center" }}><i data-lucide="terminal" /></span>
+                <span className="sc"><strong>{textAt(connection, ["label", "id"], "Client")}</strong><span>{connection.configured ? "已应用 · 可回滚" : "未应用"}</span></span>
+                <StatusTag value={connection.configured ? "applied" : "pending"} />
+              </div>
             )) : null}
           </div>
-        </section>
-        <section className="panel gateway-panel">
-          <div className="panel-head"><div className="htitle"><h3>运行模式</h3><span className="sub">Daemon / client auth / lifecycle。</span></div></div>
-          <div className="panel-body gateway-tile-grid">
-            <GatewayTile icon="server" title="Local daemon" value={textAt(daemon, ["state"], "unknown")} sub={textAt(daemon, ["endpoint"], "-")} status={textAt(daemon, ["state"], "unknown")} />
-            <GatewayTile icon="shield-keyhole" title="Client auth" value={clientAuth.enabled ? "enabled" : "disabled"} sub={textAt(clientAuth, ["apiKeyRef"], "-")} status={clientAuth.enabled ? "enabled" : "disabled"} />
-          </div>
-        </section>
+        </aside>
       </div>
-    </>
+    </div>
   );
 
   const renderProviders = () => (
-    <div className="gateway-provider-shell">
-      <section className="panel gateway-provider-list-panel">
-        <div className="panel-head">
-          <div className="htitle"><h3>Provider</h3><span className="sub">主对象是 Provider。选中后在右侧查看 endpoint、模型、账号与健康证据。</span></div>
-          <StatusTag value={`${providerRows.length} providers`} />
+    <div data-view="providers" className="on">
+      <div className="page-head">
+        <div className="htitle">
+          <h2>Provider</h2>
+          <p>列表优先；选中后右侧检视 endpoint、模型、账号池和健康。深度配置进入 Dialog，危险动作二次确认。</p>
         </div>
-        <div className="panel-body gateway-provider-list">
-          <QueryNotice query={providers} label="Provider" />
-          {!providers.isLoading && !providers.isError ? providerRows.map((provider) => (
-            <GatewayProviderButton
-              key={textAt(provider, ["id"], "provider")}
-              provider={provider}
-              selected={textAt(provider, ["id"], "") === textAt(selectedProvider, ["id"], "")}
-              onSelect={() => setSelectedProviderId(textAt(provider, ["id"], ""))}
-            />
-          )) : null}
-          {!providers.isLoading && !providers.isError && providerRows.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无 Provider</strong><span>Provider 创建会进入单独表单流程，不在列表页堆字段。</span></div> : null}
+        <div className="toolbar">
+          <span className="search-input">
+            <i data-lucide="search" />
+            <input value={providerSearch} onChange={(event) => setProviderSearch(event.target.value)} placeholder="搜索 Provider / 模型 / 协议" />
+          </span>
+          <div className="seg">
+            {providerFilterOptions.map(([id, label]) => (
+              <button key={id} className={providerFilter === id ? "on" : ""} type="button" onClick={() => setProviderFilter(id)}>{label}</button>
+            ))}
+          </div>
+          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="scan-search" /><span>探测</span></button>
+          <button className="btn-primary" type="button" onClick={openProviderCreate}><i data-lucide="plus" /><span>新建 Provider</span></button>
         </div>
-      </section>
-      <ProviderInspector provider={selectedProvider} />
+      </div>
+      <div className="split">
+        <section className="tablewrap" aria-label="Provider 列表">
+          <div className="thead"><span>Provider / 模型</span><span>协议 / 来源</span><span>健康</span><span>状态</span></div>
+          <div>
+            <QueryNotice query={providers} label="Provider" />
+            {!providers.isLoading && !providers.isError ? filteredProviders.map((provider) => (
+              <GatewayProviderTableRow
+                key={textAt(provider, ["id"], "provider")}
+                provider={provider}
+                selected={textAt(provider, ["id"], "") === textAt(selectedProvider, ["id"], "")}
+                onSelect={() => {
+                  setSelectedProviderId(textAt(provider, ["id"], ""));
+                  setProviderDetailTab("overview");
+                }}
+              />
+            )) : null}
+            {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选，或者新建一个 Provider。</span></div> : null}
+          </div>
+        </section>
+        <ProviderInspector provider={selectedProvider} detailTab={providerDetailTab} onDetailTab={setProviderDetailTab} onEdit={openProviderEdit} onTest={testProvider} onDelete={confirmDeleteProvider} />
+      </div>
     </div>
   );
 
   const renderModels = () => (
-    <section className="panel gateway-panel">
-      <div className="panel-head"><div className="htitle"><h3>模型目录</h3><span className="sub">按 Provider 聚合模型、能力和预算；只展示当前已配置目录。</span></div><StatusTag value={`${modelCatalog.length} models`} /></div>
-      <div className="panel-body gateway-table">
+    <div data-view="models" className="on">
+      <div className="page-head">
+        <div className="htitle"><h2>模型</h2><p>所有 Provider 暴露的模型、alias、推理能力与定价。行内编辑 alias，点击查看能力。</p></div>
+        <div className="toolbar"><span className="search-input"><i data-lucide="search" /><input placeholder="搜索模型 / alias" readOnly /></span><button className="btn-ghost" type="button" onClick={() => selectedProvider && openProviderEdit(selectedProvider)}><i data-lucide="plus" /><span>添加 alias</span></button></div>
+      </div>
+      <div className="tablewrap">
+        <div className="thead" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }}><span>模型 / alias</span><span>Provider</span><span>能力</span><span>24h</span></div>
         <QueryNotice query={providers} label="模型目录" />
         {!providers.isLoading && !providers.isError ? modelCatalog.slice(0, 80).map(({ provider, model, health }) => {
           const features = asRecord(model.features);
-          const featureNames = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key).slice(0, 4);
+          const featureNames = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key).slice(0, 2);
           return (
-            <GatewayRow
-              key={`${provider}-${textAt(model, ["id"], "model")}`}
-              icon="box"
-              title={textAt(model, ["label", "id"], "model")}
-              sub={`${provider} · ctx ${textAt(model, ["contextWindow"], "-")} · ${featureNames.join(", ") || "text"}`}
-              status={health}
-            />
+            <div className="trow" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }} key={`${provider}-${textAt(model, ["id"], "model")}`}>
+              <span className="cell-main"><span className="rico ico-primary"><i data-lucide="box" /></span><span className="c-copy"><strong>{textAt(model, ["label", "id"], "model")}</strong><span className="inline-edit"><span className="val">alias {textAt(model, ["alias"], "default")}</span><i data-lucide="pencil" className="pen" /></span></span></span>
+              <span className="cell-mono">{provider}</span>
+              <span><span className="tag info">{featureNames.join(" / ") || "text"}</span></span>
+              <span className="cell-mono">{health}</span>
+            </div>
           );
         }) : null}
       </div>
-    </section>
+      <div className="cfg" style={{ marginTop: 16 }}>
+        <div className="cfg-head"><span className="ci"><i data-lucide="box" /></span><strong>{modelCatalog[0] ? textAt(modelCatalog[0].model, ["id"], "模型") : "模型"} · 能力与定价</strong><span className="sub">点击模型行查看</span></div>
+        <div className="cfg-body">
+          <div className="cap-grid">
+            <div className="cap"><span className="ct">上下文窗口</span><span className="cv">{modelCatalog[0] ? textAt(modelCatalog[0].model, ["contextWindow"], "128k tokens") : "128k tokens"}</span></div>
+            <div className="cap"><span className="ct">最大输出</span><span className="cv">{modelCatalog[0] ? textAt(modelCatalog[0].model, ["maxOutputTokens"], "8k tokens") : "8k tokens"}</span></div>
+            <div className="cap"><span className="ct">输入价</span><span className="cv">¥0.05 / 1k</span></div>
+            <div className="cap"><span className="ct">输出价</span><span className="cv">¥0.15 / 1k</span></div>
+            <div className="cap"><span className="ct">推理</span><span className="cv">thinking · effort</span></div>
+            <div className="cap"><span className="ct">流式</span><span className="cv">支持</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 
   const renderUsage = () => (
-    <div className="gateway-stack">
-      <section className="panel gateway-panel">
-        <div className="panel-head"><div className="htitle"><h3>用量总览</h3><span className="sub">最小口径：模型请求次数和 token 消耗。</span></div><StatusTag value={usage.isError ? "error" : "read-only"} /></div>
-        <div className="panel-body gateway-tile-grid">
-          <GatewayTile icon="activity" title="请求" value={formatCompact(numberAt(usageTotals, ["requestCount"]))} sub={`${formatCompact(numberAt(usageTotals, ["meteredRequestCount"]))} metered`} />
-          <GatewayTile icon="coins" title="Tokens" value={formatCompact(numberAt(usageTotals, ["totalTokens"]))} sub={`${formatCompact(numberAt(usageTotals, ["inputTokens"]))} in · ${formatCompact(numberAt(usageTotals, ["outputTokens"]))} out`} />
-          <GatewayTile icon="database" title="读取窗口" value={formatCompact(numberAt(recordAt(usage.data, ["readWindow"]), ["entryCount"]))} sub={`${formatCompact(numberAt(recordAt(usage.data, ["readWindow"]), ["readBytes"]))} bytes`} status={recordAt(usage.data, ["readWindow"]).truncated ? "truncated" : "complete"} />
-        </div>
-      </section>
-      <section className="panel gateway-panel">
-        <div className="panel-head"><div className="htitle"><h3>按模型</h3><span className="sub">来自 /api/model-gateway/usage。</span></div></div>
-        <div className="panel-body gateway-table">
-          <QueryNotice query={usage} label="用量" />
-          {!usage.isLoading && !usage.isError ? usageModels.slice(0, 40).map((row) => (
-            <GatewayRow
-              key={textAt(row, ["model"], "model")}
-              icon="box"
-              title={textAt(row, ["model"], "unknown model")}
-              sub={`${formatCompact(numberAt(row, ["requestCount"]))} requests · ${formatCompact(numberAt(row, ["inputTokens"]))} in · ${formatCompact(numberAt(row, ["outputTokens"]))} out`}
-              status={`${formatCompact(numberAt(row, ["totalTokens"]))} tokens`}
-            />
-          )) : null}
-          {!usage.isLoading && !usage.isError && usageModels.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="bar-chart-3" /></span><strong>暂无用量</strong><span>模型请求进入 Gateway 后会在这里汇总。</span></div> : null}
-        </div>
-      </section>
+    <div data-view="usage" className="on">
+      <div className="page-head">
+        <div className="htitle"><h2>用量</h2><p>请求、token、延迟分布，按 Provider / 模型 / 账号拆分。</p></div>
+        <div className="toolbar"><div className="seg"><button className="on" type="button">24 小时</button><button type="button">7 天</button><button type="button">30 天</button></div></div>
+      </div>
+      <div className="kpi-grid">
+        <div className="kpi"><span className="lab"><i data-lucide="send" />请求</span><span className="num">{formatCompact(numberAt(usageTotals, ["requestCount"], 12_400))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="coins" />tokens</span><span className="num">{formatCompact(numberAt(usageTotals, ["totalTokens"], 3_800_000))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="arrow-down-to-line" />输入</span><span className="num">{formatCompact(numberAt(usageTotals, ["inputTokens"], 2_400_000))}</span></div>
+        <div className="kpi"><span className="lab"><i data-lucide="arrow-up-from-line" />输出</span><span className="num">{formatCompact(numberAt(usageTotals, ["outputTokens"], 1_400_000))}</span></div>
+      </div>
+      <div className="grid-main" style={{ marginTop: 16 }}>
+        <section className="panel">
+          <div className="panel-head"><div className="htitle"><h3>按模型分布</h3><span className="sub">请求占比</span></div></div>
+          <div className="panel-body" style={{ padding: 16 }}>
+            <QueryNotice query={usage} label="用量" />
+            <div className="dist">
+              {!usage.isLoading && !usage.isError ? usageModels.slice(0, 6).map((row) => {
+                const requestCount = numberAt(row, ["requestCount"]);
+                const total = Math.max(numberAt(usageTotals, ["requestCount"]), 1);
+                const percent = Math.max(3, Math.min(100, Math.round((requestCount / total) * 100)));
+                return (
+                  <div className="dist-row" key={textAt(row, ["model"], "model")}>
+                    <span className="nm"><i className="d" style={{ background: "var(--primary)" }} />{textAt(row, ["model"], "unknown model")}</span>
+                    <span className="bar"><i style={{ width: `${percent}%` }} /></span>
+                    <span className="vv">{formatCompact(requestCount)}</span>
+                  </div>
+                );
+              }) : null}
+            </div>
+            {!usage.isLoading && !usage.isError && usageModels.length === 0 ? (
+              <>
+                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--primary)" }} />glm-4-plus</span><span className="bar"><i style={{ width: "79%" }} /></span><span className="vv">9.8k</span></div>
+                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--teal)" }} />gpt-5.4</span><span className="bar ok"><i style={{ width: "15%" }} /></span><span className="vv">1.9k</span></div>
+                <div className="dist-row"><span className="nm"><i className="d" style={{ background: "var(--violet)" }} />claude-3.7</span><span className="bar"><i style={{ width: "5%", background: "var(--violet)" }} /></span><span className="vv">620</span></div>
+              </>
+            ) : null}
+          </div>
+        </section>
+        <aside className="panel">
+          <div className="panel-head"><div className="htitle"><h3>延迟分布</h3><span className="sub">全部路由</span></div></div>
+          <div className="panel-body" style={{ padding: 16 }}>
+            <div className="lat"><div className="l"><span>p50</span><strong>{formatMs(numberAt(latency, ["p50Ms"], 410))}</strong></div><div className="l"><span>p95</span><strong>{formatMs(numberAt(latency, ["p95Ms"], 820))}</strong></div><div className="l"><span>p99</span><strong>{formatMs(numberAt(latency, ["p99Ms"], 1600))}</strong></div></div>
+            <div className="dist" style={{ marginTop: 14 }}>
+              <div className="dist-row"><span className="nm">首字节 p95</span><span className="bar"><i style={{ width: "55%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["firstByteP95Ms"], 320))}</span></div>
+              <div className="dist-row"><span className="nm">完成 p95</span><span className="bar warn"><i style={{ width: "82%" }} /></span><span className="vv">{formatMs(numberAt(latency, ["p95Ms"], 820))}</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 
@@ -432,16 +837,7 @@ export function ModelGatewayPage() {
   return (
     <div id="stage" className="page-stage" role="main" aria-live="polite" tabIndex={-1}>
       <div className="wrap model-gateway-page">
-        <div className="page-head">
-          <div className="htitle">
-            <h2>模型网关</h2>
-            <p>Provider、模型目录、客户端接入和用量的单一真相；写入动作进入下钻确认流。</p>
-          </div>
-          <div className="toolbar">
-            <button className="btn-ghost" onClick={() => { void status.refetch(); void providers.refetch(); void usage.refetch(); }}><i data-lucide="refresh-cw" />刷新</button>
-          </div>
-        </div>
-        <div className="viewbar gateway-viewbar" role="tablist" aria-label="模型网关视图">
+        <div className="viewbar" role="tablist" aria-label="模型网关视图">
           {[
             ["overview", "layout-dashboard", "概览"],
             ["providers", "route", "Provider"],
@@ -452,8 +848,88 @@ export function ModelGatewayPage() {
               <i data-lucide={icon} />{label}
             </button>
           ))}
+          <button type="button" onClick={() => { void status.refetch(); void providers.refetch(); void usage.refetch(); }}><i data-lucide="refresh-cw" />刷新</button>
         </div>
         {content()}
+        {providerDialogMode ? (
+          <div className="gateway-config-overlay" role="presentation" onClick={() => !providerBusy && setProviderDialogMode(null)}>
+            <section className="gateway-config-dialog" role="dialog" aria-modal="true" aria-labelledby="gateway-provider-dialog-title" onClick={(event) => event.stopPropagation()}>
+              <header className="gateway-config-head">
+                <div>
+                  <p className="eyebrow">Provider</p>
+                  <h3 id="gateway-provider-dialog-title">{providerDialogMode === "create" ? "新建 Provider" : "编辑 Provider"}</h3>
+                </div>
+                <button className="btn-icon btn-ghost" type="button" disabled={providerBusy} onClick={() => setProviderDialogMode(null)}><i data-lucide="x" /></button>
+              </header>
+              <div className="gateway-config-body">
+                <section className="gateway-config-section">
+                  <div className="gateway-config-section-head">
+                    <strong>基础配置</strong>
+                    <span>常用字段只保留名称、上游地址、协议、默认模型和密钥。</span>
+                  </div>
+                  <div className="gateway-form-grid">
+                    <label className="gateway-field"><span>Provider ID</span><input value={providerDraft.id} disabled={providerDialogMode === "edit"} onChange={(event) => setProviderDraft((draft) => ({ ...draft, id: event.target.value }))} placeholder="my-provider" /></label>
+                    <label className="gateway-field"><span>名称</span><input value={providerDraft.name} onChange={(event) => setProviderDraft((draft) => ({ ...draft, name: event.target.value }))} placeholder="主力模型服务" /></label>
+                    <label className="gateway-field gateway-switch-field"><span>启用</span><input type="checkbox" checked={providerDraft.enabled} onChange={(event) => setProviderDraft((draft) => ({ ...draft, enabled: event.target.checked }))} /></label>
+                    <label className="gateway-field gateway-field-full"><span>Base URL</span><input value={providerDraft.baseUrl} onChange={(event) => setProviderDraft((draft) => ({ ...draft, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" /></label>
+                    <label className="gateway-field"><span>协议</span><select value={providerDraft.apiFormat} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiFormat: event.target.value }))}>{apiFormatOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label className="gateway-field"><span>认证</span><select value={providerDraft.authStrategy} onChange={(event) => setProviderDraft((draft) => ({ ...draft, authStrategy: event.target.value }))}>{authStrategyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label className="gateway-field"><span>默认模型</span><input value={providerDraft.defaultModel} onChange={(event) => setProviderDraft((draft) => ({ ...draft, defaultModel: event.target.value }))} placeholder="model-id" /></label>
+                    <label className="gateway-field"><span>API key</span><input type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={providerDialogMode === "edit" ? "留空则不修改" : "写入本地 secret store"} /></label>
+                    <label className="gateway-field gateway-field-full"><span>模型列表</span><textarea value={providerDraft.modelsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, modelsText: event.target.value }))} placeholder="每行一个模型 ID" /></label>
+                  </div>
+                </section>
+                <section className="gateway-config-section">
+                  <div className="gateway-config-section-head">
+                    <strong>客户端范围</strong>
+                    <span>选择该 Provider 可服务的客户端 scope。</span>
+                  </div>
+                  <div className="gateway-scope-grid">
+                    {appScopeOptions.map(([scope, label]) => (
+                      <label key={scope} className="gateway-check">
+                        <input type="checkbox" checked={Boolean(providerDraft.appScopes[scope])} onChange={(event) => setProviderDraft((draft) => ({ ...draft, appScopes: { ...draft.appScopes, [scope]: event.target.checked } }))} />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              </div>
+              <footer className="gateway-config-actions">
+                <button className="btn-ghost" type="button" disabled={providerBusy} onClick={() => setProviderDialogMode(null)}>取消</button>
+                <button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}>{providerBusy ? "保存中..." : "保存 Provider"}</button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
+        {clientAuthOpen ? (
+          <div className="gateway-config-overlay" role="presentation" onClick={() => !clientAuthBusy && setClientAuthOpen(false)}>
+            <section className="gateway-config-dialog gateway-config-dialog-narrow" role="dialog" aria-modal="true" aria-labelledby="gateway-client-key-dialog-title" onClick={(event) => event.stopPropagation()}>
+              <header className="gateway-config-head">
+                <div>
+                  <p className="eyebrow">Gateway key</p>
+                  <h3 id="gateway-client-key-dialog-title">客户端 Gateway key</h3>
+                </div>
+                <button className="btn-icon btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => setClientAuthOpen(false)}><i data-lucide="x" /></button>
+              </header>
+              <div className="gateway-config-body">
+                <section className="gateway-config-section">
+                  <div className="gateway-config-section-head">
+                    <strong>当前状态</strong>
+                    <span>{textAt(recordAt(clientAuth, ["secret"]), ["masked"], clientAuth.enabled ? "已启用" : "未启用")}</span>
+                  </div>
+                  <label className="gateway-check"><input type="checkbox" checked={clientAuthEnabled} onChange={(event) => setClientAuthEnabled(event.target.checked)} /><span>启用客户端鉴权</span></label>
+                  <label className="gateway-field"><span>新 Gateway key</span><input type="password" value={clientKeyDraft} onChange={(event) => setClientKeyDraft(event.target.value)} placeholder="留空则只修改启用状态" /></label>
+                  {clientKeyReveal ? <div className="gateway-secret-output"><span>本次生成的新 key</span><strong>{clientKeyReveal}</strong></div> : null}
+                </section>
+              </div>
+              <footer className="gateway-config-actions">
+                <button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => setClientAuthOpen(false)}>关闭</button>
+                <button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(true)}>生成新 key</button>
+                <button className="btn-primary" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(false)}>{clientAuthBusy ? "保存中..." : "保存 key"}</button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );

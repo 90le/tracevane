@@ -173,10 +173,6 @@
   background: color-mix(in srgb, var(--panel-2), transparent 42%);
 }
 
-.gateway-viewbar {
-  margin-top: -4px;
-}
-
 .im-viewbar {
   margin-top: -4px;
 }
@@ -205,10 +201,6 @@
   margin: 0;
   padding: 10px;
   border-bottom: 1px solid var(--line);
-}
-
-.gateway-hero h1 {
-  max-width: 38ch;
 }
 
 .im-hero h1 {
@@ -245,10 +237,6 @@
 
 .workspace-hero h1 {
   max-width: 36ch;
-}
-
-.gateway-stats {
-  grid-template-columns: repeat(4, 1fr);
 }
 
 .im-stats {
@@ -857,23 +845,12 @@
   white-space: nowrap;
 }
 
-.gateway-panel {
-  margin-top: 18px;
-}
-
 .im-panel {
   margin-top: 18px;
 }
 
 .cli-agent-panel {
   margin-top: 18px;
-}
-
-.gateway-list,
-.gateway-table {
-  display: grid;
-  gap: 4px;
-  padding: 6px;
 }
 
 .im-list,
@@ -888,10 +865,6 @@
   display: grid;
   gap: 4px;
   padding: 6px;
-}
-
-.gateway-row {
-  min-height: 58px;
 }
 
 .im-row {
@@ -909,163 +882,192 @@
   white-space: nowrap;
 }
 
-.gateway-overview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
-  gap: 18px;
-  margin-top: 18px;
+.ico-primary {
+  color: var(--primary);
+  background: var(--primary-soft);
 }
 
-.gateway-provider-shell {
-  display: grid;
-  grid-template-columns: minmax(360px, 0.95fr) minmax(380px, 1.05fr);
-  gap: 18px;
-  margin-top: 18px;
-  align-items: start;
-}
-
-.gateway-provider-list-panel,
-.gateway-provider-inspector {
-  min-width: 0;
-}
-
-.gateway-provider-list {
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-}
-
-.gateway-provider-row {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+.status-dot {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 76px;
-  padding: 11px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-}
-
-.gateway-provider-row:hover,
-.gateway-provider-row.on {
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--primary), transparent 92%);
-}
-
-.gateway-provider-row.on {
-  box-shadow: inset 3px 0 0 var(--primary);
-}
-
-.gateway-provider-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.gateway-provider-copy strong,
-.gateway-inspector-head strong,
-.gateway-mini-row strong {
-  display: block;
-  overflow: hidden;
-  color: var(--text);
-  text-overflow: ellipsis;
+  gap: 6px;
   white-space: nowrap;
-}
-
-.gateway-provider-copy small,
-.gateway-inspector-head small,
-.gateway-mini-row small,
-.gateway-locked-actions span {
-  display: block;
-  overflow: hidden;
-  color: var(--subtle);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gateway-provider-scopes {
   color: var(--muted);
-  font: 12px/1.35 var(--mono);
-  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
-.gateway-provider-meta {
+.status-dot > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.status-dot.s-ok > i { background: var(--green); }
+.status-dot.s-warn > i { background: var(--amber); }
+.status-dot.s-bad > i { background: var(--red); }
+
+
+.gateway-config-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
   display: grid;
-  justify-items: end;
-  gap: 6px;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, .34);
+  backdrop-filter: blur(10px);
 }
 
-.gateway-provider-meta small {
-  color: var(--subtle);
-  font: 12px/1.35 var(--mono);
-}
-
-.gateway-provider-inspector {
-  margin-top: 0;
-  padding: 14px;
-}
-
-.gateway-inspector-head {
+.gateway-config-dialog {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(760px, 100%);
+  max-height: min(780px, calc(100dvh - 36px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.gateway-config-dialog-narrow {
+  width: min(540px, 100%);
+}
+
+.gateway-config-head,
+.gateway-config-actions {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding-bottom: 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
 }
 
-.gateway-inspector-grid {
+.gateway-config-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.gateway-config-head h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.gateway-config-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+}
+
+.gateway-config-section {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-2), transparent 46%);
+}
+
+.gateway-config-section-head {
+  display: grid;
+  gap: 3px;
+}
+
+.gateway-config-section-head strong,
+.gateway-secret-output strong {
+  color: var(--text);
+}
+
+.gateway-config-section-head span,
+.gateway-field span,
+.gateway-secret-output span {
+  color: var(--subtle);
+}
+
+.gateway-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  gap: 12px;
 }
 
-.gateway-inspector-section {
+.gateway-field {
   display: grid;
-  gap: 9px;
-  margin-top: 16px;
+  gap: 6px;
+  min-width: 0;
 }
 
-.gateway-mini-list,
-.gateway-locked-actions {
-  display: grid;
-  gap: 8px;
+.gateway-field-full {
+  grid-column: 1 / -1;
 }
 
-.gateway-mini-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 54px;
-  padding: 10px;
+.gateway-field input,
+.gateway-field select,
+.gateway-field textarea {
+  min-width: 0;
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--panel-2), transparent 44%);
-}
-
-.gateway-chip-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.gateway-locked-actions > div {
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--panel-2), transparent 48%);
-}
-
-.gateway-locked-actions strong {
-  display: block;
+  background: color-mix(in srgb, var(--panel), transparent 5%);
   color: var(--text);
-  margin-bottom: 3px;
+  padding: 9px 10px;
+}
+
+.gateway-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.gateway-switch-field {
+  align-content: end;
+}
+
+.gateway-switch-field input {
+  width: auto;
+}
+
+.gateway-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.gateway-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel), transparent 20%);
+}
+
+.gateway-check span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-secret-output {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+}
+
+.danger-text {
+  color: var(--red);
 }
 
 .im-overview-grid {
@@ -1082,11 +1084,6 @@
   margin-top: 18px;
 }
 
-.gateway-stack {
-  display: grid;
-  gap: 18px;
-}
-
 .im-stack {
   display: grid;
   gap: 18px;
@@ -1095,13 +1092,6 @@
 .cli-agent-stack {
   display: grid;
   gap: 18px;
-}
-
-.gateway-tile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 12px;
 }
 
 .im-tile-grid {
@@ -1116,18 +1106,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 12px;
-}
-
-.gateway-tile {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--panel-2), transparent 42%);
 }
 
 .im-tile {
@@ -1157,7 +1135,6 @@
 .openclaw-tile strong,
 .cli-agent-tile strong,
 .im-tile strong,
-.gateway-tile strong,
 .openclaw-action strong {
   display: block;
   color: var(--text);
@@ -1166,7 +1143,6 @@
 .openclaw-tile span,
 .cli-agent-tile span,
 .im-tile span,
-.gateway-tile span,
 .openclaw-action .route-copy span {
   color: var(--subtle);
   overflow-wrap: anywhere;
@@ -1174,8 +1150,7 @@
 
 .openclaw-tile-value,
 .cli-agent-tile-value,
-.im-tile-value,
-.gateway-tile-value {
+.im-tile-value {
   display: grid;
   justify-items: end;
   gap: 6px;
@@ -1184,8 +1159,7 @@
 
 .openclaw-tile-value b,
 .cli-agent-tile-value b,
-.im-tile-value b,
-.gateway-tile-value b {
+.im-tile-value b {
   max-width: 180px;
   overflow: hidden;
   color: var(--text);
@@ -1773,17 +1747,12 @@
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
-  .gateway-stats,
   .openclaw-tile-grid,
   .cli-agent-tile-grid,
   .im-tile-grid,
-  .gateway-tile-grid,
   .recovery-tile-grid,
   .cli-agent-overview-grid,
   .im-overview-grid,
-  .gateway-overview-grid,
-  .gateway-provider-shell,
-  .gateway-inspector-grid,
   .platform-stats,
   .platform-grid,
   .recovery-overview-grid,
@@ -1918,17 +1887,12 @@
   .cli-agent-stats,
   .im-stats,
   .workspace-stats,
-  .gateway-stats,
   .openclaw-tile-grid,
   .cli-agent-tile-grid,
   .im-tile-grid,
-  .gateway-tile-grid,
   .recovery-tile-grid,
   .cli-agent-overview-grid,
   .im-overview-grid,
-  .gateway-overview-grid,
-  .gateway-provider-shell,
-  .gateway-inspector-grid,
   .platform-stats,
   .platform-grid,
   .recovery-overview-grid,
@@ -1959,7 +1923,6 @@
   .openclaw-tile,
   .cli-agent-tile,
   .im-tile,
-  .gateway-tile,
   .recovery-tile,
   .recovery-row {
     grid-template-columns: 38px minmax(0, 1fr);
@@ -1968,27 +1931,12 @@
   .openclaw-tile-value,
   .cli-agent-tile-value,
   .im-tile-value,
-  .gateway-tile-value,
   .recovery-tile-value {
     justify-items: start;
     grid-column: 2;
   }
 
   .recovery-row .tag {
-    justify-self: start;
-    grid-column: 2;
-  }
-
-  .gateway-provider-row,
-  .gateway-inspector-head,
-  .gateway-mini-row {
-    grid-template-columns: 38px minmax(0, 1fr);
-  }
-
-  .gateway-provider-meta,
-  .gateway-inspector-head .tag,
-  .gateway-mini-row .tag {
-    justify-items: start;
     justify-self: start;
     grid-column: 2;
   }
