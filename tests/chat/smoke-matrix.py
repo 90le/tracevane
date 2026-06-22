@@ -34,9 +34,9 @@ MATRIX: tuple[SmokeItem, ...] = (
         timeout_seconds=60,
     ),
     SmokeItem(
-        name="aurora-chat-route-contract",
-        category="react-aurora-frontend",
-        command=["node", "--test", "tests/system/tracevane-react-aurora-frontend.test.mjs"],
+        name="web-model-gateway-contract",
+        category="react-frontend",
+        command=["node", "--test", "tests/system/web-model-gateway.test.mjs"],
         timeout_seconds=90,
     ),
     SmokeItem(

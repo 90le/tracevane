@@ -81,14 +81,12 @@
     "smoke:chat:surface": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/surface.acceptance.py",
     "test:chat": "npm run build:api && node --test tests/chat/*.test.mjs",
     "test:system": "npm run build:api && node --test tests/system/*.test.mjs",
-    "test:chat:web": "node --test tests/system/tracevane-react-aurora-frontend.test.mjs",
+    "test:chat:web": "node --test tests/system/web-model-gateway.test.mjs tests/system/web-api-client.test.mjs",
     "test:chat:integration": "npm run build:api && TRACEVANE_ENABLE_REAL_CHAT_INTEGRATION=1 TRACEVANE_TEST_OPENCLAW_ROOT=/home/binbin/.openclaw node --test tests/chat/api.integration.test.mjs tests/chat/transport.integration.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:api": "tsc -p tsconfig.json --noEmit",
     "typecheck:web": "npm run typecheck --workspace=apps/web",
-    "install:all": "npm install && npm install --workspace=apps/web",
-    "tracevane:frontend-coverage": "node scripts/tracevane-frontend-coverage.mjs",
-    "tracevane:inventory": "node scripts/tracevane-domain-inventory.mjs"
+    "install:all": "npm install && npm install --workspace=apps/web"
   },
   "author": "binbin",
   "license": "MIT",

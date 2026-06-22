@@ -15,13 +15,16 @@ function exists(relativePath) {
 }
 
 test("Tracevane shell no longer exposes Dreaming memory or Plugins management routes", () => {
-  const routeManifest = read("apps/web-vue/src/app/route-manifest.ts");
-  const shell = read("apps/web-vue/src/app/AuroraShell.tsx");
+  const navigation = read("apps/web/src/app/navigation.ts");
+  const router = read("apps/web/src/app/router.tsx");
 
-  assert.doesNotMatch(routeManifest, /DreamingView|PluginsView/);
-  assert.doesNotMatch(routeManifest, /path:\s*"dreaming"|path:\s*"plugins"/);
-  assert.doesNotMatch(routeManifest, /label:\s*"梦境"|label:\s*"插件"/);
-  assert.doesNotMatch(shell, /dreaming|plugins|MoonStar/i);
+  // New feature-sliced frontend: assert no Dreaming / legacy plugin-management
+  // routes or labels survive in the navigation manifest or the router.
+  assert.doesNotMatch(navigation, /dreaming|DreamingView|MoonStar/i);
+  assert.doesNotMatch(navigation, /\/plugins\b|PluginsView/);
+  assert.doesNotMatch(navigation, /label:\s*["']梦境["']|label:\s*["']插件["']/);
+  assert.doesNotMatch(router, /dreaming|DreamingPage|DreamingView/i);
+  assert.doesNotMatch(router, /\/plugins\b|PluginsPage|PluginsView/);
 });
 
 test("Tracevane backend no longer registers Dreaming memory or Plugins management APIs", () => {
@@ -50,10 +53,8 @@ test("retired Dreaming memory and Plugins management source files are deleted", 
     "apps/api/modules/plugins/routes.ts",
     "apps/api/modules/system/dreaming-service.ts",
     "apps/api/modules/system/dreaming-shared.ts",
-    "apps/web-vue/src/views/DreamingView.vue",
-    "apps/web-vue/src/views/PluginsView.vue",
-    "apps/web-vue/src/features/dreaming",
-    "apps/web-vue/src/features/plugins",
+    "apps/web/src/features/dreaming",
+    "apps/web/src/features/plugins",
   ].forEach((relativePath) => {
     assert.equal(exists(relativePath), false, `${relativePath} should be removed`);
   });

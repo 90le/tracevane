@@ -10,7 +10,7 @@ function read(filePath) {
 }
 
 const channelTypes = read('types/channels.ts');
-const routeManifest = read('apps/web-vue/src/app/route-manifest.ts');
+const navigation = read('apps/web/src/app/navigation.ts');
 const modelGatewayPrototype = read('docs/prototypes/pages/model-gateway.html');
 const imChannelsPrototype = read('docs/prototypes/pages/im-channels.html');
 
@@ -25,14 +25,14 @@ test('channel field descriptors expose metadata for select inputs and helper cop
   assert.match(channelTypes, /options\?: ChannelFieldOption\[\];/);
 });
 
-test('Aurora connector surfaces keep gateway and IM channel routes separate', () => {
-  assert.match(routeManifest, /path:\s*"model-gateway"[\s\S]*group:\s*"连接"/);
-  assert.match(routeManifest, /path:\s*"im-channels"[\s\S]*group:\s*"连接"/);
+test('connector surfaces keep gateway and IM channel routes separate', () => {
+  assert.match(navigation, /path:\s*["']\/model-gateway["'][\s\S]*?group:\s*["']连接["']/);
+  assert.match(navigation, /path:\s*["']\/im-channels["'][\s\S]*?group:\s*["']连接["']/);
   assert.match(modelGatewayPrototype, /Provider|GLM|Codex|OpenAI/i);
   assert.match(imChannelsPrototype, /Feishu|IM|Channel|飞书/i);
 });
 
-test('Aurora connector prototypes do not expose raw credential fields in list views', () => {
+test('connector prototypes do not expose raw credential fields in list views', () => {
   assert.doesNotMatch(modelGatewayPrototype, /apiKey|secretKey|credentialValues/);
   assert.match(imChannelsPrototype, /App Secret 引用[\s\S]*feishu\.app_secret · &bull;&bull;&bull;&bull;/);
   assert.doesNotMatch(imChannelsPrototype, /credentialValues|tokenSecret|sk-[A-Za-z0-9]/);
