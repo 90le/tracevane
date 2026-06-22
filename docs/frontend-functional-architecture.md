@@ -135,7 +135,7 @@ Model Gateway sections:
 - `usage`: Aurora KPI, distribution and latency panels.
 - `apps`: Aurora client-connection child view reached from the Overview "管理" action, not a fifth primary tab.
 
-Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. Main tabs stay limited to `overview / Provider / models / usage`; secondary views such as `providercfg` and `apps` are reached only from prototype actions. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
+Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. The implemented view set must match the prototype exactly: `overview / providers / providercfg / models / accounts / apps / usage`. Main tabs stay limited to `overview / Provider / models / usage`; secondary views are reached only from prototype actions. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
 
 IM Channels sections:
 

@@ -5,8 +5,8 @@ import { apiJson } from "./api-client";
 import { useShell } from "./shell-context";
 
 type AnyRecord = Record<string, unknown>;
-type GatewayView = "overview" | "providers" | "models" | "usage" | "apps";
-type ProviderDialogMode = "create" | "edit";
+type GatewayView = "overview" | "providers" | "models" | "usage" | "accounts" | "apps";
+type ProviderDialogMode = "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderDetailTab = "overview" | "endpoints" | "models";
 
@@ -29,7 +29,6 @@ const gatewayQueries = {
   providers: "/api/model-gateway/providers",
   appConnections: "/api/model-gateway/app-connections",
   usage: "/api/model-gateway/usage",
-  daemonService: "/api/model-gateway/daemon-service",
 } as const;
 
 const appScopeOptions = [
@@ -278,6 +277,7 @@ function ProviderInspector({
   onEdit,
   onTest,
   onDelete,
+  onAccounts,
 }: {
   provider: AnyRecord | null;
   detailTab: ProviderDetailTab;
@@ -285,6 +285,7 @@ function ProviderInspector({
   onEdit: (provider: AnyRecord) => void;
   onTest: (provider: AnyRecord) => void;
   onDelete: (provider: AnyRecord) => void;
+  onAccounts: () => void;
 }) {
   if (!provider) {
     return (
@@ -350,7 +351,8 @@ function ProviderInspector({
           </div>
           {accountProvider.kind ? (
             <div className="row-actions">
-              <span className="help-text">账号池入口会进入独立子页；当前检视器只显示 Provider 主对象。</span>
+              <button className="btn-ghost btn-sm" type="button" onClick={onAccounts}><i data-lucide="users" />账号池</button>
+              <span className="help-text" style={{ alignSelf: "center" }}>仅账号制 Provider 显示</span>
             </div>
           ) : null}
         </div>
@@ -417,22 +419,16 @@ export function ModelGatewayPage() {
   const [providerDialogMode, setProviderDialogMode] = useState<ProviderDialogMode | null>(null);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(() => emptyProviderDraft());
   const [providerBusy, setProviderBusy] = useState(false);
-  const [clientAuthOpen, setClientAuthOpen] = useState(false);
-  const [clientAuthEnabled, setClientAuthEnabled] = useState(true);
-  const [clientKeyDraft, setClientKeyDraft] = useState("");
-  const [clientKeyReveal, setClientKeyReveal] = useState("");
-  const [clientAuthBusy, setClientAuthBusy] = useState(false);
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
   const providers = useQuery({ queryKey: ["model-gateway", "providers"], queryFn: () => apiJson(gatewayQueries.providers), retry: false });
   const appConnections = useQuery({ queryKey: ["model-gateway", "app-connections"], queryFn: () => apiJson(gatewayQueries.appConnections), retry: false });
   const usage = useQuery({ queryKey: ["model-gateway", "usage"], queryFn: () => apiJson(gatewayQueries.usage), retry: false });
-  const daemonService = useQuery({ queryKey: ["model-gateway", "daemon-service"], queryFn: () => apiJson(gatewayQueries.daemonService), retry: false });
 
   useEffect(() => {
     shell.refreshIcons();
-  }, [shell, view, providerSearch, providerFilter, providerDetailTab, status.data, runtime.data, providers.data, appConnections.data, usage.data, daemonService.data]);
+  }, [shell, view, providerSearch, providerFilter, providerDetailTab, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
 
   const providerRows = listAt(providers.data, ["providers"]).map(asRecord);
   const activeRoutes = listAt(providers.data, ["activeRoutes"]).map(asRecord);
@@ -443,16 +439,11 @@ export function ModelGatewayPage() {
   const healthSummary = recordAt(status.data, ["healthSummary"]);
   const runtimeUsage = recordAt(status.data, ["runtime", "usageSummary"]);
   const latency = recordAt(runtimeUsage, ["latency"]);
-  const clientAuth = recordAt(status.data, ["registry", "clientAuth"]);
-  const lifecycle = recordAt(status.data, ["lifecycle"]);
-  const daemon = recordAt(lifecycle, ["localDaemon"]);
   const selectedProvider = useMemo(() => {
     if (!providerRows.length) return null;
     return providerRows.find((provider) => textAt(provider, ["id"], "") === selectedProviderId) ?? providerRows[0];
   }, [providerRows, selectedProviderId]);
-  const selectedProviderModels = selectedProvider ? listAt(selectedProvider, ["models", "models"]).map(asRecord) : [];
   const selectedProviderHealth = selectedProvider ? recordAt(selectedProvider, ["health"]) : {};
-  const selectedDefaultModel = selectedProvider ? textAt(recordAt(selectedProvider, ["models"]), ["defaultModel"], "glm-4-plus") : "glm-4-plus";
   const filteredProviders = useMemo(() => {
     const needle = providerSearch.trim().toLowerCase();
     return providerRows.filter((provider) => providerMatchesFilter(provider, providerFilter) && (!needle || providerSearchText(provider).includes(needle)));
@@ -469,11 +460,6 @@ export function ModelGatewayPage() {
       appConnections.refetch(),
       usage.refetch(),
     ]);
-  };
-
-  const openProviderCreate = () => {
-    setProviderDraft(emptyProviderDraft());
-    setProviderDialogMode("create");
   };
 
   const openProviderEdit = (provider: AnyRecord) => {
@@ -576,36 +562,6 @@ export function ModelGatewayPage() {
         })();
       },
     });
-  };
-
-  const openClientAuthDialog = () => {
-    setClientAuthEnabled(clientAuth.enabled !== false);
-    setClientKeyDraft("");
-    setClientKeyReveal("");
-    setClientAuthOpen(true);
-  };
-
-  const saveClientAuth = async (generate = false) => {
-    setClientAuthBusy(true);
-    try {
-      const result = await apiJson<AnyRecord>("/api/model-gateway/client-auth", {
-        method: "POST",
-        body: {
-          enabled: clientAuthEnabled,
-          apiKey: clientKeyDraft.trim() || undefined,
-          generate,
-        },
-      });
-      const revealed = typeof result.revealedKey === "string" ? result.revealedKey : "";
-      setClientKeyReveal(revealed);
-      if (!revealed) setClientAuthOpen(false);
-      shell.toast(generate ? "Gateway key 已生成" : "Gateway key 已保存", "ok");
-      await refetchGatewayData();
-    } catch (error) {
-      shell.toast(error instanceof Error ? error.message : "Gateway key 保存失败", "warn");
-    } finally {
-      setClientAuthBusy(false);
-    }
   };
 
   const modelCatalog = useMemo(() => {
@@ -738,7 +694,7 @@ export function ModelGatewayPage() {
             {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选，或者新建一个 Provider。</span></div> : null}
           </div>
         </section>
-        <ProviderInspector provider={selectedProvider} detailTab={providerDetailTab} onDetailTab={setProviderDetailTab} onEdit={openProviderEdit} onTest={testProvider} onDelete={confirmDeleteProvider} />
+        <ProviderInspector provider={selectedProvider} detailTab={providerDetailTab} onDetailTab={setProviderDetailTab} onEdit={openProviderEdit} onTest={testProvider} onDelete={confirmDeleteProvider} onAccounts={() => setView("accounts")} />
       </div>
     </div>
   );
@@ -757,7 +713,7 @@ export function ModelGatewayPage() {
         <div className="subpage">
           <div className="subpage-head">
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
-            <div className="htitle"><h2>{providerDialogMode === "create" ? "新建 Provider" : `配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
+            <div className="htitle"><h2>{`配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
           </div>
           <div className="subpage-grid">
             <div>
@@ -777,7 +733,7 @@ export function ModelGatewayPage() {
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>密钥</strong><span className="sub">仅引用，不存明文</span></div>
                 <div className="cfg-body">
-                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={providerDialogMode === "edit" ? "留空则不修改" : "写入本地 secret store"} /><button className="btn-ghost" type="button"><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：{providerDialogMode === "edit" ? "已保存密钥引用" : "新建后写入本地密钥库"}。浏览器只显示掩码或占位。</span></div>
+                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button"><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
                 </div>
               </div>
               <div className="cfg">
@@ -830,7 +786,7 @@ export function ModelGatewayPage() {
               </div>
               <div className="aside-card">
                 <div className="section-label">危险操作</div>
-                {selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : <span className="help-text">新建 Provider 尚无危险操作</span>}
+                {selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : null}
               </div>
             </div>
           </div>
@@ -839,32 +795,27 @@ export function ModelGatewayPage() {
     );
   };
 
-  const renderClientAuthConfig = () => (
-    <div data-view="clientauth" className="on">
-      <div className="subpage">
-        <div className="subpage-head">
-          <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={clientAuthBusy} onClick={() => { setClientAuthOpen(false); setView("overview"); }}><i data-lucide="arrow-left" /></button>
-          <div className="htitle"><h2>Gateway key</h2><p>客户端接入鉴权沿用原型配置子页样式；密钥只显示本次生成值或掩码。</p></div>
+  const renderAccounts = () => (
+    <div data-view="accounts" className="on">
+      <div className="page-head">
+        <div className="htitle"><h2>账号池 · Codex 账号</h2><p>账号制 Provider 的多账号轮换、配额、登录与刷新。路由策略影响请求如何在账号间分配。</p></div>
+        <div className="toolbar">
+          <div className="seg"><button className="on" type="button">轮换 round-robin</button><button type="button">会话粘性</button><button type="button">最少负载</button></div>
+          <button className="btn-primary" type="button"><i data-lucide="log-in" /><span>登录新账号</span></button>
         </div>
-        <div className="subpage-grid">
-          <div>
-            <div className="cfg">
-              <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>客户端鉴权</strong><span className="sub">Gateway</span></div>
-              <div className="cfg-body">
-                <div className="switch-row"><span className="sc"><strong>启用客户端鉴权</strong><span>{textAt(recordAt(clientAuth, ["secret"]), ["masked"], clientAuth.enabled ? "已启用" : "未启用")}</span></span><button className={`toggle ${clientAuthEnabled ? "on" : ""}`} type="button" onClick={() => setClientAuthEnabled((value) => !value)} /></div>
-                <div className="fieldset"><label>新 Gateway key</label><input className="input" type="password" value={clientKeyDraft} onChange={(event) => setClientKeyDraft(event.target.value)} placeholder="留空则只修改启用状态" /></div>
-                {clientKeyReveal ? <div className="aside-card"><div className="section-label">本次生成的新 key</div><div className="cell-mono">{clientKeyReveal}</div></div> : null}
-              </div>
-              <div className="save-bar"><span className="dirty"><i data-lucide="circle-dot" />鉴权配置变更</span><span className="filler" /><button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => { setClientAuthOpen(false); setView("overview"); }}>取消</button><button className="btn-ghost" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(true)}>生成新 key</button><button className="btn-primary" type="button" disabled={clientAuthBusy} onClick={() => void saveClientAuth(false)}><i data-lucide="check" />{clientAuthBusy ? "保存中..." : "保存 key"}</button></div>
-            </div>
+      </div>
+      <div className="acct-grid">
+        {[
+          { av: "A", email: "a•••@team.com", plan: "Plus · 主账号", status: "正常", req: "1.2k", quotaLabel: "配额", quota: "78%", bar: "78%", tone: "ok", style: {} },
+          { av: "B", email: "b•••@team.com", plan: "Pro · 备用账号", status: "冷却", req: "640", quotaLabel: "冷却至", quota: "4m", bar: "40%", tone: "warn", style: { background: "var(--violet-soft)", color: "var(--violet)" } },
+        ].map((account) => (
+          <div className="acct" key={account.email}>
+            <div className="acct-top"><span className="av" style={account.style}>{account.av}</span><span className="ai"><strong>{account.email}</strong><span>{account.plan}</span></span><ProviderStatusDot value={account.status} /></div>
+            <div className="acct-meta"><div className="mm"><span>今日请求</span><strong>{account.req}</strong></div><div className="mm"><span>{account.quotaLabel}</span><strong>{account.quota}</strong></div></div>
+            <div className={`bar ${account.tone}`}><i style={{ width: account.bar }} /></div>
+            <div className="row-actions"><button className="btn-ghost btn-sm" type="button"><i data-lucide="refresh-cw" />刷新</button><button className="btn-ghost btn-sm danger-text" type="button"><i data-lucide="log-out" />移除</button></div>
           </div>
-          <div>
-            <div className="aside-card">
-              <div className="section-label">当前状态</div>
-              <div className="switch-row" style={{ border: "none", padding: 0 }}><ProviderStatusDot value={clientAuth.enabled ? "enabled" : "disabled"} /><span className="filler" /><StatusTag value={clientAuth.enabled ? "enabled" : "disabled"} /></div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -990,15 +941,14 @@ export function ModelGatewayPage() {
 
   const content = providerDialogMode
     ? renderProviderConfig
-    : clientAuthOpen
-      ? renderClientAuthConfig
-      : {
-          overview: renderOverview,
-          providers: renderProviders,
-          models: renderModels,
-          usage: renderUsage,
-          apps: renderApps,
-        }[view];
+    : {
+        overview: renderOverview,
+        providers: renderProviders,
+        models: renderModels,
+        usage: renderUsage,
+        accounts: renderAccounts,
+        apps: renderApps,
+      }[view];
 
   return (
     <div id="stage" className="page-stage" role="main" aria-live="polite" tabIndex={-1}>
