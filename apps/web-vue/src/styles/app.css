@@ -1052,6 +1052,58 @@
   border-radius: var(--radius-sm);
 }
 
+.model-gateway-page .provider-repick {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.model-gateway-page .provider-preset-grid {
+  display: grid;
+  gap: 10px;
+  max-width: 980px;
+  margin-top: 14px;
+}
+
+.model-gateway-page .provider-preset {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-gateway-page .provider-preset:hover {
+  border-color: color-mix(in srgb, var(--primary), transparent 54%);
+  background: color-mix(in srgb, var(--primary-soft), var(--panel) 72%);
+}
+
+.model-gateway-page .preset-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.model-gateway-page .preset-copy strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+}
+
+.model-gateway-page .preset-copy span,
+.model-gateway-page .preset-copy small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .model-gateway-page .danger-zone {
   border-color: color-mix(in srgb, var(--danger), transparent 64%);
 }
@@ -1304,6 +1356,19 @@
   .model-gateway-page .provider-config-sections,
   .model-gateway-page .app-connection-summary {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .model-gateway-page .provider-repick {
+    margin-left: 0;
+  }
+
+  .model-gateway-page .provider-preset {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .model-gateway-page .provider-preset > svg {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .model-gateway-page .model-edit-head,

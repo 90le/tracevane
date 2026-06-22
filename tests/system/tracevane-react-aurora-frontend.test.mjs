@@ -361,7 +361,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略", "当前 Provider 不是账号制"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "选择 Provider 类型", "GLM 编程端点 · OpenAI Chat", "GLM 编程端点 · Anthropic Messages", "OpenAI 兼容 API", "重新选择类型", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略", "当前 Provider 不是账号制"]) {
     assert.match(page, new RegExp(label));
   }
   for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
@@ -387,6 +387,10 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.doesNotMatch(page, /更新密钥/);
   assert.doesNotMatch(page, /选中后右侧/);
   assert.match(page, /providerDialogMode === "create"/);
+  assert.match(page, /providerCreateStep === "preset"/);
+  assert.match(page, /providerCreatePresets/);
+  assert.match(page, /https:\/\/open\.bigmodel\.cn\/api\/coding\/paas\/v4/);
+  assert.match(page, /https:\/\/open\.bigmodel\.cn\/api\/anthropic/);
   assert.match(page, /新建 ·/);
   assert.match(page, /provider-table/);
   assert.match(page, /provider-row-actions/);

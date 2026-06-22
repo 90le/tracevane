@@ -55,6 +55,7 @@ type GatewayView = "overview" | "providers" | "models" | "usage" | "accounts" | 
 type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderConfigSection = "base" | "endpoints" | "models" | "advanced";
+type ProviderCreateStep = "preset" | "form";
 
 interface ProviderEndpointDraft {
   localId: string;
@@ -106,6 +107,29 @@ interface ProviderDraft {
   website: string;
   tagsText: string;
   notes: string;
+}
+
+interface ProviderCreatePreset {
+  id: string;
+  title: string;
+  desc: string;
+  icon: string;
+  providerId: string;
+  name: string;
+  baseUrl: string;
+  apiFormat: string;
+  authStrategy: string;
+  category: string;
+  sourceType: string;
+  endpointName: string;
+  modelId: string;
+  aliasesText: string;
+  appScopes: string[];
+  tagsText: string;
+  supportsThinking?: boolean;
+  supportsEffort?: boolean;
+  thinkingParam?: string;
+  effortParam?: string;
 }
 
 const gatewayQueries = {
@@ -228,6 +252,85 @@ const providerConfigSections: Array<[ProviderConfigSection, string, string]> = [
   ["endpoints", "Endpoint", "端点地址和协议覆盖"],
   ["models", "模型", "模型 ID、alias 和默认模型"],
   ["advanced", "高级", "网络、推理、元数据和危险操作"],
+];
+
+const providerCreatePresets: ProviderCreatePreset[] = [
+  {
+    id: "glm-coding-openai",
+    title: "GLM 编程端点 · OpenAI Chat",
+    desc: "用于 Codex、OpenCode、Cline 等 OpenAI Chat Completions 兼容客户端。",
+    icon: "route",
+    providerId: "glm-coding-openai",
+    name: "GLM Coding OpenAI",
+    baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    category: "official",
+    sourceType: "api-key",
+    endpointName: "OpenAI Chat 编程端点",
+    modelId: "glm-5.2",
+    aliasesText: "glm, coding",
+    appScopes: ["codex", "opencode", "openclaw"],
+    tagsText: "glm, coding, openai-compatible",
+    supportsThinking: true,
+    supportsEffort: true,
+  },
+  {
+    id: "glm-coding-anthropic",
+    title: "GLM 编程端点 · Anthropic Messages",
+    desc: "用于 Claude Code、Goose 等 Anthropic Messages 兼容客户端。",
+    icon: "bot",
+    providerId: "glm-coding-anthropic",
+    name: "GLM Coding Anthropic",
+    baseUrl: "https://open.bigmodel.cn/api/anthropic",
+    apiFormat: "anthropic_messages",
+    authStrategy: "anthropic_api_key",
+    category: "official",
+    sourceType: "api-key",
+    endpointName: "Anthropic Messages 编程端点",
+    modelId: "glm-5.2",
+    aliasesText: "glm-claude, coding",
+    appScopes: ["claude-code", "openclaw"],
+    tagsText: "glm, coding, anthropic-compatible",
+    supportsThinking: true,
+    supportsEffort: true,
+  },
+  {
+    id: "openai-compatible",
+    title: "OpenAI 兼容 API",
+    desc: "用于第三方聚合平台、本地代理或任何 /v1/chat/completions 兼容服务。",
+    icon: "plug-zap",
+    providerId: "openai-compatible",
+    name: "OpenAI Compatible",
+    baseUrl: "https://api.example.com/v1",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    category: "openai-compatible",
+    sourceType: "api-key",
+    endpointName: "主 endpoint",
+    modelId: "model-id",
+    aliasesText: "",
+    appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+    tagsText: "openai-compatible",
+  },
+  {
+    id: "blank",
+    title: "空白自定义",
+    desc: "只给出最小必填骨架，适合本地模型、代理网关或暂未归类的 Provider。",
+    icon: "settings-2",
+    providerId: "",
+    name: "",
+    baseUrl: "",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    category: "custom",
+    sourceType: "api-key",
+    endpointName: "主 endpoint",
+    modelId: "model-id",
+    aliasesText: "",
+    appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+    tagsText: "",
+  },
 ];
 
 function asRecord(value: unknown): AnyRecord {
@@ -431,6 +534,38 @@ function emptyProviderDraft(): ProviderDraft {
     website: "",
     tagsText: "",
     notes: "",
+  };
+}
+
+function draftFromCreatePreset(preset: ProviderCreatePreset): ProviderDraft {
+  const model = {
+    ...newProviderModelDraft(0),
+    id: preset.modelId,
+    label: preset.modelId,
+    aliasesText: preset.aliasesText,
+    reasoning: preset.supportsThinking ?? true,
+  };
+  return {
+    ...emptyProviderDraft(),
+    id: preset.providerId,
+    name: preset.name,
+    category: preset.category,
+    sourceType: preset.sourceType,
+    baseUrl: preset.baseUrl,
+    apiFormat: preset.apiFormat,
+    authStrategy: preset.authStrategy,
+    defaultModel: preset.modelId,
+    models: [model],
+    endpointProfiles: [{
+      ...newProviderEndpointDraft(preset.baseUrl, preset.apiFormat, preset.authStrategy, 0),
+      name: preset.endpointName,
+    }],
+    appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, preset.appScopes.includes(scope)])),
+    supportsThinking: preset.supportsThinking ?? true,
+    supportsEffort: preset.supportsEffort ?? true,
+    thinkingParam: preset.thinkingParam ?? "thinking",
+    effortParam: preset.effortParam ?? "reasoning_effort",
+    tagsText: preset.tagsText,
   };
 }
 
@@ -735,6 +870,7 @@ export function ModelGatewayPage() {
   const [providerDialogMode, setProviderDialogMode] = useState<ProviderDialogMode | null>(null);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(() => emptyProviderDraft());
   const [providerBusy, setProviderBusy] = useState(false);
+  const [providerCreateStep, setProviderCreateStep] = useState<ProviderCreateStep>("preset");
   const [providerConfigSection, setProviderConfigSection] = useState<ProviderConfigSection>("base");
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
@@ -785,24 +921,22 @@ export function ModelGatewayPage() {
 
   const openProviderEdit = (provider: AnyRecord) => {
     setProviderDraft(draftFromProvider(provider));
+    setProviderCreateStep("form");
     setProviderConfigSection("base");
     setProviderDialogMode("edit");
   };
 
   const openProviderCreate = () => {
-    const baseUrl = "https://api.example.com/v1";
-    const model = newProviderModelDraft(0);
-    setProviderDraft({
-      ...emptyProviderDraft(),
-      id: "",
-      name: "",
-      baseUrl,
-      defaultModel: model.id,
-      models: [model],
-      endpointProfiles: [newProviderEndpointDraft(baseUrl, "openai_chat", "bearer", 0)],
-    });
+    setProviderDraft(emptyProviderDraft());
+    setProviderCreateStep("preset");
     setProviderConfigSection("base");
     setProviderDialogMode("create");
+  };
+
+  const selectProviderCreatePreset = (preset: ProviderCreatePreset) => {
+    setProviderDraft(draftFromCreatePreset(preset));
+    setProviderCreateStep("form");
+    setProviderConfigSection("base");
   };
 
   const updateEndpointDraft = (index: number, patch: Partial<ProviderEndpointDraft>) => {
@@ -884,6 +1018,7 @@ export function ModelGatewayPage() {
       });
       setSelectedProviderId(id);
       setProviderDialogMode(null);
+      setProviderCreateStep("preset");
       setProviderDraft(emptyProviderDraft());
       shell.toast("Provider 已保存", "ok");
       await refetchGatewayData();
@@ -1434,11 +1569,37 @@ export function ModelGatewayPage() {
 
   const closeProviderConfig = () => {
     setProviderDialogMode(null);
+    setProviderCreateStep("preset");
     setView("providers");
   };
 
   const renderProviderConfig = () => {
     const isCreatingProvider = providerDialogMode === "create";
+    if (isCreatingProvider && providerCreateStep === "preset") {
+      return (
+        <div data-view="providercfg" className="on">
+          <div className="subpage">
+            <div className="subpage-head">
+              <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
+              <div className="htitle"><h2>选择 Provider 类型</h2><p>先选择协议和端点模板，再进入基础、Endpoint、模型和高级分段配置。Codex 账号请使用 Provider 页的“登录 Codex”。</p></div>
+            </div>
+            <div className="provider-preset-grid">
+              {providerCreatePresets.map((preset) => (
+                <button className="provider-preset" type="button" key={preset.id} onClick={() => selectProviderCreatePreset(preset)}>
+                  <span className="rico ico-primary"><i data-lucide={preset.icon} /></span>
+                  <span className="preset-copy">
+                    <strong>{preset.title}</strong>
+                    <span>{preset.desc}</span>
+                    <small>{compactList([apiFormatLabel(preset.apiFormat), preset.baseUrl || "手动填写 baseUrl", preset.modelId], "")}</small>
+                  </span>
+                  <i data-lucide="chevron-right" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
     const providerConfigTitle = isCreatingProvider
       ? `新建 · ${providerDraft.name.trim() || "Provider"}`
       : `配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`;
@@ -1448,6 +1609,9 @@ export function ModelGatewayPage() {
           <div className="subpage-head">
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
             <div className="htitle"><h2>{providerConfigTitle}</h2><p>baseUrl / endpoint / 模型目录 / 网络 / 推理。保存前内联校验，危险变更需确认。</p></div>
+            {isCreatingProvider ? (
+              <button className="btn-ghost btn-sm provider-repick" type="button" disabled={providerBusy} onClick={() => setProviderCreateStep("preset")}><i data-lucide="rotate-ccw" />重新选择类型</button>
+            ) : null}
           </div>
           <div className="provider-config-sections" role="tablist" aria-label="Provider 配置分段">
             {providerConfigSections.map(([id, label, desc]) => (
