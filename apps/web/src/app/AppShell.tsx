@@ -1,15 +1,17 @@
 import * as React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Menu, Moon, Palette, Sun } from "lucide-react";
+import { Menu, Moon, Palette, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import {
   Sidebar,
+  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarItem,
   SidebarNav,
+  useSidebar,
 } from "@/design/ui/sidebar";
 import {
   Sheet,
@@ -64,16 +66,43 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
 }
 
 function WorkspaceBrand() {
+  const { collapsed } = useSidebar();
   return (
-    <SidebarHeader className="flex items-center gap-2.5 px-1">
-      <div className="grid size-8 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
+    <SidebarHeader className={cn("flex items-center gap-2.5 px-1", collapsed && "justify-center px-0")}>
+      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
         T
       </div>
-      <div className="min-w-0">
-        <div className="truncate text-md font-semibold text-ink-strong">Tracevane</div>
-        <div className="truncate text-2xs uppercase tracking-[.12em] text-subtle">工作台</div>
-      </div>
+      {!collapsed && (
+        <div className="min-w-0">
+          <div className="truncate text-md font-semibold text-ink-strong">Tracevane</div>
+          <div className="truncate text-2xs uppercase tracking-[.12em] text-subtle">工作台</div>
+        </div>
+      )}
     </SidebarHeader>
+  );
+}
+
+function CollapseToggle({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <SidebarFooter>
+      <Button
+        variant="ghost"
+        size={collapsed ? "icon" : "sm"}
+        onClick={onToggle}
+        className={cn("text-subtle", collapsed ? "mx-auto" : "w-full justify-start gap-2")}
+        title={collapsed ? "展开导航" : "收起导航"}
+        aria-label={collapsed ? "展开导航" : "收起导航"}
+      >
+        {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+        {!collapsed && <span>收起导航</span>}
+      </Button>
+    </SidebarFooter>
   );
 }
 
@@ -159,6 +188,22 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    if (typeof localStorage === "undefined") return false;
+    return localStorage.getItem("tracevane-sidebar-collapsed") === "1";
+  });
+
+  const toggleCollapsed = React.useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("tracevane-sidebar-collapsed", next ? "1" : "0");
+      } catch {
+        /* ignore persistence failure */
+      }
+      return next;
+    });
+  }, []);
 
   // Close the mobile drawer on route change.
   React.useEffect(() => {
@@ -178,11 +223,15 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="grid h-dvh grid-cols-1 md:grid-cols-[var(--sidebar)_minmax(0,1fr)]">
-      {/* Desktop sidebar */}
-      <Sidebar className="hidden md:grid">
+    <div
+      className="grid h-dvh grid-cols-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out md:grid-cols-[var(--sidebar)_minmax(0,1fr)]"
+      style={{ ["--sidebar" as string]: collapsed ? "64px" : "248px" }}
+    >
+      {/* Desktop sidebar — persistent, full-height, own scroll, collapsible */}
+      <Sidebar collapsed={collapsed} className="hidden md:grid">
         <WorkspaceBrand />
         <NavList pathname={pathname} />
+        <CollapseToggle collapsed={collapsed} onToggle={toggleCollapsed} />
       </Sidebar>
 
       {/* Mobile drawer */}
@@ -197,7 +246,7 @@ export function AppShell() {
         </SheetContent>
       </Sheet>
 
-      <div className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)]">
+      <div className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
         {/* Topbar */}
         <header className="flex h-14 items-center gap-2 border-b border-line bg-panel px-4">
           <Button
@@ -227,7 +276,7 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* Routed content */}
+        {/* Routed content — the only scroll region besides the sidebar nav */}
         <main className="min-w-0 overflow-auto p-5">
           <Outlet />
         </main>

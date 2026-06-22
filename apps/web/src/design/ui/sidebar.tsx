@@ -25,8 +25,9 @@ const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         ref={ref}
         data-collapsed={collapsed ? "" : undefined}
         className={cn(
-          "grid h-dvh min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-[14px] border-r border-line p-[16px_14px]",
+          "grid h-dvh min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[14px] border-r border-line p-[16px_14px]",
           "bg-[color-mix(in_srgb,var(--panel)_70%,var(--canvas))] backdrop-blur-[20px]",
+          collapsed && "p-[16px_10px]",
           className
         )}
         {...props}
