@@ -40,7 +40,7 @@ export const NAV_ITEMS: NavItem[] = [
   // 连接
   { path: "/model-gateway", label: "模型网关", group: "连接", icon: Plug, status: "ready" },
   { path: "/im-channels", label: "IM 渠道", group: "连接", icon: Network, status: "ready" },
-  { path: "/external", label: "外部接入", group: "连接", icon: Globe, status: "coming-soon" },
+  { path: "/external", label: "外部接入", group: "连接", icon: Globe, status: "ready" },
 
   // 证据
   { path: "/files", label: "文件", group: "证据", icon: FolderOpen, status: "coming-soon" },
