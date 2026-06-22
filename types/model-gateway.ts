@@ -876,9 +876,32 @@ export interface ModelGatewayAppConnection {
   canApply: boolean;
   canRollback: boolean;
   lastBackupPath: string | null;
+  currentContent: string | null;
   issues: string[];
   launchHint: string | null;
   preview: ModelGatewayAppConnectionPreview;
+}
+
+export interface ModelGatewayAppConnectionBackup {
+  id: string;
+  createdAt: string;
+  size: number;
+  format: "json" | "toml";
+}
+
+export interface ModelGatewayAppConnectionBackupsResponse {
+  ok: true;
+  appId: ModelGatewayAppConnectionId;
+  backups: ModelGatewayAppConnectionBackup[];
+}
+
+export interface ModelGatewayAppConnectionBackupContentResponse {
+  ok: true;
+  appId: ModelGatewayAppConnectionId;
+  backupId: string;
+  format: "json" | "toml";
+  content: string;
+  redacted: true;
 }
 
 export interface ModelGatewayAppConnectionsResponse {
@@ -903,6 +926,7 @@ export interface ModelGatewayUpdateAppConnectionProfileResponse {
 export interface ModelGatewayApplyAppConnectionRequest {
   appId?: ModelGatewayAppConnectionId;
   profile?: Partial<ModelGatewayAppConnectionProfile>;
+  content?: string;
 }
 
 export interface ModelGatewayApplyAppConnectionResponse {
@@ -921,6 +945,7 @@ export interface ModelGatewayApplyAppConnectionsResponse {
 
 export interface ModelGatewayRollbackAppConnectionRequest {
   appId?: ModelGatewayAppConnectionId;
+  backupId?: string;
 }
 
 export interface ModelGatewayRollbackAppConnectionResponse {

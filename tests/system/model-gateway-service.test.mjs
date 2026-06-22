@@ -5256,6 +5256,222 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
 });
 
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setupAppConnectionService() {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "gateway-main",
+      name: "Gateway Main",
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://provider.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-main",
+        models: [{ id: "gpt-main" }, { id: "gpt-alt" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-app-connection" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-app-connection" });
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const claudePath = path.join(homeDir, ".claude", "settings.json");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+  const paths = resolveModelGatewayPaths(config);
+  return { root, config, homeDir, service, codexPath, claudePath, paths };
+}
+
+test("model gateway app connection exposes currentContent for diff", () => {
+  const { service, claudePath } = setupAppConnectionService();
+
+  const before = service.listAppConnections();
+  const claudeBefore = before.connections.find((connection) => connection.id === "claude-code");
+  assert.equal(claudeBefore.target.exists, false);
+  assert.equal(claudeBefore.currentContent, null);
+
+  fs.writeFileSync(
+    claudePath,
+    `${JSON.stringify({ env: { EXISTING: "1", ANTHROPIC_API_KEY: "sk-secret-current" } }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const after = service.listAppConnections();
+  const claudeAfter = after.connections.find((connection) => connection.id === "claude-code");
+  assert.equal(claudeAfter.target.exists, true);
+  assert.equal(typeof claudeAfter.currentContent, "string");
+  assert.match(claudeAfter.currentContent, /"EXISTING": "1"/);
+  // Secret in the on-disk file must be redacted in currentContent.
+  assert.equal(claudeAfter.currentContent.includes("sk-secret-current"), false);
+  assert.match(claudeAfter.currentContent, /<REDACTED>/);
+});
+
+test("model gateway lists app connection backups sorted newest-first", async () => {
+  const { service, claudePath, paths } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" } }, null, 2)}\n`, "utf8");
+
+  assert.deepEqual(service.listAppConnectionBackups("claude-code").backups, []);
+
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+  await sleepMs(5);
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+  await sleepMs(5);
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+
+  const listed = service.listAppConnectionBackups("claude-code");
+  assert.equal(listed.ok, true);
+  assert.equal(listed.appId, "claude-code");
+  assert.equal(listed.backups.length, 3);
+  assert.equal(listed.backups.every((backup) => backup.format === "json"), true);
+  assert.equal(listed.backups.every((backup) => backup.size > 0), true);
+  assert.equal(listed.backups.every((backup) => backup.id.startsWith("claude-code-") && backup.id.endsWith(".bak")), true);
+  // Sorted newest-first.
+  const createdAts = listed.backups.map((backup) => backup.createdAt);
+  const sorted = [...createdAts].sort((left, right) => right.localeCompare(left));
+  assert.deepEqual(createdAts, sorted);
+
+  // Backups directory lives under the model gateway backups path.
+  const backupDir = path.join(paths.backups, "app-connections");
+  assert.equal(fs.existsSync(backupDir), true);
+});
+
+test("model gateway reads app connection backup redacted and rejects bad ids", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(
+    claudePath,
+    `${JSON.stringify({ env: { ANTHROPIC_API_KEY: "sk-secret-backup" } }, null, 2)}\n`,
+    "utf8",
+  );
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+
+  const backups = service.listAppConnectionBackups("claude-code").backups;
+  assert.equal(backups.length, 1);
+  const backupId = backups[0].id;
+
+  const content = service.readAppConnectionBackup("claude-code", backupId);
+  assert.equal(content.ok, true);
+  assert.equal(content.appId, "claude-code");
+  assert.equal(content.backupId, backupId);
+  assert.equal(content.format, "json");
+  assert.equal(content.redacted, true);
+  // The pre-apply backup captured the original file containing the secret;
+  // reading it back must redact the secret.
+  assert.equal(content.content.includes("sk-secret-backup"), false);
+  assert.match(content.content, /<REDACTED>/);
+
+  // Path traversal and unknown ids are rejected with structured 404s.
+  assert.throws(
+    () => service.readAppConnectionBackup("claude-code", "../../../etc/passwd"),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 404,
+  );
+  assert.throws(
+    () => service.readAppConnectionBackup("claude-code", "claude-code-../escape.bak"),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 404,
+  );
+  // Belongs to a different app id.
+  assert.throws(
+    () => service.readAppConnectionBackup("claude-code", "codex-2026-01-01T00-00-00-000Z.toml.bak"),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 404,
+  );
+  // Unknown app id.
+  assert.throws(
+    () => service.readAppConnectionBackup("not-an-app", backupId),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 404,
+  );
+});
+
+test("model gateway rolls back to a specific backup and backs up current first", async () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { VERSION: "original" } }, null, 2)}\n`, "utf8");
+
+  // First apply backs up the "original" version.
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+  await sleepMs(5);
+  // Mutate the file to a "v2" then apply again (backs up "v2").
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { VERSION: "v2" } }, null, 2)}\n`, "utf8");
+  service.applyAppConnection(undefined, { appId: "claude-code" });
+
+  const backups = service.listAppConnectionBackups("claude-code").backups;
+  assert.equal(backups.length, 2);
+  // Oldest backup is the "original" version.
+  const originalBackupId = backups[backups.length - 1].id;
+  const originalBackupContent = service.readAppConnectionBackup("claude-code", originalBackupId).content;
+  assert.match(originalBackupContent, /"VERSION": "original"/);
+
+  const backupCountBefore = backups.length;
+  const rollback = service.rollbackAppConnection(undefined, {
+    appId: "claude-code",
+    backupId: originalBackupId,
+  });
+  assert.equal(rollback.rolledBack, true);
+  assert.equal(rollback.restoredFrom.endsWith(originalBackupId), true);
+  assert.ok(rollback.backupPath && fs.existsSync(rollback.backupPath));
+
+  // The restored file matches the original version.
+  const restored = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(restored.env.VERSION, "original");
+
+  // Rollback backed up the current file first, so backup count grew.
+  const backupsAfter = service.listAppConnectionBackups("claude-code").backups;
+  assert.equal(backupsAfter.length, backupCountBefore + 1);
+
+  // Unknown backup id is rejected.
+  assert.throws(
+    () => service.rollbackAppConnection(undefined, {
+      appId: "claude-code",
+      backupId: "claude-code-9999-99-99T99-99-99-999Z.json.bak",
+    }),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 404,
+  );
+});
+
+test("model gateway applies custom content and validates json", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" } }, null, 2)}\n`, "utf8");
+
+  const custom = `${JSON.stringify({ env: { CUSTOM: "yes" }, custom: true }, null, 2)}\n`;
+  const applied = service.applyAppConnection(undefined, {
+    appId: "claude-code",
+    content: custom,
+  });
+  assert.equal(applied.applied, true);
+  assert.ok(applied.backupPath && fs.existsSync(applied.backupPath));
+  const onDisk = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(onDisk.custom, true);
+  assert.equal(onDisk.env.CUSTOM, "yes");
+  // Written file is 0600.
+  assert.equal(fs.statSync(claudePath).mode & 0o777, 0o600);
+
+  // Invalid JSON for a json target is rejected, and the existing file is unchanged,
+  // and no extra (broken) write happened.
+  const backupsBefore = service.listAppConnectionBackups("claude-code").backups.length;
+  assert.throws(
+    () => service.applyAppConnection(undefined, {
+      appId: "claude-code",
+      content: "{ not valid json ",
+    }),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 400,
+  );
+  const afterInvalid = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(afterInvalid.custom, true);
+  // Validation happens before backup-before-write, so no new backup was created.
+  const backupsAfter = service.listAppConnectionBackups("claude-code").backups.length;
+  assert.equal(backupsAfter, backupsBefore);
+
+  // Empty content is rejected.
+  assert.throws(
+    () => service.applyAppConnection(undefined, { appId: "claude-code", content: "   " }),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 400,
+  );
+});
+
 test("model gateway app connections keep Codex reasoning effort for Gateway models", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

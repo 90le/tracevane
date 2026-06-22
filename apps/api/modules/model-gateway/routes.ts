@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
   ModelGatewayActiveRouteSmokeRequest,
+  ModelGatewayAppConnectionId,
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayCodexAccountLoginPollRequest,
   ModelGatewayCodexAccountLoginStartRequest,
@@ -180,6 +181,27 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
         ...payload,
         appId: params.appId as ModelGatewayRollbackAppConnectionRequest["appId"],
       }));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/api/model-gateway/app-connections/:appId/backups", (_req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.listAppConnectionBackups(
+        params.appId as ModelGatewayAppConnectionId,
+      ));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/api/model-gateway/app-connections/:appId/backups/:backupId", (_req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.readAppConnectionBackup(
+        params.appId as ModelGatewayAppConnectionId,
+        params.backupId,
+      ));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

@@ -36,6 +36,9 @@ import {
   type ModelGatewayActiveRouteStatus,
   type ModelGatewayActiveRouteSmokeRequest,
   type ModelGatewayAppConnection,
+  type ModelGatewayAppConnectionBackup,
+  type ModelGatewayAppConnectionBackupsResponse,
+  type ModelGatewayAppConnectionBackupContentResponse,
   type ModelGatewayAppConnectionId,
   type ModelGatewayAppConnectionProfile,
   type ModelGatewayAppConnectionsResponse,
@@ -5326,6 +5329,59 @@ function latestAppConnectionBackupPath(backupsRoot: string, appId: ModelGatewayA
   return candidates[0]?.filePath || null;
 }
 
+function appConnectionBackupDir(backupsRoot: string): string {
+  return path.join(backupsRoot, "app-connections");
+}
+
+function appConnectionBackupFormat(fileName: string): "json" | "toml" {
+  // Backup filenames look like `${appId}-${stamp}${ext}.bak` where ext is the
+  // original extension (e.g. `.toml`/`.json`). Strip the trailing `.bak`.
+  const withoutBak = fileName.replace(/\.bak$/i, "");
+  const ext = path.extname(withoutBak).toLowerCase();
+  return ext === ".toml" ? "toml" : "json";
+}
+
+function parseAppConnectionBackupTimestamp(fileName: string, appId: ModelGatewayAppConnectionId): string | null {
+  const prefix = `${appId}-`;
+  if (!fileName.startsWith(prefix)) return null;
+  const withoutBak = fileName.replace(/\.bak$/i, "");
+  const stampPart = withoutBak.slice(prefix.length).replace(/\.[^.]*$/, "");
+  // Stamp is an ISO string with `:` and `.` replaced by `-`.
+  // e.g. 2026-06-22T12-34-56-789Z -> 2026-06-22T12:34:56.789Z
+  const restored = stampPart.replace(
+    /^(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d{3}Z)$/,
+    "$1:$2:$3.$4",
+  );
+  const parsed = new Date(restored);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function isValidAppConnectionBackupId(backupId: string, appId: ModelGatewayAppConnectionId): boolean {
+  // Must be a bare filename matching the `${appId}-*.bak` pattern with no path
+  // separators or traversal sequences.
+  if (typeof backupId !== "string" || backupId.length === 0) return false;
+  if (backupId !== path.basename(backupId)) return false;
+  if (backupId.includes("/") || backupId.includes("\\") || backupId.includes("..")) return false;
+  return backupId.startsWith(`${appId}-`) && backupId.endsWith(".bak");
+}
+
+function resolveAppConnectionBackupPath(
+  backupsRoot: string,
+  appId: ModelGatewayAppConnectionId,
+  backupId: string,
+): string | null {
+  if (!isValidAppConnectionBackupId(backupId, appId)) return null;
+  const backupDir = appConnectionBackupDir(backupsRoot);
+  const resolvedDir = path.resolve(backupDir);
+  const resolvedPath = path.resolve(backupDir, backupId);
+  // Guard against any path traversal: the resolved path must live directly
+  // inside the backups directory.
+  if (path.dirname(resolvedPath) !== resolvedDir) return null;
+  if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) return null;
+  return resolvedPath;
+}
+
 function codexAppConnectionModelCatalogPath(targetPath: string): string {
   return path.join(path.dirname(targetPath), "tracevane-gateway-models.json");
 }
@@ -5359,6 +5415,8 @@ export interface ModelGatewayService {
   applyAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayApplyAppConnectionRequest): ModelGatewayApplyAppConnectionResponse;
   applyAppConnections(req: http.IncomingMessage | undefined, payload?: ModelGatewayApplyAppConnectionRequest): ModelGatewayApplyAppConnectionsResponse;
   rollbackAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayRollbackAppConnectionRequest): ModelGatewayRollbackAppConnectionResponse;
+  listAppConnectionBackups(appId: ModelGatewayAppConnectionId): ModelGatewayAppConnectionBackupsResponse;
+  readAppConnectionBackup(appId: ModelGatewayAppConnectionId, backupId: string): ModelGatewayAppConnectionBackupContentResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
   getUsageLedger(): ModelGatewayUsageLedgerResponse;
@@ -8443,6 +8501,10 @@ export function createModelGatewayService(
       modelCatalogEntries: options.modelCatalogEntries,
     });
     const lastBackupPath = latestAppConnectionBackupPath(paths.backups, spec.id);
+    const targetExists = fs.existsSync(spec.targetPath);
+    const currentContent = targetExists
+      ? redactConnectionPreviewContent(spec.format, readTextIfExists(spec.targetPath) ?? "")
+      : null;
     const issues = [
       ...(readRegistry().clientAuth.enabled && options.key
         ? []
@@ -8460,13 +8522,14 @@ export function createModelGatewayService(
       model,
       target: {
         path: spec.targetPath,
-        exists: fs.existsSync(spec.targetPath),
+        exists: targetExists,
         format: spec.format,
       },
       configured: appConnectionConfigured(spec, options.source),
       canApply: issues.length === 0,
       canRollback: Boolean(lastBackupPath),
       lastBackupPath,
+      currentContent,
       issues,
       launchHint: spec.launchHint,
       preview: {
@@ -8551,29 +8614,54 @@ export function createModelGatewayService(
     const storedProfile = updateStoredAppConnectionProfile(payload);
     const profile = defaultAppConnectionProfileForSpec(spec, storedProfile);
     const modelCatalogEntries = modelCatalogEntriesForAppConnection(modelIds, storedProfile);
-    const next = buildAppConnectionContent(spec, {
-      key,
-      profile,
-      modelIds,
-      source: source.source,
-      modelCatalogEntries,
-    });
-    if (next.error) {
-      throw new ModelGatewayServiceError(
-        "model_gateway_app_connection_target_invalid",
-        next.error,
-        400,
-      );
+    const customContent = typeof payload.content === "string" ? payload.content : null;
+    let writeContent: string;
+    if (customContent !== null) {
+      if (customContent.trim().length === 0) {
+        throw new ModelGatewayServiceError(
+          "model_gateway_app_connection_content_empty",
+          "Custom app connection content must not be empty.",
+          400,
+        );
+      }
+      if (spec.format === "json") {
+        try {
+          JSON.parse(customContent);
+        } catch (error) {
+          throw new ModelGatewayServiceError(
+            "model_gateway_app_connection_content_invalid_json",
+            `Custom content is not valid JSON: ${error instanceof Error ? error.message : "parse error"}`,
+            400,
+          );
+        }
+      }
+      writeContent = customContent;
+    } else {
+      const next = buildAppConnectionContent(spec, {
+        key,
+        profile,
+        modelIds,
+        source: source.source,
+        modelCatalogEntries,
+      });
+      if (next.error) {
+        throw new ModelGatewayServiceError(
+          "model_gateway_app_connection_target_invalid",
+          next.error,
+          400,
+        );
+      }
+      writeContent = next.content;
     }
     const backupPath = backupFileIfExists(spec.targetPath, paths.backups, appId);
-    if (spec.id === "codex") {
+    if (customContent === null && spec.id === "codex") {
       writeTextAtomic(
         codexAppConnectionModelCatalogPath(spec.targetPath),
         buildCodexAppConnectionModelCatalog(listGatewayModels().data),
         0o600,
       );
     }
-    writeTextAtomic(spec.targetPath, next.content, 0o600);
+    writeTextAtomic(spec.targetPath, writeContent, 0o600);
     const updatedSource = readConnectionSource(spec.targetPath);
     return {
       ok: true,
@@ -8656,13 +8744,26 @@ export function createModelGatewayService(
         404,
       );
     }
-    const restoredFrom = latestAppConnectionBackupPath(paths.backups, appId);
-    if (!restoredFrom) {
-      throw new ModelGatewayServiceError(
-        "model_gateway_app_connection_backup_missing",
-        `No backup is available for '${appId}'.`,
-        404,
-      );
+    const requestedBackupId = typeof payload.backupId === "string" ? payload.backupId.trim() : "";
+    let restoredFrom: string | null;
+    if (requestedBackupId) {
+      restoredFrom = resolveAppConnectionBackupPath(paths.backups, appId, requestedBackupId);
+      if (!restoredFrom) {
+        throw new ModelGatewayServiceError(
+          "model_gateway_app_connection_backup_not_found",
+          `Backup '${requestedBackupId}' was not found for '${appId}'.`,
+          404,
+        );
+      }
+    } else {
+      restoredFrom = latestAppConnectionBackupPath(paths.backups, appId);
+      if (!restoredFrom) {
+        throw new ModelGatewayServiceError(
+          "model_gateway_app_connection_backup_missing",
+          `No backup is available for '${appId}'.`,
+          404,
+        );
+      }
     }
     const backupPath = backupFileIfExists(spec.targetPath, paths.backups, appId);
     fs.mkdirSync(path.dirname(spec.targetPath), { recursive: true });
@@ -8687,6 +8788,77 @@ export function createModelGatewayService(
       rolledBack: true,
       restoredFrom,
       backupPath,
+    };
+  }
+
+  function listAppConnectionBackups(appId: ModelGatewayAppConnectionId): ModelGatewayAppConnectionBackupsResponse {
+    if (!normalizeAppConnectionId(appId)) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_not_found",
+        `App connection '${appId}' was not found.`,
+        404,
+      );
+    }
+    const backupDir = appConnectionBackupDir(paths.backups);
+    const prefix = `${appId}-`;
+    const backups: ModelGatewayAppConnectionBackup[] = [];
+    if (fs.existsSync(backupDir)) {
+      for (const fileName of fs.readdirSync(backupDir)) {
+        if (!fileName.startsWith(prefix) || !fileName.endsWith(".bak")) continue;
+        const filePath = path.join(backupDir, fileName);
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(filePath);
+        } catch {
+          continue;
+        }
+        if (!stat.isFile()) continue;
+        const createdAt = parseAppConnectionBackupTimestamp(fileName, appId)
+          ?? new Date(stat.mtimeMs).toISOString();
+        backups.push({
+          id: fileName,
+          createdAt,
+          size: stat.size,
+          format: appConnectionBackupFormat(fileName),
+        });
+      }
+    }
+    backups.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    return {
+      ok: true,
+      appId,
+      backups,
+    };
+  }
+
+  function readAppConnectionBackup(
+    appId: ModelGatewayAppConnectionId,
+    backupId: string,
+  ): ModelGatewayAppConnectionBackupContentResponse {
+    if (!normalizeAppConnectionId(appId)) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_not_found",
+        `App connection '${appId}' was not found.`,
+        404,
+      );
+    }
+    const backupPath = resolveAppConnectionBackupPath(paths.backups, appId, backupId);
+    if (!backupPath) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_app_connection_backup_not_found",
+        `Backup '${backupId}' was not found for '${appId}'.`,
+        404,
+      );
+    }
+    const format = appConnectionBackupFormat(backupId);
+    const raw = readTextIfExists(backupPath) ?? "";
+    return {
+      ok: true,
+      appId,
+      backupId,
+      format,
+      content: redactConnectionPreviewContent(format, raw),
+      redacted: true,
     };
   }
 
@@ -10813,6 +10985,8 @@ export function createModelGatewayService(
     applyAppConnection,
     applyAppConnections,
     rollbackAppConnection,
+    listAppConnectionBackups,
+    readAppConnectionBackup,
     listGatewayModels,
     getRuntime,
     getUsageLedger,
