@@ -96,6 +96,7 @@ export type {
   ModelGatewayAppConnectionTarget,
   ModelGatewayAppConnectionPreview,
   ModelGatewayAppConnection,
+  ModelGatewayAppConnectionBackup,
   // Request payloads
   ModelGatewayUpsertProviderRequest,
   ModelGatewaySetProviderSecretRequest,
@@ -127,6 +128,8 @@ export type {
   ModelGatewayCodexAccountLoginStartResponse,
   ModelGatewayCodexAccountLoginPollResponse,
   ModelGatewayAppConnectionsResponse,
+  ModelGatewayAppConnectionBackupsResponse,
+  ModelGatewayAppConnectionBackupContentResponse,
   ModelGatewayUpdateAppConnectionProfileResponse,
   ModelGatewayApplyAppConnectionResponse,
   ModelGatewayApplyAppConnectionsResponse,

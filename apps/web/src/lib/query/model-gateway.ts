@@ -12,6 +12,8 @@ import {
   createModelGatewayProvider,
   deleteModelGatewayProvider,
   detectModelGatewayProvider,
+  getAppConnectionBackup,
+  getAppConnectionBackups,
   getModelGatewayClientAuth,
   getModelGatewayDaemonService,
   getModelGatewayModels,
@@ -43,6 +45,7 @@ import type {
   ModelGatewayApplyAppConnectionsResponse,
   ModelGatewayAppConnectionId,
   ModelGatewayAppConnectionsResponse,
+  ModelGatewayAppConnectionBackupsResponse,
   ModelGatewayClientAuthResponse,
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayCodexAccountLoginPollRequest,
@@ -93,6 +96,8 @@ export const modelGatewayKeys = {
   providerSecret: (providerId: string) =>
     ["model-gateway", "providers", providerId, "secret"] as const,
   appConnections: () => ["model-gateway", "app-connections"] as const,
+  appConnectionBackups: (appId: string) =>
+    ["model-gateway", "app-connections", appId, "backups"] as const,
   daemonService: () => ["model-gateway", "daemon-service"] as const,
 };
 
@@ -191,6 +196,30 @@ export function useModelGatewayAppConnectionsQuery(
     ...options,
   });
 }
+
+/**
+ * Backup-version list for a single app connection (newest-first). Enabled only
+ * when an app is selected/expanded so we don't fetch backups for every client
+ * up front.
+ */
+export function useAppConnectionBackupsQuery(
+  appId: ModelGatewayAppConnectionId | null,
+  options?: QueryOpts<ModelGatewayAppConnectionBackupsResponse>,
+) {
+  return useQuery<ModelGatewayAppConnectionBackupsResponse, ApiError>({
+    queryKey: modelGatewayKeys.appConnectionBackups(appId ?? "__none__"),
+    queryFn: ({ signal }) => getAppConnectionBackups(appId as ModelGatewayAppConnectionId, signal),
+    enabled: Boolean(appId),
+    ...options,
+  });
+}
+
+/**
+ * Imperative lazy fetch for a single backup's redacted content. Backups are
+ * read on demand (when a version is selected for diff) rather than prefetched,
+ * so this is a thin re-export of the api binding instead of a standing query.
+ */
+export { getAppConnectionBackup };
 
 export function useModelGatewayDaemonServiceQuery(
   options?: QueryOpts<ModelGatewayDaemonServiceResponse>,

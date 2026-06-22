@@ -6,6 +6,8 @@ import type {
   ModelGatewayApplyAppConnectionsResponse,
   ModelGatewayAppConnectionId,
   ModelGatewayAppConnectionsResponse,
+  ModelGatewayAppConnectionBackupsResponse,
+  ModelGatewayAppConnectionBackupContentResponse,
   ModelGatewayClientAuthResponse,
   ModelGatewayClientAuthUpdateRequest,
   ModelGatewayCodexAccountLoginPollRequest,
@@ -354,6 +356,29 @@ export function rollbackModelGatewayAppConnection(
       method: "POST",
       body: jsonBody(payload),
     },
+  );
+}
+
+/** GET /api/model-gateway/app-connections/:appId/backups — list a single app's backup versions (newest-first). */
+export function getAppConnectionBackups(
+  appId: ModelGatewayAppConnectionId,
+  signal?: AbortSignal,
+): Promise<ModelGatewayAppConnectionBackupsResponse> {
+  return apiRequest<ModelGatewayAppConnectionBackupsResponse>(
+    `${BASE}/app-connections/${encodeURIComponent(appId)}/backups`,
+    { signal },
+  );
+}
+
+/** GET /api/model-gateway/app-connections/:appId/backups/:backupId — read a single backup's redacted content. */
+export function getAppConnectionBackup(
+  appId: ModelGatewayAppConnectionId,
+  backupId: string,
+  signal?: AbortSignal,
+): Promise<ModelGatewayAppConnectionBackupContentResponse> {
+  return apiRequest<ModelGatewayAppConnectionBackupContentResponse>(
+    `${BASE}/app-connections/${encodeURIComponent(appId)}/backups/${encodeURIComponent(backupId)}`,
+    { signal },
   );
 }
 
