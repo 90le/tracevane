@@ -1,6 +1,52 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Activity,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowUpFromLine,
+  BarChart3,
+  Bot,
+  Box,
+  Brain,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  Coins,
+  CopyCheck,
+  Gauge,
+  Globe,
+  Info,
+  KeyRound,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Minus,
+  Pencil,
+  Plug,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Route,
+  RouteOff,
+  ScanSearch,
+  Search,
+  Send,
+  Settings2,
+  Star,
+  Tag,
+  Terminal,
+  Timer,
+  Trash2,
+  Users,
+  X,
+  ZapOff,
+  createIcons,
+} from "lucide";
 import { apiJson } from "./api-client";
 import { useShell } from "./shell-context";
 
@@ -8,7 +54,7 @@ type AnyRecord = Record<string, unknown>;
 type GatewayView = "overview" | "providers" | "models" | "usage" | "accounts" | "apps";
 type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
-type ProviderDetailTab = "overview" | "endpoints" | "models";
+type ProviderConfigSection = "base" | "endpoints" | "models" | "advanced";
 
 interface ProviderEndpointDraft {
   localId: string;
@@ -70,6 +116,52 @@ const gatewayQueries = {
   usage: "/api/model-gateway/usage",
 } as const;
 
+const modelGatewayIcons = {
+  Activity,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowUpFromLine,
+  BarChart3,
+  Bot,
+  Box,
+  Brain,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  Coins,
+  CopyCheck,
+  Gauge,
+  Globe,
+  Info,
+  KeyRound,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Minus,
+  Pencil,
+  Plug,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Route,
+  RouteOff,
+  ScanSearch,
+  Search,
+  Send,
+  Settings2,
+  Star,
+  Tag,
+  Terminal,
+  Timer,
+  Trash2,
+  Users,
+  X,
+  ZapOff,
+};
+
 const appScopeOptions = [
   ["codex", "Codex"],
   ["claude-code", "Claude Code"],
@@ -83,6 +175,11 @@ const apiFormatOptions = [
   ["anthropic_messages", "Anthropic Messages"],
   ["gemini_native", "Gemini 原生"],
 ] as const;
+
+function apiFormatLabel(value: unknown): string {
+  const text = String(value ?? "");
+  return apiFormatOptions.find(([id]) => id === text)?.[1]?.replace(/（.*$/, "") || text || "自定义协议";
+}
 
 const authStrategyOptions = [
   ["bearer", "Bearer 密钥"],
@@ -124,6 +221,13 @@ const providerFilterOptions: Array<[ProviderFilter, string]> = [
   ["online", "在线"],
   ["degraded", "降级"],
   ["account", "账号制"],
+];
+
+const providerConfigSections: Array<[ProviderConfigSection, string, string]> = [
+  ["base", "基础", "名称、协议、鉴权和密钥"],
+  ["endpoints", "Endpoint", "端点地址和协议覆盖"],
+  ["models", "模型", "模型 ID、alias 和默认模型"],
+  ["advanced", "高级", "网络、推理、元数据和危险操作"],
 ];
 
 function asRecord(value: unknown): AnyRecord {
@@ -571,18 +675,25 @@ function GatewayProviderTableRow({
   provider,
   selected,
   onSelect,
+  onEdit,
+  onTest,
+  onAccounts,
 }: {
   provider: AnyRecord;
   selected: boolean;
   onSelect: () => void;
+  onEdit: (provider: AnyRecord) => void;
+  onTest: (provider: AnyRecord) => void;
+  onAccounts: (provider: AnyRecord) => void;
 }) {
   const health = recordAt(provider, ["health"]);
   const models = listAt(provider, ["models", "models"]);
   const endpointProfiles = listAt(provider, ["endpointProfiles"]);
-  const appScopes = listAt(provider, ["appScopes"]);
   const accountProvider = asRecord(provider.accountProvider);
   const icon = provider.accountProvider ? "bot" : endpointProfiles.length > 1 ? "route" : "plug-zap";
   const status = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
+  const defaultModel = textAt(recordAt(provider, ["models"]), ["defaultModel"], "");
+  const providerKind = accountProvider.kind ? "Codex 账号" : apiFormatLabel(textAt(provider, ["apiFormat"], ""));
 
   return (
     <div
@@ -601,164 +712,17 @@ function GatewayProviderTableRow({
         <span className="rico ico-primary"><i data-lucide={icon} /></span>
         <span className="c-copy">
           <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
-          <span>{compactList([textAt(recordAt(provider, ["models"]), ["defaultModel"], ""), `${models.length} models`, `${endpointProfiles.length} endpoint`])}</span>
+          <span>{compactList([defaultModel || "未设默认模型", `${models.length} models`, endpointProfiles.length ? `${endpointProfiles.length} endpoint` : "基础 endpoint"])}</span>
         </span>
       </span>
-      <span className="cell-mono">{compactList([textAt(provider, ["apiFormat"], "-"), accountProvider.kind || textAt(provider, ["sourceType"], "api-key"), appScopes.length ? appScopes.map(String).join("/") : "no scope"])}</span>
-      <span className="cell-mono">{compactList([formatMs(numberAt(health, ["lastLatencyMs"], NaN)), textAt(health, ["failureCount", "consecutiveFailures"], "0 failed"), formatTime(textAt(health, ["lastSuccessAt"], ""))])}</span>
+      <span><span className="tag info">{providerKind}</span></span>
       <span><ProviderStatusDot value={status} /></span>
+      <span className="route-acts provider-row-actions">
+        <button className="btn-primary btn-sm" type="button" onClick={(event) => { event.stopPropagation(); onSelect(); onEdit(provider); }}><i data-lucide="settings-2" />配置</button>
+        {accountProvider.kind ? <button className="btn-ghost btn-sm" type="button" onClick={(event) => { event.stopPropagation(); onSelect(); onAccounts(provider); }}><i data-lucide="users" />账号池</button> : null}
+        <button className="btn-ghost btn-sm" type="button" onClick={(event) => { event.stopPropagation(); onSelect(); onTest(provider); }}><i data-lucide="activity" />检查</button>
+      </span>
     </div>
-  );
-}
-
-function ProviderInspector({
-  provider,
-  detailTab,
-  onDetailTab,
-  onEdit,
-  onToggle,
-  onTest,
-  onDelete,
-  onAccounts,
-  onSetRoute,
-  onSetDefaultModel,
-}: {
-  provider: AnyRecord | null;
-  detailTab: ProviderDetailTab;
-  onDetailTab: (tab: ProviderDetailTab) => void;
-  onEdit: (provider: AnyRecord) => void;
-  onToggle: (provider: AnyRecord) => void;
-  onTest: (provider: AnyRecord) => void;
-  onDelete: (provider: AnyRecord) => void;
-  onAccounts: () => void;
-  onSetRoute: (scope: string, provider: AnyRecord) => void;
-  onSetDefaultModel: (provider: AnyRecord, modelId: string) => void;
-}) {
-  if (!provider) {
-    return (
-      <aside className="detail">
-        <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>选择一个 Provider</strong><span>这里显示 endpoint、模型、账号池和健康证据。</span></div>
-      </aside>
-    );
-  }
-
-  const health = recordAt(provider, ["health"]);
-  const modelsPayload = recordAt(provider, ["models"]);
-  const models = listAt(modelsPayload, ["models"]).map(asRecord);
-  const endpoints = listAt(provider, ["endpointProfiles"]).map(asRecord);
-  const accountProvider = asRecord(provider.accountProvider);
-  const defaultModel = textAt(modelsPayload, ["defaultModel"], "-");
-  const status = provider.enabled ? textAt(health, ["circuitState"], "enabled") : "disabled";
-  const successAt = formatTime(textAt(health, ["lastSuccessAt"], ""));
-
-  return (
-    <aside className="detail">
-      <div className="detail-head">
-        <div className="detail-title">
-          <span className="rico ico-primary"><i data-lucide={provider.accountProvider ? "bot" : "route"} /></span>
-          <div style={{ minWidth: 0 }}>
-            <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
-            <div><span>{compactList([textAt(provider, ["apiFormat"], "-"), `${endpoints.length} endpoint`, accountProvider.kind || textAt(provider, ["sourceType"], "api-key")])}</span></div>
-          </div>
-          <button className={`toggle ${provider.enabled !== false ? "on" : ""}`} type="button" title="启用 / 停用" style={{ marginLeft: "auto" }} onClick={() => onToggle(provider)} />
-        </div>
-        <div className="tabs" role="tablist" aria-label="Provider 详情">
-          {[
-            ["overview", "概览"],
-            ["endpoints", "Endpoint"],
-            ["models", "模型"],
-          ].map(([id, label]) => (
-            <button key={id} className={detailTab === id ? "on" : ""} role="tab" aria-selected={detailTab === id} type="button" onClick={() => onDetailTab(id as ProviderDetailTab)}>{label}</button>
-          ))}
-        </div>
-      </div>
-
-      {detailTab === "overview" ? (
-        <div className="detail-body">
-          <div className="metric-row">
-            <div className="m"><span>24h 请求</span><strong>{formatCompact(numberAt(health, ["requestCount"], 12_400))}</strong></div>
-            <div className="m"><span>可用率</span><strong>{numberAt(health, ["availabilityPercent"], 99.1)}%</strong></div>
-            <div className="m"><span>p95</span><strong>{formatMs(numberAt(health, ["p95Ms", "lastLatencyMs"], 820))}</strong></div>
-          </div>
-          <div>
-            <div className="section-label">健康（熔断器）</div>
-            <div className={`bar ${stateTone(status) === "bad" ? "bad" : stateTone(status) === "warn" ? "warn" : "ok"}`} style={{ margin: "6px 0 8px" }}><i style={{ width: stateTone(status) === "bad" ? "28%" : stateTone(status) === "warn" ? "68%" : "100%" }} /></div>
-            <div className="chips"><span className="chip">{status}</span><span className="chip">最近成功 {successAt}</span><span className="chip">{models.length} models</span></div>
-          </div>
-          <div>
-            <div className="section-label">设为默认路由</div>
-            <div className="seg" style={{ marginTop: 6 }}>
-              {[
-                ["openclaw", "默认"],
-                ["codex", "Codex"],
-                ["claude-code", "Claude"],
-              ].map(([scope, label]) => (
-                <button type="button" key={scope} onClick={() => onSetRoute(scope, provider)}>{label}</button>
-              ))}
-            </div>
-          </div>
-          <div className="row-actions">
-            <button className="btn-primary btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="settings-2" />配置</button>
-            <button className="btn-ghost btn-sm" type="button" onClick={() => onTest(provider)}><i data-lucide="activity" />连通检查</button>
-            <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => onDelete(provider)}><i data-lucide="trash-2" />删除</button>
-          </div>
-          {accountProvider.kind ? (
-            <div className="row-actions">
-              <button className="btn-ghost btn-sm" type="button" onClick={onAccounts}><i data-lucide="users" />账号池</button>
-              <span className="help-text" style={{ alignSelf: "center" }}>仅账号制 Provider 显示</span>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {detailTab === "endpoints" ? (
-        <div className="detail-body">
-          <div>
-            {endpoints.map((endpoint) => (
-              <div className="acc open" key={textAt(endpoint, ["id"], "endpoint")}>
-                <button className="acc-head" type="button">
-                  <span className="rico r-primary" style={{ width: 30, height: 30 }}><i data-lucide="plug" /></span>
-                  <span className="rcopy"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], "-"), textAt(endpoint, ["baseUrl"], "-")])}</span></span>
-                  <StatusTag value={endpoint.enabled ? textAt(recordAt(endpoint, ["health"]), ["circuitState"], "enabled") : "disabled"} />
-                  <i data-lucide="chevron-right" className="chev" />
-                </button>
-                <div className="acc-body">
-                  <dl className="kv" style={{ margin: "4px 0 10px" }}>
-                    <dt>协议</dt><dd>{textAt(endpoint, ["apiFormat"], "-")}</dd>
-                    <dt>baseUrl</dt><dd>{textAt(endpoint, ["baseUrl"], "-")}</dd>
-                    <dt>状态</dt><dd>{endpoint.enabled ? "enabled" : "disabled"}</dd>
-                  </dl>
-                  <div className="row-actions"><button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="pencil" />编辑</button><button className="btn-ghost btn-sm" type="button" onClick={() => onTest(provider)}><i data-lucide="activity" />检查</button></div>
-                </div>
-              </div>
-            ))}
-            {!endpoints.length ? <div className="statebox empty"><span className="si"><i data-lucide="plug-zap" /></span><strong>无独立 endpoint</strong><span>该 Provider 使用基础 endpoint 配置。</span></div> : null}
-          </div>
-          <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="plus" />新增 / 编辑 endpoint</button>
-        </div>
-      ) : null}
-
-      {detailTab === "models" ? (
-        <div className="detail-body">
-          <div>
-            {models.slice(0, 18).map((model) => {
-              const features = asRecord(model.features);
-              const enabledFeatures = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key);
-              const id = textAt(model, ["id"], "model");
-              return (
-                <div className="model-row" key={id}>
-                  <span className="rico r-primary"><i data-lucide="box" /></span>
-                  <span className="rcopy"><strong>{id}</strong><span>{enabledFeatures.slice(0, 3).join(" / ") || "text"}</span></span>
-                  {id === defaultModel ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" onClick={() => onSetDefaultModel(provider, id)}>设为默认</button>}
-                </div>
-              );
-            })}
-            {!models.length ? <div className="statebox empty"><span className="si"><i data-lucide="box" /></span><strong>暂无模型目录</strong><span>在配置里添加模型 ID。</span></div> : null}
-          </div>
-          <button className="btn-ghost btn-sm" type="button" onClick={() => onEdit(provider)}><i data-lucide="pencil" />编辑模型目录</button>
-        </div>
-      ) : null}
-    </aside>
   );
 }
 
@@ -768,10 +732,10 @@ export function ModelGatewayPage() {
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
   const [providerSearch, setProviderSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
-  const [providerDetailTab, setProviderDetailTab] = useState<ProviderDetailTab>("overview");
   const [providerDialogMode, setProviderDialogMode] = useState<ProviderDialogMode | null>(null);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(() => emptyProviderDraft());
   const [providerBusy, setProviderBusy] = useState(false);
+  const [providerConfigSection, setProviderConfigSection] = useState<ProviderConfigSection>("base");
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [modelSearch, setModelSearch] = useState("");
   const [editingAliasKey, setEditingAliasKey] = useState("");
@@ -785,7 +749,7 @@ export function ModelGatewayPage() {
 
   useEffect(() => {
     shell.refreshIcons();
-  }, [shell, view, providerSearch, providerFilter, providerDetailTab, modelSearch, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
+  }, [shell, view, providerSearch, providerFilter, modelSearch, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
 
   const providerRows = listAt(providers.data, ["providers"]).map(asRecord);
   const activeRoutes = listAt(providers.data, ["activeRoutes"]).map(asRecord);
@@ -821,6 +785,7 @@ export function ModelGatewayPage() {
 
   const openProviderEdit = (provider: AnyRecord) => {
     setProviderDraft(draftFromProvider(provider));
+    setProviderConfigSection("base");
     setProviderDialogMode("edit");
   };
 
@@ -836,6 +801,7 @@ export function ModelGatewayPage() {
       models: [model],
       endpointProfiles: [newProviderEndpointDraft(baseUrl, "openai_chat", "bearer", 0)],
     });
+    setProviderConfigSection("base");
     setProviderDialogMode("create");
   };
 
@@ -1081,6 +1047,16 @@ export function ModelGatewayPage() {
     }
   };
 
+  const testRouteProvider = (route: AnyRecord) => {
+    const providerId = textAt(route, ["resolvedProviderId", "providerId"], "");
+    const routeProvider = providerRows.find((provider) => textAt(provider, ["id"], "") === providerId);
+    if (routeProvider) {
+      void testProvider(routeProvider);
+      return;
+    }
+    shell.toast("该路由尚未解析到可检查的 Provider", "warn");
+  };
+
   const confirmDeleteProvider = (provider: AnyRecord) => {
     const providerId = textAt(provider, ["id"], "");
     if (!providerId) return;
@@ -1145,15 +1121,17 @@ export function ModelGatewayPage() {
     }
   };
 
-  const startCodexAccountLogin = async () => {
-    const providerId = textAt(selectedProvider, ["id"], "codex-account");
+  const startCodexAccountLogin = async (provider: AnyRecord | null = selectedProvider) => {
+    const accountProvider = asRecord(provider?.accountProvider);
+    const targetProvider = accountProvider.kind === "codex" ? provider : null;
+    const providerId = textAt(targetProvider, ["id"], "codex-account");
     setProviderBusy(true);
     try {
       const result = await apiJson<AnyRecord>("/api/model-gateway/account-providers/codex/login/start", {
         method: "POST",
         body: {
           providerId,
-          providerName: textAt(selectedProvider, ["name"], "Codex 账号"),
+          providerName: textAt(targetProvider, ["name"], "Codex 账号"),
           setActiveScopes: ["codex"],
         },
       });
@@ -1297,6 +1275,14 @@ export function ModelGatewayPage() {
     if (!selectedModelKey && filteredModelCatalog[0]) setSelectedModelKey(filteredModelCatalog[0].key);
   }, [filteredModelCatalog, selectedModelKey]);
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const root = document.querySelector(".model-gateway-page");
+      if (root) createIcons({ icons: modelGatewayIcons, root });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [view, providerDialogMode, providerConfigSection, providerSearch, providerFilter, selectedProviderId, providerRows.length, filteredProviders.length, modelCatalog.length, selectedModelKey]);
+
   const gatewayState = numberAt(healthSummary, ["openCircuits"]) > 0
     ? "degraded"
     : numberAt(healthSummary, ["degradedProviders"]) > 0
@@ -1304,102 +1290,70 @@ export function ModelGatewayPage() {
       : status.isError
         ? "error"
         : "healthy";
+  const routeIssueRows = activeRouteAlerts.map(asRecord);
+  const providerIssueRows = providerRows.filter((provider) => stateTone(provider.enabled === false ? "disabled" : textAt(recordAt(provider, ["health"]), ["circuitState"], "closed")) !== "ok");
+  const pendingConnectionRows = connectionRows.filter((connection) => !connection.configured);
 
   const renderOverview = () => (
     <div data-view="overview" className="on">
-      <section className="hero">
-        <div className="hero-top">
-          <span className={`ready-chip ${stateTone(gatewayState) === "ok" ? "ok" : "warn"}`}><i data-lucide="route" />模型网关 · {gatewayState}</span>
-          <span className="hero-time">Gateway {textAt(status.data, ["listener"], "loopback")} · {formatTime(textAt(status.data, ["checkedAt"], ""))}</span>
-        </div>
-        <div className="hero-stats" style={{ marginTop: 16, gridTemplateColumns: "repeat(4, 1fr)" }}>
-          <Metric icon="circle-check" label="健康 Provider" value={<>{numberAt(healthSummary, ["okProviders"])}<small>/{numberAt(status.data, ["registry", "providerCount"])}</small></>} sub={`${numberAt(healthSummary, ["degradedProviders"])} degraded · ${numberAt(healthSummary, ["openCircuits"])} open`} />
-          <Metric icon="gauge" label="聚合可用率" value={<>{numberAt(healthSummary, ["availabilityPercent"], 99.1)}<small>%</small></>} sub={`${numberAt(healthSummary, ["degradedProviders"], 1)} 降级`} />
-          <Metric icon="timer" label="p95 / p99" value={formatMs(numberAt(latency, ["p95Ms"], 820))} sub={`p99 ${formatMs(numberAt(latency, ["p99Ms"], 1600))}`} />
-          <Metric icon="coins" label="24h tokens" value={formatCompact(numberAt(recordAt(runtimeUsage, ["usage"]), ["totalTokens"], 3_800_000))} sub={`${formatCompact(numberAt(runtimeUsage, ["requestCount"], 12_400))} 请求`} />
-        </div>
-      </section>
-      <section className="panel" style={{ marginTop: 18 }}>
+      <section className="panel gateway-summary">
         <div className="panel-head">
-          <div className="htitle"><h3>当前路由</h3><span className="sub">每个客户端解析到的 Provider / endpoint / 模型，可就地连通检查</span></div>
-          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" /><span>检查选中 Provider</span></button>
+          <div className="htitle">
+            <h3>网关状态</h3>
+            <span className="sub">只显示影响接入和路由的当前事实。</span>
+          </div>
+          <div className="row-actions">
+            <button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}><i data-lucide="route" />Provider</button>
+            <button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}><i data-lucide="terminal" />客户端接入</button>
+            <button className="btn-primary btn-sm" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="activity" />检查选中 Provider</button>
+          </div>
         </div>
-        <div className="panel-body" style={{ padding: 6 }}>
-          <QueryNotice query={providers} label="路由" />
-          {!providers.isLoading && !providers.isError ? activeRoutes.map((route, index) => {
-            const scope = textAt(route, ["scope"], "");
-            const sub = compactList([
-              textAt(route, ["resolvedApiFormat"], "-"),
-              textAt(route, ["resolvedProviderName", "resolvedProviderId"], "auto"),
-              textAt(route, ["resolvedEndpointProfileName", "resolvedEndpointProfileId"], ""),
-              textAt(route, ["resolvedModel"], "-"),
-            ]);
-            const warningText = textAt(route, ["warning"], "");
-            const statusValue = warningText ? "warning" : textAt(route, ["state"], "resolved");
-            return (
-              <div className="route-row" key={scope || index}>
-                <span className={`rico ${routeScopeTone(index)}`}><i data-lucide={routeScopeIcon(scope)} /></span>
-                <span className="route-copy"><strong>{routeScopeLabel(scope)}</strong><span>{sub}</span></span>
-                <ProviderStatusDot value={statusValue} />
-                <span className="route-acts"><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>详情</button></span>
-              </div>
-            );
-          }) : null}
-          {!providers.isLoading && !providers.isError && activeRoutes.length === 0 ? (
-            <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无活动路由</strong><span>后端未返回 activeRoutes；请先配置 Provider 和客户端 scope。</span></div>
-          ) : null}
+        <div className="panel-body gateway-status-strip">
+          <div>
+            <ProviderStatusDot value={gatewayState} />
+            <strong>{stateTone(gatewayState) === "ok" ? "可用" : "需要处理"}</strong>
+            <span>{numberAt(healthSummary, ["okProviders"])} / {numberAt(status.data, ["registry", "providerCount"])} Provider 可路由</span>
+          </div>
+          <div>
+            <span className="cell-mono">{textAt(status.data, ["listener"], "loopback")}</span>
+            <span>{formatTime(textAt(status.data, ["checkedAt"], ""))}</span>
+          </div>
         </div>
       </section>
-      <div className="grid-main" style={{ marginTop: 18 }}>
+      <div className="grid-main gateway-overview-grid" style={{ marginTop: 18 }}>
         <section className="panel">
-          <div className="panel-head"><div className="htitle"><h3>健康概览</h3><span className="sub">熔断器状态与最近事件</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("providers")}>查看 Provider</button></div>
+          <div className="panel-head"><div className="htitle"><h3>当前路由</h3><span className="sub">客户端实际会打到哪里。</span></div></div>
           <div className="panel-body" style={{ padding: 6 }}>
-            <QueryNotice query={providers} label="Provider 健康" />
-            {!providers.isLoading && !providers.isError ? providerRows.slice(0, 6).map((provider) => {
-              const health = recordAt(provider, ["health"]);
-              const circuit = provider.enabled === false ? "disabled" : textAt(health, ["circuitState"], "closed");
-              const tone = stateTone(circuit);
-              const icon = tone === "bad" ? "zap-off" : tone === "warn" ? "route-off" : "check";
-              const rowTone = tone === "bad" ? "r-red" : tone === "warn" ? "r-amber" : "r-green";
+            <QueryNotice query={providers} label="路由" />
+            {!providers.isLoading && !providers.isError ? activeRoutes.map((route, index) => {
+              const scope = textAt(route, ["scope"], "");
+              const warningText = textAt(route, ["warning"], "");
+              const providerName = textAt(route, ["resolvedProviderName", "resolvedProviderId"], "未解析 Provider");
+              const modelName = textAt(route, ["resolvedModel"], "未指定模型");
+              const endpoint = textAt(route, ["resolvedEndpointProfileName", "resolvedEndpointProfileId"], "");
               return (
-                <div className="route-row" key={textAt(provider, ["id"], "provider")}>
-                  <span className={`rico ${rowTone}`}><i data-lucide={icon} /></span>
-                  <span className="route-copy"><strong>{textAt(provider, ["name", "id"], "Provider")}</strong><span>{compactList([formatMs(numberAt(health, ["lastLatencyMs"], NaN)), `失败 ${numberAt(health, ["consecutiveFailures", "failureCount"])}`, formatTime(textAt(health, ["lastSuccessAt"], ""))])}</span></span>
-                  <StatusTag value={circuit} />
+                <div className="route-row" key={scope || index}>
+                  <span className={`rico ${routeScopeTone(index)}`}><i data-lucide={routeScopeIcon(scope)} /></span>
+                  <span className="route-copy"><strong>{routeScopeLabel(scope)}</strong><span>{compactList([providerName, endpoint, modelName])}</span></span>
+                  <StatusTag value={warningText ? "warning" : "ready"} />
+                  <span className="route-acts"><button className="btn-ghost btn-sm" type="button" disabled={providerBusy} onClick={() => testRouteProvider(route)}><i data-lucide="activity" />检查</button></span>
                 </div>
               );
             }) : null}
-            {!providers.isLoading && !providers.isError && activeRouteAlerts.length ? activeRouteAlerts.slice(0, 4).map((alert, index) => (
-              <div className="route-row" key={`alert-${index}`}>
-                <span className="rico r-amber"><i data-lucide="circle-alert" /></span>
-                <span className="route-copy"><strong>{textAt(asRecord(alert), ["scope", "code"], "路由告警")}</strong><span>{textAt(asRecord(alert), ["message", "warning"], String(alert))}</span></span>
-                <span className="tag warn">告警</span>
-              </div>
-            )) : null}
-            {!providers.isLoading && !providers.isError && providerRows.length === 0 ? (
-              <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无 Provider</strong><span>请先在 Provider 页新建供应商。</span></div>
+            {!providers.isLoading && !providers.isError && activeRoutes.length === 0 ? (
+              <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>暂无活动路由</strong><span>先配置 Provider 和客户端接入。</span></div>
             ) : null}
           </div>
         </section>
         <aside className="panel">
-          <div className="panel-head"><div className="htitle"><h3>客户端接入</h3><span className="sub">App Connection</span></div><button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}>管理</button></div>
+          <div className="panel-head"><div className="htitle"><h3>需要处理</h3><span className="sub">只列异常、未接入和告警。</span></div></div>
           <div className="panel-body" style={{ padding: "10px 14px" }}>
-            <QueryNotice query={appConnections} label="客户端接入" />
-            {!appConnections.isLoading && !appConnections.isError ? connectionRows.map((connection, index) => {
-              const label = textAt(connection, ["label", "id"], "客户端");
-              const appId = textAt(connection, ["id"], "");
-              const tone = appId === "codex" ? "r-teal" : appId === "claude-code" ? "r-violet" : "r-primary";
-              const configured = Boolean(connection.configured);
-              return (
-                <div className="switch-row" key={label}>
-                  <span className={`rico ${tone}`} style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center" }}><i data-lucide="terminal" /></span>
-                  <span className="sc"><strong>{label}</strong><span>{configured ? "已应用 · 可回滚" : "未应用"}</span></span>
-                  <StatusTag value={configured ? "applied" : "pending"} />
-                </div>
-              );
-            }) : null}
-            {!appConnections.isLoading && !appConnections.isError && connectionRows.length === 0 ? (
-              <div className="statebox empty"><span className="si"><i data-lucide="terminal" /></span><strong>暂无客户端接入</strong><span>后端未返回可管理客户端。</span></div>
+            <QueryNotice query={providers} label="Provider" />
+            {routeIssueRows.slice(0, 3).map((alert, index) => <div className="switch-row" key={`route-alert-${index}`}><span className="sc"><strong>{textAt(alert, ["scope", "code"], "路由告警")}</strong><span>{textAt(alert, ["message", "warning"], "需要检查路由")}</span></span><span className="tag warn">告警</span></div>)}
+            {providerIssueRows.slice(0, 3).map((provider) => <div className="switch-row" key={textAt(provider, ["id"], "provider")}><span className="sc"><strong>{textAt(provider, ["name", "id"], "Provider")}</strong><span>{textAt(recordAt(provider, ["health"]), ["lastError"], "Provider 状态异常或停用")}</span></span><button className="btn-ghost btn-sm" type="button" onClick={() => { setSelectedProviderId(textAt(provider, ["id"], "")); openProviderEdit(provider); }}>处理</button></div>)}
+            {pendingConnectionRows.slice(0, 3).map((connection) => <div className="switch-row" key={textAt(connection, ["id"], "client")}><span className="sc"><strong>{textAt(connection, ["label", "id"], "客户端")}</strong><span>尚未应用 Gateway 接入</span></span><button className="btn-ghost btn-sm" type="button" onClick={() => setView("apps")}>接入</button></div>)}
+            {!providers.isLoading && !providers.isError && routeIssueRows.length === 0 && providerIssueRows.length === 0 && pendingConnectionRows.length === 0 ? (
+              <div className="statebox empty"><span className="si"><i data-lucide="check" /></span><strong>暂无待处理项</strong><span>当前 Provider、路由和客户端接入没有返回阻塞告警。</span></div>
             ) : null}
           </div>
         </aside>
@@ -1409,57 +1363,48 @@ export function ModelGatewayPage() {
 
   const renderProviders = () => (
     <div data-view="providers" className="on">
-      <div className="page-head">
+      <div className="page-head provider-page-head">
         <div className="htitle">
           <h2>Provider</h2>
-          <p>列表优先；选中后右侧检视 endpoint、模型、账号池和健康。深度配置进子页面，危险动作二次确认。</p>
+          <p>列表优先。普通 API Provider 走配置子页，Codex 账号走专用登录流程。</p>
         </div>
-        <div className="toolbar">
-          <span className="search-input">
-            <i data-lucide="search" />
-            <input value={providerSearch} onChange={(event) => setProviderSearch(event.target.value)} placeholder="搜索 Provider / 模型 / 协议" />
-          </span>
-          <div className="seg">
-            {providerFilterOptions.map(([id, label]) => (
-              <button key={id} className={providerFilter === id ? "on" : ""} type="button" onClick={() => setProviderFilter(id)}>{label}</button>
-            ))}
-          </div>
-          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => void detectSelectedProvider()}><i data-lucide="scan-search" /><span>探测</span></button>
-          <button className="btn-primary" type="button" disabled={providerBusy} onClick={openProviderCreate}><i data-lucide="plus" /><span>新建</span></button>
+        <div className="provider-primary-actions">
+          <button className="btn-ghost" type="button" disabled={providerBusy} onClick={() => void startCodexAccountLogin(null)}><i data-lucide="log-in" /><span>登录 Codex</span></button>
+          <button className="btn-primary" type="button" disabled={providerBusy} onClick={openProviderCreate}><i data-lucide="plus" /><span>新建 API Provider</span></button>
         </div>
       </div>
-      <div className="split">
-        <section className="tablewrap" aria-label="Provider 列表">
-          <div className="thead"><span>Provider / 模型</span><span>协议 / 来源</span><span>健康</span><span>状态</span></div>
-          <div>
-            <QueryNotice query={providers} label="Provider" />
-            {!providers.isLoading && !providers.isError ? filteredProviders.map((provider) => (
-              <GatewayProviderTableRow
-                key={textAt(provider, ["id"], "provider")}
-                provider={provider}
-                selected={textAt(provider, ["id"], "") === textAt(selectedProvider, ["id"], "")}
-                onSelect={() => {
-                  setSelectedProviderId(textAt(provider, ["id"], ""));
-                  setProviderDetailTab("overview");
-                }}
-              />
-            )) : null}
-            {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选；新增 Provider 后续进入专门创建流程。</span></div> : null}
-          </div>
-        </section>
-        <ProviderInspector
-          provider={selectedProvider}
-          detailTab={providerDetailTab}
-          onDetailTab={setProviderDetailTab}
-          onEdit={openProviderEdit}
-          onToggle={toggleProviderEnabled}
-          onTest={testProvider}
-          onDelete={confirmDeleteProvider}
-          onAccounts={() => setView("accounts")}
-          onSetRoute={setActiveProvider}
-          onSetDefaultModel={setProviderDefaultModel}
-        />
+      <div className="provider-filterbar">
+        <span className="search-input">
+          <i data-lucide="search" />
+          <input value={providerSearch} onChange={(event) => setProviderSearch(event.target.value)} placeholder="搜索 Provider / 模型 / 协议" />
+        </span>
+        <div className="seg">
+          {providerFilterOptions.map(([id, label]) => (
+            <button key={id} className={providerFilter === id ? "on" : ""} type="button" onClick={() => setProviderFilter(id)}>{label}</button>
+          ))}
+        </div>
+        <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => void detectSelectedProvider()}><i data-lucide="scan-search" /><span>探测选中 Provider</span></button>
       </div>
+      <section className="tablewrap provider-table" aria-label="Provider 列表">
+        <div className="thead"><span>Provider</span><span>类型</span><span>状态</span><span>动作</span></div>
+        <div>
+          <QueryNotice query={providers} label="Provider" />
+          {!providers.isLoading && !providers.isError ? filteredProviders.map((provider) => (
+            <GatewayProviderTableRow
+              key={textAt(provider, ["id"], "provider")}
+              provider={provider}
+              selected={textAt(provider, ["id"], "") === textAt(selectedProvider, ["id"], "")}
+              onSelect={() => {
+                setSelectedProviderId(textAt(provider, ["id"], ""));
+              }}
+              onEdit={openProviderEdit}
+              onTest={testProvider}
+              onAccounts={() => setView("accounts")}
+            />
+          )) : null}
+          {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选；新增 Provider 后续进入专门创建流程。</span></div> : null}
+        </div>
+      </section>
     </div>
   );
 
@@ -1470,19 +1415,6 @@ export function ModelGatewayPage() {
 
   const renderProviderConfig = () => {
     const isCreatingProvider = providerDialogMode === "create";
-    const selectedHealth = isCreatingProvider ? {} : recordAt(selectedProvider, ["health"]);
-    const selectedEndpoints = isCreatingProvider ? providerDraft.endpointProfiles.map((endpoint) => ({
-      id: endpoint.id,
-      name: endpoint.name,
-      apiFormat: endpoint.apiFormat,
-      baseUrl: endpoint.baseUrl,
-      enabled: endpoint.enabled,
-    })) : listAt(selectedProvider, ["endpointProfiles"]).map(asRecord);
-    const statusText = isCreatingProvider
-      ? "draft"
-      : selectedProvider && selectedProvider.enabled !== false
-        ? textAt(selectedHealth, ["circuitState"], "enabled")
-        : "disabled";
     const providerConfigTitle = isCreatingProvider
       ? `新建 · ${providerDraft.name.trim() || "Provider"}`
       : `配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`;
@@ -1493,8 +1425,18 @@ export function ModelGatewayPage() {
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
             <div className="htitle"><h2>{providerConfigTitle}</h2><p>baseUrl / endpoint / 模型目录 / 网络 / 推理。保存前内联校验，危险变更需确认。</p></div>
           </div>
-          <div className="subpage-grid">
+          <div className="provider-config-sections" role="tablist" aria-label="Provider 配置分段">
+            {providerConfigSections.map(([id, label, desc]) => (
+              <button key={id} className={providerConfigSection === id ? "on" : ""} type="button" role="tab" aria-selected={providerConfigSection === id} onClick={() => setProviderConfigSection(id)}>
+                <strong>{label}</strong>
+                <span>{desc}</span>
+              </button>
+            ))}
+          </div>
+          <div className="provider-config-flow">
             <div>
+              {providerConfigSection === "base" ? (
+                <>
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="info" /></span><strong>基础</strong><span className="sub">必填</span></div>
                 <div className="cfg-body">
@@ -1518,6 +1460,9 @@ export function ModelGatewayPage() {
                   <div className="fieldset"><label>API key</label><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder={isCreatingProvider ? "可选：保存时写入密钥库" : "留空则不修改"} /><span className="help-text">{isCreatingProvider ? "填写后随 Provider 一起保存到服务端密钥库；浏览器不会回显明文。" : "填写后随“保存配置”更新；留空不会修改已保存密钥引用。"}</span></div>
                 </div>
               </div>
+                </>
+              ) : null}
+              {providerConfigSection === "endpoints" ? (
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="plug" /></span><strong>Endpoint</strong><span className="sub">多端点</span></div>
                 <div className="cfg-body">
@@ -1551,6 +1496,8 @@ export function ModelGatewayPage() {
                   <button className="btn-ghost btn-sm" type="button" onClick={addEndpointDraft}><i data-lucide="plus" />新增 endpoint</button>
                 </div>
               </div>
+              ) : null}
+              {providerConfigSection === "models" ? (
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="box" /></span><strong>模型目录</strong><span className="sub">alias / 能力</span></div>
                 <div className="cfg-body">
@@ -1563,33 +1510,14 @@ export function ModelGatewayPage() {
                           <div className="model-edit-head">
                             <span className="rico r-primary"><i data-lucide="box" /></span>
                             <span className="sc"><strong>{model.id || `模型 ${index + 1}`}</strong><span>{model.aliasesText || "未设置 alias"}</span></span>
-                            {isDefault ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" disabled={!modelId} onClick={() => setDefaultModelFromDraft(modelId)}><i data-lucide="star" />设为默认</button>}
+                            <span className="route-acts">
+                              {isDefault ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" disabled={!modelId} onClick={() => setDefaultModelFromDraft(modelId)}><i data-lucide="star" />默认</button>}
+                              <button className="btn-ghost btn-sm danger-text" type="button" disabled={providerDraft.models.length <= 1} onClick={() => removeModelDraft(index)}><i data-lucide="trash-2" />移除</button>
+                            </span>
                           </div>
-                          <div className="model-edit-grid">
+                          <div className="model-edit-grid simple">
                             <div className="fieldset"><label>模型 ID</label><input className="input" value={model.id} onChange={(event) => updateModelDraft(index, { id: event.target.value })} placeholder="gpt-5.4" /></div>
-                            <div className="fieldset"><label>显示名称</label><input className="input" value={model.label} onChange={(event) => updateModelDraft(index, { label: event.target.value })} placeholder="可选" /></div>
                             <div className="fieldset model-aliases"><label>alias</label><input className="input" value={model.aliasesText} onChange={(event) => updateModelDraft(index, { aliasesText: event.target.value })} placeholder="逗号分隔，例如 fast, default" /></div>
-                            <div className="fieldset"><label>上下文窗口</label><input className="input" inputMode="numeric" value={model.contextWindow} onChange={(event) => updateModelDraft(index, { contextWindow: event.target.value })} placeholder="128000" /></div>
-                            <div className="fieldset"><label>最大输出</label><input className="input" inputMode="numeric" value={model.maxOutputTokens} onChange={(event) => updateModelDraft(index, { maxOutputTokens: event.target.value })} placeholder="8192" /></div>
-                          </div>
-                          <div className="model-feature-toggles" aria-label={`${model.id || "模型"}能力`}>
-                            {[
-                              ["streaming", "流式"],
-                              ["tools", "工具"],
-                              ["vision", "视觉"],
-                              ["reasoning", "推理"],
-                            ].map(([key, label]) => (
-                              <button
-                                key={key}
-                                className={`chip ${model[key as "streaming" | "tools" | "vision" | "reasoning"] ? "on" : ""}`}
-                                type="button"
-                                onClick={() => updateModelDraft(index, { [key]: !model[key as "streaming" | "tools" | "vision" | "reasoning"] } as Partial<ProviderModelDraft>)}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                            <span className="filler" />
-                            <button className="btn-ghost btn-sm danger-text" type="button" disabled={providerDraft.models.length <= 1} onClick={() => removeModelDraft(index)}><i data-lucide="trash-2" />移除模型</button>
                           </div>
                         </div>
                       );
@@ -1598,10 +1526,13 @@ export function ModelGatewayPage() {
                   </div>
                   <div className="row-actions">
                     <button className="btn-ghost btn-sm" type="button" onClick={addModelDraft}><i data-lucide="plus" />新增模型</button>
-                    <span className="help-text">alias 用逗号分隔；默认模型必须来自当前目录。</span>
+                    <span className="help-text">只编辑常用项。上下文、输出和能力 flags 后续进入高级设置，不堆在创建页。</span>
                   </div>
                 </div>
               </div>
+              ) : null}
+              {providerConfigSection === "advanced" ? (
+                <>
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="settings-2" /></span><strong>网络</strong><span className="sub">高级</span></div>
                 <div className="cfg-body">
@@ -1637,45 +1568,22 @@ export function ModelGatewayPage() {
                 </div>
                 <div className="save-bar"><span className="dirty"><i data-lucide="circle-dot" />有未保存改动</span><span className="filler" /><button className="btn-ghost" type="button" disabled={providerBusy} onClick={closeProviderConfig}>取消</button><button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}><i data-lucide="check" />{providerBusy ? "保存中..." : "保存配置"}</button></div>
               </div>
-            </div>
-            <div>
-              <div className="aside-card">
-                <div className="section-label">当前状态</div>
-                <div className="switch-row" style={{ border: "none", padding: 0 }}><ProviderStatusDot value={statusText} /><span className="filler" /><StatusTag value={statusText} /></div>
-                <div className="metric-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  {isCreatingProvider ? (
-                    <>
-                      <div className="m"><span>Endpoint</span><strong>{providerDraft.endpointProfiles.length}</strong></div>
-                      <div className="m"><span>模型</span><strong>{providerDraft.models.length}</strong></div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="m"><span>p95</span><strong>{formatMs(numberAt(selectedHealth, ["p95Ms", "lastLatencyMs"], 820))}</strong></div>
-                      <div className="m"><span>失败</span><strong>{formatCompact(numberAt(selectedHealth, ["failureCount", "consecutiveFailures"]))}</strong></div>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="aside-card">
-                <div className="section-label">Endpoint</div>
-                {(selectedEndpoints.length ? selectedEndpoints : [{ id: "endpoint A", apiFormat: providerDraft.apiFormat, baseUrl: providerDraft.baseUrl, enabled: providerDraft.enabled }]).slice(0, 3).map((endpoint) => (
-                  <div className="switch-row" key={textAt(endpoint, ["id"], "endpoint")}><span className="sc"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], providerDraft.apiFormat), textAt(endpoint, ["baseUrl"], providerDraft.baseUrl || "baseUrl")])}</span></span><StatusTag value={endpoint.enabled === false ? "disabled" : "online"} /></div>
-                ))}
-              </div>
-              <div className="aside-card">
-                <div className="section-label">模型目录</div>
-                {providerDraft.models.slice(0, 4).map((model) => (
-                  <div className="switch-row" key={model.localId}>
-                    <span className="sc"><strong>{model.id || "model-id"}</strong><span>{model.id.trim() === providerDraft.defaultModel.trim() ? "默认模型" : (model.aliasesText || "alias 未设置")}</span></span>
-                    <StatusTag value={model.streaming ? "streaming" : "text"} />
+              {!isCreatingProvider ? (
+                <div className="cfg danger-zone">
+                  <div className="cfg-head"><span className="ci"><i data-lucide="trash-2" /></span><strong>危险操作</strong><span className="sub">二次确认</span></div>
+                  <div className="cfg-body">
+                    <div className="switch-row">
+                      <span className="sc"><strong>删除该 Provider</strong><span>删除前请确认没有客户端 scope 仍依赖它。</span></span>
+                      <button className="btn-ghost btn-sm danger-text" type="button" disabled={providerBusy} onClick={() => selectedProvider && confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除</button>
+                    </div>
                   </div>
-                ))}
-                <button className="btn-ghost btn-sm" type="button" onClick={addModelDraft}><i data-lucide="plus" />新增模型</button>
-              </div>
-              <div className="aside-card">
-                <div className="section-label">危险操作</div>
-                {!isCreatingProvider && selectedProvider ? <button className="btn-ghost btn-sm danger-text" type="button" onClick={() => confirmDeleteProvider(selectedProvider)}><i data-lucide="trash-2" />删除该 Provider</button> : <span className="help-text">新建 Provider 尚未保存，无危险操作。</span>}
-              </div>
+                </div>
+              ) : null}
+                </>
+              ) : null}
+              {providerConfigSection !== "advanced" ? (
+                <div className="save-bar provider-save-bar"><span className="dirty"><i data-lucide="circle-dot" />有未保存改动</span><span className="filler" /><button className="btn-ghost" type="button" disabled={providerBusy} onClick={closeProviderConfig}>取消</button><button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}><i data-lucide="check" />{providerBusy ? "保存中..." : "保存配置"}</button></div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1872,10 +1780,16 @@ export function ModelGatewayPage() {
 
   const renderApps = () => (
     <div data-view="apps" className="on">
-      <div className="page-head">
-        <div className="htitle"><h2>客户端接入</h2><p>把网关路由应用到本地 CLI 客户端（写入配置，先预览 diff 再确认，支持回滚）。这里只管<strong>路由如何接入</strong>；Agent 的工作目录、persona、权限、会话在 CLI Agents 管理。</p></div>
+      <div className="subpage-head app-connection-head">
+        <button className="btn-icon btn-ghost back" type="button" title="返回概览" disabled={providerBusy} onClick={() => setView("overview")}><i data-lucide="arrow-left" /></button>
+        <div className="htitle"><h2>客户端接入</h2><p>把 Gateway 路由写入本地 CLI 客户端。这里只管<strong>路由如何接入</strong>；Agent 工作目录、persona、权限和会话在 CLI Agents 管理。</p></div>
       </div>
-      <div className="tablewrap">
+      <div className="app-connection-summary">
+        <div className="cap"><span className="ct">已接入</span><span className="cv">{connectionRows.filter((connection) => connection.configured).length}</span></div>
+        <div className="cap"><span className="ct">待应用</span><span className="cv">{pendingConnectionRows.length}</span></div>
+        <div className="cap"><span className="ct">写入策略</span><span className="cv">预览 + 确认 + 备份</span></div>
+      </div>
+      <div className="tablewrap app-connection-table">
         <div className="thead"><span>客户端</span><span>路由 Profile</span><span>状态</span><span>动作</span></div>
         <QueryNotice query={appConnections} label="客户端接入" />
         {(!appConnections.isLoading && !appConnections.isError ? connectionRows : []).map((connection) => {

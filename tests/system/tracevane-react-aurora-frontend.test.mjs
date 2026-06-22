@@ -356,7 +356,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "新建", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "移除模型", "设为默认", "保存 alias", "新建 Provider 尚未保存", "可选：保存时写入密钥库"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "网关状态", "需要处理", "新建 API Provider", "登录 Codex", "探测选中 Provider", "检查选中 Provider", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "默认", "保存 alias", "可选：保存时写入密钥库", "动作", "危险操作", "写入策略"]) {
     assert.match(page, new RegExp(label));
   }
   for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
@@ -373,15 +373,21 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /saveModelAlias/);
   assert.match(page, /setProviderDefaultModel/);
   assert.match(page, /检查选中 Provider/);
+  assert.match(page, /providerConfigSections/);
+  assert.match(page, /provider-config-sections/);
+  assert.match(page, /app-connection-summary/);
   assert.doesNotMatch(page, /全部连通检查/);
   assert.doesNotMatch(page, /GLM endpoint A 降级/);
   assert.doesNotMatch(page, /本地 vLLM 熔断/);
   assert.doesNotMatch(page, /modelsText/);
   assert.doesNotMatch(page, /更新密钥/);
+  assert.doesNotMatch(page, /选中后右侧/);
   assert.match(page, /providerDialogMode === "create"/);
   assert.match(page, /新建 ·/);
-  assert.match(page, /statusText = isCreatingProvider[\s\S]*\? "draft"/);
-  assert.match(page, /isCreatingProvider[\s\S]*selectedEndpoints =/);
+  assert.match(page, /provider-table/);
+  assert.match(page, /provider-row-actions/);
+  assert.match(page, /provider-config-flow/);
+  assert.match(page, /createIcons\(\{ icons: modelGatewayIcons, root \}\)/);
 });
 
 test("IM Channels is a real React page backed by read-only existing APIs", () => {

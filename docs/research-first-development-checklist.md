@@ -1,6 +1,6 @@
 # Research-First Development Checklist
 
-> 更新：2026-06-21
+> 更新：2026-06-22
 > 原则：任何新功能、行为修改、协议/SDK/Provider/Channel/Agent 适配，都必须先核验当前外部合同，再设计和实现。
 
 ## 开工门禁
@@ -65,8 +65,8 @@
 
 - 2026-06-22 Model Gateway 前端设计收口：
   - 范围：继续按 `/model-gateway` 原型收口，但从只读升级为受控配置面。主 tab 仍是 `概览 / Provider / 模型 / 用量`；Provider 新建/编辑进入 `providercfg` 子页面，删除、客户端接入应用/回滚走确认流，账号池刷新/启停/清冷却走账号子页面。
-  - 来源核验：本地设计约束 `docs/界面设计守则.md` 和 `docs/prototypes/aurora-design-system.md` 明确要求模型网关主 tab 收敛、Provider 配置/账号池/客户端接入下钻；原型片段 `docs/prototypes/pages/model-gateway.html` 给出 Provider List-Detail + inspector + `providercfg/accounts/apps` 子页面形态。外部资料复核了 OpenAI Codex config advanced/reference 对 `config.toml` 自定义 provider/catalog 的入口、Claude Code `ANTHROPIC_BASE_URL`/settings.json 网关路由边界、OpenCode provider/model 配置和 OpenAI-compatible provider 入口，结论是前端可以消费现有本地 Gateway 管理 API，但不能绕过后端的备份、掩码密钥、确认和回滚边界。
-  - 稳定结论：模型网关主页面承载 Gateway 路由事实、Provider 主对象、模型目录和用量证据；Provider 创建/编辑、Endpoint profile、网络/推理/元数据、账号池和客户端接入都必须在原型子页面或确认流内执行。前端不直接写客户端配置文件或明文密钥，只调用 `/api/model-gateway/*` 管理合同。
+  - 来源核验：本地设计约束 `docs/界面设计守则.md`、`docs/prototypes/aurora-design-system.md` 和新增 `docs/model-gateway-ia-contract.md` 明确要求模型网关主 tab 收敛、Provider 配置/账号池/客户端接入下钻；原型片段 `docs/prototypes/pages/model-gateway.html` 给出 Provider List-Detail + inspector + `providercfg/accounts/apps` 子页面形态。外部资料复核了 React Router routing/layout、TanStack Query mutation/update、MDN `<dialog>` 和 WAI-ARIA modal dialog pattern，结论是模型网关子流程可以保持在同一页面状态内，但写动作必须有明确父域、确认、结果证据和 query refetch。此前已复核 OpenAI Codex config advanced/reference、Claude Code `ANTHROPIC_BASE_URL`/settings.json、OpenCode provider/model 配置和 OpenAI-compatible provider 入口，前端可以消费现有本地 Gateway 管理 API，但不能绕过后端的备份、掩码密钥、确认和回滚边界。
+  - 稳定结论：模型网关主页面承载 Gateway 路由事实、Provider 主对象、模型目录和用量证据；Provider 创建/编辑、Endpoint profile、网络/推理/元数据、账号池和客户端接入都必须在原型子页面或确认流内执行。客户端接入属于模型网关，因为它把 Gateway 路由写入 Codex/Claude Code/OpenCode 等本地客户端；CLI Agents 只读引用并跳转，不重复路由编辑。前端不直接写客户端配置文件或明文密钥，只调用 `/api/model-gateway/*` 管理合同。
   - 拒绝方案：拒绝把 Provider 创建、Endpoint 表单、账号池、客户端接入和删除操作堆在同一屏；拒绝新增非原型 `clientauth` 主页面；拒绝用前端假数据替代后端真实 app connection 或 account pool 数据；拒绝绕开后端 backup/rollback 机制直接写 CLI 配置。
   - 风险与验证：风险是 Provider inspector 信息过多再次变成堆叠页，后续新增字段必须按主对象/关联层/配置层判断是否下钻。当前验证覆盖原型 `data-view` parity、`typecheck:web` 和 React Aurora 页面契约；完成前还需 `build:web`、API/build 回归、dev restart、live Gateway API checks 和移动/桌面溢出复核。
 - 2026-06-19 Model Gateway Codex Chat adapter 点号噪声收口：
