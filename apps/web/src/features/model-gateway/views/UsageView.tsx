@@ -12,7 +12,7 @@ import {
 } from "@/design/ui/table";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton } from "@/shared/states/Skeleton";
 
 import {
   useModelGatewayStatusQuery,
@@ -47,7 +47,21 @@ export function UsageView(_props: ModelGatewayViewProps) {
   const statusQuery = useModelGatewayStatusQuery();
 
   if (usageQuery.isLoading) {
-    return <LoadingState title="加载用量数据…" />;
+    return (
+      <div className="grid gap-4" role="status" aria-busy="true">
+        <div className="grid gap-2">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Skeleton className="h-[76px]" />
+          <Skeleton className="h-[76px]" />
+          <Skeleton className="h-[76px]" />
+          <Skeleton className="h-[76px]" />
+        </div>
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
   }
 
   if (usageQuery.error) {
@@ -77,7 +91,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
   return (
     <div className="grid gap-4">
       <div>
-        <h2 className="text-xl font-semibold text-ink-strong">用量</h2>
+        <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
         <p className="text-sm text-muted">
           请求、token 与延迟分布，按模型拆分。数据来源于网关用量账本。
         </p>

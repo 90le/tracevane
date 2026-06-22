@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, Bot, KeyRound, Plus, Settings2, Users } from "lucide-react";
+import { Activity, Bot, KeyRound, Loader2, Plus, Settings2, Users } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -13,7 +13,13 @@ import {
 } from "@/design/ui/table";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/design/ui/tooltip";
 import { toast } from "@/design/ui/sonner";
 
 import {
@@ -83,6 +89,39 @@ function ProviderTypeBadge({ provider }: { provider: ModelGatewayProviderView })
   );
 }
 
+/** Icon-only row action with an accessible tooltip + label. */
+function IconAction({
+  icon,
+  label,
+  onClick,
+  disabled,
+  busy,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+          title={label}
+        >
+          {busy ? <Loader2 className="animate-spin" /> : icon}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{busy ? "进行中…" : label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const providersQuery = useModelGatewayProvidersQuery();
   const smokeMutation = useSmokeModelGatewayActiveRouteMutation();
@@ -123,7 +162,19 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   };
 
   if (providersQuery.isLoading) {
-    return <LoadingState title="加载 Provider…" />;
+    return (
+      <div className="grid gap-4" role="status" aria-busy="true">
+        <div className="grid gap-2">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="rounded-md border border-line bg-panel">
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </div>
+    );
   }
 
   if (providersQuery.error) {
@@ -143,7 +194,8 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const providers = providersQuery.data?.providers ?? [];
 
   return (
-    <div className="grid gap-4">
+    <TooltipProvider delayDuration={200}>
+      <div className="grid gap-4">
       {/* Page head + the two SEPARATE create entry points (IA contract). */}
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -214,35 +266,25 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <IconAction
+                        icon={<Settings2 />}
+                        label="配置"
                         onClick={() => goToView("providercfg", { provider: provider.id })}
-                      >
-                        <Settings2 />
-                        配置
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      />
+                      <IconAction
+                        icon={<Activity />}
+                        label="连通检查"
                         onClick={() => handleSmoke(provider)}
                         disabled={smokeMutation.isPending && smokingId === provider.id}
-                      >
-                        <Activity />
-                        {smokeMutation.isPending && smokingId === provider.id
-                          ? "检查中…"
-                          : "连通检查"}
-                      </Button>
+                        busy={smokeMutation.isPending && smokingId === provider.id}
+                      />
                       {isAccountProvider && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <IconAction
+                          icon={<Users />}
+                          label="账号池"
                           onClick={() => goToView("accounts", { provider: provider.id })}
-                        >
-                          <Users />
-                          账号池
-                        </Button>
+                        />
                       )}
                     </div>
                   </TableCell>
@@ -257,6 +299,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
         <Plus className="mr-1 inline size-3" />
         删除 Provider 在「配置 → 危险操作」中执行，需确认。
       </p>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

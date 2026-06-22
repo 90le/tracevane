@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Box, Check, Pencil, X } from "lucide-react";
+import { Box, Check, Loader2, Pencil, X } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { cn } from "@/design/lib/utils";
 import { Input } from "@/design/ui/input";
 import {
   Table,
@@ -14,7 +15,7 @@ import {
 } from "@/design/ui/table";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
 import {
@@ -171,7 +172,19 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
   };
 
   if (providersQuery.isLoading) {
-    return <LoadingState title="加载模型目录…" />;
+    return (
+      <div className="grid gap-4" role="status" aria-busy="true">
+        <div className="grid gap-2">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="rounded-md border border-line bg-panel">
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </div>
+    );
   }
 
   if (providersQuery.error) {
@@ -229,14 +242,16 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                           {row.model.label || row.model.id}
                         </strong>
                         {editing ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className={cn("flex items-center gap-1.5", busy && "opacity-60")}>
                             <Input
                               autoFocus
                               value={aliasDraft}
                               onChange={(e) => setAliasDraft(e.target.value)}
                               placeholder="alias（留空清除）"
                               className="h-7 w-40"
+                              disabled={busy}
                               onKeyDown={(e) => {
+                                if (busy) return;
                                 if (e.key === "Enter") saveAlias(row);
                                 if (e.key === "Escape") cancelEdit();
                               }}
@@ -247,10 +262,17 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                               onClick={() => saveAlias(row)}
                               disabled={busy}
                             >
-                              <Check />
+                              {busy ? <Loader2 className="animate-spin" /> : <Check />}
                               保存
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEdit}
+                              disabled={busy}
+                              aria-label="取消编辑"
+                              title="取消编辑"
+                            >
                               <X />
                             </Button>
                           </div>

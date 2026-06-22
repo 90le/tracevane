@@ -20,7 +20,7 @@ import {
 } from "@/design/ui/table";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
 import {
@@ -67,6 +67,14 @@ function cooldownHint(value: string | null): string | null {
   if (mins < 60) return `约 ${mins} 分钟后`;
   const hrs = Math.round(mins / 60);
   return `约 ${hrs} 小时后`;
+}
+
+/** Short HH:MM clock time of a cooldown deadline, or null when absent/past. */
+function cooldownClock(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) return null;
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 /**
@@ -212,6 +220,7 @@ function AccountRow({
     label: account.state,
   };
   const cooldown = cooldownHint(account.cooldownUntil);
+  const cooldownAt = cooldownClock(account.cooldownUntil);
   const busy = updateMutation.isPending || refreshMutation.isPending;
 
   const runUpdate = (
@@ -253,8 +262,11 @@ function AccountRow({
         <span className="mr-1.5 text-xs text-subtle sm:hidden">状态</span>
         <div className="flex flex-col gap-0.5">
           <Badge variant={badge.variant}>{badge.label}</Badge>
-          {account.state === "cooldown" && cooldown && (
-            <span className="text-xs text-subtle">冷却至 {cooldown}</span>
+          {account.state === "cooldown" && (cooldownAt || cooldown) && (
+            <span className="text-xs text-subtle" title={fmtTime(account.cooldownUntil)}>
+              {cooldownAt ? `冷却至 ${cooldownAt}` : "冷却中"}
+              {cooldown && `（${cooldown}）`}
+            </span>
           )}
         </div>
       </TableCell>
@@ -320,7 +332,19 @@ export function AccountPoolView({ selectedProvider, goToView }: ModelGatewayView
   const providersQuery = useModelGatewayProvidersQuery();
 
   if (providersQuery.isLoading) {
-    return <LoadingState title="加载账号池…" />;
+    return (
+      <div className="grid gap-4" role="status" aria-busy="true">
+        <div className="grid gap-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <Skeleton className="h-24 w-full" />
+        <div className="rounded-md border border-line bg-panel">
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </div>
+    );
   }
 
   if (providersQuery.error) {

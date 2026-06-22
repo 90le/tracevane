@@ -5,7 +5,7 @@ import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
   useModelGatewayAppConnectionsQuery,
@@ -121,7 +121,19 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const error = statusQuery.error ?? providersQuery.error ?? connectionsQuery.error;
 
   if (isLoading) {
-    return <LoadingState title="加载网关状态…" />;
+    return (
+      <div className="grid gap-[18px]" role="status" aria-busy="true">
+        <Skeleton className="h-[132px] w-full" />
+        <section className="rounded-md border border-line bg-panel shadow-sm">
+          <Skeleton className="h-12 w-full rounded-b-none" />
+          <div className="py-1.5">
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
+        </section>
+      </div>
+    );
   }
 
   if (error) {
@@ -191,6 +203,20 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               : "Gateway 监听信息不可用"}
           </span>
         </div>
+        {/* At-a-glance health anchor — derived only from live status. */}
+        <p className="mt-3 text-base text-ink-strong">
+          {listener ? "网关在线" : "网关状态未知"}
+          <span className="text-muted"> · </span>
+          {activeRoutes.length} 个路由
+          <span className="text-muted"> · </span>
+          {health?.okProviders ?? healthyProviders.length} 个 Provider 健康
+          {degraded > 0 && (
+            <>
+              <span className="text-muted"> / </span>
+              <span className="text-amber">{degraded} 降级</span>
+            </>
+          )}
+        </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="rounded-sm border border-line bg-panel p-3">
             <span className="text-xs text-subtle">健康 Provider</span>

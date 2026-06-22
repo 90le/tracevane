@@ -47,6 +47,7 @@ import {
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { CodeBlock, DiffView } from "@/shared/diff/DiffView";
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
@@ -758,7 +759,19 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
   }, [selectedApp, connectionsQuery.data]);
 
   if (connectionsQuery.isLoading) {
-    return <LoadingState title="加载客户端接入…" />;
+    return (
+      <div className="grid gap-4" role="status" aria-busy="true">
+        <div className="grid gap-2">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+        <div className="rounded-md border border-line bg-panel">
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </div>
+      </div>
+    );
   }
 
   if (connectionsQuery.error) {

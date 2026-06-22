@@ -27,7 +27,7 @@ import {
 import { Input } from "@/design/ui/input";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { LoadingState } from "@/shared/states/LoadingState";
+import { Skeleton } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
 import {
@@ -409,6 +409,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const [initialized, setInitialized] = React.useState(false);
   const [showErrors, setShowErrors] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [confirmLeave, setConfirmLeave] = React.useState(false);
+
+  // Baseline snapshot of the hydrated form, used to detect unsaved edits.
+  const baselineRef = React.useRef<string | null>(null);
 
   // Secret editing
   const [secretDraft, setSecretDraft] = React.useState("");
@@ -418,10 +422,14 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   React.useEffect(() => {
     if (initialized) return;
     if (isCreate) {
-      setForm(emptyForm());
+      const next = emptyForm();
+      setForm(next);
+      baselineRef.current = JSON.stringify(next);
       setInitialized(true);
     } else if (provider) {
-      setForm(formFromProvider(provider));
+      const next = formFromProvider(provider);
+      setForm(next);
+      baselineRef.current = JSON.stringify(next);
       setInitialized(true);
     }
   }, [isCreate, provider, initialized]);
@@ -431,9 +439,38 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
 
   const validation = React.useMemo(() => validate(form), [form]);
 
+  // Unsaved-changes guard: the form drifted from its hydrated baseline,
+  // or a secret was typed but not yet applied.
+  const isDirty =
+    initialized &&
+    (baselineRef.current !== JSON.stringify(form) || secretDraft.trim().length > 0);
+
+  // Leave the config sub-view, guarding unsaved edits behind a confirm.
+  const leaveToList = () => {
+    if (isDirty) {
+      setConfirmLeave(true);
+      return;
+    }
+    goToView("providers");
+  };
+
   // Loading / not-found guards (edit mode).
   if (!isCreate) {
-    if (providersQuery.isLoading) return <LoadingState title="加载 Provider 配置…" />;
+    if (providersQuery.isLoading) {
+      return (
+        <div className="grid gap-4" role="status" aria-busy="true">
+          <div className="flex items-start gap-3">
+            <Skeleton className="size-9 rounded-sm" />
+            <div className="grid flex-1 gap-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          </div>
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      );
+    }
     if (providersQuery.error) {
       return (
         <ErrorState
@@ -924,7 +961,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     <div className="grid gap-4">
       {/* Subpage head */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={() => goToView("providers")} title="返回">
+        <Button variant="ghost" size="icon" onClick={leaveToList} title="返回" aria-label="返回">
           <ArrowLeft />
         </Button>
         <div className="min-w-0">
@@ -994,7 +1031,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
           </span>
         )}
         <span className="ml-auto flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+          <Button variant="ghost" size="sm" onClick={leaveToList}>
             取消
           </Button>
           <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
@@ -1022,6 +1059,34 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
             </Button>
             <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? "删除中…" : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unsaved-changes guard */}
+      <Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+              <AlertTriangle />
+            </span>
+            <DialogTitle>有未保存的更改</DialogTitle>
+          </DialogHeader>
+          <DialogBody>有未保存的更改，确定离开？离开后本次编辑不会被保存。</DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmLeave(false)}>
+              继续编辑
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setConfirmLeave(false);
+                goToView("providers");
+              }}
+            >
+              放弃并离开
             </Button>
           </DialogFooter>
         </DialogContent>
