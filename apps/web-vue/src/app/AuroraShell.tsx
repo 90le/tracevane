@@ -429,14 +429,12 @@ export function AuroraShell({ children }: { children: ReactNode }) {
 
   const pageCommands: Record<string, CommandItem[]> = useMemo(() => ({
     "model-gateway": [
-      { group: "本页动作", label: "新增 Provider", icon: "plus", act: () => toast("新增 Provider（演示）", "info") },
-      { group: "本页动作", label: "全部连通检查", icon: "activity", act: () => toast("全部路由连通检查通过", "ok") },
-      { group: "本页动作", label: "探测 Provider", icon: "scan-search", act: () => toast("正在探测本地 Provider", "info") },
+      { group: "本页动作", label: "打开模型网关", icon: "route", act: () => navigate("/model-gateway") },
     ],
     chat: [{ group: "本页动作", label: "新建会话", icon: "plus", kbd: "⌘N", act: () => toast("新建会话（演示）", "info") }],
     approvals: [{ group: "本页动作", label: "批准全部", icon: "check", act: () => toast("已批准全部待审批", "ok") }],
     recovery: [{ group: "本页动作", label: "重新巡检", icon: "scan-search", act: () => toast("巡检完成 · 2 项可修复", "info") }],
-  }), [toast]);
+  }), [navigate, toast]);
 
   const commands = useMemo<CommandItem[]>(() => [
     ...routeDefs.map((item) => ({ group: "导航", label: item.label, icon: item.icon, act: () => navigate(`/${item.path}`) })),

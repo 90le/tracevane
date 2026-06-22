@@ -336,7 +336,7 @@ test("Dashboard is a real React cockpit backed by read-only core status APIs", (
   assert.doesNotMatch(page, /method:\\s*"POST"/);
 });
 
-test("Model Gateway is a real React page backed by read-only existing APIs", () => {
+test("Model Gateway is a real React page aligned to the prototype with guarded write flows", () => {
   const app = read("apps/web-vue/src/app/App.tsx");
   const manifest = read("apps/web-vue/src/app/route-manifest.ts");
   const page = read("apps/web-vue/src/app/ModelGatewayPage.tsx");
@@ -349,16 +349,24 @@ test("Model Gateway is a real React page backed by read-only existing APIs", () 
     "/api/model-gateway/providers",
     "/api/model-gateway/app-connections",
     "/api/model-gateway/usage",
-    "/api/model-gateway/daemon-service",
+    "/api/model-gateway/detect-provider",
+    "/api/model-gateway/active-provider",
+    "/api/model-gateway/account-providers/codex/login/start",
+    "/api/model-gateway/app-connections/",
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "写入动作进入下钻确认流"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "新建", "保存配置", "账号池", "客户端接入"]) {
     assert.match(page, new RegExp(label));
   }
+  for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
+    assert.match(page, new RegExp(`data-view="${view}"`));
+  }
   assert.doesNotMatch(page, /active-route-smoke/);
-  assert.doesNotMatch(page, /app-connections\/apply/);
-  assert.doesNotMatch(page, /rollback/);
+  assert.match(page, /openDialog/);
+  assert.match(page, /method: "POST"/);
+  assert.match(page, /method: "PUT"/);
+  assert.match(page, /method: "DELETE"/);
 });
 
 test("IM Channels is a real React page backed by read-only existing APIs", () => {

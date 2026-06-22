@@ -6,7 +6,7 @@ import { useShell } from "./shell-context";
 
 type AnyRecord = Record<string, unknown>;
 type GatewayView = "overview" | "providers" | "models" | "usage" | "accounts" | "apps";
-type ProviderDialogMode = "edit";
+type ProviderDialogMode = "create" | "edit";
 type ProviderFilter = "all" | "online" | "degraded" | "account";
 type ProviderDetailTab = "overview" | "endpoints" | "models";
 
@@ -14,13 +14,28 @@ interface ProviderDraft {
   id: string;
   name: string;
   enabled: boolean;
+  category: string;
+  sourceType: string;
   baseUrl: string;
   apiFormat: string;
   authStrategy: string;
   defaultModel: string;
   modelsText: string;
+  endpointProfilesText: string;
   appScopes: Record<string, boolean>;
   apiKey: string;
+  timeoutMs: string;
+  firstByteTimeoutMs: string;
+  idleTimeoutMs: string;
+  proxyUrl: string;
+  tlsVerify: boolean;
+  supportsThinking: boolean;
+  supportsEffort: boolean;
+  thinkingParam: string;
+  effortParam: string;
+  website: string;
+  tagsText: string;
+  notes: string;
 }
 
 const gatewayQueries = {
@@ -39,16 +54,45 @@ const appScopeOptions = [
 ] as const;
 
 const apiFormatOptions = [
-  ["openai_chat", "OpenAI Chat"],
-  ["openai_responses", "OpenAI Responses"],
+  ["openai_chat", "OpenAI Chat（聊天）"],
+  ["openai_responses", "OpenAI Responses（响应）"],
   ["anthropic_messages", "Anthropic Messages"],
-  ["openai_compatible", "OpenAI compatible"],
+  ["gemini_native", "Gemini 原生"],
 ] as const;
 
 const authStrategyOptions = [
-  ["bearer", "Bearer"],
-  ["api-key", "API key"],
-  ["none", "None"],
+  ["bearer", "Bearer 密钥"],
+  ["anthropic_api_key", "Anthropic API Key"],
+  ["openrouter", "OpenRouter"],
+  ["oauth_proxy", "OAuth 代理"],
+  ["none", "无鉴权"],
+] as const;
+
+const categoryOptions = [
+  ["official", "官方"],
+  ["openai-compatible", "OpenAI 兼容"],
+  ["aggregator", "聚合平台"],
+  ["local", "本地"],
+  ["custom", "自定义"],
+] as const;
+
+const sourceTypeOptions = [
+  ["api-key", "密钥"],
+  ["account-backed", "账号池"],
+  ["external-relay", "外部转发"],
+] as const;
+
+const thinkingParamOptions = [
+  ["none", "不透传"],
+  ["thinking", "thinking"],
+  ["enable_thinking", "enable_thinking"],
+  ["reasoning_split", "reasoning_split"],
+] as const;
+
+const effortParamOptions = [
+  ["none", "不透传"],
+  ["reasoning_effort", "reasoning_effort"],
+  ["reasoning.effort", "reasoning.effort"],
 ] as const;
 
 const providerFilterOptions: Array<[ProviderFilter, string]> = [
@@ -93,6 +137,20 @@ function numberAt(value: unknown, keys: string[], fallback = 0): number {
   return fallback;
 }
 
+function boolAt(value: unknown, keys: string[], fallback = false): boolean {
+  const record = asRecord(value);
+  for (const key of keys) {
+    const direct = record[key];
+    if (typeof direct === "boolean") return direct;
+  }
+  return fallback;
+}
+
+function positiveIntegerOrUndefined(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
 function formatCompact(value: unknown): string {
   const number = typeof value === "number" && Number.isFinite(value) ? value : Number(value || 0);
   if (!Number.isFinite(number)) return "0";
@@ -118,18 +176,67 @@ function compactList(values: unknown[], fallback = "-"): string {
   return cleaned.length ? cleaned.join(" · ") : fallback;
 }
 
+function formatTokens(value: unknown): string {
+  const number = typeof value === "number" && Number.isFinite(value) ? value : Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return "-";
+  if (number >= 1000) return `${Math.round(number / 1000)}k tokens`;
+  return `${number} tokens`;
+}
+
+function formatPricing(value: unknown, currency = "¥"): string {
+  const number = typeof value === "number" && Number.isFinite(value) ? value : null;
+  return number === null ? "-" : `${currency}${number} / 1M`;
+}
+
+function accountStateLabel(value: unknown): string {
+  const text = String(value ?? "");
+  if (text === "ready") return "正常";
+  if (text === "cooldown") return "冷却";
+  if (text === "needs-login") return "需登录";
+  if (text === "refreshing") return "刷新中";
+  if (text === "disabled") return "停用";
+  if (text === "error") return "异常";
+  return text || "未知";
+}
+
+function formatRelativeFuture(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "-";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  const diffMs = timestamp - Date.now();
+  if (diffMs <= 0) return "可重试";
+  const minutes = Math.ceil(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.ceil(minutes / 60)}h`;
+}
+
 function emptyProviderDraft(): ProviderDraft {
   return {
     id: "",
     name: "",
     enabled: true,
+    category: "custom",
+    sourceType: "api-key",
     baseUrl: "",
     apiFormat: "openai_chat",
     authStrategy: "bearer",
     defaultModel: "",
     modelsText: "",
+    endpointProfilesText: "",
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, true])),
     apiKey: "",
+    timeoutMs: "30000",
+    firstByteTimeoutMs: "8000",
+    idleTimeoutMs: "60000",
+    proxyUrl: "",
+    tlsVerify: true,
+    supportsThinking: true,
+    supportsEffort: true,
+    thinkingParam: "thinking",
+    effortParam: "reasoning_effort",
+    website: "",
+    tagsText: "",
+    notes: "",
   };
 }
 
@@ -137,17 +244,43 @@ function draftFromProvider(provider: AnyRecord | null): ProviderDraft {
   if (!provider) return emptyProviderDraft();
   const modelsPayload = recordAt(provider, ["models"]);
   const modelRows = listAt(modelsPayload, ["models"]).map(asRecord);
+  const endpointRows = listAt(provider, ["endpointProfiles"]).map(asRecord);
+  const network = recordAt(provider, ["network"]);
+  const reasoning = recordAt(provider, ["reasoning"]);
+  const metadata = recordAt(provider, ["metadata"]);
   return {
     id: textAt(provider, ["id"], ""),
     name: textAt(provider, ["name"], ""),
     enabled: provider.enabled !== false,
+    category: textAt(provider, ["category"], "custom"),
+    sourceType: textAt(provider, ["sourceType"], "api-key"),
     baseUrl: textAt(provider, ["baseUrl"], ""),
     apiFormat: textAt(provider, ["apiFormat"], "openai_chat"),
     authStrategy: textAt(provider, ["authStrategy"], "bearer"),
     defaultModel: textAt(modelsPayload, ["defaultModel"], ""),
     modelsText: modelRows.map((model) => textAt(model, ["id"], "")).filter(Boolean).join("\n"),
+    endpointProfilesText: endpointRows.map((endpoint) => [
+      textAt(endpoint, ["id"], "primary"),
+      textAt(endpoint, ["name"], "Primary endpoint"),
+      textAt(endpoint, ["baseUrl"], textAt(provider, ["baseUrl"], "")),
+      textAt(endpoint, ["apiFormat"], textAt(provider, ["apiFormat"], "openai_chat")),
+      textAt(endpoint, ["authStrategy"], textAt(provider, ["authStrategy"], "bearer")),
+      endpoint.enabled === false ? "disabled" : "enabled",
+    ].join(" | ")).join("\n"),
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, listAt(provider, ["appScopes"]).map(String).includes(scope)])),
     apiKey: "",
+    timeoutMs: String(numberAt(network, ["timeoutMs"], 30000)),
+    firstByteTimeoutMs: String(numberAt(network, ["streamingFirstByteTimeoutMs"], 8000)),
+    idleTimeoutMs: String(numberAt(network, ["streamingIdleTimeoutMs"], 60000)),
+    proxyUrl: textAt(network, ["proxyUrl"], ""),
+    tlsVerify: boolAt(network, ["tlsVerify"], true),
+    supportsThinking: boolAt(reasoning, ["supportsThinking"], true),
+    supportsEffort: boolAt(reasoning, ["supportsEffort"], true),
+    thinkingParam: textAt(reasoning, ["thinkingParam"], "thinking"),
+    effortParam: textAt(reasoning, ["effortParam"], "reasoning_effort"),
+    website: textAt(metadata, ["website"], ""),
+    tagsText: listAt(metadata, ["tags"]).map(String).join(", "),
+    notes: textAt(metadata, ["notes"], ""),
   };
 }
 
@@ -160,6 +293,72 @@ function modelCatalogFromDraft(draft: ProviderDraft): AnyRecord {
     defaultModel: draft.defaultModel.trim() || ids[0] || null,
     models: ids.map((id) => ({ id })),
     aliases: {},
+  };
+}
+
+function endpointProfilesFromDraft(draft: ProviderDraft): AnyRecord[] | undefined {
+  const lines = draft.endpointProfilesText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  if (!lines.length) return undefined;
+  return lines.map((line, index) => {
+    const [id, name, baseUrl, apiFormat, authStrategy, enabled] = line.split("|").map((value) => value.trim());
+    return {
+      id: id || `endpoint-${index + 1}`,
+      name: name || id || `Endpoint ${index + 1}`,
+      baseUrl: baseUrl || draft.baseUrl.trim(),
+      apiFormat: apiFormat || draft.apiFormat,
+      authStrategy: authStrategy || draft.authStrategy,
+      enabled: enabled ? !/^(disabled|false|off|停用)$/i.test(enabled) : true,
+      appScopes: appScopeOptions.filter(([scope]) => draft.appScopes[scope]).map(([scope]) => scope),
+      models: null,
+      network: {
+        timeoutMs: positiveIntegerOrUndefined(draft.timeoutMs),
+        streamingFirstByteTimeoutMs: positiveIntegerOrUndefined(draft.firstByteTimeoutMs),
+        streamingIdleTimeoutMs: positiveIntegerOrUndefined(draft.idleTimeoutMs),
+        proxyUrl: draft.proxyUrl.trim() || null,
+        tlsVerify: draft.tlsVerify,
+      },
+      reasoning: {
+        supportsThinking: draft.supportsThinking,
+        supportsEffort: draft.supportsEffort,
+        thinkingParam: draft.supportsThinking ? draft.thinkingParam : "none",
+        effortParam: draft.supportsEffort ? draft.effortParam : "none",
+      },
+    };
+  });
+}
+
+function providerInputFromDraft(draft: ProviderDraft): AnyRecord {
+  const endpointProfiles = endpointProfilesFromDraft(draft);
+  return {
+    id: draft.id.trim(),
+    name: draft.name.trim(),
+    enabled: draft.enabled,
+    category: draft.category,
+    sourceType: draft.sourceType,
+    appScopes: appScopeOptions.filter(([scope]) => draft.appScopes[scope]).map(([scope]) => scope),
+    baseUrl: draft.baseUrl.trim(),
+    apiFormat: draft.apiFormat,
+    authStrategy: draft.authStrategy,
+    models: modelCatalogFromDraft(draft),
+    network: {
+      timeoutMs: positiveIntegerOrUndefined(draft.timeoutMs),
+      streamingFirstByteTimeoutMs: positiveIntegerOrUndefined(draft.firstByteTimeoutMs),
+      streamingIdleTimeoutMs: positiveIntegerOrUndefined(draft.idleTimeoutMs),
+      proxyUrl: draft.proxyUrl.trim() || null,
+      tlsVerify: draft.tlsVerify,
+    },
+    reasoning: {
+      supportsThinking: draft.supportsThinking,
+      supportsEffort: draft.supportsEffort,
+      thinkingParam: draft.supportsThinking ? draft.thinkingParam : "none",
+      effortParam: draft.supportsEffort ? draft.effortParam : "none",
+    },
+    metadata: {
+      website: draft.website.trim() || undefined,
+      notes: draft.notes.trim() || undefined,
+      tags: draft.tagsText.split(",").map((value) => value.trim()).filter(Boolean),
+    },
+    ...(endpointProfiles ? { endpointProfiles } : {}),
   };
 }
 
@@ -275,17 +474,21 @@ function ProviderInspector({
   detailTab,
   onDetailTab,
   onEdit,
+  onToggle,
   onTest,
   onDelete,
   onAccounts,
+  onSetRoute,
 }: {
   provider: AnyRecord | null;
   detailTab: ProviderDetailTab;
   onDetailTab: (tab: ProviderDetailTab) => void;
   onEdit: (provider: AnyRecord) => void;
+  onToggle: (provider: AnyRecord) => void;
   onTest: (provider: AnyRecord) => void;
   onDelete: (provider: AnyRecord) => void;
   onAccounts: () => void;
+  onSetRoute: (scope: string, provider: AnyRecord) => void;
 }) {
   if (!provider) {
     return (
@@ -313,7 +516,7 @@ function ProviderInspector({
             <strong>{textAt(provider, ["name", "id"], "Provider")}</strong>
             <div><span>{compactList([textAt(provider, ["apiFormat"], "-"), `${endpoints.length} endpoint`, accountProvider.kind || textAt(provider, ["sourceType"], "api-key")])}</span></div>
           </div>
-          <button className={`toggle ${provider.enabled !== false ? "on" : ""}`} type="button" title="启用 / 停用" style={{ marginLeft: "auto" }} onClick={() => onEdit(provider)} />
+          <button className={`toggle ${provider.enabled !== false ? "on" : ""}`} type="button" title="启用 / 停用" style={{ marginLeft: "auto" }} onClick={() => onToggle(provider)} />
         </div>
         <div className="tabs" role="tablist" aria-label="Provider 详情">
           {[
@@ -341,7 +544,13 @@ function ProviderInspector({
           <div>
             <div className="section-label">设为默认路由</div>
             <div className="seg" style={{ marginTop: 6 }}>
-              {["默认", "Codex", "Claude"].map((scope, index) => <button className={index === 0 ? "on" : ""} type="button" key={scope}>{scope}</button>)}
+              {[
+                ["openclaw", "默认"],
+                ["codex", "Codex"],
+                ["claude-code", "Claude"],
+              ].map(([scope, label]) => (
+                <button type="button" key={scope} onClick={() => onSetRoute(scope, provider)}>{label}</button>
+              ))}
             </div>
           </div>
           <div className="row-actions">
@@ -419,6 +628,8 @@ export function ModelGatewayPage() {
   const [providerDialogMode, setProviderDialogMode] = useState<ProviderDialogMode | null>(null);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(() => emptyProviderDraft());
   const [providerBusy, setProviderBusy] = useState(false);
+  const [selectedModelKey, setSelectedModelKey] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
 
   const status = useQuery({ queryKey: ["model-gateway", "status"], queryFn: () => apiJson(gatewayQueries.status), retry: false });
   const runtime = useQuery({ queryKey: ["model-gateway", "runtime"], queryFn: () => apiJson(gatewayQueries.runtime), retry: false });
@@ -428,7 +639,7 @@ export function ModelGatewayPage() {
 
   useEffect(() => {
     shell.refreshIcons();
-  }, [shell, view, providerSearch, providerFilter, providerDetailTab, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
+  }, [shell, view, providerSearch, providerFilter, providerDetailTab, modelSearch, status.data, runtime.data, providers.data, appConnections.data, usage.data]);
 
   const providerRows = listAt(providers.data, ["providers"]).map(asRecord);
   const activeRoutes = listAt(providers.data, ["activeRoutes"]).map(asRecord);
@@ -467,6 +678,19 @@ export function ModelGatewayPage() {
     setProviderDialogMode("edit");
   };
 
+  const openProviderCreate = () => {
+    setProviderDraft({
+      ...emptyProviderDraft(),
+      id: `provider-${Date.now().toString(36)}`,
+      name: "新 Provider",
+      baseUrl: "https://api.example.com/v1",
+      defaultModel: "model-id",
+      modelsText: "model-id",
+      endpointProfilesText: "primary | 主 endpoint | https://api.example.com/v1 | openai_chat | bearer | enabled",
+    });
+    setProviderDialogMode("create");
+  };
+
   const saveProviderDraft = async () => {
     const id = providerDraft.id.trim();
     const name = providerDraft.name.trim();
@@ -476,22 +700,10 @@ export function ModelGatewayPage() {
     }
     setProviderBusy(true);
     try {
-      const appScopes = appScopeOptions.filter(([scope]) => providerDraft.appScopes[scope]).map(([scope]) => scope);
-      await apiJson("/api/model-gateway/providers", {
-        method: "POST",
+      await apiJson(providerDialogMode === "create" ? "/api/model-gateway/providers" : `/api/model-gateway/providers/${encodeURIComponent(id)}`, {
+        method: providerDialogMode === "create" ? "POST" : "PUT",
         body: {
-          provider: {
-            id,
-            name,
-            enabled: providerDraft.enabled,
-            category: "openai-compatible",
-            sourceType: "api-key",
-            appScopes,
-            baseUrl: providerDraft.baseUrl.trim(),
-            apiFormat: providerDraft.apiFormat,
-            authStrategy: providerDraft.authStrategy,
-            models: modelCatalogFromDraft(providerDraft),
-          },
+          provider: providerInputFromDraft(providerDraft),
           secret: providerDraft.apiKey.trim() ? { apiKey: providerDraft.apiKey.trim() } : undefined,
         },
       });
@@ -502,6 +714,47 @@ export function ModelGatewayPage() {
       await refetchGatewayData();
     } catch (error) {
       shell.toast(error instanceof Error ? error.message : "Provider 保存失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const updateProviderFromDraft = async (draft: ProviderDraft, successMessage: string) => {
+    const id = draft.id.trim();
+    if (!id) return;
+    setProviderBusy(true);
+    try {
+      await apiJson(`/api/model-gateway/providers/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: { provider: providerInputFromDraft(draft) },
+      });
+      shell.toast(successMessage, "ok");
+      await refetchGatewayData();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "Provider 更新失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const toggleProviderEnabled = (provider: AnyRecord) => {
+    const draft = draftFromProvider(provider);
+    void updateProviderFromDraft({ ...draft, enabled: !draft.enabled }, draft.enabled ? "Provider 已停用" : "Provider 已启用");
+  };
+
+  const setActiveProvider = async (scope: string, provider: AnyRecord) => {
+    const providerId = textAt(provider, ["id"], "");
+    if (!providerId) return;
+    setProviderBusy(true);
+    try {
+      await apiJson("/api/model-gateway/active-provider", {
+        method: "POST",
+        body: { scope, providerId },
+      });
+      shell.toast(`${scope} 路由已指向 ${textAt(provider, ["name"], providerId)}`, "ok");
+      await providers.refetch();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "默认路由更新失败", "warn");
     } finally {
       setProviderBusy(false);
     }
@@ -537,6 +790,34 @@ export function ModelGatewayPage() {
     }
   };
 
+  const detectSelectedProvider = async () => {
+    if (!selectedProvider) return;
+    const models = recordAt(selectedProvider, ["models"]);
+    setProviderBusy(true);
+    try {
+      const result = await apiJson<AnyRecord>("/api/model-gateway/detect-provider", {
+        method: "POST",
+        body: {
+          baseUrl: textAt(selectedProvider, ["baseUrl"], ""),
+          model: textAt(models, ["defaultModel"], ""),
+          timeoutMs: 30000,
+        },
+      });
+      shell.openSheet({
+        title: "Provider 探测结果",
+        sub: textAt(selectedProvider, ["name", "id"], "Provider"),
+        status: "ok",
+        owner: "Model Gateway",
+        action: "provider detect",
+        note: JSON.stringify(result, null, 2).slice(0, 5000),
+      });
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "Provider 探测失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
   const confirmDeleteProvider = (provider: AnyRecord) => {
     const providerId = textAt(provider, ["id"], "");
     if (!providerId) return;
@@ -564,15 +845,194 @@ export function ModelGatewayPage() {
     });
   };
 
+  const updateProviderAccount = async (account: AnyRecord, payload: AnyRecord, message: string) => {
+    const providerId = textAt(selectedProvider, ["id"], "");
+    const accountId = textAt(account, ["id"], "");
+    if (!providerId || !accountId) return;
+    setProviderBusy(true);
+    try {
+      await apiJson(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`, {
+        method: "POST",
+        body: payload,
+      });
+      shell.toast(message, "ok");
+      await providers.refetch();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "账号更新失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const refreshProviderAccount = async (account: AnyRecord) => {
+    const providerId = textAt(selectedProvider, ["id"], "");
+    const accountId = textAt(account, ["id"], "");
+    if (!providerId || !accountId) return;
+    setProviderBusy(true);
+    try {
+      await apiJson(`/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/refresh`, {
+        method: "POST",
+      });
+      shell.toast("账号刷新完成", "ok");
+      await providers.refetch();
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "账号刷新失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const startCodexAccountLogin = async () => {
+    const providerId = textAt(selectedProvider, ["id"], "codex-account");
+    setProviderBusy(true);
+    try {
+      const result = await apiJson<AnyRecord>("/api/model-gateway/account-providers/codex/login/start", {
+        method: "POST",
+        body: {
+          providerId,
+          providerName: textAt(selectedProvider, ["name"], "Codex 账号"),
+          setActiveScopes: ["codex"],
+        },
+      });
+      shell.openSheet({
+        title: "登录新账号",
+        sub: "Codex 账号池",
+        status: "pending",
+        owner: "Model Gateway",
+        action: "codex account login",
+        note: [
+          `打开：${textAt(result, ["verificationUrl"], "-")}`,
+          `输入代码：${textAt(result, ["userCode"], "-")}`,
+          `loginId：${textAt(result, ["loginId"], "-")}`,
+          "完成浏览器授权后，重新进入账号池或刷新 Provider 列表查看账号状态。",
+        ].join("\n"),
+      });
+    } catch (error) {
+      shell.toast(error instanceof Error ? error.message : "账号登录启动失败", "warn");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const previewAppConnection = (connection: AnyRecord) => {
+    const preview = recordAt(connection, ["preview"]);
+    shell.openSheet({
+      title: `${textAt(connection, ["label", "id"], "客户端")} 配置预览`,
+      sub: textAt(recordAt(connection, ["target"]), ["path"], textAt(preview, ["targetPath"], "")),
+      status: "pending",
+      owner: "Model Gateway",
+      action: "app connection preview",
+      note: textAt(preview, ["content"], "暂无预览内容").slice(0, 5000),
+    });
+  };
+
+  const applyAppConnection = (connection: AnyRecord) => {
+    const appId = textAt(connection, ["id"], "");
+    if (!appId) return;
+    shell.openDialog({
+      title: `应用客户端接入：${textAt(connection, ["label"], appId)}`,
+      body: `将写入 ${textAt(recordAt(connection, ["target"]), ["path"], "目标配置文件")}，应用前会由后端自动备份。`,
+      tone: "info",
+      icon: "terminal",
+      okLabel: "应用",
+      onConfirm: () => {
+        void (async () => {
+          setProviderBusy(true);
+          try {
+            const result = await apiJson<AnyRecord>(`/api/model-gateway/app-connections/${encodeURIComponent(appId)}/apply`, {
+              method: "POST",
+              body: {},
+            });
+            shell.toast("客户端接入已应用", "ok");
+            shell.openSheet({
+              title: "客户端接入已应用",
+              sub: textAt(connection, ["label"], appId),
+              status: "ok",
+              owner: "Model Gateway",
+              action: "app connection apply",
+              note: JSON.stringify(result, null, 2).slice(0, 3000),
+            });
+            await appConnections.refetch();
+          } catch (error) {
+            shell.toast(error instanceof Error ? error.message : "客户端接入应用失败", "warn");
+          } finally {
+            setProviderBusy(false);
+          }
+        })();
+      },
+    });
+  };
+
+  const rollbackAppConnection = (connection: AnyRecord) => {
+    const appId = textAt(connection, ["id"], "");
+    if (!appId) return;
+    shell.openDialog({
+      title: `回滚客户端接入：${textAt(connection, ["label"], appId)}`,
+      body: "将从最近一次备份恢复客户端配置。该操作会先备份当前文件。",
+      tone: "danger",
+      icon: "rotate-ccw",
+      okLabel: "回滚",
+      onConfirm: () => {
+        void (async () => {
+          setProviderBusy(true);
+          try {
+            const result = await apiJson<AnyRecord>(`/api/model-gateway/app-connections/${encodeURIComponent(appId)}/rollback`, {
+              method: "POST",
+              body: {},
+            });
+            shell.toast("客户端接入已回滚", "ok");
+            shell.openSheet({
+              title: "客户端接入已回滚",
+              sub: textAt(connection, ["label"], appId),
+              status: "ok",
+              owner: "Model Gateway",
+              action: "app connection rollback",
+              note: JSON.stringify(result, null, 2).slice(0, 3000),
+            });
+            await appConnections.refetch();
+          } catch (error) {
+            shell.toast(error instanceof Error ? error.message : "客户端接入回滚失败", "warn");
+          } finally {
+            setProviderBusy(false);
+          }
+        })();
+      },
+    });
+  };
+
   const modelCatalog = useMemo(() => {
-    const rows: Array<{ provider: string; model: AnyRecord; health: string }> = [];
+    const rows: Array<{ key: string; provider: string; providerId: string; model: AnyRecord; health: string }> = [];
     for (const provider of providerRows) {
       const models = listAt(provider, ["models", "models"]).map(asRecord);
       const health = textAt(recordAt(provider, ["health"]), ["circuitState"], "unknown");
-      for (const model of models) rows.push({ provider: textAt(provider, ["name", "id"], "provider"), model, health });
+      const providerId = textAt(provider, ["id"], "provider");
+      for (const model of models) {
+        const modelId = textAt(model, ["id"], "model");
+        rows.push({ key: `${providerId}:${modelId}`, provider: textAt(provider, ["name", "id"], "provider"), providerId, model, health });
+      }
     }
     return rows;
   }, [providerRows]);
+
+  const filteredModelCatalog = useMemo(() => {
+    const needle = modelSearch.trim().toLowerCase();
+    if (!needle) return modelCatalog;
+    return modelCatalog.filter((row) => [
+      row.provider,
+      row.providerId,
+      textAt(row.model, ["id"], ""),
+      textAt(row.model, ["label"], ""),
+      listAt(row.model, ["aliases"]).join(" "),
+    ].join(" ").toLowerCase().includes(needle));
+  }, [modelCatalog, modelSearch]);
+  const selectedModel = filteredModelCatalog.find((row) => row.key === selectedModelKey) ?? filteredModelCatalog[0] ?? modelCatalog[0] ?? null;
+  const selectedModelUsage = selectedModel
+    ? usageModels.find((row) => textAt(row, ["model"], "") === textAt(selectedModel.model, ["id"], ""))
+    : null;
+
+  useEffect(() => {
+    if (!selectedModelKey && filteredModelCatalog[0]) setSelectedModelKey(filteredModelCatalog[0].key);
+  }, [filteredModelCatalog, selectedModelKey]);
 
   const gatewayState = numberAt(healthSummary, ["openCircuits"]) > 0
     ? "degraded"
@@ -660,7 +1120,7 @@ export function ModelGatewayPage() {
       <div className="page-head">
         <div className="htitle">
           <h2>Provider</h2>
-          <p>列表优先；选中后右侧检视 endpoint、模型、账号池和健康。深度配置进入 Dialog，危险动作二次确认。</p>
+          <p>列表优先；选中后右侧检视 endpoint、模型、账号池和健康。深度配置进子页面，危险动作二次确认。</p>
         </div>
         <div className="toolbar">
           <span className="search-input">
@@ -672,7 +1132,8 @@ export function ModelGatewayPage() {
               <button key={id} className={providerFilter === id ? "on" : ""} type="button" onClick={() => setProviderFilter(id)}>{label}</button>
             ))}
           </div>
-          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => selectedProvider && void testProvider(selectedProvider)}><i data-lucide="scan-search" /><span>探测</span></button>
+          <button className="btn-ghost" type="button" disabled={!selectedProvider || providerBusy} onClick={() => void detectSelectedProvider()}><i data-lucide="scan-search" /><span>探测</span></button>
+          <button className="btn-primary" type="button" disabled={providerBusy} onClick={openProviderCreate}><i data-lucide="plus" /><span>新建</span></button>
         </div>
       </div>
       <div className="split">
@@ -691,10 +1152,20 @@ export function ModelGatewayPage() {
                 }}
               />
             )) : null}
-            {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选，或者新建一个 Provider。</span></div> : null}
+            {!providers.isLoading && !providers.isError && filteredProviders.length === 0 ? <div className="statebox empty"><span className="si"><i data-lucide="route-off" /></span><strong>没有匹配的 Provider</strong><span>调整搜索或筛选；新增 Provider 后续进入专门创建流程。</span></div> : null}
           </div>
         </section>
-        <ProviderInspector provider={selectedProvider} detailTab={providerDetailTab} onDetailTab={setProviderDetailTab} onEdit={openProviderEdit} onTest={testProvider} onDelete={confirmDeleteProvider} onAccounts={() => setView("accounts")} />
+        <ProviderInspector
+          provider={selectedProvider}
+          detailTab={providerDetailTab}
+          onDetailTab={setProviderDetailTab}
+          onEdit={openProviderEdit}
+          onToggle={toggleProviderEnabled}
+          onTest={testProvider}
+          onDelete={confirmDeleteProvider}
+          onAccounts={() => setView("accounts")}
+          onSetRoute={setActiveProvider}
+        />
       </div>
     </div>
   );
@@ -713,7 +1184,7 @@ export function ModelGatewayPage() {
         <div className="subpage">
           <div className="subpage-head">
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
-            <div className="htitle"><h2>{`配置 · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
+            <div className="htitle"><h2>{`${providerDialogMode === "create" ? "新建" : "配置"} · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
           </div>
           <div className="subpage-grid">
             <div>
@@ -724,6 +1195,10 @@ export function ModelGatewayPage() {
                     <div className="fieldset"><label>Provider ID</label><input className="input" value={providerDraft.id} disabled={providerDialogMode === "edit"} onChange={(event) => setProviderDraft((draft) => ({ ...draft, id: event.target.value }))} placeholder="my-provider" /></div>
                     <div className="fieldset"><label>名称</label><input className="input" value={providerDraft.name} onChange={(event) => setProviderDraft((draft) => ({ ...draft, name: event.target.value }))} placeholder="主力模型服务" /></div>
                   </div>
+                  <div className="form-row2">
+                    <div className="fieldset"><label>分类</label><div className="seg-radio">{categoryOptions.map(([value, label]) => <button key={value} className={providerDraft.category === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, category: value }))}>{label}</button>)}</div></div>
+                    <div className="fieldset"><label>来源</label><div className="seg-radio">{sourceTypeOptions.map(([value, label]) => <button key={value} className={providerDraft.sourceType === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, sourceType: value }))}>{label}</button>)}</div></div>
+                  </div>
                   <div className="fieldset"><label>默认 baseUrl</label><input className="input" value={providerDraft.baseUrl} onChange={(event) => setProviderDraft((draft) => ({ ...draft, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" /></div>
                   <div className="fieldset"><label>API 格式</label><div className="seg-radio">{apiFormatOptions.map(([value, label]) => <button key={value} className={providerDraft.apiFormat === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, apiFormat: value }))}>{label}</button>)}</div></div>
                   <div className="fieldset"><label>鉴权方式</label><div className="seg-radio">{authStrategyOptions.map(([value, label]) => <button key={value} className={providerDraft.authStrategy === value ? "on" : ""} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, authStrategy: value }))}>{label}</button>)}</div></div>
@@ -733,40 +1208,58 @@ export function ModelGatewayPage() {
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="key-round" /></span><strong>密钥</strong><span className="sub">仅引用，不存明文</span></div>
                 <div className="cfg-body">
-                  <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button"><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
+            <div className="fieldset"><label>API key</label><div className="form-row2"><input className="input" type="password" value={providerDraft.apiKey} onChange={(event) => setProviderDraft((draft) => ({ ...draft, apiKey: event.target.value }))} placeholder="留空则不修改" /><button className="btn-ghost" type="button" onClick={() => void saveProviderDraft()} disabled={providerBusy}><i data-lucide="pencil" />更新密钥</button></div><span className="help-text">当前：已保存密钥引用。浏览器只显示掩码或占位。</span></div>
+                </div>
+              </div>
+              <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="plug" /></span><strong>Endpoint</strong><span className="sub">一行一个</span></div>
+                <div className="cfg-body">
+                  <div className="fieldset">
+                    <label>Endpoint 列表</label>
+                    <textarea
+                      className="input"
+                      value={providerDraft.endpointProfilesText}
+                      onChange={(event) => setProviderDraft((draft) => ({ ...draft, endpointProfilesText: event.target.value }))}
+                      placeholder="primary | 主 endpoint | https://api.example.com/v1 | openai_chat | bearer | enabled"
+                    />
+                    <span className="help-text">格式：id | 名称 | baseUrl | API 格式 | 鉴权方式 | enabled/disabled。留空则保留现有 endpoint。</span>
+                  </div>
                 </div>
               </div>
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="settings-2" /></span><strong>网络</strong><span className="sub">高级</span></div>
                 <div className="cfg-body">
                   <div className="form-row2">
-                    <div className="fieldset"><label>请求超时 (ms)</label><input className="input" value="30000" readOnly /></div>
-                    <div className="fieldset"><label>首字节超时 (ms)</label><input className="input" value="8000" readOnly /></div>
+                    <div className="fieldset"><label>请求超时 (ms)</label><input className="input" inputMode="numeric" value={providerDraft.timeoutMs} onChange={(event) => setProviderDraft((draft) => ({ ...draft, timeoutMs: event.target.value }))} /></div>
+                    <div className="fieldset"><label>首字节超时 (ms)</label><input className="input" inputMode="numeric" value={providerDraft.firstByteTimeoutMs} onChange={(event) => setProviderDraft((draft) => ({ ...draft, firstByteTimeoutMs: event.target.value }))} /></div>
                   </div>
                   <div className="form-row2">
-                    <div className="fieldset"><label>流空闲超时 (ms)</label><input className="input" value="60000" readOnly /></div>
-                    <div className="fieldset"><label>代理 (proxyUrl)</label><input className="input" placeholder="可留空" readOnly /></div>
+                    <div className="fieldset"><label>流空闲超时 (ms)</label><input className="input" inputMode="numeric" value={providerDraft.idleTimeoutMs} onChange={(event) => setProviderDraft((draft) => ({ ...draft, idleTimeoutMs: event.target.value }))} /></div>
+                    <div className="fieldset"><label>代理 (proxyUrl)</label><input className="input" value={providerDraft.proxyUrl} onChange={(event) => setProviderDraft((draft) => ({ ...draft, proxyUrl: event.target.value }))} placeholder="可留空" /></div>
                   </div>
-                  <div className="switch-row"><span className="sc"><strong>TLS 校验</strong><span>关闭仅用于本地自签证书</span></span><button className="toggle on" type="button" /></div>
+                  <div className="switch-row"><span className="sc"><strong>TLS 校验</strong><span>关闭仅用于本地自签证书</span></span><button className={`toggle ${providerDraft.tlsVerify ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, tlsVerify: !draft.tlsVerify }))} /></div>
                 </div>
               </div>
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="brain" /></span><strong>推理能力</strong><span className="sub">thinking / effort</span></div>
                 <div className="cfg-body">
-                  <div className="switch-row"><span className="sc"><strong>支持 thinking</strong><span>透传思考过程参数</span></span><button className="toggle on" type="button" /></div>
-                  <div className="switch-row"><span className="sc"><strong>支持 effort 等级</strong><span>low / medium / high</span></span><button className="toggle on" type="button" /></div>
+                  <div className="switch-row"><span className="sc"><strong>支持 thinking</strong><span>透传思考过程参数</span></span><button className={`toggle ${providerDraft.supportsThinking ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, supportsThinking: !draft.supportsThinking }))} /></div>
+                  <div className="switch-row"><span className="sc"><strong>支持 effort 等级</strong><span>low / medium / high</span></span><button className={`toggle ${providerDraft.supportsEffort ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, supportsEffort: !draft.supportsEffort }))} /></div>
                   <div className="form-row2">
-                    <div className="fieldset"><label>thinking 参数名</label><input className="input" value="thinking" readOnly /></div>
-                    <div className="fieldset"><label>effort 参数名</label><input className="input" value="reasoning_effort" readOnly /></div>
+                    <div className="fieldset"><label>thinking 参数名</label><select className="input select" value={providerDraft.thinkingParam} onChange={(event) => setProviderDraft((draft) => ({ ...draft, thinkingParam: event.target.value }))}>{thinkingParamOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                    <div className="fieldset"><label>effort 参数名</label><select className="input select" value={providerDraft.effortParam} onChange={(event) => setProviderDraft((draft) => ({ ...draft, effortParam: event.target.value }))}>{effortParamOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
                   </div>
                 </div>
               </div>
               <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="tag" /></span><strong>元数据</strong></div>
                 <div className="cfg-body">
+                  <div className="fieldset"><label>网站</label><input className="input" value={providerDraft.website} onChange={(event) => setProviderDraft((draft) => ({ ...draft, website: event.target.value }))} placeholder="https://example.com" /></div>
                   <div className="fieldset"><label>默认模型</label><input className="input" value={providerDraft.defaultModel} onChange={(event) => setProviderDraft((draft) => ({ ...draft, defaultModel: event.target.value }))} placeholder="model-id" /></div>
                   <div className="fieldset"><label>模型列表</label><textarea className="input" value={providerDraft.modelsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, modelsText: event.target.value }))} placeholder="每行一个模型 ID" /></div>
                   <div className="fieldset"><label>客户端范围</label><div className="chips">{appScopeOptions.map(([scope, label]) => <button key={scope} className={`chip ${providerDraft.appScopes[scope] ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, appScopes: { ...draft.appScopes, [scope]: !draft.appScopes[scope] } }))}>{label}</button>)}</div></div>
+                  <div className="fieldset"><label>标签</label><input className="input" value={providerDraft.tagsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, tagsText: event.target.value }))} placeholder="国产, native, fast" /></div>
+                  <div className="fieldset"><label>备注</label><input className="input" value={providerDraft.notes} onChange={(event) => setProviderDraft((draft) => ({ ...draft, notes: event.target.value }))} placeholder="可选" /></div>
                 </div>
                 <div className="save-bar"><span className="dirty"><i data-lucide="circle-dot" />有未保存改动</span><span className="filler" /><button className="btn-ghost" type="button" disabled={providerBusy} onClick={closeProviderConfig}>取消</button><button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void saveProviderDraft()}><i data-lucide="check" />{providerBusy ? "保存中..." : "保存配置"}</button></div>
               </div>
@@ -795,63 +1288,100 @@ export function ModelGatewayPage() {
     );
   };
 
-  const renderAccounts = () => (
-    <div data-view="accounts" className="on">
-      <div className="page-head">
-        <div className="htitle"><h2>账号池 · Codex 账号</h2><p>账号制 Provider 的多账号轮换、配额、登录与刷新。路由策略影响请求如何在账号间分配。</p></div>
-        <div className="toolbar">
-          <div className="seg"><button className="on" type="button">轮换 round-robin</button><button type="button">会话粘性</button><button type="button">最少负载</button></div>
-          <button className="btn-primary" type="button"><i data-lucide="log-in" /><span>登录新账号</span></button>
+  const renderAccounts = () => {
+    const accountProvider = asRecord(selectedProvider?.accountProvider);
+    const routing = recordAt(accountProvider, ["routing"]);
+    const accountRows = listAt(accountProvider, ["accounts"]).map(asRecord);
+    const title = `账号池 · ${textAt(selectedProvider, ["name"], "Codex 账号")}`;
+    const routingStrategy = textAt(routing, ["strategy"], "round-robin");
+    return (
+      <div data-view="accounts" className="on">
+        <div className="page-head">
+          <div className="htitle"><h2>{title}</h2><p>账号制 Provider 的多账号轮换、配额、登录与刷新。路由策略影响请求如何在账号间分配。</p></div>
+          <div className="toolbar">
+            <div className="seg">
+              <button className={routingStrategy === "round-robin" ? "on" : ""} type="button">轮换 round-robin</button>
+              <button className={boolAt(routing, ["sessionAffinity"], true) ? "on" : ""} type="button">会话粘性</button>
+              <button className={routingStrategy === "fill-first" ? "on" : ""} type="button">最少负载</button>
+            </div>
+            <button className="btn-primary" type="button" disabled={providerBusy} onClick={() => void startCodexAccountLogin()}><i data-lucide="log-in" /><span>登录新账号</span></button>
+          </div>
+        </div>
+        <div className="acct-grid">
+          {accountRows.map((account, index) => {
+            const state = textAt(account, ["state"], "unknown");
+            const enabled = account.enabled !== false && state !== "disabled";
+            const isCooldown = state === "cooldown";
+            const statusLabel = accountStateLabel(state);
+            const barTone = stateTone(statusLabel) === "warn" ? "warn" : stateTone(statusLabel) === "bad" ? "bad" : "ok";
+            return (
+              <div className="acct" key={textAt(account, ["id"], `account-${index}`)}>
+                <div className="acct-top">
+                  <span className="av" style={index % 2 ? { background: "var(--violet-soft)", color: "var(--violet)" } : undefined}>{String.fromCharCode(65 + index)}</span>
+                  <span className="ai"><strong>{textAt(account, ["emailMasked", "accountHash"], textAt(account, ["id"], "account"))}</strong><span>{compactList([textAt(account, ["plan"], "账号"), enabled ? "已启用" : "已停用"])}</span></span>
+                  <ProviderStatusDot value={statusLabel} />
+                </div>
+                <div className="acct-meta">
+                  <div className="mm"><span>最近成功</span><strong>{formatTime(textAt(account, ["lastSuccessAt"], ""))}</strong></div>
+                  <div className="mm"><span>{isCooldown ? "冷却至" : "有效期"}</span><strong>{isCooldown ? formatRelativeFuture(textAt(account, ["cooldownUntil"], "")) : formatTime(textAt(account, ["expiresAt"], ""))}</strong></div>
+                </div>
+                <div className={`bar ${barTone}`}><i style={{ width: isCooldown ? "40%" : enabled ? "78%" : "18%" }} /></div>
+                <div className="row-actions">
+                  <button className="btn-ghost btn-sm" type="button" disabled={providerBusy || !enabled} onClick={() => void refreshProviderAccount(account)}><i data-lucide="refresh-cw" />刷新</button>
+                  {isCooldown ? <button className="btn-ghost btn-sm" type="button" disabled={providerBusy} onClick={() => void updateProviderAccount(account, { clearCooldown: true }, "账号冷却已清除")}><i data-lucide="rotate-ccw" />清冷却</button> : null}
+                  <button className={`btn-ghost btn-sm ${enabled ? "danger-text" : ""}`} type="button" disabled={providerBusy} onClick={() => void updateProviderAccount(account, { enabled: !enabled }, enabled ? "账号已停用" : "账号已启用")}><i data-lucide={enabled ? "log-out" : "log-in"} />{enabled ? "停用" : "启用"}</button>
+                </div>
+              </div>
+            );
+          })}
+          {!accountRows.length ? (
+            <div className="statebox empty"><span className="si"><i data-lucide="users" /></span><strong>暂无账号</strong><span>使用“登录新账号”把账号加入该 Provider 的账号池。</span></div>
+          ) : null}
         </div>
       </div>
-      <div className="acct-grid">
-        {[
-          { av: "A", email: "a•••@team.com", plan: "Plus · 主账号", status: "正常", req: "1.2k", quotaLabel: "配额", quota: "78%", bar: "78%", tone: "ok", style: {} },
-          { av: "B", email: "b•••@team.com", plan: "Pro · 备用账号", status: "冷却", req: "640", quotaLabel: "冷却至", quota: "4m", bar: "40%", tone: "warn", style: { background: "var(--violet-soft)", color: "var(--violet)" } },
-        ].map((account) => (
-          <div className="acct" key={account.email}>
-            <div className="acct-top"><span className="av" style={account.style}>{account.av}</span><span className="ai"><strong>{account.email}</strong><span>{account.plan}</span></span><ProviderStatusDot value={account.status} /></div>
-            <div className="acct-meta"><div className="mm"><span>今日请求</span><strong>{account.req}</strong></div><div className="mm"><span>{account.quotaLabel}</span><strong>{account.quota}</strong></div></div>
-            <div className={`bar ${account.tone}`}><i style={{ width: account.bar }} /></div>
-            <div className="row-actions"><button className="btn-ghost btn-sm" type="button"><i data-lucide="refresh-cw" />刷新</button><button className="btn-ghost btn-sm danger-text" type="button"><i data-lucide="log-out" />移除</button></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderModels = () => (
     <div data-view="models" className="on">
       <div className="page-head">
         <div className="htitle"><h2>模型</h2><p>所有 Provider 暴露的模型、alias、推理能力与定价。行内编辑 alias，点击查看能力。</p></div>
-        <div className="toolbar"><span className="search-input"><i data-lucide="search" /><input placeholder="搜索模型 / alias" readOnly /></span><button className="btn-ghost" type="button" onClick={() => selectedProvider && openProviderEdit(selectedProvider)}><i data-lucide="plus" /><span>添加 alias</span></button></div>
+        <div className="toolbar"><span className="search-input"><i data-lucide="search" /><input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="搜索模型 / alias" /></span><button className="btn-ghost" type="button" onClick={() => selectedProvider && openProviderEdit(selectedProvider)}><i data-lucide="plus" /><span>添加 alias</span></button></div>
       </div>
       <div className="tablewrap">
         <div className="thead" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }}><span>模型 / alias</span><span>Provider</span><span>能力</span><span>24h</span></div>
         <QueryNotice query={providers} label="模型目录" />
-        {!providers.isLoading && !providers.isError ? modelCatalog.slice(0, 80).map(({ provider, model, health }) => {
+        {!providers.isLoading && !providers.isError ? filteredModelCatalog.slice(0, 80).map(({ key, provider, model }) => {
           const features = asRecord(model.features);
           const featureNames = Object.entries(features).filter(([, value]) => Boolean(value)).map(([key]) => key).slice(0, 2);
+          const modelId = textAt(model, ["id"], "model");
+          const modelUsage = usageModels.find((row) => textAt(row, ["model"], "") === modelId);
+          const aliases = listAt(model, ["aliases"]).map(String);
           return (
-            <div className="trow" style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }} key={`${provider}-${textAt(model, ["id"], "model")}`}>
-              <span className="cell-main"><span className="rico ico-primary"><i data-lucide="box" /></span><span className="c-copy"><strong>{textAt(model, ["label", "id"], "model")}</strong><span className="inline-edit"><span className="val">alias {textAt(model, ["alias"], "default")}</span><i data-lucide="pencil" className="pen" /></span></span></span>
+            <div className={`trow ${selectedModel?.key === key ? "sel" : ""}`} style={{ gridTemplateColumns: "1.6fr 1fr 1fr auto" }} key={key} role="button" tabIndex={0} onClick={() => setSelectedModelKey(key)} onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedModelKey(key);
+              }
+            }}>
+              <span className="cell-main"><span className="rico ico-primary"><i data-lucide="box" /></span><span className="c-copy"><strong>{textAt(model, ["label", "id"], "model")}</strong><span className="inline-edit"><span className="val">alias {aliases[0] || "default"}</span><i data-lucide="pencil" className="pen" /></span></span></span>
               <span className="cell-mono">{provider}</span>
               <span><span className="tag info">{featureNames.join(" / ") || "text"}</span></span>
-              <span className="cell-mono">{health}</span>
+              <span className="cell-mono">{formatCompact(numberAt(modelUsage, ["requestCount"]))}</span>
             </div>
           );
         }) : null}
       </div>
       <div className="cfg" style={{ marginTop: 16 }}>
-        <div className="cfg-head"><span className="ci"><i data-lucide="box" /></span><strong>{modelCatalog[0] ? textAt(modelCatalog[0].model, ["id"], "模型") : "模型"} · 能力与定价</strong><span className="sub">点击模型行查看</span></div>
+        <div className="cfg-head"><span className="ci"><i data-lucide="box" /></span><strong>{selectedModel ? textAt(selectedModel.model, ["id"], "模型") : "模型"} · 能力与定价</strong><span className="sub">点击模型行查看</span></div>
         <div className="cfg-body">
           <div className="cap-grid">
-            <div className="cap"><span className="ct">上下文窗口</span><span className="cv">{modelCatalog[0] ? textAt(modelCatalog[0].model, ["contextWindow"], "128k tokens") : "128k tokens"}</span></div>
-            <div className="cap"><span className="ct">最大输出</span><span className="cv">{modelCatalog[0] ? textAt(modelCatalog[0].model, ["maxOutputTokens"], "8k tokens") : "8k tokens"}</span></div>
-            <div className="cap"><span className="ct">输入价</span><span className="cv">¥0.05 / 1k</span></div>
-            <div className="cap"><span className="ct">输出价</span><span className="cv">¥0.15 / 1k</span></div>
-            <div className="cap"><span className="ct">推理</span><span className="cv">thinking · effort</span></div>
-            <div className="cap"><span className="ct">流式</span><span className="cv">支持</span></div>
+            <div className="cap"><span className="ct">上下文窗口</span><span className="cv">{selectedModel ? formatTokens(numberAt(selectedModel.model, ["contextWindow"])) : "-"}</span></div>
+            <div className="cap"><span className="ct">最大输出</span><span className="cv">{selectedModel ? formatTokens(numberAt(selectedModel.model, ["maxOutputTokens"])) : "-"}</span></div>
+            <div className="cap"><span className="ct">输入价</span><span className="cv">{formatPricing(numberAt(recordAt(selectedModel?.model, ["pricing"]), ["inputPer1M"], NaN), textAt(recordAt(selectedModel?.model, ["pricing"]), ["currency"], "¥"))}</span></div>
+            <div className="cap"><span className="ct">输出价</span><span className="cv">{formatPricing(numberAt(recordAt(selectedModel?.model, ["pricing"]), ["outputPer1M"], NaN), textAt(recordAt(selectedModel?.model, ["pricing"]), ["currency"], "¥"))}</span></div>
+            <div className="cap"><span className="ct">推理</span><span className="cv">{boolAt(recordAt(selectedModel?.model, ["features"]), ["reasoning"], false) ? "reasoning" : "text"}</span></div>
+            <div className="cap"><span className="ct">流式</span><span className="cv">{boolAt(recordAt(selectedModel?.model, ["features"]), ["streaming"], true) ? "支持" : "未标记"}</span></div>
           </div>
         </div>
       </div>
@@ -919,22 +1449,31 @@ export function ModelGatewayPage() {
       </div>
       <div className="tablewrap">
         <div className="thead"><span>客户端</span><span>路由 Profile</span><span>状态</span><span>动作</span></div>
-        {[
-          { label: "Codex", iconTone: "ico-teal", path: "~/.codex/config.toml", profile: "default → GLM", status: "已应用", action: "回滚" },
-          { label: "Claude Code", iconTone: "ico-violet", path: "~/.claude/settings.json", profile: "未应用", status: "pending", action: "应用" },
-          { label: "OpenCode", iconTone: "ico-primary", path: "~/.opencode/config.json", profile: "default → GLM", status: "已应用", action: "回滚" },
-        ].map((item) => {
-          const connection = connectionRows.find((row) => textAt(row, ["label", "id"], "").toLowerCase().includes(item.label.toLowerCase().split(" ")[0]));
-          const configured = connection ? Boolean(connection.configured) : item.status === "已应用";
+        <QueryNotice query={appConnections} label="客户端接入" />
+        {(!appConnections.isLoading && !appConnections.isError ? connectionRows : []).map((connection) => {
+          const label = textAt(connection, ["label", "id"], "客户端");
+          const appId = textAt(connection, ["id"], "");
+          const configured = Boolean(connection.configured);
+          const iconTone = appId === "codex" ? "ico-teal" : appId === "claude-code" ? "ico-violet" : "ico-primary";
           return (
-            <div className="trow" style={{ cursor: "default" }} key={item.label}>
-              <span className="cell-main"><span className={`rico ${item.iconTone}`}><i data-lucide="terminal" /></span><span className="c-copy"><strong>{item.label}</strong><span>{connection ? textAt(recordAt(connection, ["target"]), ["path"], item.path) : item.path}</span></span></span>
-              <span className="cell-mono">{connection ? textAt(connection, ["profile", "routeProfile"], item.profile) : item.profile}</span>
+            <div className="trow" style={{ cursor: "default" }} key={label}>
+              <span className="cell-main"><span className={`rico ${iconTone}`}><i data-lucide="terminal" /></span><span className="c-copy"><strong>{label}</strong><span>{textAt(recordAt(connection, ["target"]), ["path"], "-")}</span></span></span>
+              <span className="cell-mono">{compactList([textAt(connection, ["model"], textAt(recordAt(appConnections.data, ["profile"]), ["model"], "")), textAt(connection, ["protocol"], "")], configured ? "default → Gateway" : "未应用")}</span>
               <span><ProviderStatusDot value={configured ? "已应用" : "pending"} /></span>
-              <span className="route-acts"><button className="btn-ghost btn-sm" type="button">预览</button><button className={configured ? "btn-ghost btn-sm" : "btn-primary btn-sm"} type="button">{configured ? "回滚" : "应用"}</button></span>
+              <span className="route-acts">
+                <button className="btn-ghost btn-sm" type="button" onClick={() => previewAppConnection(connection)}>预览</button>
+                {configured ? (
+                  <button className="btn-ghost btn-sm" type="button" disabled={providerBusy || connection.canRollback === false} onClick={() => rollbackAppConnection(connection)}>回滚</button>
+                ) : (
+                  <button className="btn-primary btn-sm" type="button" disabled={providerBusy || connection.canApply === false} onClick={() => applyAppConnection(connection)}>应用</button>
+                )}
+              </span>
             </div>
           );
         })}
+        {!appConnections.isLoading && !appConnections.isError && connectionRows.length === 0 ? (
+          <div className="statebox empty"><span className="si"><i data-lucide="terminal" /></span><strong>暂无客户端接入</strong><span>后端未返回可管理客户端。</span></div>
+        ) : null}
       </div>
     </div>
   );

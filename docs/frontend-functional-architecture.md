@@ -129,13 +129,14 @@ Long Tasks first React pass is intentionally read-only. It reads `/api/chat/boot
 Model Gateway sections:
 
 - `overview`: Aurora `hero` metrics, active route rows, health overview and client connection summary.
-- `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider configuration, smoke and delete actions live in the original inspector action row.
-- `providercfg`: Aurora `subpage / subpage-grid / cfg / save-bar` Provider configuration child view for base URL, API format, auth, network, reasoning and metadata.
-- `models`: Aurora model table plus capability/price `cfg` panel.
+- `providers`: Aurora `page-head / toolbar / split / tablewrap / detail` Provider List-Detail workbench. Provider search/filter/detect/new, configuration, smoke, default route and delete actions stay in the original toolbar or inspector action rows.
+- `providercfg`: Aurora `subpage / subpage-grid / cfg / save-bar` Provider create/edit child view for base URL, API format, auth, endpoint profiles, network, reasoning, metadata, model catalog and app scopes.
+- `models`: Aurora model table plus capability/price `cfg` panel, backed by Provider model catalog and usage rows.
 - `usage`: Aurora KPI, distribution and latency panels.
-- `apps`: Aurora client-connection child view reached from the Overview "管理" action, not a fifth primary tab.
+- `accounts`: Aurora account-pool child view for account-backed Providers, backed by real `accountProvider.accounts` with refresh, enable/disable and cooldown-clear actions.
+- `apps`: Aurora client-connection child view reached from the Overview "管理" action, not a fifth primary tab. Preview/apply/rollback call the existing Gateway App Connection APIs and destructive writes require confirmation.
 
-Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders instead of changing layout, adding new cards or inventing alternate styles. The implemented view set must match the prototype exactly: `overview / providers / providercfg / models / accounts / apps / usage`. Main tabs stay limited to `overview / Provider / models / usage`; secondary views are reached only from prototype actions. Provider mutation, route smoke and destructive actions must stay behind focused child flows or confirmation-backed controls.
+Model Gateway must treat `docs/prototypes/pages/model-gateway.html` as the page-level visual and interaction contract. React implementation may bind real Gateway APIs into the prototype slots, but missing fields must use prototype placeholders or empty states instead of changing layout, adding new cards or inventing alternate styles. The implemented view set must match the prototype exactly: `overview / providers / providercfg / models / accounts / apps / usage`. Main tabs stay limited to `overview / Provider / models / usage`; secondary views are reached only from prototype actions. Provider mutation, route selection, app connection writes and destructive actions must stay behind focused child flows or confirmation-backed controls.
 
 IM Channels sections:
 
