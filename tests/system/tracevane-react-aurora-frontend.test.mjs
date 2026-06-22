@@ -356,7 +356,7 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   ]) {
     assert.match(page, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const label of ["概览", "Provider", "模型", "用量", "新建", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint"]) {
+  for (const label of ["概览", "Provider", "模型", "用量", "新建", "保存配置", "账号池", "客户端接入", "新增 endpoint", "移除 endpoint", "模型目录", "新增模型", "移除模型", "设为默认"]) {
     assert.match(page, new RegExp(label));
   }
   for (const view of ["overview", "providers", "providercfg", "models", "accounts", "apps", "usage"]) {
@@ -369,6 +369,8 @@ test("Model Gateway is a real React page aligned to the prototype with guarded w
   assert.match(page, /method: "DELETE"/);
   assert.match(page, /endpointProfiles/);
   assert.doesNotMatch(page, /endpointProfilesText/);
+  assert.match(page, /ProviderModelDraft/);
+  assert.doesNotMatch(page, /modelsText/);
 });
 
 test("IM Channels is a real React page backed by read-only existing APIs", () => {

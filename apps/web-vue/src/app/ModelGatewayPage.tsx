@@ -20,6 +20,20 @@ interface ProviderEndpointDraft {
   enabled: boolean;
 }
 
+interface ProviderModelDraft {
+  localId: string;
+  id: string;
+  label: string;
+  aliasesText: string;
+  contextWindow: string;
+  maxOutputTokens: string;
+  streaming: boolean;
+  tools: boolean;
+  vision: boolean;
+  reasoning: boolean;
+  pricing: AnyRecord;
+}
+
 interface ProviderDraft {
   id: string;
   name: string;
@@ -30,7 +44,7 @@ interface ProviderDraft {
   apiFormat: string;
   authStrategy: string;
   defaultModel: string;
-  modelsText: string;
+  models: ProviderModelDraft[];
   endpointProfiles: ProviderEndpointDraft[];
   appScopes: Record<string, boolean>;
   apiKey: string;
@@ -251,6 +265,41 @@ function newProviderEndpointDraft(baseUrl: string, apiFormat: string, authStrate
   };
 }
 
+function providerModelDraft(model: AnyRecord, index: number): ProviderModelDraft {
+  const id = textAt(model, ["id"], index === 0 ? "model-id" : `model-${index + 1}`);
+  const features = recordAt(model, ["features"]);
+  return {
+    localId: `${id}-${index}`,
+    id,
+    label: textAt(model, ["label"], ""),
+    aliasesText: listAt(model, ["aliases"]).map(String).join(", "),
+    contextWindow: numberAt(model, ["contextWindow"], 0) > 0 ? String(numberAt(model, ["contextWindow"], 0)) : "",
+    maxOutputTokens: numberAt(model, ["maxOutputTokens"], 0) > 0 ? String(numberAt(model, ["maxOutputTokens"], 0)) : "",
+    streaming: boolAt(features, ["streaming"], true),
+    tools: boolAt(features, ["tools"], false),
+    vision: boolAt(features, ["vision"], false),
+    reasoning: boolAt(features, ["reasoning"], false),
+    pricing: recordAt(model, ["pricing"]),
+  };
+}
+
+function newProviderModelDraft(index: number): ProviderModelDraft {
+  const id = index === 0 ? "model-id" : `model-${index + 1}`;
+  return {
+    localId: `${id}-${Date.now().toString(36)}`,
+    id,
+    label: "",
+    aliasesText: "",
+    contextWindow: "",
+    maxOutputTokens: "",
+    streaming: true,
+    tools: true,
+    vision: false,
+    reasoning: true,
+    pricing: {},
+  };
+}
+
 function emptyProviderDraft(): ProviderDraft {
   return {
     id: "",
@@ -262,7 +311,7 @@ function emptyProviderDraft(): ProviderDraft {
     apiFormat: "openai_chat",
     authStrategy: "bearer",
     defaultModel: "",
-    modelsText: "",
+    models: [],
     endpointProfiles: [],
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, true])),
     apiKey: "",
@@ -299,7 +348,7 @@ function draftFromProvider(provider: AnyRecord | null): ProviderDraft {
     apiFormat: textAt(provider, ["apiFormat"], "openai_chat"),
     authStrategy: textAt(provider, ["authStrategy"], "bearer"),
     defaultModel: textAt(modelsPayload, ["defaultModel"], ""),
-    modelsText: modelRows.map((model) => textAt(model, ["id"], "")).filter(Boolean).join("\n"),
+    models: modelRows.map((model, index) => providerModelDraft(model, index)),
     endpointProfiles: endpointRows.map((endpoint, index) => providerEndpointDraft(endpoint, provider, index)),
     appScopes: Object.fromEntries(appScopeOptions.map(([scope]) => [scope, listAt(provider, ["appScopes"]).map(String).includes(scope)])),
     apiKey: "",
@@ -319,14 +368,35 @@ function draftFromProvider(provider: AnyRecord | null): ProviderDraft {
 }
 
 function modelCatalogFromDraft(draft: ProviderDraft): AnyRecord {
-  const ids = Array.from(new Set([
-    draft.defaultModel.trim(),
-    ...draft.modelsText.split(/\r?\n|,/).map((value) => value.trim()),
-  ].filter(Boolean)));
+  const rows = draft.models
+    .map((model) => ({ ...model, id: model.id.trim() }))
+    .filter((model) => model.id);
+  const ids = Array.from(new Set(rows.map((model) => model.id)));
+  const aliases: Record<string, string> = {};
+  const models = rows
+    .filter((model, index) => rows.findIndex((row) => row.id === model.id) === index)
+    .map((model) => {
+      const modelAliases = Array.from(new Set(model.aliasesText.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean)));
+      for (const alias of modelAliases) aliases[alias] = model.id;
+      return {
+        id: model.id,
+        label: model.label.trim() || undefined,
+        aliases: modelAliases,
+        contextWindow: positiveIntegerOrUndefined(model.contextWindow),
+        maxOutputTokens: positiveIntegerOrUndefined(model.maxOutputTokens),
+        features: {
+          streaming: model.streaming,
+          tools: model.tools,
+          vision: model.vision,
+          reasoning: model.reasoning,
+        },
+        pricing: Object.keys(model.pricing).length ? model.pricing : undefined,
+      };
+    });
   return {
     defaultModel: draft.defaultModel.trim() || ids[0] || null,
-    models: ids.map((id) => ({ id })),
-    aliases: {},
+    models,
+    aliases,
   };
 }
 
@@ -715,13 +785,14 @@ export function ModelGatewayPage() {
 
   const openProviderCreate = () => {
     const baseUrl = "https://api.example.com/v1";
+    const model = newProviderModelDraft(0);
     setProviderDraft({
       ...emptyProviderDraft(),
       id: `provider-${Date.now().toString(36)}`,
       name: "新 Provider",
       baseUrl,
-      defaultModel: "model-id",
-      modelsText: "model-id",
+      defaultModel: model.id,
+      models: [model],
       endpointProfiles: [newProviderEndpointDraft(baseUrl, "openai_chat", "bearer", 0)],
     });
     setProviderDialogMode("create");
@@ -753,6 +824,41 @@ export function ModelGatewayPage() {
     }));
   };
 
+  const updateModelDraft = (index: number, patch: Partial<ProviderModelDraft>) => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      models: draft.models.map((model, itemIndex) => (
+        itemIndex === index ? { ...model, ...patch } : model
+      )),
+    }));
+  };
+
+  const addModelDraft = () => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      models: [...draft.models, newProviderModelDraft(draft.models.length)],
+    }));
+  };
+
+  const removeModelDraft = (index: number) => {
+    setProviderDraft((draft) => {
+      const models = draft.models.filter((_, itemIndex) => itemIndex !== index);
+      const defaultModelStillExists = models.some((model) => model.id.trim() === draft.defaultModel.trim());
+      return {
+        ...draft,
+        models,
+        defaultModel: defaultModelStillExists ? draft.defaultModel : models[0]?.id.trim() ?? "",
+      };
+    });
+  };
+
+  const setDefaultModelFromDraft = (modelId: string) => {
+    setProviderDraft((draft) => ({
+      ...draft,
+      defaultModel: modelId.trim(),
+    }));
+  };
+
   const saveProviderDraft = async () => {
     const id = providerDraft.id.trim();
     const name = providerDraft.name.trim();
@@ -765,6 +871,25 @@ export function ModelGatewayPage() {
     ));
     if (invalidEndpoint) {
       shell.toast("Endpoint 的 ID、名称和 baseUrl 都不能为空", "warn");
+      return;
+    }
+    const modelIds = providerDraft.models.map((model) => model.id.trim()).filter(Boolean);
+    if (!modelIds.length) {
+      shell.toast("至少需要一个模型 ID", "warn");
+      return;
+    }
+    if (new Set(modelIds).size !== modelIds.length) {
+      shell.toast("模型 ID 不能重复", "warn");
+      return;
+    }
+    const defaultModel = providerDraft.defaultModel.trim();
+    if (defaultModel && !modelIds.includes(defaultModel)) {
+      shell.toast("默认模型必须来自模型目录", "warn");
+      return;
+    }
+    const aliases = providerDraft.models.flatMap((model) => model.aliasesText.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean));
+    if (new Set(aliases).size !== aliases.length) {
+      shell.toast("模型 alias 不能重复", "warn");
       return;
     }
     setProviderBusy(true);
@@ -1253,7 +1378,7 @@ export function ModelGatewayPage() {
         <div className="subpage">
           <div className="subpage-head">
             <button className="btn-icon btn-ghost back" type="button" title="返回" disabled={providerBusy} onClick={closeProviderConfig}><i data-lucide="arrow-left" /></button>
-            <div className="htitle"><h2>{`${providerDialogMode === "create" ? "新建" : "配置"} · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / 协议 / 网络 / 推理 / 元数据。保存前内联校验，危险变更需确认。</p></div>
+            <div className="htitle"><h2>{`${providerDialogMode === "create" ? "新建" : "配置"} · ${providerDraft.name || textAt(selectedProvider, ["name", "id"], "Provider")}`}</h2><p>baseUrl / endpoint / 模型目录 / 网络 / 推理。保存前内联校验，危险变更需确认。</p></div>
           </div>
           <div className="subpage-grid">
             <div>
@@ -1314,6 +1439,57 @@ export function ModelGatewayPage() {
                 </div>
               </div>
               <div className="cfg">
+                <div className="cfg-head"><span className="ci"><i data-lucide="box" /></span><strong>模型目录</strong><span className="sub">alias / 能力</span></div>
+                <div className="cfg-body">
+                  <div className="model-catalog-editor">
+                    {providerDraft.models.map((model, index) => {
+                      const modelId = model.id.trim();
+                      const isDefault = modelId && modelId === providerDraft.defaultModel.trim();
+                      return (
+                        <div className="model-edit-row" key={model.localId}>
+                          <div className="model-edit-head">
+                            <span className="rico r-primary"><i data-lucide="box" /></span>
+                            <span className="sc"><strong>{model.id || `模型 ${index + 1}`}</strong><span>{model.aliasesText || "未设置 alias"}</span></span>
+                            {isDefault ? <span className="tag info">默认</span> : <button className="btn-ghost btn-sm" type="button" disabled={!modelId} onClick={() => setDefaultModelFromDraft(modelId)}><i data-lucide="star" />设为默认</button>}
+                          </div>
+                          <div className="model-edit-grid">
+                            <div className="fieldset"><label>模型 ID</label><input className="input" value={model.id} onChange={(event) => updateModelDraft(index, { id: event.target.value })} placeholder="gpt-5.4" /></div>
+                            <div className="fieldset"><label>显示名称</label><input className="input" value={model.label} onChange={(event) => updateModelDraft(index, { label: event.target.value })} placeholder="可选" /></div>
+                            <div className="fieldset model-aliases"><label>alias</label><input className="input" value={model.aliasesText} onChange={(event) => updateModelDraft(index, { aliasesText: event.target.value })} placeholder="逗号分隔，例如 fast, default" /></div>
+                            <div className="fieldset"><label>上下文窗口</label><input className="input" inputMode="numeric" value={model.contextWindow} onChange={(event) => updateModelDraft(index, { contextWindow: event.target.value })} placeholder="128000" /></div>
+                            <div className="fieldset"><label>最大输出</label><input className="input" inputMode="numeric" value={model.maxOutputTokens} onChange={(event) => updateModelDraft(index, { maxOutputTokens: event.target.value })} placeholder="8192" /></div>
+                          </div>
+                          <div className="model-feature-toggles" aria-label={`${model.id || "模型"}能力`}>
+                            {[
+                              ["streaming", "流式"],
+                              ["tools", "工具"],
+                              ["vision", "视觉"],
+                              ["reasoning", "推理"],
+                            ].map(([key, label]) => (
+                              <button
+                                key={key}
+                                className={`chip ${model[key as "streaming" | "tools" | "vision" | "reasoning"] ? "on" : ""}`}
+                                type="button"
+                                onClick={() => updateModelDraft(index, { [key]: !model[key as "streaming" | "tools" | "vision" | "reasoning"] } as Partial<ProviderModelDraft>)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            <span className="filler" />
+                            <button className="btn-ghost btn-sm danger-text" type="button" disabled={providerDraft.models.length <= 1} onClick={() => removeModelDraft(index)}><i data-lucide="trash-2" />移除模型</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!providerDraft.models.length ? <div className="statebox empty"><span className="si"><i data-lucide="box" /></span><strong>暂无模型</strong><span>新增模型后才能保存 Provider。</span></div> : null}
+                  </div>
+                  <div className="row-actions">
+                    <button className="btn-ghost btn-sm" type="button" onClick={addModelDraft}><i data-lucide="plus" />新增模型</button>
+                    <span className="help-text">alias 用逗号分隔；默认模型必须来自当前目录。</span>
+                  </div>
+                </div>
+              </div>
+              <div className="cfg">
                 <div className="cfg-head"><span className="ci"><i data-lucide="settings-2" /></span><strong>网络</strong><span className="sub">高级</span></div>
                 <div className="cfg-body">
                   <div className="form-row2">
@@ -1342,8 +1518,6 @@ export function ModelGatewayPage() {
                 <div className="cfg-head"><span className="ci"><i data-lucide="tag" /></span><strong>元数据</strong></div>
                 <div className="cfg-body">
                   <div className="fieldset"><label>网站</label><input className="input" value={providerDraft.website} onChange={(event) => setProviderDraft((draft) => ({ ...draft, website: event.target.value }))} placeholder="https://example.com" /></div>
-                  <div className="fieldset"><label>默认模型</label><input className="input" value={providerDraft.defaultModel} onChange={(event) => setProviderDraft((draft) => ({ ...draft, defaultModel: event.target.value }))} placeholder="model-id" /></div>
-                  <div className="fieldset"><label>模型列表</label><textarea className="input" value={providerDraft.modelsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, modelsText: event.target.value }))} placeholder="每行一个模型 ID" /></div>
                   <div className="fieldset"><label>客户端范围</label><div className="chips">{appScopeOptions.map(([scope, label]) => <button key={scope} className={`chip ${providerDraft.appScopes[scope] ? "on" : ""}`} type="button" onClick={() => setProviderDraft((draft) => ({ ...draft, appScopes: { ...draft.appScopes, [scope]: !draft.appScopes[scope] } }))}>{label}</button>)}</div></div>
                   <div className="fieldset"><label>标签</label><input className="input" value={providerDraft.tagsText} onChange={(event) => setProviderDraft((draft) => ({ ...draft, tagsText: event.target.value }))} placeholder="国产, native, fast" /></div>
                   <div className="fieldset"><label>备注</label><input className="input" value={providerDraft.notes} onChange={(event) => setProviderDraft((draft) => ({ ...draft, notes: event.target.value }))} placeholder="可选" /></div>
@@ -1363,6 +1537,16 @@ export function ModelGatewayPage() {
                   <div className="switch-row" key={textAt(endpoint, ["id"], "endpoint")}><span className="sc"><strong>{textAt(endpoint, ["name", "id"], "endpoint")}</strong><span>{compactList([textAt(endpoint, ["apiFormat"], providerDraft.apiFormat), textAt(endpoint, ["baseUrl"], providerDraft.baseUrl || "baseUrl")])}</span></span><StatusTag value={endpoint.enabled === false ? "disabled" : "online"} /></div>
                 ))}
                 <button className="btn-ghost btn-sm" type="button"><i data-lucide="pencil" />编辑 endpoint</button>
+              </div>
+              <div className="aside-card">
+                <div className="section-label">模型目录</div>
+                {providerDraft.models.slice(0, 4).map((model) => (
+                  <div className="switch-row" key={model.localId}>
+                    <span className="sc"><strong>{model.id || "model-id"}</strong><span>{model.id.trim() === providerDraft.defaultModel.trim() ? "默认模型" : (model.aliasesText || "alias 未设置")}</span></span>
+                    <StatusTag value={model.streaming ? "streaming" : "text"} />
+                  </div>
+                ))}
+                <button className="btn-ghost btn-sm" type="button" onClick={addModelDraft}><i data-lucide="plus" />新增模型</button>
               </div>
               <div className="aside-card">
                 <div className="section-label">危险操作</div>
