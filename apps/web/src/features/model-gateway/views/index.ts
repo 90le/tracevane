@@ -11,4 +11,5 @@ export {
   type ModelGatewayView,
   type ModelGatewayViewProps,
   type ModelGatewayViewNavigation,
+  type ModelGatewayViewNavParams,
 } from "./types";

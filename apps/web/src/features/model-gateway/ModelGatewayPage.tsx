@@ -76,6 +76,8 @@ export function ModelGatewayPage() {
   const viewParam = searchParams.get("view");
   const tabParam = searchParams.get("tab");
   const appParam = searchParams.get("app");
+  const providerParam = searchParams.get("provider");
+  const createParam = searchParams.get("create");
 
   // `?tab=connections` is the documented deep-link alias into the apps view.
   const resolvedView: ModelGatewayView = isModelGatewayView(viewParam)
@@ -85,6 +87,8 @@ export function ModelGatewayPage() {
       : "overview";
 
   const selectedApp = isAppConnectionId(appParam) ? appParam : null;
+  const selectedProvider = providerParam && providerParam.length > 0 ? providerParam : null;
+  const createMode = createParam === "1" || createParam === "true";
 
   const goToView = React.useCallback<ModelGatewayViewProps["goToView"]>(
     (view, params) => {
@@ -97,6 +101,16 @@ export function ModelGatewayPage() {
             next.set("app", params.app);
           } else {
             next.delete("app");
+          }
+          if (params?.provider) {
+            next.set("provider", params.provider);
+          } else {
+            next.delete("provider");
+          }
+          if (params?.create) {
+            next.set("create", "1");
+          } else {
+            next.delete("create");
           }
           return next;
         },
@@ -139,7 +153,7 @@ export function ModelGatewayPage() {
         })}
       </nav>
 
-      <ActiveView goToView={goToView} selectedApp={selectedApp} />
+      <ActiveView goToView={goToView} selectedApp={selectedApp} selectedProvider={selectedProvider} createMode={createMode} />
     </div>
   );
 }
