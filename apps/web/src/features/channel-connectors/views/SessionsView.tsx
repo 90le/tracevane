@@ -1,0 +1,323 @@
+import * as React from "react";
+import { Activity, AlertTriangle, Recycle, Terminal, XCircle } from "lucide-react";
+
+import { Badge } from "@/design/ui/badge";
+import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import { toast } from "@/design/ui/sonner";
+
+import { useChannelConnectorsAgentSessionsQuery, useManageChannelConnectorsAgentSessionsMutation } from "@/lib/query/channel-connectors";
+import type {
+  ChannelConnectorAgentSessionDriverRuntimeEvent,
+  ChannelConnectorAgentSessionRuntimeStatus,
+} from "../types";
+import type { ChannelConnectorsViewProps } from "./types";
+import { Panel, PanelHead, formatTime } from "./_shared";
+
+const EVENT_TONE: Record<
+  ChannelConnectorAgentSessionDriverRuntimeEvent["type"],
+  "ok" | "warn" | "bad" | "mute"
+> = {
+  "session.created": "ok",
+  "session.stopped": "mute",
+  "session.killed": "warn",
+  "session.disposed": "mute",
+  "session.reaped": "warn",
+  "turn.started": "ok",
+  "turn.finished": "ok",
+  "turn.failed": "bad",
+  "turn.fallback": "warn",
+};
+
+function sessionBadge(session: ChannelConnectorAgentSessionRuntimeStatus): {
+  variant: "ok" | "warn" | "bad" | "mute";
+  label: string;
+} {
+  if (session.lastError) return { variant: "bad", label: "异常" };
+  if (session.running > 0) return { variant: "ok", label: "运行中" };
+  return { variant: "mute", label: "空闲" };
+}
+
+function formatIdle(idleMs: number): string {
+  if (idleMs < 1000) return `${idleMs}ms`;
+  const s = Math.round(idleMs / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m${s % 60}s`;
+}
+
+export function SessionsView(_props: ChannelConnectorsViewProps) {
+  const sessionsQuery = useChannelConnectorsAgentSessionsQuery();
+  const manageMutation = useManageChannelConnectorsAgentSessionsMutation();
+
+  const [confirm, setConfirm] = React.useState<
+    | null
+    | { kind: "reap" }
+    | { kind: "kill"; session: ChannelConnectorAgentSessionRuntimeStatus }
+  >(null);
+  const [evidence, setEvidence] = React.useState<string | null>(null);
+
+  if (sessionsQuery.isLoading) {
+    return (
+      <div className="grid gap-[18px]" role="status" aria-busy="true">
+        <Skeleton className="h-12 w-full" />
+        <section className="rounded-md border border-line bg-panel shadow-sm">
+          <Skeleton className="h-12 w-full rounded-b-none" />
+          <div className="py-1.5">
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (sessionsQuery.error) {
+    return (
+      <ErrorState
+        title="无法加载会话"
+        description={sessionsQuery.error.message}
+        action={
+          <Button variant="outline" size="sm" onClick={() => void sessionsQuery.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
+
+  const data = sessionsQuery.data;
+  const activeSessions = data?.activeSessions ?? [];
+  const recentEvents = data?.recentEvents ?? [];
+  const policy = data?.policy;
+
+  const pending = manageMutation.isPending;
+
+  const runReap = () => {
+    manageMutation.mutate(
+      { action: "reap-idle", reason: "manual-reap-from-web" },
+      {
+        onSuccess: (result) => {
+          setEvidence(`已回收 ${result.reaped ?? 0} 个空闲会话`);
+          toast.success("已回收空闲会话", { description: `reaped ${result.reaped ?? 0}` });
+          void sessionsQuery.refetch();
+        },
+        onError: (error) => toast.error("回收失败", { description: error.message }),
+        onSettled: () => setConfirm(null),
+      },
+    );
+  };
+
+  const runKill = (session: ChannelConnectorAgentSessionRuntimeStatus) => {
+    manageMutation.mutate(
+      { action: "kill", poolKey: session.poolKey, reason: "manual-kill-from-web" },
+      {
+        onSuccess: (result) => {
+          const killed = result.killed?.killed === true;
+          setEvidence(
+            killed
+              ? `已终止会话 ${result.killed?.sessionId ?? session.sessionId}`
+              : `未找到匹配会话（${session.poolKey}）`,
+          );
+          if (killed) {
+            toast.success("已终止会话", { description: session.sessionId });
+          } else {
+            toast.warning("未终止任何会话", { description: "会话可能已结束" });
+          }
+          void sessionsQuery.refetch();
+        },
+        onError: (error) => toast.error("终止失败", { description: error.message }),
+        onSettled: () => setConfirm(null),
+      },
+    );
+  };
+
+  return (
+    <div className="grid gap-[18px]">
+      {/* Active sessions — read-only with guarded controls */}
+      <Panel>
+        <PanelHead
+          title="活跃会话"
+          sub="持久 CLI Agent session；kill / reap 为写操作，需确认。"
+          action={
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">
+                {activeSessions.length}
+                {policy ? `/${policy.maxSessions}` : ""} 活跃
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirm({ kind: "reap" })}
+                disabled={pending}
+              >
+                <Recycle />
+                回收空闲
+              </Button>
+            </div>
+          }
+        />
+        {activeSessions.length === 0 ? (
+          <EmptyState
+            title="暂无活跃会话"
+            description="私聊/群聊触发 Agent 后会在这里显示持久会话。"
+            icon={<Terminal />}
+          />
+        ) : (
+          <div className="grid gap-2 p-3">
+            {activeSessions.map((session, index) => {
+              const badge = sessionBadge(session);
+              return (
+                <div
+                  key={`${session.poolKey}-${session.sessionId}-${index}`}
+                  className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                      <Terminal />
+                    </span>
+                    <span className="grid min-w-0 flex-1">
+                      <strong className="truncate text-base text-ink-strong">
+                        {session.sessionId}
+                      </strong>
+                      <span className="truncate text-sm text-muted">
+                        {session.agent}
+                        {session.model ? ` · ${session.model}` : ""} · {session.bindingId}
+                      </span>
+                    </span>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red hover:bg-red-soft"
+                      onClick={() => setConfirm({ kind: "kill", session })}
+                      disabled={pending}
+                    >
+                      <XCircle />
+                      终止
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline">turns {session.turnCount}</Badge>
+                    <Badge variant="outline">running {session.running}</Badge>
+                    <Badge variant="outline">idle {formatIdle(session.idleMs)}</Badge>
+                    <Badge variant="outline">用于 {formatTime(session.lastUsedAt)}</Badge>
+                  </div>
+                  {session.lastError && (
+                    <p className="flex items-start gap-1.5 text-xs text-red">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                      {session.lastError}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {evidence && (
+          <div className="border-t border-line px-4 py-2.5">
+            <span className="text-sm text-muted">{evidence}</span>
+          </div>
+        )}
+      </Panel>
+
+      {/* Recent events — read-only trace */}
+      <Panel>
+        <PanelHead title="最近事件" sub="session / turn 生命周期事件，只读。" />
+        {recentEvents.length === 0 ? (
+          <EmptyState title="暂无事件" description="尚无 session / turn 事件记录。" />
+        ) : (
+          <div className="py-1.5">
+            {recentEvents.map((event, index) => (
+              <div
+                key={`${event.type}-${event.sessionId ?? "none"}-${index}`}
+                className="flex items-center gap-3 px-4 py-2.5"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                  <Activity />
+                </span>
+                <span className="grid min-w-0 flex-1">
+                  <strong className="truncate text-base text-ink-strong">{event.type}</strong>
+                  <span className="truncate text-sm text-muted">
+                    {event.agent} · {event.bindingId} · {formatTime(event.checkedAt)}
+                    {event.reason ? ` · ${event.reason}` : ""}
+                  </span>
+                </span>
+                <Badge variant={event.error ? "bad" : EVENT_TONE[event.type]}>
+                  {event.error ? "失败" : "ok"}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* Reap confirmation */}
+      <Dialog open={confirm?.kind === "reap"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+              <Recycle />
+            </span>
+            <DialogTitle>回收空闲会话</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            将按空闲超时策略回收闲置的持久会话。正在运行的会话不受影响。确认回收？
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
+              取消
+            </Button>
+            <Button variant="primary" size="sm" onClick={runReap} disabled={pending}>
+              {pending ? "回收中…" : "确认回收"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kill confirmation */}
+      <Dialog open={confirm?.kind === "kill"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+              <AlertTriangle />
+            </span>
+            <DialogTitle>终止会话</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            终止会立即结束该持久会话进程，正在进行的回合会被中断。
+            {confirm?.kind === "kill" && (
+              <code className="mt-2 block rounded-sm bg-panel-3 px-2 py-1 font-mono text-xs text-muted">
+                {confirm.session.sessionId} · {confirm.session.poolKey}
+              </code>
+            )}
+            确认终止？
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => confirm?.kind === "kill" && runKill(confirm.session)}
+              disabled={pending}
+            >
+              {pending ? "终止中…" : "确认终止"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
