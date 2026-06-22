@@ -1,5 +1,7 @@
 # 前端重建（apps/web）+ Model Gateway 实现计划
 
+> **状态（2026-06-22）：已完成。** Phase 0-7 全部落地于分支 `frontend-rebuild`（11+ 提交）。`apps/web-vue` 已删、`apps/web` 重建、Model Gateway 七个 view 全实现并通过浏览器 smoke（`scripts/smoke-web-model-gateway.py`，7 view × 桌面/移动，0 error/0 溢出）。typecheck/build/合同测试/pack dry-run 全绿。首屏 `SidebarItem asChild` Slot 崩溃已修复。剩余：合并到 `main` 决策、生产入口 `:3760` 随发布流程刷新、其余域逐计划补齐。详见 `docs/当前进展.md`。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 删除 `apps/web-vue`，重建为 `apps/web`（React + Vite + Tailwind v4 + shadcn/ui，Aurora 设计系统、类型化数据层），并把 Model Gateway 做到完成口径。
