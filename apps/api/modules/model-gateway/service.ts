@@ -5295,19 +5295,105 @@ function mergeOpenClawAgentDefaultModel(
   };
 }
 
+// Keep at most this many backups per appId; older ones are pruned after a new
+// backup is written so the backups directory cannot grow without bound.
+const APP_CONNECTION_BACKUP_RETENTION = 20;
+
+// Reject source-edit payloads larger than this (1 MiB). App connection configs
+// are small; anything larger is almost certainly a mistake or abuse.
+const APP_CONNECTION_CONTENT_MAX_BYTES = 1024 * 1024;
+
 function backupFileIfExists(sourcePath: string, backupsRoot: string, appId: ModelGatewayAppConnectionId): string | null {
   if (!fs.existsSync(sourcePath)) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const ext = path.extname(sourcePath) || ".bak";
-  const backupPath = path.join(backupsRoot, "app-connections", `${appId}-${stamp}${ext}.bak`);
-  fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+  const backupDir = path.join(backupsRoot, "app-connections");
+  fs.mkdirSync(backupDir, { recursive: true });
+  // Resolve a unique filename. If two writes land within the same millisecond
+  // the timestamp collides, so append a deterministic incrementing suffix
+  // (`-2`, `-3`, ...) before the extension. The `${appId}-${stamp}` prefix and
+  // `.bak` suffix are preserved so the timestamp parser / listing still work.
+  let backupPath = path.join(backupDir, `${appId}-${stamp}${ext}.bak`);
+  let counter = 2;
+  while (fs.existsSync(backupPath)) {
+    backupPath = path.join(backupDir, `${appId}-${stamp}-${counter}${ext}.bak`);
+    counter += 1;
+  }
   fs.copyFileSync(sourcePath, backupPath);
   try {
     fs.chmodSync(backupPath, 0o600);
   } catch {
     // Best effort for filesystems that do not support chmod.
   }
+  pruneAppConnectionBackups(backupsRoot, appId);
   return backupPath;
+}
+
+// Parse the numeric collision suffix (the `-2`, `-3`, ... appended by
+// `backupFileIfExists`) from a backup filename, or 0 if there is none. Used as
+// a deterministic tiebreaker when sorting backups that share a timestamp.
+function appConnectionBackupSuffix(fileName: string, appId: ModelGatewayAppConnectionId): number {
+  const prefix = `${appId}-`;
+  if (!fileName.startsWith(prefix)) return 0;
+  const withoutBak = fileName.replace(/\.bak$/i, "");
+  const stampPart = withoutBak.slice(prefix.length).replace(/\.[^.]*$/, "");
+  const match = stampPart.match(/-(\d+)$/);
+  if (!match) return 0;
+  // The ISO stamp itself ends in `<ms>Z`, so a trailing group of pure digits is
+  // only a collision suffix when preceded by `Z-` (e.g. ...789Z-2).
+  if (!/Z-\d+$/.test(stampPart)) return 0;
+  const value = Number.parseInt(match[1], 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+// Prune older backups for an appId, keeping at most
+// APP_CONNECTION_BACKUP_RETENTION most-recent files. Resilient: any failure is
+// swallowed so a prune problem can never fail an apply/rollback. Only deletes
+// files matching the `${appId}-*.bak` pattern that live directly inside the
+// backups directory; never touches unrelated files.
+function pruneAppConnectionBackups(backupsRoot: string, appId: ModelGatewayAppConnectionId): void {
+  try {
+    const backupDir = path.join(backupsRoot, "app-connections");
+    const resolvedDir = path.resolve(backupDir);
+    if (!fs.existsSync(backupDir)) return;
+    const prefix = `${appId}-`;
+    const entries = fs.readdirSync(backupDir)
+      .filter((fileName) => fileName === path.basename(fileName))
+      .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(".bak"))
+      .map((fileName) => {
+        const filePath = path.join(backupDir, fileName);
+        // Defend against traversal/symlink games: the file must sit directly in
+        // the backups dir and be a regular file.
+        if (path.dirname(path.resolve(backupDir, fileName)) !== resolvedDir) return null;
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(filePath);
+        } catch {
+          return null;
+        }
+        if (!stat.isFile()) return null;
+        const stamp = parseAppConnectionBackupTimestamp(fileName, appId)
+          ?? new Date(stat.mtimeMs).toISOString();
+        return { fileName, filePath, stamp, suffix: appConnectionBackupSuffix(fileName, appId) };
+      })
+      .filter((item): item is { fileName: string; filePath: string; stamp: string; suffix: number } => item !== null);
+    if (entries.length <= APP_CONNECTION_BACKUP_RETENTION) return;
+    // Newest first: timestamp descending, suffix descending as tiebreaker.
+    entries.sort((left, right) => {
+      const byStamp = right.stamp.localeCompare(left.stamp);
+      if (byStamp !== 0) return byStamp;
+      return right.suffix - left.suffix;
+    });
+    for (const entry of entries.slice(APP_CONNECTION_BACKUP_RETENTION)) {
+      try {
+        fs.rmSync(entry.filePath, { force: true });
+      } catch {
+        // Best effort: keep pruning the rest even if one delete fails.
+      }
+    }
+  } catch {
+    // A prune failure must never fail the surrounding apply/rollback.
+  }
 }
 
 function latestAppConnectionBackupPath(backupsRoot: string, appId: ModelGatewayAppConnectionId): string | null {
@@ -5316,16 +5402,26 @@ function latestAppConnectionBackupPath(backupsRoot: string, appId: ModelGatewayA
   const prefix = `${appId}-`;
   const candidates = fs.readdirSync(backupDir)
     .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(".bak"))
-    .map((fileName) => path.join(backupDir, fileName))
-    .map((filePath) => {
+    .map((fileName) => {
+      const filePath = path.join(backupDir, fileName);
       try {
-        return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) return null;
+        const stamp = parseAppConnectionBackupTimestamp(fileName, appId)
+          ?? new Date(stat.mtimeMs).toISOString();
+        return { filePath, stamp, suffix: appConnectionBackupSuffix(fileName, appId) };
       } catch {
         return null;
       }
     })
-    .filter((item): item is { filePath: string; mtimeMs: number } => item !== null)
-    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+    .filter((item): item is { filePath: string; stamp: string; suffix: number } => item !== null)
+    // Newest first: timestamp descending, suffix descending as tiebreaker so a
+    // same-millisecond collision still resolves to the most recently written.
+    .sort((left, right) => {
+      const byStamp = right.stamp.localeCompare(left.stamp);
+      if (byStamp !== 0) return byStamp;
+      return right.suffix - left.suffix;
+    });
   return candidates[0]?.filePath || null;
 }
 
@@ -5345,7 +5441,11 @@ function parseAppConnectionBackupTimestamp(fileName: string, appId: ModelGateway
   const prefix = `${appId}-`;
   if (!fileName.startsWith(prefix)) return null;
   const withoutBak = fileName.replace(/\.bak$/i, "");
-  const stampPart = withoutBak.slice(prefix.length).replace(/\.[^.]*$/, "");
+  let stampPart = withoutBak.slice(prefix.length).replace(/\.[^.]*$/, "");
+  // Strip a collision suffix (`-2`, `-3`, ...) appended when two backups share
+  // a millisecond timestamp. Only treat a trailing digit group as a suffix when
+  // it follows the `...<ms>Z` terminator so the ISO stamp itself is untouched.
+  stampPart = stampPart.replace(/(Z)-\d+$/, "$1");
   // Stamp is an ISO string with `:` and `.` replaced by `-`.
   // e.g. 2026-06-22T12-34-56-789Z -> 2026-06-22T12:34:56.789Z
   const restored = stampPart.replace(
@@ -8624,6 +8724,14 @@ export function createModelGatewayService(
           400,
         );
       }
+      const contentBytes = Buffer.byteLength(customContent, "utf8");
+      if (contentBytes > APP_CONNECTION_CONTENT_MAX_BYTES) {
+        throw new ModelGatewayServiceError(
+          "model_gateway_app_connection_content_too_large",
+          `Custom content is too large (${contentBytes} bytes; limit ${APP_CONNECTION_CONTENT_MAX_BYTES} bytes).`,
+          400,
+        );
+      }
       if (spec.format === "json") {
         try {
           JSON.parse(customContent);
@@ -8634,6 +8742,46 @@ export function createModelGatewayService(
             400,
           );
         }
+      } else if (spec.format === "toml") {
+        // No TOML parser dependency exists in this project (TOML is emitted by
+        // hand via string templates), so we apply a conservative sanity check
+        // rather than claiming full structural validation: reject NUL bytes and
+        // invalid UTF-8. A proper TOML parser would enable stricter validation.
+        if (customContent.includes("\u0000")) {
+          throw new ModelGatewayServiceError(
+            "model_gateway_app_connection_content_invalid_toml",
+            "Custom TOML content must not contain NUL bytes.",
+            400,
+          );
+        }
+        if (customContent.includes("\uFFFD")) {
+          // U+FFFD indicates the payload already lost data to a bad decode.
+          throw new ModelGatewayServiceError(
+            "model_gateway_app_connection_content_invalid_toml",
+            "Custom TOML content is not valid UTF-8.",
+            400,
+          );
+        }
+      }
+      // No-op guard: if the requested content is byte-identical to what is
+      // already on disk, skip the write + backup entirely so we do not generate
+      // a redundant backup. Returns `applied: false` to signal no change.
+      if (source.source !== null && source.source === customContent) {
+        const unchangedSource = readConnectionSource(spec.targetPath);
+        return {
+          ok: true,
+          checkedAt: nowIso(),
+          connection: buildAppConnection(spec, {
+            key,
+            profile,
+            source: unchangedSource.source,
+            sourceError: unchangedSource.error,
+            modelIds,
+            modelCatalogEntries,
+          }),
+          applied: false,
+          backupPath: null,
+        };
       }
       writeContent = customContent;
     } else {
@@ -8823,7 +8971,13 @@ export function createModelGatewayService(
         });
       }
     }
-    backups.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    backups.sort((left, right) => {
+      const byStamp = right.createdAt.localeCompare(left.createdAt);
+      if (byStamp !== 0) return byStamp;
+      // Same-millisecond collision: order by the deterministic suffix so the
+      // most recently written backup still lists first.
+      return appConnectionBackupSuffix(right.id, appId) - appConnectionBackupSuffix(left.id, appId);
+    });
     return {
       ok: true,
       appId,

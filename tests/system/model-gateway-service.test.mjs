@@ -5472,6 +5472,150 @@ test("model gateway applies custom content and validates json", () => {
   );
 });
 
+test("model gateway app connection backups are unique under rapid writes", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { N: "seed" } }, null, 2)}\n`, "utf8");
+
+  // Five applies with no delay: same-millisecond timestamps must not collide /
+  // overwrite. Each apply backs up the prior on-disk file before writing. Each
+  // payload differs from the preceding on-disk content so none is a no-op.
+  const backupPaths = [];
+  for (let i = 0; i < 5; i += 1) {
+    const result = service.applyAppConnection(undefined, {
+      appId: "claude-code",
+      content: `${JSON.stringify({ env: { N: i } }, null, 2)}\n`,
+    });
+    assert.equal(result.applied, true);
+    assert.ok(result.backupPath);
+    backupPaths.push(result.backupPath);
+  }
+
+  // All backup files are distinct on disk.
+  const uniquePaths = new Set(backupPaths);
+  assert.equal(uniquePaths.size, backupPaths.length);
+  for (const backupPath of backupPaths) {
+    assert.equal(fs.existsSync(backupPath), true);
+  }
+
+  const listed = service.listAppConnectionBackups("claude-code");
+  assert.equal(listed.backups.length, 5);
+  // Listing is newest-first; the most recent backup captured the N:4 write.
+  const createdAts = listed.backups.map((backup) => backup.createdAt);
+  const sorted = [...createdAts].sort((left, right) => right.localeCompare(left));
+  assert.deepEqual(createdAts, sorted);
+});
+
+test("model gateway app connection backups are pruned to the retention cap", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { V: -1 } }, null, 2)}\n`, "utf8");
+
+  // Far more applies than the retention cap (20).
+  for (let i = 0; i < 25; i += 1) {
+    service.applyAppConnection(undefined, {
+      appId: "claude-code",
+      content: `${JSON.stringify({ env: { V: i } }, null, 2)}\n`,
+    });
+  }
+
+  const listed = service.listAppConnectionBackups("claude-code");
+  // Pruned down to the cap.
+  assert.equal(listed.backups.length, 20);
+
+  // The newest backup captured the most recent pre-write file (V:23, backed up
+  // before the final V:24 write). Oldest backups were pruned.
+  const newest = service.readAppConnectionBackup("claude-code", listed.backups[0].id);
+  assert.match(newest.content, /"V": 23/);
+});
+
+test("model gateway app connection rejects oversized custom content", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" } }, null, 2)}\n`, "utf8");
+
+  const backupsBefore = service.listAppConnectionBackups("claude-code").backups.length;
+  // > 1 MiB of valid JSON.
+  const big = `${JSON.stringify({ blob: "x".repeat(1024 * 1024 + 16) })}\n`;
+  assert.throws(
+    () => service.applyAppConnection(undefined, { appId: "claude-code", content: big }),
+    (error) => error instanceof ModelGatewayServiceError
+      && error.statusCode === 400
+      && error.code === "model_gateway_app_connection_content_too_large",
+  );
+  // Rejected before any write/backup.
+  const onDisk = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(onDisk.env.EXISTING, "1");
+  assert.equal(service.listAppConnectionBackups("claude-code").backups.length, backupsBefore);
+});
+
+test("model gateway app connection rejects unsafe toml content (conservative check)", () => {
+  const { service, codexPath } = setupAppConnectionService();
+  fs.writeFileSync(codexPath, "model = \"gpt-main\"\n", "utf8");
+
+  const backupsBefore = service.listAppConnectionBackups("codex").backups.length;
+
+  // NUL byte rejected.
+  assert.throws(
+    () => service.applyAppConnection(undefined, {
+      appId: "codex",
+      content: "model = \"a\"\n\u0000bad = true\n",
+    }),
+    (error) => error instanceof ModelGatewayServiceError
+      && error.statusCode === 400
+      && error.code === "model_gateway_app_connection_content_invalid_toml",
+  );
+
+  // Invalid UTF-8 replacement char rejected.
+  assert.throws(
+    () => service.applyAppConnection(undefined, {
+      appId: "codex",
+      content: "model = \"a\"\nbad = \"\uFFFD\"\n",
+    }),
+    (error) => error instanceof ModelGatewayServiceError
+      && error.statusCode === 400
+      && error.code === "model_gateway_app_connection_content_invalid_toml",
+  );
+
+  // Empty content rejected.
+  assert.throws(
+    () => service.applyAppConnection(undefined, { appId: "codex", content: "   " }),
+    (error) => error instanceof ModelGatewayServiceError && error.statusCode === 400,
+  );
+
+  // No write/backup happened for any rejected payload.
+  assert.equal(fs.readFileSync(codexPath, "utf8"), "model = \"gpt-main\"\n");
+  assert.equal(service.listAppConnectionBackups("codex").backups.length, backupsBefore);
+
+  // A well-formed TOML edit is accepted.
+  const ok = service.applyAppConnection(undefined, {
+    appId: "codex",
+    content: "model = \"gpt-alt\"\ncustom = true\n",
+  });
+  assert.equal(ok.applied, true);
+  assert.match(fs.readFileSync(codexPath, "utf8"), /custom = true/);
+});
+
+test("model gateway app connection no-op identical content skips write and backup", () => {
+  const { service, claudePath } = setupAppConnectionService();
+  const original = `${JSON.stringify({ env: { SAME: "yes" } }, null, 2)}\n`;
+  // Seed on-disk with different bytes so the first apply genuinely writes.
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { SAME: "no" } }, null, 2)}\n`, "utf8");
+
+  // Establish a known on-disk state by applying the bytes once.
+  const first = service.applyAppConnection(undefined, { appId: "claude-code", content: original });
+  assert.equal(first.applied, true);
+  const backupsAfterFirst = service.listAppConnectionBackups("claude-code").backups.length;
+  const mtimeBefore = fs.statSync(claudePath).mtimeMs;
+
+  // Re-apply byte-identical content: must be a no-op (no backup, no rewrite).
+  const second = service.applyAppConnection(undefined, { appId: "claude-code", content: original });
+  assert.equal(second.applied, false);
+  assert.equal(second.backupPath, null);
+  assert.equal(second.ok, true);
+
+  // No new backup created and file untouched.
+  assert.equal(service.listAppConnectionBackups("claude-code").backups.length, backupsAfterFirst);
+  assert.equal(fs.statSync(claudePath).mtimeMs, mtimeBefore);
+});
+
 test("model gateway app connections keep Codex reasoning effort for Gateway models", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
