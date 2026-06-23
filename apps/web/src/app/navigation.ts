@@ -32,7 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: "/dashboard", label: "总览", group: "总览", icon: LayoutDashboard, status: "ready" },
 
   // 运行
-  { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "coming-soon" },
+  { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "ready" },
   { path: "/ide", label: "IDE", group: "运行", icon: Boxes, status: "coming-soon" },
   { path: "/long-tasks", label: "长任务", group: "运行", icon: Workflow, status: "ready" },
   { path: "/cli-agents", label: "CLI 代理", group: "运行", icon: Terminal, status: "ready" },

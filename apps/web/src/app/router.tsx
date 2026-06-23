@@ -8,6 +8,7 @@ import { ModelGatewayPage } from "@/features/model-gateway/ModelGatewayPage";
 import { ChannelConnectorsPage } from "@/features/channel-connectors/ChannelConnectorsPage";
 import { ExternalConnectionsPage } from "@/features/external/ExternalConnectionsPage";
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
+import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 
 /**
@@ -23,6 +24,7 @@ export function AppRouter() {
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/chat" element={<ChatWorkbenchPage />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
           <Route path="/external" element={<ExternalConnectionsPage />} />
