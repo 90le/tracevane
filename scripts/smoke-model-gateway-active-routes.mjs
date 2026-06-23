@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -255,10 +256,20 @@ function activeRouteSmokeLockDir() {
   return path.join(os.homedir(), ".openclaw/tracevane/model-gateway/active-route-smoke.lock");
 }
 
-function activeRouteSmokeMarkerPath() {
+function endpointMarkerSuffix(endpoint) {
+  const normalized = normalizeEndpoint(endpoint || DEFAULT_ENDPOINT);
+  return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+}
+
+function activeRouteSmokeMarkerPath(endpoint) {
   const envMarkerPath = process.env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH;
-  if (envMarkerPath?.trim()) return path.resolve(envMarkerPath.trim());
-  return path.join(path.dirname(activeRouteSmokeLockDir()), "active-route-smoke.marker.json");
+  const suffix = endpointMarkerSuffix(endpoint);
+  if (envMarkerPath?.trim()) {
+    const resolved = path.resolve(envMarkerPath.trim());
+    const parsed = path.parse(resolved);
+    return path.join(parsed.dir, `${parsed.name}.${suffix}${parsed.ext || ".json"}`);
+  }
+  return path.join(path.dirname(activeRouteSmokeLockDir()), `active-route-smoke.${suffix}.marker.json`);
 }
 
 function lockMetadata(lockDir) {
@@ -329,8 +340,12 @@ function processPidIsAlive(pid) {
   }
 }
 
-function writeActiveRouteSmokeMarker(options, originalActiveProviders) {
-  const markerPath = activeRouteSmokeMarkerPath();
+function normalizeEndpoint(value) {
+  return String(value || "").replace(/\/+$/g, "");
+}
+
+function writeActiveRouteSmokeMarker(options, originalActiveProviders, provider) {
+  const markerPath = activeRouteSmokeMarkerPath(options.endpoint);
   const marker = {
     pid: process.pid,
     createdAt: new Date().toISOString(),
@@ -338,6 +353,11 @@ function writeActiveRouteSmokeMarker(options, originalActiveProviders) {
     providerId: options.providerId,
     scopes: options.scopes,
     originalActiveProviders,
+    temporaryEnable: {
+      requested: Boolean(options.temporaryEnable),
+      originalEnabled: provider ? Boolean(provider.enabled) : null,
+      applied: false,
+    },
     script: path.basename(process.argv[1] || "smoke-model-gateway-active-routes.mjs"),
   };
   fs.mkdirSync(path.dirname(markerPath), { recursive: true });
@@ -345,11 +365,26 @@ function writeActiveRouteSmokeMarker(options, originalActiveProviders) {
   return markerPath;
 }
 
+function updateActiveRouteSmokeMarker(markerPath, patch) {
+  const current = readActiveRouteSmokeMarker(markerPath);
+  if (!current) return;
+  fs.writeFileSync(markerPath, `${JSON.stringify({ ...current, ...patch }, null, 2)}\n`, { mode: 0o600 });
+}
+
 async function recoverStaleActiveRouteSmokeMarker(options, key) {
-  const markerPath = activeRouteSmokeMarkerPath();
+  const markerPath = activeRouteSmokeMarkerPath(options.endpoint);
   const marker = readActiveRouteSmokeMarker(markerPath);
   if (!marker) return null;
   if (processPidIsAlive(Number(marker.pid))) return { recovered: false, markerPath, reason: "owner-alive" };
+  if (normalizeEndpoint(marker.endpoint) !== normalizeEndpoint(options.endpoint)) {
+    return {
+      recovered: false,
+      markerPath,
+      reason: "endpoint-mismatch",
+      markerEndpoint: normalizeEndpoint(marker.endpoint),
+      currentEndpoint: normalizeEndpoint(options.endpoint),
+    };
+  }
   const recovery = {
     recovered: false,
     markerPath,
@@ -357,6 +392,13 @@ async function recoverStaleActiveRouteSmokeMarker(options, key) {
     scopes: marker.scopes,
     restoredScopes: [],
     skippedScopes: [],
+    temporaryEnable: {
+      requested: Boolean(marker.temporaryEnable?.requested),
+      originalEnabled: typeof marker.temporaryEnable?.originalEnabled === "boolean" ? marker.temporaryEnable.originalEnabled : null,
+      applied: Boolean(marker.temporaryEnable?.applied),
+      restoredEnabled: null,
+      skipped: null,
+    },
     failures: [],
   };
   try {
@@ -379,7 +421,34 @@ async function recoverStaleActiveRouteSmokeMarker(options, key) {
         });
       }
     }
-    recovery.recovered = recovery.failures.length === 0 && recovery.restoredScopes.length > 0;
+    if (
+      recovery.temporaryEnable.requested
+      && recovery.temporaryEnable.applied
+      && recovery.temporaryEnable.originalEnabled === false
+    ) {
+      const afterActiveProviders = (await fetchProviders(options, key)).activeProviders || {};
+      const activeScopes = Object.entries(afterActiveProviders)
+        .filter(([, providerId]) => providerId === marker.providerId)
+        .map(([scope]) => scope);
+      if (activeScopes.length > 0) {
+        recovery.temporaryEnable.skipped = {
+          reason: "provider-still-active",
+          activeScopes,
+        };
+      } else {
+        try {
+          await updateProviderEnabled(options, key, marker.providerId, false);
+          recovery.temporaryEnable.restoredEnabled = false;
+        } catch (error) {
+          recovery.failures.push({
+            scope: "*",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    recovery.recovered = recovery.failures.length === 0
+      && (recovery.restoredScopes.length > 0 || recovery.temporaryEnable.restoredEnabled === false);
   } finally {
     if (recovery.failures.length === 0) removeMarkerFile(markerPath);
   }
@@ -794,7 +863,7 @@ async function main() {
       attempts: lock.attempts,
       waitedMs: lock.waitedMs,
     };
-    if (result.preflightFailures.length === 0) markerPath = writeActiveRouteSmokeMarker(options, originalActiveProviders);
+    if (result.preflightFailures.length === 0) markerPath = writeActiveRouteSmokeMarker(options, originalActiveProviders, provider);
     cleanupState = async (reason) => {
       const cleanupOptions = typeof reason === "string" && reason.startsWith("SIG")
         ? { ...options, timeoutMs: Math.min(options.timeoutMs, SIGNAL_CLEANUP_TIMEOUT_MS) }
@@ -821,6 +890,15 @@ async function main() {
         provider = providerSummary(enabledProviders, options.providerId);
         result.provider = provider;
         result.temporaryEnable.enabled = Boolean(provider?.enabled);
+        if (markerPath) {
+          updateActiveRouteSmokeMarker(markerPath, {
+            temporaryEnable: {
+              requested: true,
+              originalEnabled: result.temporaryEnable.originalEnabled,
+              applied: true,
+            },
+          });
+        }
       } catch (error) {
         result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
         result.preflightFailures.push({

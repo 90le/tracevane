@@ -3701,6 +3701,30 @@ test("model gateway endpoint profiles prefer native protocol and fall back by en
   assert.equal(fallback.endpointProfile?.id, "coding-chat");
   assert.equal(fallback.mode, "adapter-required");
   assert.match(fallback.failoverReason || "", /coding-anthropic.*fallback 'glm\/coding-chat'/);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      ...provider,
+      endpointProfiles: [
+        provider.endpointProfiles[0],
+        {
+          ...provider.endpointProfiles[1],
+          health: {
+            circuitState: "open",
+            lastFailureAt: "2000-01-01T00:00:00.000Z",
+            retryAfterUntil: "2000-01-01T00:00:01.000Z",
+            lastError: "rate limited",
+            consecutiveFailures: 1,
+          },
+        },
+      ],
+    },
+  });
+
+  const retryNative = service.resolveRouteDecision("POST", "/v1/messages", {}, "glm-5.2");
+  assert.equal(retryNative.endpointProfile?.id, "coding-anthropic");
+  assert.equal(retryNative.mode, "passthrough");
+  assert.match(retryNative.failoverReason || "", /retry window elapsed/);
 });
 
 test("model gateway prefers native protocols without replacing the requested model", () => {

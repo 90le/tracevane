@@ -6171,7 +6171,10 @@ export function createModelGatewayService(
     };
 
     if (activeId) {
-      const activeCandidate = candidates.find((item) => item.provider.id === activeId);
+      const activeCandidates = candidates.filter((item) => item.provider.id === activeId);
+      const activeCandidate = activeCandidates.find((item) => item.protocolPenalty === 0)
+        || activeCandidates[0]
+        || null;
       if (activeCandidate && healthyCandidate(activeCandidate)) {
         const preferredProtocolCandidate = candidates.find((item) => (
           item.protocolPenalty === 0
@@ -6201,6 +6204,9 @@ export function createModelGatewayService(
         const fallback = fallbackCandidates.find((item) => item.provider.id === activeCandidate.provider.id)
           || fallbackCandidates[0]
           || null;
+        if (retryCandidate(activeCandidate) && (!fallback || activeCandidate.protocolPenalty < fallback.protocolPenalty)) {
+          return selected(activeCandidate, retryReason(activeCandidate));
+        }
         if (fallback) {
           const activeEndpoint = activeCandidate.endpointProfile ? `/${activeCandidate.endpointProfile.id}` : "";
           const fallbackEndpoint = fallback.endpointProfile ? `/${fallback.endpointProfile.id}` : "";
@@ -6208,9 +6214,6 @@ export function createModelGatewayService(
             fallback,
             `Active provider '${activeCandidate.provider.id}${activeEndpoint}' circuit is open; selected fallback '${fallback.provider.id}${fallbackEndpoint}'.`,
           );
-        }
-        if (retryCandidate(activeCandidate)) {
-          return selected(activeCandidate, retryReason(activeCandidate));
         }
         const retryFallbackCandidates = candidates
           .filter((item) => (

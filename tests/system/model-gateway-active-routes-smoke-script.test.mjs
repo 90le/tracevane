@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -177,6 +178,24 @@ async function startMockGateway(options = {}) {
   };
 }
 
+function endpointMarkerSuffix(endpoint) {
+  return crypto.createHash("sha256").update(String(endpoint || "").replace(/\/+$/g, "")).digest("hex").slice(0, 12);
+}
+
+function markerPathForEndpoint(baseMarkerPath, endpoint) {
+  const parsed = path.parse(baseMarkerPath);
+  return path.join(parsed.dir, `${parsed.name}.${endpointMarkerSuffix(endpoint)}${parsed.ext || ".json"}`);
+}
+
+function markerFilesForLock(lock) {
+  try {
+    return fs.readdirSync(path.dirname(lock.markerPath))
+      .filter((item) => item.startsWith("active-route-smoke") && item.includes("marker") && item.endsWith(".json"));
+  } catch {
+    return [];
+  }
+}
+
 function makeTempLockDir() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-active-route-smoke-"));
   return {
@@ -330,9 +349,10 @@ test("model gateway active route smoke removes a fresh lock owned by a dead pid"
 test("model gateway active route smoke restores stale marker residue from a dead owner", async () => {
   const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "glm" } });
   const lock = makeTempLockDir();
+  const markerPath = markerPathForEndpoint(lock.markerPath, gateway.endpoint);
   try {
     fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
-    fs.writeFileSync(lock.markerPath, `${JSON.stringify({
+    fs.writeFileSync(markerPath, `${JSON.stringify({
       pid: 99999999,
       createdAt: new Date().toISOString(),
       endpoint: gateway.endpoint,
@@ -357,7 +377,7 @@ test("model gateway active route smoke restores stale marker residue from a dead
     ]);
     assert.deepEqual(parsed.staleMarkerRecovery?.failures, []);
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
-    assert.equal(fs.existsSync(lock.markerPath), false);
+    assert.equal(fs.existsSync(markerPath), false);
   } finally {
     lock.cleanup();
     await gateway.close();
@@ -367,9 +387,10 @@ test("model gateway active route smoke restores stale marker residue from a dead
 test("model gateway active route smoke does not overwrite active providers changed after a stale marker", async () => {
   const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "manual-provider" } });
   const lock = makeTempLockDir();
+  const markerPath = markerPathForEndpoint(lock.markerPath, gateway.endpoint);
   try {
     fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
-    fs.writeFileSync(lock.markerPath, `${JSON.stringify({
+    fs.writeFileSync(markerPath, `${JSON.stringify({
       pid: 99999999,
       createdAt: new Date().toISOString(),
       endpoint: gateway.endpoint,
@@ -394,7 +415,142 @@ test("model gateway active route smoke does not overwrite active providers chang
       { scope: "opencode", current: "manual-provider", original: "" },
     ]);
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex", opencode: "manual-provider" });
-    assert.equal(fs.existsSync(lock.markerPath), false);
+    assert.equal(fs.existsSync(markerPath), false);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke ignores stale markers from a different endpoint", async () => {
+  const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "glm" } });
+  const lock = makeTempLockDir();
+  const oldEndpoint = "http://127.0.0.1:9";
+  const oldMarkerPath = markerPathForEndpoint(lock.markerPath, oldEndpoint);
+  const currentMarkerPath = markerPathForEndpoint(lock.markerPath, gateway.endpoint);
+  try {
+    fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
+    fs.writeFileSync(oldMarkerPath, `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      endpoint: oldEndpoint,
+      providerId: "glm",
+      scopes: ["opencode"],
+      originalActiveProviders: { codex: "old-codex" },
+      script: "other-endpoint-smoke.mjs",
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath,
+    });
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.staleMarkerRecovery, null);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex", opencode: "glm" });
+    assert.equal(fs.existsSync(oldMarkerPath), true);
+    assert.equal(fs.existsSync(currentMarkerPath), false);
+    assert.deepEqual(markerFilesForLock(lock), [path.basename(oldMarkerPath)]);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke restores stale temporary-enable provider residue", async () => {
+  const gateway = await startMockGateway({ activeProviders: { codex: "old-codex", opencode: "glm" } });
+  const lock = makeTempLockDir();
+  const markerPath = markerPathForEndpoint(lock.markerPath, gateway.endpoint);
+  try {
+    fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      endpoint: gateway.endpoint,
+      providerId: "glm",
+      scopes: ["opencode"],
+      originalActiveProviders: { codex: "old-codex" },
+      temporaryEnable: {
+        requested: true,
+        originalEnabled: false,
+        applied: true,
+      },
+      script: "dead-smoke.mjs",
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--temporary-enable",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath,
+    });
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.staleMarkerRecovery?.restoredScopes, [
+      { scope: "opencode", original: "" },
+    ]);
+    assert.equal(parsed.staleMarkerRecovery?.temporaryEnable.restoredEnabled, false);
+    assert.equal(parsed.temporaryEnable.attempted, true);
+    assert.equal(parsed.temporaryEnable.restoredEnabled, false);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+    assert.equal(gateway.getProviderEnabled(), false);
+    assert.equal(fs.existsSync(markerPath), false);
+  } finally {
+    lock.cleanup();
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke skips stale temporary-enable disable when provider remains active", async () => {
+  const gateway = await startMockGateway({
+    activeProviders: { codex: "old-codex", opencode: "glm", openclaw: "glm" },
+  });
+  const lock = makeTempLockDir();
+  const markerPath = markerPathForEndpoint(lock.markerPath, gateway.endpoint);
+  try {
+    fs.mkdirSync(path.dirname(lock.markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, `${JSON.stringify({
+      pid: 99999999,
+      createdAt: new Date().toISOString(),
+      endpoint: gateway.endpoint,
+      providerId: "glm",
+      scopes: ["opencode"],
+      originalActiveProviders: { codex: "old-codex", openclaw: "glm" },
+      temporaryEnable: {
+        requested: true,
+        originalEnabled: false,
+        applied: true,
+      },
+      script: "dead-smoke.mjs",
+    })}\n`);
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: lock.markerPath,
+    });
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.staleMarkerRecovery?.restoredScopes, [
+      { scope: "opencode", original: "" },
+    ]);
+    assert.deepEqual(parsed.staleMarkerRecovery?.temporaryEnable.skipped, {
+      reason: "provider-still-active",
+      activeScopes: ["openclaw"],
+    });
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex", openclaw: "glm" });
+    assert.equal(gateway.getProviderEnabled(), true);
+    assert.equal(fs.existsSync(markerPath), false);
   } finally {
     lock.cleanup();
     await gateway.close();
@@ -614,7 +770,7 @@ test("model gateway active route smoke times out slow probes and still restores 
     );
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
     assert.equal(fs.existsSync(lock.lockDir), false);
-    assert.equal(fs.existsSync(lock.markerPath), false);
+    assert.deepEqual(markerFilesForLock(lock), []);
   } finally {
     lock.cleanup();
     await gateway.close();
@@ -655,7 +811,7 @@ test("model gateway active route smoke restores active providers and lock on SIG
     await waitFor(() => gateway.activeProviders.opencode === undefined);
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
     assert.equal(fs.existsSync(lock.lockDir), false);
-    assert.equal(fs.existsSync(lock.markerPath), false);
+    assert.deepEqual(markerFilesForLock(lock), []);
     assert.equal(Buffer.concat(stdout).toString("utf8"), "");
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
