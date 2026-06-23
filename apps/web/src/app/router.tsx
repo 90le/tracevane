@@ -11,7 +11,7 @@ import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
-import { WorkspaceIdePage } from "@/features/ide/WorkspaceIdePage";
+import { IdeShell } from "@/features/ide/IdeShell";
 import { FilesPage } from "@/features/files/FilesPage";
 import { RecoveryPage } from "@/features/recovery/RecoveryPage";
 import { PlatformsPage } from "@/features/platforms/PlatformsPage";
@@ -26,11 +26,13 @@ export function AppRouter() {
   return (
     <HashRouter>
       <Routes>
+        {/* Full-bleed IDE shell — renders OUTSIDE the AppShell layout so the
+            workspace IDE occupies the whole viewport (no app sidebar/topbar). */}
+        <Route path="/ide" element={<IdeShell />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatWorkbenchPage />} />
-          <Route path="/ide" element={<WorkspaceIdePage />} />
           <Route path="/files" element={<FilesPage />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
