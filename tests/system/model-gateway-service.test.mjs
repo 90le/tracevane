@@ -194,8 +194,29 @@ function unsupportedRouteRequestBody(route) {
   if (route.method !== "POST" && route.method !== "PUT" && route.method !== "PATCH") return undefined;
   if (route.path.includes("/embeddings")) return { model: "text-embedding-3-large", input: "hello" };
   if (route.path.includes("/moderations")) return { model: "omni-moderation-latest", input: "hello" };
+  if (route.path.includes("/chat/completions")) return { metadata: { trace: "test" } };
   if (route.path.includes("/completions")) return { model: "gpt-3.5-turbo-instruct", prompt: "hello" };
   if (route.path.includes("/videos")) return { model: "sora-2", prompt: "hello" };
+  if (route.path.includes("/containers") && route.path.includes("/files")) return { file_id: "file_test" };
+  if (route.path.includes("/containers")) return { name: "test container" };
+  if (route.path.includes("/skills") && route.path.includes("/versions")) return { archive_file_id: "file_test" };
+  if (route.path.includes("/skills")) return { name: "test skill", archive_file_id: "file_test" };
+  if (route.path.includes("/evals") && route.path.includes("/runs")) return { name: "test run", data_source: { type: "jsonl", source: { type: "file_id", id: "file_test" } } };
+  if (route.path.includes("/evals")) return { name: "test eval", data_source_config: { type: "custom" }, testing_criteria: [] };
+  if (route.path.includes("/fine_tuning/alpha/graders") || route.path.includes("/fine-tuning/alpha/graders")) {
+    return { grader: { type: "string_check", name: "exact", input: "{{ sample.output_text }}", reference: "ok", operation: "eq" } };
+  }
+  if (route.path.includes("/chatkit/sessions")) return { user: "user_test", workflow: { id: "workflow_test" } };
+  if (route.path.includes("/organization/admin_api_keys")) return { name: "admin-key-test" };
+  if (route.path.includes("/organization/invites")) return { email: "user@example.test", role: "reader" };
+  if (route.path.includes("/organization/projects") && route.path.includes("/service_accounts")) return { name: "service-account-test" };
+  if (route.path.includes("/organization/projects") && route.path.includes("/users")) return { user_id: "user_test", role: "member" };
+  if (route.path.includes("/organization") && route.path.includes("/roles")) return { role_id: "role_test" };
+  if (route.path.includes("/organization") && route.path.includes("/groups")) return { name: "group-test" };
+  if (route.path.includes("/organization/certificates")) return { certificate: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----" };
+  if (route.path.includes("/organization/spend_alerts")) return { threshold: 100, email: "billing@example.test" };
+  if (route.path.includes("/organization/data_retention")) return { retention_period_days: 30 };
+  if (route.path.includes("/organization/projects")) return { name: "project-test" };
   if (route.path.includes("/responses/input_tokens")) return { model: "gpt-5.5", input: "hello" };
   if (route.path.includes("/responses")) return { model: "gpt-5.5", input: "hello" };
   if (route.path.includes("/conversations") && route.path.includes("/items")) return { role: "user", content: "hello" };
@@ -208,6 +229,12 @@ function unsupportedRouteRequestBody(route) {
   if (route.path.includes("/vector_stores") && route.path.includes("/file_batches")) return { file_ids: ["file_test"] };
   if (route.path.includes("/vector_stores") && route.path.includes("/files")) return { file_id: "file_test" };
   if (route.path.includes("/vector_stores")) return { name: "test store" };
+  if (route.path.includes("/threads") && route.path.includes("/submit_tool_outputs")) {
+    return { tool_outputs: [{ tool_call_id: "call_test", output: "ok" }] };
+  }
+  if (route.path.includes("/threads/runs")) return { assistant_id: "asst_test" };
+  if (route.path.includes("/threads") && route.path.includes("/runs")) return { assistant_id: "asst_test" };
+  if (route.path.includes("/threads") && route.path.includes("/messages")) return { role: "user", content: "hello" };
   if (route.path.includes("/threads")) return { model: "gpt-5.5", messages: [] };
   if (route.path.includes("/realtime")) return { model: "gpt-realtime-2" };
   return { model: "gpt-5.5" };
@@ -13968,6 +13995,85 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
     { path: "/v1/embeddings", method: "POST", body: { model: "text-embedding-3-large", input: "hello" } },
     { path: "/v1/moderations", method: "POST", body: { model: "omni-moderation-latest", input: "hello" } },
     { path: "/v1/completions", method: "POST", body: { model: "gpt-3.5-turbo-instruct", prompt: "hello" } },
+    { path: "/v1/chat/completions", method: "GET", expectedEndpoint: "/v1/chat/completions#stored" },
+    { path: "/v1/chat/completions/chatcmpl_1", method: "GET" },
+    { path: "/v1/chat/completions/chatcmpl_1", method: "POST", body: { metadata: { trace: "test" } } },
+    { path: "/v1/chat/completions/chatcmpl_1", method: "DELETE" },
+    { path: "/v1/chat/completions/chatcmpl_1/messages", method: "GET" },
+    { path: "/v1/models/gpt-5.5", method: "GET" },
+    { path: "/v1/models/ft:gpt-5.5:org:suffix:model_1", method: "DELETE" },
+    { path: "/v1/containers", method: "GET" },
+    { path: "/v1/containers", method: "POST", body: { name: "test container" } },
+    { path: "/v1/containers/cntr_1", method: "GET" },
+    { path: "/v1/containers/cntr_1", method: "DELETE" },
+    { path: "/v1/containers/cntr_1/files", method: "GET" },
+    { path: "/v1/containers/cntr_1/files", method: "POST", body: { file_id: "file_1" } },
+    { path: "/v1/containers/cntr_1/files/file_1", method: "GET" },
+    { path: "/v1/containers/cntr_1/files/file_1", method: "DELETE" },
+    { path: "/v1/containers/cntr_1/files/file_1/content", method: "GET" },
+    { path: "/v1/skills", method: "GET" },
+    { path: "/v1/skills", method: "POST", body: { name: "test skill", archive_file_id: "file_1" } },
+    { path: "/v1/skills/skill_1", method: "GET" },
+    { path: "/v1/skills/skill_1", method: "POST", body: { default_version_id: "skillver_1" } },
+    { path: "/v1/skills/skill_1", method: "DELETE" },
+    { path: "/v1/skills/skill_1/content", method: "GET" },
+    { path: "/v1/skills/skill_1/versions", method: "GET" },
+    { path: "/v1/skills/skill_1/versions", method: "POST", body: { archive_file_id: "file_1" } },
+    { path: "/v1/skills/skill_1/versions/skillver_1", method: "GET" },
+    { path: "/v1/skills/skill_1/versions/skillver_1", method: "DELETE" },
+    { path: "/v1/skills/skill_1/versions/skillver_1/content", method: "GET" },
+    { path: "/v1/evals", method: "GET" },
+    { path: "/v1/evals", method: "POST", body: { name: "eval", data_source_config: { type: "custom" }, testing_criteria: [] } },
+    { path: "/v1/evals/eval_1", method: "GET" },
+    { path: "/v1/evals/eval_1", method: "POST", body: { metadata: { trace: "test" } } },
+    { path: "/v1/evals/eval_1", method: "DELETE" },
+    { path: "/v1/evals/eval_1/runs", method: "GET" },
+    { path: "/v1/evals/eval_1/runs", method: "POST", body: { name: "run", data_source: { type: "jsonl", source: { type: "file_id", id: "file_1" } } } },
+    { path: "/v1/evals/eval_1/runs/run_1", method: "GET" },
+    { path: "/v1/evals/eval_1/runs/run_1", method: "DELETE" },
+    { path: "/v1/evals/eval_1/runs/run_1/cancel", method: "POST", body: {} },
+    { path: "/v1/evals/eval_1/runs/run_1/output_items", method: "GET" },
+    { path: "/v1/evals/eval_1/runs/run_1/output_items/output_1", method: "GET" },
+    { path: "/v1/fine_tuning/alpha/graders/run", method: "POST", body: { grader: { type: "string_check", name: "exact", input: "ok", reference: "ok", operation: "eq" } } },
+    { path: "/v1/fine_tuning/alpha/graders/validate", method: "POST", body: { grader: { type: "string_check", name: "exact", input: "ok", reference: "ok", operation: "eq" } } },
+    {
+      path: "/v1/fine-tuning/alpha/graders/validate",
+      method: "POST",
+      body: { grader: { type: "string_check", name: "exact", input: "ok", reference: "ok", operation: "eq" } },
+      expectedEndpoint: "/v1/fine_tuning/alpha/graders/validate",
+    },
+    { path: "/v1/chatkit/sessions", method: "POST", body: { user: "user_1", workflow: { id: "workflow_1" } } },
+    { path: "/v1/chatkit/sessions/session_1/cancel", method: "POST", body: {} },
+    { path: "/v1/chatkit/threads", method: "GET" },
+    { path: "/v1/chatkit/threads/thread_1", method: "GET" },
+    { path: "/v1/chatkit/threads/thread_1", method: "DELETE" },
+    { path: "/v1/chatkit/threads/thread_1/items", method: "GET" },
+    { path: "/v1/organization/audit_logs", method: "GET" },
+    { path: "/v1/organization/admin_api_keys", method: "GET" },
+    { path: "/v1/organization/admin_api_keys", method: "POST", body: { name: "admin-key-test" } },
+    { path: "/v1/organization/admin_api_keys/key_1", method: "DELETE", expectedEndpoint: "/v1/organization/admin_api_keys/{key_id}" },
+    { path: "/v1/organization/invites", method: "POST", body: { email: "user@example.test", role: "reader" } },
+    { path: "/v1/organization/users/user_1", method: "POST", body: { name: "User Test" } },
+    { path: "/v1/organization/users/user_1/roles", method: "POST", body: { role_id: "role_1" } },
+    { path: "/v1/organization/groups", method: "POST", body: { name: "group-test" } },
+    { path: "/v1/organization/projects", method: "GET" },
+    { path: "/v1/organization/projects", method: "POST", body: { name: "project-test" } },
+    { path: "/v1/organization/projects/project_1/archive", method: "POST", body: {} },
+    { path: "/v1/organization/projects/project_1/service_accounts", method: "POST", body: { name: "service-account-test" } },
+    { path: "/v1/organization/projects/project_1/service_accounts/service_account_1", method: "DELETE", expectedEndpoint: "/v1/organization/projects/{project_id}/service_accounts/{service_account_id}" },
+    { path: "/v1/organization/projects/project_1/api_keys", method: "GET", expectedEndpoint: "/v1/organization/projects/{project_id}/api_keys" },
+    { path: "/v1/organization/projects/project_1/api_keys/key_1", method: "DELETE", expectedEndpoint: "/v1/organization/projects/{project_id}/api_keys/{key_id}" },
+    { path: "/v1/organization/projects/project_1/rate_limits", method: "GET", expectedEndpoint: "/v1/organization/projects/{project_id}/rate_limits" },
+    { path: "/v1/organization/projects/project_1/model_permissions/model_permission_1", method: "POST", body: { allowed: false }, expectedEndpoint: "/v1/organization/projects/{project_id}/model_permissions/{model_permission_id}" },
+    { path: "/v1/organization/projects/project_1/hosted_tool_permissions/tool_permission_1", method: "POST", body: { allowed: false }, expectedEndpoint: "/v1/organization/projects/{project_id}/hosted_tool_permissions/{tool_permission_id}" },
+    { path: "/v1/organization/data_retention", method: "GET" },
+    { path: "/v1/organization/spend_alerts", method: "POST", body: { threshold: 100, email: "billing@example.test" } },
+    { path: "/v1/organization/certificates", method: "POST", body: { certificate: "test" } },
+    { path: "/v1/organization/certificates/cert_1/activate", method: "POST", body: {}, expectedEndpoint: "/v1/organization/certificates/{certificate_id}/activate" },
+    { path: "/v1/organization/projects/project_1/certificates", method: "GET", expectedEndpoint: "/v1/organization/projects/{project_id}/certificates" },
+    { path: "/v1/organization/costs", method: "GET" },
+    { path: "/v1/organization/usage/completions", method: "GET" },
+    { path: "/v1/organization/usage/web_searches", method: "GET" },
     { path: "/v1/responses/input_tokens", method: "POST", body: { model: "gpt-5.5", input: "hello" } },
     { path: "/v1/responses/resp_1", method: "GET" },
     { path: "/v1/responses/resp_1", method: "DELETE" },
@@ -14020,7 +14126,25 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
       expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/checkpoints",
     },
     { path: "/v1/assistants", method: "POST", body: { model: "gpt-5.5" } },
+    { path: "/v1/assistants/asst_1", method: "POST", body: { name: "updated" } },
+    { path: "/v1/assistants/asst_1", method: "DELETE" },
+    { path: "/v1/threads/runs", method: "POST", body: { assistant_id: "asst_1", thread: { messages: [] } } },
+    { path: "/v1/threads/thread_1", method: "POST", body: { metadata: { trace: "test" } } },
+    { path: "/v1/threads/thread_1", method: "DELETE" },
     { path: "/v1/threads/thread_1/messages", method: "GET" },
+    { path: "/v1/threads/thread_1/messages/msg_1", method: "GET" },
+    { path: "/v1/threads/thread_1/messages/msg_1", method: "POST", body: { metadata: { trace: "test" } } },
+    { path: "/v1/threads/thread_1/messages/msg_1", method: "DELETE" },
+    { path: "/v1/threads/thread_1/runs/run_1", method: "GET" },
+    { path: "/v1/threads/thread_1/runs/run_1", method: "POST", body: { metadata: { trace: "test" } } },
+    {
+      path: "/v1/threads/thread_1/runs/run_1/submit_tool_outputs",
+      method: "POST",
+      body: { tool_outputs: [{ tool_call_id: "call_1", output: "ok" }] },
+    },
+    { path: "/v1/threads/thread_1/runs/run_1/cancel", method: "POST", body: {} },
+    { path: "/v1/threads/thread_1/runs/run_1/steps", method: "GET" },
+    { path: "/v1/threads/thread_1/runs/run_1/steps/step_1", method: "GET" },
     { path: "/v1/files/file_1", method: "GET" },
     { path: "/v1/files/file_1/content", method: "GET" },
     { path: "/v1/uploads", method: "POST", body: { bytes: 12, filename: "test.jsonl", mime_type: "application/jsonl", purpose: "batch" } },

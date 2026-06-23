@@ -31,6 +31,8 @@ import {
 import {
   MODEL_GATEWAY_API_FORMATS,
   type ModelGatewayApiFormat,
+  type ModelGatewayAppScope,
+  type ModelGatewayActiveRouteStatus,
   type ModelGatewayProviderSourceType,
   type ModelGatewayProviderView,
 } from "../types";
@@ -94,6 +96,15 @@ function providerCapabilityLabels(provider: ModelGatewayProviderView): string[] 
   return labels;
 }
 
+function activeRouteScopesForProvider(
+  provider: ModelGatewayProviderView,
+  activeRoutes: ModelGatewayActiveRouteStatus[],
+): ModelGatewayAppScope[] {
+  return activeRoutes
+    .filter((route) => route.resolvedProviderId === provider.id)
+    .map((route) => route.scope);
+}
+
 function ProviderTypeBadge({ provider }: { provider: ModelGatewayProviderView }) {
   const format = (MODEL_GATEWAY_API_FORMATS as readonly string[]).includes(provider.apiFormat)
     ? API_FORMAT_LABEL[provider.apiFormat]
@@ -145,25 +156,32 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const testMutation = useTestModelGatewayProviderMutation();
   const codexLoginMutation = useStartCodexAccountLoginMutation();
 
-  const [smokingId, setSmokingId] = React.useState<string | null>(null);
+  const [smokingKey, setSmokingKey] = React.useState<string | null>(null);
   const [testingId, setTestingId] = React.useState<string | null>(null);
 
-  const handleSmoke = (provider: ModelGatewayProviderView) => {
-    setSmokingId(provider.id);
-    smokeMutation.mutate(undefined, {
+  const handleActiveRouteSmoke = (provider: ModelGatewayProviderView, scope: ModelGatewayAppScope) => {
+    const key = `${provider.id}:${scope}`;
+    setSmokingKey(key);
+    smokeMutation.mutate({ scope }, {
       onSuccess: (result) => {
         if (result.ok) {
-          toast.success(`连通正常 · ${result.latencyMs}ms`, {
-            description: result.responsePreview ?? undefined,
+          toast.success(`${scope} 活跃路由正常 · ${result.latencyMs}ms`, {
+            description:
+              [
+                result.providerId !== provider.id ? `实际 Provider：${result.providerId}` : undefined,
+                result.responsePreview ?? undefined,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined,
           });
         } else {
-          toast.error("连通失败", {
+          toast.error(`${scope} 活跃路由失败`, {
             description: result.error?.message ?? "未知错误",
           });
         }
       },
-      onError: (error) => toast.error("连通检查失败", { description: error.message }),
-      onSettled: () => setSmokingId(null),
+      onError: (error) => toast.error(`${scope} 活跃路由检查失败`, { description: error.message }),
+      onSettled: () => setSmokingKey(null),
     });
   };
 
@@ -242,6 +260,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   }
 
   const providers = providersQuery.data?.providers ?? [];
+  const activeRoutes = providersQuery.data?.activeRoutes ?? [];
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -294,6 +313,12 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
             {providers.map((provider) => {
               const status = providerStatus(provider);
               const isAccountProvider = Boolean(provider.accountProvider);
+              const activeScopes = activeRouteScopesForProvider(provider, activeRoutes);
+              const activeSmokeScope = activeScopes[0] ?? null;
+              const activeSmokeKey = activeSmokeScope ? `${provider.id}:${activeSmokeScope}` : null;
+              const activeSmokeLabel = activeSmokeScope
+                ? `检查 ${activeSmokeScope} 活跃路由`
+                : "未被当前路由使用";
               return (
                 <TableRow key={provider.id}>
                   <TableCell>
@@ -324,10 +349,12 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                       />
                       <IconAction
                         icon={<Activity />}
-                        label="连通检查"
-                        onClick={() => handleSmoke(provider)}
-                        disabled={smokeMutation.isPending && smokingId === provider.id}
-                        busy={smokeMutation.isPending && smokingId === provider.id}
+                        label={activeSmokeLabel}
+                        onClick={() => {
+                          if (activeSmokeScope) handleActiveRouteSmoke(provider, activeSmokeScope);
+                        }}
+                        disabled={!activeSmokeScope || (smokeMutation.isPending && smokingKey === activeSmokeKey)}
+                        busy={smokeMutation.isPending && smokingKey === activeSmokeKey}
                       />
                       <IconAction
                         icon={<FlaskConical />}

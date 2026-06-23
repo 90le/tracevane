@@ -1,9 +1,10 @@
 import * as React from "react";
-import { Activity, Check, Globe, KeyRound, RouteOff, Terminal, ZapOff } from "lucide-react";
+import { Activity, Check, Globe, KeyRound, Loader2, RouteOff, Terminal, ZapOff } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { toast } from "@/design/ui/sonner";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
@@ -11,6 +12,7 @@ import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import {
   useModelGatewayAppConnectionsQuery,
   useModelGatewayProvidersQuery,
+  useSmokeModelGatewayActiveRouteMutation,
   useModelGatewayStatusQuery,
 } from "@/lib/query/model-gateway";
 import type {
@@ -119,8 +121,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const statusQuery = useModelGatewayStatusQuery();
   const providersQuery = useModelGatewayProvidersQuery();
   const connectionsQuery = useModelGatewayAppConnectionsQuery();
+  const smokeMutation = useSmokeModelGatewayActiveRouteMutation();
 
   const [keyDialogOpen, setKeyDialogOpen] = React.useState(false);
+  const [smokingScope, setSmokingScope] = React.useState<string | null>(null);
 
   const isLoading =
     statusQuery.isLoading || providersQuery.isLoading || connectionsQuery.isLoading;
@@ -186,6 +190,38 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   );
 
   const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
+
+  const smokeActiveRoute = (route: ModelGatewayActiveRouteStatus) => {
+    setSmokingScope(route.scope);
+    smokeMutation.mutate(
+      {
+        scope: route.scope,
+        model: route.resolvedModel ?? undefined,
+      },
+      {
+        onSuccess: (result) => {
+          const providerDrift =
+            route.resolvedProviderId && result.providerId !== route.resolvedProviderId
+              ? `实际 Provider：${result.providerId}`
+              : undefined;
+          const description = [providerDrift, result.responsePreview ?? undefined]
+            .filter(Boolean)
+            .join(" · ");
+          if (result.ok) {
+            toast.success(`${route.scope} 路由正常 · ${result.latencyMs}ms`, {
+              description: description || undefined,
+            });
+          } else {
+            toast.error(`${route.scope} 路由失败`, {
+              description: result.error?.message ?? (description || "未知错误"),
+            });
+          }
+        },
+        onError: (error) => toast.error(`${route.scope} 路由检查失败`, { description: error.message }),
+        onSettled: () => setSmokingScope(null),
+      },
+    );
+  };
 
   return (
     <div className="grid gap-[18px]">
@@ -295,7 +331,25 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   icon={route.resolvedProviderId ? <Terminal /> : <Globe />}
                   title={route.scope}
                   subtitle={detail || route.message}
-                  trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
+                  trailing={
+                    <span className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => smokeActiveRoute(route)}
+                        disabled={!route.resolvedProviderId || smokeMutation.isPending}
+                        aria-label={`检查 ${route.scope} 当前路由`}
+                      >
+                        {smokeMutation.isPending && smokingScope === route.scope ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Activity className="size-3.5" />
+                        )}
+                        检查
+                      </Button>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </span>
+                  }
                 />
               );
             })}

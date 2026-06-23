@@ -99,3 +99,30 @@ test("Overview view derives content from live status/providers/connections queri
   // Attention/health lists are filtered from live provider data.
   assert.match(overview, /providersQuery\.data|providerList/);
 });
+
+test("Overview view can smoke each visible active route by scope", () => {
+  const overview = read(`${VIEWS_DIR}/OverviewView.tsx`);
+  assert.match(overview, /useSmokeModelGatewayActiveRouteMutation/);
+  assert.match(overview, /smokeActiveRoute\(route\)/);
+  assert.match(overview, /scope: route\.scope/);
+  assert.match(overview, /model: route\.resolvedModel \?\? undefined/);
+  assert.match(overview, /disabled=\{!route\.resolvedProviderId \|\| smokeMutation\.isPending\}/);
+  assert.doesNotMatch(
+    overview,
+    /smokeMutation\.mutate\(undefined/,
+    "overview active-route smoke must never fall back to the default codex route implicitly",
+  );
+});
+
+test("Providers view only runs active-route smoke for scopes resolved to that provider", () => {
+  const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
+  assert.match(providers, /activeRouteScopesForProvider/);
+  assert.match(providers, /route\.resolvedProviderId === provider\.id/);
+  assert.match(providers, /smokeMutation\.mutate\(\{ scope \}/);
+  assert.match(providers, /disabled=\{!activeSmokeScope/);
+  assert.doesNotMatch(
+    providers,
+    /smokeMutation\.mutate\(undefined/,
+    "row-level active-route smoke must not silently test the default codex route",
+  );
+});
