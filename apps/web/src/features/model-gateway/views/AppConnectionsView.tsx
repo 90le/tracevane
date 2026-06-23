@@ -7,6 +7,8 @@ import {
   History,
   Pencil,
   RotateCcw,
+  Route,
+  ServerCog,
   Upload,
 } from "lucide-react";
 
@@ -57,15 +59,19 @@ import {
   useAppConnectionBackupsQuery,
   useApplyModelGatewayAppConnectionMutation,
   useModelGatewayAppConnectionsQuery,
+  useModelGatewayProvidersQuery,
   useRollbackModelGatewayAppConnectionMutation,
   useUpdateModelGatewayAppConnectionProfileMutation,
 } from "@/lib/query/model-gateway";
 import type {
   ModelGatewayAppConnection,
   ModelGatewayAppConnectionBackup,
+  ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnectionId,
+  ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import { formatModelBudgetPair } from "../budget-format";
 
 /** Status pill from live `configured` + issues. */
 function connectionStatus(connection: ModelGatewayAppConnection): {
@@ -87,6 +93,36 @@ function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString();
+}
+
+function activeRouteForConnection(
+  connection: ModelGatewayAppConnection,
+  activeRoutes: ModelGatewayActiveRouteStatus[],
+): ModelGatewayActiveRouteStatus | null {
+  return activeRoutes.find((route) => route.scope === connection.appScope) ?? null;
+}
+
+function modelForRoute(
+  route: ModelGatewayActiveRouteStatus | null,
+  providers: ModelGatewayProviderView[],
+) {
+  if (!route?.resolvedProviderId || !route.resolvedModel) return null;
+  const resolvedModel = route.resolvedModel;
+  const provider = providers.find((item) => item.id === route.resolvedProviderId);
+  return provider?.models?.models.find(
+    (item) => item.id === resolvedModel || item.aliases?.includes(resolvedModel),
+  ) ?? null;
+}
+
+function routeBudgetSummary(
+  route: ModelGatewayActiveRouteStatus | null,
+  providers: ModelGatewayProviderView[],
+): string | null {
+  const model = modelForRoute(route, providers);
+  return formatModelBudgetPair({
+    contextWindow: model?.contextWindow,
+    maxOutputTokens: model?.maxOutputTokens,
+  });
 }
 
 /** Pending write descriptor for the confirmation flow. */
@@ -561,6 +597,8 @@ function ConfirmWriteDialog({
 
 interface ConnectionRowProps {
   connection: ModelGatewayAppConnection;
+  activeRoute: ModelGatewayActiveRouteStatus | null;
+  providers: ModelGatewayProviderView[];
   availableModels: string[];
   highlighted: boolean;
   rowRef?: React.Ref<HTMLTableRowElement>;
@@ -573,6 +611,8 @@ interface ConnectionRowProps {
 
 function ConnectionRow({
   connection,
+  activeRoute,
+  providers,
   availableModels,
   highlighted,
   rowRef,
@@ -583,6 +623,15 @@ function ConnectionRow({
   modelPending,
 }: ConnectionRowProps) {
   const status = connectionStatus(connection);
+  const budget = routeBudgetSummary(activeRoute, providers);
+  const routeLine = activeRoute
+    ? [
+      activeRoute.resolvedProviderName,
+      activeRoute.resolvedModel,
+      activeRoute.resolvedEndpointProfileName ?? activeRoute.routeId,
+      budget,
+    ].filter(Boolean).join(" · ")
+    : "当前 active route 未解析";
   return (
     <TableRow
       ref={rowRef}
@@ -595,6 +644,20 @@ function ConnectionRow({
           <code className="truncate font-mono text-sm text-muted" title={connection.target.path}>
             {connection.target.path}
           </code>
+          <span className="flex flex-wrap items-center gap-1.5 text-xs text-subtle">
+            <Badge variant="outline">{connection.appScope}</Badge>
+            <span className="inline-flex items-center gap-1">
+              <Route className="size-3" />
+              {connection.protocol}
+            </span>
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <ServerCog className="size-3" />
+              <span className="truncate" title={connection.endpoint}>{connection.endpoint}</span>
+            </span>
+          </span>
+          <span className="truncate text-xs text-muted" title={routeLine}>
+            实际路由：{routeLine}
+          </span>
         </div>
       </TableCell>
       <TableCell>
@@ -739,6 +802,7 @@ function ResultSheet({
  */
 export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
   const connectionsQuery = useModelGatewayAppConnectionsQuery();
+  const providersQuery = useModelGatewayProvidersQuery();
   const applyMutation = useApplyModelGatewayAppConnectionMutation();
   const rollbackMutation = useRollbackModelGatewayAppConnectionMutation();
   const profileMutation = useUpdateModelGatewayAppConnectionProfileMutation();
@@ -758,7 +822,10 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
     }
   }, [selectedApp, connectionsQuery.data]);
 
-  if (connectionsQuery.isLoading) {
+  const isLoading = connectionsQuery.isLoading || providersQuery.isLoading;
+  const error = connectionsQuery.error ?? providersQuery.error;
+
+  if (isLoading) {
     return (
       <div className="grid gap-4" role="status" aria-busy="true">
         <div className="grid gap-2">
@@ -774,13 +841,20 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
     );
   }
 
-  if (connectionsQuery.error) {
+  if (error) {
     return (
       <ErrorState
         title="无法加载客户端接入"
-        description={connectionsQuery.error.message}
+        description={error.message}
         action={
-          <Button variant="outline" size="sm" onClick={() => void connectionsQuery.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void connectionsQuery.refetch();
+              void providersQuery.refetch();
+            }}
+          >
             重试
           </Button>
         }
@@ -791,6 +865,8 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
   const data = connectionsQuery.data;
   const connections = data?.connections ?? [];
   const availableModels = data?.availableModels ?? [];
+  const activeRoutes = providersQuery.data?.activeRoutes ?? [];
+  const providerList = providersQuery.data?.providers ?? [];
 
   const detailConnection = detailId
     ? connections.find((c) => c.id === detailId) ?? null
@@ -857,7 +933,7 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
       <div>
         <h2 className="text-lg font-semibold text-ink-strong">客户端接入</h2>
         <p className="text-sm text-muted">
-          把网关路由应用到本地 CLI 客户端（写入配置文件，先看差异再确认，支持源文件编辑与多版本回滚）。应用 / 回滚为危险写操作：会先备份目标文件，操作前后均展示目标路径、差异与备份/恢复证据。
+          把网关路由应用到本地 CLI 客户端（写入配置文件，先看差异再确认，支持源文件编辑与多版本回滚）。每行显示 Agent scope、协议、Gateway endpoint 和当前实际 active route，避免配置写入后测错客户端路由。应用 / 回滚为危险写操作：会先备份目标文件，操作前后均展示目标路径、差异与备份/恢复证据。
         </p>
       </div>
 
@@ -883,6 +959,8 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
                 <ConnectionRow
                   key={connection.id}
                   connection={connection}
+                  activeRoute={activeRouteForConnection(connection, activeRoutes)}
+                  providers={providerList}
                   availableModels={availableModels}
                   highlighted={highlighted}
                   rowRef={highlighted ? highlightRef : undefined}

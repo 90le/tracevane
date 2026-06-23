@@ -143,3 +143,16 @@ test("Models view surfaces declared model context and output budgets", () => {
   assert.match(models, /out \{outputBudget\}/);
   assert.match(models, /未声明/);
 });
+
+test("App Connections view links client config rows to active route diagnostics", () => {
+  const apps = read(`${VIEWS_DIR}/AppConnectionsView.tsx`);
+  assert.match(apps, /useModelGatewayAppConnectionsQuery/);
+  assert.match(apps, /useModelGatewayProvidersQuery/);
+  assert.match(apps, /activeRouteForConnection/);
+  assert.match(apps, /route\.scope === connection\.appScope/);
+  assert.match(apps, /connection\.appScope/);
+  assert.match(apps, /connection\.protocol/);
+  assert.match(apps, /connection\.endpoint/);
+  assert.match(apps, /实际路由/);
+  assert.match(apps, /formatModelBudgetPair/);
+});
