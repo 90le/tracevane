@@ -10,6 +10,7 @@ import { ExternalConnectionsPage } from "@/features/external/ExternalConnections
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
+import { WorkspaceIdePage } from "@/features/ide/WorkspaceIdePage";
 
 /**
  * App routing. HashRouter is required because the backend serves the SPA
@@ -25,6 +26,7 @@ export function AppRouter() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatWorkbenchPage />} />
+          <Route path="/ide" element={<WorkspaceIdePage />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
           <Route path="/external" element={<ExternalConnectionsPage />} />
