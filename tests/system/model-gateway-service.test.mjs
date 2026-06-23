@@ -196,6 +196,10 @@ function unsupportedRouteRequestBody(route) {
   if (route.path.includes("/moderations")) return { model: "omni-moderation-latest", input: "hello" };
   if (route.path.includes("/completions")) return { model: "gpt-3.5-turbo-instruct", prompt: "hello" };
   if (route.path.includes("/videos")) return { model: "sora-2", prompt: "hello" };
+  if (route.path.includes("/responses/input_tokens")) return { model: "gpt-5.5", input: "hello" };
+  if (route.path.includes("/responses")) return { model: "gpt-5.5", input: "hello" };
+  if (route.path.includes("/conversations") && route.path.includes("/items")) return { role: "user", content: "hello" };
+  if (route.path.includes("/conversations")) return { items: [{ role: "user", content: "hello" }] };
   if (route.path.includes("/fine_tuning/jobs") || route.path.includes("/fine-tuning/jobs")) return { model: "gpt-5.5", training_file: "file_test" };
   if (route.path.includes("/batches")) return { input_file_id: "file_test", endpoint: "/v1/responses" };
   if (route.path.includes("/uploads") && route.path.endsWith("/complete")) return { part_ids: ["part_test"] };
@@ -13964,6 +13968,17 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
     { path: "/v1/embeddings", method: "POST", body: { model: "text-embedding-3-large", input: "hello" } },
     { path: "/v1/moderations", method: "POST", body: { model: "omni-moderation-latest", input: "hello" } },
     { path: "/v1/completions", method: "POST", body: { model: "gpt-3.5-turbo-instruct", prompt: "hello" } },
+    { path: "/v1/responses/input_tokens", method: "POST", body: { model: "gpt-5.5", input: "hello" } },
+    { path: "/v1/responses/resp_1", method: "GET" },
+    { path: "/v1/responses/resp_1", method: "DELETE" },
+    { path: "/v1/responses/resp_1/input_items", method: "GET" },
+    { path: "/v1/responses/resp_1/cancel", method: "POST", body: {} },
+    { path: "/v1/conversations", method: "POST", body: { items: [{ role: "user", content: "hello" }] } },
+    { path: "/v1/conversations/conv_1", method: "POST", body: { metadata: { trace: "test" } } },
+    { path: "/v1/conversations/conv_1/items", method: "GET" },
+    { path: "/v1/conversations/conv_1/items", method: "POST", body: { role: "user", content: "hello" } },
+    { path: "/v1/conversations/conv_1/items/item_1", method: "GET" },
+    { path: "/v1/conversations/conv_1/items/item_1", method: "DELETE" },
     { path: "/v1/batches", method: "POST", body: { input_file_id: "file_1", endpoint: "/v1/responses" } },
     {
       path: "/v1/fine_tuning/jobs",
