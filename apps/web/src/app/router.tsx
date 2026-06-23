@@ -10,6 +10,7 @@ import { ExternalConnectionsPage } from "@/features/external/ExternalConnections
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
+import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { WorkspaceIdePage } from "@/features/ide/WorkspaceIdePage";
 import { FilesPage } from "@/features/files/FilesPage";
 import { RecoveryPage } from "@/features/recovery/RecoveryPage";
@@ -36,6 +37,7 @@ export function AppRouter() {
           <Route path="/external" element={<ExternalConnectionsPage />} />
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<LongTasksPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/recovery" element={<RecoveryPage />} />
           <Route path="/platforms" element={<PlatformsPage />} />
           {/* `:platform` selects the platform child (currently `openclaw`); the

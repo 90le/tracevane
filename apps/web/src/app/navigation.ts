@@ -44,7 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // 证据
   { path: "/files", label: "文件", group: "证据", icon: FolderOpen, status: "ready" },
-  { path: "/approvals", label: "审批", group: "证据", icon: ShieldCheck, status: "coming-soon" },
+  { path: "/approvals", label: "审批", group: "证据", icon: ShieldCheck, status: "ready" },
 
   // 系统
   { path: "/recovery", label: "恢复", group: "系统", icon: LifeBuoy, status: "ready" },
