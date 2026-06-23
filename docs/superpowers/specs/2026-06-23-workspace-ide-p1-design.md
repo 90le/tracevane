@@ -12,13 +12,14 @@
 - 已确认技术决策：
   - **编辑器内核 = CodeMirror 6**（全套已是依赖：state/view + 8 语言包 + one-dark），不再加 Monaco。
   - **终端 = node-pty + xterm.js**（已是标准栈，VS Code 同款；WebContainers 因不能跑真实宿主原生 CLI 而被排除）。
-  - **IDE 结构 = 全屏专用壳**（`/ide` 占满视口，不带 app 侧栏/顶栏）；**文件管理 = IDE Explorer**（真 CRUD）；**删除独立 `/files` 页**。其余 11 个域仍用现有 AppShell。
+  - **IDE 结构 = 全屏专用壳**（`/ide` 占满视口，不带 app 侧栏/顶栏）；IDE 保留自己的 **Explorer**（工作区集成文件管理子集）。
+  - **`/files` 不删除**——重建为**独立的、系统级全功能文件管理器**（Finder/Explorer 级），比 IDE Explorer 与历史只读版本更全面，是独立 track（见 §11）。IDE Explorer 与 `/files` 共享底层文件操作能力，但各自呈现。
   - 后端文件 CRUD / git 操作 / 终端 launch-stream-end **均已存在**，P1 无需新建后端。
 
 ## 2. 架构
 
 - 新增 `IdeShell`——`/ide` 路由渲染它，占满视口，**不在 AppShell layout route 之下**（IDE 是独立壳）。
-- 路由：`router.tsx` 中 `/ide` → `IdeShell`（脱离 AppShell 布局）；删除 `/files` 路由与导航项（Git 历史可恢复只读证据浏览器概念）。
+- 路由：`router.tsx` 中 `/ide` → `IdeShell`（脱离 AppShell 布局）。`/files` 路由保留，后续 track 重建为全功能文件管理器（P1 不动其现有只读实现，避免破坏）。
 - 组件分层（`apps/web/src/features/ide/`）：`IdeShell`（窗口编排）+ 各面板组件 + 复用现有 `@/shared/diff`（DiffView/CodeBlock）、`@/design/ui`、三态。
 - 数据层：`lib/api/files.ts` 增加**写绑定**（PUT content、copy/move/rename/archive/unarchive/upload/delete/dirs/tree），`lib/git.ts` 增加 stage/unstage/commit/branches/checkout；`lib/api/terminal.ts` 已有 launch/end/sessions，补 stream 消费 hook。后端端点全部已存在。
 
@@ -78,13 +79,17 @@
 ## 9. 验收与测试
 
 - `npm run typecheck:web` / `build:web` 通过。
-- 新增 IDE 合同测试：断言 IdeShell 面板结构、Explorer 绑定现有文件 CRUD 端点、编辑器保存走 PUT content、删除 /files 路由与导航。
+- 新增 IDE 合同测试：断言 IdeShell 面板结构、Explorer 绑定现有文件 CRUD 端点、编辑器保存走 PUT content、`/ide` 渲染 IdeShell（脱离 AppShell）。`/files` 路由与导航在 P1 保持不变（其全功能重建属独立 track）。
 - Playwright smoke（`scripts/smoke-web-ide.py` 升级）：桌面+移动，IdeShell 全屏渲染、Explorer 树+右键菜单、新建/重命名/删除流、编辑器保存、Markdown 实时预览、终端会话——0 console error、0 横向溢出。
 - 后端无变更回归：`npm run typecheck:api`/`build:api` 不受影响。
 
 ## 10. 非目标（P2-P4，独立 spec）
 
-- P2：HTML/web iframe 预览 + 文件 watch SSE 实时重载 + 预览证据（截图/console）。
+- P2：**HTML/web iframe 预览 + 实时编辑可保存**（在 HTML 预览中直接编辑元素/源码并保存回源文件）+ 文件 watch SSE 实时重载 + 预览证据（截图/console）。
 - P3：AI diff/审批循环（Agent 面板，复用 chat + gateway，diff → 审批 → 应用）。
 - P4：运行时（命名任务、端口/进程检查器、dev server 编排）。
 - 不复制完整 VS Code 桌面产品；不依赖 VS Code 私有 remote/server；不让浏览器存储成为项目文件唯一真相。
+
+## 11. 关联 track：全功能文件管理器（`/files`，独立 spec）
+
+`/files` 不删除，重建为系统级全功能文件管理器，比 IDE Explorer 与历史只读版本更全面。预期能力（独立 spec 细化）：双窗格/多 tab、列表+网格+详细列视图、缩略图、完整元数据（大小/时间/权限/类型）、树+面包屑+路径栏、名称/内容搜索与筛选排序、批量选择与批量操作、拖拽、新建/重命名/移动/复制/删除/打包/上传/下载、压缩包进入浏览、回收站 vs 永久删除、全键盘导航。IDE Explorer 复用其底层文件操作组件/数据层（共享 `lib/api/files`+`lib/api/git` 与文件操作原语），但呈现为工作区集成子集。该 track 与 IDE P1 解耦，按独立 spec→plan→实现。
