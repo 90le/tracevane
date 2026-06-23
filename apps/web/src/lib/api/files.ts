@@ -12,6 +12,7 @@ import type {
   FilesSummaryPayload,
   FilesTransferPayload,
   FilesUnarchivePayload,
+  FilesUploadPayload,
   FilesWritePayload,
 } from "../../../../../types/files";
 
@@ -220,6 +221,16 @@ export function unarchiveFile(
   payload: FilesUnarchivePayload,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/unarchive", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/upload — upload one or more files (base64 bodies). */
+export function uploadFiles(
+  payload: FilesUploadPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/upload", {
     method: "POST",
     body: JSON.stringify(payload),
   });

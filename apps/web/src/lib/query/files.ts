@@ -18,6 +18,7 @@ import {
   renameFile,
   searchFiles,
   unarchiveFile,
+  uploadFiles,
   writeFileContent,
 } from "../api/files";
 import type {
@@ -201,6 +202,15 @@ export function useUnarchiveFileMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: unarchiveFile,
+    onSuccess: () => qc.invalidateQueries({ queryKey: filesKeys.all }),
+  });
+}
+
+/** POST /api/files/upload — upload one or more files (base64 bodies). */
+export function useUploadFilesMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: uploadFiles,
     onSuccess: () => qc.invalidateQueries({ queryKey: filesKeys.all }),
   });
 }
