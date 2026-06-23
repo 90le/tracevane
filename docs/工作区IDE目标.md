@@ -1,7 +1,9 @@
 # Tracevane Workspace IDE Goal
 
 > Status: active goal
-> Updated: 2026-06-18
+> Updated: 2026-06-23
+>
+> Note (2026-06-23): The IDE now lives in `apps/web` as a full-bleed `IdeShell` mounted outside `AppShell` (full viewport), not the earlier read-only `/ide` workbench. P1 (Workspace Shell) is DONE.
 
 ## 1. Intent
 
@@ -103,11 +105,13 @@ Primary sources checked:
 
 ## 7. Phasing
 
-### P1: Workspace Shell
+### P1: Workspace Shell — DONE (2026-06-23)
 
-- Unify files, editor tabs, terminal panel and Git summary.
-- Add Markdown preview and diff review.
-- Add Agent actions scoped to current file/selection.
+- Unify files, editor tabs, terminal panel and Git summary. ✅
+- Add Markdown preview and diff review. ✅ (Markdown live preview via remark/rehype/dompurify/hljs/mermaid)
+- Add Agent actions scoped to current file/selection. — deferred to P3 (AI diff/approval track).
+
+P1 delivery: full-bleed `IdeShell` outside `AppShell`; file-ops core (`FileTree` + `FileActionsMenu` + `useFileOperations`); IDE Explorer + Git panel; CodeMirror 6 multi-tab editor with PUT save; xterm terminal panel over node-pty (HTTP input/resize routes added). Verified: typecheck:web/api + build:web, contract test 8/8, Playwright desktop+mobile 0 errors/0 overflow.
 
 ### P2: Live Preview and Evidence
 
