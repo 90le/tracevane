@@ -29,7 +29,7 @@ export const NAV_GROUP_ORDER: NavGroup[] = ["总览", "运行", "连接", "证�
 
 export const NAV_ITEMS: NavItem[] = [
   // 总览
-  { path: "/dashboard", label: "总览", group: "总览", icon: LayoutDashboard, status: "coming-soon" },
+  { path: "/dashboard", label: "总览", group: "总览", icon: LayoutDashboard, status: "ready" },
 
   // 运行
   { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "coming-soon" },
