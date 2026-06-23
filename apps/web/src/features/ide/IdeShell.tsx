@@ -16,13 +16,16 @@ import { Preview } from "@/features/ide/panels/Preview";
  * topbar). It occupies the whole viewport and lays out the IDE chrome:
  * activity bar + side panel + editor + preview + bottom panel + status bar.
  *
- * The shell owns two pieces of shared state so the panels can stay
+ * The shell owns three pieces of shared state so the panels can stay
  * presentation-only:
  *  - `rootId` — the active file root (resolved from the files summary; the
  *    explorer can switch it via `onChangeRoot`);
  *  - `openFile` — the path of the file currently open in the editor (set by
  *    the explorer's `onSelectFile`; consumed by EditorArea, which is still a
- *    placeholder but receives the path so a later task can open it).
+ *    placeholder but receives the path so a later task can open it);
+ *  - `diffFile` — a file path the Git panel asked to diff (set via the Git
+ *    panel's `onOpenDiff`). A later task will route this into the editor's
+ *    diff view; for now it is stored so the seam exists.
  *
  * Layout grid:
  *   columns:  [activity(52px) | rest]
@@ -34,6 +37,14 @@ export function IdeShell() {
 
   // --- Shared "open file" state (lifted here; Phase 4 editor consumes it) ---
   const [openFile, setOpenFile] = React.useState<string | undefined>(undefined);
+
+  // --- Shared "diff target" state (lifted here; Git panel sets it; a later
+  //     task will route it into the editor diff view). For now it is stored so
+  //     the GitPanel → IdeShell seam exists; no consumer renders it yet.
+  const [, setDiffFile] = React.useState<string | undefined>(undefined);
+  const handleOpenDiff = React.useCallback((file: string) => {
+    setDiffFile(file);
+  }, []);
 
   // --- Active root resolution ------------------------------------------------
   const summary = useFilesSummaryQuery();
@@ -75,6 +86,7 @@ export function IdeShell() {
             selectedPath={openFile}
             onSelectFile={handleSelectFile}
             onChangeRoot={handleChangeRoot}
+            onOpenDiff={handleOpenDiff}
           />
           <EditorArea openFile={openFile} rootId={rootId} />
           <Preview />

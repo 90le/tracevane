@@ -1,7 +1,8 @@
-import { Folder, Search, GitBranch, Sparkles } from "lucide-react";
+import { Folder, Search, Sparkles } from "lucide-react";
 
 import type { IdeActivity } from "@/features/ide/panels/ActivityBar";
 import { IdeExplorer } from "@/features/ide/explorer/IdeExplorer";
+import { GitPanel } from "@/features/ide/explorer/GitPanel";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -17,6 +18,12 @@ interface SidePanelProps {
   onSelectFile?: (path: string) => void;
   /** Fired when the user switches the active root in the explorer header. */
   onChangeRoot?: (rootId: string) => void;
+  /**
+   * Fired when the Git panel asks to open a changed file's diff. A later
+   * task will route this to the editor diff view; for now the shell stores
+   * the target path so the editor area can consume it.
+   */
+  onOpenDiff?: (file: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -24,11 +31,10 @@ interface SidePanelProps {
 // ---------------------------------------------------------------------------
 
 const PLACEHOLDERS: Record<
-  Exclude<IdeActivity, "files">,
+  Extract<IdeActivity, "search" | "agent">,
   { title: string; hint: string; icon: typeof Folder }
 > = {
   search: { title: "搜索", hint: "跨文件搜索将在此呈现", icon: Search },
-  git: { title: "源代码管理", hint: "Git 变更将在此呈现", icon: GitBranch },
   agent: { title: "Agent", hint: "AI 代理（规划中）", icon: Sparkles },
 };
 
@@ -40,8 +46,10 @@ const PLACEHOLDERS: Record<
  * Left-side panel that switches its body per active IDE view.
  *
  * For the `files` activity it renders the real {@link IdeExplorer} (composing
- * the reusable Phase 1 file core). The other activities (`search` / `git` /
- * `agent`) still render Aurora-styled placeholders pending their own P1 tasks.
+ * the reusable Phase 1 file core); for the `git` activity it renders the real
+ * {@link GitPanel} (stage/unstage/commit/branch). The remaining activities
+ * (`search` / `agent`) still render Aurora-styled placeholders pending their
+ * own P1 tasks.
  */
 export function SidePanel({
   activity,
@@ -49,6 +57,7 @@ export function SidePanel({
   selectedPath,
   onSelectFile,
   onChangeRoot,
+  onOpenDiff,
 }: SidePanelProps) {
   // --- Files activity: real explorer --------------------------------------
   if (activity === "files") {
@@ -60,6 +69,15 @@ export function SidePanel({
           onSelectFile={onSelectFile}
           onChangeRoot={onChangeRoot}
         />
+      </aside>
+    );
+  }
+
+  // --- Git activity: real GitPanel ----------------------------------------
+  if (activity === "git") {
+    return (
+      <aside className="flex min-h-0 min-w-0 flex-col border-r border-line bg-panel">
+        <GitPanel rootId={rootId ?? ""} onOpenDiff={onOpenDiff} />
       </aside>
     );
   }

@@ -29,6 +29,7 @@ export type {
   GitFileChange,
   GitFileChangeKind,
   GitCommitSummary,
+  GitBranchSummary,
 } from "../../../../../types/git";
 
 // --- Terminal (reused: persisted sessions + CLI status) --------------------
