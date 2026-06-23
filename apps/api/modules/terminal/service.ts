@@ -482,6 +482,8 @@ export interface TerminalService {
     runtime: TerminalStreamRuntime,
   ): TerminalGatewayAttachResponse;
   detachStreamClient(sessionId: string, streamId: string): void;
+  sendHttpInput(sessionId: string, data: string): void;
+  resizeHttpSession(sessionId: string, cols: number, rows: number): void;
   sendGatewayInput(
     payload: TerminalGatewayInputPayload,
     runtime: Pick<TerminalGatewayRuntime, "connId">,
@@ -2547,6 +2549,50 @@ export function createTerminalService(
 
     detachStreamClient(sessionId: string, streamId: string): void {
       detachStreamId(streamId, sessionId);
+    },
+
+    sendHttpInput(sessionId: string, data: string): void {
+      if (!pty) {
+        throw new Error(
+          "node-pty is not available; terminal sessions are disabled",
+        );
+      }
+      const session = requireActiveSession(sessionId);
+      const inputData = String(data || "");
+      if (
+        consumeTerminalControlPayload(session, inputData, {
+          actorClientId: null,
+        })
+      ) {
+        return;
+      }
+      session.term.write(inputData);
+      markSessionActivity(session, { persist: "deferred" });
+      enqueueInputLedgerEvent(session, inputData, null);
+    },
+
+    resizeHttpSession(sessionId: string, cols: number, rows: number): void {
+      if (!pty) {
+        throw new Error(
+          "node-pty is not available; terminal sessions are disabled",
+        );
+      }
+      const session = requireActiveSession(sessionId);
+      const normalizedCols = normalizeTerminalDimension(cols);
+      const normalizedRows = normalizeTerminalDimension(rows);
+      if (!normalizedCols || !normalizedRows) {
+        return;
+      }
+      markSessionActivity(session);
+      session.lastCols = normalizedCols;
+      session.lastRows = normalizedRows;
+      appendLedgerEvent(
+        session,
+        "resize",
+        { cols: session.lastCols, rows: session.lastRows },
+        null,
+      );
+      session.term.resize(session.lastCols, session.lastRows);
     },
 
     sendGatewayInput(

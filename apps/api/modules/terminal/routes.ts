@@ -251,4 +251,47 @@ export function registerTerminalRoutes(
     const body = await parseJsonBody<TerminalEndPayload>(req);
     sendJson(res, 200, await routeCtx.services.terminal.endSession(body));
   });
+
+  router.post(
+    "/api/terminal/sessions/:sessionId/input",
+    async (req, res, routeCtx, params) => {
+      const body = await parseJsonBody<{ data?: string }>(req);
+      try {
+        routeCtx.services.terminal.sendHttpInput(
+          params.sessionId,
+          String(body.data ?? ""),
+        );
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "terminal_input_failed",
+          message:
+            error instanceof Error ? error.message : "terminal_input_failed",
+        });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+    },
+  );
+
+  router.post(
+    "/api/terminal/sessions/:sessionId/resize",
+    async (req, res, routeCtx, params) => {
+      const body = await parseJsonBody<{ cols?: number; rows?: number }>(req);
+      try {
+        routeCtx.services.terminal.resizeHttpSession(
+          params.sessionId,
+          Number(body.cols || 0),
+          Number(body.rows || 0),
+        );
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "terminal_resize_failed",
+          message:
+            error instanceof Error ? error.message : "terminal_resize_failed",
+        });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+    },
+  );
 }
