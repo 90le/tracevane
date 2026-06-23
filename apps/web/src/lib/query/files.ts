@@ -1,17 +1,22 @@
 import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
-import { browseFiles, getFilesSummary, readFile } from "../api/files";
-import type { FilesBrowseParams, FilesReadParams } from "../api/files";
+import { browseFiles, getFilesSummary, readFile, searchFiles } from "../api/files";
+import type {
+  FilesBrowseParams,
+  FilesReadParams,
+  FilesSearchParams,
+} from "../api/files";
 import type { ApiError } from "../api/errors";
 import type {
   FilesDirectoryPayload,
   FilesReadPayload,
+  FilesSearchPayload,
   FilesSummaryPayload,
 } from "../../../../../types/files";
 
 /**
- * TanStack Query hooks for the Files read data layer consumed by the Workspace
- * IDE read workbench (`/ide`).
+ * TanStack Query hooks for the Files read data layer consumed by the read
+ * evidence surfaces (`/ide`, `/files`).
  *
  * Query keys are namespaced under `["ide", "files", ...]`. All queries are
  * read-only; there are no mutations in this slice (editing/writing belong to
@@ -25,6 +30,8 @@ export const filesKeys = {
     ["ide", "files", "browse", rootId, path] as const,
   read: (rootId: string, path: string) =>
     ["ide", "files", "read", rootId, path] as const,
+  search: (rootId: string, path: string, query: string) =>
+    ["ide", "files", "search", rootId, path, query] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -64,6 +71,25 @@ export function useFileReadQuery(
     queryFn: ({ signal }) => readFile(params as FilesReadParams, signal),
     enabled:
       Boolean(params?.rootId && params?.path) && (options?.enabled ?? true),
+    ...options,
+  });
+}
+
+/** Recursive name/content search under a root (`/api/files/search`). */
+export function useFilesSearchQuery(
+  params: FilesSearchParams | null,
+  options?: QueryOpts<FilesSearchPayload>,
+) {
+  return useQuery<FilesSearchPayload, ApiError>({
+    queryKey: filesKeys.search(
+      params?.rootId ?? "",
+      params?.path ?? "",
+      params?.query ?? "",
+    ),
+    queryFn: ({ signal }) => searchFiles(params as FilesSearchParams, signal),
+    enabled:
+      Boolean(params?.rootId && params?.query?.trim()) &&
+      (options?.enabled ?? true),
     ...options,
   });
 }

@@ -2,21 +2,24 @@ import { apiRequest } from "./client";
 import type {
   FilesDirectoryPayload,
   FilesReadPayload,
+  FilesSearchPayload,
   FilesSummaryPayload,
 } from "../../../../../types/files";
 
 /**
  * Typed transport bindings for the read slice of the Files HTTP API
- * (`apps/api/modules/files/routes.ts`) consumed by the Workspace IDE read
- * workbench (`/ide`).
+ * (`apps/api/modules/files/routes.ts`) consumed by the read evidence surfaces:
+ * the Workspace IDE read workbench (`/ide`) and the File & Git evidence browser
+ * (`/files`).
  *
  * Bound here (read-only GET):
  *  - GET /api/files/summary  → file roots roster
  *  - GET /api/files/browse   → paged directory listing for one root + path
  *  - GET /api/files/read     → single file content (text-like only is useful)
+ *  - GET /api/files/search   → recursive name/content search under a root
  *
  * NOT bound here (out of scope — the Workspace IDE write track):
- *  - tree / search / download / archive routes (browse covers the read workbench)
+ *  - tree / download / archive routes (browse + search cover the read surfaces)
  *  - every mutating route (create/write/rename/copy/move/delete/upload/archive)
  *    — editing, writing, and committing belong to the future write track and are
  *    deliberately not surfaced here.
@@ -75,6 +78,32 @@ export function readFile(
 ): Promise<FilesReadPayload> {
   const search = new URLSearchParams({ rootId: params.rootId, path: params.path });
   return apiRequest<FilesReadPayload>(`${BASE}/read?${search.toString()}`, {
+    signal,
+  });
+}
+
+export interface FilesSearchParams {
+  rootId: string;
+  /** Free-text query (matched against name + content by the backend). */
+  query: string;
+  /** Directory path to scope the search under (empty = root). */
+  path?: string;
+  /** Recurse into subdirectories (defaults to backend default = true). */
+  recursive?: boolean;
+  /** Include dotfiles / hidden entries (defaults to backend default). */
+  hidden?: boolean;
+}
+
+/** GET /api/files/search — recursive name/content search under a root. */
+export function searchFiles(
+  params: FilesSearchParams,
+  signal?: AbortSignal,
+): Promise<FilesSearchPayload> {
+  const search = new URLSearchParams({ rootId: params.rootId, q: params.query });
+  if (params.path) search.set("path", params.path);
+  if (params.recursive != null) search.set("recursive", params.recursive ? "true" : "false");
+  if (params.hidden != null) search.set("hidden", params.hidden ? "true" : "false");
+  return apiRequest<FilesSearchPayload>(`${BASE}/search?${search.toString()}`, {
     signal,
   });
 }

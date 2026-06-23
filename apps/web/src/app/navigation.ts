@@ -43,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: "/external", label: "外部接入", group: "连接", icon: Globe, status: "ready" },
 
   // 证据
-  { path: "/files", label: "文件", group: "证据", icon: FolderOpen, status: "coming-soon" },
+  { path: "/files", label: "文件", group: "证据", icon: FolderOpen, status: "ready" },
   { path: "/approvals", label: "审批", group: "证据", icon: ShieldCheck, status: "coming-soon" },
 
   // 系统
