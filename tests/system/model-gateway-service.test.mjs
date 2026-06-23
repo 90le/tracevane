@@ -196,8 +196,14 @@ function unsupportedRouteRequestBody(route) {
   if (route.path.includes("/moderations")) return { model: "omni-moderation-latest", input: "hello" };
   if (route.path.includes("/completions")) return { model: "gpt-3.5-turbo-instruct", prompt: "hello" };
   if (route.path.includes("/videos")) return { model: "sora-2", prompt: "hello" };
-  if (route.path.includes("/fine-tuning/jobs")) return { model: "gpt-5.5", training_file: "file_test" };
+  if (route.path.includes("/fine_tuning/jobs") || route.path.includes("/fine-tuning/jobs")) return { model: "gpt-5.5", training_file: "file_test" };
   if (route.path.includes("/batches")) return { input_file_id: "file_test", endpoint: "/v1/responses" };
+  if (route.path.includes("/uploads") && route.path.endsWith("/complete")) return { part_ids: ["part_test"] };
+  if (route.path.includes("/uploads")) return { bytes: 12, filename: "test.jsonl", mime_type: "application/jsonl", purpose: "batch" };
+  if (route.path.includes("/vector_stores") && route.path.endsWith("/search")) return { query: "hello" };
+  if (route.path.includes("/vector_stores") && route.path.includes("/file_batches")) return { file_ids: ["file_test"] };
+  if (route.path.includes("/vector_stores") && route.path.includes("/files")) return { file_id: "file_test" };
+  if (route.path.includes("/vector_stores")) return { name: "test store" };
   if (route.path.includes("/threads")) return { model: "gpt-5.5", messages: [] };
   if (route.path.includes("/realtime")) return { model: "gpt-realtime-2" };
   return { model: "gpt-5.5" };
@@ -13959,11 +13965,64 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
     { path: "/v1/moderations", method: "POST", body: { model: "omni-moderation-latest", input: "hello" } },
     { path: "/v1/completions", method: "POST", body: { model: "gpt-3.5-turbo-instruct", prompt: "hello" } },
     { path: "/v1/batches", method: "POST", body: { input_file_id: "file_1", endpoint: "/v1/responses" } },
-    { path: "/v1/fine-tuning/jobs", method: "POST", body: { model: "gpt-5.5", training_file: "file_1" } },
+    {
+      path: "/v1/fine_tuning/jobs",
+      method: "POST",
+      body: { model: "gpt-5.5", training_file: "file_1" },
+      expectedEndpoint: "/v1/fine_tuning/jobs",
+    },
+    {
+      path: "/v1/fine-tuning/jobs",
+      method: "POST",
+      body: { model: "gpt-5.5", training_file: "file_1" },
+      expectedEndpoint: "/v1/fine_tuning/jobs",
+    },
+    {
+      path: "/v1/fine_tuning/jobs/ftjob_1/events",
+      method: "GET",
+      expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/events",
+    },
+    {
+      path: "/v1/fine_tuning/jobs/ftjob_1/pause",
+      method: "POST",
+      body: { model: "gpt-5.5" },
+      expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/pause",
+    },
+    {
+      path: "/v1/fine_tuning/jobs/ftjob_1/resume",
+      method: "POST",
+      body: { model: "gpt-5.5" },
+      expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/resume",
+    },
+    {
+      path: "/v1/fine_tuning/jobs/ftjob_1/checkpoints",
+      method: "GET",
+      expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/checkpoints",
+    },
+    {
+      path: "/v1/fine-tuning/jobs/ftjob_1/checkpoints",
+      method: "GET",
+      expectedEndpoint: "/v1/fine_tuning/jobs/{job_id}/checkpoints",
+    },
     { path: "/v1/assistants", method: "POST", body: { model: "gpt-5.5" } },
     { path: "/v1/threads/thread_1/messages", method: "GET" },
     { path: "/v1/files/file_1", method: "GET" },
+    { path: "/v1/files/file_1/content", method: "GET" },
+    { path: "/v1/uploads", method: "POST", body: { bytes: 12, filename: "test.jsonl", mime_type: "application/jsonl", purpose: "batch" } },
+    { path: "/v1/uploads/upload_1/parts", method: "POST", body: { bytes: "chunk" } },
+    { path: "/v1/uploads/upload_1/complete", method: "POST", body: { part_ids: ["part_1"] } },
+    { path: "/v1/uploads/upload_1/cancel", method: "POST", body: {} },
     { path: "/v1/vector_stores", method: "GET" },
+    { path: "/v1/vector_stores/vs_1", method: "POST", body: { name: "updated" } },
+    { path: "/v1/vector_stores/vs_1/search", method: "POST", body: { query: "hello" } },
+    { path: "/v1/vector_stores/vs_1/files", method: "GET" },
+    { path: "/v1/vector_stores/vs_1/files", method: "POST", body: { file_id: "file_1" } },
+    { path: "/v1/vector_stores/vs_1/files/file_1", method: "POST", body: { attributes: { source: "test" } } },
+    { path: "/v1/vector_stores/vs_1/files/file_1/content", method: "GET" },
+    { path: "/v1/vector_stores/vs_1/file_batches", method: "POST", body: { file_ids: ["file_1"] } },
+    { path: "/v1/vector_stores/vs_1/file_batches/batch_1", method: "GET" },
+    { path: "/v1/vector_stores/vs_1/file_batches/batch_1/files", method: "GET" },
+    { path: "/v1/vector_stores/vs_1/file_batches/batch_1/cancel", method: "POST", body: {} },
     { path: "/v1/videos", method: "POST", body: { model: "sora-2", prompt: "test" } },
   ];
 
@@ -13976,6 +14035,7 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
         });
         assert.equal(response.status, 501, probe.path);
         assert.equal(response.body.error.code, "model_gateway_endpoint_unsupported", probe.path);
+        if (probe.expectedEndpoint) assert.equal(response.body.error.details.endpoint, probe.expectedEndpoint);
         assert.equal(response.body.error.details.feasibility, "blocked-no-verified-gateway-adapter-contract");
         assert.match(response.body.error.details.reference, /verified request\/response adapter/);
       }
