@@ -1,26 +1,71 @@
 import { Folder, Search, GitBranch, Sparkles } from "lucide-react";
 
 import type { IdeActivity } from "@/features/ide/panels/ActivityBar";
+import { IdeExplorer } from "@/features/ide/explorer/IdeExplorer";
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 interface SidePanelProps {
   activity: IdeActivity;
+  /** Root id for the files explorer (Files activity). */
+  rootId?: string;
+  /** Currently selected file path (Files activity highlight). */
+  selectedPath?: string;
+  /** Fired when a file is opened from the explorer. */
+  onSelectFile?: (path: string) => void;
+  /** Fired when the user switches the active root in the explorer header. */
+  onChangeRoot?: (rootId: string) => void;
 }
 
-const HEADERS: Record<IdeActivity, { title: string; hint: string; icon: typeof Folder }> = {
-  files: { title: "资源管理器", hint: "文件树将在此呈现", icon: Folder },
+// ---------------------------------------------------------------------------
+// Placeholders for activities not yet implemented
+// ---------------------------------------------------------------------------
+
+const PLACEHOLDERS: Record<
+  Exclude<IdeActivity, "files">,
+  { title: string; hint: string; icon: typeof Folder }
+> = {
   search: { title: "搜索", hint: "跨文件搜索将在此呈现", icon: Search },
   git: { title: "源代码管理", hint: "Git 变更将在此呈现", icon: GitBranch },
   agent: { title: "Agent", hint: "AI 代理（规划中）", icon: Sparkles },
 };
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 /**
- * Left-side panel that switches its placeholder body per active IDE view.
- * Real content (explorer tree / search form / git changes list) is filled in
- * by later P1 tasks; here it renders Aurora-styled chrome — header row with
- * icon + title, and a muted empty hint body.
+ * Left-side panel that switches its body per active IDE view.
+ *
+ * For the `files` activity it renders the real {@link IdeExplorer} (composing
+ * the reusable Phase 1 file core). The other activities (`search` / `git` /
+ * `agent`) still render Aurora-styled placeholders pending their own P1 tasks.
  */
-export function SidePanel({ activity }: SidePanelProps) {
-  const meta = HEADERS[activity];
+export function SidePanel({
+  activity,
+  rootId,
+  selectedPath,
+  onSelectFile,
+  onChangeRoot,
+}: SidePanelProps) {
+  // --- Files activity: real explorer --------------------------------------
+  if (activity === "files") {
+    return (
+      <aside className="flex min-h-0 min-w-0 flex-col border-r border-line bg-panel">
+        <IdeExplorer
+          rootId={rootId ?? ""}
+          selectedPath={selectedPath}
+          onSelectFile={onSelectFile}
+          onChangeRoot={onChangeRoot}
+        />
+      </aside>
+    );
+  }
+
+  // --- Other activities: placeholders -------------------------------------
+  const meta = PLACEHOLDERS[activity];
   const Icon = meta.icon;
   return (
     <aside className="flex min-h-0 min-w-0 flex-col border-r border-line bg-panel">
