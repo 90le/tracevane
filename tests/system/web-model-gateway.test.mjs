@@ -106,6 +106,10 @@ test("Overview view can smoke each visible active route by scope", () => {
   assert.match(overview, /smokeActiveRoute\(route\)/);
   assert.match(overview, /scope: route\.scope/);
   assert.match(overview, /model: route\.resolvedModel \?\? undefined/);
+  assert.match(overview, /smokeAllActiveRoutes/);
+  assert.match(overview, /for \(const route of checkableRoutes\)/);
+  assert.match(overview, /routeSmokeResults/);
+  assert.match(overview, /最近通过|最近失败/);
   assert.match(overview, /disabled=\{!route\.resolvedProviderId \|\| smokeMutation\.isPending\}/);
   assert.doesNotMatch(
     overview,

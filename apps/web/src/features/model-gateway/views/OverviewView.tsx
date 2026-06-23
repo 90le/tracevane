@@ -117,6 +117,14 @@ function appConnectionBadge(connection: ModelGatewayAppConnection): {
   return { variant: "mute", label: "未应用" };
 }
 
+type RouteSmokeResult = {
+  ok: boolean;
+  checkedAt: string;
+  latencyMs: number | null;
+  providerId: string | null;
+  message: string;
+};
+
 export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const statusQuery = useModelGatewayStatusQuery();
   const providersQuery = useModelGatewayProvidersQuery();
@@ -125,6 +133,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
   const [keyDialogOpen, setKeyDialogOpen] = React.useState(false);
   const [smokingScope, setSmokingScope] = React.useState<string | null>(null);
+  const [batchSmoking, setBatchSmoking] = React.useState(false);
+  const [routeSmokeResults, setRouteSmokeResults] = React.useState<Record<string, RouteSmokeResult>>({});
 
   const isLoading =
     statusQuery.isLoading || providersQuery.isLoading || connectionsQuery.isLoading;
@@ -176,6 +186,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const routeAlerts = providers?.activeRouteAlerts ?? [];
   const providerList = providers?.providers ?? [];
   const appConnections = connections?.connections ?? [];
+  const checkableRoutes = activeRoutes.filter((route) => Boolean(route.resolvedProviderId));
 
   const health = status?.healthSummary;
   const listener = status?.listener;
@@ -191,36 +202,68 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
   const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
 
-  const smokeActiveRoute = (route: ModelGatewayActiveRouteStatus) => {
+  const smokeActiveRoute = async (route: ModelGatewayActiveRouteStatus) => {
     setSmokingScope(route.scope);
-    smokeMutation.mutate(
-      {
+    try {
+      const result = await smokeMutation.mutateAsync({
         scope: route.scope,
         model: route.resolvedModel ?? undefined,
-      },
-      {
-        onSuccess: (result) => {
-          const providerDrift =
-            route.resolvedProviderId && result.providerId !== route.resolvedProviderId
-              ? `实际 Provider：${result.providerId}`
-              : undefined;
-          const description = [providerDrift, result.responsePreview ?? undefined]
-            .filter(Boolean)
-            .join(" · ");
-          if (result.ok) {
-            toast.success(`${route.scope} 路由正常 · ${result.latencyMs}ms`, {
-              description: description || undefined,
-            });
-          } else {
-            toast.error(`${route.scope} 路由失败`, {
-              description: result.error?.message ?? (description || "未知错误"),
-            });
-          }
+      });
+      const providerDrift =
+        route.resolvedProviderId && result.providerId !== route.resolvedProviderId
+          ? `实际 Provider：${result.providerId}`
+          : undefined;
+      const description = [providerDrift, result.responsePreview ?? undefined]
+        .filter(Boolean)
+        .join(" · ");
+      setRouteSmokeResults((prev) => ({
+        ...prev,
+        [route.scope]: {
+          ok: result.ok,
+          checkedAt: result.checkedAt,
+          latencyMs: result.latencyMs,
+          providerId: result.providerId || null,
+          message: result.ok
+            ? providerDrift || "路由 smoke 通过"
+            : result.error?.message ?? providerDrift ?? "路由 smoke 失败",
         },
-        onError: (error) => toast.error(`${route.scope} 路由检查失败`, { description: error.message }),
-        onSettled: () => setSmokingScope(null),
-      },
-    );
+      }));
+      if (result.ok) {
+        toast.success(`${route.scope} 路由正常 · ${result.latencyMs}ms`, {
+          description: description || undefined,
+        });
+      } else {
+        toast.error(`${route.scope} 路由失败`, {
+          description: result.error?.message ?? (description || "未知错误"),
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "路由检查请求失败";
+      setRouteSmokeResults((prev) => ({
+        ...prev,
+        [route.scope]: {
+          ok: false,
+          checkedAt: new Date().toISOString(),
+          latencyMs: null,
+          providerId: route.resolvedProviderId,
+          message,
+        },
+      }));
+      toast.error(`${route.scope} 路由检查失败`, { description: message });
+    } finally {
+      setSmokingScope(null);
+    }
+  };
+
+  const smokeAllActiveRoutes = async () => {
+    setBatchSmoking(true);
+    try {
+      for (const route of checkableRoutes) {
+        await smokeActiveRoute(route);
+      }
+    } finally {
+      setBatchSmoking(false);
+    }
   };
 
   return (
@@ -303,10 +346,23 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           title="当前路由"
           sub="每个客户端解析到的 Provider / endpoint / 模型"
           action={
-            <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
-              <Activity className="size-3.5" />
-              查看 Provider
-            </Button>
+            <span className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void smokeAllActiveRoutes()}
+                disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
+                aria-label="检查全部当前路由"
+                title="按每个客户端 scope 逐条检查当前真实路由"
+              >
+                {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
+                检查全部
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+                <Activity className="size-3.5" />
+                查看 Provider
+              </Button>
+            </span>
           }
         />
         {activeRoutes.length === 0 ? (
@@ -318,6 +374,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           <div className="py-1.5">
             {activeRoutes.map((route) => {
               const badge = ROUTE_STATE_BADGE[route.state];
+              const lastSmoke = routeSmokeResults[route.scope];
               const detail = [
                 route.resolvedApiFormat,
                 route.resolvedProviderName,
@@ -330,15 +387,40 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   key={route.scope}
                   icon={route.resolvedProviderId ? <Terminal /> : <Globe />}
                   title={route.scope}
-                  subtitle={detail || route.message}
+                  subtitle={
+                    <span className="truncate">
+                      <span>{detail || route.message}</span>
+                      {lastSmoke && (
+                        <>
+                          <span> · </span>
+                          <span className={lastSmoke.ok ? "text-green" : "text-red"}>
+                            {lastSmoke.ok ? "最近通过" : "最近失败"}
+                            {lastSmoke.latencyMs != null ? ` ${lastSmoke.latencyMs}ms` : ""}
+                          </span>
+                          {lastSmoke.message && lastSmoke.message !== "路由 smoke 通过" && (
+                            <>
+                              <span> · </span>
+                              <span title={lastSmoke.message}>{lastSmoke.message}</span>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </span>
+                  }
                   trailing={
                     <span className="flex items-center gap-2">
+                      {lastSmoke && (
+                        <Badge variant={lastSmoke.ok ? "ok" : "bad"}>
+                          {lastSmoke.ok ? "已验" : "失败"}
+                        </Badge>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => smokeActiveRoute(route)}
+                        onClick={() => void smokeActiveRoute(route)}
                         disabled={!route.resolvedProviderId || smokeMutation.isPending}
                         aria-label={`检查 ${route.scope} 当前路由`}
+                        title={`按 ${route.scope} scope 检查当前真实路由`}
                       >
                         {smokeMutation.isPending && smokingScope === route.scope ? (
                           <Loader2 className="size-3.5 animate-spin" />
