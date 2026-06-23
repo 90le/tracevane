@@ -44,6 +44,17 @@ export function IdeShell() {
     setSaveState(next);
   }, []);
 
+  // --- Shared "active content" state (EditorArea → Preview).
+  //     EditorArea reports the live edited string of the active tab so the
+  //     Markdown preview can debounce-render it without reading from the
+  //     editor DOM. `activeContent` is undefined when no file is open.
+  const [activeContent, setActiveContent] = React.useState<string | undefined>(
+    undefined,
+  );
+  const handleActiveContentChange = React.useCallback((next: string) => {
+    setActiveContent(next);
+  }, []);
+
   // --- Shared "diff target" state (lifted here; Git panel sets it; a later
   //     task will route it into the editor diff view). For now it is stored so
   //     the GitPanel → IdeShell seam exists; no consumer renders it yet.
@@ -98,8 +109,9 @@ export function IdeShell() {
             openFile={openFile}
             rootId={rootId}
             onSaveStateChange={handleSaveStateChange}
+            onActiveContentChange={handleActiveContentChange}
           />
-          <Preview />
+          <Preview path={openFile} content={activeContent} />
         </div>
         <BottomPanel />
         <StatusBar

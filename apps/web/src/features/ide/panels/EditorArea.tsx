@@ -30,6 +30,14 @@ export interface EditorAreaProps {
   rootId?: string;
   /** Optional sink for the active file's save state (wired to StatusBar). */
   onSaveStateChange?: (state: "idle" | "dirty" | "saving" | "saved") => void;
+  /**
+   * Optional sink for the active file's LIVE edited content (wired to the
+   * Markdown preview). Fires whenever the effective content of the active
+   * tab changes — either because the user typed (dirty buffer updates) or
+   * because the active tab switched (loadedContent from disk replaces it).
+   * Emits the empty string when no file is open.
+   */
+  onActiveContentChange?: (content: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +95,7 @@ export function EditorArea({
   openFile,
   rootId,
   onSaveStateChange,
+  onActiveContentChange,
 }: EditorAreaProps) {
   // --- Tab state ----------------------------------------------------------
   const [openTabs, setOpenTabs] = React.useState<string[]>([]);
@@ -150,6 +159,16 @@ export function EditorArea({
   React.useEffect(() => {
     onSaveStateChange?.(saveState);
   }, [saveState, onSaveStateChange]);
+
+  // --- Report active content to the Preview (via IdeShell) ---------------
+  //     Effective content = the dirty buffer if any, else the on-disk loaded
+  //     content. When no tab is active, emit "" so the preview sees "empty".
+  const activeContent = active
+    ? (dirty[active] ?? loadedContent)
+    : "";
+  React.useEffect(() => {
+    onActiveContentChange?.(activeContent);
+  }, [activeContent, onActiveContentChange]);
 
   // --- Save -------------------------------------------------------------
   const saveActive = React.useCallback(async () => {

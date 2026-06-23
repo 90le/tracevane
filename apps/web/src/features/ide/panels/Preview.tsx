@@ -1,25 +1,41 @@
 import { Eye } from "lucide-react";
 
+import { MarkdownPreview } from "@/features/ide/preview/MarkdownPreview";
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export interface PreviewProps {
+  /** Path of the active file (markdown detection happens inside). */
+  path?: string;
+  /** Live edited content of the active file (tracks editor edits). */
+  content?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 /**
- * Right-side preview pane. In P1 this is a placeholder rendering Aurora
- * chrome — a header reading "预览" and a centered muted hint. The real
- * preview surface lands in a later task.
+ * Right-side preview pane for the Workspace IDE.
+ *
+ * Hosts the header chrome ("预览") and delegates the body to
+ * {@link MarkdownPreview}, which branches on file type: Markdown files get
+ * the live remark/rehype → DOMPurify → hljs pipeline; non-markdown files
+ * render an "此文件类型暂无预览" placeholder; no open file renders the empty
+ * hint. The preview pane never crashes the IDE — pipeline errors degrade to
+ * a raw `<pre>`.
  */
-export function Preview() {
+export function Preview({ path, content }: PreviewProps) {
   return (
     <aside className="flex min-h-0 min-w-0 flex-col border-l border-line bg-panel">
       <header className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3 text-2xs font-semibold uppercase tracking-[.1em] text-subtle">
         <Eye className="size-3.5 text-muted" />
         <span className="truncate text-ink-strong">预览</span>
       </header>
-      <div className="grid min-h-0 flex-1 place-items-center px-4 py-6 text-center">
-        <div className="max-w-[240px]">
-          <div className="mx-auto mb-2 grid size-8 place-items-center rounded-md bg-panel-2 text-subtle">
-            <Eye className="size-4" />
-          </div>
-          <p className="text-sm text-muted">渲染预览将在此呈现</p>
-          <p className="mt-1 text-2xs text-subtle">P1 占位 · 预览将在后续任务接入</p>
-        </div>
+      <div className="grid min-h-0 flex-1 place-items-stretch overflow-hidden">
+        <MarkdownPreview path={path} content={content} />
       </div>
     </aside>
   );
