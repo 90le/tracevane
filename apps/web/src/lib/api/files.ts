@@ -1,9 +1,18 @@
 import { apiRequest } from "./client";
 import type {
+  FilesArchivePayload,
+  FilesCreateDirectoryPayload,
+  FilesCreateFilePayload,
+  FilesDeletePayload,
   FilesDirectoryPayload,
+  FilesMutationResponse,
   FilesReadPayload,
+  FilesRenamePayload,
   FilesSearchPayload,
   FilesSummaryPayload,
+  FilesTransferPayload,
+  FilesUnarchivePayload,
+  FilesWritePayload,
 } from "../../../../../types/files";
 
 /**
@@ -18,11 +27,17 @@ import type {
  *  - GET /api/files/read     → single file content (text-like only is useful)
  *  - GET /api/files/search   → recursive name/content search under a root
  *
- * NOT bound here (out of scope — the Workspace IDE write track):
- *  - tree / download / archive routes (browse + search cover the read surfaces)
- *  - every mutating route (create/write/rename/copy/move/delete/upload/archive)
- *    — editing, writing, and committing belong to the future write track and are
- *    deliberately not surfaced here.
+ * Also bound here (write slice — Workspace IDE P1):
+ *  - PUT  /api/files/content     → overwrite file content (IDE save)
+ *  - POST /api/files/directories → create directory
+ *  - POST /api/files/files       → create file
+ *  - POST /api/files/rename      → rename path
+ *  - POST /api/files/copy        → copy path
+ *  - POST /api/files/move        → move path
+ *  - DELETE /api/files           → delete paths
+ *  - POST /api/files/archive     → archive paths
+ *  - POST /api/files/unarchive   → unarchive a single archive
+ * All mutation endpoints return {@link FilesMutationResponse}.
  *
  * Response shapes come from the shared contract (`types/files.ts`).
  */
@@ -105,5 +120,107 @@ export function searchFiles(
   if (params.hidden != null) search.set("hidden", params.hidden ? "true" : "false");
   return apiRequest<FilesSearchPayload>(`${BASE}/search?${search.toString()}`, {
     signal,
+  });
+}
+
+/**
+ * Write bindings for the Files HTTP API. These let the Workspace IDE (and the
+ * `/files` manager) perform real file CRUD against
+ * `apps/api/modules/files/routes.ts`. Every mutation returns the shared
+ * {@link FilesMutationResponse} envelope.
+ *
+ * Route paths are spelled out as full literals (not `${BASE}/...`) so that the
+ * static source-assertion test in
+ * `tests/system/web-files-api.test.mjs` can bind each function to its exact
+ * HTTP contract by scanning this file.
+ */
+
+/** PUT /api/files/content — overwrite file content (IDE save). */
+export function writeFileContent(
+  payload: FilesWritePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/content", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/directories — create a directory. */
+export function createDirectory(
+  payload: FilesCreateDirectoryPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/directories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/files — create a file. */
+export function createFile(
+  payload: FilesCreateFilePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/files", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/rename — rename a path. */
+export function renameFile(
+  payload: FilesRenamePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/rename", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/copy — copy a path. */
+export function copyFile(
+  payload: FilesTransferPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/copy", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/move — move a path. */
+export function moveFile(
+  payload: FilesTransferPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/move", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** DELETE /api/files — delete paths. */
+export function deleteFiles(
+  payload: FilesDeletePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/archive — archive paths into a single archive. */
+export function archiveFiles(
+  payload: FilesArchivePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/archive", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/unarchive — unarchive a single archive. */
+export function unarchiveFile(
+  payload: FilesUnarchivePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/unarchive", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
