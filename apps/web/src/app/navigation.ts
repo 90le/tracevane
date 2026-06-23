@@ -47,7 +47,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: "/approvals", label: "审批", group: "证据", icon: ShieldCheck, status: "coming-soon" },
 
   // 系统
-  { path: "/recovery", label: "恢复", group: "系统", icon: LifeBuoy, status: "coming-soon" },
+  { path: "/recovery", label: "恢复", group: "系统", icon: LifeBuoy, status: "ready" },
   { path: "/platforms", label: "平台", group: "系统", icon: Bot, status: "coming-soon" },
 ];
 

@@ -11,6 +11,7 @@ import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 import { WorkspaceIdePage } from "@/features/ide/WorkspaceIdePage";
+import { RecoveryPage } from "@/features/recovery/RecoveryPage";
 
 /**
  * App routing. HashRouter is required because the backend serves the SPA
@@ -32,6 +33,10 @@ export function AppRouter() {
           <Route path="/external" element={<ExternalConnectionsPage />} />
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<LongTasksPage />} />
+          <Route path="/recovery" element={<RecoveryPage />} />
+          {/* Legacy alias: the old app exposed /runtime-admin which routed to
+              the recovery / system-guard surface. Redirect for old links. */}
+          <Route path="/runtime-admin" element={<Navigate to="/recovery" replace />} />
           {NAV_ITEMS.filter((item) => item.status === "coming-soon").map((item) => (
             <Route key={item.path} path={item.path} element={<ComingSoonPage />} />
           ))}
