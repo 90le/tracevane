@@ -5,7 +5,7 @@ import { useFilesSummaryQuery } from "@/lib/query/files";
 import { ActivityBar, type IdeActivity } from "@/features/ide/panels/ActivityBar";
 import { BottomPanel } from "@/features/ide/panels/BottomPanel";
 import { SidePanel } from "@/features/ide/panels/SidePanel";
-import { StatusBar } from "@/features/ide/panels/StatusBar";
+import { StatusBar, type SaveState } from "@/features/ide/panels/StatusBar";
 import { EditorArea } from "@/features/ide/panels/EditorArea";
 import { Preview } from "@/features/ide/panels/Preview";
 
@@ -37,6 +37,12 @@ export function IdeShell() {
 
   // --- Shared "open file" state (lifted here; Phase 4 editor consumes it) ---
   const [openFile, setOpenFile] = React.useState<string | undefined>(undefined);
+
+  // --- Shared "save state" for the active editor file (EditorArea → StatusBar) ---
+  const [saveState, setSaveState] = React.useState<SaveState>("idle");
+  const handleSaveStateChange = React.useCallback((next: SaveState) => {
+    setSaveState(next);
+  }, []);
 
   // --- Shared "diff target" state (lifted here; Git panel sets it; a later
   //     task will route it into the editor diff view). For now it is stored so
@@ -88,11 +94,19 @@ export function IdeShell() {
             onChangeRoot={handleChangeRoot}
             onOpenDiff={handleOpenDiff}
           />
-          <EditorArea openFile={openFile} rootId={rootId} />
+          <EditorArea
+            openFile={openFile}
+            rootId={rootId}
+            onSaveStateChange={handleSaveStateChange}
+          />
           <Preview />
         </div>
         <BottomPanel />
-        <StatusBar rootId={rootId} selectedPath={openFile} />
+        <StatusBar
+          rootId={rootId}
+          selectedPath={openFile}
+          saveState={saveState}
+        />
       </div>
     </div>
   );
