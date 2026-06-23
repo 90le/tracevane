@@ -34,7 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   // 运行
   { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "coming-soon" },
   { path: "/ide", label: "IDE", group: "运行", icon: Boxes, status: "coming-soon" },
-  { path: "/long-tasks", label: "长任务", group: "运行", icon: Workflow, status: "coming-soon" },
+  { path: "/long-tasks", label: "长任务", group: "运行", icon: Workflow, status: "ready" },
   { path: "/cli-agents", label: "CLI 代理", group: "运行", icon: Terminal, status: "ready" },
 
   // 连接
