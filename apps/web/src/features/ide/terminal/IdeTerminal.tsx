@@ -193,6 +193,10 @@ function TerminalView({ sessionId }: { sessionId: string }) {
   const termRef = React.useRef<XtermTerminal | null>(null);
   const fitRef = React.useRef<FitAddon | null>(null);
   const lastSeqRef = React.useRef<number>(0);
+  // True once the backend `session` event arrives, signalling the PTY is
+  // attached to this stream. Resize/input before attach return HTTP 400, so
+  // we gate all `/resize` + `/input` POSTs on this flag.
+  const attachedRef = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
 
   // Create the terminal + attach input/resize/stream. Re-runs only on session
@@ -203,6 +207,7 @@ function TerminalView({ sessionId }: { sessionId: string }) {
 
     setError(null);
     lastSeqRef.current = 0;
+    attachedRef.current = false;
 
     const term = new XtermTerminal({
       fontFamily:
@@ -229,22 +234,25 @@ function TerminalView({ sessionId }: { sessionId: string }) {
     termRef.current = term;
     fitRef.current = fit;
 
-    // Initial resize report.
-    const dims = safeProposeDimensions(fit);
-    if (dims) {
-      sendResize(sessionId, dims.cols, dims.rows);
-    }
+    // NOTE: no initial resize here — the PTY isn't attached to this stream
+    // yet and `/resize` would 400. We wait for the `session` attach event
+    // (handled in the stream loop below) before sending any dimensions.
 
-    // Input: forward keystrokes to the backend PTY.
+    // Input: forward keystrokes to the backend PTY. Guard on `attached` so we
+    // don't write into a session whose PTY isn't attached to this stream.
     const inputDisposable = term.onData((data) => {
+      if (!attachedRef.current) return;
       sendInput(sessionId, data);
     });
 
-    // Resize: observe container size changes.
+    // Resize: observe container size changes. Guard on `attached` so we don't
+    // hit `/resize` before the stream's PTY is attached (the previous race
+    // produced 3× HTTP 400 per /ide load).
     const resizeObserver = new ResizeObserver(() => {
       try {
         fit.fit();
       } catch {}
+      if (!attachedRef.current) return;
       const d = safeProposeDimensions(fit);
       if (d) {
         sendResize(sessionId, d.cols, d.rows);
@@ -284,7 +292,17 @@ function TerminalView({ sessionId }: { sessionId: string }) {
           for (const frame of frames) {
             const evt = parseSseFrame(frame);
             if (!evt) continue;
-            handleStreamEvent(evt, term, lastSeqRef);
+            handleStreamEvent(evt, term, lastSeqRef, () => {
+              // First `session` event = PTY attached to this stream. Flip the
+              // guard and send the initial dimensions so the PTY starts with
+              // correct cols/rows right after attach.
+              if (attachedRef.current) return;
+              attachedRef.current = true;
+              const d = safeProposeDimensions(fit);
+              if (d) {
+                sendResize(sessionId, d.cols, d.rows);
+              }
+            });
           }
         }
       } catch (err) {
@@ -365,7 +383,15 @@ function handleStreamEvent(
   evt: StreamEvent,
   term: XtermTerminal,
   lastSeqRef: React.RefObject<number>,
+  onAttach?: () => void,
 ): void {
+  // The `session` event is the first frame the backend emits on stream attach
+  // (service `buildAttachEvents` always pushes `{ type: "session" }` ahead of
+  // any reset/output replay). Treat it as the attach signal.
+  if (evt.type === "session") {
+    onAttach?.();
+    return;
+  }
   if (evt.type === "output") {
     const out = evt as { data?: string; seq?: number };
     if (typeof out.data === "string") {
