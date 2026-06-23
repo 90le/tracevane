@@ -1,0 +1,93 @@
+import { apiRequest } from "./client";
+import type {
+  TerminalEndPayload,
+  TerminalEndResponse,
+  TerminalLaunchPayload,
+  TerminalLaunchResponse,
+  TerminalSessionDescriptor,
+  TerminalSessionSummaryResponse,
+} from "../../features/cli-agents/types";
+
+/**
+ * Typed transport bindings for the Terminal HTTP API
+ * (`apps/api/modules/terminal/routes.ts`) the CLI Agent Workbench drives.
+ *
+ * Bound here:
+ *  - GET  /api/terminal/sessions               → persisted session roster
+ *  - GET  /api/terminal/sessions/:id           → single session descriptor
+ *  - POST /api/terminal/launch                 → resolve a launch command (write)
+ *  - POST /api/terminal/end                    → end a live session by sid (write)
+ *  - POST /api/terminal/sessions/:id/delete    → delete a persisted session (write)
+ *
+ * NOT bound here (reused / out of scope):
+ *  - GET /api/terminal/status   → already wrapped by `useTerminalStatusQuery`
+ *    in the Dashboard data layer (`@/lib/query/dashboard`); the workbench reuses it.
+ *  - SSE stream / gateway attach / install streaming → live-PTY transport that
+ *    belongs to the terminal surface, not this read/launch console.
+ *
+ * Response shapes come from the shared contract (`types/terminal.ts`).
+ */
+
+const BASE = "/api/terminal";
+
+function jsonBody(value: unknown): string {
+  return JSON.stringify(value ?? {});
+}
+
+/** GET /api/terminal/sessions — persisted terminal session roster. */
+export function getTerminalSessions(
+  signal?: AbortSignal,
+): Promise<TerminalSessionSummaryResponse> {
+  return apiRequest<TerminalSessionSummaryResponse>(`${BASE}/sessions`, {
+    signal,
+  });
+}
+
+/** GET /api/terminal/sessions/:sessionId — single persisted session descriptor. */
+export function getTerminalSession(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<TerminalSessionDescriptor> {
+  return apiRequest<TerminalSessionDescriptor>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}`,
+    { signal },
+  );
+}
+
+/**
+ * POST /api/terminal/launch — resolve the launch command for a CLI. This does
+ * NOT spawn a PTY; it returns the resolved command + label the operator would
+ * run, which the workbench surfaces as launch evidence.
+ */
+export function launchTerminal(
+  payload: TerminalLaunchPayload,
+): Promise<TerminalLaunchResponse> {
+  return apiRequest<TerminalLaunchResponse>(`${BASE}/launch`, {
+    method: "POST",
+    body: jsonBody(payload),
+  });
+}
+
+/** POST /api/terminal/end — end a live session by `sid`. */
+export function endTerminalSession(
+  payload: TerminalEndPayload,
+): Promise<TerminalEndResponse> {
+  return apiRequest<TerminalEndResponse>(`${BASE}/end`, {
+    method: "POST",
+    body: jsonBody(payload),
+  });
+}
+
+/**
+ * POST /api/terminal/sessions/:sessionId/delete — delete a persisted session.
+ * The route answers 409 when the session is still active (must be ended first).
+ */
+export function deleteTerminalSession(sessionId: string): Promise<{
+  success: boolean;
+  reason?: string;
+}> {
+  return apiRequest<{ success: boolean; reason?: string }>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/delete`,
+    { method: "POST", body: jsonBody({}) },
+  );
+}

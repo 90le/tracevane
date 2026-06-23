@@ -7,6 +7,7 @@ import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ModelGatewayPage } from "@/features/model-gateway/ModelGatewayPage";
 import { ChannelConnectorsPage } from "@/features/channel-connectors/ChannelConnectorsPage";
 import { ExternalConnectionsPage } from "@/features/external/ExternalConnectionsPage";
+import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 
 /**
  * App routing. HashRouter is required because the backend serves the SPA
@@ -24,6 +25,7 @@ export function AppRouter() {
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
           <Route path="/external" element={<ExternalConnectionsPage />} />
+          <Route path="/cli-agents" element={<CliAgentsPage />} />
           {NAV_ITEMS.filter((item) => item.status === "coming-soon").map((item) => (
             <Route key={item.path} path={item.path} element={<ComingSoonPage />} />
           ))}
