@@ -12,6 +12,7 @@ import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 import { WorkspaceIdePage } from "@/features/ide/WorkspaceIdePage";
 import { RecoveryPage } from "@/features/recovery/RecoveryPage";
+import { PlatformsPage } from "@/features/platforms/PlatformsPage";
 
 /**
  * App routing. HashRouter is required because the backend serves the SPA
@@ -34,9 +35,18 @@ export function AppRouter() {
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<LongTasksPage />} />
           <Route path="/recovery" element={<RecoveryPage />} />
+          <Route path="/platforms" element={<PlatformsPage />} />
+          {/* `:platform` selects the platform child (currently `openclaw`); the
+              optional `:section` is reserved for future deep sections and is
+              read inside the page. */}
+          <Route path="/platforms/:platform" element={<PlatformsPage />} />
+          <Route path="/platforms/:platform/:section" element={<PlatformsPage />} />
           {/* Legacy alias: the old app exposed /runtime-admin which routed to
-              the recovery / system-guard surface. Redirect for old links. */}
+              the recovery / system-guard surface. Redirect for old links. The
+              old per-section deep link (/runtime-admin/:section) was the
+              OpenClaw runtime admin surface — send it to the platform child. */}
           <Route path="/runtime-admin" element={<Navigate to="/recovery" replace />} />
+          <Route path="/runtime-admin/:section" element={<Navigate to="/platforms/openclaw" replace />} />
           {NAV_ITEMS.filter((item) => item.status === "coming-soon").map((item) => (
             <Route key={item.path} path={item.path} element={<ComingSoonPage />} />
           ))}

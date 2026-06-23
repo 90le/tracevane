@@ -48,7 +48,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // 系统
   { path: "/recovery", label: "恢复", group: "系统", icon: LifeBuoy, status: "ready" },
-  { path: "/platforms", label: "平台", group: "系统", icon: Bot, status: "coming-soon" },
+  { path: "/platforms", label: "平台", group: "系统", icon: Bot, status: "ready" },
 ];
 
 export function navItemsByGroup(): Array<{ group: NavGroup; items: NavItem[] }> {
