@@ -28,6 +28,7 @@ import type {
   ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import { formatModelTokenBudget } from "../budget-format";
 
 /** A model entry flattened with its owning provider so writes target the right PUT. */
 interface AggregatedModel {
@@ -255,6 +256,7 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
             <TableRow>
               <TableHead>模型 / alias</TableHead>
               <TableHead>Provider</TableHead>
+              <TableHead>上下文 / 输出</TableHead>
               <TableHead>能力</TableHead>
               <TableHead className="text-right">默认</TableHead>
             </TableRow>
@@ -264,6 +266,8 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
               const editing = editingKey === row.key;
               const busy = pendingKey === row.key && updateMutation.isPending;
               const features = featureBadges(row.model.features);
+              const contextBudget = formatModelTokenBudget(row.model.contextWindow);
+              const outputBudget = formatModelTokenBudget(row.model.maxOutputTokens);
               return (
                 <TableRow key={row.key}>
                   <TableCell>
@@ -328,6 +332,17 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">Provider</span>
                     <span className="text-sm text-muted">{row.providerName}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="mr-1.5 text-xs text-subtle sm:hidden">上下文 / 输出</span>
+                    {contextBudget || outputBudget ? (
+                      <span className="flex flex-wrap gap-1">
+                        {contextBudget && <Badge variant="info">ctx {contextBudget}</Badge>}
+                        {outputBudget && <Badge variant="mute">out {outputBudget}</Badge>}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-subtle">未声明</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">能力</span>

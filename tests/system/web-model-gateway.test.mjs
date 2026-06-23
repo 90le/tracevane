@@ -110,6 +110,8 @@ test("Overview view can smoke each visible active route by scope", () => {
   assert.match(overview, /for \(const route of checkableRoutes\)/);
   assert.match(overview, /routeSmokeResults/);
   assert.match(overview, /最近通过|最近失败/);
+  assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
+  assert.match(overview, /formatModelBudgetPair/);
   assert.match(overview, /disabled=\{!route\.resolvedProviderId \|\| smokeMutation\.isPending\}/);
   assert.doesNotMatch(
     overview,
@@ -129,4 +131,15 @@ test("Providers view only runs active-route smoke for scopes resolved to that pr
     /smokeMutation\.mutate\(undefined/,
     "row-level active-route smoke must not silently test the default codex route",
   );
+});
+
+test("Models view surfaces declared model context and output budgets", () => {
+  const models = read(`${VIEWS_DIR}/ModelsView.tsx`);
+  assert.match(models, /contextWindow/);
+  assert.match(models, /maxOutputTokens/);
+  assert.match(models, /上下文 \/ 输出/);
+  assert.match(models, /ctx \{contextBudget\}/);
+  assert.match(models, /formatModelTokenBudget/);
+  assert.match(models, /out \{outputBudget\}/);
+  assert.match(models, /未声明/);
 });

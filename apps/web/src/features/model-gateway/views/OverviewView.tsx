@@ -21,6 +21,7 @@ import type {
   ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import { formatModelBudgetPair } from "../budget-format";
 import { GatewayKeyDialog } from "./GatewayKeyDialog";
 import { RuntimeDiagnosticsPanel } from "./RuntimeDiagnosticsPanel";
 import { DaemonServicePanel } from "./DaemonServicePanel";
@@ -124,6 +125,22 @@ type RouteSmokeResult = {
   providerId: string | null;
   message: string;
 };
+
+function routeBudgetLabel(
+  route: ModelGatewayActiveRouteStatus,
+  providers: ModelGatewayProviderView[],
+): string | null {
+  if (!route.resolvedProviderId || !route.resolvedModel) return null;
+  const resolvedModel = route.resolvedModel;
+  const provider = providers.find((item) => item.id === route.resolvedProviderId);
+  const model = provider?.models?.models.find(
+    (item) => item.id === resolvedModel || item.aliases?.includes(resolvedModel),
+  );
+  return formatModelBudgetPair({
+    contextWindow: model?.contextWindow,
+    maxOutputTokens: model?.maxOutputTokens,
+  });
+}
 
 export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const statusQuery = useModelGatewayStatusQuery();
@@ -379,6 +396,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                 route.resolvedApiFormat,
                 route.resolvedProviderName,
                 route.resolvedModel,
+                routeBudgetLabel(route, providerList),
               ]
                 .filter(Boolean)
                 .join(" · ");
