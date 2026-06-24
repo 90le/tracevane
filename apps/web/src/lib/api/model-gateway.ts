@@ -43,10 +43,10 @@ import type {
  * Typed transport bindings for the Model Gateway HTTP API.
  *
  * One function per backend route in `apps/api/modules/model-gateway/routes.ts`.
- * Only the `/api/model-gateway/*` (and `/v1/models`) variants are bound because
- * those are the routes the web dev server / proxy forwards to the backend; the
- * raw `/gateway/*` aliases and the `/v1/*` relay endpoints are server-to-server
- * and not consumed from the browser data layer.
+ * Only the `/api/model-gateway/*` variants are bound here because the web app
+ * is mounted behind OpenClaw/Tracevane base paths. Browser requests to raw
+ * `/v1/*` can miss the mounted backend and return 404, so UI model discovery
+ * uses the namespaced alias below while gateway clients still use `/v1/*`.
  *
  * Response shapes come from the shared contract (`types/model-gateway.ts`).
  */
@@ -82,11 +82,11 @@ export function getModelGatewayUsage(
   return apiRequest<ModelGatewayUsageLedgerResponse>(`${BASE}/usage`, { signal });
 }
 
-/** GET /v1/models — gateway model catalog (OpenAI-style listing). */
+/** GET /api/model-gateway/models — browser-safe gateway model catalog. */
 export function getModelGatewayModels(
   signal?: AbortSignal,
 ): Promise<ModelGatewayModelListResponse> {
-  return apiRequest<ModelGatewayModelListResponse>(`/v1/models`, { signal });
+  return apiRequest<ModelGatewayModelListResponse>(`${BASE}/models`, { signal });
 }
 
 // ---------------------------------------------------------------------------

@@ -909,6 +909,9 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(providers.body.activeProviders["claude-code"], "codex-owned");
 
       const models = await requestJson(`${baseUrl}/v1/models`);
+      const browserModels = await requestJson(`${baseUrl}/api/model-gateway/models`);
+      assert.equal(browserModels.status, 200);
+      assert.deepEqual(browserModels.body.data.map((model) => model.id), models.body.data.map((model) => model.id));
       const gpt55CatalogModel = models.body.data.find((model) => model.id === "gpt-5.5");
       assert.equal(gpt55CatalogModel.context_window, 272000);
       assert.equal(gpt55CatalogModel.contextWindow, 272000);

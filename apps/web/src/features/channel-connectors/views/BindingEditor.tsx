@@ -653,7 +653,7 @@ export function RouteEditor({
               </SelectField>
               <SelectField
                 label="默认模型"
-                hint={gatewayModelsQuery.error ? `模型列表加载失败：${gatewayModelsQuery.error.message}` : "来自 Model Gateway /v1/models；留空则使用网关默认路由。"}
+                hint={gatewayModelsQuery.error ? `模型列表加载失败，可在下方手动填写：${gatewayModelsQuery.error.message}` : "来自 Model Gateway 模型列表；留空则使用网关默认路由。"}
                 value={state.routeModel}
                 onChange={(routeModel) => patch({ routeModel })}
               >
@@ -666,6 +666,9 @@ export function RouteEditor({
                 ))}
               </SelectField>
             </div>
+            <Field label="手动模型 ID" hint="模型列表不可用或未列出别名时填写，例如 gpt-5.5 / glm-5.2。和下拉共用同一保存值。">
+              <Input value={state.routeModel} onChange={(e) => patch({ routeModel: e.target.value })} placeholder="留空 = 网关默认路由" />
+            </Field>
             <Field label="默认启动目录" hint="每条 IM 路由独立传给 Agent；用于区分项目/仓库。">
               <Input value={state.routeWorkDir} onChange={(e) => patch({ routeWorkDir: e.target.value })} placeholder={selectedProfile?.workDir ?? "/path/to/project"} />
             </Field>

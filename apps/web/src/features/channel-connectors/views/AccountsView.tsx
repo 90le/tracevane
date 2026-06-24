@@ -116,16 +116,26 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
   };
 
   const smokePending = feishuSmoke.isPending || octoSmoke.isPending;
+  const enabledCount = bindings.filter((binding) => binding.enabled).length;
+  const verifiedSmokeCount = bindings.filter((binding) => binding.platform === "feishu" || binding.platform === "octo").length;
+  const missingCredentialCount = bindings.filter((binding) => credentialState(binding).variant === "mute").length;
 
   return (
     <div className="grid gap-[18px]">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-ink-strong">平台账号</h2>
-          <p className="text-sm text-muted">平台凭据、bot/account 身份与平台级 smoke；路由策略在“绑定路由”。</p>
+          <p className="text-sm text-muted">只管理 IM 平台身份与凭据；一个账号可以被路由页配置成不同 Agent 入口。</p>
         </div>
         <Input className="w-full sm:w-72" placeholder="搜索平台 / 账号 / bot" value={query} onChange={(e) => setQuery(e.target.value)} />
         <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />新建平台账号</Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">账号总数</div><div className="text-xl font-semibold text-ink-strong">{bindings.length}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">已启用</div><div className="text-xl font-semibold text-ink-strong">{enabledCount}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">可测试平台</div><div className="text-xl font-semibold text-ink-strong">{verifiedSmokeCount}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">缺少凭据</div><div className="text-xl font-semibold text-ink-strong">{missingCredentialCount}</div></div>
       </div>
 
       {filtered.length === 0 ? (

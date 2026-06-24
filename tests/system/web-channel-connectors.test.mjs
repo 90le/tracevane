@@ -77,6 +77,8 @@ test("Channel Connectors account and route editors use wide Sheets with platform
   assert.match(editor, /默认启动目录/);
   assert.match(editor, /路由 Agent/);
   assert.match(editor, /routeModel/);
+  assert.match(editor, /手动模型 ID/);
+  assert.match(editor, /模型列表加载失败，可在下方手动填写/);
 });
 
 test("Channel Connectors diagnostics demotes generated daemon bindings to evidence", () => {
@@ -96,4 +98,13 @@ test("Channel Connectors session events prioritize human-readable incident summa
   assert.match(sessions, /Agent 执行失败/);
   assert.match(sessions, /已触发 fallback/);
   assert.match(sessions, /原始事件类型保留为小标签/);
+});
+
+
+test("Model Gateway browser model list uses namespaced API path", () => {
+  const api = read("apps/web/src/lib/api/model-gateway.ts");
+  const routes = read("apps/api/modules/model-gateway/routes.ts");
+  assert.match(api, /\$\{BASE\}\/models/);
+  assert.doesNotMatch(api, /apiRequest<ModelGatewayModelListResponse>\(`\/v1\/models/);
+  assert.match(routes, /\/api\/model-gateway\/models/);
 });

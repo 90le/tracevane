@@ -41,6 +41,10 @@ export function RoutesView({ selectedBinding, goToView }: ChannelConnectorsViewP
     return <ErrorState title="无法加载绑定路由" description={configQuery.error.message} action={<Button variant="outline" size="sm" onClick={() => void configQuery.refetch()}>重试</Button>} />;
   }
 
+  const enabledCount = bindings.filter((binding) => binding.enabled).length;
+  const overrideCount = bindings.filter((binding) => ["routeAgent", "routeModel", "routeWorkDir", "routePermissionMode"].some((key) => Boolean(metaString(binding, key, "")))).length;
+  const wildcardCount = bindings.filter((binding) => metaString(binding, "peerId", "*") === "*").length;
+
   const filtered = bindings.filter((binding) => {
     const profile = agentProfiles.find((item) => item.id === binding.agentProfileId);
     const haystack = `${binding.displayName} ${binding.id} ${binding.platform} ${binding.agentProfileId} ${binding.accountId} ${metaString(binding, "peerKind", "")} ${metaString(binding, "peerId", "")} ${metaString(binding, "routeAgent", profile?.agent ?? "")} ${metaString(binding, "routeModel", profile?.model ?? "")}`.toLowerCase();
@@ -52,10 +56,17 @@ export function RoutesView({ selectedBinding, goToView }: ChannelConnectorsViewP
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-ink-strong">绑定路由</h2>
-          <p className="text-sm text-muted">IM 来源匹配、Agent Profile、权限与会话策略；平台凭据在“平台账号”。</p>
+          <p className="text-sm text-muted">每条 IM 来源独立决定 Agent、模型、启动目录、权限和会话策略；平台凭据在“平台账号”。</p>
         </div>
         <Input className="w-full sm:w-72" placeholder="搜索路由 / Agent / 来源" value={query} onChange={(e) => setQuery(e.target.value)} />
         <Button variant="outline" size="sm" onClick={() => goToView("accounts")}><PlugZap />新建账号</Button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">路由总数</div><div className="text-xl font-semibold text-ink-strong">{bindings.length}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">已启用</div><div className="text-xl font-semibold text-ink-strong">{enabledCount}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">独立覆盖</div><div className="text-xl font-semibold text-ink-strong">{overrideCount}</div></div>
+        <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">通配来源</div><div className="text-xl font-semibold text-ink-strong">{wildcardCount}</div></div>
       </div>
 
       {filtered.length === 0 ? (

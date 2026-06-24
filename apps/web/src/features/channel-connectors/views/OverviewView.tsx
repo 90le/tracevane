@@ -41,6 +41,27 @@ const EVENT_TONE: Record<
   "turn.fallback": "warn",
 };
 
+function overviewEventTitle(event: ChannelConnectorAgentSessionDriverRuntimeEvent): string {
+  if (event.error) return "Agent 执行失败";
+  switch (event.type) {
+    case "turn.failed": return "Agent 回合失败";
+    case "turn.fallback": return "路由 fallback";
+    case "turn.started": return "开始处理消息";
+    case "turn.finished": return "回复完成";
+    case "session.created": return "创建会话";
+    case "session.killed": return "终止会话";
+    case "session.reaped": return "回收空闲会话";
+    case "session.stopped":
+    case "session.disposed": return "会话结束";
+    default: return event.type;
+  }
+}
+
+function overviewEventSubtitle(event: ChannelConnectorAgentSessionDriverRuntimeEvent): string {
+  const detail = event.error || event.reason || event.sessionId || event.bindingId;
+  return `${event.agent} · ${event.bindingId} · ${formatTime(event.checkedAt)}${detail ? ` · ${detail}` : ""}`;
+}
+
 export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
   const statusQuery = useChannelConnectorsStatusQuery();
   const configQuery = useChannelConnectorsConfigQuery();
@@ -108,6 +129,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
   const pending = runtime?.pendingAgentRuns;
   const feishuConnections = runtime?.feishuConnectionDetails ?? [];
   const feishuDegraded = feishuConnections.some((c) => c.connected === false);
+  const failedEvents = recentEvents.filter((event) => event.error || event.type === "turn.failed" || event.type === "turn.fallback").length;
 
   return (
     <div className="grid gap-[18px]">
@@ -137,9 +159,11 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
         <p className="mt-3 text-base text-ink-strong">
           {daemonOnline ? "守护运行中" : "守护状态未知"}
           <span className="text-muted"> · </span>
-          {enabledBindings.length}/{bindings.length} 个绑定启用
+          {enabledBindings.length}/{bindings.length} 个账号启用
           <span className="text-muted"> · </span>
           {activeSessions.length} 个活跃会话
+          <span className="text-muted"> · </span>
+          {failedEvents} 个需关注事件
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-sm border border-line bg-panel p-3">
@@ -233,8 +257,8 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
         {/* Bindings summary — click navigates to bindings view. */}
         <Panel>
           <PanelHead
-            title="平台账号"
-            sub="账号/bot 凭据与启用状态"
+            title="平台账号速览"
+            sub="账号/bot 凭据与启用状态；路由目标在绑定路由页"
             action={
               <Button variant="ghost" size="sm" onClick={() => goToView("accounts")}>
                 管理
@@ -244,7 +268,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
           {bindings.length === 0 ? (
             <EmptyState
               title="暂无绑定"
-              description="尚未配置任何平台账号绑定，前往“渠道与绑定”添加。"
+              description="尚未配置任何平台账号。先建账号，再去绑定路由设置 Agent / 模型 / 启动目录。"
             />
           ) : (
             <div className="py-1.5">
@@ -253,7 +277,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
                   key={binding.id}
                   icon={<PlugZap />}
                   title={binding.displayName || binding.id}
-                  subtitle={`${binding.platform} · ${binding.agentProfileId}`}
+                  subtitle={`${binding.platform} · acct ${binding.accountId || "—"}`}
                   trailing={
                     <Badge variant={binding.enabled ? "ok" : "mute"}>
                       {binding.enabled ? "启用" : "停用"}
@@ -279,8 +303,8 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
       {/* Recent session events — read-only trace. */}
       <Panel>
         <PanelHead
-          title="最近会话事件"
-          sub="Agent session driver 事件，只读。"
+          title="需要关注的最近事件"
+          sub="失败/fallback 会保留在会话投递页；这里显示最近 6 条人可读摘要。"
           action={
             <Button variant="ghost" size="sm" onClick={() => goToView("deliveries")}>
               <MessageSquare className="size-3.5" />
@@ -299,11 +323,11 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
               <Row
                 key={`${event.type}-${event.sessionId ?? "none"}-${index}`}
                 icon={<Activity />}
-                title={event.type}
-                subtitle={`${event.agent} · ${event.bindingId} · ${formatTime(event.checkedAt)}`}
+                title={overviewEventTitle(event)}
+                subtitle={overviewEventSubtitle(event)}
                 trailing={
                   <Badge variant={event.error ? "bad" : EVENT_TONE[event.type]}>
-                    {event.error ? "失败" : "ok"}
+                    {event.error || event.type === "turn.failed" ? "需处理" : event.type === "turn.fallback" ? "关注" : "正常"}
                   </Badge>
                 }
               />

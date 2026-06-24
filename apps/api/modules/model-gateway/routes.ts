@@ -384,6 +384,14 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     }
   });
 
+  router.get("/api/model-gateway/models", (req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
   router.get("/v1/models", (req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels(req));

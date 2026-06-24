@@ -122,9 +122,9 @@ Future backend work should add narrow account CRUD only when the product needs m
 2026-06-24 local contract check for route overrides and diagnostics:
 
 - `ChannelConnectorAgentProfile` already owns `agent`/`model`/`workDir`/`permissionMode`; route metadata now stores safe per-binding overrides without introducing another account store.
-- Model choices come from the existing Model Gateway model list query, not hard-coded strings.
+- Model choices come from the existing Model Gateway model list query, not hard-coded strings. Browser UI uses the namespaced internal `/api/model-gateway/models` alias; raw `/v1/models` remains the Gateway client/SDK endpoint and can stay protected by Gateway client auth.
 - Diagnostic logs are evidence, not the primary UX; summaries/problem lines should precede raw logs, and raw logs must use bounded height plus forced word breaks.
-- Session events should translate runtime event types into human-readable status, impact, and next action while retaining the raw type as a small evidence tag.
+- Session events should translate runtime event types into human-readable status, impact, and next action while retaining the raw type as a small evidence tag. Route editing must also keep a manual model-id fallback so a temporary model-list failure does not block configuration.
 
 
 2026-06-24 checked current platform docs before changing the user-visible IM setup flow:
