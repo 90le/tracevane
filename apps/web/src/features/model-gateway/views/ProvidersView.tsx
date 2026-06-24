@@ -83,11 +83,28 @@ function endpointProfileRisk(provider: ModelGatewayProviderView): {
   };
 }
 
+function accountProviderRisk(provider: ModelGatewayProviderView): {
+  total: number;
+  ready: number;
+  needsLogin: number;
+} {
+  const accounts = provider.accountProvider?.accounts ?? [];
+  return {
+    total: accounts.length,
+    ready: accounts.filter((account) => account.enabled && account.state === "ready").length,
+    needsLogin: accounts.filter((account) => account.state === "needs-login").length,
+  };
+}
+
 function providerStatus(provider: ModelGatewayProviderView): {
   variant: "ok" | "warn" | "bad" | "mute";
   label: string;
 } {
   if (!provider.enabled) return { variant: "mute", label: "停用" };
+  const accountRisk = accountProviderRisk(provider);
+  if (accountRisk.total > 0 && accountRisk.ready === 0) {
+    return { variant: "bad", label: accountRisk.needsLogin > 0 ? "需重登" : "账号不可用" };
+  }
   if (provider.health.circuitState === "open") return { variant: "bad", label: "熔断" };
   const endpointRisk = endpointProfileRisk(provider);
   if (endpointRisk.open > 0) return { variant: "bad", label: "部分熔断" };
@@ -99,6 +116,10 @@ function providerStatus(provider: ModelGatewayProviderView): {
 }
 
 function providerStatusDetail(provider: ModelGatewayProviderView): string {
+  const accountRisk = accountProviderRisk(provider);
+  if (accountRisk.total > 0) {
+    return `账号 ${accountRisk.ready}/${accountRisk.total} 可用${accountRisk.needsLogin ? ` · ${accountRisk.needsLogin} 需重登` : ""}`;
+  }
   const endpointRisk = endpointProfileRisk(provider);
   if (endpointRisk.enabled === 0) {
     return `provider circuit ${provider.health.circuitState}`;
@@ -145,7 +166,10 @@ function activeRoutesForProvider(
   activeRoutes: ModelGatewayActiveRouteStatus[],
 ): ModelGatewayActiveRouteStatus[] {
   return activeRoutes
-    .filter((route) => route.resolvedProviderId === provider.id);
+    .filter((route) => (
+      route.resolvedProviderId === provider.id
+      || (route.selectedProviderId === provider.id && !route.resolvedProviderId)
+    ));
 }
 
 function ProviderTypeBadge({ provider }: { provider: ModelGatewayProviderView }) {
@@ -209,6 +233,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
 
   React.useEffect(() => {
     if (!codexLoginDialogOpen || !codexLogin || codexLoginStatus !== "pending") return;
+    if (codexPollMutation.isPending) return;
     const intervalMs = Math.max(1, codexLogin.pollIntervalSeconds || 3) * 1000;
     const timer = window.setTimeout(() => {
       codexPollMutation.mutate(
@@ -240,7 +265,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
       );
     }, intervalMs);
     return () => window.clearTimeout(timer);
-  }, [codexLogin, codexLoginDialogOpen, codexLoginStatus, codexPollMutation, goToView, providersQuery]);
+  }, [codexLogin, codexLoginDialogOpen, codexLoginStatus, codexPollMutation, codexPollMutation.isPending, goToView, providersQuery]);
 
   const handleActiveRouteSmoke = (provider: ModelGatewayProviderView, route: ModelGatewayActiveRouteStatus) => {
     const { scope } = route;

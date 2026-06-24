@@ -1170,6 +1170,218 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
 });
 
+test("model gateway preserves Codex account login sessions across service instances", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const firstService = createModelGatewayService(config);
+  const secondService = createModelGatewayService(config);
+  const idToken = fakeJwt({
+    email: "cross@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_cross",
+      chatgpt_plan_type: "pro",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url) === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
+      return new Response(JSON.stringify({
+        device_auth_id: "device-cross",
+        user_code: "WXYZ-1234",
+        interval: 1,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (String(url) === "https://auth.openai.com/api/accounts/deviceauth/token") {
+      assert.equal(JSON.parse(String(init.body)).device_auth_id, "device-cross");
+      return new Response(JSON.stringify({
+        authorization_code: "auth-code-cross",
+        code_verifier: "verifier-cross",
+        code_challenge: "challenge-cross",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      assert.equal(form.get("grant_type"), "authorization_code");
+      assert.equal(form.get("code"), "auth-code-cross");
+      assert.equal(form.get("code_verifier"), "verifier-cross");
+      return new Response(JSON.stringify({
+        access_token: "codex-cross-access-token",
+        refresh_token: "codex-cross-refresh-token",
+        id_token: idToken,
+        expires_in: 3600,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    const start = await firstService.startCodexAccountLogin(undefined, {
+      providerId: "codex-cross-service",
+      providerName: "Cross Service Codex",
+      setActiveScopes: ["codex", "claude-code"],
+    });
+    assert.equal(start.ok, true);
+    assert.equal(start.userCode, "WXYZ-1234");
+    assert.ok(fs.existsSync(paths.codexLoginSessions));
+    assert.equal(fs.statSync(paths.codexLoginSessions).mode & 0o777, 0o600);
+    const persistedLoginSession = fs.readFileSync(paths.codexLoginSessions, "utf8");
+    assert.ok(persistedLoginSession.includes(start.loginId));
+    assert.ok(persistedLoginSession.includes("device-cross"));
+    assert.ok(!persistedLoginSession.includes("codex-cross-access-token"));
+    assert.ok(!persistedLoginSession.includes("codex-cross-refresh-token"));
+
+    const poll = await secondService.pollCodexAccountLogin(undefined, { loginId: start.loginId });
+    assert.equal(poll.status, "completed");
+    assert.equal(poll.provider?.id, "codex-cross-service");
+    assert.equal(poll.provider?.accountProvider?.accounts[0]?.state, "ready");
+
+    const afterPoll = fs.readFileSync(paths.codexLoginSessions, "utf8");
+    assert.ok(!afterPoll.includes(start.loginId));
+    assert.ok(!afterPoll.includes("device-cross"));
+    const providers = secondService.listProviders();
+    assert.equal(providers.providers.find((provider) => provider.id === "codex-cross-service")?.accountProvider?.accounts.length, 1);
+    assert.equal(providers.activeProviders.codex, "codex-cross-service");
+    assert.equal(providers.activeProviders["claude-code"], "codex-cross-service");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway keeps Codex provider and account pool visible after Claude auth failure", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-claude-auth-fail:account:a:codex-token";
+  const expiredIdToken = fakeJwt({
+    email: "claude-expired@example.com",
+    exp: Math.floor(Date.now() / 1000) - 60,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_claude_expired",
+      chatgpt_plan_type: "pro",
+    },
+  });
+
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-claude-auth-fail",
+      name: "Codex Claude Auth Fail",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["claude-code"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: authRef,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-claude-expired",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "claude-expired",
+          emailMasked: "cl***@example.com",
+          plan: "pro",
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        }],
+      },
+    },
+    secret: {
+      apiKey: JSON.stringify({
+        type: "codex",
+        tokens: {
+          id_token: expiredIdToken,
+          access_token: "codex-claude-expired-access",
+          refresh_token: "codex-claude-expired-refresh",
+          account_id: "acct_claude_expired",
+        },
+        email: "claude-expired@example.com",
+        plan_type: "pro",
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      assert.equal(form.get("grant_type"), "refresh_token");
+      return new Response(JSON.stringify({
+        error: "invalid_grant",
+        code: "refresh_token_reused",
+      }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(response.status, 401);
+      assert.equal(response.body.error.code, "model_gateway_account_refresh_auth_failed");
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      assert.equal(providers.status, 200);
+      assert.equal(providers.body.activeProviders["claude-code"], "codex-claude-auth-fail");
+      const provider = providers.body.providers.find((item) => item.id === "codex-claude-auth-fail");
+      assert.ok(provider, "Codex provider must remain visible after auth failure");
+      assert.equal(provider.accountProvider.kind, "codex");
+      assert.equal(provider.accountProvider.accounts.length, 1);
+      assert.equal(provider.accountProvider.accounts[0].state, "needs-login");
+      assert.match(provider.accountProvider.accounts[0].lastError, /refresh_token_reused/);
+      const claudeRoute = providers.body.activeRoutes.find((route) => route.scope === "claude-code");
+      assert.equal(claudeRoute.selectedProviderId, "codex-claude-auth-fail");
+      assert.equal(claudeRoute.resolvedProviderId, null);
+      assert.match(claudeRoute.warning, /no ready Codex account|No enabled Model Gateway provider offers model 'gpt-5.5'|No enabled Model Gateway provider is available|No available Model Gateway provider is available/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway preserves Codex account GPT-5.5 product context cap while repairing metadata", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -1184,6 +1396,7 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
       sourceType: "account-backed",
       appScopes: ["codex"],
       baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: "provider:codex-raw-stale:account:a:codex-token",
       apiFormat: "openai_responses",
       authStrategy: "oauth_proxy",
       models: {
@@ -1215,7 +1428,17 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
           sessionAffinity: true,
           maxConcurrentPerAccount: null,
         },
-        accounts: [],
+        accounts: [{
+          id: "codex-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: "provider:codex-raw-stale:account:a:codex-token",
+          credentialSource: "codex-device-auth",
+          accountHash: "a",
+          emailMasked: "co***@example.com",
+          plan: "pro",
+        }],
       },
     },
     setActiveScopes: ["codex"],
@@ -1241,6 +1464,7 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
   const gpt53Codex = models.data.find((model) => model.id === "gpt-5.3-codex");
   assert.equal(gpt53Codex.context_window, 272000);
   assert.equal(gpt53Codex.max_output_tokens, 128000);
+  assert.deepEqual(gpt53Codex.aliases, ["gpt5.3-codex"]);
   assert.equal(gpt53Codex.features.vision, true);
   assert.equal(gpt53Codex.pricing.inputPer1M, 1.75);
   assert.equal(gpt53Codex.pricing.outputPer1M, 14);
@@ -1249,6 +1473,83 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
   assert.equal(gpt53Spark.max_context_window, 128000);
   assert.equal(gpt53Spark.max_output_tokens, 8192);
   assert.equal(gpt53Spark.maxOutputTokens, null);
+});
+
+test("model gateway repairs stale raw Codex account catalog budgets on startup", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  fs.mkdirSync(path.dirname(paths.registry), { recursive: true });
+  fs.writeFileSync(paths.registry, JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    clientAuth: { enabled: false },
+    appConnectionProfile: {},
+    activeProviders: { codex: "codex-raw-stale" },
+    providers: [{
+      id: "codex-raw-stale",
+      name: "Codex Raw Stale",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{
+          id: "gpt-5.5",
+          aliases: ["gpt5.5"],
+          contextWindow: 1050000,
+          maxOutputTokens: 128000,
+          pricing: {
+            currency: "USD",
+            inputPer1M: 5,
+            outputPer1M: 30,
+            longContextInputThreshold: 272000,
+          },
+        }],
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: { strategy: "round-robin", sessionAffinity: true, maxConcurrentPerAccount: null },
+        accounts: [{
+          id: "codex-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: "provider:codex-raw-stale:account:a:codex-token",
+          credentialSource: "codex-device-auth",
+          accountHash: "a",
+          emailMasked: "co***@example.com",
+          plan: "pro",
+        }],
+      },
+    }, {
+      id: "legacy-raw-provider",
+      name: "Legacy Raw Provider Without Base URL",
+      models: { defaultModel: "legacy-model", models: [{ id: "legacy-model", contextWindow: 999 }] },
+    }],
+  }, null, 2), "utf8");
+
+  const service = createModelGatewayService(config);
+  const gpt55 = service.listGatewayModels().data.find((model) => model.id === "gpt-5.5");
+  assert.equal(gpt55.contextWindow, 272000);
+  assert.equal(gpt55.maxOutputTokens, 128000);
+  assert.equal(gpt55.pricing.longContextInputThreshold, undefined);
+
+  const raw = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  const rawCodex = raw.providers.find((item) => item.id === "codex-raw-stale");
+  const rawGpt55 = rawCodex.models.models.find((model) => model.id === "gpt-5.5");
+  assert.equal(rawGpt55.contextWindow, 272000);
+  assert.equal(rawGpt55.maxOutputTokens, 128000);
+  assert.equal(rawGpt55.pricing.longContextInputThreshold, undefined);
+  const rawGpt53Codex = rawCodex.models.models.find((model) => model.id === "gpt-5.3-codex");
+  assert.deepEqual(rawGpt53Codex.aliases, ["gpt5.3-codex"]);
+  assert.deepEqual(rawCodex.failover, { enabled: true, priority: 20, maxRetries: 1 });
+  assert.equal(rawCodex.health.circuitState, "closed");
+  assert.ok(raw.providers.find((item) => item.id === "legacy-raw-provider"));
 });
 
 test("model gateway treats Codex context length responses as request-scoped failures", async () => {
@@ -4566,6 +4867,93 @@ test("model gateway forwards through endpoint profiles and updates endpoint heal
   assert.equal(glm?.health.lastSuccessAt, null);
   assert.ok(endpoint?.health.lastSuccessAt);
   assert.equal(endpoint?.health.circuitState, "closed");
+});
+
+test("model gateway provider smoke health patch preserves raw provider records", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "glm-health-patch",
+      name: "GLM Health Patch",
+      appScopes: ["codex", "openclaw"],
+      baseUrl: "https://glm-health.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "none",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const raw = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  raw.providers.push({
+    id: "legacy-codex-raw",
+    name: "Legacy Codex Raw",
+    enabled: true,
+    category: "official",
+    sourceType: "account-backed",
+    appScopes: ["claude-code"],
+    // Missing baseUrl intentionally simulates an older/bad record that the
+    // normalized management view may skip. Runtime health writes must never
+    // persist that filtered view back over the raw registry.
+    apiFormat: "openai_responses",
+    authStrategy: "oauth_proxy",
+    models: {
+      defaultModel: "gpt-5.5",
+      models: [{ id: "gpt-5.5" }],
+    },
+    accountProvider: {
+      kind: "codex",
+      routing: {
+        strategy: "round-robin",
+        sessionAffinity: true,
+        maxConcurrentPerAccount: null,
+      },
+      accounts: [{
+        id: "legacy-account",
+        kind: "codex",
+        enabled: true,
+        state: "ready",
+        authRef: "provider:legacy-codex-raw:account:a:codex-token",
+        credentialSource: "codex-device-auth",
+      }],
+    },
+  });
+  fs.writeFileSync(paths.registry, `${JSON.stringify(raw, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_health_patch",
+    choices: [{ message: { role: "assistant", content: "ok" } }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    const result = await service.testProvider(undefined, "glm-health-patch", {
+      kind: "protocol",
+      model: "glm-5.2",
+    });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const after = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  assert.deepEqual(after.providers.map((provider) => provider.id), [
+    "glm-health-patch",
+    "legacy-codex-raw",
+  ]);
+  const glm = after.providers.find((provider) => provider.id === "glm-health-patch");
+  assert.equal(glm.health.circuitState, "closed");
+  assert.ok(glm.health.lastSuccessAt);
+  assert.equal(after.providers.find((provider) => provider.id === "legacy-codex-raw").name, "Legacy Codex Raw");
 });
 
 test("model gateway provider smoke can target a specific endpoint profile", async () => {

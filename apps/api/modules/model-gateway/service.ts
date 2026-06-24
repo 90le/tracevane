@@ -202,6 +202,7 @@ const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
 const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
 const MODEL_GATEWAY_SMOKE_SENTINEL = "GATEWAY_OK";
+const MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER = "x-tracevane-gateway-smoke";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
@@ -219,6 +220,13 @@ type CodexDeviceLoginSession = {
   expiresAtMs: number;
   pollIntervalSeconds: number;
   createdAt: string;
+};
+
+
+type CodexDeviceLoginSessionStore = {
+  version: 1;
+  updatedAt: string;
+  sessions: CodexDeviceLoginSession[];
 };
 
 type CodexTokenBundle = {
@@ -298,6 +306,7 @@ export interface ModelGatewayPaths {
   daemonPid: string;
   portLock: string;
   codexHistory: string;
+  codexLoginSessions: string;
   backups: string;
   logs: string;
 }
@@ -372,6 +381,7 @@ export function resolveModelGatewayPaths(config: TracevaneServerConfig): ModelGa
     daemonPid: path.join(root, "daemon.pid"),
     portLock: path.join(root, "gateway-port.lock"),
     codexHistory: path.join(root, "codex-history.json"),
+    codexLoginSessions: path.join(root, "codex-login-sessions.json"),
     backups: path.join(root, "backups"),
     logs: path.join(root, "logs"),
   };
@@ -2369,9 +2379,9 @@ function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGat
   const endpoints = normalizeEndpointMap(input.endpoints || fallback?.endpoints);
   const network = normalizeNetwork(input.network, fallback?.network);
   const failover = {
-    enabled: typeof input.failover?.enabled === "boolean" ? input.failover.enabled : fallback?.failover.enabled ?? true,
-    priority: typeof input.failover?.priority === "number" ? Math.floor(input.failover.priority) : fallback?.failover.priority ?? 100,
-    maxRetries: typeof input.failover?.maxRetries === "number" ? Math.max(0, Math.floor(input.failover.maxRetries)) : fallback?.failover.maxRetries ?? 1,
+    enabled: typeof input.failover?.enabled === "boolean" ? input.failover.enabled : fallback?.failover?.enabled ?? true,
+    priority: typeof input.failover?.priority === "number" ? Math.floor(input.failover.priority) : fallback?.failover?.priority ?? 100,
+    maxRetries: typeof input.failover?.maxRetries === "number" ? Math.max(0, Math.floor(input.failover.maxRetries)) : fallback?.failover?.maxRetries ?? 1,
   };
   const sourceType = memberOrDefault<ModelGatewayProviderSourceType>(
     input.sourceType,
@@ -2915,6 +2925,7 @@ function mergeManagedModelCatalogWithDefaults(
       if (!defaultModel) return model;
       return {
         ...model,
+        aliases: [...(defaultModel.aliases || [])],
         contextWindow: positiveIntegerOrNull(defaultModel.contextWindow) ?? positiveIntegerOrNull(model.contextWindow),
         maxOutputTokens: positiveIntegerOrNull(defaultModel.maxOutputTokens) ?? positiveIntegerOrNull(model.maxOutputTokens),
         pricing: defaultModel.pricing || model.pricing,
@@ -5575,11 +5586,96 @@ export function createModelGatewayService(
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
   const codexDeviceLoginSessions = new Map<string, CodexDeviceLoginSession>();
+  const codexDeviceLoginPolls = new Map<string, Promise<ModelGatewayCodexAccountLoginPollResponse>>();
   const codexAccountRefreshes = new Map<string, Promise<string>>();
   const codexAccountRoutingCursors = new Map<string, number>();
   const codexAccountAffinities = new Map<string, string>();
   const codexAccountInFlight = new Map<string, number>();
   let codexAccountRoutingLoaded = false;
+
+  function normalizeCodexDeviceLoginSession(
+    value: unknown,
+    nowMs = Date.now(),
+  ): CodexDeviceLoginSession | null {
+    if (!isRecord(value)) return null;
+    const loginId = normalizeString(value.loginId);
+    const providerId = normalizeId(value.providerId, "codex-account");
+    const providerName = normalizeString(value.providerName, "Codex Account");
+    const deviceAuthId = normalizeString(value.deviceAuthId);
+    const userCode = normalizeString(value.userCode);
+    const expiresAtMs = typeof value.expiresAtMs === "number" && Number.isFinite(value.expiresAtMs)
+      ? Math.floor(value.expiresAtMs)
+      : parseIsoTimestampMs(normalizeString(value.expiresAt)) || 0;
+    if (!loginId || !providerId || !deviceAuthId || !userCode || expiresAtMs <= nowMs) return null;
+    const setActiveScopes = normalizeExplicitAppScopes(value.setActiveScopes);
+    return {
+      loginId,
+      providerId,
+      providerName,
+      setActiveScopes: setActiveScopes.length ? setActiveScopes : [...MODEL_GATEWAY_APP_SCOPES],
+      deviceAuthId,
+      userCode,
+      expiresAtMs,
+      pollIntervalSeconds: firstPositiveInteger(value.pollIntervalSeconds) || CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS,
+      createdAt: normalizeString(value.createdAt, nowIso()),
+    };
+  }
+
+  function writePersistedCodexLoginSessions(sessions: Iterable<CodexDeviceLoginSession>): void {
+    const nowMs = Date.now();
+    const normalized = Array.from(sessions)
+      .map((session) => normalizeCodexDeviceLoginSession(session, nowMs))
+      .filter((session): session is CodexDeviceLoginSession => Boolean(session));
+    writeJsonSecureAtomic(paths.codexLoginSessions, {
+      version: 1,
+      updatedAt: nowIso(),
+      sessions: normalized,
+    } satisfies CodexDeviceLoginSessionStore);
+  }
+
+  function readPersistedCodexLoginSessions(nowMs = Date.now()): Map<string, CodexDeviceLoginSession> {
+    const raw = readJsonFile<Partial<CodexDeviceLoginSessionStore>>(paths.codexLoginSessions, {
+      version: 1,
+      updatedAt: nowIso(),
+      sessions: [],
+    });
+    const source = Array.isArray(raw.sessions) ? raw.sessions : [];
+    const sessions = new Map<string, CodexDeviceLoginSession>();
+    let changed = !Array.isArray(raw.sessions);
+    for (const item of source) {
+      const session = normalizeCodexDeviceLoginSession(item, nowMs);
+      if (!session) {
+        changed = true;
+        continue;
+      }
+      sessions.set(session.loginId, session);
+    }
+    if (changed) writePersistedCodexLoginSessions(sessions.values());
+    return sessions;
+  }
+
+  function rememberCodexDeviceLoginSession(session: CodexDeviceLoginSession): void {
+    codexDeviceLoginSessions.set(session.loginId, session);
+    const sessions = readPersistedCodexLoginSessions();
+    sessions.set(session.loginId, session);
+    writePersistedCodexLoginSessions(sessions.values());
+  }
+
+  function getCodexDeviceLoginSession(loginId: string): CodexDeviceLoginSession | null {
+    const inMemory = codexDeviceLoginSessions.get(loginId);
+    if (inMemory && inMemory.expiresAtMs > Date.now()) return inMemory;
+    if (inMemory) codexDeviceLoginSessions.delete(loginId);
+    const sessions = readPersistedCodexLoginSessions();
+    const persisted = sessions.get(loginId) || null;
+    if (persisted) codexDeviceLoginSessions.set(loginId, persisted);
+    return persisted;
+  }
+
+  function forgetCodexDeviceLoginSession(loginId: string): void {
+    codexDeviceLoginSessions.delete(loginId);
+    const sessions = readPersistedCodexLoginSessions();
+    if (sessions.delete(loginId)) writePersistedCodexLoginSessions(sessions.values());
+  }
 
   async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
     return options.daemonServiceCommandRunner
@@ -5679,6 +5775,61 @@ export function createModelGatewayService(
   function writeRegistry(registry: ModelGatewayRegistryState): void {
     writeJsonSecureAtomic(paths.registry, {
       ...registry,
+      updatedAt: nowIso(),
+    });
+  }
+
+  function repairManagedCodexAccountProviderCatalogs(): void {
+    const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());
+    if (!Array.isArray(raw.providers)) return;
+    const defaults = codexAccountDefaultModels();
+    let changed = false;
+    const providers = raw.providers.map((provider) => {
+      if (!isRecord(provider)) return provider;
+      const rawApiKeyRef = normalizeString(provider.apiKeyRef);
+      const rawMetadata = isRecord(provider.metadata) ? provider.metadata : {};
+      const rawAccountProvider: Record<string, unknown> = isRecord(provider.accountProvider) ? provider.accountProvider : {};
+      const codexAccountHint = (
+        normalizeString(provider.sourceType) === "account-backed"
+        && normalizeString(rawAccountProvider["kind"]) === "codex"
+      )
+        || rawApiKeyRef.includes(":codex-token")
+        || normalizeString(rawMetadata.importedFrom) === "codex-device-login";
+      if (!codexAccountHint) return provider;
+
+      const currentModels = normalizeModelCatalog(provider.models);
+      const managedModels = mergeManagedModelCatalogWithDefaults(currentModels, defaults);
+      const currentEndpoints = normalizeEndpointMap(provider.endpoints);
+      const managedEndpoints = {
+        ...currentEndpoints,
+        openai_responses: currentEndpoints.openai_responses || "/responses",
+        openai_responses_compact: currentEndpoints.openai_responses_compact || "/compact",
+      };
+      if (
+        JSON.stringify(provider.models || null) === JSON.stringify(managedModels)
+        && JSON.stringify(provider.endpoints || null) === JSON.stringify(managedEndpoints)
+      ) {
+        return provider;
+      }
+      changed = true;
+      return {
+        ...provider,
+        models: managedModels,
+        endpoints: managedEndpoints,
+        failover: isRecord(provider.failover)
+          ? provider.failover
+          : { enabled: true, priority: 20, maxRetries: 1 },
+        health: isRecord(provider.health)
+          ? provider.health
+          : { circuitState: "closed", lastSuccessAt: null, lastFailureAt: null, retryAfterUntil: null, lastLatencyMs: null, lastError: null, consecutiveFailures: 0 },
+        updatedAt: nowIso(),
+      };
+    });
+    if (!changed) return;
+    writeJsonSecureAtomic(paths.registry, {
+      ...raw,
+      version: 1,
+      providers,
       updatedAt: nowIso(),
     });
   }
@@ -5947,6 +6098,25 @@ export function createModelGatewayService(
     appendUsageLedgerEntry(entry);
   }
 
+  function patchRawProvider(
+    providerId: string,
+    patch: (provider: Record<string, unknown>, stamp: string) => boolean,
+  ): boolean {
+    const raw = readJsonFile<Record<string, unknown>>(paths.registry, createEmptyRegistry() as unknown as Record<string, unknown>);
+    const providers = Array.isArray(raw.providers) ? raw.providers : [];
+    const provider = providers.find((item): item is Record<string, unknown> => (
+      isRecord(item) && normalizeString(item.id) === providerId
+    ));
+    if (!provider) return false;
+    const stamp = nowIso();
+    if (!patch(provider, stamp)) return false;
+    provider.updatedAt = stamp;
+    raw.providers = providers;
+    raw.updatedAt = stamp;
+    writeJsonSecureAtomic(paths.registry, raw);
+    return true;
+  }
+
   function updateProviderHealth(
     providerId: string,
     success: boolean,
@@ -5955,39 +6125,34 @@ export function createModelGatewayService(
     endpointProfileId: string | null = null,
     retryAfterUntil: string | null = null,
   ): void {
-    const registry = readRegistry();
-    const provider = findProvider(registry, providerId);
-    if (!provider) return;
-    const stamp = nowIso();
-    const targetHealth = endpointProfileId
-      ? provider.endpointProfiles.find((profile) => profile.id === endpointProfileId)?.health
-      : provider.health;
-    if (!targetHealth) return;
-    const nextConsecutiveFailures = success ? 0 : targetHealth.consecutiveFailures + 1;
-    const nextHealth = {
-      ...targetHealth,
-      lastLatencyMs: latencyMs,
-      lastSuccessAt: success ? stamp : targetHealth.lastSuccessAt,
-      lastFailureAt: success ? targetHealth.lastFailureAt : stamp,
-      retryAfterUntil: success ? null : retryAfterUntil,
-      lastError: success ? null : errorMessage,
-      consecutiveFailures: nextConsecutiveFailures,
-      circuitState: success
-        ? "closed"
-        : retryAfterUntil || nextConsecutiveFailures >= 3
-          ? "open"
-          : targetHealth.circuitState,
-    };
-    if (endpointProfileId) {
-      const profile = provider.endpointProfiles.find((item) => item.id === endpointProfileId);
-      if (!profile) return;
-      profile.health = nextHealth;
-      profile.updatedAt = stamp;
-    } else {
-      provider.health = nextHealth;
-    }
-    provider.updatedAt = stamp;
-    writeRegistry(registry);
+    patchRawProvider(providerId, (provider, stamp) => {
+      let target: Record<string, unknown> | null = provider;
+      if (endpointProfileId) {
+        const endpointProfiles = Array.isArray(provider.endpointProfiles) ? provider.endpointProfiles : [];
+        target = endpointProfiles.find((profile): profile is Record<string, unknown> => (
+          isRecord(profile) && normalizeString(profile.id) === endpointProfileId
+        )) || null;
+      }
+      if (!target) return false;
+      const targetHealth = normalizeHealth(target.health);
+      const nextConsecutiveFailures = success ? 0 : targetHealth.consecutiveFailures + 1;
+      target.health = {
+        ...targetHealth,
+        lastLatencyMs: latencyMs,
+        lastSuccessAt: success ? stamp : targetHealth.lastSuccessAt,
+        lastFailureAt: success ? targetHealth.lastFailureAt : stamp,
+        retryAfterUntil: success ? null : retryAfterUntil,
+        lastError: success ? null : errorMessage,
+        consecutiveFailures: nextConsecutiveFailures,
+        circuitState: success
+          ? "closed"
+          : retryAfterUntil || nextConsecutiveFailures >= 3
+            ? "open"
+            : targetHealth.circuitState,
+      };
+      if (endpointProfileId) target.updatedAt = stamp;
+      return true;
+    });
   }
 
   function secretSummary(ref: string | null): ModelGatewaySecretSummary | null {
@@ -6219,6 +6384,29 @@ export function createModelGatewayService(
       effectiveRequestedModel,
       explicitModel?.providerId || null,
     );
+
+    if (activeId && !candidates.length) {
+      const activeProvider = findProvider(registry, activeId);
+      const activeProviderModel = activeProvider && effectiveRequestedModel
+        ? resolveProviderModel(activeProvider, effectiveRequestedModel)
+        : null;
+      if (
+        activeProvider
+        && activeProvider.enabled
+        && activeProvider.appScopes.includes(appScope)
+        && isCodexAccountBackedProvider(activeProvider)
+        && !providerHasUsableAccounts(activeProvider)
+        && (!effectiveRequestedModel || activeProviderModel)
+      ) {
+        return {
+          provider: null,
+          endpointProfile: null,
+          effectiveProvider: null,
+          failoverReason: `Active provider '${activeProvider.id}' has no ready Codex account for ${appScope}; open its account pool and sign in again or re-enable an account.`,
+          resolvedModel: activeProviderModel || effectiveRequestedModel,
+        };
+      }
+    }
 
     if (effectiveRequestedModel && !candidates.length) {
       return {
@@ -6709,14 +6897,19 @@ export function createModelGatewayService(
     accountId: string,
     patch: Partial<ModelGatewayAccountEntry>,
   ): void {
-    const registry = readRegistry();
-    const provider = findProvider(registry, providerId);
-    if (!provider?.accountProvider) return;
-    const account = provider.accountProvider.accounts.find((item) => item.id === accountId);
-    if (!account) return;
-    Object.assign(account, patch, { updatedAt: nowIso() });
-    provider.updatedAt = nowIso();
-    writeRegistry(registry);
+    patchRawProvider(providerId, (provider, stamp) => {
+      const accountProvider = isRecord(provider.accountProvider) ? provider.accountProvider : null;
+      if (!accountProvider) return false;
+      const accounts = Array.isArray(accountProvider.accounts) ? accountProvider.accounts : [];
+      const account = accounts.find((item): item is Record<string, unknown> => (
+        isRecord(item) && normalizeString(item.id) === accountId
+      ));
+      if (!account) return false;
+      Object.assign(account, patch, { updatedAt: stamp });
+      accountProvider.accounts = accounts;
+      provider.accountProvider = accountProvider;
+      return true;
+    });
   }
 
   function markCodexAccountReady(providerId: string, accountId: string, patch: Partial<ModelGatewayAccountEntry> = {}): void {
@@ -6817,8 +7010,10 @@ export function createModelGatewayService(
     statusCode: number,
     error: { message?: string; type?: string; code?: string } | null | undefined,
     headers?: Headers | null,
+    options: { updateAccountState?: boolean } = {},
   ): void {
     if (!account || provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") return;
+    if (options.updateAccountState === false) return;
     const disposition = codexAccountUpstreamErrorDisposition(statusCode, error, headers);
     if (!disposition) return;
     if (disposition.state === "needs-login") {
@@ -6909,7 +7104,7 @@ export function createModelGatewayService(
   async function resolveProviderSecret(
     provider: ModelGatewayProvider,
     context?: CodexAccountSelectionContext,
-    options: { reserveAccount?: boolean } = {},
+    options: { reserveAccount?: boolean; updateAccountStateOnAuthFailure?: boolean } = {},
   ): Promise<ProviderSecretResolution> {
     if (provider.authStrategy === "none") return {
       secret: null,
@@ -6948,7 +7143,9 @@ export function createModelGatewayService(
       const secret = readSecrets().secrets[account.authRef]?.value || "";
       const bundle = normalizeCodexTokenBundle(secret);
       if (!bundle) {
-        markCodexAccountNeedsLogin(provider.id, account.id, "Codex account token is missing or invalid.");
+        if (options.updateAccountStateOnAuthFailure !== false) {
+          markCodexAccountNeedsLogin(provider.id, account.id, "Codex account token is missing or invalid.");
+        }
         throw new ModelGatewayServiceError(
           "model_gateway_account_auth_missing",
           `Provider '${provider.id}' account '${account.id}' requires sign-in before requests can be forwarded.`,
@@ -6982,10 +7179,12 @@ export function createModelGatewayService(
             return serialized;
           } catch (error) {
             const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
-            if (isModelGatewayServiceError(error) && error.statusCode === 401) {
-              markCodexAccountNeedsLogin(provider.id, account.id, message);
-            } else {
-              markCodexAccountCooldown(provider.id, account.id, message);
+            if (options.updateAccountStateOnAuthFailure !== false) {
+              if (isModelGatewayServiceError(error) && error.statusCode === 401) {
+                markCodexAccountNeedsLogin(provider.id, account.id, message);
+              } else {
+                markCodexAccountCooldown(provider.id, account.id, message);
+              }
             }
             throw error;
           } finally {
@@ -7698,7 +7897,7 @@ export function createModelGatewayService(
     const pollInterval = firstPositiveInteger(body.interval) || CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS;
     const expiresAtMs = Date.now() + CODEX_ACCOUNT_LOGIN_TIMEOUT_MS;
     const setActiveScopes = normalizeExplicitAppScopes(payload.setActiveScopes);
-    codexDeviceLoginSessions.set(loginId, {
+    rememberCodexDeviceLoginSession({
       loginId,
       providerId: normalizeId(payload.providerId, "codex-account"),
       providerName: normalizeString(payload.providerName, "Codex Account"),
@@ -7886,17 +8085,28 @@ export function createModelGatewayService(
   ): Promise<ModelGatewayCodexAccountLoginPollResponse> {
     requireManagement(req);
     const loginId = normalizeString(payload.loginId);
-    const session = loginId ? codexDeviceLoginSessions.get(loginId) : null;
+    const existingPoll = loginId ? codexDeviceLoginPolls.get(loginId) : null;
+    if (existingPoll) return await existingPoll;
+    const poll = pollCodexAccountLoginOnce(loginId);
+    if (loginId) {
+      codexDeviceLoginPolls.set(loginId, poll);
+      poll.finally(() => codexDeviceLoginPolls.delete(loginId));
+    }
+    return await poll;
+  }
+
+  async function pollCodexAccountLoginOnce(loginId: string): Promise<ModelGatewayCodexAccountLoginPollResponse> {
+    const session = loginId ? getCodexDeviceLoginSession(loginId) : null;
     if (!session) {
       return {
         ok: true,
         status: "failed",
-        message: "Codex login session was not found. Start login again.",
+        message: "Codex login session was not found in local state. Start login again.",
         provider: null,
       };
     }
     if (Date.now() > session.expiresAtMs) {
-      codexDeviceLoginSessions.delete(loginId);
+      forgetCodexDeviceLoginSession(loginId);
       return {
         ok: true,
         status: "expired",
@@ -7916,7 +8126,7 @@ export function createModelGatewayService(
       }
       const bundle = await exchangeCodexAuthorizationCode(authorization.authorizationCode, authorization.codeVerifier);
       const provider = persistCodexAccountProvider(session, bundle);
-      codexDeviceLoginSessions.delete(loginId);
+      forgetCodexDeviceLoginSession(loginId);
       return {
         ok: true,
         status: "completed",
@@ -9473,6 +9683,7 @@ export function createModelGatewayService(
     const headers = new Headers({
       "content-type": "application/json",
       "x-tracevane-app-scope": scope,
+      [MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER]: "1",
     });
     if (key) headers.set("authorization", `Bearer ${key}`);
     const startedAt = nowIso();
@@ -9619,7 +9830,9 @@ export function createModelGatewayService(
 
     let secretResolution: ProviderSecretResolution;
     try {
-      secretResolution = await resolveProviderSecret(effectiveProvider);
+      secretResolution = await resolveProviderSecret(effectiveProvider, undefined, {
+        updateAccountStateOnAuthFailure: false,
+      });
     } catch (error) {
       const authError = isModelGatewayServiceError(error)
         ? error
@@ -10059,6 +10272,8 @@ export function createModelGatewayService(
     ) && isCodexAccountBackedProvider(provider);
     const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
       && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
+    const diagnosticSmokeRequest = readHeader(req.headers, MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER) === "1";
+    const shouldUpdateAccountStateFromRequest = !diagnosticSmokeRequest;
     if (
       decision.mode === "adapter-required"
       && !useCodexResponsesChatAdapter
@@ -10161,7 +10376,10 @@ export function createModelGatewayService(
         routeId: decision.routeId,
         requestedPath: decision.requestedPath,
         requestedModel: requestModel,
-      }, { reserveAccount: true });
+      }, {
+        reserveAccount: true,
+        updateAccountStateOnAuthFailure: shouldUpdateAccountStateFromRequest,
+      });
     } catch (error) {
       const authError = isModelGatewayServiceError(error)
         ? error
@@ -10671,6 +10889,7 @@ export function createModelGatewayService(
                 code: streamError.code || streamError.type || streamingAdapter.adapterFailedCode,
               },
               upstream.headers,
+              { updateAccountState: shouldUpdateAccountStateFromRequest },
             );
           }
           updateSelectedProviderHealth(
@@ -10750,6 +10969,7 @@ export function createModelGatewayService(
                 upstream.status,
                 error,
                 upstream.headers,
+                { updateAccountState: shouldUpdateAccountStateFromRequest },
               );
             },
           });
@@ -10825,6 +11045,7 @@ export function createModelGatewayService(
             upstream.status,
             normalizedError.error,
             upstream.headers,
+            { updateAccountState: shouldUpdateAccountStateFromRequest },
           );
           updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message, upstreamRetryAfterUntil);
           appendRequestLog(requestLogEntry({
@@ -10877,6 +11098,8 @@ export function createModelGatewayService(
             selectedAccountForRequest,
             adapterError.statusCode,
             { code: adapterError.code, message: adapterError.message, type: adapterError.code },
+            undefined,
+            { updateAccountState: shouldUpdateAccountStateFromRequest },
           );
           updateSelectedProviderHealth(
             providerHealthSuccessForUpstreamResult(adapterError.statusCode, adapterError.code, adapterError.message),
@@ -10943,6 +11166,8 @@ export function createModelGatewayService(
             selectedAccountForRequest,
             adapterError.statusCode,
             { code: adapterError.code, message: adapterError.message, type: adapterError.code },
+            undefined,
+            { updateAccountState: shouldUpdateAccountStateFromRequest },
           );
           updateSelectedProviderHealth(false, latencyMs, adapterError.message);
           appendRequestLog(requestLogEntry({
@@ -11279,6 +11504,8 @@ export function createModelGatewayService(
       });
     }
   }
+
+  repairManagedCodexAccountProviderCatalogs();
 
   return {
     getStatus,
