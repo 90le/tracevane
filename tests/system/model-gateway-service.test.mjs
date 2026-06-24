@@ -6495,6 +6495,94 @@ test("model gateway active route smoke uses the client protocol endpoint", async
   }
 });
 
+test("model gateway active route smoke preserves app-selected model when payload omits model", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+  service.updateClientAuth(undefined, { apiKey: "sk-local-app-model-smoke" });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "glm",
+      name: "GLM",
+      enabled: true,
+      appScopes: ["claude-code"],
+      baseUrl: "https://glm.example.test",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+      endpoints: { anthropic_messages: "/v1/messages" },
+      models: {
+        defaultModel: "glm-4.5",
+        models: [{ id: "glm-4.5" }],
+      },
+    },
+    secret: { apiKey: "sk-glm" },
+    setActiveScopes: ["claude-code"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-account",
+      name: "Codex Account",
+      enabled: true,
+      appScopes: ["codex", "claude-code"],
+      baseUrl: "https://codex.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      endpoints: { openai_responses: "/v1/responses" },
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+    },
+    secret: { apiKey: "sk-codex" },
+    setActiveScopes: ["codex"],
+  });
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-5.5",
+      appModels: {
+        "claude-code": "gpt-5.5",
+      },
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let seenBody = null;
+  globalThis.fetch = async (_url, init = {}) => {
+    seenBody = JSON.parse(String(init.body || "{}"));
+    return new Response(JSON.stringify({
+      id: "msg_app_model_smoke",
+      type: "message",
+      role: "assistant",
+      model: "gpt-5.5",
+      content: [{ type: "text", text: "GATEWAY_OK" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-openclaw-model-gateway-provider": "codex-account",
+      },
+    });
+  };
+
+  try {
+    const result = await service.testActiveRoute(undefined, {
+      scope: "claude-code",
+      input: "Reply with GATEWAY_OK",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.providerId, "codex-account");
+    assert.equal(result.route.provider?.id, "codex-account");
+    assert.equal(result.route.model?.requested, "gpt-5.5");
+    assert.equal(result.route.model?.resolved, "gpt-5.5");
+    assert.equal(seenBody?.model, "gpt-5.5");
+    assert.notEqual(seenBody?.model, "glm-4.5");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway active route smoke uses Claude and OpenCode client tool contracts", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

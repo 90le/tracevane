@@ -169,14 +169,15 @@ test("Overview view exposes an Agent cockpit for route and client readiness", ()
 
 test("Providers view aggregates endpoint risk and smokes every active scope for that provider", () => {
   const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
-  assert.match(providers, /activeRouteScopesForProvider/);
+  assert.match(providers, /activeRoutesForProvider/);
   assert.match(providers, /route\.resolvedProviderId === provider\.id/);
-  assert.match(providers, /smokeMutation\.mutate\(\{ scope \}/);
+  assert.match(providers, /smokeMutation\.mutate\(\{ scope, model: route\.resolvedModel \?\? undefined \}/);
   assert.match(providers, /endpointProfileRisk/);
   assert.match(providers, /部分熔断/);
   assert.match(providers, /部分异常/);
-  assert.match(providers, /activeScopes\.map/);
+  assert.match(providers, /providerActiveRoutes\.map/);
   assert.match(providers, /检查 \$\{scope\} 活跃路由/);
+  assert.match(providers, /选定模型：/);
   assert.doesNotMatch(
     providers,
     /smokeMutation\.mutate\(undefined/,

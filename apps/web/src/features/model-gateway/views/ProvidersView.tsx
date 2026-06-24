@@ -31,7 +31,6 @@ import {
 import {
   MODEL_GATEWAY_API_FORMATS,
   type ModelGatewayApiFormat,
-  type ModelGatewayAppScope,
   type ModelGatewayActiveRouteStatus,
   type ModelGatewayProviderSourceType,
   type ModelGatewayProviderView,
@@ -131,13 +130,12 @@ function providerCapabilityLabels(provider: ModelGatewayProviderView): string[] 
   return labels;
 }
 
-function activeRouteScopesForProvider(
+function activeRoutesForProvider(
   provider: ModelGatewayProviderView,
   activeRoutes: ModelGatewayActiveRouteStatus[],
-): ModelGatewayAppScope[] {
+): ModelGatewayActiveRouteStatus[] {
   return activeRoutes
-    .filter((route) => route.resolvedProviderId === provider.id)
-    .map((route) => route.scope);
+    .filter((route) => route.resolvedProviderId === provider.id);
 }
 
 function ProviderTypeBadge({ provider }: { provider: ModelGatewayProviderView }) {
@@ -194,16 +192,22 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const [smokingKey, setSmokingKey] = React.useState<string | null>(null);
   const [testingId, setTestingId] = React.useState<string | null>(null);
 
-  const handleActiveRouteSmoke = (provider: ModelGatewayProviderView, scope: ModelGatewayAppScope) => {
+  const handleActiveRouteSmoke = (provider: ModelGatewayProviderView, route: ModelGatewayActiveRouteStatus) => {
+    const { scope } = route;
     const key = `${provider.id}:${scope}`;
     setSmokingKey(key);
-    smokeMutation.mutate({ scope }, {
+    smokeMutation.mutate({ scope, model: route.resolvedModel ?? undefined }, {
       onSuccess: (result) => {
+        const expectedModel = route.resolvedModel ?? undefined;
+        const actualModel = result.route.model?.resolved ?? result.route.model?.requested ?? undefined;
         if (result.ok) {
           toast.success(`${scope} 活跃路由正常 · ${result.latencyMs}ms`, {
             description:
               [
                 result.providerId !== provider.id ? `实际 Provider：${result.providerId}` : undefined,
+                expectedModel ? `选定模型：${expectedModel}` : undefined,
+                actualModel && expectedModel && actualModel !== expectedModel ? `实际模型：${actualModel}` : undefined,
+                result.route.failoverReason ?? route.warning ?? undefined,
                 result.responsePreview ?? undefined,
               ]
                 .filter(Boolean)
@@ -348,7 +352,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
             {providers.map((provider) => {
               const status = providerStatus(provider);
               const isAccountProvider = Boolean(provider.accountProvider);
-              const activeScopes = activeRouteScopesForProvider(provider, activeRoutes);
+              const providerActiveRoutes = activeRoutesForProvider(provider, activeRoutes);
               return (
                 <TableRow key={provider.id}>
                   <TableCell>
@@ -359,10 +363,20 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                       <span className="truncate text-sm text-muted">
                         {providerIdentitySub(provider)}
                       </span>
-                      {activeScopes.length > 0 && (
+                      {providerActiveRoutes.length > 0 && (
                         <span className="flex flex-wrap gap-1 pt-1">
-                          {activeScopes.map((scope) => (
-                            <Badge key={scope} variant="outline">{scope}</Badge>
+                          {providerActiveRoutes.map((route) => (
+                            <Badge
+                              key={route.scope}
+                              variant={route.state === "fallback" ? "warn" : "outline"}
+                              title={[
+                                route.message,
+                                route.resolvedModel ? `model=${route.resolvedModel}` : null,
+                              ].filter(Boolean).join(" · ")}
+                            >
+                              {route.scope}
+                              {route.resolvedModel ? ` · ${route.resolvedModel}` : ""}
+                            </Badge>
                           ))}
                         </span>
                       )}
@@ -387,7 +401,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                         label="配置"
                         onClick={() => goToView("providercfg", { provider: provider.id })}
                       />
-                      {activeScopes.length === 0 ? (
+                      {providerActiveRoutes.length === 0 ? (
                         <IconAction
                           icon={<Activity />}
                           label="未被当前路由使用"
@@ -395,17 +409,18 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                           disabled
                         />
                       ) : (
-                        activeScopes.map((scope) => {
+                        providerActiveRoutes.map((route) => {
+                          const scope = route.scope;
                           const activeSmokeKey = `${provider.id}:${scope}`;
                           return (
                             <Button
                               key={scope}
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleActiveRouteSmoke(provider, scope)}
+                              onClick={() => handleActiveRouteSmoke(provider, route)}
                               disabled={smokeMutation.isPending && smokingKey === activeSmokeKey}
-                              title={`检查 ${scope} 活跃路由`}
-                              aria-label={`检查 ${scope} 活跃路由`}
+                              title={`检查 ${scope} 活跃路由${route.resolvedModel ? ` · ${route.resolvedModel}` : ""}`}
+                              aria-label={`检查 ${scope} 活跃路由${route.resolvedModel ? ` · ${route.resolvedModel}` : ""}`}
                             >
                               {smokeMutation.isPending && smokingKey === activeSmokeKey ? (
                                 <Loader2 className="size-3.5 animate-spin" />

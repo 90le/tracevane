@@ -9411,7 +9411,9 @@ export function createModelGatewayService(
       : "codex";
     const routeId = defaultRouteIdForScope(scope);
     const routePath = ROUTES[routeId].paths[0] || "/v1/responses";
-    const model = normalizeString(payload.model);
+    const registry = readRegistry();
+    const payloadModel = normalizeString(payload.model);
+    const model = payloadModel || appConnectionRequestedModelForScope(registry, scope);
     const headersForDecision = {
       "x-tracevane-app-scope": scope,
     };
@@ -9436,7 +9438,6 @@ export function createModelGatewayService(
         },
       };
     }
-    const registry = readRegistry();
     const key = readGatewayClientSecret();
     if (registry.clientAuth.enabled && !key) {
       return {

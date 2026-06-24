@@ -767,6 +767,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
               <p className="break-all text-sm text-muted">
                 {route.resolvedModel ?? "未解析模型"} · {route.resolvedApiFormat ?? "unknown"} · {route.upstreamUrl ?? "无 upstream"}
               </p>
+              <p className="text-xs text-subtle">
+                用户选择：{route.selectedProviderId ?? "auto"} · 实际 Provider：{route.resolvedProviderId ?? "missing"}
+                {provider.id !== route.resolvedProviderId ? "（当前页 Provider 未承接这条实际请求）" : ""}
+              </p>
               {route.warning && (
                 <p className="flex items-start gap-1.5 text-sm text-amber">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
