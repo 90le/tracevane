@@ -105,10 +105,42 @@ function providerHealthBadge(provider: ModelGatewayProviderView): {
   variant: "ok" | "warn" | "bad";
   label: string;
 } {
+  const endpointProfiles = provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
+  const openEndpointCount = endpointProfiles.filter((profile) => profile.health.circuitState === "open").length;
+  const degradedEndpointCount = endpointProfiles.filter((profile) =>
+    profile.health.circuitState !== "closed"
+    || profile.health.retryAfterUntil
+    || profile.health.consecutiveFailures > 0
+    || profile.health.lastError,
+  ).length;
   if (provider.health.circuitState === "open") return { variant: "bad", label: "熔断" };
+  if (openEndpointCount > 0) return { variant: "bad", label: "部分熔断" };
   if (provider.health.circuitState === "half-open") return { variant: "warn", label: "观察" };
+  if (degradedEndpointCount > 0 || provider.health.consecutiveFailures > 0 || provider.health.lastError) {
+    return { variant: "warn", label: "部分异常" };
+  }
   if (!provider.enabled) return { variant: "warn", label: "停用" };
   return { variant: "ok", label: "在线" };
+}
+
+function providerNeedsAttention(provider: ModelGatewayProviderView): boolean {
+  return providerHealthBadge(provider).variant !== "ok";
+}
+
+function providerAttentionSummary(provider: ModelGatewayProviderView): string {
+  const endpointProfiles = provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
+  const riskyEndpoint = endpointProfiles.find((profile) =>
+    profile.health.circuitState !== "closed"
+    || profile.health.retryAfterUntil
+    || profile.health.consecutiveFailures > 0
+    || profile.health.lastError,
+  );
+  if (riskyEndpoint) {
+    return `${riskyEndpoint.name} · ${riskyEndpoint.health.lastError || `circuit ${riskyEndpoint.health.circuitState}`} · 连续失败 ${riskyEndpoint.health.consecutiveFailures}`;
+  }
+  return provider.health.lastError
+    ? `${provider.health.lastError} · 连续失败 ${provider.health.consecutiveFailures}`
+    : `circuit ${provider.health.circuitState} · 连续失败 ${provider.health.consecutiveFailures}`;
 }
 
 function appConnectionBadge(connection: ModelGatewayAppConnection): {
@@ -233,12 +265,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const clientAuthConfigured = status?.registry.clientAuth.enabled ?? false;
 
   // Attention items are built ONLY from live provider health — no fabrication.
-  const attentionProviders = providerList.filter(
-    (p) => p.health.circuitState !== "closed" || !p.enabled,
-  );
-  const healthyProviders = providerList.filter(
-    (p) => p.health.circuitState === "closed" && p.enabled,
-  );
+  const attentionProviders = providerList.filter(providerNeedsAttention);
+  const healthyProviders = providerList.filter((provider) => !providerNeedsAttention(provider));
 
   const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
 
@@ -366,7 +394,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             </span>
           </div>
           <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">当前路由</span>
+            <span className="text-xs text-subtle">Agent scope</span>
             <div className="mt-1 text-xl font-semibold text-ink-strong">
               {activeRoutes.length}
             </div>
@@ -505,31 +533,34 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         </div>
       </Panel>
 
-      {/* Current routes — built from live activeRoutes */}
-      <Panel>
-        <PanelHead
-          title="当前路由"
-          sub="每个客户端解析到的 Provider / endpoint / 模型"
-          action={
-            <span className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void smokeAllActiveRoutes()}
-                disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
-                aria-label="检查全部当前路由"
-                title="按每个客户端 scope 逐条检查当前真实路由"
-              >
-                {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
-                检查全部
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
-                <Activity className="size-3.5" />
-                查看 Provider
-              </Button>
-            </span>
-          }
-        />
+      {/* Current routes — collapsed detail because Agent Cockpit is the primary surface. */}
+      <details className="rounded-md border border-line bg-panel shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-3 border-b border-line px-4 py-3 outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]">
+          <span className="min-w-0 flex-1">
+            <strong className="block text-md font-semibold text-ink-strong">路由详情（可展开）</strong>
+            <span className="text-sm text-subtle">次级诊断：每个客户端解析到的 Provider / endpoint / 模型</span>
+          </span>
+          <Badge variant={routeAlerts.length > 0 ? "warn" : "ok"}>
+            {activeRoutes.length} routes
+          </Badge>
+        </summary>
+        <div className="flex flex-wrap justify-end gap-2 border-b border-line px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void smokeAllActiveRoutes()}
+            disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
+            aria-label="检查全部当前路由"
+            title="按每个客户端 scope 逐条检查当前真实路由"
+          >
+            {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
+            检查全部
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+            <Activity className="size-3.5" />
+            查看 Provider
+          </Button>
+        </div>
         {activeRoutes.length === 0 ? (
           <EmptyState
             title="暂无解析路由"
@@ -603,7 +634,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             })}
           </div>
         )}
-      </Panel>
+      </details>
 
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         {/* Health overview — only live provider health */}
@@ -630,11 +661,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                     icon={isOpen ? <ZapOff /> : <RouteOff />}
                     iconClass={isOpen ? "bg-red-soft text-red" : "bg-amber-soft text-amber"}
                     title={provider.name}
-                    subtitle={
-                      provider.health.lastError
-                        ? `${provider.health.lastError} · 连续失败 ${provider.health.consecutiveFailures}`
-                        : `circuit ${provider.health.circuitState} · 连续失败 ${provider.health.consecutiveFailures}`
-                    }
+                    subtitle={providerAttentionSummary(provider)}
                     trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
                   />
                 );

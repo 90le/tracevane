@@ -52,14 +52,49 @@ const SOURCE_TYPE_LABEL: Record<ModelGatewayProviderSourceType, string> = {
 };
 
 /** Status pill built only from live provider health + enabled state. */
+function healthIsDegraded(health: ModelGatewayProviderView["health"]): boolean {
+  return Boolean(
+    health.circuitState !== "closed"
+    || health.retryAfterUntil
+    || health.consecutiveFailures > 0
+    || health.lastError,
+  );
+}
+
+function endpointProfileRisk(provider: ModelGatewayProviderView): {
+  enabled: number;
+  open: number;
+  degraded: number;
+} {
+  const profiles = provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
+  return {
+    enabled: profiles.length,
+    open: profiles.filter((profile) => profile.health.circuitState === "open").length,
+    degraded: profiles.filter((profile) => healthIsDegraded(profile.health)).length,
+  };
+}
+
 function providerStatus(provider: ModelGatewayProviderView): {
   variant: "ok" | "warn" | "bad" | "mute";
   label: string;
 } {
   if (!provider.enabled) return { variant: "mute", label: "停用" };
   if (provider.health.circuitState === "open") return { variant: "bad", label: "熔断" };
+  const endpointRisk = endpointProfileRisk(provider);
+  if (endpointRisk.open > 0) return { variant: "bad", label: "部分熔断" };
   if (provider.health.circuitState === "half-open") return { variant: "warn", label: "观察" };
+  if (endpointRisk.degraded > 0 || healthIsDegraded(provider.health)) {
+    return { variant: "warn", label: "部分异常" };
+  }
   return { variant: "ok", label: "在线" };
+}
+
+function providerStatusDetail(provider: ModelGatewayProviderView): string {
+  const endpointRisk = endpointProfileRisk(provider);
+  if (endpointRisk.enabled === 0) {
+    return `provider circuit ${provider.health.circuitState}`;
+  }
+  return `${endpointRisk.enabled} endpoint · ${endpointRisk.open} 熔断 · ${endpointRisk.degraded} 异常`;
 }
 
 /** Short identity sub-line: model count / default + endpoint count. No raw dumps. */
@@ -314,11 +349,6 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
               const status = providerStatus(provider);
               const isAccountProvider = Boolean(provider.accountProvider);
               const activeScopes = activeRouteScopesForProvider(provider, activeRoutes);
-              const activeSmokeScope = activeScopes[0] ?? null;
-              const activeSmokeKey = activeSmokeScope ? `${provider.id}:${activeSmokeScope}` : null;
-              const activeSmokeLabel = activeSmokeScope
-                ? `检查 ${activeSmokeScope} 活跃路由`
-                : "未被当前路由使用";
               return (
                 <TableRow key={provider.id}>
                   <TableCell>
@@ -329,6 +359,13 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                       <span className="truncate text-sm text-muted">
                         {providerIdentitySub(provider)}
                       </span>
+                      {activeScopes.length > 0 && (
+                        <span className="flex flex-wrap gap-1 pt-1">
+                          {activeScopes.map((scope) => (
+                            <Badge key={scope} variant="outline">{scope}</Badge>
+                          ))}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -338,7 +375,10 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                   </TableCell>
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">状态</span>
-                    <Badge variant={status.variant}>{status.label}</Badge>
+                    <div className="grid gap-1">
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                      <span className="text-xs text-muted">{providerStatusDetail(provider)}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap justify-end gap-1">
@@ -347,15 +387,36 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                         label="配置"
                         onClick={() => goToView("providercfg", { provider: provider.id })}
                       />
-                      <IconAction
-                        icon={<Activity />}
-                        label={activeSmokeLabel}
-                        onClick={() => {
-                          if (activeSmokeScope) handleActiveRouteSmoke(provider, activeSmokeScope);
-                        }}
-                        disabled={!activeSmokeScope || (smokeMutation.isPending && smokingKey === activeSmokeKey)}
-                        busy={smokeMutation.isPending && smokingKey === activeSmokeKey}
-                      />
+                      {activeScopes.length === 0 ? (
+                        <IconAction
+                          icon={<Activity />}
+                          label="未被当前路由使用"
+                          onClick={() => undefined}
+                          disabled
+                        />
+                      ) : (
+                        activeScopes.map((scope) => {
+                          const activeSmokeKey = `${provider.id}:${scope}`;
+                          return (
+                            <Button
+                              key={scope}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleActiveRouteSmoke(provider, scope)}
+                              disabled={smokeMutation.isPending && smokingKey === activeSmokeKey}
+                              title={`检查 ${scope} 活跃路由`}
+                              aria-label={`检查 ${scope} 活跃路由`}
+                            >
+                              {smokeMutation.isPending && smokingKey === activeSmokeKey ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <Activity className="size-3.5" />
+                              )}
+                              {scope}
+                            </Button>
+                          );
+                        })
+                      )}
                       <IconAction
                         icon={<FlaskConical />}
                         label="测试 / smoke"

@@ -536,6 +536,8 @@ export interface ModelGatewayModelUsageRow {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
   latestRequestAt: string | null;
 }
 
@@ -1157,6 +1159,8 @@ export interface ModelGatewayUsageLedgerResponse {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
   };
   models: ModelGatewayModelUsageRow[];
   readWindow: {

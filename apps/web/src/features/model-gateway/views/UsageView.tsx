@@ -1,6 +1,7 @@
-import { ArrowDownToLine, ArrowUpFromLine, Coins, Send } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Coins, Database, Percent, Send } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
+import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import {
   Table,
@@ -32,6 +33,18 @@ function latency(ms: number | null | undefined): string {
   if (ms == null) return "-";
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.round(ms)}ms`;
+}
+
+function percent(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 const BAR_COLORS = [
@@ -81,28 +94,42 @@ export function UsageView(_props: ModelGatewayViewProps) {
   const usage = usageQuery.data;
   const totals = usage?.totals;
   const models = usage?.models ?? [];
+  const tokenRows = models;
+  const requestRows = [...models].sort((left, right) => (
+    right.requestCount - left.requestCount
+    || right.meteredRequestCount - left.meteredRequestCount
+    || right.totalTokens - left.totalTokens
+    || left.model.localeCompare(right.model)
+  ));
+  const readWindow = usage?.readWindow;
 
   // Latency comes from the runtime usage summary (status), shown as `-` when absent.
   const latencySummary = statusQuery.data?.runtime.usageSummary.latency;
+  const runtimeLogSize = statusQuery.data?.runtime.requestLogSize ?? 0;
 
   const hasUsage = (totals?.requestCount ?? 0) > 0 || models.length > 0;
-  const maxRequests = models.reduce((max, m) => Math.max(max, m.requestCount), 0);
+  const maxRequests = requestRows.reduce((max, m) => Math.max(max, m.requestCount), 0);
+  const meteredCoverage =
+    totals && totals.requestCount > 0
+      ? totals.meteredRequestCount / totals.requestCount
+      : 0;
 
   return (
     <div className="grid gap-4">
       <div>
         <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
         <p className="text-sm text-muted">
-          请求、token 与延迟分布，按模型拆分。数据来源于网关用量账本。
+          请求与 token 来自用量账本；延迟来自最近 runtime 请求窗口。未返回 usage 的请求只计入请求数，不猜 token。
         </p>
       </div>
 
       {/* KPI grid — values from API totals or zero */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Kpi
           icon={<Send />}
           label="请求"
           value={compact(totals?.requestCount ?? 0)}
+          sub={`${compact(totals?.meteredRequestCount ?? 0)} metered`}
         />
         <Kpi icon={<Coins />} label="tokens" value={compact(totals?.totalTokens ?? 0)} />
         <Kpi
@@ -115,7 +142,36 @@ export function UsageView(_props: ModelGatewayViewProps) {
           label="输出"
           value={compact(totals?.outputTokens ?? 0)}
         />
+        <Kpi
+          icon={<Percent />}
+          label="计量覆盖"
+          value={percent(meteredCoverage)}
+          sub="usage 返回率"
+        />
+        <Kpi
+          icon={<Database />}
+          label="缓存命中"
+          value={compact(totals?.cacheReadTokens ?? 0)}
+          sub={`写入 ${compact(totals?.cacheCreationTokens ?? 0)}`}
+        />
       </div>
+
+      <section className="rounded-md border border-line bg-panel-2 p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge variant={readWindow?.truncated ? "warn" : "ok"}>
+            {readWindow?.truncated ? "账本窗口已截断" : "账本窗口完整"}
+          </Badge>
+          <span className="text-muted">
+            读取 {compact(readWindow?.entryCount ?? 0)} / 限制 {compact(readWindow?.readLimit ?? 0)} 条
+          </span>
+          <span className="text-muted">
+            · {compact(readWindow?.readBytes ?? 0)}B / {compact(readWindow?.ledgerSizeBytes ?? 0)}B
+          </span>
+          <span className="text-muted">
+            · 最新请求 {formatDateTime(tokenRows[0]?.latestRequestAt ?? null)}
+          </span>
+        </div>
+      </section>
 
       {!hasUsage ? (
         <section className="rounded-md border border-line bg-panel shadow-sm">
@@ -127,14 +183,14 @@ export function UsageView(_props: ModelGatewayViewProps) {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-            {/* Model token / request distribution bars */}
+            {/* Model request distribution bars: deliberately sorted by request count. */}
             <section className="rounded-md border border-line bg-panel shadow-sm">
               <div className="border-b border-line px-4 py-3">
                 <h3 className="text-md font-semibold text-ink-strong">按模型分布</h3>
-                <span className="text-sm text-subtle">请求次数占比</span>
+                <span className="text-sm text-subtle">请求次数占比，按请求数排序</span>
               </div>
               <div className="grid gap-2.5 p-4">
-                {models.map((m, idx) => {
+                {requestRows.map((m, idx) => {
                   const pct = maxRequests > 0 ? (m.requestCount / maxRequests) * 100 : 0;
                   return (
                     <div key={m.model} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
@@ -167,7 +223,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
             <aside className="rounded-md border border-line bg-panel shadow-sm">
               <div className="border-b border-line px-4 py-3">
                 <h3 className="text-md font-semibold text-ink-strong">延迟分布</h3>
-                <span className="text-sm text-subtle">全部路由</span>
+                <span className="text-sm text-subtle">最近 runtime 窗口 · {compact(runtimeLogSize)} 条</span>
               </div>
               <div className="grid grid-cols-3 gap-2 p-4">
                 <LatCell label="p50" value={latency(latencySummary?.p50Ms)} />
@@ -182,22 +238,34 @@ export function UsageView(_props: ModelGatewayViewProps) {
 
           {/* 模型 / 请求次数 / Token 消耗 table */}
           <section className="grid gap-2">
+            <div>
+              <h3 className="text-md font-semibold text-ink-strong">Token 消耗排行</h3>
+              <p className="text-sm text-muted">
+                按 total tokens 排序；未 metered 请求不会被估算 token。
+              </p>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>模型</TableHead>
                   <TableHead className="text-right">请求次数</TableHead>
+                  <TableHead className="text-right">Metered</TableHead>
                   <TableHead className="text-right">输入 Token</TableHead>
                   <TableHead className="text-right">输出 Token</TableHead>
+                  <TableHead className="text-right">缓存命中</TableHead>
                   <TableHead className="text-right">Token 消耗</TableHead>
+                  <TableHead className="text-right">最新请求</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {models.map((m) => (
+                {tokenRows.map((m) => (
                   <TableRow key={m.model}>
                     <TableCell className="font-medium text-ink-strong">{m.model}</TableCell>
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.requestCount)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted">
+                      {compact(m.meteredRequestCount)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.inputTokens)}
@@ -205,8 +273,14 @@ export function UsageView(_props: ModelGatewayViewProps) {
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.outputTokens)}
                     </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted">
+                      {compact(m.cacheReadTokens)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums text-ink">
                       {compact(m.totalTokens)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums text-muted">
+                      {formatDateTime(m.latestRequestAt)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -223,10 +297,12 @@ function Kpi({
   icon,
   label,
   value,
+  sub,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  sub?: string;
 }) {
   return (
     <div className="rounded-md border border-line bg-panel p-3.5 shadow-sm">
@@ -235,6 +311,7 @@ function Kpi({
         {label}
       </span>
       <div className="mt-1.5 text-2xl font-semibold text-ink-strong tabular-nums">{value}</div>
+      {sub && <span className="mt-1 block text-xs text-muted">{sub}</span>}
     </div>
   );
 }

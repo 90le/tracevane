@@ -89,6 +89,15 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   // Rows come from the API payload, not a hard-coded array.
   assert.match(usage, /usage(Query)?\.data/);
   assert.match(usage, /\.models\b/);
+  assert.match(usage, /meteredCoverage/);
+  assert.match(usage, /meteredRequestCount/);
+  assert.match(usage, /readWindow/);
+  assert.match(usage, /cacheReadTokens/);
+  assert.match(usage, /cacheCreationTokens/);
+  assert.match(usage, /requestRows/);
+  assert.match(usage, /tokenRows/);
+  assert.match(usage, /最近 runtime 窗口/);
+  assert.match(usage, /未返回 usage 的请求只计入请求数，不猜 token/);
 });
 
 test("Overview view derives content from live status/providers/connections queries", () => {
@@ -132,15 +141,21 @@ test("Overview view exposes an Agent cockpit for route and client readiness", ()
   assert.match(overview, /检查全部 Agent/);
   assert.match(overview, /检查路由/);
   assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
+  assert.match(overview, /路由详情（可展开）/);
+  assert.match(overview, /providerAttentionSummary/);
 });
 
 
-test("Providers view only runs active-route smoke for scopes resolved to that provider", () => {
+test("Providers view aggregates endpoint risk and smokes every active scope for that provider", () => {
   const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
   assert.match(providers, /activeRouteScopesForProvider/);
   assert.match(providers, /route\.resolvedProviderId === provider\.id/);
   assert.match(providers, /smokeMutation\.mutate\(\{ scope \}/);
-  assert.match(providers, /disabled=\{!activeSmokeScope/);
+  assert.match(providers, /endpointProfileRisk/);
+  assert.match(providers, /部分熔断/);
+  assert.match(providers, /部分异常/);
+  assert.match(providers, /activeScopes\.map/);
+  assert.match(providers, /检查 \$\{scope\} 活跃路由/);
   assert.doesNotMatch(
     providers,
     /smokeMutation\.mutate\(undefined/,

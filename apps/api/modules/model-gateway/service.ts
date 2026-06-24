@@ -5802,6 +5802,8 @@ export function createModelGatewayService(
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
     };
     const models = new Map<string, ModelGatewayModelUsageRow>();
     for (const entry of entries) {
@@ -5815,6 +5817,8 @@ export function createModelGatewayService(
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
           latestRequestAt: null,
         };
         models.set(bucket.key, row);
@@ -5830,10 +5834,14 @@ export function createModelGatewayService(
         row.inputTokens += entry.usage.inputTokens || 0;
         row.outputTokens += entry.usage.outputTokens || 0;
         row.totalTokens += entry.usage.totalTokens || 0;
+        row.cacheReadTokens += entry.usage.cacheReadTokens || 0;
+        row.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
         totals.meteredRequestCount += 1;
         totals.inputTokens += entry.usage.inputTokens || 0;
         totals.outputTokens += entry.usage.outputTokens || 0;
         totals.totalTokens += entry.usage.totalTokens || 0;
+        totals.cacheReadTokens += entry.usage.cacheReadTokens || 0;
+        totals.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
       }
     }
 

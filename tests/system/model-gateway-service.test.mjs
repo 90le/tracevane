@@ -504,8 +504,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
         inputTokens: 10,
         outputTokens: 5,
         totalTokens: 15,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
+        cacheReadTokens: 2,
+        cacheCreationTokens: 3,
         imageGenerationRequests: 0,
         imagesGenerated: 0,
         imageEditRequests: 0,
@@ -566,6 +566,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   assert.equal(usage.totals.inputTokens, 130);
   assert.equal(usage.totals.outputTokens, 5);
   assert.equal(usage.totals.totalTokens, 135);
+  assert.equal(usage.totals.cacheReadTokens, 2);
+  assert.equal(usage.totals.cacheCreationTokens, 3);
   assert.equal(usage.models.length, 18);
 
   const byModel = new Map(usage.models.map((item) => [item.model, item]));
@@ -576,6 +578,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       inputTokens: byModel.get("model-a")?.inputTokens,
       outputTokens: byModel.get("model-a")?.outputTokens,
       totalTokens: byModel.get("model-a")?.totalTokens,
+      cacheReadTokens: byModel.get("model-a")?.cacheReadTokens,
+      cacheCreationTokens: byModel.get("model-a")?.cacheCreationTokens,
     },
     {
       requestCount: 1,
@@ -583,6 +587,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
+      cacheReadTokens: 2,
+      cacheCreationTokens: 3,
     },
   );
   assert.equal(byModel.get("model-b")?.requestCount, 1);
