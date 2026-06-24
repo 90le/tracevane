@@ -456,7 +456,7 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
     durationMs: overrides.durationMs,
     firstByteMs: overrides.firstByteMs ?? null,
     routeId: "openai_chat_completions",
-    appScope: "codex",
+    appScope: overrides.appScope || "codex",
     providerId: overrides.providerId,
     providerName: overrides.providerName,
     accountId: overrides.accountId || null,
@@ -483,6 +483,7 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       firstByteMs: 400,
       providerId: "usage-p2",
       providerName: "Usage P2",
+      appScope: "opencode",
       model: "model-c",
       statusCode: 200,
       outcome: "success",
@@ -494,6 +495,7 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       firstByteMs: 30,
       providerId: "usage-p1",
       providerName: "Usage P1",
+      appScope: "codex",
       accountId: "account-a",
       accountHash: "hash-a",
       clientKeyHash: sha256Short("sk-usage-client-a"),
@@ -520,6 +522,7 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       firstByteMs: 90,
       providerId: "usage-p1",
       providerName: "Usage P1",
+      appScope: "claude-code",
       clientKeyHash: sha256Short("sk-usage-client-b"),
       model: "model-b",
       statusCode: 500,
@@ -569,6 +572,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   assert.equal(usage.totals.cacheReadTokens, 2);
   assert.equal(usage.totals.cacheCreationTokens, 3);
   assert.equal(usage.models.length, 18);
+  assert.equal(usage.providers.length, 2);
+  assert.equal(usage.appScopes.length, 3);
 
   const byModel = new Map(usage.models.map((item) => [item.model, item]));
   assert.deepEqual(
@@ -596,6 +601,34 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   assert.equal(byModel.get("model-c")?.requestCount, 1);
   assert.equal(byModel.get("model-c")?.totalTokens, 0);
   assert.equal(byModel.get("model-extra-15")?.totalTokens, 15);
+  const byProvider = new Map(usage.providers.map((item) => [item.key, item]));
+  assert.deepEqual(
+    {
+      label: byProvider.get("usage-p1")?.label,
+      requestCount: byProvider.get("usage-p1")?.requestCount,
+      meteredRequestCount: byProvider.get("usage-p1")?.meteredRequestCount,
+      totalTokens: byProvider.get("usage-p1")?.totalTokens,
+      cacheReadTokens: byProvider.get("usage-p1")?.cacheReadTokens,
+      cacheCreationTokens: byProvider.get("usage-p1")?.cacheCreationTokens,
+    },
+    {
+      label: "Usage P1",
+      requestCount: 2,
+      meteredRequestCount: 1,
+      totalTokens: 15,
+      cacheReadTokens: 2,
+      cacheCreationTokens: 3,
+    },
+  );
+  assert.equal(byProvider.get("usage-p2")?.requestCount, 16);
+  assert.equal(byProvider.get("usage-p2")?.totalTokens, 120);
+  const byScope = new Map(usage.appScopes.map((item) => [item.key, item]));
+  assert.equal(byScope.get("codex")?.requestCount, 16);
+  assert.equal(byScope.get("codex")?.totalTokens, 135);
+  assert.equal(byScope.get("claude-code")?.requestCount, 1);
+  assert.equal(byScope.get("claude-code")?.totalTokens, 0);
+  assert.equal(byScope.get("opencode")?.requestCount, 1);
+  assert.equal(byScope.get("opencode")?.totalTokens, 0);
   assert.ok(!JSON.stringify(usage).includes("sk-usage-client-a"));
   assert.equal("entries" in usage, false);
   assert.equal("archiveIndex" in usage, false);

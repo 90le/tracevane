@@ -99,6 +99,8 @@ export function UsageView(_props: ModelGatewayViewProps) {
   const usage = usageQuery.data;
   const totals = usage?.totals;
   const models = usage?.models ?? [];
+  const providerRows = usage?.providers ?? [];
+  const appScopeRows = usage?.appScopes ?? [];
   const tokenRows = models;
   const requestRows = [...models].sort((left, right) => (
     right.requestCount - left.requestCount
@@ -209,6 +211,19 @@ export function UsageView(_props: ModelGatewayViewProps) {
               <LatCell label="read/input" value={cacheReadToInput} />
             </div>
           </section>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <BreakdownPanel
+              title="按 Agent scope"
+              sub="从 usage ledger 的 appScope 聚合，直接定位是哪类客户端产生流量。"
+              rows={appScopeRows}
+            />
+            <BreakdownPanel
+              title="按 Provider"
+              sub="从 usage ledger 的 providerId/providerName 聚合，定位流量实际落到哪个服务商。"
+              rows={providerRows}
+            />
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
             {/* Model request distribution bars: deliberately sorted by request count. */}
@@ -322,6 +337,55 @@ export function UsageView(_props: ModelGatewayViewProps) {
         </>
       )}
     </div>
+  );
+}
+
+function BreakdownPanel({
+  title,
+  sub,
+  rows,
+}: {
+  title: string;
+  sub: string;
+  rows: Array<{
+    key: string;
+    label: string;
+    requestCount: number;
+    meteredRequestCount: number;
+    totalTokens: number;
+    cacheReadTokens: number;
+  }>;
+}) {
+  return (
+    <section className="rounded-md border border-line bg-panel shadow-sm">
+      <div className="border-b border-line px-4 py-3">
+        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
+        <span className="text-sm text-subtle">{sub}</span>
+      </div>
+      <div className="grid gap-2 p-4">
+        {rows.length === 0 ? (
+          <span className="text-sm text-muted">暂无该维度数据。</span>
+        ) : (
+          rows.slice(0, 8).map((row) => (
+            <div key={row.key} className="grid gap-1 rounded-sm border border-line bg-panel-2 p-2.5">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <strong className="truncate text-sm text-ink-strong" title={row.label}>
+                  {row.label}
+                </strong>
+                <Badge variant={row.meteredRequestCount > 0 ? "ok" : "mute"}>
+                  {compact(row.requestCount)} req
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                <span>metered {compact(row.meteredRequestCount)}</span>
+                <span>tokens {compact(row.totalTokens)}</span>
+                <span>cache read {compact(row.cacheReadTokens)}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 

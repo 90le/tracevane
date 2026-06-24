@@ -89,6 +89,13 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   // Rows come from the API payload, not a hard-coded array.
   assert.match(usage, /usage(Query)?\.data/);
   assert.match(usage, /\.models\b/);
+  assert.match(usage, /\.providers\b/);
+  assert.match(usage, /\.appScopes\b/);
+  assert.match(usage, /providerRows/);
+  assert.match(usage, /appScopeRows/);
+  assert.match(usage, /按 Agent scope/);
+  assert.match(usage, /按 Provider/);
+  assert.match(usage, /BreakdownPanel/);
   assert.match(usage, /meteredCoverage/);
   assert.match(usage, /meteredRequestCount/);
   assert.match(usage, /readWindow/);

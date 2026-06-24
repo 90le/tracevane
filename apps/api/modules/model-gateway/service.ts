@@ -106,6 +106,7 @@ import {
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
   type ModelGatewayModelUsageRow,
+  type ModelGatewayUsageBreakdownRow,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
@@ -5795,7 +5796,7 @@ export function createModelGatewayService(
   function summarizeUsageLedgerModels(
     entries: ModelGatewayRuntimeRequestLogEntry[],
     modelBucketForEntry: RuntimeUsageModelResolver,
-  ): Pick<ModelGatewayUsageLedgerResponse, "totals" | "models"> {
+  ): Pick<ModelGatewayUsageLedgerResponse, "totals" | "models" | "providers" | "appScopes"> {
     const totals: ModelGatewayUsageLedgerResponse["totals"] = {
       requestCount: entries.length,
       meteredRequestCount: 0,
@@ -5806,6 +5807,44 @@ export function createModelGatewayService(
       cacheCreationTokens: 0,
     };
     const models = new Map<string, ModelGatewayModelUsageRow>();
+    const providers = new Map<string, ModelGatewayUsageBreakdownRow>();
+    const appScopes = new Map<string, ModelGatewayUsageBreakdownRow>();
+    const touchBreakdown = (
+      map: Map<string, ModelGatewayUsageBreakdownRow>,
+      key: string,
+      label: string,
+      entry: ModelGatewayRuntimeRequestLogEntry,
+    ) => {
+      let breakdown = map.get(key);
+      if (!breakdown) {
+        breakdown = {
+          key,
+          label,
+          requestCount: 0,
+          meteredRequestCount: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          latestRequestAt: null,
+        };
+        map.set(key, breakdown);
+      }
+      breakdown.requestCount += 1;
+      const finishedAt = entry.finishedAt || entry.startedAt || null;
+      if (finishedAt && (!breakdown.latestRequestAt || usageLedgerEntryTime(entry) >= Date.parse(breakdown.latestRequestAt))) {
+        breakdown.latestRequestAt = finishedAt;
+      }
+      if (entry.usage) {
+        breakdown.meteredRequestCount += 1;
+        breakdown.inputTokens += entry.usage.inputTokens || 0;
+        breakdown.outputTokens += entry.usage.outputTokens || 0;
+        breakdown.totalTokens += entry.usage.totalTokens || 0;
+        breakdown.cacheReadTokens += entry.usage.cacheReadTokens || 0;
+        breakdown.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
+      }
+    };
     for (const entry of entries) {
       const bucket = modelBucketForEntry(entry);
       let row = models.get(bucket.key);
@@ -5843,7 +5882,25 @@ export function createModelGatewayService(
         totals.cacheReadTokens += entry.usage.cacheReadTokens || 0;
         totals.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
       }
+      touchBreakdown(
+        providers,
+        entry.providerId || "unknown-provider",
+        entry.providerName || entry.providerId || "unknown provider",
+        entry,
+      );
+      touchBreakdown(
+        appScopes,
+        entry.appScope || "unknown-scope",
+        entry.appScope || "unknown scope",
+        entry,
+      );
     }
+    const orderBreakdown = (rows: Map<string, ModelGatewayUsageBreakdownRow>) => [...rows.values()].sort((left, right) => (
+      right.totalTokens - left.totalTokens
+      || right.meteredRequestCount - left.meteredRequestCount
+      || right.requestCount - left.requestCount
+      || left.label.localeCompare(right.label)
+    ));
 
     return {
       totals,
@@ -5853,6 +5910,8 @@ export function createModelGatewayService(
         || right.requestCount - left.requestCount
         || left.model.localeCompare(right.model)
       )),
+      providers: orderBreakdown(providers),
+      appScopes: orderBreakdown(appScopes),
     };
   }
 
@@ -7229,6 +7288,8 @@ export function createModelGatewayService(
       checkedAt: nowIso(),
       totals: summary.totals,
       models: summary.models,
+      providers: summary.providers,
+      appScopes: summary.appScopes,
       readWindow: {
         entryCount: readableEntries.length,
         readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,

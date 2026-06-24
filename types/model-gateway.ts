@@ -541,6 +541,19 @@ export interface ModelGatewayModelUsageRow {
   latestRequestAt: string | null;
 }
 
+export interface ModelGatewayUsageBreakdownRow {
+  key: string;
+  label: string;
+  requestCount: number;
+  meteredRequestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  latestRequestAt: string | null;
+}
+
 export interface ModelGatewayRuntimeState {
   version: 1;
   updatedAt: string;
@@ -1163,6 +1176,8 @@ export interface ModelGatewayUsageLedgerResponse {
     cacheCreationTokens: number;
   };
   models: ModelGatewayModelUsageRow[];
+  providers: ModelGatewayUsageBreakdownRow[];
+  appScopes: ModelGatewayUsageBreakdownRow[];
   readWindow: {
     entryCount: number;
     readLimit: number;
