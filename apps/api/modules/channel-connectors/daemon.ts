@@ -86,7 +86,9 @@ import {
   resolveChannelConnectorVisualTurnProject,
 } from "./visual-model-routing.js";
 import {
+  channelConnectorSessionControlId,
   getChannelConnectorSessionControl,
+  readChannelConnectorSessionControls,
   type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
 import {
@@ -678,7 +680,7 @@ interface ChannelDaemonAgentSessionDriverState {
   policy: ChannelConnectorAgentSessionDriverStatusResponse["policy"];
   requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
   bindings: ChannelDaemonAgentSessionDriverBindingState[];
-  activeSessions: ChannelConnectorAgentSessionDriverStatus[];
+  activeSessions: ChannelConnectorAgentSessionDriverStatusResponse["activeSessions"];
   recentEvents: ChannelConnectorAgentSessionDriverEvent[];
 }
 
@@ -1598,6 +1600,32 @@ function buildAgentSessionDriverState(
       };
     });
   });
+  const controls = readChannelConnectorSessionControls(sessionControlsPath(config)).controls;
+  const enrichedActiveSessions = activeSessions.map((session) => {
+    const control = controls[channelConnectorSessionControlId({
+      bindingId: session.bindingId,
+      sessionKey: session.sessionKey,
+    })];
+    return {
+      ...session,
+      sessionControl: control ? {
+        activeProjectId: control.activeProjectId,
+        sessionName: control.sessionName,
+        model: control.model,
+        reasoningEffort: control.reasoningEffort,
+        permissionMode: control.permissionMode,
+        workDir: control.workDir,
+        workDirHistory: control.workDirHistory,
+        thinkingMessages: control.thinkingMessages,
+        processMessages: control.processMessages,
+        toolMessages: control.toolMessages,
+        autoVisionModel: control.autoVisionModel,
+        visionModel: control.visionModel,
+        updatedAt: control.updatedAt,
+        lastCommand: control.lastCommand,
+      } : null,
+    };
+  });
   return {
     defaultMode: "persistent",
     implementation: "native-cli-session-drivers",
@@ -1610,7 +1638,7 @@ function buildAgentSessionDriverState(
     },
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
     bindings,
-    activeSessions,
+    activeSessions: enrichedActiveSessions,
     recentEvents: [...channelAgentSessionDriverEvents].reverse(),
   };
 }

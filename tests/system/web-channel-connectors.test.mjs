@@ -119,10 +119,16 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(sessions, /当前会话/);
   assert.match(sessions, /会话覆盖/);
   assert.match(sessions, /跟随路由/);
+  assert.match(sessions, /最后命令/);
+  assert.match(sessions, /sessionControl\.lastCommand/);
+  assert.match(types, /ChannelConnectorAgentSessionControlStatus/);
+  assert.match(types, /lastCommand: string \| null/);
   assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
   assert.match(types, /workDir: string/);
   assert.match(daemon, /permissionMode: project.permissionMode/);
   assert.match(daemon, /workDir: project.workDir/);
+  assert.match(daemon, /readChannelConnectorSessionControls/);
+  assert.match(daemon, /sessionControl: control \?/);
 });
 
 

@@ -37,6 +37,7 @@ export type {
   ChannelConnectorsDaemonRuntimePendingAgentRunRecord,
   ChannelConnectorsDaemonRuntimeAutoCompactRecord,
   // Agent sessions
+  ChannelConnectorAgentSessionControlStatus,
   ChannelConnectorAgentSessionRuntimeStatus,
   ChannelConnectorAgentSessionDriverBindingStatus,
   ChannelConnectorAgentSessionDriverRuntimeEvent,

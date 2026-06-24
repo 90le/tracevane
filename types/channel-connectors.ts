@@ -1007,6 +1007,24 @@ export interface ChannelConnectorAgentSessionDriverBindingStatus {
   reason: "default" | "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
 }
 
+
+export interface ChannelConnectorAgentSessionControlStatus {
+  activeProjectId: string | null;
+  sessionName: string | null;
+  model: string | null;
+  reasoningEffort: ChannelConnectorReasoningEffort | null;
+  permissionMode: ChannelConnectorPermissionMode | null;
+  workDir: string | null;
+  workDirHistory: string[];
+  thinkingMessages: boolean | null;
+  processMessages: boolean | null;
+  toolMessages: boolean | null;
+  autoVisionModel: boolean | null;
+  visionModel: string | null;
+  updatedAt: string;
+  lastCommand: string | null;
+}
+
 export interface ChannelConnectorAgentSessionRuntimeStatus {
   poolKey: string;
   sessionId: string;
@@ -1023,6 +1041,7 @@ export interface ChannelConnectorAgentSessionRuntimeStatus {
   turnCount: number;
   idleMs: number;
   lastError: string | null;
+  sessionControl: ChannelConnectorAgentSessionControlStatus | null;
 }
 
 export type ChannelConnectorAgentSessionDriverRuntimeEventType =

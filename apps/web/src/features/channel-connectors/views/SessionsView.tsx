@@ -457,6 +457,21 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                         {session.agent} · {valueOrDefault(session.model)} · {valueOrDefault(session.permissionMode, "默认权限")} · {session.workDir}
                       </span>
                     </div>
+                    {session.sessionControl?.lastCommand && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="info">最后命令</Badge>
+                        <code className="min-w-0 break-all rounded-sm bg-panel-3 px-1.5 py-0.5 font-mono text-[11px] text-ink-strong">
+                          {session.sessionControl.lastCommand}
+                        </code>
+                        <span className="text-subtle">{formatTime(session.sessionControl.updatedAt)}</span>
+                      </div>
+                    )}
+                    {session.sessionControl?.sessionName && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">会话名</Badge>
+                        <span className="min-w-0 break-words">{session.sessionControl.sessionName}</span>
+                      </div>
+                    )}
                     {sessionOverridden && (
                       <span className="text-amber">
                         该会话已通过 IM 命令或运行时状态覆盖默认路由；后续消息会继续复用当前会话配置，直到会话终止或重置。
