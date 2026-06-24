@@ -50,7 +50,24 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
       persistentDriverReady: true,
       policy: { idleTimeoutMs: 1, maxSessions: 4, fallbackOnCrash: true },
       requestedPersistentBindings: [],
-      bindings: [],
+      bindings: [
+        {
+          projectId: "project",
+          bindingId: "bind-1",
+          platform: "feishu",
+          accountId: "feishu-live",
+          botId: null,
+          peerKind: "user",
+          peerId: "ou_x",
+          agent: "claude",
+          model: "gpt-5.4",
+          permissionMode: "default",
+          workDir: "/repo",
+          requestedMode: "persistent",
+          effectiveMode: "persistent",
+          reason: "codex-app-server",
+        },
+      ],
       activeSessions: [
         {
           poolKey: "pool-1",
@@ -140,9 +157,17 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
   assert.equal(payload.totals.terminal, 1);
   assert.equal(payload.totals.imChannel, 1);
   assert.equal(payload.totals.chat, 1);
-  assert.deepEqual(payload.runs.map((run) => run.id), ["chat:chat-1", "im:pool-1", "terminal:term-1"]);
+  assert.deepEqual(payload.runs.map((run) => run.id), ["terminal:term-1", "chat:chat-1", "im:pool-1"]);
   assert.equal(payload.runs.some((run) => run.id === "chat:chat-idle-history"), false);
-  assert.equal(payload.runs[1].status, "failed");
-  assert.equal(payload.runs[2].cli, "codex");
-  assert.equal(payload.runs[2].evidenceRefs[0].href, "#/ide");
+  const terminal = payload.runs.find((run) => run.id === "terminal:term-1");
+  const im = payload.runs.find((run) => run.id === "im:pool-1");
+  assert.equal(im.status, "failed");
+  assert.equal(im.sourceLabel, "飞书私聊");
+  assert.equal(im.primaryHref, "#/im-channels?view=sessions");
+  assert.equal(im.canStop, false);
+  assert.equal(terminal.cli, "codex");
+  assert.equal(terminal.canStop, true);
+  assert.equal(terminal.canDelete, false);
+  assert.equal(terminal.primaryHref, "#/ide");
+  assert.equal(terminal.evidenceRefs[0].href, "#/ide");
 });

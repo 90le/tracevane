@@ -15,7 +15,8 @@ Read these first:
 6. `IM渠道目标与设计.md` — IM Channels product target and backend/frontend capability boundary.
 7. `IM渠道前端设计契约.md` — IM Channels Aurora UI contract, page/view split, Drawer/Sheet/Dialog rules, and field templates.
 8. `CLI代理目标与设计.md` — CLI Agents target design and de-OpenClaw boundary.
-9. `研究先行开发清单.md` — required research-first implementation gate.
+9. `网关IM收尾与CLIAgents完成目标.md` — final closure plan for Gateway/IM and full CLI Agents completion.
+10. `研究先行开发清单.md` — required research-first implementation gate.
 
 ## Supporting reference docs
 

@@ -38,6 +38,7 @@ export function EvidenceView(_props: CliAgentsViewProps) {
 
   const activeSessions = channel.data?.activeSessions ?? [];
   const recentEvents = channel.data?.recentEvents ?? [];
+  const bindingsById = new Map((channel.data?.bindings ?? []).map((binding) => [binding.bindingId, binding] as const));
   const policy = channel.data?.policy;
   const chatSessions = chat.data?.sessions ?? [];
 
@@ -88,20 +89,27 @@ export function EvidenceView(_props: CliAgentsViewProps) {
               description="IM 渠道触发持久代理任务后会显示在这里。"
             />
           ) : (
-            activeSessions.map((s) => (
-              <Row
-                key={s.poolKey || s.sessionId}
-                icon={<RadioTower />}
-                iconClass={toneIconClass(s.lastError ? "bad" : s.running > 0 ? "ok" : "mute")}
-                title={s.sessionId || s.sessionKey}
-                subtitle={`${s.agent} · ${s.model ?? "—"} · ${s.workDir} · ${formatIdle(s.idleMs)}`}
-                trailing={
-                  <ToneBadge tone={s.lastError ? "bad" : s.running > 0 ? "ok" : "mute"}>
-                    {s.lastError ? "错误" : s.running > 0 ? "运行中" : "空闲"}
-                  </ToneBadge>
-                }
-              />
-            ))
+            activeSessions.map((s) => {
+              const binding = bindingsById.get(s.bindingId);
+              const peerKind = binding?.peerKind === "user" ? "私聊" : binding?.peerKind === "group" ? "群聊" : "会话";
+              const platform = binding?.platform === "feishu" ? "飞书" : binding?.platform || "IM";
+              const activeModel = s.sessionControl?.model || s.model || "—";
+              const activeWorkDir = s.sessionControl?.workDir || s.workDir;
+              return (
+                <Row
+                  key={s.poolKey || s.sessionId}
+                  icon={<RadioTower />}
+                  iconClass={toneIconClass(s.lastError ? "bad" : s.running > 0 ? "ok" : "mute")}
+                  title={`${platform}${peerKind} · ${s.agent}`}
+                  subtitle={`${activeModel} · ${activeWorkDir} · ${formatIdle(s.idleMs)}`}
+                  trailing={
+                    <ToneBadge tone={s.lastError ? "bad" : s.running > 0 ? "ok" : "mute"}>
+                      {s.lastError ? "错误" : s.running > 0 ? "运行中" : "空闲"}
+                    </ToneBadge>
+                  }
+                />
+              );
+            })
           )}
         </div>
       </Panel>

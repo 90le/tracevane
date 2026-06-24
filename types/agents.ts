@@ -216,7 +216,10 @@ export interface AgentRuntimeRunEvidenceRef {
 export interface AgentRuntimeRunSummary {
   id: string;
   source: AgentRuntimeRunSource;
+  /** Human-readable source label, e.g. 终端 / 飞书私聊 / 本地对话. */
+  sourceLabel: string;
   originId: string;
+  /** Operator-facing title; raw ids are kept in metadata instead of the title. */
   title: string;
   agentId: string | null;
   cli: string | null;
@@ -229,6 +232,13 @@ export interface AgentRuntimeRunSummary {
   startedAt: string | null;
   updatedAt: string | null;
   error: string | null;
+  lastErrorSummary: string | null;
+  /** Primary owning page for this run; write actions still stay in that owner. */
+  primaryHref: string | null;
+  canOpen: boolean;
+  canStop: boolean;
+  canDelete: boolean;
+  metadata: Record<string, string | number | boolean | null>;
   evidenceRefs: AgentRuntimeRunEvidenceRef[];
 }
 

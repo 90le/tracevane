@@ -29,9 +29,9 @@ const TABS: ReadonlyArray<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "runs", label: "运行中", icon: ListChecks },
-  { view: "cli", label: "CLI", icon: Terminal },
-  { view: "evidence", label: "原始证据", icon: Activity },
+  { view: "runs", label: "运行台", icon: ListChecks },
+  { view: "cli", label: "启动台", icon: Terminal },
+  { view: "evidence", label: "证据索引", icon: Activity },
 ];
 
 const VIEW_COMPONENTS: Record<

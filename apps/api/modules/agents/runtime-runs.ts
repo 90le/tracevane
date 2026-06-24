@@ -1,9 +1,13 @@
 import type {
+  AgentRuntimeRunSource,
   AgentRuntimeRunStatus,
   AgentRuntimeRunSummary,
   AgentRuntimeRunsResponse,
 } from "../../../../types/agents.js";
-import type { ChannelConnectorAgentSessionDriverStatusResponse } from "../../../../types/channel-connectors.js";
+import type {
+  ChannelConnectorAgentSessionDriverBindingStatus,
+  ChannelConnectorAgentSessionDriverStatusResponse,
+} from "../../../../types/channel-connectors.js";
 import type { ChatBootstrapPayload, ChatRunState } from "../../../../types/chat.js";
 import type {
   TerminalSessionDescriptor,
@@ -57,7 +61,36 @@ function inferredCliFromText(value: string): string | null {
   return null;
 }
 
+function sourcePriority(source: AgentRuntimeRunSource): number {
+  if (source === "terminal") return 0;
+  if (source === "im-channel") return 1;
+  return 2;
+}
+
+function statusPriority(status: AgentRuntimeRunStatus): number {
+  switch (status) {
+    case "running":
+      return 0;
+    case "failed":
+    case "lost":
+    case "aborted":
+      return 1;
+    case "detached":
+      return 2;
+    case "idle":
+      return 3;
+    case "completed":
+      return 4;
+    default:
+      return 5;
+  }
+}
+
 function sortRun(left: AgentRuntimeRunSummary, right: AgentRuntimeRunSummary): number {
+  const priority = statusPriority(left.status) - statusPriority(right.status);
+  if (priority !== 0) return priority;
+  const source = sourcePriority(left.source) - sourcePriority(right.source);
+  if (source !== 0) return source;
   const leftTime = Date.parse(left.updatedAt || left.startedAt || "") || 0;
   const rightTime = Date.parse(right.updatedAt || right.startedAt || "") || 0;
   return rightTime - leftTime || left.id.localeCompare(right.id);
@@ -71,6 +104,57 @@ function shouldProjectChatRun(
   return runtime.state === "running" || runtime.state === "streaming" || runtime.state === "aborted" || runtime.state === "error";
 }
 
+function platformLabel(platform?: string | null): string {
+  switch ((platform ?? "").toLowerCase()) {
+    case "feishu":
+    case "lark":
+      return "飞书";
+    case "wechat-work":
+    case "wecom":
+      return "企业微信";
+    case "dingtalk":
+      return "钉钉";
+    case "telegram":
+      return "Telegram";
+    default:
+      return platform ? platform : "IM";
+  }
+}
+
+function peerKindLabel(peerKind?: string | null): string {
+  const value = (peerKind ?? "").toLowerCase();
+  if (["user", "private", "p2p", "direct", "single"].includes(value)) return "私聊";
+  if (["group", "chat", "room", "channel"].includes(value)) return "群聊";
+  if (["thread", "topic"].includes(value)) return "话题";
+  return "会话";
+}
+
+function bindingSourceLabel(binding: ChannelConnectorAgentSessionDriverBindingStatus | undefined): string {
+  if (!binding) return "IM 会话";
+  return `${platformLabel(binding.platform)}${peerKindLabel(binding.peerKind)}`;
+}
+
+function shorten(value: string | null | undefined, fallback = "—"): string {
+  if (!value) return fallback;
+  if (value.length <= 80) return value;
+  return `${value.slice(0, 34)}…${value.slice(-24)}`;
+}
+
+function terminalTitle(session: TerminalSessionDescriptor, cli: string | null): string {
+  const agentLabel = cli && cli !== "bash" ? cli : null;
+  const raw = session.title || session.profileId || session.sourceAction || session.sessionId;
+  if (agentLabel && !raw.toLowerCase().includes(agentLabel)) return `${agentLabel} · ${raw}`;
+  return shorten(raw, session.sessionId);
+}
+
+function isAgentCli(cli: string | null): boolean {
+  return cli === "claude" || cli === "codex" || cli === "opencode";
+}
+
+function isActiveTerminalStatus(status: AgentRuntimeRunStatus): boolean {
+  return status === "running" || status === "detached";
+}
+
 export function buildAgentRuntimeRunsPayload(input: {
   checkedAt?: string;
   terminalSessions?: TerminalSessionSummaryResponse | null;
@@ -79,16 +163,23 @@ export function buildAgentRuntimeRunsPayload(input: {
 }): AgentRuntimeRunsResponse {
   const checkedAt = input.checkedAt ?? new Date().toISOString();
   const runs: AgentRuntimeRunSummary[] = [];
+  const bindingsById = new Map(
+    (input.channelSessions?.bindings ?? []).map((binding) => [binding.bindingId, binding] as const),
+  );
 
   for (const session of input.terminalSessions?.sessions ?? []) {
     const state = terminalRunStatus(session.status);
     const cli = inferredCliFromText(`${session.title} ${session.profileId ?? ""} ${session.sourceAction}`);
+    const canControl = isAgentCli(cli);
+    const primaryHref = "#/ide";
+    const lastError = session.recentOutputSummary?.lastError ?? null;
     runs.push({
       id: `terminal:${session.sessionId}`,
       source: "terminal",
+      sourceLabel: canControl ? `${cli} 终端` : "终端",
       originId: session.sessionId,
-      title: session.title || session.sessionId,
-      agentId: null,
+      title: terminalTitle(session, cli),
+      agentId: cli,
       cli,
       model: null,
       providerId: null,
@@ -98,12 +189,25 @@ export function buildAgentRuntimeRunsPayload(input: {
       statusLabel: state.label,
       startedAt: session.createdAt,
       updatedAt: session.lastActiveAt || session.updatedAt,
-      error: session.recentOutputSummary?.lastError ?? null,
+      error: lastError,
+      lastErrorSummary: lastError,
+      primaryHref,
+      canOpen: true,
+      canStop: canControl && isActiveTerminalStatus(state.status),
+      canDelete: canControl && !isActiveTerminalStatus(state.status),
+      metadata: {
+        sessionId: session.sessionId,
+        profileId: session.profileId ?? null,
+        sourceModule: session.sourceModule,
+        sourceAction: session.sourceAction,
+        controlState: session.controlState,
+        observerCount: session.observerCount,
+      },
       evidenceRefs: [
         {
           kind: "terminal-session",
           label: session.sessionId,
-          href: `#/ide`,
+          href: primaryHref,
         },
       ],
     });
@@ -112,27 +216,52 @@ export function buildAgentRuntimeRunsPayload(input: {
   for (const session of input.channelSessions?.activeSessions ?? []) {
     const failed = Boolean(session.lastError);
     const running = session.running > 0;
+    const binding = bindingsById.get(session.bindingId);
+    const sourceLabel = bindingSourceLabel(binding);
+    const activeModel = session.sessionControl?.model || session.model;
+    const activeWorkDir = session.sessionControl?.workDir || session.workDir;
+    const titleParts = [sourceLabel, session.agent, activeModel].filter(Boolean);
+    const primaryHref = "#/im-channels?view=sessions";
     runs.push({
       id: `im:${session.poolKey || session.sessionId}`,
       source: "im-channel",
+      sourceLabel,
       originId: session.sessionId || session.poolKey,
-      title: session.sessionId || session.sessionKey,
+      title: titleParts.join(" · "),
       agentId: session.agent,
       cli: session.agent,
-      model: session.model,
+      model: activeModel,
       providerId: null,
       routeScope: session.agent,
-      workspace: session.workDir,
+      workspace: activeWorkDir,
       status: failed ? "failed" : running ? "running" : "idle",
       statusLabel: failed ? "错误" : running ? "运行中" : "空闲",
       startedAt: session.createdAt,
       updatedAt: session.lastUsedAt,
       error: session.lastError,
+      lastErrorSummary: session.lastError,
+      primaryHref,
+      canOpen: true,
+      canStop: false,
+      canDelete: false,
+      metadata: {
+        poolKey: session.poolKey,
+        sessionId: session.sessionId,
+        bindingId: session.bindingId,
+        projectId: session.projectId,
+        sessionKey: session.sessionKey,
+        turnCount: session.turnCount,
+        running: session.running,
+        idleMs: session.idleMs,
+        peerKind: binding?.peerKind ?? null,
+        peerId: binding?.peerId ?? null,
+        accountId: binding?.accountId ?? null,
+      },
       evidenceRefs: [
         {
           kind: "im-session",
           label: session.bindingId,
-          href: `#/im-channels?view=sessions`,
+          href: primaryHref,
         },
       ],
     });
@@ -141,9 +270,11 @@ export function buildAgentRuntimeRunsPayload(input: {
   for (const session of input.chatBootstrap?.sessions ?? []) {
     if (!shouldProjectChatRun(session.runtime)) continue;
     const state = chatRunStatus(session.runtime.state);
+    const primaryHref = "#/chat";
     runs.push({
       id: `chat:${session.key}`,
       source: "chat",
+      sourceLabel: "本地对话",
       originId: session.key,
       title: session.derivedTitle || session.label || session.sessionId || session.key,
       agentId: session.agentId,
@@ -157,11 +288,23 @@ export function buildAgentRuntimeRunsPayload(input: {
       startedAt: null,
       updatedAt: session.runtime.lastEventAt || session.updatedAt,
       error: session.runtime.lastErrorMessage,
+      lastErrorSummary: session.runtime.lastErrorMessage,
+      primaryHref,
+      canOpen: true,
+      canStop: false,
+      canDelete: false,
+      metadata: {
+        sessionKey: session.key,
+        sessionId: session.sessionId,
+        activeRunId: session.runtime.activeRunId,
+        lastErrorCode: session.runtime.lastErrorCode,
+        state: session.runtime.state,
+      },
       evidenceRefs: [
         {
           kind: "chat-session",
           label: session.key,
-          href: `#/chat`,
+          href: primaryHref,
         },
       ],
     });

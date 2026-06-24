@@ -94,3 +94,24 @@ P1:
 - Do not recreate OpenClaw generic agents/channels UI.
 - Do not manage generic terminal tabs, shell sessions, resize/input, or terminal deletion here; those belong to IDE / terminal.
 - Do not infer unsupported CLI context behavior from guesswork.
+
+## 7. 2026-06-24 收敛决策
+
+CLI Agents 的最新设计不是“第三个配置中心”，而是运行管理台：
+
+1. **保留**
+   - CLI readiness：Codex / Claude Code / OpenCode 是否安装、版本、路径、启动可用性。
+   - Launch handoff：解析启动命令、复制、跳转 IDE 终端执行。
+   - Agent Runs：终端、IM、Chat 产生的 Agent run 聚合、状态、错误、证据入口。
+   - Proven controls：只对后端能证明属于 Agent CLI 的 terminal session 提供 stop/delete。
+
+2. **移出**
+   - Provider、模型、endpoint、协议、上下文和路由编辑 → Model Gateway。
+   - IM 账号、bot token、绑定路由、队列策略、投递和平台日志 → IM Channels。
+   - 通用 shell PTY 输入、resize、split、terminal tab 管理 → IDE。
+   - OpenClaw persona / generic agent CRUD → 不属于 CLI Agents 主线。
+
+3. **布局规则**
+   - 页面采用 viewbar + table/list + Dialog 确认。
+   - 不使用卡片墙，不用重复状态卡堆满首屏。
+   - Gateway/IM 只作为依赖引用和跳转，不显示可编辑副本。
