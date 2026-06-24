@@ -52,6 +52,7 @@ import {
 } from "./codex-app-server-driver.js";
 import { createNativeCliSessionDriverFactory } from "./cli-agent-session-driver.js";
 import {
+  clearChannelConnectorAgentSessionsForConversation,
   deleteChannelConnectorAgentSession,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
@@ -87,6 +88,7 @@ import {
 } from "./visual-model-routing.js";
 import {
   channelConnectorSessionControlId,
+  clearChannelConnectorSessionControl,
   getChannelConnectorSessionControl,
   readChannelConnectorSessionControls,
   type ChannelConnectorSessionControlRecord,
@@ -94,6 +96,7 @@ import {
 import {
   appendChannelConnectorConversationHistory,
   CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT,
+  clearChannelConnectorConversationHistory,
   getChannelConnectorConversationHistory,
   renderChannelConnectorConversationHistoryContext,
 } from "./conversation-history-store.js";
@@ -1648,6 +1651,7 @@ function agentSessionDriverStatusResponse(
   input: {
     reaped?: number;
     killed?: ChannelConnectorAgentSessionDriverStatusResponse["killed"];
+    reset?: ChannelConnectorAgentSessionDriverStatusResponse["reset"];
   } = {},
 ): ChannelConnectorAgentSessionDriverStatusResponse {
   const state = buildAgentSessionDriverState(config);
@@ -1663,6 +1667,7 @@ function agentSessionDriverStatusResponse(
     },
     ...(input.reaped == null ? {} : { reaped: input.reaped }),
     killed: input.killed ?? null,
+    reset: input.reset ?? null,
   };
 }
 
@@ -1740,6 +1745,38 @@ async function handleAgentSessionManagement(
         killed: killed.killed,
         sessionId: killed.sessionId,
         poolKey,
+      },
+    }));
+    return;
+  }
+  if (action === "reset-conversation") {
+    const bindingId = normalizeString(payload.bindingId);
+    const sessionKey = normalizeString(payload.sessionKey);
+    if (!bindingId || !sessionKey) {
+      sendDaemonJson(res, 400, { ok: false, error: "binding_id_and_session_key_required" });
+      return;
+    }
+    const lookup = { bindingId, sessionKey };
+    const controlsCleared = clearChannelConnectorSessionControl(sessionControlsPath(config), lookup);
+    const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(agentSessionsPath(config), lookup);
+    const historyCleared = clearChannelConnectorConversationHistory(conversationHistoryPath(config), lookup);
+    const poolKey = normalizeString(payload.poolKey);
+    const killed = poolKey
+      ? await channelAgentSessionDriverPool.killSessionByPoolKey(
+        poolKey,
+        normalizeString(payload.reason) || "manual-reset-conversation",
+      )
+      : { killed: false, sessionId: null };
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config, {
+      reset: {
+        requested: true,
+        bindingId,
+        sessionKey,
+        controlsCleared,
+        sessionsCleared,
+        historyCleared,
+        killed: killed.killed,
+        poolKey: poolKey || null,
       },
     }));
     return;

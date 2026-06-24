@@ -118,6 +118,40 @@ function valueOrDefault(value: string | null | undefined, fallback = "网关默�
   return value && value.trim() ? value : fallback;
 }
 
+
+function compactText(value: string | null | undefined, max = 42): string {
+  const normalized = valueOrDefault(value, "—");
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, Math.max(12, max - 12))}…${normalized.slice(-8)}`;
+}
+
+function sessionDisplayTitle(
+  session: ChannelConnectorAgentSessionRuntimeStatus,
+  route: ChannelConnectorAgentSessionDriverBindingStatus | null,
+): string {
+  if (session.sessionControl?.sessionName) return session.sessionControl.sessionName;
+  const platform = route?.platform || session.bindingId.split(":")[0] || "IM";
+  const account = route?.accountId || route?.botId || "默认来源";
+  return `${platform} · ${compactText(account, 28)}`;
+}
+
+function sessionSubtitle(
+  session: ChannelConnectorAgentSessionRuntimeStatus,
+  route: ChannelConnectorAgentSessionDriverBindingStatus | null,
+): string {
+  const binding = route?.bindingId || session.bindingId;
+  return `${session.agent} · ${valueOrDefault(session.model)} · ${compactText(binding, 36)}`;
+}
+
+function routeSummary(route: ChannelConnectorAgentSessionDriverBindingStatus | null): string {
+  if (!route) return "未匹配到绑定路由；请检查配置是否已同步到守护服务。";
+  return `${route.agent} · ${valueOrDefault(route.model)} · ${valueOrDefault(route.permissionMode, "默认权限")} · ${valueOrDefault(route.workDir, "默认目录")}`;
+}
+
+function currentSessionSummary(session: ChannelConnectorAgentSessionRuntimeStatus): string {
+  return `${session.agent} · ${valueOrDefault(session.model)} · ${valueOrDefault(session.permissionMode, "默认权限")} · ${valueOrDefault(session.workDir, "默认目录")}`;
+}
+
 function hasSessionOverride(
   session: ChannelConnectorAgentSessionRuntimeStatus,
   route: ChannelConnectorAgentSessionDriverBindingStatus | null,
@@ -150,6 +184,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     | null
     | { kind: "reap" }
     | { kind: "kill"; session: ChannelConnectorAgentSessionRuntimeStatus }
+    | { kind: "reset"; session: ChannelConnectorAgentSessionRuntimeStatus }
   >(null);
   const [evidence, setEvidence] = React.useState<string | null>(null);
   const [policyNotice, setPolicyNotice] = React.useState<null | { tone: "ok" | "warn" | "bad"; text: string }>(null);
@@ -285,6 +320,35 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     );
   };
 
+
+  const runReset = (session: ChannelConnectorAgentSessionRuntimeStatus) => {
+    manageMutation.mutate(
+      {
+        action: "reset-conversation",
+        poolKey: session.poolKey,
+        bindingId: session.bindingId,
+        sessionKey: session.sessionKey,
+        reason: "manual-reset-to-route-default-from-web",
+      },
+      {
+        onSuccess: (result) => {
+          const reset = result.reset;
+          setEvidence(
+            reset
+              ? `已重置会话：override=${reset.controlsCleared ? "yes" : "no"}，Agent sessions=${reset.sessionsCleared}，history=${reset.historyCleared}，driver=${reset.killed ? "stopped" : "none"}`
+              : `已请求重置会话 ${session.sessionId}`,
+          );
+          toast.success("已重置为默认路由", {
+            description: "已清理该 IM 会话的覆盖、历史和持久 Agent session；下一条消息会按默认路由重新创建。",
+          });
+          void sessionsQuery.refetch();
+        },
+        onError: (error) => toast.error("重置失败", { description: error.message }),
+        onSettled: () => setConfirm(null),
+      },
+    );
+  };
+
   const runKill = (session: ChannelConnectorAgentSessionRuntimeStatus) => {
     manageMutation.mutate(
       { action: "kill", poolKey: session.poolKey, reason: "manual-kill-from-web" },
@@ -401,6 +465,8 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
               const badge = sessionBadge(session);
               const routeDefault = routeDefaultsForSession(session, routeBindings);
               const sessionOverridden = hasSessionOverride(session, routeDefault);
+              const title = sessionDisplayTitle(session, routeDefault);
+              const subtitle = sessionSubtitle(session, routeDefault);
               return (
                 <div
                   key={`${session.poolKey}-${session.sessionId}-${index}`}
@@ -412,14 +478,26 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     </span>
                     <span className="grid min-w-0 flex-1">
                       <strong className="truncate text-base text-ink-strong">
-                        {session.sessionId}
+                        {title}
                       </strong>
-                      <span className="truncate text-sm text-muted">
-                        {session.agent}
-                        {session.model ? ` · ${session.model}` : ""} · {session.bindingId}
+                      <span className="truncate text-sm text-muted">{subtitle}</span>
+                      <span className="truncate font-mono text-[11px] text-subtle" title={session.poolKey}>
+                        技术标识 · {compactText(session.sessionId || session.poolKey, 72)}
                       </span>
                     </span>
                     <Badge variant={badge.variant}>{badge.label}</Badge>
+                    {session.sessionControl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-amber hover:bg-amber-soft"
+                        onClick={() => setConfirm({ kind: "reset", session })}
+                        disabled={pending}
+                      >
+                        <Recycle />
+                        重置为默认
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -446,15 +524,13 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Badge variant="outline">默认路由</Badge>
                       <span className="min-w-0 break-words">
-                        {routeDefault
-                          ? `${routeDefault.agent} · ${valueOrDefault(routeDefault.model)} · ${valueOrDefault(routeDefault.permissionMode, "默认权限")} · ${routeDefault.workDir}`
-                          : "未匹配到绑定路由；请检查配置是否已同步到守护服务。"}
+                        {routeSummary(routeDefault)}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Badge variant={sessionOverridden ? "warn" : "outline"}>当前会话</Badge>
                       <span className="min-w-0 break-words">
-                        {session.agent} · {valueOrDefault(session.model)} · {valueOrDefault(session.permissionMode, "默认权限")} · {session.workDir}
+                        {currentSessionSummary(session)}
                       </span>
                     </div>
                     {session.sessionControl?.lastCommand && (
@@ -552,6 +628,41 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
             </Button>
             <Button variant="primary" size="sm" onClick={runReap} disabled={pending}>
               {pending ? "回收中…" : "确认回收"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Reset confirmation */}
+      <Dialog open={confirm?.kind === "reset"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+              <Recycle />
+            </span>
+            <DialogTitle>重置为默认路由</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            这会清理该 IM 会话的 override、Agent session 续接记录和本地 conversation history，并终止当前持久 driver。下一条消息会按绑定路由默认 Agent、模型、目录和权限重新创建。
+            {confirm?.kind === "reset" && (
+              <code className="mt-2 block rounded-sm bg-panel-3 px-2 py-1 font-mono text-xs text-muted">
+                {confirm.session.bindingId} · {confirm.session.sessionKey}
+              </code>
+            )}
+            确认重置？
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => confirm?.kind === "reset" && runReset(confirm.session)}
+              disabled={pending}
+            >
+              {pending ? "重置中…" : "确认重置为默认路由"}
             </Button>
           </DialogFooter>
         </DialogContent>

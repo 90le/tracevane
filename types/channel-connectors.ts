@@ -1099,6 +1099,16 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
     sessionId: string | null;
     poolKey: string | null;
   } | null;
+  reset?: {
+    requested: boolean;
+    bindingId: string;
+    sessionKey: string;
+    controlsCleared: boolean;
+    sessionsCleared: number;
+    historyCleared: number;
+    killed: boolean;
+    poolKey: string | null;
+  } | null;
 }
 
 export interface ChannelConnectorsDaemonRuntimeAutoCompactRecord {
@@ -1212,8 +1222,10 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
 }
 
 export interface ChannelConnectorAgentSessionActionRequest {
-  action?: "status" | "reap-idle" | "kill";
+  action?: "status" | "reap-idle" | "kill" | "reset-conversation";
   poolKey?: string | null;
+  bindingId?: string | null;
+  sessionKey?: string | null;
   reason?: string | null;
 }
 

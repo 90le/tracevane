@@ -121,6 +121,15 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(sessions, /跟随路由/);
   assert.match(sessions, /最后命令/);
   assert.match(sessions, /sessionControl\.lastCommand/);
+  assert.match(sessions, /重置为默认/);
+  assert.match(sessions, /reset-conversation/);
+  assert.match(sessions, /确认重置为默认路由/);
+  assert.match(sessions, /sessionDisplayTitle/);
+  assert.match(sessions, /技术标识/);
+  assert.match(sessions, /routeSummary/);
+  assert.match(sessions, /currentSessionSummary/);
+  assert.match(sessions, /默认目录/);
+  assert.doesNotMatch(sessions, /session\.sessionId\}\s*<\/strong>/);
   assert.match(types, /ChannelConnectorAgentSessionControlStatus/);
   assert.match(types, /lastCommand: string \| null/);
   assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
@@ -129,6 +138,10 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(daemon, /workDir: project.workDir/);
   assert.match(daemon, /readChannelConnectorSessionControls/);
   assert.match(daemon, /sessionControl: control \?/);
+  assert.match(daemon, /action === "reset-conversation"/);
+  assert.match(daemon, /clearChannelConnectorSessionControl/);
+  assert.match(daemon, /clearChannelConnectorAgentSessionsForConversation/);
+  assert.match(daemon, /clearChannelConnectorConversationHistory/);
 });
 
 
