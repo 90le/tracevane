@@ -12,9 +12,10 @@ Read these first:
 3. `前端功能架构.md` — current frontend information architecture and page ownership.
 4. `Tracevane三域重构规格说明.md` — Model Gateway / IM Channels / CLI Agents boundary spec.
 5. `Tracevane三域重构任务目标.md` — current staged goals and known next tasks.
-6. `IM渠道目标与设计.md` — IM Channels target design and gap list.
-7. `CLI代理目标与设计.md` — CLI Agents target design and de-OpenClaw boundary.
-8. `研究先行开发清单.md` — required research-first implementation gate.
+6. `IM渠道目标与设计.md` — IM Channels product target and backend/frontend capability boundary.
+7. `IM渠道前端设计契约.md` — IM Channels Aurora UI contract, page/view split, Drawer/Sheet/Dialog rules, and field templates.
+8. `CLI代理目标与设计.md` — CLI Agents target design and de-OpenClaw boundary.
+9. `研究先行开发清单.md` — required research-first implementation gate.
 
 ## Supporting reference docs
 

@@ -53,7 +53,27 @@ Agent profiles remain read-only on the IM page. They are owned by the native Cha
 
 Runtime sessions, command events, daemon status, and logs remain operational evidence. IM Channels may display and operate them, but should not own generic terminal/PTY lifecycle.
 
-## 4. Frontend flows
+
+## 4. Frontend information architecture
+
+The authoritative UI contract is `IM渠道前端设计契约.md`. IM Channels must use one Aurora domain page with compact local views, not a generic left/right admin layout and not a pile of equal panels.
+
+Top-level views:
+
+```text
+概览 / 平台账号 / 绑定路由 / 会话投递 / 守护诊断
+```
+
+Required UI boundaries:
+
+- 平台账号 owns platform credentials, callback URL, connection mode, and platform smoke.
+- 绑定路由 owns source matching, Agent profile, allowlist/admin/commands, and session policy.
+- 会话投递 owns runtime evidence and human-readable failure diagnosis.
+- 守护诊断 owns daemon/service checks and generated config evidence.
+- Agent profiles and daemon native bindings must not be displayed as equal first-screen panels beside user-editable bindings.
+- Raw `metadata` JSON is advanced fallback only; normal account creation/editing must use platform-specific fields.
+
+## 5. Current frontend flows
 
 Implemented first slice:
 
@@ -72,14 +92,17 @@ Implemented first slice:
 
 Still P0/P1 follow-up:
 
+- Replace the current narrow binding modal with wide account and binding Drawers.
+- Split the current platform binding screen into conceptual Platform Accounts and Binding Routes views, even if the backend still stores both in `platformBindings`.
+- Add platform-specific field templates for Feishu, Octo, and WeCom; keep raw JSON collapsed as advanced.
 - Guided Feishu setup checklist and callback URL copy.
 - Guided WeCom/企业微信 setup once adapter smoke is verified.
-- Dedicated account-vs-binding split only when a real multi-binding account store is needed.
+- Dedicated account-vs-binding backend split only when a real multi-binding account store is needed.
 - Delivery logs with filtering by binding/session/error.
 - Per-binding model/runtime preview.
 - Attachment/file policy controls.
 
-## 5. Backend expectations
+## 6. Backend expectations
 
 Current backend contract:
 
@@ -91,7 +114,7 @@ Current backend contract:
 
 Future backend work should add narrow account CRUD only when the product needs multiple peer bindings per shared account. Until then, avoid duplicating a second account store beside `platformBindings`.
 
-## 6. Non-goals
+## 7. Non-goals
 
 - Do not manage model provider API keys here.
 - Do not manage Codex/Claude/OpenCode client config here.
@@ -100,7 +123,7 @@ Future backend work should add narrow account CRUD only when the product needs m
 - Do not claim Feishu/WeCom setup is complete without adapter-level smoke evidence.
 - Do not fake external platform success.
 
-## 7. Research notes
+## 8. Research notes
 
 2026-06-24 checked current platform docs before changing the user-visible IM setup flow:
 
