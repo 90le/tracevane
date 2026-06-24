@@ -174,11 +174,15 @@ export function RoutesView({
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success("已复制为停用路由", {
-            description: "请在列表中编辑来源 ID、Agent 和权限后再启用。",
+            description: "已打开编辑器；请设置来源 ID、Agent、模型、目录和权限后再启用。",
           });
-          void configQuery.refetch();
+          const refetched = await configQuery.refetch();
+          const created = refetched.data?.config.platformBindings.find(
+            (item) => item.id === nextBinding.id,
+          );
+          setEditing(created ?? nextBinding);
         },
         onError: (error) =>
           toast.error("复制路由失败", { description: error.message }),

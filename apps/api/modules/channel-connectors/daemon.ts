@@ -664,6 +664,8 @@ interface ChannelDaemonAgentSessionDriverBindingState {
   botId: string | null;
   agent: string;
   model: string | null;
+  permissionMode: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["permissionMode"];
+  workDir: string;
   requestedMode: "one-shot" | "persistent";
   effectiveMode: "one-shot" | "persistent";
   reason: "default" | "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
@@ -1588,6 +1590,8 @@ function buildAgentSessionDriverState(
         botId: binding.botId,
         agent: project.agent,
         model: project.model,
+        permissionMode: project.permissionMode,
+        workDir: project.workDir,
         requestedMode: mode.requestedMode,
         effectiveMode: mode.effectiveMode,
         reason: mode.reason,

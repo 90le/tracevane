@@ -1000,6 +1000,8 @@ export interface ChannelConnectorAgentSessionDriverBindingStatus {
   botId: string | null;
   agent: ChannelConnectorAgentId | string;
   model: string | null;
+  permissionMode: ChannelConnectorPermissionMode | null;
+  workDir: string;
   requestedMode: "one-shot" | "persistent";
   effectiveMode: "one-shot" | "persistent";
   reason: "default" | "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";

@@ -59,6 +59,7 @@ test("Channel Connectors route view keeps routing separate from platform credent
   assert.match(routes, /一个平台账号可以复制出多条路由/);
   assert.match(routes, /复制路由/);
   assert.match(routes, /已复制为停用路由/);
+  assert.match(routes, /setEditing\(created \?\? nextBinding\)/);
   assert.match(routes, /删除副本路由/);
   assert.match(routes, /默认路由·保护/);
   assert.match(routes, /默认路由受保护/);
@@ -107,6 +108,21 @@ test("Channel Connectors session events prioritize human-readable incident summa
   assert.match(sessions, /Agent 执行失败/);
   assert.match(sessions, /已触发 fallback/);
   assert.match(sessions, /原始事件类型保留为小标签/);
+});
+
+test("Channel Connectors deliveries compares route defaults with session overrides", () => {
+  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
+  const types = read("types/channel-connectors.ts");
+  const daemon = read("apps/api/modules/channel-connectors/daemon.ts");
+  assert.match(sessions, /routeDefaultsForSession/);
+  assert.match(sessions, /默认路由/);
+  assert.match(sessions, /当前会话/);
+  assert.match(sessions, /会话覆盖/);
+  assert.match(sessions, /跟随路由/);
+  assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
+  assert.match(types, /workDir: string/);
+  assert.match(daemon, /permissionMode: project.permissionMode/);
+  assert.match(daemon, /workDir: project.workDir/);
 });
 
 

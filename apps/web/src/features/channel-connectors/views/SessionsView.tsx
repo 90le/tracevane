@@ -24,6 +24,7 @@ import {
   useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import type {
+  ChannelConnectorAgentSessionDriverBindingStatus,
   ChannelConnectorAgentSessionDriverRuntimeEvent,
   ChannelConnectorAgentSessionRuntimeStatus,
 } from "../types";
@@ -97,6 +98,39 @@ function sessionBadge(session: ChannelConnectorAgentSessionRuntimeStatus): {
   return { variant: "mute", label: "空闲" };
 }
 
+
+function routeDefaultsForSession(
+  session: ChannelConnectorAgentSessionRuntimeStatus,
+  bindings: ChannelConnectorAgentSessionDriverBindingStatus[],
+): ChannelConnectorAgentSessionDriverBindingStatus | null {
+  return (
+    bindings.find(
+      (binding) =>
+        binding.bindingId === session.bindingId &&
+        binding.projectId === session.projectId,
+    ) ??
+    bindings.find((binding) => binding.bindingId === session.bindingId) ??
+    null
+  );
+}
+
+function valueOrDefault(value: string | null | undefined, fallback = "网关默认"): string {
+  return value && value.trim() ? value : fallback;
+}
+
+function hasSessionOverride(
+  session: ChannelConnectorAgentSessionRuntimeStatus,
+  route: ChannelConnectorAgentSessionDriverBindingStatus | null,
+): boolean {
+  if (!route) return false;
+  return (
+    String(route.agent) !== session.agent ||
+    (route.model ?? null) !== (session.model ?? null) ||
+    (route.permissionMode ?? null) !== (session.permissionMode ?? null) ||
+    route.workDir !== session.workDir
+  );
+}
+
 function formatIdle(idleMs: number): string {
   if (idleMs < 1000) return `${idleMs}ms`;
   const s = Math.round(idleMs / 1000);
@@ -124,6 +158,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const config = configQuery.data?.config ?? null;
   const policyConfig = config?.agentSessionPolicy;
   const activeSessions = data?.activeSessions ?? [];
+  const routeBindings = data?.bindings ?? [];
   const recentEvents = data?.recentEvents ?? [];
   const visibleEvents = importantEvents(recentEvents);
   const policy = data?.policy;
@@ -364,6 +399,8 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           <div className="grid gap-2 p-3">
             {activeSessions.map((session, index) => {
               const badge = sessionBadge(session);
+              const routeDefault = routeDefaultsForSession(session, routeBindings);
+              const sessionOverridden = hasSessionOverride(session, routeDefault);
               return (
                 <div
                   key={`${session.poolKey}-${session.sessionId}-${index}`}
@@ -399,6 +436,32 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     <Badge variant="outline">running {session.running}</Badge>
                     <Badge variant="outline">idle {formatIdle(session.idleMs)}</Badge>
                     <Badge variant="outline">用于 {formatTime(session.lastUsedAt)}</Badge>
+                    {routeDefault && (
+                      <Badge variant={sessionOverridden ? "warn" : "ok"}>
+                        {sessionOverridden ? "会话覆盖" : "跟随路由"}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid gap-1 rounded-sm border border-line bg-panel px-3 py-2 text-xs text-muted">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline">默认路由</Badge>
+                      <span className="min-w-0 break-words">
+                        {routeDefault
+                          ? `${routeDefault.agent} · ${valueOrDefault(routeDefault.model)} · ${valueOrDefault(routeDefault.permissionMode, "默认权限")} · ${routeDefault.workDir}`
+                          : "未匹配到绑定路由；请检查配置是否已同步到守护服务。"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant={sessionOverridden ? "warn" : "outline"}>当前会话</Badge>
+                      <span className="min-w-0 break-words">
+                        {session.agent} · {valueOrDefault(session.model)} · {valueOrDefault(session.permissionMode, "默认权限")} · {session.workDir}
+                      </span>
+                    </div>
+                    {sessionOverridden && (
+                      <span className="text-amber">
+                        该会话已通过 IM 命令或运行时状态覆盖默认路由；后续消息会继续复用当前会话配置，直到会话终止或重置。
+                      </span>
+                    )}
                   </div>
                   {session.lastError && (
                     <p className="flex items-start gap-1.5 text-xs text-red">
