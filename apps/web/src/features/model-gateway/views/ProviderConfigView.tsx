@@ -434,9 +434,11 @@ function providerConfigWarnings(provider: ModelGatewayProviderView | null): stri
   for (const model of provider.models?.models ?? []) {
     const id = model.id.toLowerCase();
     if (id === "gpt-5.5" && model.contextWindow != null && model.contextWindow < 1_000_000) {
-      warnings.push("gpt-5.5 上下文低于 1M，可能是旧缓存或把长上下文计费阈值误写成窗口。");
+      warnings.push(provider.accountProvider?.kind === "codex"
+        ? "Codex Account 当前服务端模型目录将 gpt-5.5 的可输入窗口限制在约 272K；这对应 Codex 产品面约 400K 总窗口中的 272K input + 128K output/reserved。OpenAI API 版 1M 需要 API-key/OpenAI API 路径或等待 Codex 官方开放。"
+        : "gpt-5.5 上下文低于 1M，可能是旧缓存或 provider 模型目录未按 OpenAI API 能力更新。");
     }
-    if (id === "gpt-5.5" && model.pricing?.longContextInputThreshold === model.contextWindow) {
+    if (id === "gpt-5.5" && provider.accountProvider?.kind !== "codex" && model.pricing?.longContextInputThreshold === model.contextWindow) {
       warnings.push("gpt-5.5 的长上下文计费阈值不应等于 contextWindow。");
     }
   }

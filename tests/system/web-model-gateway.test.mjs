@@ -192,7 +192,9 @@ test("Provider config view explains provider smoke versus active-route smoke", (
   assert.match(config, /Active-route smoke/);
   assert.match(config, /activeRoutesForProvider/);
   assert.match(config, /Claude Code 默认走 streaming smoke/);
-  assert.match(config, /gpt-5\.5 上下文低于 1M/);
+  assert.match(config, /Codex Account 当前服务端模型目录将 gpt-5\.5 的可输入窗口限制在约 272K/);
+  assert.match(config, /272K input \+ 128K output\/reserved/);
+  assert.match(config, /provider 模型目录未按 OpenAI API 能力更新/);
 });
 
 test("Models view surfaces declared model context and output budgets", () => {

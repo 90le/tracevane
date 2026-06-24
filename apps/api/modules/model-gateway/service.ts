@@ -1103,6 +1103,12 @@ function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel>
     };
   }
 
+  if (modelNameMatches(modelId, [/^gpt-5\.3-codex-spark(?:\b|-|_|\.)/, /^gpt-5\.3-codex-spark$/])) {
+    return {
+      contextWindow: 128_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
   if (modelNameMatches(modelId, [/^gpt-5\.(?:4|5)-mini(?:\b|-|_|\.)/, /^gpt-5\.3-codex(?:\b|-|_|\.)/, /^gpt-5\.3-codex$/])) {
     return {
       contextWindow: 400_000,
@@ -2582,34 +2588,34 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
     {
       id: "gpt-5.5",
       aliases: ["gpt5.5"],
-      contextWindow: 1_050_000,
+      contextWindow: 272_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
       pricing: {
         currency: "USD",
         inputPer1M: 5,
         outputPer1M: 30,
-        longContextInputThreshold: 272_000,
-        longContextInputMultiplier: 2,
-        longContextOutputMultiplier: 1.5,
       },
     },
     {
       id: "gpt-5.4",
       aliases: ["gpt5.4"],
-      contextWindow: 1_050_000,
+      contextWindow: 1_000_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
       pricing: {
         currency: "USD",
         inputPer1M: 2.5,
         outputPer1M: 15,
+        longContextInputThreshold: 272_000,
+        longContextInputMultiplier: 2,
+        longContextOutputMultiplier: 1.5,
       },
     },
     {
       id: "gpt-5.4-mini",
       aliases: ["gpt5.4-mini"],
-      contextWindow: 400_000,
+      contextWindow: 272_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
       pricing: {
@@ -2620,8 +2626,8 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
     },
     {
       id: "gpt-5.3-codex",
-      aliases: ["gpt5.3-codex", "gpt-5.3-codex-spark"],
-      contextWindow: 400_000,
+      aliases: ["gpt5.3-codex"],
+      contextWindow: 272_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
       pricing: {
@@ -2629,6 +2635,12 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
         inputPer1M: 1.75,
         outputPer1M: 14,
       },
+    },
+    {
+      id: "gpt-5.3-codex-spark",
+      aliases: ["gpt5.3-codex-spark"],
+      contextWindow: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
     },
     {
       id: "gpt-image-2",

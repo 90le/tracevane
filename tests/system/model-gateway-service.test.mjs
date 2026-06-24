@@ -844,6 +844,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
         "gpt-5.4",
         "gpt-5.4-mini",
         "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
         "gpt-image-2",
         "gpt-4o-transcribe",
         "gpt-4o-mini-transcribe",
@@ -858,18 +859,19 @@ test("model gateway starts Codex account login and creates an account-backed pro
         "gpt-realtime-2",
       ]);
       const gpt55Model = poll.body.provider.models.models.find((model) => model.id === "gpt-5.5");
-      assert.equal(gpt55Model.contextWindow, 1050000);
+      assert.equal(gpt55Model.contextWindow, 272000);
       assert.equal(gpt55Model.maxOutputTokens, 128000);
       assert.deepEqual(gpt55Model.pricing, {
         currency: "USD",
         inputPer1M: 5,
         outputPer1M: 30,
-        longContextInputThreshold: 272000,
-        longContextInputMultiplier: 2,
-        longContextOutputMultiplier: 1.5,
       });
+      const gpt54Model = poll.body.provider.models.models.find((model) => model.id === "gpt-5.4");
+      assert.equal(gpt54Model.contextWindow, 1000000);
+      assert.equal(gpt54Model.maxOutputTokens, 128000);
+      assert.equal(gpt54Model.pricing.longContextInputThreshold, 272000);
       const gpt54MiniModel = poll.body.provider.models.models.find((model) => model.id === "gpt-5.4-mini");
-      assert.equal(gpt54MiniModel.contextWindow, 400000);
+      assert.equal(gpt54MiniModel.contextWindow, 272000);
       assert.equal(gpt54MiniModel.maxOutputTokens, 128000);
       assert.deepEqual(gpt54MiniModel.pricing, {
         currency: "USD",
@@ -877,7 +879,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
         outputPer1M: 4.5,
       });
       const gpt53CodexModel = poll.body.provider.models.models.find((model) => model.id === "gpt-5.3-codex");
-      assert.equal(gpt53CodexModel.contextWindow, 400000);
+      assert.equal(gpt53CodexModel.contextWindow, 272000);
       assert.equal(gpt53CodexModel.maxOutputTokens, 128000);
       assert.equal(gpt53CodexModel.features.vision, true);
       assert.deepEqual(gpt53CodexModel.pricing, {
@@ -885,6 +887,9 @@ test("model gateway starts Codex account login and creates an account-backed pro
         inputPer1M: 1.75,
         outputPer1M: 14,
       });
+      const gpt53SparkModel = poll.body.provider.models.models.find((model) => model.id === "gpt-5.3-codex-spark");
+      assert.equal(gpt53SparkModel.contextWindow, 128000);
+      assert.equal(gpt53SparkModel.maxOutputTokens, null);
       const realtime2Model = poll.body.provider.models.models.find((model) => model.id === "gpt-realtime-2");
       assert.equal(realtime2Model.contextWindow, 128000);
       assert.equal(realtime2Model.maxOutputTokens, 32000);
@@ -905,9 +910,9 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
       const models = await requestJson(`${baseUrl}/v1/models`);
       const gpt55CatalogModel = models.body.data.find((model) => model.id === "gpt-5.5");
-      assert.equal(gpt55CatalogModel.context_window, 1050000);
-      assert.equal(gpt55CatalogModel.contextWindow, 1050000);
-      assert.equal(gpt55CatalogModel.pricing.longContextInputThreshold, 272000);
+      assert.equal(gpt55CatalogModel.context_window, 272000);
+      assert.equal(gpt55CatalogModel.contextWindow, 272000);
+      assert.equal(gpt55CatalogModel.pricing.longContextInputThreshold, undefined);
       assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("openai_chat_completions"));
       assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("openai_responses"));
       assert.ok(gpt55CatalogModel.supportedGatewayRoutes.includes("anthropic_messages"));
@@ -916,7 +921,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(gpt55CatalogModel.agentSelectable, true);
       assert.equal(gpt55CatalogModel.endpointOnly, false);
       const gpt54MiniCatalogModel = models.body.data.find((model) => model.id === "gpt-5.4-mini");
-      assert.equal(gpt54MiniCatalogModel.context_window, 400000);
+      assert.equal(gpt54MiniCatalogModel.context_window, 272000);
       assert.equal(gpt54MiniCatalogModel.max_output_tokens, 128000);
       const imageCatalogModel = models.body.data.find((model) => model.id === "gpt-image-2");
       assert.equal(imageCatalogModel.agentSelectable, false);
@@ -1165,7 +1170,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
 });
 
-test("model gateway repairs stale managed Codex account model context metadata", () => {
+test("model gateway preserves Codex account GPT-5.5 product context cap while repairing metadata", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
@@ -1186,9 +1191,9 @@ test("model gateway repairs stale managed Codex account model context metadata",
         models: [{
           id: "gpt-5.5",
           aliases: ["gpt5.5"],
-          contextWindow: 272000,
+          contextWindow: 1050000,
           maxOutputTokens: 8192,
-          pricing: { currency: "USD", inputPer1M: 5 },
+          pricing: { currency: "USD", inputPer1M: 5, longContextInputThreshold: 272000 },
         }, {
           id: "gpt-5.4-mini",
           aliases: ["gpt5.4-mini"],
@@ -1218,25 +1223,32 @@ test("model gateway repairs stale managed Codex account model context metadata",
 
   const models = service.listGatewayModels();
   const gpt55 = models.data.find((model) => model.id === "gpt-5.5");
-  assert.equal(gpt55.context_window, 1050000);
-  assert.equal(gpt55.max_context_window, 1050000);
+  assert.equal(gpt55.context_window, 272000);
+  assert.equal(gpt55.max_context_window, 272000);
   assert.equal(gpt55.max_output_tokens, 128000);
-  assert.equal(gpt55.contextWindow, 1050000);
+  assert.equal(gpt55.contextWindow, 272000);
   assert.equal(gpt55.maxOutputTokens, 128000);
-  assert.equal(gpt55.pricing.longContextInputThreshold, 272000);
-  assert.equal(gpt55.pricing.longContextInputMultiplier, 2);
-  assert.equal(gpt55.pricing.longContextOutputMultiplier, 1.5);
+  assert.equal(gpt55.pricing.longContextInputThreshold, undefined);
+  const gpt54 = models.data.find((model) => model.id === "gpt-5.4");
+  assert.equal(gpt54.context_window, 1000000);
+  assert.equal(gpt54.max_output_tokens, 128000);
+  assert.equal(gpt54.pricing.longContextInputThreshold, 272000);
   const gpt54Mini = models.data.find((model) => model.id === "gpt-5.4-mini");
-  assert.equal(gpt54Mini.context_window, 400000);
+  assert.equal(gpt54Mini.context_window, 272000);
   assert.equal(gpt54Mini.max_output_tokens, 128000);
   assert.equal(gpt54Mini.pricing.inputPer1M, 0.75);
   assert.equal(gpt54Mini.pricing.outputPer1M, 4.5);
   const gpt53Codex = models.data.find((model) => model.id === "gpt-5.3-codex");
-  assert.equal(gpt53Codex.context_window, 400000);
+  assert.equal(gpt53Codex.context_window, 272000);
   assert.equal(gpt53Codex.max_output_tokens, 128000);
   assert.equal(gpt53Codex.features.vision, true);
   assert.equal(gpt53Codex.pricing.inputPer1M, 1.75);
   assert.equal(gpt53Codex.pricing.outputPer1M, 14);
+  const gpt53Spark = models.data.find((model) => model.id === "gpt-5.3-codex-spark");
+  assert.equal(gpt53Spark.context_window, 128000);
+  assert.equal(gpt53Spark.max_context_window, 128000);
+  assert.equal(gpt53Spark.max_output_tokens, 8192);
+  assert.equal(gpt53Spark.maxOutputTokens, null);
 });
 
 test("model gateway treats Codex context length responses as request-scoped failures", async () => {
