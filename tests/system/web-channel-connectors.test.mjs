@@ -108,6 +108,10 @@ test("Channel Connectors session events prioritize human-readable incident summa
   assert.match(sessions, /Agent 执行失败/);
   assert.match(sessions, /已触发 fallback/);
   assert.match(sessions, /原始事件类型保留为小标签/);
+  assert.match(sessions, /parseImSessionIdentity/);
+  assert.match(sessions, /sessionKey: event\.sessionKey/);
+  assert.match(sessions, /peerKind: null/);
+  assert.doesNotMatch(sessions, /detail: event\.sessionId \|\| "为该 IM 来源创建持久会话"/);
 });
 
 test("Channel Connectors deliveries compares route defaults with session overrides", () => {
@@ -125,11 +129,18 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(sessions, /reset-conversation/);
   assert.match(sessions, /确认重置为默认路由/);
   assert.match(sessions, /sessionDisplayTitle/);
+  assert.match(sessions, /parseImSessionIdentity/);
+  assert.match(sessions, /peerKindLabel/);
+  assert.match(sessions, /飞书 · \$\{kind\}/);
+  assert.match(sessions, /私聊会话/);
+  assert.match(sessions, /群聊会话/);
+  assert.match(sessions, /触发人/);
   assert.match(sessions, /技术标识/);
   assert.match(sessions, /routeSummary/);
   assert.match(sessions, /currentSessionSummary/);
   assert.match(sessions, /默认目录/);
   assert.doesNotMatch(sessions, /session\.sessionId\}\s*<\/strong>/);
+  assert.equal((sessions.match(/useSaveChannelConnectorsConfigMutation/g) || []).length, 2);
   assert.match(types, /ChannelConnectorAgentSessionControlStatus/);
   assert.match(types, /lastCommand: string \| null/);
   assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);

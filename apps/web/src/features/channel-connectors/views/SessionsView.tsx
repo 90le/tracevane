@@ -69,15 +69,22 @@ function humanEvent(event: ChannelConnectorAgentSessionDriverRuntimeEvent): {
       return { title: "开始处理消息", detail: `${event.agent} 正在处理 ${event.bindingId}`, action: "等待回复", variant: "ok" };
     case "turn.finished":
       return { title: "Agent 回复完成", detail: event.reason || `${event.agent} 已完成本回合`, action: "等待 IM 平台投递", variant: "ok" };
-    case "session.created":
-      return { title: "新会话已创建", detail: event.sessionId || "为该 IM 来源创建持久会话", action: "可继续复用上下文", variant: "ok" };
+    case "session.created": {
+      const identity = parseImSessionIdentity({
+        sessionKey: event.sessionKey,
+        sessionId: event.sessionId,
+        poolKey: event.poolKey,
+        peerKind: null,
+      });
+      return { title: "新会话已创建", detail: identity ? `${identity.title} · ${identity.detail}` : "为该 IM 来源创建持久会话", action: "可继续复用上下文", variant: "ok" };
+    }
     case "session.killed":
-      return { title: "会话已终止", detail: event.reason || event.sessionId || "手动或策略终止", action: "下次消息会重新创建", variant: "warn" };
+      return { title: "会话已终止", detail: event.reason || parseImSessionIdentity({ sessionKey: event.sessionKey, sessionId: event.sessionId, poolKey: event.poolKey, peerKind: null })?.detail || "手动或策略终止", action: "下次消息会重新创建", variant: "warn" };
     case "session.reaped":
-      return { title: "空闲会话已回收", detail: event.reason || event.sessionId || "超过空闲策略", action: "无需处理", variant: "mute" };
+      return { title: "空闲会话已回收", detail: event.reason || parseImSessionIdentity({ sessionKey: event.sessionKey, sessionId: event.sessionId, poolKey: event.poolKey, peerKind: null })?.detail || "超过空闲策略", action: "无需处理", variant: "mute" };
     case "session.stopped":
     case "session.disposed":
-      return { title: "会话已停止", detail: event.reason || event.sessionId || "会话生命周期结束", action: "无需处理", variant: "mute" };
+      return { title: "会话已停止", detail: event.reason || parseImSessionIdentity({ sessionKey: event.sessionKey, sessionId: event.sessionId, poolKey: event.poolKey, peerKind: null })?.detail || "会话生命周期结束", action: "无需处理", variant: "mute" };
     default:
       return { title: event.type, detail: event.reason || event.sessionId || "运行时事件", action: "只读证据", variant: EVENT_TONE[event.type] };
   }
@@ -125,12 +132,101 @@ function compactText(value: string | null | undefined, max = 42): string {
   return `${normalized.slice(0, Math.max(12, max - 12))}…${normalized.slice(-8)}`;
 }
 
+
+function safeDecodeText(value: string | null | undefined): string {
+  const raw = value || "";
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function sessionKeyCandidates(value: string | null | undefined): string[] {
+  const raw = value || "";
+  if (!raw) return [];
+  const direct = safeDecodeText(raw);
+  const parts = raw.split("|").flatMap((part) => [part, safeDecodeText(part)]);
+  return Array.from(new Set([raw, direct, ...parts].filter(Boolean)));
+}
+
+function platformDisplayName(platform: string | null | undefined): string {
+  const normalized = (platform || "").toLowerCase();
+  if (normalized.includes("feishu")) return "飞书";
+  if (normalized.includes("octo")) return "Octo IM";
+  if (normalized.includes("wechat") || normalized.includes("wecom")) return "企业微信";
+  return platform || "IM";
+}
+
+function routeMetaString(
+  route: ChannelConnectorAgentSessionDriverBindingStatus | null,
+  key: string,
+): string {
+  const value = route && "metadata" in route ? (route as { metadata?: Record<string, unknown> }).metadata?.[key] : null;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function peerKindLabel(value: string | null | undefined): "群聊会话" | "私聊会话" | "IM 会话" {
+  const normalized = (value || "").trim().toLowerCase();
+  if (["group", "chat", "room", "channel"].includes(normalized)) return "群聊会话";
+  if (["private", "dm", "direct", "user", "single"].includes(normalized)) return "私聊会话";
+  return "IM 会话";
+}
+
+function parseImSessionIdentity(input: {
+  sessionKey?: string | null;
+  sessionId?: string | null;
+  poolKey?: string | null;
+  platform?: string | null;
+  peerKind?: string | null;
+}): { title: string; detail: string } | null {
+  const candidates = [
+    ...sessionKeyCandidates(input.sessionKey),
+    ...sessionKeyCandidates(input.sessionId),
+    ...sessionKeyCandidates(input.poolKey),
+  ];
+  const feishu = candidates.find((candidate) => candidate.startsWith("feishu:"));
+  if (feishu) {
+    const [, chatOrUser, actor] = feishu.split(":");
+    const kind = peerKindLabel(input.peerKind);
+    const title = `飞书 · ${kind}`;
+    const sourceLabel = kind === "群聊会话"
+      ? "群"
+      : kind === "私聊会话"
+        ? "会话"
+        : chatOrUser?.startsWith("ou_") ? "用户" : "会话";
+    const detail = [
+      chatOrUser ? `${sourceLabel} ${compactText(chatOrUser, 26)}` : null,
+      actor ? `触发人 ${compactText(actor, 26)}` : null,
+    ].filter(Boolean).join(" · ");
+    return { title, detail: detail || "飞书来源" };
+  }
+  const octo = candidates.find((candidate) => candidate.startsWith("octo:") || candidate.startsWith("wechat:"));
+  if (octo) {
+    const [, scope, actor] = octo.split(":");
+    return {
+      title: `${platformDisplayName(input.platform)} · IM 会话`,
+      detail: [compactText(scope, 26), actor ? `触发人 ${compactText(actor, 26)}` : null].filter(Boolean).join(" · ") || "IM 来源",
+    };
+  }
+  return null;
+}
+
 function sessionDisplayTitle(
   session: ChannelConnectorAgentSessionRuntimeStatus,
   route: ChannelConnectorAgentSessionDriverBindingStatus | null,
 ): string {
   if (session.sessionControl?.sessionName) return session.sessionControl.sessionName;
-  const platform = route?.platform || session.bindingId.split(":")[0] || "IM";
+  const identity = parseImSessionIdentity({
+    sessionKey: session.sessionKey,
+    sessionId: session.sessionId,
+    poolKey: session.poolKey,
+    platform: route?.platform,
+    peerKind: routeMetaString(route, "peerKind"),
+  });
+  if (identity) return identity.title;
+  const platform = platformDisplayName(route?.platform || session.bindingId.split(":")[0] || "IM");
   const account = route?.accountId || route?.botId || "默认来源";
   return `${platform} · ${compactText(account, 28)}`;
 }
@@ -139,8 +235,17 @@ function sessionSubtitle(
   session: ChannelConnectorAgentSessionRuntimeStatus,
   route: ChannelConnectorAgentSessionDriverBindingStatus | null,
 ): string {
+  const identity = parseImSessionIdentity({
+    sessionKey: session.sessionKey,
+    sessionId: session.sessionId,
+    poolKey: session.poolKey,
+    platform: route?.platform,
+    peerKind: routeMetaString(route, "peerKind"),
+  });
   const binding = route?.bindingId || session.bindingId;
-  return `${session.agent} · ${valueOrDefault(session.model)} · ${compactText(binding, 36)}`;
+  return identity
+    ? `${identity.detail} · ${session.agent} · ${valueOrDefault(session.model)}`
+    : `${session.agent} · ${valueOrDefault(session.model)} · ${compactText(binding, 36)}`;
 }
 
 function routeSummary(route: ChannelConnectorAgentSessionDriverBindingStatus | null): string {
