@@ -63,6 +63,14 @@ function sortRun(left: AgentRuntimeRunSummary, right: AgentRuntimeRunSummary): n
   return rightTime - leftTime || left.id.localeCompare(right.id);
 }
 
+function shouldProjectChatRun(
+  runtime: ChatBootstrapPayload["sessions"][number]["runtime"],
+): boolean {
+  if (runtime.activeRunId) return true;
+  if (runtime.lastErrorCode || runtime.lastErrorMessage) return true;
+  return runtime.state === "running" || runtime.state === "streaming" || runtime.state === "aborted" || runtime.state === "error";
+}
+
 export function buildAgentRuntimeRunsPayload(input: {
   checkedAt?: string;
   terminalSessions?: TerminalSessionSummaryResponse | null;
@@ -131,6 +139,7 @@ export function buildAgentRuntimeRunsPayload(input: {
   }
 
   for (const session of input.chatBootstrap?.sessions ?? []) {
+    if (!shouldProjectChatRun(session.runtime)) continue;
     const state = chatRunStatus(session.runtime.state);
     runs.push({
       id: `chat:${session.key}`,

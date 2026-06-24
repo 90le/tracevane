@@ -68,3 +68,39 @@
 - 前端：删除 `runs` tab 和 `RunsView`，恢复旧 Overview 文案。
 - 后端：删除 `/api/agents/runs` route 和 `runtime-runs.ts`，不影响原终端/IM/chat API。
 - 文档：保留 spec 作为历史决策记录，后续可替换为新的 ADR。
+
+
+## 第二阶段补充任务（2026-06-24）
+
+### 发现
+
+`/api/agents/runs` 第一阶段已经解决“前端拼多个 session 源”的问题，但运行投影仍把普通 idle / unknown Chat 历史会话放进“运行中”页，真实运行态被历史记录淹没。
+
+### 第二阶段 P0 修正
+
+- Chat 来源只投影真实 run：存在 `activeRunId`、运行中/流式中、异常/中止或有错误信息。
+- 普通 idle 历史聊天继续留在 Chat 页面和原始证据页，不进入 Agent Runs 主列表。
+- 增加系统回归，防止 idle chat history 再次污染 Agent Runs。
+
+### 不做
+
+- 不删除 Chat 历史数据。
+- 不改变 `/api/chat/bootstrap` 合同。
+- 不把 Chat 的历史列表职责搬到 CLI Agents。
+
+## 第二阶段评估结果（2026-06-24）
+
+| 检查项 | 当前判断 | 处理 |
+| --- | --- | --- |
+| 前端导航和页面重复 | 第一阶段已把 Model Gateway / IM Channels / CLI Agents 的主职责拆清；本轮未发现需要删除域。 | 保留三域，继续用 Agent Runs 做统一运行投影。 |
+| Agent Run 投影字段 | 字段足够支撑第一阶段运行列表，但 Chat 来源过宽，把 idle/unknown 历史会话混入运行页。 | 已修复：只投影 activeRunId、运行/流式、异常/中止或 runtime error 的 Chat run。 |
+| IM 会话与 CLI/Chat 证据可追溯 | `/api/agents/runs` 保留 `evidenceRefs.href`，能回到终端、IM 会话或 Chat 原页。 | 暂不新增写操作，保持只读投影。 |
+| Model Gateway 用量/cache/排序 | `UsageView` 已明确“provider 返回缓存证据、不估算折扣/命中率”，模型分布按 request count，表格按 total tokens；未发现本轮必须改动。 | 保持现状，后续可补真实账本样本回归。 |
+| 服务守护状态 | Model Gateway daemon 和 Channel Connectors daemon 仍由各自域管理，不进入 Agent Runs。 | 本轮仅重启验证，不改变守护合同。 |
+| 客户端接入配置 | Model Gateway 继续拥有 Codex/Claude Code/OpenCode/OpenClaw 配置写入、备份、回滚；CLI Agents 只读引用运行态。 | 不改兼容路径，避免破坏用户配置。 |
+
+### 本轮完成定义
+
+- 第二阶段不做大拆分，只修复当前运行态聚合里最明显的噪声风险。
+- 真实用户数据不删除、不迁移、不重写。
+- 通过构建、类型检查、系统回归和 live `/api/agents/runs` 验证。

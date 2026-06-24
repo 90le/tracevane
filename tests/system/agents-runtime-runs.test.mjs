@@ -77,6 +77,30 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
       organizer: { folders: [], folderOrder: [], childFolderOrder: {}, rootSessionOrder: [], folderSessionOrder: {}, sessionFolderMap: {} },
       sessions: [
         {
+          key: "chat-idle-history",
+          agentId: "main",
+          sessionId: "old",
+          kind: "local",
+          label: "Old idle chat",
+          derivedTitle: "Old idle chat",
+          lastMessagePreview: null,
+          updatedAt: "2026-06-23T00:00:03.000Z",
+          presentation: { archived: false, archivedAt: null, customLabel: null },
+          source: { source: "local", channel: null, accountId: null, to: null, threadId: null },
+          deliveryContext: { target: null, mode: "local" },
+          permissions: { canSend: true, canAbort: true, canReset: true, canDelete: true },
+          runtime: {
+            gatewayConnected: false,
+            sessionWritable: true,
+            activeRunId: null,
+            state: "idle",
+            lastEventAt: null,
+            lastAckAt: null,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+          },
+        },
+        {
           key: "chat-1",
           agentId: "opencode",
           sessionId: "s1",
@@ -117,6 +141,7 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
   assert.equal(payload.totals.imChannel, 1);
   assert.equal(payload.totals.chat, 1);
   assert.deepEqual(payload.runs.map((run) => run.id), ["chat:chat-1", "im:pool-1", "terminal:term-1"]);
+  assert.equal(payload.runs.some((run) => run.id === "chat:chat-idle-history"), false);
   assert.equal(payload.runs[1].status, "failed");
   assert.equal(payload.runs[2].cli, "codex");
 });
