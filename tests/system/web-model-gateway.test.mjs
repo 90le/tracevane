@@ -184,6 +184,16 @@ test("Providers view aggregates endpoint risk and smokes every active scope for 
   );
 });
 
+test("Provider config view explains provider smoke versus active-route smoke", () => {
+  const config = read(`${VIEWS_DIR}/ProviderConfigView.tsx`);
+  assert.match(config, /路由与诊断/);
+  assert.match(config, /Provider smoke/);
+  assert.match(config, /Active-route smoke/);
+  assert.match(config, /activeRoutesForProvider/);
+  assert.match(config, /Claude Code 默认走 streaming smoke/);
+  assert.match(config, /gpt-5\.5 上下文低于 1M/);
+});
+
 test("Models view surfaces declared model context and output budgets", () => {
   const models = read(`${VIEWS_DIR}/ModelsView.tsx`);
   assert.match(models, /contextWindow/);

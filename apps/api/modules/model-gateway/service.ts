@@ -201,6 +201,7 @@ const CODEX_ACCOUNT_IMAGE_GENERATION_MAIN_MODEL = "gpt-5.4-mini";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
 const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
+const MODEL_GATEWAY_SMOKE_SENTINEL = "GATEWAY_OK";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
@@ -9294,13 +9295,14 @@ export function createModelGatewayService(
     routeId: ModelGatewayRouteId,
     model: string,
     input: string,
+    stream = false,
   ): Record<string, unknown> {
-    const prompt = `${input}\nDo not call tools. Reply with exactly GATEWAY_OK.`;
+    const prompt = `${input}\nDo not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
     if (routeId === "anthropic_messages") {
       return {
         model,
         max_tokens: 256,
-        stream: false,
+        stream,
         messages: [{ role: "user", content: prompt }],
         ...(scope === "claude-code" ? {
           tools: [gatewaySmokeToolForAnthropic()],
@@ -9312,7 +9314,7 @@ export function createModelGatewayService(
       return {
         model,
         max_tokens: 256,
-        stream: false,
+        stream,
         messages: [{ role: "user", content: prompt }],
         ...(scope === "opencode" ? {
           tools: [gatewaySmokeToolForChat()],
@@ -9329,21 +9331,56 @@ export function createModelGatewayService(
             content: [{ type: "input_text", text: prompt }],
           },
         ],
-        stream: false,
+        stream,
         max_output_tokens: 256,
       };
     }
     return {
       model,
       input: prompt,
-      stream: false,
+      stream,
       max_output_tokens: 256,
     };
   }
 
+  function extractTextFromGatewayRouteSmokeSse(responseText: string): string {
+    return extractJsonPayloadsFromSseText(responseText)
+      .flatMap((payload) => {
+        if (!isRecord(payload)) return [];
+        const eventType = normalizeString(payload.type);
+        if (eventType === "content_block_delta" && isRecord(payload.delta)) {
+          return [normalizeString(payload.delta.text)];
+        }
+        if (eventType === "response.output_text.delta") {
+          return [normalizeString(payload.delta)];
+        }
+        if (eventType === "response.completed" && isRecord(payload.response)) {
+          const output = Array.isArray(payload.response.output) ? payload.response.output : [];
+          return output.flatMap((item) => isRecord(item) ? extractTextFromContentParts(item.content) : []);
+        }
+        if (Array.isArray(payload.choices)) {
+          return payload.choices.flatMap((choice) => {
+            if (!isRecord(choice)) return [];
+            const delta = isRecord(choice.delta) ? choice.delta : {};
+            const message = isRecord(choice.message) ? choice.message : {};
+            return [
+              ...extractTextFromContentParts(delta.content),
+              ...extractTextFromContentParts(message.content),
+              normalizeString(delta.content),
+              normalizeString(message.content),
+              normalizeString(choice.text),
+            ].filter(Boolean);
+          });
+        }
+        return [];
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
   function extractGatewayRouteSmokeText(routeId: ModelGatewayRouteId, responseText: string): string {
     const parsed = parseJsonObjectOrNull(responseText);
-    if (!parsed) return previewText(responseText) || "";
+    if (!parsed) return extractTextFromGatewayRouteSmokeSse(responseText) || previewText(responseText) || "";
     if (routeId === "anthropic_messages") {
       return extractTextFromContentParts(parsed.content).join("\n");
     }
@@ -9426,6 +9463,9 @@ export function createModelGatewayService(
     if (key) headers.set("authorization", `Bearer ${key}`);
     const startedAt = nowIso();
     const controller = new AbortController();
+    const stream = typeof payload.stream === "boolean"
+      ? payload.stream
+      : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -9438,16 +9478,19 @@ export function createModelGatewayService(
           scope,
           routeId,
           effectiveModel,
-          normalizeString(payload.input, "Reply with GATEWAY_OK"),
+          normalizeString(payload.input, `Reply with ${MODEL_GATEWAY_SMOKE_SENTINEL}`),
+          stream,
         )),
         signal: controller.signal,
       });
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const responseTextContent = extractGatewayRouteSmokeText(routeId, responseText);
-      const contentMatched = /\bGATEWAY_OK\b/.test(responseTextContent);
+      const contentMatched = new RegExp(`\\b${MODEL_GATEWAY_SMOKE_SENTINEL}\\b`).test(responseTextContent)
+        || responseTextContent.replace(/\s+/g, "").includes(MODEL_GATEWAY_SMOKE_SENTINEL);
       const success = response.status >= 200 && response.status < 300 && contentMatched;
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
+      const responsePreview = previewText(responseText);
       return {
         ok: success,
         providerId: responseProviderId,
@@ -9455,12 +9498,12 @@ export function createModelGatewayService(
         statusCode: response.status,
         latencyMs,
         route: decision,
-        responsePreview: previewText(responseText),
+        responsePreview,
         error: success ? null : {
           code: "model_gateway_active_route_smoke_failed",
           message: response.status >= 200 && response.status < 300
-            ? "Active route smoke did not return GATEWAY_OK in the client protocol response."
-            : `Active route smoke returned HTTP ${response.status}.`,
+            ? `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
+            : `${stream ? "Streaming " : ""}Active route smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
         },
       };
     } catch (error) {
@@ -10593,11 +10636,21 @@ export function createModelGatewayService(
         } catch (error) {
           const streamError = streamAdapterErrorEnvelope(error);
           const message = streamError?.message || (error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage);
+          const adapterStatusCode = upstreamErrorStatusCodeForHealth(streamError?.code || streamError?.type, message);
+          const adapterHealthSuccess = providerHealthSuccessForUpstreamResult(
+            adapterStatusCode,
+            streamError?.code || streamError?.type || null,
+            message,
+          );
+          const surfaceUpstreamError = providerHealthNeutralUpstreamError(streamError?.code || streamError?.type, message);
+          const surfacedErrorCode = surfaceUpstreamError
+            ? streamError?.code || streamError?.type || streamingAdapter.adapterFailedCode
+            : streamingAdapter.adapterFailedCode;
           if (streamError && isCodexAccountBackedProvider(provider)) {
             updateCodexAccountAfterUpstreamFailure(
               provider,
               selectedAccountForRequest,
-              502,
+              adapterStatusCode,
               {
                 message,
                 type: streamError.type || streamingAdapter.adapterFailedCode,
@@ -10607,7 +10660,7 @@ export function createModelGatewayService(
             );
           }
           updateSelectedProviderHealth(
-            providerHealthSuccessForUpstreamResult(502, streamError?.code || streamError?.type || null, message),
+            adapterHealthSuccess,
             latencyMs,
             message,
             upstreamRetryAfterUntil,
@@ -10617,16 +10670,16 @@ export function createModelGatewayService(
             startedAt,
             route: decision,
             model: requestModelForLog,
-            statusCode: 502,
+            statusCode: adapterStatusCode,
             outcome: "failure",
             firstByteMs: firstByteMsForLog(),
             errorCode: streamError?.code || streamError?.type || streamingAdapter.adapterFailedCode,
             errorMessage: message,
           }));
           if (!res.headersSent) {
-            sendJson(res, 502, {
+            sendJson(res, adapterStatusCode, {
               error: {
-                code: streamError?.code || streamError?.type || streamingAdapter.adapterFailedCode,
+                code: surfacedErrorCode,
                 message,
                 decision,
               },

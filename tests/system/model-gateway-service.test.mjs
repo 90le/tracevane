@@ -1372,6 +1372,169 @@ test("model gateway treats Codex context length responses as request-scoped fail
   assert.equal(runtime.runtime.requestLog.filter((entry) => entry.errorCode === "context_length_exceeded").length, 3);
 });
 
+test("model gateway preserves Claude-to-Codex streaming context errors as client errors", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const authRef = "provider:codex-claude-context:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "claude-context@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_claude_context",
+      chatgpt_plan_type: "pro",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-claude-context-access",
+      refresh_token: "codex-claude-context-refresh",
+      account_id: "acct_claude_context",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-claude-context",
+      name: "Codex Claude Context",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["claude-code"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-claude-context-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "claude-context-a",
+          emailMasked: "cl***@example.com",
+          plan: "pro",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["claude-code"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+      accept: init.headers instanceof Headers ? init.headers.get("accept") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+    });
+    return new Response([
+      "event: response.failed",
+      `data: ${JSON.stringify({
+        type: "response.failed",
+        response: {
+          id: "resp_claude_context",
+          status: "failed",
+          error: {
+            code: "context_length_exceeded",
+            type: "invalid_request_error",
+            message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+          },
+        },
+      })}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n"), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withTracevaneServer(ctx, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.5",
+          max_tokens: 128,
+          stream: true,
+          system: [{ type: "text", text: "You are concise.", cache_control: { type: "ephemeral" } }],
+          tools: [{
+            name: "gateway_probe",
+            description: "probe",
+            input_schema: { type: "object", properties: { value: { type: "string" } } },
+          }],
+          tool_choice: { type: "auto" },
+          messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        },
+      });
+      assert.equal(response.status, 400);
+      assert.equal(response.body.error.code, "context_length_exceeded");
+      assert.match(response.body.error.message, /context window/);
+      assert.equal(response.body.error.decision.provider.id, "codex-claude-context");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[0].accept, "text/event-stream");
+  assert.equal(upstreamCalls[0].anthropicVersion, null);
+  const upstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.equal(upstreamBody.model, "gpt-5.5");
+  assert.equal(upstreamBody.stream, true);
+  assert.equal(upstreamBody.store, false);
+  assert.ok(Array.isArray(upstreamBody.tools));
+  assert.ok(Array.isArray(upstreamBody.input));
+
+  const provider = ctx.services.modelGateway.listProviders().providers.find((item) => item.id === "codex-claude-context");
+  assert.equal(provider.health.circuitState, "closed");
+  assert.equal(provider.health.consecutiveFailures, 0);
+  assert.equal(provider.health.lastError, null);
+  const runtime = ctx.services.modelGateway.getRuntime();
+  const entry = runtime.runtime.requestLog.find((item) => item.errorCode === "context_length_exceeded");
+  assert.equal(entry.statusCode, 400);
+  assert.equal(entry.routeId, "anthropic_messages");
+  assert.equal(entry.providerId, "codex-claude-context");
+});
+
 test("model gateway returns structured unsupported for Codex account realtime websocket routes", async () => {
   const root = makeTempRoot();
   const ctx = createTracevaneContext({
@@ -6420,6 +6583,7 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     assert.equal(claude.ok, true);
     assert.equal(opencode.ok, true);
     assert.equal(calls[0].body.model, "glm-5.2");
+    assert.equal(calls[0].body.stream, true);
     assert.ok(Array.isArray(calls[0].body.tools));
     assert.equal(calls[0].body.tools[0].name, "gateway_smoke_tool");
     assert.deepEqual(calls[0].body.tool_choice, { type: "auto" });

@@ -280,7 +280,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
           failChatStream(state, res, error);
           throw new ModelGatewayStreamAdapterError(error);
         }
-        throw new Error(error.message);
+        throw new ModelGatewayStreamAdapterError(error);
       }
       const response = isRecord(event.json.response) ? event.json.response : event.json;
       const id = stringOrNull(response.id);
@@ -426,7 +426,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           failAnthropicStream(state, res, error);
           throw new ModelGatewayStreamAdapterError(error);
         }
-        throw new Error(error.message);
+        throw new ModelGatewayStreamAdapterError(error);
       }
       const response = isRecord(event.json.response) ? event.json.response : event.json;
       const id = stringOrNull(response.id);

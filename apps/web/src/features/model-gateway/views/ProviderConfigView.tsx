@@ -43,6 +43,7 @@ import {
   MODEL_GATEWAY_API_FORMATS,
   MODEL_GATEWAY_AUTH_STRATEGIES,
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
+  type ModelGatewayAppScope,
   type ModelGatewayApiFormat,
   type ModelGatewayAuthStrategy,
   type ModelGatewayProviderCategory,
@@ -408,6 +409,42 @@ function CfgCard({
   );
 }
 
+const APP_SCOPE_LABEL: Record<ModelGatewayAppScope, string> = {
+  codex: "Codex",
+  "claude-code": "Claude Code",
+  opencode: "OpenCode",
+  openclaw: "OpenClaw",
+};
+
+function healthLabel(health: ModelGatewayProviderView["health"] | undefined): { label: string; className: string } {
+  if (!health) return { label: "未知", className: "text-muted" };
+  if (health.circuitState === "open") return { label: "熔断", className: "text-red" };
+  if (health.lastError || health.consecutiveFailures > 0) return { label: "异常", className: "text-amber" };
+  if (health.lastSuccessAt) return { label: "最近通过", className: "text-green" };
+  return { label: "未测试", className: "text-muted" };
+}
+
+function providerConfigWarnings(provider: ModelGatewayProviderView | null): string[] {
+  if (!provider) return [];
+  const warnings: string[] = [];
+  if (!provider.enabled) warnings.push("Provider 已停用，不参与路由解析。");
+  if (provider.authStrategy !== "none" && provider.secret && !provider.secret.hasSecret) {
+    warnings.push("需要上游密钥，但当前未设置。");
+  }
+  for (const model of provider.models?.models ?? []) {
+    const id = model.id.toLowerCase();
+    if (id === "gpt-5.5" && model.contextWindow != null && model.contextWindow < 1_000_000) {
+      warnings.push("gpt-5.5 上下文低于 1M，可能是旧缓存或把长上下文计费阈值误写成窗口。");
+    }
+    if (id === "gpt-5.5" && model.pricing?.longContextInputThreshold === model.contextWindow) {
+      warnings.push("gpt-5.5 的长上下文计费阈值不应等于 contextWindow。");
+    }
+  }
+  const endpointOpen = (provider.endpointProfiles ?? []).filter((ep) => ep.health?.circuitState === "open");
+  if (endpointOpen.length) warnings.push(`${endpointOpen.length} 个 endpoint profile 处于熔断状态。`);
+  return warnings;
+}
+
 // --- Main view -------------------------------------------------------------
 
 export function ProviderConfigView({ goToView, selectedProvider, createMode }: ModelGatewayViewProps) {
@@ -543,6 +580,13 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   }
 
   const saving = createMutation.isPending || updateMutation.isPending;
+  const activeRoutesForProvider = React.useMemo(() => {
+    if (!provider) return [];
+    return (providersQuery.data?.activeRoutes ?? []).filter(
+      (route) => route.resolvedProviderId === provider.id || route.selectedProviderId === provider.id,
+    );
+  }, [provider, providersQuery.data?.activeRoutes]);
+  const configWarnings = React.useMemo(() => providerConfigWarnings(provider), [provider]);
 
   // Create-mode step 1: protocol-preset chooser, shown before the full form.
   // Edit mode skips this entirely.
@@ -694,6 +738,77 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   };
 
   // --- Section bodies ------------------------------------------------------
+
+  const diagnosticsSection = !isCreate && provider ? (
+    <CfgCard icon={ScanSearch} title="路由与诊断" sub="实际 Agent 路径，不等同于 Provider 自测">
+      <div className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-ink">Provider smoke</span>
+          <span className="text-muted">只验证该服务商默认协议端点是否能被调用。</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium text-ink">Active-route smoke</span>
+          <span className="text-muted">按 Codex / Claude Code / OpenCode / OpenClaw 的实际 scope、模型和适配路径发起请求；Claude Code 默认走 streaming smoke。</span>
+        </div>
+      </div>
+
+      {activeRoutesForProvider.length ? (
+        <div className="grid gap-2">
+          {activeRoutesForProvider.map((route) => (
+            <div key={`${route.scope}-${route.routeId}`} className="grid gap-1.5 rounded-sm border border-line bg-panel-2 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-ink-strong">{APP_SCOPE_LABEL[route.scope]}</span>
+                <span className="rounded-full bg-panel-3 px-2 py-0.5 text-xs text-muted">{route.routeId}</span>
+                <span className="rounded-full bg-panel-3 px-2 py-0.5 text-xs text-muted">{route.routeMode ?? "unknown"}</span>
+                {route.resolvedEndpointProfileName && (
+                  <span className="rounded-full bg-panel-3 px-2 py-0.5 text-xs text-muted">{route.resolvedEndpointProfileName}</span>
+                )}
+              </div>
+              <p className="break-all text-sm text-muted">
+                {route.resolvedModel ?? "未解析模型"} · {route.resolvedApiFormat ?? "unknown"} · {route.upstreamUrl ?? "无 upstream"}
+              </p>
+              {route.warning && (
+                <p className="flex items-start gap-1.5 text-sm text-amber">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  {route.warning}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">当前没有任何 active route 解析到该 Provider。Provider 自测通过也不代表客户端实际会走这里。</p>
+      )}
+
+      <div className="grid gap-2">
+        <div className="flex flex-wrap gap-2">
+          <span className={cn("rounded-full bg-panel-3 px-2 py-0.5 text-xs", healthLabel(provider.health).className)}>
+            顶层 health：{healthLabel(provider.health).label}
+          </span>
+          {(provider.endpointProfiles ?? []).map((ep) => {
+            const label = healthLabel(ep.health);
+            return (
+              <span key={ep.id} className={cn("rounded-full bg-panel-3 px-2 py-0.5 text-xs", label.className)}>
+                {ep.name}：{label.label}
+              </span>
+            );
+          })}
+        </div>
+        {configWarnings.length ? (
+          <div className="grid gap-1 rounded-sm border border-amber/30 bg-amber-soft/40 p-3">
+            {configWarnings.map((warning) => (
+              <p key={warning} className="flex items-start gap-1.5 text-sm text-amber">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                {warning}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">未发现明显配置风险；真实可用性仍以 active-route smoke 和客户端实调为准。</p>
+        )}
+      </div>
+    </CfgCard>
+  ) : null;
 
   const basicSection = (
     <CfgCard icon={Info} title="基础" sub="必填">
@@ -983,6 +1098,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
           <>
             {basicSection}
             {secretCard}
+            {diagnosticsSection}
           </>
         )}
         {section === "endpoint" && endpointSection}
