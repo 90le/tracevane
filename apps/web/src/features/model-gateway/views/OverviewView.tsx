@@ -398,7 +398,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             </span>
           </div>
           <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">Agent scope</span>
+            <span className="text-xs text-subtle">客户端 scope</span>
             <div className="mt-1 text-xl font-semibold text-ink-strong">
               {activeRoutes.length}
             </div>
@@ -412,11 +412,11 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         </div>
       </section>
 
-      {/* Agent cockpit — primary decision surface for real CLI/agent usage. */}
+      {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. */}
       <Panel className="overflow-hidden border-primary-line/40 bg-panel-2">
         <PanelHead
-          title="Agent Cockpit"
-          sub="每个 Agent 的真实路由、模型预算、客户端配置与最近检查"
+          title="路由 Cockpit"
+          sub="每个客户端 scope 的真实路由、模型预算、配置状态与最近检查"
           action={
             <span className="flex flex-wrap justify-end gap-2">
               <Button
@@ -424,11 +424,11 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                 size="sm"
                 onClick={() => void smokeAllActiveRoutes()}
                 disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
-                aria-label="检查全部 Agent 当前路由"
+                aria-label="检查全部客户端当前路由"
                 title="按 Codex / Claude Code / OpenCode / OpenClaw scope 逐条检查真实路由"
               >
                 {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
-                检查全部 Agent
+                检查全部路由
               </Button>
               <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
                 <Terminal className="size-3.5" />
@@ -537,7 +537,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         </div>
       </Panel>
 
-      {/* Current routes — collapsed detail because Agent Cockpit is the primary surface. */}
+      {/* Current routes — collapsed detail because Route Cockpit is the primary surface. */}
       <details className="rounded-md border border-line bg-panel shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-3 border-b border-line px-4 py-3 outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]">
           <span className="min-w-0 flex-1">
@@ -683,11 +683,11 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           )}
         </Panel>
 
-        {/* App connection risk summary — management lives in the Apps view; Agent Cockpit owns runtime readiness. */}
+        {/* App connection risk summary — management lives in the Apps view; runtime readiness belongs to CLI Agents. */}
         <Panel>
           <PanelHead
             title="客户端接入风险"
-            sub="配置写入 / 回滚入口，运行时 readiness 看 Agent Cockpit"
+            sub="配置写入 / 回滚入口；运行中状态看 CLI Agents"
             action={
               <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
                 管理
@@ -704,7 +704,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   {configuredConnectionCount}/{appConnections.length}
                 </div>
                 <span className="text-xs text-muted">
-                  本地客户端配置均已应用；实际路由和 smoke 状态以 Agent Cockpit 为准。
+                  本地客户端配置均已应用；实际路由以路由 Cockpit 为准，进程运行态看 CLI Agents。
                 </span>
               </div>
               <Button variant="outline" size="sm" onClick={() => goToView("apps")}>

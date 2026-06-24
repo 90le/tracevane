@@ -1,6 +1,7 @@
 import { apiRequest } from "./client";
 import type {
   AgentDetailPayload,
+  AgentRuntimeRunsResponse,
   AgentsSummaryPayload,
 } from "../../features/cli-agents/types";
 
@@ -23,6 +24,13 @@ export function getAgentsSummary(
   signal?: AbortSignal,
 ): Promise<AgentsSummaryPayload> {
   return apiRequest<AgentsSummaryPayload>(BASE, { signal });
+}
+
+/** GET /api/agents/runs — unified Agent Run projection across Terminal, IM and Chat. */
+export function getAgentRuntimeRuns(
+  signal?: AbortSignal,
+): Promise<AgentRuntimeRunsResponse> {
+  return apiRequest<AgentRuntimeRunsResponse>(`${BASE}/runs`, { signal });
 }
 
 /**

@@ -1,9 +1,10 @@
 import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
-import { getAgentDetail, getAgentsSummary } from "../api/agents";
+import { getAgentDetail, getAgentRuntimeRuns, getAgentsSummary } from "../api/agents";
 import type { ApiError } from "../api/errors";
 import type {
   AgentDetailPayload,
+  AgentRuntimeRunsResponse,
   AgentsSummaryPayload,
 } from "../../features/cli-agents/types";
 
@@ -19,6 +20,7 @@ import type {
 export const agentsKeys = {
   all: ["cli-agents", "agents"] as const,
   summary: () => ["cli-agents", "agents", "summary"] as const,
+  runtimeRuns: () => ["cli-agents", "agents", "runs"] as const,
   detail: (id: string) => ["cli-agents", "agents", "detail", id] as const,
 };
 
@@ -48,6 +50,15 @@ export function useAgentDetailQuery(
     queryKey: agentsKeys.detail(id ?? "__none__"),
     queryFn: ({ signal }) => getAgentDetail(id as string, signal),
     enabled: id != null && id.length > 0,
+    ...options,
+  });
+}
+
+/** Unified Agent Run projection (`/api/agents/runs`). */
+export function useAgentRuntimeRunsQuery(options?: QueryOpts<AgentRuntimeRunsResponse>) {
+  return useQuery<AgentRuntimeRunsResponse, ApiError>({
+    queryKey: agentsKeys.runtimeRuns(),
+    queryFn: ({ signal }) => getAgentRuntimeRuns(signal),
     ...options,
   });
 }

@@ -4,6 +4,7 @@ import {
   Activity,
   Bot,
   LayoutDashboard,
+  ListChecks,
   SquareTerminal,
   Terminal,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import {
   EvidenceView,
   OverviewView,
   PersonasView,
+  RunsView,
   SessionsView,
 } from "./views";
 
@@ -31,10 +33,11 @@ const TABS: ReadonlyArray<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
+  { view: "runs", label: "运行中", icon: ListChecks },
   { view: "personas", label: "Persona", icon: Bot },
   { view: "cli", label: "CLI", icon: Terminal },
   { view: "sessions", label: "终端会话", icon: SquareTerminal },
-  { view: "evidence", label: "运行证据", icon: Activity },
+  { view: "evidence", label: "原始证据", icon: Activity },
 ];
 
 const VIEW_COMPONENTS: Record<
@@ -42,6 +45,7 @@ const VIEW_COMPONENTS: Record<
   (props: CliAgentsViewProps) => React.JSX.Element
 > = {
   overview: OverviewView,
+  runs: RunsView,
   personas: PersonasView,
   cli: CliRuntimeView,
   sessions: SessionsView,
@@ -55,7 +59,7 @@ function isCliAgentsView(value: string | null): value is CliAgentsView {
 /**
  * CLI Agent Workbench (`/cli-agents`) page. Owns the primary `viewbar` tabs and
  * a URL-driven view state machine over the `data-view` set
- * (`overview|personas|cli|sessions|evidence`). The active view and the persona
+ * (`overview|runs|personas|cli|sessions|evidence`). The active view and the persona
  * deep-link (`?agent=`) come entirely from the search params, so views are
  * deep-linkable and browser back/forward work. Content lives in `./views`.
  */

@@ -23,6 +23,11 @@ export type {
   AgentSessionStats,
   AgentSessionSummary,
   AgentDocumentSummary,
+  AgentRuntimeRunSource,
+  AgentRuntimeRunStatus,
+  AgentRuntimeRunEvidenceRef,
+  AgentRuntimeRunSummary,
+  AgentRuntimeRunsResponse,
 } from "../../../../../types/agents";
 
 // --- Terminal (CLI binaries + persisted sessions) --------------------------
@@ -45,14 +50,16 @@ export type {
 
 /**
  * The `data-view` set for the workbench, driven from the URL (`?view=`):
- *  - overview  — runtime roll-up across all sources
+ *  - overview  — concise readiness roll-up
+ *  - runs      — unified runtime run list across terminal / IM / chat sources
  *  - personas  — persona/agent list + detail (read-only; routing deep-links out)
  *  - cli       — Codex / Claude Code / OpenCode CLI runtime status
  *  - sessions  — persisted terminal sessions + launch / end / delete controls
- *  - evidence  — IM async agent-session + chat-session evidence (read-only)
+ *  - evidence  — raw IM async agent-session + chat-session evidence (read-only)
  */
 export const CLI_AGENTS_VIEWS = [
   "overview",
+  "runs",
   "personas",
   "cli",
   "sessions",

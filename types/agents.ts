@@ -185,12 +185,64 @@ export interface AgentDetailPayload {
   recentSessions: AgentSessionSummary[];
 }
 
+
 export interface AgentsSummaryPayload {
   checkedAt: string;
   count: number;
   defaultAgentId: string | null;
   availableModels: string[];
   agents: AgentSummary[];
+}
+
+
+export type AgentRuntimeRunSource = "terminal" | "im-channel" | "chat";
+
+export type AgentRuntimeRunStatus =
+  | "running"
+  | "idle"
+  | "detached"
+  | "completed"
+  | "failed"
+  | "lost"
+  | "aborted"
+  | "unknown";
+
+export interface AgentRuntimeRunEvidenceRef {
+  kind: "terminal-session" | "im-session" | "chat-session" | "event";
+  label: string;
+  href: string | null;
+}
+
+export interface AgentRuntimeRunSummary {
+  id: string;
+  source: AgentRuntimeRunSource;
+  originId: string;
+  title: string;
+  agentId: string | null;
+  cli: string | null;
+  model: string | null;
+  providerId: string | null;
+  routeScope: string | null;
+  workspace: string | null;
+  status: AgentRuntimeRunStatus;
+  statusLabel: string;
+  startedAt: string | null;
+  updatedAt: string | null;
+  error: string | null;
+  evidenceRefs: AgentRuntimeRunEvidenceRef[];
+}
+
+export interface AgentRuntimeRunsResponse {
+  checkedAt: string;
+  runs: AgentRuntimeRunSummary[];
+  totals: {
+    total: number;
+    running: number;
+    failed: number;
+    terminal: number;
+    imChannel: number;
+    chat: number;
+  };
 }
 
 export interface AgentDocumentPayload {

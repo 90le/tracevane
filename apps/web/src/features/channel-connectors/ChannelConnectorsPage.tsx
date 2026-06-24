@@ -21,9 +21,9 @@ const PRIMARY_TABS: ReadonlyArray<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "bindings", label: "渠道与绑定", icon: PlugZap },
-  { view: "sessions", label: "会话", icon: Terminal },
-  { view: "logs", label: "日志", icon: ScrollText },
+  { view: "bindings", label: "平台绑定", icon: PlugZap },
+  { view: "sessions", label: "IM 会话", icon: Terminal },
+  { view: "logs", label: "投递日志", icon: ScrollText },
 ];
 
 const VIEW_COMPONENTS: Record<

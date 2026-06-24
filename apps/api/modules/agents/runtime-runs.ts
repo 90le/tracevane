@@ -1,0 +1,175 @@
+import type {
+  AgentRuntimeRunStatus,
+  AgentRuntimeRunSummary,
+  AgentRuntimeRunsResponse,
+} from "../../../../types/agents.js";
+import type { ChannelConnectorAgentSessionDriverStatusResponse } from "../../../../types/channel-connectors.js";
+import type { ChatBootstrapPayload, ChatRunState } from "../../../../types/chat.js";
+import type {
+  TerminalSessionDescriptor,
+  TerminalSessionSummaryResponse,
+} from "../../../../types/terminal.js";
+
+function terminalRunStatus(status: TerminalSessionDescriptor["status"]): {
+  status: AgentRuntimeRunStatus;
+  label: string;
+} {
+  switch (status) {
+    case "running":
+      return { status: "running", label: "运行中" };
+    case "detached":
+      return { status: "detached", label: "已分离" };
+    case "completed":
+      return { status: "completed", label: "已完成" };
+    case "failed":
+      return { status: "failed", label: "失败" };
+    case "lost":
+      return { status: "lost", label: "丢失" };
+    default:
+      return { status: "unknown", label: String(status || "未知") };
+  }
+}
+
+function chatRunStatus(state: ChatRunState): { status: AgentRuntimeRunStatus; label: string } {
+  switch (state) {
+    case "running":
+    case "streaming":
+      return { status: "running", label: state === "streaming" ? "流式中" : "运行中" };
+    case "idle":
+      return { status: "idle", label: "空闲" };
+    case "completed":
+      return { status: "completed", label: "已完成" };
+    case "aborted":
+      return { status: "aborted", label: "已中止" };
+    case "error":
+      return { status: "failed", label: "错误" };
+    default:
+      return { status: "unknown", label: "未知" };
+  }
+}
+
+function inferredCliFromText(value: string): string | null {
+  const text = value.toLowerCase();
+  if (text.includes("claude")) return "claude";
+  if (text.includes("codex")) return "codex";
+  if (text.includes("opencode")) return "opencode";
+  if (text.includes("bash")) return "bash";
+  return null;
+}
+
+function sortRun(left: AgentRuntimeRunSummary, right: AgentRuntimeRunSummary): number {
+  const leftTime = Date.parse(left.updatedAt || left.startedAt || "") || 0;
+  const rightTime = Date.parse(right.updatedAt || right.startedAt || "") || 0;
+  return rightTime - leftTime || left.id.localeCompare(right.id);
+}
+
+export function buildAgentRuntimeRunsPayload(input: {
+  checkedAt?: string;
+  terminalSessions?: TerminalSessionSummaryResponse | null;
+  channelSessions?: ChannelConnectorAgentSessionDriverStatusResponse | null;
+  chatBootstrap?: ChatBootstrapPayload | null;
+}): AgentRuntimeRunsResponse {
+  const checkedAt = input.checkedAt ?? new Date().toISOString();
+  const runs: AgentRuntimeRunSummary[] = [];
+
+  for (const session of input.terminalSessions?.sessions ?? []) {
+    const state = terminalRunStatus(session.status);
+    const cli = inferredCliFromText(`${session.title} ${session.profileId ?? ""} ${session.sourceAction}`);
+    runs.push({
+      id: `terminal:${session.sessionId}`,
+      source: "terminal",
+      originId: session.sessionId,
+      title: session.title || session.sessionId,
+      agentId: null,
+      cli,
+      model: null,
+      providerId: null,
+      routeScope: cli,
+      workspace: session.cwd ?? null,
+      status: state.status,
+      statusLabel: state.label,
+      startedAt: session.createdAt,
+      updatedAt: session.lastActiveAt || session.updatedAt,
+      error: session.recentOutputSummary?.lastError ?? null,
+      evidenceRefs: [
+        {
+          kind: "terminal-session",
+          label: session.sessionId,
+          href: `#/cli-agents?view=sessions`,
+        },
+      ],
+    });
+  }
+
+  for (const session of input.channelSessions?.activeSessions ?? []) {
+    const failed = Boolean(session.lastError);
+    const running = session.running > 0;
+    runs.push({
+      id: `im:${session.poolKey || session.sessionId}`,
+      source: "im-channel",
+      originId: session.sessionId || session.poolKey,
+      title: session.sessionId || session.sessionKey,
+      agentId: session.agent,
+      cli: session.agent,
+      model: session.model,
+      providerId: null,
+      routeScope: session.agent,
+      workspace: session.workDir,
+      status: failed ? "failed" : running ? "running" : "idle",
+      statusLabel: failed ? "错误" : running ? "运行中" : "空闲",
+      startedAt: session.createdAt,
+      updatedAt: session.lastUsedAt,
+      error: session.lastError,
+      evidenceRefs: [
+        {
+          kind: "im-session",
+          label: session.bindingId,
+          href: `#/im-channels?view=sessions`,
+        },
+      ],
+    });
+  }
+
+  for (const session of input.chatBootstrap?.sessions ?? []) {
+    const state = chatRunStatus(session.runtime.state);
+    runs.push({
+      id: `chat:${session.key}`,
+      source: "chat",
+      originId: session.key,
+      title: session.derivedTitle || session.label || session.sessionId || session.key,
+      agentId: session.agentId,
+      cli: session.agentId,
+      model: null,
+      providerId: null,
+      routeScope: session.agentId,
+      workspace: null,
+      status: state.status,
+      statusLabel: state.label,
+      startedAt: null,
+      updatedAt: session.runtime.lastEventAt || session.updatedAt,
+      error: session.runtime.lastErrorMessage,
+      evidenceRefs: [
+        {
+          kind: "chat-session",
+          label: session.key,
+          href: `#/chat`,
+        },
+      ],
+    });
+  }
+
+  runs.sort(sortRun);
+
+  return {
+    checkedAt,
+    runs,
+    totals: {
+      total: runs.length,
+      running: runs.filter((run) => run.status === "running").length,
+      failed: runs.filter((run) => run.status === "failed" || run.status === "lost").length,
+      terminal: runs.filter((run) => run.source === "terminal").length,
+      imChannel: runs.filter((run) => run.source === "im-channel").length,
+      chat: runs.filter((run) => run.source === "chat").length,
+    },
+  };
+}
