@@ -121,4 +121,14 @@ test("Channel Connectors deliveries expose global concurrency and queue policy",
   assert.match(sessions, /useManageChannelConnectorsDaemonServiceMutation/);
   assert.match(sessions, /运行中已同步/);
   assert.match(sessions, /已保存，需重启/);
+  assert.match(sessions, /policyNotice/);
+  assert.match(sessions, /已保存并重启 IM 守护；新的并发\/队列策略已写入 daemon 配置/);
+});
+
+test("Channel Connectors deliveries keeps hooks before loading guards", () => {
+  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
+  assert.ok(
+    sessions.indexOf("React.useMemo") < sessions.indexOf("sessionsQuery.isLoading"),
+    "policy hooks must run before loading/error returns to avoid blank screens after query state changes",
+  );
 });

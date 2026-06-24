@@ -118,36 +118,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     | { kind: "kill"; session: ChannelConnectorAgentSessionRuntimeStatus }
   >(null);
   const [evidence, setEvidence] = React.useState<string | null>(null);
-
-  if (sessionsQuery.isLoading || configQuery.isLoading) {
-    return (
-      <div className="grid gap-[18px]" role="status" aria-busy="true">
-        <Skeleton className="h-12 w-full" />
-        <section className="rounded-md border border-line bg-panel shadow-sm">
-          <Skeleton className="h-12 w-full rounded-b-none" />
-          <div className="py-1.5">
-            <SkeletonRow />
-            <SkeletonRow />
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  const loadError = sessionsQuery.error ?? configQuery.error;
-  if (loadError) {
-    return (
-      <ErrorState
-        title="无法加载会话"
-        description={loadError.message}
-        action={
-          <Button variant="outline" size="sm" onClick={() => void sessionsQuery.refetch()}>
-            重试
-          </Button>
-        }
-      />
-    );
-  }
+  const [policyNotice, setPolicyNotice] = React.useState<null | { tone: "ok" | "warn" | "bad"; text: string }>(null);
 
   const data = sessionsQuery.data;
   const config = configQuery.data?.config ?? null;
@@ -186,8 +157,39 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         : { variant: "warn" as const, label: "已保存，需重启" };
   const pending = manageMutation.isPending || saveConfigMutation.isPending || restartDaemonMutation.isPending;
 
+  if (sessionsQuery.isLoading || configQuery.isLoading) {
+    return (
+      <div className="grid gap-[18px]" role="status" aria-busy="true">
+        <Skeleton className="h-12 w-full" />
+        <section className="rounded-md border border-line bg-panel shadow-sm">
+          <Skeleton className="h-12 w-full rounded-b-none" />
+          <div className="py-1.5">
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const loadError = sessionsQuery.error ?? configQuery.error;
+  if (loadError) {
+    return (
+      <ErrorState
+        title="无法加载会话"
+        description={loadError.message}
+        action={
+          <Button variant="outline" size="sm" onClick={() => void sessionsQuery.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
+
   const savePolicy = (restartAfterSave = false) => {
     if (!config) return;
+    setPolicyNotice({ tone: "warn", text: restartAfterSave ? "正在保存策略并重启 IM 守护……" : "正在保存策略……" });
     saveConfigMutation.mutate(
       {
         config: {
@@ -202,24 +204,33 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           setPolicyDraft(savedPolicy);
           void configQuery.refetch();
           if (restartAfterSave) {
+            setPolicyNotice({ tone: "warn", text: "策略已保存，正在重启 IM 守护并等待运行态刷新……" });
             restartDaemonMutation.mutate(
               { action: "restart", apply: true, runCommands: true },
               {
                 onSuccess: () => {
+                  setPolicyNotice({ tone: "ok", text: "已保存并重启 IM 守护；新的并发/队列策略已写入 daemon 配置。" });
                   toast.success("已保存并重启 IM 守护", { description: "新的全局并发/队列策略已写入 daemon 配置。" });
                   void sessionsQuery.refetch();
                   window.setTimeout(() => {
                     void sessionsQuery.refetch();
                   }, 1200);
                 },
-                onError: (error) => toast.error("保存成功，但重启失败", { description: error.message }),
+                onError: (error) => {
+                  setPolicyNotice({ tone: "bad", text: `策略已保存，但重启失败：${error.message}` });
+                  toast.error("保存成功，但重启失败", { description: error.message });
+                },
               },
             );
             return;
           }
+          setPolicyNotice({ tone: "ok", text: "策略已保存；点击“保存并重启”可立即让运行中 daemon 生效。" });
           toast.success("已保存 IM Agent 并发策略", { description: "点击“保存并重启”可立即让运行中 daemon 生效。" });
         },
-        onError: (error) => toast.error("保存并发策略失败", { description: error.message }),
+        onError: (error) => {
+          setPolicyNotice({ tone: "bad", text: `保存并发策略失败：${error.message}` });
+          toast.error("保存并发策略失败", { description: error.message });
+        },
       },
     );
   };
@@ -296,6 +307,20 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
             <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
           </label>
         </div>
+        {policyNotice && (
+          <div
+            className={
+              policyNotice.tone === "ok"
+                ? "border-t border-line bg-green-soft px-4 py-2.5 text-sm text-green"
+                : policyNotice.tone === "bad"
+                  ? "border-t border-line bg-red-soft px-4 py-2.5 text-sm text-red"
+                  : "border-t border-line bg-amber-soft px-4 py-2.5 text-sm text-amber"
+            }
+            role="status"
+          >
+            {policyNotice.text}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-sm text-muted">
           <span>当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；运行策略 {policy?.maxConcurrentTurns ?? "—"} 并发 / {policy?.busyStrategy === "queue" ? "队列" : "拒绝"}。</span>
           <span className="flex gap-2">
