@@ -5,11 +5,21 @@ import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
-import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/design/ui/sheet";
 import { toast } from "@/design/ui/sonner";
 
 import { useSaveChannelConnectorsConfigMutation } from "@/lib/query/channel-connectors";
-import { useModelGatewayModelsQuery, useModelGatewayProvidersQuery } from "@/lib/query/model-gateway";
+import {
+  useModelGatewayModelsQuery,
+  useModelGatewayProvidersQuery,
+} from "@/lib/query/model-gateway";
 import type {
   ChannelConnectorsNativeConfig,
   ChannelConnectorAgentProfile,
@@ -95,16 +105,36 @@ function createBindingId(platform: ChannelConnectorPlatformId): string {
   return `${platform}-${Date.now().toString(36)}`;
 }
 
-function defaultPlatform(platforms: ChannelConnectorPlatformId[]): ChannelConnectorPlatformId {
+function accountIdentityKey(
+  binding: Pick<
+    ChannelConnectorPlatformBinding,
+    "platform" | "accountId" | "botId"
+  >,
+): string {
+  return [binding.platform, binding.accountId || "", binding.botId || ""].join(
+    "::",
+  );
+}
+
+function defaultPlatform(
+  platforms: ChannelConnectorPlatformId[],
+): ChannelConnectorPlatformId {
   return platforms.includes("feishu") ? "feishu" : platforms[0] || "octo";
 }
 
-function readMeta(binding: ChannelConnectorPlatformBinding | null, key: string): string {
+function readMeta(
+  binding: ChannelConnectorPlatformBinding | null,
+  key: string,
+): string {
   const value = binding?.metadata?.[key];
   return typeof value === "string" ? value : "";
 }
 
-function readMetaBool(binding: ChannelConnectorPlatformBinding | null, key: string, fallback: boolean): boolean {
+function readMetaBool(
+  binding: ChannelConnectorPlatformBinding | null,
+  key: string,
+  fallback: boolean,
+): boolean {
   const value = binding?.metadata?.[key];
   return typeof value === "boolean" ? value : fallback;
 }
@@ -126,11 +156,20 @@ function parseMetadata(value: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function stripKeys(metadata: Record<string, unknown>, keys: Set<string>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !keys.has(key)));
+function stripKeys(
+  metadata: Record<string, unknown>,
+  keys: Set<string>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => !keys.has(key)),
+  );
 }
 
-function mergeString(target: Record<string, unknown>, key: string, value: string) {
+function mergeString(
+  target: Record<string, unknown>,
+  key: string,
+  value: string,
+) {
   const trimmed = value.trim();
   if (trimmed) target[key] = trimmed;
 }
@@ -158,8 +197,13 @@ function toAccountState(
     corpSecret: readMeta(binding, "corpSecret"),
     agentId: readMeta(binding, "agentId"),
     token: readMeta(binding, "token"),
-    encodingAesKey: readMeta(binding, "encodingAesKey") || readMeta(binding, "aesKey"),
-    metadataJson: JSON.stringify(stripKeys(binding?.metadata ?? {}, ACCOUNT_METADATA_KEYS), null, 2),
+    encodingAesKey:
+      readMeta(binding, "encodingAesKey") || readMeta(binding, "aesKey"),
+    metadataJson: JSON.stringify(
+      stripKeys(binding?.metadata ?? {}, ACCOUNT_METADATA_KEYS),
+      null,
+      2,
+    ),
     advancedOpen: false,
   };
 }
@@ -170,11 +214,18 @@ function toRouteState(
   profile: ChannelConnectorAgentProfile | undefined,
 ): RouteState {
   const rawAgent = readMeta(binding, "routeAgent") || profile?.agent || "codex";
-  const routeAgent = (CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(rawAgent)
+  const routeAgent = (
+    CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]
+  ).includes(rawAgent)
     ? (rawAgent as ChannelConnectorAgentId)
     : "codex";
-  const rawPermissionMode = readMeta(binding, "routePermissionMode") || profile?.permissionMode || "suggest";
-  const routePermissionMode = (["suggest", "read-only", "auto-edit", "full-auto", "plan", "yolo"] as const).includes(rawPermissionMode as ChannelConnectorPermissionMode)
+  const rawPermissionMode =
+    readMeta(binding, "routePermissionMode") ||
+    profile?.permissionMode ||
+    "suggest";
+  const routePermissionMode = (
+    ["suggest", "read-only", "auto-edit", "full-auto", "plan", "yolo"] as const
+  ).includes(rawPermissionMode as ChannelConnectorPermissionMode)
     ? (rawPermissionMode as ChannelConnectorPermissionMode)
     : "suggest";
   return {
@@ -196,7 +247,15 @@ function toRouteState(
   };
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="grid gap-1.5">
       <span className="text-sm font-medium text-ink-strong">{label}</span>
@@ -235,7 +294,15 @@ function SelectField({
   );
 }
 
-function FormSection({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+function FormSection({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="grid gap-3 rounded-sm border border-line bg-panel-2 p-3">
       <div>
@@ -279,32 +346,82 @@ function PlatformCredentialFields({
   if (state.platform === "feishu") {
     return (
       <>
-        <FormSection title="应用凭据" sub="用于 tenant_access_token 与发送能力；保存后敏感值只显示 [redacted]。">
+        <FormSection
+          title="应用凭据"
+          sub="用于 tenant_access_token 与发送能力；保存后敏感值只显示 [redacted]。"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="App ID"><Input value={state.appId} onChange={(e) => patch({ appId: e.target.value })} /></Field>
-            <Field label="App Secret"><Input value={state.appSecret} onChange={(e) => patch({ appSecret: e.target.value })} /></Field>
+            <Field label="App ID">
+              <Input
+                value={state.appId}
+                onChange={(e) => patch({ appId: e.target.value })}
+              />
+            </Field>
+            <Field label="App Secret">
+              <Input
+                value={state.appSecret}
+                onChange={(e) => patch({ appSecret: e.target.value })}
+              />
+            </Field>
           </div>
           <Field label="Bot ID" hint="可选；没有独立 bot 时可留空。">
-            <Input value={state.botId} onChange={(e) => patch({ botId: e.target.value })} />
+            <Input
+              value={state.botId}
+              onChange={(e) => patch({ botId: e.target.value })}
+            />
           </Field>
         </FormSection>
-        <FormSection title="事件回调" sub="回调 URL 由守护服务提供；这里保存飞书校验字段。">
+        <FormSection
+          title="事件回调"
+          sub="回调 URL 由守护服务提供；这里保存飞书校验字段。"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Verification Token"><Input value={state.verificationToken} onChange={(e) => patch({ verificationToken: e.target.value })} /></Field>
-            <Field label="Encrypt Key"><Input value={state.encryptKey} onChange={(e) => patch({ encryptKey: e.target.value })} /></Field>
+            <Field label="Verification Token">
+              <Input
+                value={state.verificationToken}
+                onChange={(e) => patch({ verificationToken: e.target.value })}
+              />
+            </Field>
+            <Field label="Encrypt Key">
+              <Input
+                value={state.encryptKey}
+                onChange={(e) => patch({ encryptKey: e.target.value })}
+              />
+            </Field>
           </div>
-          <div className="rounded-sm border border-line bg-panel px-3 py-2 text-sm text-muted">Callback URL：由守护诊断页展示和复制。</div>
+          <div className="rounded-sm border border-line bg-panel px-3 py-2 text-sm text-muted">
+            Callback URL：由守护诊断页展示和复制。
+          </div>
         </FormSection>
       </>
     );
   }
   if (state.platform === "octo") {
     return (
-      <FormSection title="连接" sub="Octo 当前有 verified register transport smoke。">
-        <Field label="API URL"><Input value={state.apiUrl} onChange={(e) => patch({ apiUrl: e.target.value })} placeholder="https://..." /></Field>
+      <FormSection
+        title="连接"
+        sub="Octo 当前有 verified register transport smoke。"
+      >
+        <Field label="API URL">
+          <Input
+            value={state.apiUrl}
+            onChange={(e) => patch({ apiUrl: e.target.value })}
+            placeholder="https://..."
+          />
+        </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Bot Token"><Input value={state.botToken} onChange={(e) => patch({ botToken: e.target.value })} /></Field>
-          <Field label="WebSocket URL" hint="可选"><Input value={state.wsUrl} onChange={(e) => patch({ wsUrl: e.target.value })} /></Field>
+          <Field label="Bot Token">
+            <Input
+              value={state.botToken}
+              onChange={(e) => patch({ botToken: e.target.value })}
+            />
+          </Field>
+          <Field label="WebSocket URL" hint="可选">
+            <Input
+              value={state.wsUrl}
+              onChange={(e) => patch({ wsUrl: e.target.value })}
+            />
+          </Field>
         </div>
       </FormSection>
     );
@@ -312,40 +429,87 @@ function PlatformCredentialFields({
   if (state.platform === "wecom") {
     return (
       <>
-        <FormSection title="应用凭据" sub="WeCom 字段模板已提供；真实 smoke 需等待后端 adapter 验证。">
+        <FormSection
+          title="应用凭据"
+          sub="WeCom 字段模板已提供；真实 smoke 需等待后端 adapter 验证。"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Corp ID"><Input value={state.corpId} onChange={(e) => patch({ corpId: e.target.value })} /></Field>
-            <Field label="Agent ID"><Input value={state.agentId} onChange={(e) => patch({ agentId: e.target.value })} /></Field>
+            <Field label="Corp ID">
+              <Input
+                value={state.corpId}
+                onChange={(e) => patch({ corpId: e.target.value })}
+              />
+            </Field>
+            <Field label="Agent ID">
+              <Input
+                value={state.agentId}
+                onChange={(e) => patch({ agentId: e.target.value })}
+              />
+            </Field>
           </div>
-          <Field label="Secret"><Input value={state.corpSecret} onChange={(e) => patch({ corpSecret: e.target.value })} /></Field>
+          <Field label="Secret">
+            <Input
+              value={state.corpSecret}
+              onChange={(e) => patch({ corpSecret: e.target.value })}
+            />
+          </Field>
         </FormSection>
-        <FormSection title="事件回调" sub="保存 Token / EncodingAESKey；当前不声明测试可用。">
+        <FormSection
+          title="事件回调"
+          sub="保存 Token / EncodingAESKey；当前不声明测试可用。"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Token"><Input value={state.token} onChange={(e) => patch({ token: e.target.value })} /></Field>
-            <Field label="EncodingAESKey"><Input value={state.encodingAesKey} onChange={(e) => patch({ encodingAesKey: e.target.value })} /></Field>
+            <Field label="Token">
+              <Input
+                value={state.token}
+                onChange={(e) => patch({ token: e.target.value })}
+              />
+            </Field>
+            <Field label="EncodingAESKey">
+              <Input
+                value={state.encodingAesKey}
+                onChange={(e) => patch({ encodingAesKey: e.target.value })}
+              />
+            </Field>
           </div>
         </FormSection>
       </>
     );
   }
   return (
-    <FormSection title="未验证平台" sub="该平台暂无 verified adapter/smoke；可保存为停用草稿，但不要假装已可用。">
+    <FormSection
+      title="未验证平台"
+      sub="该平台暂无 verified adapter/smoke；可保存为停用草稿，但不要假装已可用。"
+    >
       <div className="rounded-sm border border-amber bg-amber-soft p-3 text-sm text-amber">
-        {state.platform} 目前未接入可验证字段模板。请保持停用，等待 adapter 完成。
+        {state.platform} 目前未接入可验证字段模板。请保持停用，等待 adapter
+        完成。
       </div>
     </FormSection>
   );
 }
 
-function modelChoicesFromProviders(providers: Array<{ enabled?: boolean; id: string; models?: { models?: Array<{ id: string; label?: string; aliases?: string[] }> } }>) {
-  const byId = new Map<string, { id: string; display_name: string; providerIds: string[] }>();
+function modelChoicesFromProviders(
+  providers: Array<{
+    enabled?: boolean;
+    id: string;
+    models?: {
+      models?: Array<{ id: string; label?: string; aliases?: string[] }>;
+    };
+  }>,
+) {
+  const byId = new Map<
+    string,
+    { id: string; display_name: string; providerIds: string[] }
+  >();
   for (const provider of providers) {
     if (provider.enabled === false) continue;
     for (const model of provider.models?.models ?? []) {
       if (!model.id) continue;
       const existing = byId.get(model.id);
       if (existing) {
-        if (!existing.providerIds.includes(provider.id)) existing.providerIds.push(provider.id);
+        if (!existing.providerIds.includes(provider.id))
+          existing.providerIds.push(provider.id);
       } else {
         byId.set(model.id, {
           id: model.id,
@@ -355,14 +519,21 @@ function modelChoicesFromProviders(providers: Array<{ enabled?: boolean; id: str
       }
       for (const alias of model.aliases ?? []) {
         if (!alias || byId.has(alias)) continue;
-        byId.set(alias, { id: alias, display_name: `${alias} → ${model.id}`, providerIds: [provider.id] });
+        byId.set(alias, {
+          id: alias,
+          display_name: `${alias} → ${model.id}`,
+          providerIds: [provider.id],
+        });
       }
     }
   }
   return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function buildAccountMetadata(binding: ChannelConnectorPlatformBinding | null, state: AccountState) {
+function buildAccountMetadata(
+  binding: ChannelConnectorPlatformBinding | null,
+  state: AccountState,
+) {
   const base = stripKeys(binding?.metadata ?? {}, ACCOUNT_METADATA_KEYS);
   const advanced = parseMetadata(state.metadataJson);
   const next = { ...base, ...advanced };
@@ -381,7 +552,10 @@ function buildAccountMetadata(binding: ChannelConnectorPlatformBinding | null, s
   return next;
 }
 
-function buildRouteMetadata(binding: ChannelConnectorPlatformBinding | null, state: RouteState) {
+function buildRouteMetadata(
+  binding: ChannelConnectorPlatformBinding | null,
+  state: RouteState,
+) {
   const next = stripKeys(binding?.metadata ?? {}, ROUTE_METADATA_KEYS);
   next.peerKind = state.peerKind;
   next.peerId = state.peerId.trim() || "*";
@@ -412,7 +586,9 @@ function useSaveBinding({
   const save = React.useCallback(
     (nextBinding: ChannelConnectorPlatformBinding, label: string) => {
       if (!config) return;
-      const exists = config.platformBindings.some((item) => item.id === nextBinding.id);
+      const exists = config.platformBindings.some(
+        (item) => item.id === nextBinding.id,
+      );
       if (mode === "create" && exists) {
         toast.error("绑定 ID 已存在", { description: nextBinding.id });
         return;
@@ -423,17 +599,22 @@ function useSaveBinding({
             ...config,
             updatedAt: new Date().toISOString(),
             platformBindings: binding
-              ? config.platformBindings.map((item) => (item.id === binding.id ? nextBinding : item))
+              ? config.platformBindings.map((item) =>
+                  item.id === binding.id ? nextBinding : item,
+                )
               : [...config.platformBindings, nextBinding],
           },
         },
         {
           onSuccess: (result) => {
-            toast.success(label, { description: `更新于 ${new Date(result.config.updatedAt).toLocaleString()}` });
+            toast.success(label, {
+              description: `更新于 ${new Date(result.config.updatedAt).toLocaleString()}`,
+            });
             onSaved?.();
             onOpenChange(false);
           },
-          onError: (error) => toast.error("保存失败", { description: error.message }),
+          onError: (error) =>
+            toast.error("保存失败", { description: error.message }),
         },
       );
     },
@@ -461,14 +642,23 @@ export function AccountEditor({
 }) {
   const mode: EditorMode = binding ? "edit" : "create";
   const [state, setState] = React.useState<AccountState | null>(null);
-  const { save, pending } = useSaveBinding({ config, binding, mode, onSaved, onOpenChange });
+  const { save, pending: createPending } = useSaveBinding({
+    config,
+    binding,
+    mode,
+    onSaved,
+    onOpenChange,
+  });
+  const accountSaveMutation = useSaveChannelConnectorsConfigMutation();
+  const pending = createPending || accountSaveMutation.isPending;
 
   React.useEffect(() => {
     if (open) setState(toAccountState(binding, supportedPlatforms));
   }, [binding, open, supportedPlatforms]);
 
   if (!state || !config) return null;
-  const patch = (next: Partial<AccountState>) => setState((prev) => (prev ? { ...prev, ...next } : prev));
+  const patch = (next: Partial<AccountState>) =>
+    setState((prev) => (prev ? { ...prev, ...next } : prev));
   const canSmoke = state.platform === "feishu" || state.platform === "octo";
 
   const handleSave = () => {
@@ -477,6 +667,53 @@ export function AccountEditor({
       return;
     }
     try {
+      const nextAccount = {
+        platform: state.platform,
+        accountId: state.accountId.trim(),
+        botId: state.botId.trim() || null,
+      };
+      if (mode === "edit" && binding && config) {
+        const originalKey = accountIdentityKey(binding);
+        const updatedBindings = config.platformBindings.map((item) => {
+          if (accountIdentityKey(item) !== originalKey) return item;
+          return {
+            ...item,
+            platform: nextAccount.platform,
+            displayName:
+              state.displayName.trim() || item.displayName || item.id,
+            enabled: state.enabled,
+            accountId: nextAccount.accountId,
+            botId: nextAccount.botId,
+            metadata: buildAccountMetadata(item, state),
+          };
+        });
+        accountSaveMutation.mutate(
+          {
+            config: {
+              ...config,
+              updatedAt: new Date().toISOString(),
+              platformBindings: updatedBindings,
+            },
+          },
+          {
+            onSuccess: (result) => {
+              const count = updatedBindings.filter(
+                (item) =>
+                  accountIdentityKey(item) === accountIdentityKey(nextAccount),
+              ).length;
+              toast.success("已保存平台账号", {
+                description: `已同步 ${count} 条绑定路由 · 更新于 ${new Date(result.config.updatedAt).toLocaleString()}`,
+              });
+              onSaved?.();
+              onOpenChange(false);
+            },
+            onError: (error) =>
+              toast.error("保存失败", { description: error.message }),
+          },
+        );
+        return;
+      }
+
       const metadata = buildAccountMetadata(binding, state);
       const nextBinding: ChannelConnectorPlatformBinding = {
         ...(binding ?? {
@@ -495,48 +732,89 @@ export function AccountEditor({
         platform: state.platform,
         displayName: state.displayName.trim() || state.id.trim(),
         enabled: state.enabled,
-        accountId: state.accountId.trim(),
-        botId: state.botId.trim() || null,
+        accountId: nextAccount.accountId,
+        botId: nextAccount.botId,
         metadata,
       };
-      save(nextBinding, mode === "create" ? "已新建平台账号" : "已保存平台账号");
+      save(nextBinding, "已新建平台账号");
     } catch (error) {
-      toast.error("高级 metadata JSON 无效", { description: error instanceof Error ? error.message : String(error) });
+      toast.error("高级 metadata JSON 无效", {
+        description: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={(value) => !pending && onOpenChange(value)}>
+    <Sheet
+      open={open}
+      onOpenChange={(value) => !pending && onOpenChange(value)}
+    >
       <SheetContent className="w-[min(860px,94vw)] sm:max-w-[860px]">
         <SheetHeader className="items-start pr-12">
           <div>
-            <SheetTitle>{mode === "create" ? "新建平台账号" : `编辑平台账号 · ${binding?.platform}`}</SheetTitle>
-            <p className="mt-1 text-sm text-subtle">凭据、回调和平台级连接配置；保存后敏感字段会脱敏。</p>
+            <SheetTitle>
+              {mode === "create"
+                ? "新建平台账号"
+                : `编辑平台账号 · ${binding?.platform}`}
+            </SheetTitle>
+            <p className="mt-1 text-sm text-subtle">
+              凭据、回调和平台级连接配置；保存后敏感字段会脱敏。
+            </p>
           </div>
         </SheetHeader>
         <SheetBody className="gap-4">
-          <FormSection title="基础信息" sub="一个 IM 平台里的 bot/app/account 身份。">
+          <FormSection
+            title="基础信息"
+            sub="一个 IM 平台里的 bot/app/account 身份。"
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="配置 ID" hint="稳定键；创建后不建议修改。">
-                <Input value={state.id} disabled={mode === "edit"} onChange={(e) => patch({ id: e.target.value })} />
+                <Input
+                  value={state.id}
+                  disabled={mode === "edit"}
+                  onChange={(e) => patch({ id: e.target.value })}
+                />
               </Field>
               <SelectField
                 label="平台"
                 value={state.platform}
                 onChange={(value) => {
                   const platform = value as ChannelConnectorPlatformId;
-                  patch({ platform, id: mode === "create" ? createBindingId(platform) : state.id });
+                  patch({
+                    platform,
+                    id:
+                      mode === "create" ? createBindingId(platform) : state.id,
+                  });
                 }}
                 disabled={mode === "edit"}
               >
-                {supportedPlatforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+                {supportedPlatforms.map((platform) => (
+                  <option key={platform} value={platform}>
+                    {platform}
+                  </option>
+                ))}
               </SelectField>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="显示名称"><Input value={state.displayName} onChange={(e) => patch({ displayName: e.target.value })} /></Field>
-              <Field label="账号 ID"><Input value={state.accountId} onChange={(e) => patch({ accountId: e.target.value })} /></Field>
+              <Field label="显示名称">
+                <Input
+                  value={state.displayName}
+                  onChange={(e) => patch({ displayName: e.target.value })}
+                />
+              </Field>
+              <Field label="账号 ID">
+                <Input
+                  value={state.accountId}
+                  onChange={(e) => patch({ accountId: e.target.value })}
+                />
+              </Field>
             </div>
-            {toggleInput(state.enabled, (enabled) => patch({ enabled }), "启用此平台账号", "未验证平台建议先保持停用")}
+            {toggleInput(
+              state.enabled,
+              (enabled) => patch({ enabled }),
+              "启用此平台账号",
+              "未验证平台建议先保持停用",
+            )}
           </FormSection>
 
           <PlatformCredentialFields state={state} patch={patch} />
@@ -547,9 +825,16 @@ export function AccountEditor({
               onClick={() => patch({ advancedOpen: !state.advancedOpen })}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-ink-strong"
             >
-              <ChevronDown className={cn("size-4 transition-transform", state.advancedOpen && "rotate-180")} />
+              <ChevronDown
+                className={cn(
+                  "size-4 transition-transform",
+                  state.advancedOpen && "rotate-180",
+                )}
+              />
               高级 metadata JSON
-              <Badge variant="outline" className="ml-auto">advanced</Badge>
+              <Badge variant="outline" className="ml-auto">
+                advanced
+              </Badge>
             </button>
             {state.advancedOpen && (
               <div className="grid gap-2 border-t border-line p-3">
@@ -559,20 +844,36 @@ export function AccountEditor({
                   className="min-h-[120px] w-full rounded-sm border border-line bg-panel px-[11px] py-2 font-mono text-sm text-ink-strong outline-none focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
                   spellCheck={false}
                 />
-                <p className="text-xs text-subtle">只放平台模板未覆盖的高级字段；看到 [redacted] 时直接保存不会清空真实 secret。</p>
+                <p className="text-xs text-subtle">
+                  只放平台模板未覆盖的高级字段；看到 [redacted]
+                  时直接保存不会清空真实 secret。
+                </p>
               </div>
             )}
           </section>
 
           {!canSmoke && (
             <div className="rounded-sm border border-amber bg-amber-soft p-3 text-sm text-amber">
-              当前平台没有 verified transport smoke；“保存并测试”不会显示为可用能力。
+              当前平台没有 verified transport
+              smoke；“保存并测试”不会显示为可用能力。
             </div>
           )}
         </SheetBody>
         <SheetFooter className="justify-end bg-panel/95">
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={pending}>取消</Button>
-          <Button variant="primary" size="sm" onClick={handleSave} disabled={pending || !state.id.trim() || !state.accountId.trim()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+          >
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            disabled={pending || !state.id.trim() || !state.accountId.trim()}
+          >
             <Save />
             {pending ? "保存中…" : "保存"}
           </Button>
@@ -598,10 +899,25 @@ export function RouteEditor({
   onSaved?: () => void;
 }) {
   const [state, setState] = React.useState<RouteState | null>(null);
-  const { save, pending } = useSaveBinding({ config, binding, mode: "edit", onSaved, onOpenChange });
-  const gatewayModelsQuery = useModelGatewayModelsQuery({ enabled: open, staleTime: 30_000, retry: 1 });
-  const gatewayProvidersQuery = useModelGatewayProvidersQuery({ enabled: open, staleTime: 30_000, retry: 1 });
-  const defaultAgentProfileId = config?.defaultAgentProfileId || agentProfiles[0]?.id || "default";
+  const { save, pending } = useSaveBinding({
+    config,
+    binding,
+    mode: "edit",
+    onSaved,
+    onOpenChange,
+  });
+  const gatewayModelsQuery = useModelGatewayModelsQuery({
+    enabled: open,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const gatewayProvidersQuery = useModelGatewayProvidersQuery({
+    enabled: open,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const defaultAgentProfileId =
+    config?.defaultAgentProfileId || agentProfiles[0]?.id || "default";
 
   React.useEffect(() => {
     const profileId = binding?.agentProfileId ?? defaultAgentProfileId;
@@ -610,17 +926,30 @@ export function RouteEditor({
   }, [agentProfiles, binding, defaultAgentProfileId, open]);
 
   if (!binding || !state || !config) return null;
-  const patch = (next: Partial<RouteState>) => setState((prev) => (prev ? { ...prev, ...next } : prev));
-  const selectedProfile = agentProfiles.find((profile) => profile.id === state.agentProfileId);
-  const catalogModels = gatewayModelsQuery.data?.models ?? gatewayModelsQuery.data?.data ?? [];
-  const providerModels = modelChoicesFromProviders(gatewayProvidersQuery.data?.providers ?? []);
-  const gatewayModels = catalogModels.length > 0 ? catalogModels : providerModels;
-  const modelSourceLabel = catalogModels.length > 0 ? "模型目录" : providerModels.length > 0 ? "Provider 配置" : "手动输入";
+  const patch = (next: Partial<RouteState>) =>
+    setState((prev) => (prev ? { ...prev, ...next } : prev));
+  const selectedProfile = agentProfiles.find(
+    (profile) => profile.id === state.agentProfileId,
+  );
+  const catalogModels =
+    gatewayModelsQuery.data?.models ?? gatewayModelsQuery.data?.data ?? [];
+  const providerModels = modelChoicesFromProviders(
+    gatewayProvidersQuery.data?.providers ?? [],
+  );
+  const gatewayModels =
+    catalogModels.length > 0 ? catalogModels : providerModels;
+  const modelSourceLabel =
+    catalogModels.length > 0
+      ? "模型目录"
+      : providerModels.length > 0
+        ? "Provider 配置"
+        : "手动输入";
 
   const handleSave = () => {
     const nextBinding: ChannelConnectorPlatformBinding = {
       ...binding,
-      displayName: state.displayName.trim() || binding.displayName || binding.id,
+      displayName:
+        state.displayName.trim() || binding.displayName || binding.id,
       enabled: state.enabled,
       agentProfileId: state.agentProfileId,
       allowlist: splitList(state.allowlist),
@@ -632,19 +961,37 @@ export function RouteEditor({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(value) => !pending && onOpenChange(value)}>
+    <Sheet
+      open={open}
+      onOpenChange={(value) => !pending && onOpenChange(value)}
+    >
       <SheetContent className="w-[min(860px,94vw)] sm:max-w-[860px]">
         <SheetHeader className="items-start pr-12">
           <div>
             <SheetTitle>编辑绑定路由</SheetTitle>
-            <p className="mt-1 text-sm text-subtle">只配置 IM 来源 → Agent Profile；平台 token/appSecret 请到“平台账号”编辑。</p>
+            <p className="mt-1 text-sm text-subtle">
+              只配置 IM 来源 → Agent Profile；平台 token/appSecret
+              请到“平台账号”编辑。
+            </p>
           </div>
         </SheetHeader>
         <SheetBody className="gap-4">
-          <FormSection title="基础与来源" sub={`${binding.platform} · ${binding.accountId}`}>
+          <FormSection
+            title="基础与来源"
+            sub={`${binding.platform} · ${binding.accountId}`}
+          >
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="路由名称"><Input value={state.displayName} onChange={(e) => patch({ displayName: e.target.value })} /></Field>
-              <SelectField label="来源类型" value={state.peerKind} onChange={(peerKind) => patch({ peerKind })}>
+              <Field label="路由名称">
+                <Input
+                  value={state.displayName}
+                  onChange={(e) => patch({ displayName: e.target.value })}
+                />
+              </Field>
+              <SelectField
+                label="来源类型"
+                value={state.peerKind}
+                onChange={(peerKind) => patch({ peerKind })}
+              >
                 <option value="private">私聊</option>
                 <option value="group">群聊</option>
                 <option value="channel">频道</option>
@@ -652,56 +999,124 @@ export function RouteEditor({
               </SelectField>
             </div>
             <Field label="来源 ID" hint="* 表示匹配该账号下所有来源，需谨慎。">
-              <Input value={state.peerId} onChange={(e) => patch({ peerId: e.target.value })} />
+              <Input
+                value={state.peerId}
+                onChange={(e) => patch({ peerId: e.target.value })}
+              />
             </Field>
-            {toggleInput(state.enabled, (enabled) => patch({ enabled }), "启用此绑定路由")}
+            {toggleInput(
+              state.enabled,
+              (enabled) => patch({ enabled }),
+              "启用此绑定路由",
+            )}
           </FormSection>
 
-          <FormSection title="Agent 目标" sub="每条绑定路由可独立覆盖启动目录、Agent、默认模型和权限；Agent Profile 只作为模板与密钥引用。">
+          <FormSection
+            title="Agent 目标"
+            sub="每条绑定路由可独立覆盖启动目录、Agent、默认模型和权限；Agent Profile 只作为模板与密钥引用。"
+          >
             <SelectField
               label="Agent Profile 模板"
               hint="保存密钥引用与默认值；下面的路由覆盖会写入运行时配置。"
               value={state.agentProfileId}
               onChange={(agentProfileId) => {
-                const profile = agentProfiles.find((item) => item.id === agentProfileId);
+                const profile = agentProfiles.find(
+                  (item) => item.id === agentProfileId,
+                );
                 patch({
                   agentProfileId,
                   routeAgent: profile?.agent ?? state.routeAgent,
                   routeModel: profile?.model ?? state.routeModel,
                   routeWorkDir: profile?.workDir ?? state.routeWorkDir,
-                  routePermissionMode: profile?.permissionMode ?? state.routePermissionMode,
+                  routePermissionMode:
+                    profile?.permissionMode ?? state.routePermissionMode,
                 });
               }}
             >
-              {!agentProfiles.some((profile) => profile.id === state.agentProfileId) && <option value={state.agentProfileId}>{state.agentProfileId}</option>}
-              {agentProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.agent}</option>)}
+              {!agentProfiles.some(
+                (profile) => profile.id === state.agentProfileId,
+              ) && (
+                <option value={state.agentProfileId}>
+                  {state.agentProfileId}
+                </option>
+              )}
+              {agentProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} · {profile.agent}
+                </option>
+              ))}
             </SelectField>
             <div className="grid gap-3 sm:grid-cols-2">
-              <SelectField label="路由 Agent" value={state.routeAgent} onChange={(routeAgent) => patch({ routeAgent: routeAgent as ChannelConnectorAgentId })}>
-                {CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
+              <SelectField
+                label="路由 Agent"
+                value={state.routeAgent}
+                onChange={(routeAgent) =>
+                  patch({ routeAgent: routeAgent as ChannelConnectorAgentId })
+                }
+              >
+                {CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => (
+                  <option key={agent} value={agent}>
+                    {agent}
+                  </option>
+                ))}
               </SelectField>
               <SelectField
                 label="默认模型"
-                hint={gatewayModelsQuery.error && providerModels.length === 0 ? `模型列表加载失败，可在下方手动填写：${gatewayModelsQuery.error.message}` : `来自 Model Gateway ${modelSourceLabel}；留空则使用网关默认路由。`}
+                hint={
+                  gatewayModelsQuery.error && providerModels.length === 0
+                    ? `模型列表加载失败，可在下方手动填写：${gatewayModelsQuery.error.message}`
+                    : `来自 Model Gateway ${modelSourceLabel}；留空则使用网关默认路由。`
+                }
                 value={state.routeModel}
                 onChange={(routeModel) => patch({ routeModel })}
               >
                 <option value="">网关默认路由</option>
-                {state.routeModel && !gatewayModels.some((model) => model.id === state.routeModel) && <option value={state.routeModel}>{state.routeModel}</option>}
+                {state.routeModel &&
+                  !gatewayModels.some(
+                    (model) => model.id === state.routeModel,
+                  ) && (
+                    <option value={state.routeModel}>{state.routeModel}</option>
+                  )}
                 {gatewayModels.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.display_name || model.id}{model.providerIds?.length ? ` · ${model.providerIds.join(", ")}` : ""}
+                    {model.display_name || model.id}
+                    {model.providerIds?.length
+                      ? ` · ${model.providerIds.join(", ")}`
+                      : ""}
                   </option>
                 ))}
               </SelectField>
             </div>
-            <Field label="手动模型 ID" hint="模型列表不可用或未列出别名时填写，例如 gpt-5.5 / glm-5.2。和下拉共用同一保存值。">
-              <Input value={state.routeModel} onChange={(e) => patch({ routeModel: e.target.value })} placeholder="留空 = 网关默认路由" />
+            <Field
+              label="手动模型 ID"
+              hint="模型列表不可用或未列出别名时填写，例如 gpt-5.5 / glm-5.2。和下拉共用同一保存值。"
+            >
+              <Input
+                value={state.routeModel}
+                onChange={(e) => patch({ routeModel: e.target.value })}
+                placeholder="留空 = 网关默认路由"
+              />
             </Field>
-            <Field label="默认启动目录" hint="每条 IM 路由独立传给 Agent；用于区分项目/仓库。">
-              <Input value={state.routeWorkDir} onChange={(e) => patch({ routeWorkDir: e.target.value })} placeholder={selectedProfile?.workDir ?? "/path/to/project"} />
+            <Field
+              label="默认启动目录"
+              hint="每条 IM 路由独立传给 Agent；用于区分项目/仓库。"
+            >
+              <Input
+                value={state.routeWorkDir}
+                onChange={(e) => patch({ routeWorkDir: e.target.value })}
+                placeholder={selectedProfile?.workDir ?? "/path/to/project"}
+              />
             </Field>
-            <SelectField label="权限模式" value={state.routePermissionMode} onChange={(routePermissionMode) => patch({ routePermissionMode: routePermissionMode as ChannelConnectorPermissionMode })}>
+            <SelectField
+              label="权限模式"
+              value={state.routePermissionMode}
+              onChange={(routePermissionMode) =>
+                patch({
+                  routePermissionMode:
+                    routePermissionMode as ChannelConnectorPermissionMode,
+                })
+              }
+            >
               <option value="suggest">suggest</option>
               <option value="read-only">read-only</option>
               <option value="auto-edit">auto-edit</option>
@@ -710,32 +1125,92 @@ export function RouteEditor({
               <option value="yolo">yolo</option>
             </SelectField>
             <div className="grid gap-2 rounded-sm border border-line bg-panel p-3 text-sm text-muted sm:grid-cols-2">
-              <span>实际 Agent：<strong className="text-ink-strong">{state.routeAgent}</strong></span>
-              <span>实际模型：<strong className="text-ink-strong">{state.routeModel || "网关默认路由"}</strong></span>
-              <span className="sm:col-span-2">实际目录：<strong className="break-all text-ink-strong">{state.routeWorkDir || selectedProfile?.workDir || "—"}</strong></span>
+              <span>
+                实际 Agent：
+                <strong className="text-ink-strong">{state.routeAgent}</strong>
+              </span>
+              <span>
+                实际模型：
+                <strong className="text-ink-strong">
+                  {state.routeModel || "网关默认路由"}
+                </strong>
+              </span>
+              <span className="sm:col-span-2">
+                实际目录：
+                <strong className="break-all text-ink-strong">
+                  {state.routeWorkDir || selectedProfile?.workDir || "—"}
+                </strong>
+              </span>
             </div>
           </FormSection>
 
           <FormSection title="权限策略" sub="逗号或换行分隔。">
-            <Field label="allowlist"><Input value={state.allowlist} onChange={(e) => patch({ allowlist: e.target.value })} placeholder="uid1, uid2" /></Field>
-            <Field label="adminUsers"><Input value={state.adminUsers} onChange={(e) => patch({ adminUsers: e.target.value })} placeholder="uid1, uid2" /></Field>
-            <Field label="disabledCommands"><Input value={state.disabledCommands} onChange={(e) => patch({ disabledCommands: e.target.value })} placeholder="/reset, /stop" /></Field>
+            <Field label="allowlist">
+              <Input
+                value={state.allowlist}
+                onChange={(e) => patch({ allowlist: e.target.value })}
+                placeholder="uid1, uid2"
+              />
+            </Field>
+            <Field label="adminUsers">
+              <Input
+                value={state.adminUsers}
+                onChange={(e) => patch({ adminUsers: e.target.value })}
+                placeholder="uid1, uid2"
+              />
+            </Field>
+            <Field label="disabledCommands">
+              <Input
+                value={state.disabledCommands}
+                onChange={(e) => patch({ disabledCommands: e.target.value })}
+                placeholder="/reset, /stop"
+              />
+            </Field>
           </FormSection>
 
-          <FormSection title="会话策略" sub="当前写入 metadata，守护实现按已支持字段解释。">
-            <SelectField label="会话模式" value={state.sessionMode} onChange={(sessionMode) => patch({ sessionMode })}>
+          <FormSection
+            title="会话策略"
+            sub="当前写入 metadata，守护实现按已支持字段解释。"
+          >
+            <SelectField
+              label="会话模式"
+              value={state.sessionMode}
+              onChange={(sessionMode) => patch({ sessionMode })}
+            >
               <option value="persistent">持久会话</option>
               <option value="one-shot">单次会话</option>
             </SelectField>
             <div className="grid gap-2 sm:grid-cols-2">
-              {toggleInput(state.busyGuard, (busyGuard) => patch({ busyGuard }), "busy guard", "会话忙时排队/保护")}
-              {toggleInput(state.attachmentStaging, (attachmentStaging) => patch({ attachmentStaging }), "附件暂存", "附件先落盘再交给 Agent")}
+              {toggleInput(
+                state.busyGuard,
+                (busyGuard) => patch({ busyGuard }),
+                "busy guard",
+                "会话忙时排队/保护",
+              )}
+              {toggleInput(
+                state.attachmentStaging,
+                (attachmentStaging) => patch({ attachmentStaging }),
+                "附件暂存",
+                "附件先落盘再交给 Agent",
+              )}
             </div>
           </FormSection>
         </SheetBody>
         <SheetFooter className="justify-end bg-panel/95">
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={pending}>取消</Button>
-          <Button variant="primary" size="sm" onClick={handleSave} disabled={pending}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+          >
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            disabled={pending}
+          >
             <Save />
             {pending ? "保存中…" : "保存"}
           </Button>
@@ -745,7 +1220,11 @@ export function RouteEditor({
   );
 }
 
-export function BindingBadges({ binding }: { binding: ChannelConnectorPlatformBinding }) {
+export function BindingBadges({
+  binding,
+}: {
+  binding: ChannelConnectorPlatformBinding;
+}) {
   return (
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="outline">{binding.platform}</Badge>
@@ -753,7 +1232,11 @@ export function BindingBadges({ binding }: { binding: ChannelConnectorPlatformBi
       {binding.botId && <Badge variant="outline">bot {binding.botId}</Badge>}
       <Badge variant="outline">{binding.allowlist.length} 允许</Badge>
       <Badge variant="outline">{binding.adminUsers.length} 管理员</Badge>
-      {binding.metadata && Object.keys(binding.metadata).length > 0 && <Badge variant="outline">metadata {Object.keys(binding.metadata).length}</Badge>}
+      {binding.metadata && Object.keys(binding.metadata).length > 0 && (
+        <Badge variant="outline">
+          metadata {Object.keys(binding.metadata).length}
+        </Badge>
+      )}
     </div>
   );
 }

@@ -44,6 +44,8 @@ test("Channel Connectors overview derives daemon readiness and links to layered 
 test("Channel Connectors accounts view supports account CRUD and verified smoke actions", () => {
   const accounts = read(`${VIEWS_DIR}/AccountsView.tsx`);
   assert.match(accounts, /新建平台账号/);
+  assert.match(accounts, /账号身份/);
+  assert.match(accounts, /groupAccounts/);
   assert.match(accounts, /确认删除/);
   assert.match(accounts, /useRunFeishuTransportSmokeMutation/);
   assert.match(accounts, /useRunOctoTransportSmokeMutation/);
@@ -54,7 +56,9 @@ test("Channel Connectors accounts view supports account CRUD and verified smoke 
 test("Channel Connectors route view keeps routing separate from platform credentials", () => {
   const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
   assert.match(routes, /绑定路由/);
-  assert.match(routes, /平台凭据在/);
+  assert.match(routes, /一个平台账号可以复制出多条路由/);
+  assert.match(routes, /复制路由/);
+  assert.match(routes, /已复制为停用路由/);
   assert.match(routes, /实际 Agent \/ 模型/);
   assert.match(routes, /独立覆盖/);
   assert.doesNotMatch(routes, /appSecret/);
@@ -71,6 +75,7 @@ test("Channel Connectors account and route editors use wide Sheets with platform
   assert.match(editor, /高级 metadata JSON/);
   assert.match(editor, /\[redacted\]/);
   assert.match(editor, /编辑绑定路由/);
+  assert.match(editor, /已同步 .* 条绑定路由/);
   assert.match(editor, /来源类型/);
   assert.match(editor, /allowlist/);
   assert.match(editor, /useModelGatewayModelsQuery/);
