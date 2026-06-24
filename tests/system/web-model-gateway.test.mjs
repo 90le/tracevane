@@ -94,6 +94,10 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   assert.match(usage, /readWindow/);
   assert.match(usage, /cacheReadTokens/);
   assert.match(usage, /cacheCreationTokens/);
+  assert.match(usage, /cacheEvidenceTokens/);
+  assert.match(usage, /cacheReadToInput/);
+  assert.match(usage, /缓存证据口径/);
+  assert.match(usage, /不做账单折扣、成本或命中率估算/);
   assert.match(usage, /requestRows/);
   assert.match(usage, /tokenRows/);
   assert.match(usage, /最近 runtime 窗口/);
@@ -138,6 +142,10 @@ test("Overview view exposes an Agent cockpit for route and client readiness", ()
   assert.match(overview, /routeForScope\(scope, activeRoutes\)/);
   assert.match(overview, /实际路由/);
   assert.match(overview, /客户端配置/);
+  assert.match(overview, /客户端接入风险/);
+  assert.match(overview, /运行时 readiness 看 Agent Cockpit/);
+  assert.match(overview, /appConnectionIssues/);
+  assert.match(overview, /配置写入 \/ 回滚/);
   assert.match(overview, /检查全部 Agent/);
   assert.match(overview, /检查路由/);
   assert.match(overview, /routeBudgetLabel\(route, providerList\)/);

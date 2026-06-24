@@ -40,6 +40,11 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function ratio(numerator: number, denominator: number): string {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return "-";
+  return `${(numerator / denominator).toFixed(1)}×`;
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -102,6 +107,10 @@ export function UsageView(_props: ModelGatewayViewProps) {
     || left.model.localeCompare(right.model)
   ));
   const readWindow = usage?.readWindow;
+  const latestUsageRequestAt = tokenRows
+    .map((row) => row.latestRequestAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
 
   // Latency comes from the runtime usage summary (status), shown as `-` when absent.
   const latencySummary = statusQuery.data?.runtime.usageSummary.latency;
@@ -113,13 +122,17 @@ export function UsageView(_props: ModelGatewayViewProps) {
     totals && totals.requestCount > 0
       ? totals.meteredRequestCount / totals.requestCount
       : 0;
+  const cacheReadTokens = totals?.cacheReadTokens ?? 0;
+  const cacheCreationTokens = totals?.cacheCreationTokens ?? 0;
+  const cacheEvidenceTokens = cacheReadTokens + cacheCreationTokens;
+  const cacheReadToInput = ratio(cacheReadTokens, totals?.inputTokens ?? 0);
 
   return (
     <div className="grid gap-4">
       <div>
         <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
         <p className="text-sm text-muted">
-          请求与 token 来自用量账本；延迟来自最近 runtime 请求窗口。未返回 usage 的请求只计入请求数，不猜 token。
+          请求与 token 来自用量账本；延迟来自最近 runtime 请求窗口。未返回 usage 的请求只计入请求数，不猜 token；缓存字段只来自 provider usage。
         </p>
       </div>
 
@@ -150,9 +163,9 @@ export function UsageView(_props: ModelGatewayViewProps) {
         />
         <Kpi
           icon={<Database />}
-          label="缓存命中"
-          value={compact(totals?.cacheReadTokens ?? 0)}
-          sub={`写入 ${compact(totals?.cacheCreationTokens ?? 0)}`}
+          label="缓存证据"
+          value={compact(cacheEvidenceTokens)}
+          sub={`读 ${compact(cacheReadTokens)} · 写 ${compact(cacheCreationTokens)}`}
         />
       </div>
 
@@ -168,7 +181,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
             · {compact(readWindow?.readBytes ?? 0)}B / {compact(readWindow?.ledgerSizeBytes ?? 0)}B
           </span>
           <span className="text-muted">
-            · 最新请求 {formatDateTime(tokenRows[0]?.latestRequestAt ?? null)}
+            · 最新请求 {formatDateTime(latestUsageRequestAt)}
           </span>
         </div>
       </section>
@@ -182,6 +195,21 @@ export function UsageView(_props: ModelGatewayViewProps) {
         </section>
       ) : (
         <>
+          <section className="grid gap-3 rounded-md border border-line bg-panel p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0">
+              <h3 className="text-md font-semibold text-ink-strong">缓存证据口径</h3>
+              <p className="mt-1 text-sm text-muted">
+                OpenAI 的 cached_tokens 与 Anthropic 的 cache_read/cache_creation 字段语义不同；这里仅展示
+                provider 返回的缓存读写证据，不做账单折扣、成本或命中率估算。
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <LatCell label="cache read" value={compact(cacheReadTokens)} />
+              <LatCell label="cache write" value={compact(cacheCreationTokens)} />
+              <LatCell label="read/input" value={cacheReadToInput} />
+            </div>
+          </section>
+
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
             {/* Model request distribution bars: deliberately sorted by request count. */}
             <section className="rounded-md border border-line bg-panel shadow-sm">
@@ -253,6 +281,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
                   <TableHead className="text-right">输入 Token</TableHead>
                   <TableHead className="text-right">输出 Token</TableHead>
                   <TableHead className="text-right">缓存命中</TableHead>
+                  <TableHead className="text-right">缓存写入</TableHead>
                   <TableHead className="text-right">Token 消耗</TableHead>
                   <TableHead className="text-right">最新请求</TableHead>
                 </TableRow>
@@ -275,6 +304,9 @@ export function UsageView(_props: ModelGatewayViewProps) {
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.cacheReadTokens)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted">
+                      {compact(m.cacheCreationTokens)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-ink">
                       {compact(m.totalTokens)}

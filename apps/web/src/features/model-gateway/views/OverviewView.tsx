@@ -259,6 +259,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const providerList = providers?.providers ?? [];
   const appConnections = connections?.connections ?? [];
   const checkableRoutes = activeRoutes.filter((route) => Boolean(route.resolvedProviderId));
+  const configuredConnectionCount = appConnections.filter((connection) => connection.configured).length;
+  const appConnectionIssues = appConnections.filter(
+    (connection) => !connection.configured || connection.issues.length > 0,
+  );
 
   const health = status?.healthSummary;
   const listener = status?.listener;
@@ -679,11 +683,11 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           )}
         </Panel>
 
-        {/* App connections — click navigates to apps sub-view */}
+        {/* App connection risk summary — management lives in the Apps view; Agent Cockpit owns runtime readiness. */}
         <Panel>
           <PanelHead
-            title="客户端接入"
-            sub="App Connection"
+            title="客户端接入风险"
+            sub="配置写入 / 回滚入口，运行时 readiness 看 Agent Cockpit"
             action={
               <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
                 管理
@@ -692,9 +696,25 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           />
           {appConnections.length === 0 ? (
             <EmptyState title="暂无客户端" description="尚无可接入的本地客户端。" />
+          ) : appConnectionIssues.length === 0 ? (
+            <div className="grid gap-3 p-4">
+              <div className="rounded-sm border border-line bg-panel-2 p-3">
+                <span className="text-xs text-subtle">配置状态</span>
+                <div className="mt-1 text-xl font-semibold text-ink-strong">
+                  {configuredConnectionCount}/{appConnections.length}
+                </div>
+                <span className="text-xs text-muted">
+                  本地客户端配置均已应用；实际路由和 smoke 状态以 Agent Cockpit 为准。
+                </span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => goToView("apps")}>
+                <Terminal className="size-3.5" />
+                打开配置写入 / 回滚
+              </Button>
+            </div>
           ) : (
             <div className="py-1.5">
-              {appConnections.map((connection) => {
+              {appConnectionIssues.map((connection) => {
                 const badge = appConnectionBadge(connection);
                 return (
                   <button
@@ -711,7 +731,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                         {connection.label}
                       </strong>
                       <span className="truncate text-sm text-muted">
-                        {connection.configured ? "已应用" : connection.issues[0] ?? "未应用"}
+                        {connection.issues[0] ?? "未应用，需要进入客户端接入页处理"}
                       </span>
                     </span>
                     <Badge variant={badge.variant}>{badge.label}</Badge>
