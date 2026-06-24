@@ -13107,8 +13107,10 @@ async function main(): Promise<void> {
   const configPath = configPathFromArgv(process.argv.slice(2));
   const config = readConfig(configPath);
   channelAgentSessionDriverPool.configurePolicy({
-    idleTimeoutMs: config.agentSessionPolicy?.idleTimeoutMs,
-    maxSessions: config.agentSessionPolicy?.maxSessions,
+    idleTimeoutMs: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS")
+      ?? config.agentSessionPolicy?.idleTimeoutMs,
+    maxSessions: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_MAX_SESSIONS")
+      ?? config.agentSessionPolicy?.maxSessions,
     maxConcurrentTurns: config.agentSessionPolicy?.maxConcurrentTurns,
     queueMaxRecords: config.agentSessionPolicy?.queueMaxRecords,
     busyStrategy: config.agentSessionPolicy?.busyStrategy,

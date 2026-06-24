@@ -172,10 +172,18 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   }, [defaultPolicy, policyConfig]);
 
   const policyDirty = JSON.stringify(policyDraft) !== JSON.stringify(persistedPolicy);
+  const runtimePolicyLoaded = Boolean(policy);
   const runtimeMatchesDraft = policy?.maxConcurrentTurns === policyDraft.maxConcurrentTurns
     && policy?.maxSessions === policyDraft.maxSessions
     && policy?.busyStrategy === policyDraft.busyStrategy
     && policy?.queueMaxRecords === policyDraft.queueMaxRecords;
+  const policyBadge = !runtimePolicyLoaded
+    ? { variant: "warn" as const, label: "守护未连接" }
+    : policyDirty
+      ? { variant: "warn" as const, label: "未保存" }
+      : runtimeMatchesDraft
+        ? { variant: "ok" as const, label: "运行中已同步" }
+        : { variant: "warn" as const, label: "已保存，需重启" };
   const pending = manageMutation.isPending || saveConfigMutation.isPending || restartDaemonMutation.isPending;
 
   const savePolicy = (restartAfterSave = false) => {
@@ -189,15 +197,20 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (saved) => {
+          const savedPolicy = saved.config.agentSessionPolicy ?? policyDraft;
+          setPolicyDraft(savedPolicy);
           void configQuery.refetch();
           if (restartAfterSave) {
             restartDaemonMutation.mutate(
-              { action: "restart", runCommands: true },
+              { action: "restart", apply: true, runCommands: true },
               {
                 onSuccess: () => {
-                  toast.success("已保存并重启 IM 守护", { description: "新的全局并发/队列策略已加载。" });
+                  toast.success("已保存并重启 IM 守护", { description: "新的全局并发/队列策略已写入 daemon 配置。" });
                   void sessionsQuery.refetch();
+                  window.setTimeout(() => {
+                    void sessionsQuery.refetch();
+                  }, 1200);
                 },
                 onError: (error) => toast.error("保存成功，但重启失败", { description: error.message }),
               },
@@ -256,7 +269,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         <PanelHead
           title="全局并发 / 队列策略"
           sub="针对不同 IM 会话的 Agent turn。maxConcurrentTurns 是真正的同时执行上限；超过后按策略拒绝或排队。"
-          action={<Badge variant={runtimeMatchesDraft ? "ok" : "warn"}>{runtimeMatchesDraft ? "运行中已同步" : "需重启生效"}</Badge>}
+          action={<Badge variant={policyBadge.variant}>{policyBadge.label}</Badge>}
         />
         <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="grid gap-1.5 text-sm">

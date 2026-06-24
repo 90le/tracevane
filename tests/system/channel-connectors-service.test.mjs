@@ -1531,6 +1531,56 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(routeProject.platformBindings[0].agent, "opencode");
 });
 
+
+test("native Channel Connectors daemon restart writes the latest saved runtime config", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const daemonEntry = path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
+  fs.mkdirSync(path.dirname(daemonEntry), { recursive: true });
+  fs.writeFileSync(daemonEntry, "// test daemon entry\n");
+  const commands = [];
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+    commandRunner: async (command) => {
+      commands.push(command);
+      const joined = [command.command, ...(command.args || [])].join(" ");
+      return {
+        ok: true,
+        label: command.label,
+        command: command.command,
+        args: command.args,
+        stdout: joined.includes("is-enabled") ? "enabled\n" : joined.includes("is-active") ? "active\n" : "",
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const initial = service.getNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentSessionPolicy: {
+        maxSessions: 9,
+        maxConcurrentTurns: 2,
+        idleTimeoutMs: 300_000,
+        busyStrategy: "queue",
+        queueMaxRecords: 77,
+        queueMaxAgeMs: 900_000,
+      },
+    },
+  });
+
+  const restart = await service.manageDaemonService({ action: "restart", runCommands: true });
+  assert.equal(restart.configWritten, true);
+  assert.equal(restart.templateWritten, false);
+  assert.ok(commands.some((command) => command.args?.includes("restart")));
+  const runtimeConfig = JSON.parse(fs.readFileSync(restart.config.configPath, "utf8"));
+  assert.equal(runtimeConfig.agentSessionPolicy.busyStrategy, "queue");
+  assert.equal(runtimeConfig.agentSessionPolicy.maxConcurrentTurns, 2);
+  assert.equal(runtimeConfig.agentSessionPolicy.queueMaxRecords, 77);
+});
+
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

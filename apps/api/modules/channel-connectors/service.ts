@@ -3652,10 +3652,14 @@ export function createChannelConnectorsService(
     }
 
     const apply = payload.apply === true;
+    const commandsRun: ChannelConnectorsDaemonCommandResult[] = [];
+    const shouldRunCommands = payload.runCommands === true
+      || (payload.runCommands !== false && apply && action !== "preview" && action !== "status");
     const configPreview = currentConfigFull();
     let templateWritten = false;
     let configWritten = false;
-    if (apply && actionWritesFiles(action)) {
+    const shouldPrepareRuntimeConfig = actionWritesFiles(action) && (apply || shouldRunCommands);
+    if (shouldPrepareRuntimeConfig) {
       fs.mkdirSync(plan.rootDir, { recursive: true });
       fs.mkdirSync(plan.stateDir, { recursive: true });
       fs.mkdirSync(path.dirname(plan.logFile), { recursive: true });
@@ -3663,15 +3667,14 @@ export function createChannelConnectorsService(
         writeTextAtomic(configPreview.configPath, configPreview.preview);
         configWritten = true;
       }
+    }
+    if (apply && actionWritesFiles(action)) {
       if (!isTemplateCurrent(plan)) {
         writeTextAtomic(plan.selectedTemplate.servicePath, plan.selectedTemplate.template);
         templateWritten = true;
       }
     }
 
-    const commandsRun: ChannelConnectorsDaemonCommandResult[] = [];
-    const shouldRunCommands = payload.runCommands === true
-      || (payload.runCommands !== false && apply && action !== "preview" && action !== "status");
     if (action === "status") {
       commandsRun.push(...await runStatusCommands(plan));
     } else if (shouldRunCommands) {
