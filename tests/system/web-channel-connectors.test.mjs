@@ -27,3 +27,21 @@ test("Channel Connectors overview derives daemon readiness from runtime and serv
   assert.match(overview, /manager\?\.active === true/);
   assert.match(overview, /DaemonServicePanel/);
 });
+
+test("Channel Connectors bindings view supports create delete and transport smoke actions", () => {
+  const bindings = read(`${VIEWS_DIR}/BindingsView.tsx`);
+  assert.match(bindings, /新建绑定/);
+  assert.match(bindings, /确认删除/);
+  assert.match(bindings, /useRunFeishuTransportSmokeMutation/);
+  assert.match(bindings, /useRunOctoTransportSmokeMutation/);
+  assert.match(bindings, /tenant-token/);
+  assert.match(bindings, /register/);
+});
+
+test("Channel Connectors binding editor exposes redacted-safe metadata JSON", () => {
+  const editor = read(`${VIEWS_DIR}/BindingEditor.tsx`);
+  assert.match(editor, /Transport metadata JSON/);
+  assert.match(editor, /metadataJson/);
+  assert.match(editor, /\[redacted\]/);
+  assert.match(editor, /parseMetadata/);
+});

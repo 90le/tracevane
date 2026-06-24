@@ -199,6 +199,7 @@ export interface ChannelConnectorsServiceOptions {
 export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
+  getPublicNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
   getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): Promise<ChannelConnectorCommandSurfaceResponse>;
   handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
@@ -967,6 +968,52 @@ function redactSensitiveMetadata(value: unknown): unknown {
       : redactSensitiveMetadata(item);
   }
   return output;
+}
+
+function restoreRedactedSensitiveMetadata(existing: unknown, incoming: unknown): unknown {
+  if (Array.isArray(incoming)) {
+    const existingArray = Array.isArray(existing) ? existing : [];
+    return incoming.map((item, index) => restoreRedactedSensitiveMetadata(existingArray[index], item));
+  }
+  if (!isRecord(incoming)) return incoming;
+  const existingRecord = isRecord(existing) ? existing : {};
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(incoming)) {
+    if (isSensitiveMetadataKey(key) && item === "[redacted]" && key in existingRecord) {
+      output[key] = existingRecord[key];
+    } else {
+      output[key] = restoreRedactedSensitiveMetadata(existingRecord[key], item);
+    }
+  }
+  return output;
+}
+
+function restoreNativeConfigRedactedSecrets(
+  existing: ChannelConnectorsNativeConfig,
+  incoming: ChannelConnectorsNativeConfig,
+): ChannelConnectorsNativeConfig {
+  const existingById = new Map(existing.platformBindings.map((binding) => [binding.id, binding] as const));
+  return {
+    ...incoming,
+    platformBindings: incoming.platformBindings.map((binding) => {
+      const previous = existingById.get(binding.id);
+      if (!previous?.metadata || !binding.metadata) return binding;
+      return {
+        ...binding,
+        metadata: restoreRedactedSensitiveMetadata(previous.metadata, binding.metadata) as Record<string, unknown>,
+      };
+    }),
+  };
+}
+
+function redactNativeConfig(nativeConfig: ChannelConnectorsNativeConfig): ChannelConnectorsNativeConfig {
+  return {
+    ...nativeConfig,
+    platformBindings: nativeConfig.platformBindings.map((binding) => ({
+      ...binding,
+      metadata: redactSensitiveMetadata(binding.metadata) as Record<string, unknown> | undefined,
+    })),
+  };
 }
 
 function redactRuntimeConfig(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): ChannelConnectorsDaemonRuntimeConfig {
@@ -2252,6 +2299,18 @@ function buildNativeConfigResponse(
   };
 }
 
+function buildPublicNativeConfigResponse(
+  config: TracevaneServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+): ChannelConnectorsNativeConfigResponse {
+  const response = buildNativeConfigResponse(config, paths, now);
+  return {
+    ...response,
+    config: redactNativeConfig(response.config),
+  };
+}
+
 export function createChannelConnectorsService(
   config: TracevaneServerConfig,
   options: ChannelConnectorsServiceOptions = {},
@@ -2273,10 +2332,16 @@ export function createChannelConnectorsService(
     return buildNativeConfigResponse(config, paths(), now());
   }
 
+  function currentPublicNativeConfig(): ChannelConnectorsNativeConfigResponse {
+    return buildPublicNativeConfigResponse(config, paths(), now());
+  }
+
   function saveNativeConfig(payload: ChannelConnectorsSaveNativeConfigRequest = {}): ChannelConnectorsNativeConfigResponse {
     if (!payload.config) throw new Error("Channel Connectors config payload is required.");
     const resolvedPaths = paths();
-    const saved = writeNativeConfig(config, resolvedPaths, payload.config, now());
+    const existing = readNativeConfig(config, resolvedPaths, now());
+    const payloadConfig = restoreNativeConfigRedactedSecrets(existing, payload.config);
+    const saved = writeNativeConfig(config, resolvedPaths, payloadConfig, now());
     return {
       ok: true,
       checkedAt: now().toISOString(),
@@ -3603,6 +3668,7 @@ export function createChannelConnectorsService(
   return {
     getStatus,
     getNativeConfig: currentNativeConfig,
+    getPublicNativeConfig: currentPublicNativeConfig,
     saveNativeConfig,
     getCommandSurface,
     handleCommandAction,

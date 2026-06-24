@@ -112,14 +112,14 @@
 
 第一、第二阶段已经把“运行态观察”和“路由配置”边界拆清。下一阶段不再继续堆概览页，而是补齐两个薄弱域的可用性：
 
-1. **IM Channels P0**：把平台绑定从“能看”推进到“能用”。需要支持账号/机器人凭据填写、保存、测试、启停、绑定、新建、修改、删除、投递日志和错误提示。详见 `IM渠道目标与设计.md`。
+1. **IM Channels P0**：第一轮已把平台绑定从“能看”推进到“能创建/编辑/删除/测试”：支持账号/机器人 metadata 填写、脱敏保存、启停、Feishu/Octo transport smoke 和 daemon native 绑定证据。下一步补 guided setup、按绑定过滤的投递日志和更细的 account/binding 拆分。详见 `IM渠道目标与设计.md`。
 2. **CLI Agents P0**：把 CLI 代理从 OpenClaw/Persona/通用终端混杂概念里拆出来，明确 Codex CLI / Claude Code / OpenCode 的安装状态、配置引用、运行中 Agent Run、终端证据引用和安全操作。详见 `CLI代理目标与设计.md`。
 3. **Model Gateway 持续 P0**：继续保持 Provider、Codex Account、路由、用量、上下文、协议适配的稳定性；不要把 IM/CLI 的写操作塞回 Gateway。
 
 ### 本阶段可以做
 
 - 精简三域导航和重复卡片，保留必要入口。
-- 为 IM 渠道补真实 CRUD、凭据校验和服务状态控制。
+- 为 IM 渠道继续补 guided setup、投递日志过滤、更多平台 smoke；已完成基础绑定 CRUD、凭据脱敏保留和 Feishu/Octo 测试。
 - 为 CLI 代理补 CLI 安装/配置/会话运行的真实状态和安全操作。
 - 继续维护 Agent Runs 作为跨域只读运行投影。
 

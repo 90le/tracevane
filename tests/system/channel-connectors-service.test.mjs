@@ -1482,6 +1482,14 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(preview.config.projects[0].platformBindings[0].metadata.botToken, "[redacted]");
   assert.match(preview.preview, /"botToken": "\[redacted\]"/);
   assert.doesNotMatch(preview.preview, /test-token/);
+
+  const publicConfig = service.getPublicNativeConfig();
+  assert.equal(publicConfig.config.platformBindings[0].metadata.botToken, "[redacted]");
+  assert.doesNotMatch(JSON.stringify(publicConfig), /test-token/);
+
+  service.saveNativeConfig({ config: publicConfig.config });
+  const afterRedactedRoundTrip = service.getNativeConfig();
+  assert.equal(afterRedactedRoundTrip.config.platformBindings[0].metadata.botToken, "test-token");
 });
 
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {

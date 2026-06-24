@@ -16,6 +16,8 @@ import {
   manageChannelConnectorsAgentSessions,
   manageChannelConnectorsDaemonService,
   runChannelConnectorsCommandAction,
+  runFeishuTransportSmoke,
+  runOctoTransportSmoke,
   saveChannelConnectorsConfig,
 } from "../api/channel-connectors";
 import type { ApiError } from "../api/errors";
@@ -24,6 +26,10 @@ import type {
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandActionResponse,
+  ChannelConnectorFeishuTransportSmokeRequest,
+  ChannelConnectorFeishuTransportSmokeResponse,
+  ChannelConnectorOctoTransportSmokeRequest,
+  ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
@@ -211,5 +217,39 @@ export function useRunChannelConnectorsCommandActionMutation(
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       options?.onSuccess?.(...args);
     },
+  });
+}
+
+/** Feishu transport smoke. Explicit action, no automatic retry. */
+export function useRunFeishuTransportSmokeMutation(
+  options?: MutationOpts<
+    ChannelConnectorFeishuTransportSmokeResponse,
+    ChannelConnectorFeishuTransportSmokeRequest
+  >,
+) {
+  return useMutation<
+    ChannelConnectorFeishuTransportSmokeResponse,
+    ApiError,
+    ChannelConnectorFeishuTransportSmokeRequest
+  >({
+    mutationFn: (payload) => runFeishuTransportSmoke(payload),
+    ...options,
+  });
+}
+
+/** Octo transport smoke. Explicit action, no automatic retry. */
+export function useRunOctoTransportSmokeMutation(
+  options?: MutationOpts<
+    ChannelConnectorOctoTransportSmokeResponse,
+    ChannelConnectorOctoTransportSmokeRequest
+  >,
+) {
+  return useMutation<
+    ChannelConnectorOctoTransportSmokeResponse,
+    ApiError,
+    ChannelConnectorOctoTransportSmokeRequest
+  >({
+    mutationFn: (payload) => runOctoTransportSmoke(payload),
+    ...options,
   });
 }

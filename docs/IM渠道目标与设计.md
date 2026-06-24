@@ -5,121 +5,106 @@
 
 ## 1. Current assessment
 
-IM Channels is not complete. It currently behaves too much like a status viewer. A usable IM product must let the user create, edit, delete, bind, test and operate IM accounts and bot credentials.
+IM Channels is the product domain for external chat platforms. It must not be a duplicate Gateway or CLI page. The first usable slice now focuses on native platform bindings: create, edit, delete, enable/disable, enter bot/account credentials, and run safe transport smoke checks where an adapter exists.
 
 ## 2. Product goal
-
-IM Channels should connect external IM platforms to local Agent runtime:
 
 ```text
 IM platform account/bot
         ↓
-Binding: user/group/channel/thread → Agent runtime settings
+Platform binding: account/bot credentials + Agent profile + access policy
         ↓
 Inbound message / command / attachment
         ↓
-CLI Agent session via Channel Connectors
+Channel Connectors runtime session
         ↓
-Model Gateway
+CLI Agent session + Model Gateway route
         ↓
 Outbound reply / delivery log
 ```
 
 ## 3. Owned objects
 
-### Platform account
+### Platform binding / account identity
 
-A platform account represents one bot/app identity.
-
-Common fields:
-
-- `id`
-- `platform`: feishu / wecom / octo / future adapters
-- `name`
-- `enabled`
-- `appId` / `clientId`
-- `appSecret` / secret ref
-- `botId`
-- `verificationToken`
-- `encryptKey`
-- `webhookUrl` or callback path
-- long-connection switch and status
-- created/updated/tested timestamps
-
-Secrets must be masked in UI and written only through backend secret-safe APIs.
-
-### Binding
-
-A binding maps an IM source to an Agent runtime target.
+Current implementation stores the account identity and binding target in one native `platformBinding` record. This is intentional for the first usable slice: it avoids a second half-working account store while still allowing real setup.
 
 Fields:
 
 - `id`
-- `platformAccountId`
-- `peerKind`: user / group / channel / thread
-- `peerId`
-- `agent`: codex / claude / opencode / configured runtime profile
-- `model` or model route scope
-- `workDir`
-- `permissionMode`
-- `sessionMode`: one-shot / persistent
-- delivery options and progress-card options
-- enabled/disabled
+- `platform`: feishu / octo / wecom / future adapters
+- `displayName`
+- `accountId`
+- `botId`
+- `agentProfileId`
+- `enabled`
+- `allowlist`
+- `adminUsers`
+- `disabledCommands`
+- `metadata`: platform transport JSON such as `appId`, `appSecret`, `verificationToken`, `encryptKey`, `botToken`, `apiUrl`, `wsUrl`, `corpId`, `agentId`
 
-### IM session
+Secrets are never returned raw from the config API. Browser reads receive `[redacted]`; saving an unchanged redacted value preserves the real secret on disk.
 
-Runtime object created by messages:
+### Agent profile
 
-- source binding
-- native platform message/thread id
-- agent session id
-- model/workdir/permission mode
-- turn count
-- running/idle/error
-- last delivery status
+Agent profiles remain read-only on the IM page. They are owned by the native Channel Connectors config and reference the runtime agent, model, workdir, permission mode, and Gateway endpoint.
 
-## 4. Required frontend flows
+### IM session and delivery log
 
-P0:
+Runtime sessions, command events, daemon status, and logs remain operational evidence. IM Channels may display and operate them, but should not own generic terminal/PTY lifecycle.
 
-1. Platform account list.
-2. Create account.
-3. Edit account.
-4. Delete/disable account with confirmation.
-5. Credential field templates per platform.
-6. Binding list.
-7. Create binding.
-8. Edit binding.
-9. Delete/disable binding with confirmation.
-10. Test account connectivity.
-11. Test binding delivery or command surface where supported.
-12. Delivery logs with useful error text.
+## 4. Frontend flows
 
-P1:
+Implemented first slice:
 
-- Guided Feishu setup.
-- Guided WeCom/企业微信 setup.
-- “copy callback URL” and platform setup checklist.
-- Attachment/file policy controls.
+1. Agent profile list, read-only.
+2. Platform binding list.
+3. Create platform binding.
+4. Edit platform binding.
+5. Delete platform binding with confirmation.
+6. Enable/disable binding.
+7. Edit allowlist/admin/disabled command policy.
+8. Edit transport metadata JSON for credentials and adapter-specific fields.
+9. Redacted secret warning and safe round-trip behavior.
+10. Feishu `tenant-token` transport smoke.
+11. Octo `register` transport smoke.
+12. Daemon native binding preview remains read-only evidence.
+
+Still P0/P1 follow-up:
+
+- Guided Feishu setup checklist and callback URL copy.
+- Guided WeCom/企业微信 setup once adapter smoke is verified.
+- Dedicated account-vs-binding split only when a real multi-binding account store is needed.
+- Delivery logs with filtering by binding/session/error.
 - Per-binding model/runtime preview.
+- Attachment/file policy controls.
 
 ## 5. Backend expectations
 
-The backend should expose clear APIs for:
+Current backend contract:
 
-- list/get/create/update/delete platform accounts
-- list/get/create/update/delete bindings
-- validate credentials without persisting unsafe data
-- smoke platform connection
-- smoke binding delivery
-- manage daemon service
-- read delivery logs and IM sessions
+- `GET /api/channel-connectors/config` returns redacted native config for browser use.
+- `PUT /api/channel-connectors/config` saves the native config while preserving existing secrets when the payload still contains `[redacted]`.
+- `POST /api/channel-connectors/adapters/feishu/transport-smoke` supports safe Feishu token verification.
+- `POST /api/channel-connectors/adapters/octo/transport-smoke` supports Octo transport smoke actions.
+- Daemon config/service/log/session endpoints remain the runtime operations layer.
 
-If existing `channels` and `channel-connectors` APIs overlap, the product surface should converge them behind IM Channels instead of showing two mental models to the user.
+Future backend work should add narrow account CRUD only when the product needs multiple peer bindings per shared account. Until then, avoid duplicating a second account store beside `platformBindings`.
 
 ## 6. Non-goals
 
 - Do not manage model provider API keys here.
-- Do not manage terminal PTY lifecycle here except via session-driver status.
+- Do not manage Codex/Claude/OpenCode client config here.
+- Do not manage terminal PTY lifecycle here except through IM session evidence/status.
 - Do not expose raw token values after save.
-- Do not claim Feishu/WeCom setup is complete without an end-to-end send/receive smoke.
+- Do not claim Feishu/WeCom setup is complete without adapter-level smoke evidence.
+- Do not fake external platform success.
+
+## 7. Research notes
+
+2026-06-24 checked current platform docs before changing the user-visible IM setup flow:
+
+- Feishu Open Platform message/send docs: token-bearing API calls use `tenant_access_token` bearer auth, and bot sending requires IM permissions such as `im:message:send_as_bot`.
+- Feishu card/message docs still require app token flow and platform-specific message identifiers for send/update actions.
+- WeCom/企业微信 public integration references consistently require `corpId`/app secret/agent id plus callback `Token` and `EncodingAESKey`; Tracevane should keep these as metadata templates until a verified first-party adapter exists.
+- Octo in this repo already has verified transport smoke code; the UI exposes only the existing `register` smoke by default and does not invent unsupported actions.

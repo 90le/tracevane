@@ -49,6 +49,8 @@ export type {
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandActionRequest,
+  ChannelConnectorFeishuTransportSmokeRequest,
+  ChannelConnectorOctoTransportSmokeRequest,
   // Response payloads
   ChannelConnectorsStatusResponse,
   ChannelConnectorsNativeConfigResponse,
@@ -58,6 +60,8 @@ export type {
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorCommandSurfaceResponse,
   ChannelConnectorCommandActionResponse,
+  ChannelConnectorFeishuTransportSmokeResponse,
+  ChannelConnectorOctoTransportSmokeResponse,
 } from "../../../../../types/channel-connectors";
 
 export {

@@ -6,6 +6,10 @@ import type {
   ChannelConnectorCommandActionResponse,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandSurfaceResponse,
+  ChannelConnectorFeishuTransportSmokeRequest,
+  ChannelConnectorFeishuTransportSmokeResponse,
+  ChannelConnectorOctoTransportSmokeRequest,
+  ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
@@ -148,4 +152,28 @@ export function runChannelConnectorsCommandAction(
     method: "POST",
     body: jsonBody(payload),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Transport smoke (explicit user-triggered checks)
+// ---------------------------------------------------------------------------
+
+/** POST /api/channel-connectors/adapters/feishu/transport-smoke */
+export function runFeishuTransportSmoke(
+  payload: ChannelConnectorFeishuTransportSmokeRequest,
+): Promise<ChannelConnectorFeishuTransportSmokeResponse> {
+  return apiRequest<ChannelConnectorFeishuTransportSmokeResponse>(
+    `${BASE}/adapters/feishu/transport-smoke`,
+    { method: "POST", body: jsonBody(payload) },
+  );
+}
+
+/** POST /api/channel-connectors/adapters/octo/transport-smoke */
+export function runOctoTransportSmoke(
+  payload: ChannelConnectorOctoTransportSmokeRequest,
+): Promise<ChannelConnectorOctoTransportSmokeResponse> {
+  return apiRequest<ChannelConnectorOctoTransportSmokeResponse>(
+    `${BASE}/adapters/octo/transport-smoke`,
+    { method: "POST", body: jsonBody(payload) },
+  );
 }

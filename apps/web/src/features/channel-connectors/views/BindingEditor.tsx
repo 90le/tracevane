@@ -18,10 +18,13 @@ import { useSaveChannelConnectorsConfigMutation } from "@/lib/query/channel-conn
 import type {
   ChannelConnectorsNativeConfig,
   ChannelConnectorPlatformBinding,
+  ChannelConnectorPlatformId,
 } from "../types";
 
 /** Editable subset of a platform binding — identity, transport, access. */
 interface EditorState {
+  id: string;
+  platform: ChannelConnectorPlatformId;
   displayName: string;
   agentProfileId: string;
   enabled: boolean;
@@ -30,18 +33,34 @@ interface EditorState {
   allowlist: string;
   adminUsers: string;
   disabledCommands: string;
+  metadataJson: string;
 }
 
-function toEditorState(binding: ChannelConnectorPlatformBinding): EditorState {
+function createBindingId(platform: ChannelConnectorPlatformId): string {
+  return `${platform}-${Date.now().toString(36)}`;
+}
+
+function defaultPlatform(platforms: ChannelConnectorPlatformId[]): ChannelConnectorPlatformId {
+  return platforms.includes("feishu") ? "feishu" : platforms[0] || "octo";
+}
+
+function toEditorState(
+  binding: ChannelConnectorPlatformBinding | null,
+  defaults: { agentProfileId: string; platforms: ChannelConnectorPlatformId[] },
+): EditorState {
+  const platform = binding?.platform ?? defaultPlatform(defaults.platforms);
   return {
-    displayName: binding.displayName,
-    agentProfileId: binding.agentProfileId,
-    enabled: binding.enabled,
-    accountId: binding.accountId,
-    botId: binding.botId ?? "",
-    allowlist: binding.allowlist.join(", "),
-    adminUsers: binding.adminUsers.join(", "),
-    disabledCommands: binding.disabledCommands.join(", "),
+    id: binding?.id ?? createBindingId(platform),
+    platform,
+    displayName: binding?.displayName ?? "",
+    agentProfileId: binding?.agentProfileId ?? defaults.agentProfileId,
+    enabled: binding?.enabled ?? true,
+    accountId: binding?.accountId ?? "",
+    botId: binding?.botId ?? "",
+    allowlist: (binding?.allowlist ?? []).join(", "),
+    adminUsers: (binding?.adminUsers ?? []).join(", "),
+    disabledCommands: (binding?.disabledCommands ?? []).join(", "),
+    metadataJson: JSON.stringify(binding?.metadata ?? {}, null, 2),
   };
 }
 
@@ -50,6 +69,29 @@ function splitList(value: string): string[] {
     .split(/[\n,]/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function parseMetadata(value: string): Record<string, unknown> {
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  const parsed = JSON.parse(trimmed) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("metadata 必须是 JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function metadataHint(platform: ChannelConnectorPlatformId): string {
+  if (platform === "feishu") {
+    return '常用字段：{"appId":"...","appSecret":"...","verificationToken":"...","encryptKey":"..."}';
+  }
+  if (platform === "octo") {
+    return '常用字段：{"apiUrl":"...","botToken":"...","wsUrl":"..."}';
+  }
+  if (platform === "wecom") {
+    return '常用字段：{"corpId":"...","corpSecret":"...","agentId":"...","token":"...","aesKey":"..."}';
+  }
+  return "填写该平台 transport 需要的 JSON 字段；返回的敏感值会显示为 [redacted]，直接保存不会清空真实值。";
 }
 
 function Field({
@@ -73,8 +115,8 @@ function Field({
 /**
  * Focused editor for a single platform binding. Saving rewrites the whole
  * native config with this binding patched (the API replaces the document), so
- * we confirm + show evidence (updatedAt) before applying. Restarting / live
- * application is owned by the daemon — this only writes the config.
+ * we confirm + show evidence (updatedAt) before applying. The API preserves
+ * previously stored secrets when redacted placeholders are submitted back.
  */
 export function BindingEditor({
   open,
@@ -82,6 +124,7 @@ export function BindingEditor({
   binding,
   config,
   agentProfileIds,
+  supportedPlatforms,
   onSaved,
 }: {
   open: boolean;
@@ -89,28 +132,49 @@ export function BindingEditor({
   binding: ChannelConnectorPlatformBinding | null;
   config: ChannelConnectorsNativeConfig | null;
   agentProfileIds: string[];
+  supportedPlatforms: ChannelConnectorPlatformId[];
   onSaved?: () => void;
 }) {
   const saveMutation = useSaveChannelConnectorsConfigMutation();
   const [state, setState] = React.useState<EditorState | null>(null);
   const [confirming, setConfirming] = React.useState(false);
+  const isCreating = binding == null;
 
   React.useEffect(() => {
-    if (open && binding) {
-      setState(toEditorState(binding));
-      setConfirming(false);
-    }
-  }, [open, binding]);
+    if (!open || !config) return;
+    setState(
+      toEditorState(binding, {
+        agentProfileId: config.defaultAgentProfileId || agentProfileIds[0] || "default",
+        platforms: supportedPlatforms,
+      }),
+    );
+    setConfirming(false);
+  }, [agentProfileIds, binding, config, open, supportedPlatforms]);
 
-  if (!binding || !config || !state) return null;
+  if (!config || !state) return null;
 
   const patch = (next: Partial<EditorState>) =>
     setState((prev) => (prev ? { ...prev, ...next } : prev));
 
   const buildNextConfig = (): ChannelConnectorsNativeConfig => {
+    const metadata = parseMetadata(state.metadataJson);
+    const id = state.id.trim();
     const nextBinding: ChannelConnectorPlatformBinding = {
-      ...binding,
-      displayName: state.displayName.trim() || binding.displayName,
+      ...(binding ?? {
+        id,
+        platform: state.platform,
+        displayName: "",
+        agentProfileId: state.agentProfileId,
+        enabled: true,
+        accountId: "",
+        botId: null,
+        allowlist: [],
+        adminUsers: [],
+        disabledCommands: [],
+      }),
+      id,
+      platform: state.platform,
+      displayName: state.displayName.trim() || id,
       agentProfileId: state.agentProfileId,
       enabled: state.enabled,
       accountId: state.accountId.trim(),
@@ -118,22 +182,52 @@ export function BindingEditor({
       allowlist: splitList(state.allowlist),
       adminUsers: splitList(state.adminUsers),
       disabledCommands: splitList(state.disabledCommands),
+      metadata,
     };
     return {
       ...config,
-      platformBindings: config.platformBindings.map((b) =>
-        b.id === binding.id ? nextBinding : b,
-      ),
+      updatedAt: new Date().toISOString(),
+      platformBindings: binding
+        ? config.platformBindings.map((b) => (b.id === binding.id ? nextBinding : b))
+        : [...config.platformBindings, nextBinding],
     };
   };
 
+  const handleConfirm = () => {
+    if (!state.id.trim()) {
+      toast.error("绑定 ID 不能为空");
+      return;
+    }
+    if (!state.accountId.trim()) {
+      toast.error("账号 ID 不能为空");
+      return;
+    }
+    if (isCreating && config.platformBindings.some((b) => b.id === state.id.trim())) {
+      toast.error("绑定 ID 已存在", { description: "请换一个唯一 ID。" });
+      return;
+    }
+    try {
+      buildNextConfig();
+      setConfirming(true);
+    } catch (error) {
+      toast.error("metadata JSON 无效", { description: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
   const handleSave = () => {
-    const nextConfig = buildNextConfig();
+    let nextConfig: ChannelConnectorsNativeConfig;
+    try {
+      nextConfig = buildNextConfig();
+    } catch (error) {
+      toast.error("metadata JSON 无效", { description: error instanceof Error ? error.message : String(error) });
+      setConfirming(false);
+      return;
+    }
     saveMutation.mutate(
       { config: nextConfig },
       {
         onSuccess: (result) => {
-          toast.success("已保存绑定配置", {
+          toast.success(isCreating ? "已新建平台绑定" : "已保存绑定配置", {
             description: `更新于 ${new Date(result.config.updatedAt).toLocaleString()}`,
           });
           onSaved?.();
@@ -157,9 +251,35 @@ export function BindingEditor({
           <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
             <Save />
           </span>
-          <DialogTitle>编辑绑定 · {binding.platform}</DialogTitle>
+          <DialogTitle>{isCreating ? "新建平台绑定" : `编辑绑定 · ${binding?.platform}`}</DialogTitle>
         </DialogHeader>
         <DialogBody className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="绑定 ID" hint="稳定配置键；创建后建议不要频繁修改">
+              <Input
+                value={state.id}
+                onChange={(e) => patch({ id: e.target.value })}
+                disabled={!isCreating}
+              />
+            </Field>
+            <Field label="平台">
+              <select
+                value={state.platform}
+                onChange={(e) => {
+                  const platform = e.target.value as ChannelConnectorPlatformId;
+                  patch({ platform, id: isCreating ? createBindingId(platform) : state.id });
+                }}
+                disabled={!isCreating}
+                className="h-9 w-full rounded-sm border border-line bg-panel-2 px-[11px] text-base text-ink-strong outline-none focus-visible:border-primary-line focus-visible:shadow-[var(--ring)] disabled:opacity-60"
+              >
+                {supportedPlatforms.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="显示名称">
               <Input
@@ -185,7 +305,7 @@ export function BindingEditor({
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="账号 ID" hint="平台账号标识（transport）">
+            <Field label="账号 ID" hint="平台账号/租户/机器人账号标识">
               <Input
                 value={state.accountId}
                 onChange={(e) => patch({ accountId: e.target.value })}
@@ -198,6 +318,18 @@ export function BindingEditor({
                 placeholder="（无）"
               />
             </Field>
+          </div>
+          <Field label="Transport metadata JSON" hint={metadataHint(state.platform)}>
+            <textarea
+              value={state.metadataJson}
+              onChange={(e) => patch({ metadataJson: e.target.value })}
+              spellCheck={false}
+              className="min-h-[110px] w-full rounded-sm border border-line bg-panel-2 px-[11px] py-2 font-mono text-sm text-ink-strong outline-none focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
+              placeholder={'{"appId":"...","appSecret":"..."}'}
+            />
+          </Field>
+          <div className="rounded-sm border border-line bg-panel-2 p-3 text-xs text-muted">
+            敏感字段会在读取时脱敏；看到 <code>[redacted]</code> 时直接保存不会清空真实 token。
           </div>
           <Field label="允许列表 (allowlist)" hint="逗号或换行分隔；空表示不限制">
             <Input
@@ -270,8 +402,8 @@ export function BindingEditor({
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => setConfirming(true)}
-                disabled={pending || !state.accountId.trim()}
+                onClick={handleConfirm}
+                disabled={pending || !state.accountId.trim() || !state.id.trim()}
               >
                 <Save />
                 保存
@@ -293,6 +425,9 @@ export function BindingBadges({ binding }: { binding: ChannelConnectorPlatformBi
       {binding.botId && <Badge variant="outline">bot {binding.botId}</Badge>}
       <Badge variant="outline">{binding.allowlist.length} 允许</Badge>
       <Badge variant="outline">{binding.adminUsers.length} 管理员</Badge>
+      {binding.metadata && Object.keys(binding.metadata).length > 0 && (
+        <Badge variant="outline">metadata {Object.keys(binding.metadata).length}</Badge>
+      )}
     </div>
   );
 }

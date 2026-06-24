@@ -31,7 +31,7 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
 
   router.get("/api/channel-connectors/config", (_req, res, routeCtx) => {
     try {
-      sendJson(res, 200, routeCtx.services.channelConnectors.getNativeConfig());
+      sendJson(res, 200, routeCtx.services.channelConnectors.getPublicNativeConfig());
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }
@@ -40,7 +40,8 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
   router.put("/api/channel-connectors/config", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorsSaveNativeConfigRequest>(req);
-      sendJson(res, 200, routeCtx.services.channelConnectors.saveNativeConfig(payload));
+      routeCtx.services.channelConnectors.saveNativeConfig(payload);
+      sendJson(res, 200, routeCtx.services.channelConnectors.getPublicNativeConfig());
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }
