@@ -120,6 +120,21 @@ test("Overview view can smoke each visible active route by scope", () => {
   );
 });
 
+test("Overview view exposes an Agent cockpit for route and client readiness", () => {
+  const overview = read(`${VIEWS_DIR}/OverviewView.tsx`);
+  assert.match(overview, /Agent Cockpit/);
+  assert.match(overview, /MODEL_GATEWAY_APP_SCOPES\.map/);
+  assert.match(overview, /APP_SCOPE_LABEL/);
+  assert.match(overview, /connectionForScope\(scope, appConnections\)/);
+  assert.match(overview, /routeForScope\(scope, activeRoutes\)/);
+  assert.match(overview, /实际路由/);
+  assert.match(overview, /客户端配置/);
+  assert.match(overview, /检查全部 Agent/);
+  assert.match(overview, /检查路由/);
+  assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
+});
+
+
 test("Providers view only runs active-route smoke for scopes resolved to that provider", () => {
   const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
   assert.match(providers, /activeRouteScopesForProvider/);
