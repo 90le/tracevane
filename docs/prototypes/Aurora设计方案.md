@@ -82,7 +82,7 @@ Agent 行 + 选中详情 tabs（persona / runtime / 模型绑定 / 工作目录 
 
 ## 7. 约束
 
-- 仅独立 HTML/CSS/JS，不连后端，不改 `apps/web-vue`。
+- 仅独立 HTML/CSS/JS，不连后端，不改 `apps/web`。
 - 中文优先，库名/命令/协议保留英文。
 - 每页深浅双主题、响应式、层次化（首屏只放主对象），无横向溢出。
 - 后端缺的数据可先在原型里设计，后续补后端聚合（如 `/api/home/briefing`）。

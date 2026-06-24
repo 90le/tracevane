@@ -1,7 +1,18 @@
 # Tracevane 三域重构规格说明
 
-> 日期：2026-06-24  
+> 日期：2026-06-24
 > 阶段：第一阶段（边界收敛 + 统一运行投影 + 前端 IA 修正）
+
+
+## 0. 当前状态校准（2026-06-24）
+
+本文件现在作为三域边界的权威设计记录，而不是一次性进度日志。当前判断：
+
+- **Model Gateway**：完成度最高，核心是 Provider/模型目录/协议适配/路由/用量/客户端配置；后续以稳定性、真实统计、Codex Account context 和跨协议 smoke 为主。
+- **IM Channels**：目前更接近可观察面板，距离“可创建、可绑定、可测试、可投递、可删除”的生产级渠道管理还有差距；详细目标见 `IM渠道目标与设计.md`。
+- **CLI Agents**：必须从 OpenClaw/Persona 混杂表达里收敛为本地 CLI runtime 控制面，聚焦 Codex CLI、Claude Code、OpenCode 的安装、会话、运行投影和证据；详细目标见 `CLI代理目标与设计.md`。
+
+设计原则不变：三个域可以在前端形成一个“Agent Connectivity”闭环，但后端写边界不能混合。Gateway 不拥有 IM token 和 PTY，IM 不拥有 Provider，CLI Agents 不拥有模型路由写入。
 
 ## 1. 结论：不删除三域，保留三域但收敛为一个产品闭环
 

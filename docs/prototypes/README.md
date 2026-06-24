@@ -2,8 +2,7 @@
 
 本地优先的 AI Agent 控制工作台的前端原型。基于 Aurora 设计体系，单入口 SPA 框架。
 
-> 2026-06-21：Aurora 原型已落入 `apps/web-vue` 的 React + TypeScript + Vite 前端。本文仍保留原型运行方式，作为视觉/交互源和后续页面调整的参考。
-> 同日更新：生产前端目标不是停留在 raw HTML 原型渲染。原型只作为视觉/交互合同，真实功能逐页迁移到 React component + TanStack Query + 现有 API。详见 `../前端功能架构.md`。
+> 2026-06-24：生产前端为 `apps/web`（React + TypeScript + Vite）。本文只保留 Aurora 原型的运行方式和视觉/交互参考；当前产品真相以 `../前端功能架构.md` 和各目标设计文档为准。
 
 ## 快速开始
 
@@ -58,31 +57,23 @@ shell.openSheet({ title, sub, status, owner, action, note, log: ["a", "b"] });
 
 ## 落地 React
 
-| 原型 | React |
+原型到生产前端的对应关系：
+
+| 原型 | 生产前端 |
 | --- | --- |
-| `router.js` | React Router |
-| `pages/*.html` | page component |
-| `pages-data.js` mount | useEffect |
-| `states.js` | shadcn Sheet/Dialog + toast + TanStack Query |
-| `pages.js` 导航 | Sidebar manifest + 路由配置 |
-
-当前实现：
-
-- `apps/web-vue/src/app/route-manifest.ts` 对应 `app/pages.js`。
-- `apps/web-vue/src/app/PrototypePage.tsx` 继续把未迁移的 HTML 片段作为 raw fragments 渲染为 React page；当前 `/model-gateway` 已迁移到真实 React 页面。
-- `apps/web-vue/src/app/page-mounts.ts` 对应 `data/pages-data.js` 的交互 mount。
-- `apps/web-vue/src/app/AuroraShell.tsx` 对应 shell / overlay / command / theme / navigation。
-- `apps/web-vue/src/app/PlatformIntegrationsPage.tsx` 是平台集成总览，挂载 `/platforms`，只展示第三方平台身份、健康、权限和诊断边界。
-- `apps/web-vue/src/app/OpenClawPlatformPage.tsx` 是第一个深度平台子域，挂载 `/platforms/openclaw` 和 `/platforms/openclaw/:section`，消费现有系统、配置、Agent、渠道、Skills、服务和 OpenClaw Recovery API；旧 `/runtime-admin` 路由只做跳转。
-- `apps/web-vue/src/app/ModelGatewayPage.tsx` 是模型网关真实 React 页面，挂载 `/model-gateway`，以只读方式消费现有 Gateway status/runtime/providers/app-connections/usage/daemon-service API。
+| `router.js` | `apps/web` 内的 React Router hash routing |
+| `pages/*.html` | `apps/web/src/features/*` 下的 page/view component |
+| `pages-data.js` mount | React component state + TanStack Query hooks |
+| `states.js` | 本地 UI primitives、Toast、Dialog、Sheet、Query loading/error states |
+| `pages.js` 导航 | `apps/web` route/navigation manifest |
 
 迁移规则：
 
-1. 先保留 Aurora 布局和路由合同。
-2. 明确页面需要的现有 API 数据。
+1. 原型只提供视觉/交互参考，不能覆盖当前产品边界。
+2. 页面需要先明确 owner domain 和现有 API 数据。
 3. 用 TanStack Query 接入真实数据和 loading/empty/error。
-4. 再删除对应 prototype-only DOM mount 行为。
-5. 为每个完成迁移的页面补系统合同测试。
+4. 不用 raw prototype DOM 冒充已完成能力。
+5. 为完成迁移的页面补系统合同或 smoke 测试。
 
 ## 相关文档
 

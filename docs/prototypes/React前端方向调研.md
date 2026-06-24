@@ -3,7 +3,7 @@
 > 日期：2026-06-18
 > 更新：2026-06-21
 > 范围：前端重新设计方向与 React 落地记录
-> 决策：新前端以 React + TypeScript + Vite + shadcn/ui ownership + Tailwind CSS v4 为目标实现方向。Aurora 独立原型已经落入 `apps/web-vue`，旧 Vue 源码已被 React 壳替换。
+> 决策：新前端以 React + TypeScript + Vite + shadcn/ui ownership + Tailwind CSS v4 为目标实现方向。Aurora 原型只作为视觉参考，生产前端已收敛到 `apps/web`。
 
 ## 已核验来源
 
@@ -64,7 +64,7 @@
 
 2026-06-21 落地状态：
 
-- `apps/web-vue` 目录名暂保留，以避免同时改 workspace、release、installer 和 OpenClaw 静态资源路径；目录内部技术栈已经切换到 React。
+- `apps/web` 目录已收敛到 `apps/web`；旧 Vue/raw prototype 渲染路径不再作为生产目标。
 - Vite 升级到 Vite 8，React 插件使用 `@vitejs/plugin-react`，Tailwind v4 使用 `@tailwindcss/vite`。
 - Aurora 原型的 HTML 片段通过 Vite raw import 映射为 React page component，`pages-data.js` 的 mount 行为重写为 React `useEffect` DOM adapter；`/model-gateway` 已从 raw fragment 迁移为真实 React 页面。
 - React shell 负责 hash 路由、左侧分组导航、轻顶栏、命令面板、Sheet/Dialog/Toast、主题/配色切换、移动导航、状态三态和 health 查询。

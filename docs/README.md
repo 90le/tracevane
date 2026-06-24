@@ -1,62 +1,63 @@
-# Tracevane Docs Index
+# Tracevane Docs
 
-> Updated: 2026-06-22
-> Rule: docs describe current intent, boundaries and contracts. Historical implementation detail belongs in git history.
+> Updated: 2026-06-24
+> Rule: active docs describe the current product target and architecture. Historical plans, progress logs and superseded experiments belong in git history, not in the live docs index.
 
-## Authoritative Entry
+## Current authoritative docs
 
-- `产品战略重置方案.md` - product reset, market boundary, naming gate and implementation phases.
-- `产品对标策略.md` - market benchmark strategy, product pillars, anti-bloat rules and research cadence.
-- `产品需求.md` - current PRD for the Tracevane direction.
-- `系统架构.md` - frontend, API, daemon, store and runtime boundaries.
-- `当前进展.md` - compact current snapshot, open work and verification baseline.
-- `研究先行开发清单.md` - mandatory research-first and naming checks before implementation.
+Read these first:
 
-## Active Tracks
+1. `产品需求.md` — current product goal, scope and domain priorities.
+2. `系统架构.md` — current backend/frontend/runtime architecture.
+3. `前端功能架构.md` — current frontend information architecture and page ownership.
+4. `Tracevane三域重构规格说明.md` — Model Gateway / IM Channels / CLI Agents boundary spec.
+5. `Tracevane三域重构任务目标.md` — current staged goals and known next tasks.
+6. `IM渠道目标与设计.md` — IM Channels target design and gap list.
+7. `CLI代理目标与设计.md` — CLI Agents target design and de-OpenClaw boundary.
+8. `研究先行开发清单.md` — required research-first implementation gate.
 
-### Frontend
+## Supporting reference docs
 
-- `前端功能架构.md` - functional migration architecture; Aurora fragments are visual contracts, each route graduates to real React + TanStack Query + existing APIs.
-- `prototypes/README.md` / `prototypes/INDEX.md` - Aurora SPA prototype framework, page-form mapping and React landing rules.
-- `prototypes/React前端方向调研.md` - React + Vite + Tailwind v4 + shadcn/ui direction research and rejected routes.
-- `界面设计守则.md` / `DESIGN.md` (repo root) - interface design constitution and page-form discipline.
+Keep these as scoped references. They must not redefine the product away from the current authoritative docs above.
 
-### Model Gateway
+- `工作区IDE目标.md` — Workspace IDE target.
+- `自愈守护进程目标.md` / `自愈守护进程进度.md` — recovery/system guard notes.
+- `聊天契约.md` / `聊天会话策略.md` / `聊天开放门槛.md` / `聊天设计方案.md` / `聊天官方对齐.md` — Chat contracts.
+- `混合渲染方案.md` / `富消息使用说明.md` — rendering and rich message references.
+- `界面设计守则.md` — UI design rules.
+- `prototypes/` — visual reference only, not product truth.
 
-- `网关目标方案.md` - Gateway goal, protocol matrix, provider/routing and acceptance.
-- `网关进度.md` - current Gateway / Channel Connectors facts, boundaries and next steps.
-- `网关账户型Provider方案.md` - account-style provider research and proof boundaries.
-- `模型网关详细目标.md` - locked execution goal for the Aurora-aligned Gateway page and completion bar.
-- `模型网关信息架构契约.md` - locked Model Gateway information architecture (four tabs, child flows, danger writes).
+## Product summary
 
-### Channel Connectors
+Tracevane is a local-first AI Agent connectivity and runtime control layer.
 
-- `渠道连接器原生方案.md` - native IM to CLI Agent runtime.
-- `渠道连接器能力地图.md` - Channel Connectors capability map.
-- `飞书长连接问题跟踪.md` - Feishu long-connection facts and regression history (authoritative Feishu tracker).
+It connects:
 
-### Workspace IDE / Recovery
+```text
+Model providers / Codex accounts / API keys
+        ↓
+Model Gateway: protocol adaptation, routing, account pool, app connection config
+        ↓
+Codex / Claude Code / OpenCode / local Chat / IM-triggered tasks
+        ↓
+CLI Agent runtime and Agent Runs
+        ↓
+Evidence, delivery logs, usage, recovery and diagnostics
+```
 
-- `工作区IDE目标.md` - IDE-grade local edit/run/preview/AI/diff workspace goal.
-- `自愈守护进程目标.md` / `自愈守护进程进度.md` - OpenClaw recovery guard.
+## Domain ownership
 
-## Contract References
+| Domain | Owns | Must not own |
+| --- | --- | --- |
+| Model Gateway | Provider, model catalog, endpoint profile, protocol adapter, routing, usage/cache evidence, account pool, Codex/Claude/OpenCode/OpenClaw client config, gateway daemon. | IM platform credentials, CLI process lifecycle, persona/OpenClaw CRUD. |
+| IM Channels | IM platform account, bot credentials, webhook/long connection, binding, inbound message, outbound delivery, IM session, channel daemon. | Provider/model routing internals, terminal PTY lifecycle, generic OpenClaw config. |
+| CLI Agents | Codex/Claude Code/OpenCode runtime status, launch/resume/stop boundary, terminal sessions, Agent Runs, runtime evidence. | IM account setup, provider secret management, OpenClaw generic admin. |
+| Chat / Workspace / Recovery | Local chat, IDE/files/terminal/Git evidence, service recovery and diagnostics. | Replacing the three core domains above. |
 
-These describe Chat/rendering contracts. They are reference documents and must not redefine product positioning away from `产品战略重置方案.md`.
+## Cleanup policy
 
-- `聊天契约.md`
-- `聊天会话策略.md`
-- `聊天开放门槛.md`
-- `聊天设计方案.md`
-- `混合渲染方案.md`
-- `富消息使用说明.md`
-- `聊天官方对齐.md`
-
-## Cleanup Policy
-
-1. Do not add long round-by-round logs to evergreen docs. Verification history belongs in git, not in goal/progress docs.
-2. Do not present Dreaming or legacy plugin management as active scope.
-3. Do not add a new feature plan before official/API/SDK/GitHub/community research is recorded.
-4. Do not use market-crowded product names without the naming gate.
-5. Keep prototypes, handoff prompts and one-off visual experiments out of the docs index unless they are the active review target.
-6. Prefer deleting or archiving stale docs over maintaining parallel contradictory plans.
+- Prefer one current design doc over several stale progress logs.
+- Delete superseded docs instead of keeping contradictory versions.
+- Do not claim a page is complete when it is only read-only.
+- Do not describe OpenClaw generic CRUD as CLI Agents core scope.
+- Do not add new provider/CLI/IM behavior without research-first evidence.
