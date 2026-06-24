@@ -571,6 +571,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   assert.equal(usage.totals.totalTokens, 135);
   assert.equal(usage.totals.cacheReadTokens, 2);
   assert.equal(usage.totals.cacheCreationTokens, 3);
+  assert.equal(usage.totals.cacheReadRequestCount, 1);
+  assert.equal(usage.totals.cacheCreationRequestCount, 1);
   assert.equal(usage.models.length, 18);
   assert.equal(usage.providers.length, 2);
   assert.equal(usage.appScopes.length, 3);
@@ -585,6 +587,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       totalTokens: byModel.get("model-a")?.totalTokens,
       cacheReadTokens: byModel.get("model-a")?.cacheReadTokens,
       cacheCreationTokens: byModel.get("model-a")?.cacheCreationTokens,
+      cacheReadRequestCount: byModel.get("model-a")?.cacheReadRequestCount,
+      cacheCreationRequestCount: byModel.get("model-a")?.cacheCreationRequestCount,
     },
     {
       requestCount: 1,
@@ -594,6 +598,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       totalTokens: 15,
       cacheReadTokens: 2,
       cacheCreationTokens: 3,
+      cacheReadRequestCount: 1,
+      cacheCreationRequestCount: 1,
     },
   );
   assert.equal(byModel.get("model-b")?.requestCount, 1);
@@ -610,6 +616,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       totalTokens: byProvider.get("usage-p1")?.totalTokens,
       cacheReadTokens: byProvider.get("usage-p1")?.cacheReadTokens,
       cacheCreationTokens: byProvider.get("usage-p1")?.cacheCreationTokens,
+      cacheReadRequestCount: byProvider.get("usage-p1")?.cacheReadRequestCount,
+      cacheCreationRequestCount: byProvider.get("usage-p1")?.cacheCreationRequestCount,
     },
     {
       label: "Usage P1",
@@ -618,6 +626,8 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
       totalTokens: 15,
       cacheReadTokens: 2,
       cacheCreationTokens: 3,
+      cacheReadRequestCount: 1,
+      cacheCreationRequestCount: 1,
     },
   );
   assert.equal(byProvider.get("usage-p2")?.requestCount, 16);

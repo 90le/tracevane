@@ -5805,6 +5805,8 @@ export function createModelGatewayService(
       totalTokens: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheReadRequestCount: 0,
+      cacheCreationRequestCount: 0,
     };
     const models = new Map<string, ModelGatewayModelUsageRow>();
     const providers = new Map<string, ModelGatewayUsageBreakdownRow>();
@@ -5827,6 +5829,8 @@ export function createModelGatewayService(
           totalTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          cacheReadRequestCount: 0,
+          cacheCreationRequestCount: 0,
           latestRequestAt: null,
         };
         map.set(key, breakdown);
@@ -5843,6 +5847,8 @@ export function createModelGatewayService(
         breakdown.totalTokens += entry.usage.totalTokens || 0;
         breakdown.cacheReadTokens += entry.usage.cacheReadTokens || 0;
         breakdown.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
+        if ((entry.usage.cacheReadTokens || 0) > 0) breakdown.cacheReadRequestCount += 1;
+        if ((entry.usage.cacheCreationTokens || 0) > 0) breakdown.cacheCreationRequestCount += 1;
       }
     };
     for (const entry of entries) {
@@ -5858,6 +5864,8 @@ export function createModelGatewayService(
           totalTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          cacheReadRequestCount: 0,
+          cacheCreationRequestCount: 0,
           latestRequestAt: null,
         };
         models.set(bucket.key, row);
@@ -5875,12 +5883,16 @@ export function createModelGatewayService(
         row.totalTokens += entry.usage.totalTokens || 0;
         row.cacheReadTokens += entry.usage.cacheReadTokens || 0;
         row.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
+        if ((entry.usage.cacheReadTokens || 0) > 0) row.cacheReadRequestCount += 1;
+        if ((entry.usage.cacheCreationTokens || 0) > 0) row.cacheCreationRequestCount += 1;
         totals.meteredRequestCount += 1;
         totals.inputTokens += entry.usage.inputTokens || 0;
         totals.outputTokens += entry.usage.outputTokens || 0;
         totals.totalTokens += entry.usage.totalTokens || 0;
         totals.cacheReadTokens += entry.usage.cacheReadTokens || 0;
         totals.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
+        if ((entry.usage.cacheReadTokens || 0) > 0) totals.cacheReadRequestCount += 1;
+        if ((entry.usage.cacheCreationTokens || 0) > 0) totals.cacheCreationRequestCount += 1;
       }
       touchBreakdown(
         providers,

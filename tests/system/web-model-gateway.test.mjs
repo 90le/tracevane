@@ -103,6 +103,12 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   assert.match(usage, /cacheCreationTokens/);
   assert.match(usage, /cacheEvidenceTokens/);
   assert.match(usage, /cacheReadToInput/);
+  assert.match(usage, /cacheFieldsAvailable/);
+  assert.match(usage, /cacheReadRequestCount/);
+  assert.match(usage, /cacheCreationRequestCount/);
+  assert.match(usage, /runtimeCacheReadTokens/);
+  assert.match(usage, /当前 \/usage 响应未暴露缓存账本字段/);
+  assert.match(usage, /当前账本窗口没有正向缓存证据/);
   assert.match(usage, /缓存证据口径/);
   assert.match(usage, /不做账单折扣、成本或命中率估算/);
   assert.match(usage, /requestRows/);

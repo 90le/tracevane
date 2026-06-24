@@ -538,6 +538,8 @@ export interface ModelGatewayModelUsageRow {
   totalTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  cacheReadRequestCount: number;
+  cacheCreationRequestCount: number;
   latestRequestAt: string | null;
 }
 
@@ -551,6 +553,8 @@ export interface ModelGatewayUsageBreakdownRow {
   totalTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  cacheReadRequestCount: number;
+  cacheCreationRequestCount: number;
   latestRequestAt: string | null;
 }
 
@@ -1174,6 +1178,8 @@ export interface ModelGatewayUsageLedgerResponse {
     totalTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    cacheReadRequestCount: number;
+    cacheCreationRequestCount: number;
   };
   models: ModelGatewayModelUsageRow[];
   providers: ModelGatewayUsageBreakdownRow[];

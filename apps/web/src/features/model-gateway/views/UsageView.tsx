@@ -117,6 +117,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
   // Latency comes from the runtime usage summary (status), shown as `-` when absent.
   const latencySummary = statusQuery.data?.runtime.usageSummary.latency;
   const runtimeLogSize = statusQuery.data?.runtime.requestLogSize ?? 0;
+  const runtimeUsage = statusQuery.data?.runtime.usageSummary.usage;
 
   const hasUsage = (totals?.requestCount ?? 0) > 0 || models.length > 0;
   const maxRequests = requestRows.reduce((max, m) => Math.max(max, m.requestCount), 0);
@@ -124,10 +125,17 @@ export function UsageView(_props: ModelGatewayViewProps) {
     totals && totals.requestCount > 0
       ? totals.meteredRequestCount / totals.requestCount
       : 0;
-  const cacheReadTokens = totals?.cacheReadTokens ?? 0;
-  const cacheCreationTokens = totals?.cacheCreationTokens ?? 0;
+  const cacheFieldsAvailable =
+    typeof totals?.cacheReadTokens === "number"
+    && typeof totals?.cacheCreationTokens === "number";
+  const cacheReadTokens = cacheFieldsAvailable ? totals.cacheReadTokens : 0;
+  const cacheCreationTokens = cacheFieldsAvailable ? totals.cacheCreationTokens : 0;
+  const cacheReadRequestCount = cacheFieldsAvailable ? (totals.cacheReadRequestCount ?? 0) : 0;
+  const cacheCreationRequestCount = cacheFieldsAvailable ? (totals.cacheCreationRequestCount ?? 0) : 0;
   const cacheEvidenceTokens = cacheReadTokens + cacheCreationTokens;
   const cacheReadToInput = ratio(cacheReadTokens, totals?.inputTokens ?? 0);
+  const runtimeCacheReadTokens = runtimeUsage?.cacheReadTokens ?? 0;
+  const runtimeCacheCreationTokens = runtimeUsage?.cacheCreationTokens ?? 0;
 
   return (
     <div className="grid gap-4">
@@ -166,8 +174,10 @@ export function UsageView(_props: ModelGatewayViewProps) {
         <Kpi
           icon={<Database />}
           label="缓存证据"
-          value={compact(cacheEvidenceTokens)}
-          sub={`读 ${compact(cacheReadTokens)} · 写 ${compact(cacheCreationTokens)}`}
+          value={cacheFieldsAvailable ? compact(cacheEvidenceTokens) : "未暴露"}
+          sub={cacheFieldsAvailable
+            ? `读 ${compact(cacheReadTokens)} · 写 ${compact(cacheCreationTokens)}`
+            : `runtime 读 ${compact(runtimeCacheReadTokens)}`}
         />
       </div>
 
@@ -204,11 +214,29 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 OpenAI 的 cached_tokens 与 Anthropic 的 cache_read/cache_creation 字段语义不同；这里仅展示
                 provider 返回的缓存读写证据，不做账单折扣、成本或命中率估算。
               </p>
+              {!cacheFieldsAvailable && (
+                <p className="mt-2 text-sm text-amber">
+                  当前 /usage 响应未暴露缓存账本字段；最近 runtime 窗口显示 cache read {compact(runtimeCacheReadTokens)}
+                  、cache write {compact(runtimeCacheCreationTokens)}。重启/升级网关 daemon 后，账本维度会显示完整缓存证据。
+                </p>
+              )}
+              {cacheFieldsAvailable && cacheEvidenceTokens === 0 && (
+                <p className="mt-2 text-sm text-amber">
+                  当前账本窗口没有正向缓存证据。这不等于缓存功能关闭；可能是 provider 未回传 cache 字段、请求少于缓存门槛、
+                  前缀不稳定，或当前 read window 内没有命中/写入。
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <LatCell label="cache read" value={compact(cacheReadTokens)} />
               <LatCell label="cache write" value={compact(cacheCreationTokens)} />
               <LatCell label="read/input" value={cacheReadToInput} />
+            </div>
+            <div className="md:col-span-2 grid grid-cols-2 gap-2 text-center md:grid-cols-4">
+              <LatCell label="read req" value={cacheFieldsAvailable ? compact(cacheReadRequestCount) : "-"} />
+              <LatCell label="write req" value={cacheFieldsAvailable ? compact(cacheCreationRequestCount) : "-"} />
+              <LatCell label="runtime read" value={compact(runtimeCacheReadTokens)} />
+              <LatCell label="runtime write" value={compact(runtimeCacheCreationTokens)} />
             </div>
           </section>
 
@@ -354,6 +382,7 @@ function BreakdownPanel({
     meteredRequestCount: number;
     totalTokens: number;
     cacheReadTokens: number;
+    cacheReadRequestCount?: number;
   }>;
 }) {
   return (
@@ -380,6 +409,7 @@ function BreakdownPanel({
                 <span>metered {compact(row.meteredRequestCount)}</span>
                 <span>tokens {compact(row.totalTokens)}</span>
                 <span>cache read {compact(row.cacheReadTokens)}</span>
+                <span>cache req {compact(row.cacheReadRequestCount ?? 0)}</span>
               </div>
             </div>
           ))
