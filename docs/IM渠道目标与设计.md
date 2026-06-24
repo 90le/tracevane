@@ -75,26 +75,20 @@ Required UI boundaries:
 
 ## 5. Current frontend flows
 
-Implemented first slice:
+Implemented slices:
 
-1. Agent profile list, read-only.
-2. Platform binding list.
-3. Create platform binding.
-4. Edit platform binding.
-5. Delete platform binding with confirmation.
-6. Enable/disable binding.
-7. Edit allowlist/admin/disabled command policy.
-8. Edit transport metadata JSON for credentials and adapter-specific fields.
-9. Redacted secret warning and safe round-trip behavior.
-10. Feishu `tenant-token` transport smoke.
-11. Octo `register` transport smoke.
-12. Daemon native binding preview remains read-only evidence.
+1. Aurora local views: 概览 / 平台账号 / 绑定路由 / 会话投递 / 守护诊断.
+2. Platform account rows with create/edit/delete, enable/disable, redacted credential state, Feishu `tenant-token` smoke and Octo `register` smoke.
+3. Wide account Drawer with platform-specific Feishu / Octo / WeCom field templates and advanced collapsed metadata JSON.
+4. Binding route rows with source kind/id, Agent Profile preview, allowlist/admin/disabledCommands, session policy, and a separate wide route Drawer.
+5. 会话投递 view for IM-triggered Agent sessions and runtime event evidence.
+6. 守护诊断 view for daemon service, checklist, logs, and generated native binding evidence.
+7. Agent profiles are selectors/previews, not a first-screen panel.
+8. Daemon native bindings are collapsed evidence, not a second user-editable binding list.
+9. Browser config reads remain redacted; saving unchanged `[redacted]` preserves real secrets.
 
 Still P0/P1 follow-up:
 
-- Replace the current narrow binding modal with wide account and binding Drawers.
-- Split the current platform binding screen into conceptual Platform Accounts and Binding Routes views, even if the backend still stores both in `platformBindings`.
-- Add platform-specific field templates for Feishu, Octo, and WeCom; keep raw JSON collapsed as advanced.
 - Guided Feishu setup checklist and callback URL copy.
 - Guided WeCom/企业微信 setup once adapter smoke is verified.
 - Dedicated account-vs-binding backend split only when a real multi-binding account store is needed.

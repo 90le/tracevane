@@ -233,10 +233,10 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
         {/* Bindings summary — click navigates to bindings view. */}
         <Panel>
           <PanelHead
-            title="平台绑定"
-            sub="账号/bot → Agent"
+            title="平台账号"
+            sub="账号/bot 凭据与启用状态"
             action={
-              <Button variant="ghost" size="sm" onClick={() => goToView("bindings")}>
+              <Button variant="ghost" size="sm" onClick={() => goToView("accounts")}>
                 管理
               </Button>
             }
@@ -259,7 +259,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
                       {binding.enabled ? "启用" : "停用"}
                     </Badge>
                   }
-                  onClick={() => goToView("bindings", { binding: binding.id })}
+                  onClick={() => goToView("accounts", { binding: binding.id })}
                 />
               ))}
               {agentProfiles.length > 0 && (
@@ -282,9 +282,9 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
           title="最近会话事件"
           sub="Agent session driver 事件，只读。"
           action={
-            <Button variant="ghost" size="sm" onClick={() => goToView("sessions")}>
+            <Button variant="ghost" size="sm" onClick={() => goToView("deliveries")}>
               <MessageSquare className="size-3.5" />
-              查看 IM 会话
+              查看会话投递
             </Button>
           }
         />

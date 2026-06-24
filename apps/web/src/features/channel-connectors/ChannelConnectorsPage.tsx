@@ -1,29 +1,31 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { LayoutDashboard, MessageSquare, PlugZap, ScrollText } from "lucide-react";
+import { Activity, LayoutDashboard, MessageSquare, PlugZap, RadioTower } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 
 import {
-  BindingsView,
-  LogsView,
+  AccountsView,
+  DiagnosticsView,
   OverviewView,
+  RoutesView,
   SessionsView,
   CHANNEL_CONNECTORS_VIEWS,
   type ChannelConnectorsView,
   type ChannelConnectorsViewProps,
 } from "./views";
 
-/** Primary `viewbar` tabs (IA contract: overview / bindings / sessions / logs). */
+/** Primary local viewbar tabs per docs/IM渠道前端设计契约.md. */
 const PRIMARY_TABS: ReadonlyArray<{
   view: ChannelConnectorsView;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "bindings", label: "平台绑定", icon: PlugZap },
-  { view: "sessions", label: "IM 会话", icon: MessageSquare },
-  { view: "logs", label: "投递日志", icon: ScrollText },
+  { view: "accounts", label: "平台账号", icon: RadioTower },
+  { view: "routes", label: "绑定路由", icon: PlugZap },
+  { view: "deliveries", label: "会话投递", icon: MessageSquare },
+  { view: "diagnostics", label: "守护诊断", icon: Activity },
 ];
 
 const VIEW_COMPONENTS: Record<
@@ -31,9 +33,10 @@ const VIEW_COMPONENTS: Record<
   (props: ChannelConnectorsViewProps) => React.JSX.Element
 > = {
   overview: OverviewView,
-  bindings: BindingsView,
-  sessions: SessionsView,
-  logs: LogsView,
+  accounts: AccountsView,
+  routes: RoutesView,
+  deliveries: SessionsView,
+  diagnostics: DiagnosticsView,
 };
 
 function isChannelConnectorsView(value: string | null): value is ChannelConnectorsView {
@@ -41,11 +44,8 @@ function isChannelConnectorsView(value: string | null): value is ChannelConnecto
 }
 
 /**
- * Channel Connectors page. Owns the primary `viewbar` tabs over the view set
- * (`overview|bindings|sessions|logs`). The active view and the `bindings`
- * deep-link are driven entirely from the URL search params (`?view=`,
- * `?binding=<id>`), so views are deep-linkable and browser back/forward work.
- * Content lives in `./views`.
+ * Channel Connectors page. Owns the Aurora local viewbar over the IM domain.
+ * Content views are layered by primary object, not by backend module names.
  */
 export function ChannelConnectorsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,11 +64,8 @@ export function ChannelConnectorsPage() {
         (prev) => {
           const next = new URLSearchParams(prev);
           next.set("view", view);
-          if (params?.binding) {
-            next.set("binding", params.binding);
-          } else {
-            next.delete("binding");
-          }
+          if (params?.binding) next.set("binding", params.binding);
+          else next.delete("binding");
           return next;
         },
         { replace: false },
@@ -81,11 +78,7 @@ export function ChannelConnectorsPage() {
 
   return (
     <div className="grid gap-4">
-      {/* Primary viewbar */}
-      <nav
-        className="flex flex-wrap gap-1 border-b border-line pb-2"
-        aria-label="IM 渠道视图"
-      >
+      <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="IM 渠道视图">
         {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
           const active = resolvedView === view;
           return (

@@ -147,8 +147,8 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       {/* Active sessions — read-only with guarded controls */}
       <Panel>
         <PanelHead
-          title="活跃会话"
-          sub="IM 触发的持久 Agent session；kill / reap 为写操作，需确认。"
+          title="会话投递"
+          sub="IM 触发的 Agent session 与投递链路证据；kill / reap 为写操作，需确认。"
           action={
             <div className="flex items-center gap-2">
               <Badge variant="outline">
@@ -233,7 +233,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
 
       {/* Recent events — read-only trace */}
       <Panel>
-        <PanelHead title="最近事件" sub="session / turn 生命周期事件，只读。" />
+        <PanelHead title="最近投递/会话事件" sub="session / turn / delivery 生命周期事件，只读。" />
         {recentEvents.length === 0 ? (
           <EmptyState title="暂无事件" description="尚无 session / turn 事件记录。" />
         ) : (

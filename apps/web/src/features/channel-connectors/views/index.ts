@@ -1,7 +1,8 @@
 export { OverviewView } from "./OverviewView";
-export { BindingsView } from "./BindingsView";
+export { AccountsView } from "./AccountsView";
+export { RoutesView } from "./RoutesView";
 export { SessionsView } from "./SessionsView";
-export { LogsView } from "./LogsView";
+export { DiagnosticsView } from "./DiagnosticsView";
 
 export {
   CHANNEL_CONNECTORS_VIEWS,
