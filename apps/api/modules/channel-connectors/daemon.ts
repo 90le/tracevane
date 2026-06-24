@@ -667,6 +667,8 @@ interface ChannelDaemonAgentSessionDriverBindingState {
   platform: string;
   accountId: string;
   botId: string | null;
+  peerKind: string | null;
+  peerId: string | null;
   agent: string;
   model: string | null;
   permissionMode: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["permissionMode"];
@@ -1593,6 +1595,8 @@ function buildAgentSessionDriverState(
         platform: binding.platform,
         accountId: binding.accountId,
         botId: binding.botId,
+        peerKind: normalizeString(binding.metadata?.peerKind) || null,
+        peerId: normalizeString(binding.metadata?.peerId) || null,
         agent: project.agent,
         model: project.model,
         permissionMode: project.permissionMode,

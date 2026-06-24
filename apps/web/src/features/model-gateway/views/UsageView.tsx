@@ -139,7 +139,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <div>
+      <div className="min-w-0">
         <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
         <p className="text-sm text-muted">
           请求与 token 来自用量账本；延迟来自最近 runtime 请求窗口。未返回 usage 的请求只计入请求数，不猜 token；缓存字段只来自 provider usage。
@@ -147,7 +147,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
       </div>
 
       {/* KPI grid — values from API totals or zero */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-6">
         <Kpi
           icon={<Send />}
           label="请求"
@@ -227,12 +227,12 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 </p>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="grid grid-cols-1 gap-2 text-center min-[420px]:grid-cols-3">
               <LatCell label="cache read" value={compact(cacheReadTokens)} />
               <LatCell label="cache write" value={compact(cacheCreationTokens)} />
               <LatCell label="read/input" value={cacheReadToInput} />
             </div>
-            <div className="md:col-span-2 grid grid-cols-2 gap-2 text-center md:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 text-center min-[420px]:grid-cols-2 md:col-span-2 md:grid-cols-4">
               <LatCell label="read req" value={cacheFieldsAvailable ? compact(cacheReadRequestCount) : "-"} />
               <LatCell label="write req" value={cacheFieldsAvailable ? compact(cacheCreationRequestCount) : "-"} />
               <LatCell label="runtime read" value={compact(runtimeCacheReadTokens)} />
@@ -260,11 +260,11 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 <h3 className="text-md font-semibold text-ink-strong">按模型分布</h3>
                 <span className="text-sm text-subtle">请求次数占比，按请求数排序</span>
               </div>
-              <div className="grid gap-2.5 p-4">
+              <div className="grid min-w-0 gap-2.5 p-4">
                 {requestRows.map((m, idx) => {
                   const pct = maxRequests > 0 ? (m.requestCount / maxRequests) * 100 : 0;
                   return (
-                    <div key={m.model} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                    <div key={m.model} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                       <span className="flex min-w-0 items-center gap-2">
                         <i
                           className="size-2.5 shrink-0 rounded-full"
@@ -296,7 +296,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 <h3 className="text-md font-semibold text-ink-strong">延迟分布</h3>
                 <span className="text-sm text-subtle">最近 runtime 窗口 · {compact(runtimeLogSize)} 条</span>
               </div>
-              <div className="grid grid-cols-3 gap-2 p-4">
+              <div className="grid grid-cols-1 gap-2 p-4 min-[420px]:grid-cols-3">
                 <LatCell label="p50" value={latency(latencySummary?.p50Ms)} />
                 <LatCell label="p95" value={latency(latencySummary?.p95Ms)} />
                 <LatCell label="p99" value={latency(latencySummary?.p99Ms)} />
@@ -315,7 +315,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 按 total tokens 排序；未 metered 请求不会被估算 token。
               </p>
             </div>
-            <Table>
+            <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>模型</TableHead>
@@ -332,7 +332,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
               <TableBody>
                 {tokenRows.map((m) => (
                   <TableRow key={m.model}>
-                    <TableCell className="font-medium text-ink-strong">{m.model}</TableCell>
+                    <TableCell className="max-w-[220px] break-all font-medium text-ink-strong">{m.model}</TableCell>
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.requestCount)}
                     </TableCell>

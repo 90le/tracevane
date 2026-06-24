@@ -59,7 +59,7 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
 
   return (
     <div className="grid gap-[18px]">
-      <div>
+      <div className="min-w-0">
         <h2 className="text-lg font-semibold text-ink-strong">守护诊断</h2>
         <p className="text-sm text-muted">Channel Connectors daemon、service、生成配置和日志证据；不在此编辑账号或路由。</p>
       </div>
@@ -97,7 +97,7 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
           title="日志摘要"
           sub={logsQuery.data?.logFile ?? "daemon logs"}
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setShowRawLogs((value) => !value)}>{showRawLogs ? "收起原始日志" : "原始日志"}</Button>
               <Button variant="outline" size="sm" onClick={() => void logsQuery.refetch()} disabled={logsQuery.isFetching}><RefreshCw className={logsQuery.isFetching ? "animate-spin" : undefined} />刷新</Button>
             </div>
@@ -106,7 +106,7 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
         {lines.length === 0 ? (
           <EmptyState title="暂无日志" description="守护进程尚未输出日志。" icon={<ScrollText />} />
         ) : (
-          <div className="grid gap-3 border-t border-line p-3">
+          <div className="grid min-w-0 gap-3 border-t border-line p-3">
             <div className="grid gap-2 sm:grid-cols-3">
               <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">日志行数</div><div className="text-lg font-semibold text-ink-strong">{logSummary.total}</div></div>
               <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">疑似问题行</div><div className="text-lg font-semibold text-ink-strong">{logSummary.problemCount}</div></div>
@@ -116,7 +116,7 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
               <div className="grid gap-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong"><ScrollText className="size-4" />问题行优先</div>
                 {logSummary.problemLines.map((line, index) => (
-                  <code key={`${line}-${index}`} className="block max-w-full overflow-hidden rounded-sm border border-amber bg-amber-soft px-3 py-2 font-mono text-xs text-amber break-all">
+                  <code key={`${line}-${index}`} className="block max-w-full overflow-x-auto whitespace-pre-wrap rounded-sm border border-amber bg-amber-soft px-3 py-2 font-mono text-xs text-amber break-all">
                     {truncateLogLine(line)}
                   </code>
                 ))}

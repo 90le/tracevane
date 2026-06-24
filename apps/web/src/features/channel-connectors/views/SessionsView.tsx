@@ -163,6 +163,8 @@ function routeMetaString(
   route: ChannelConnectorAgentSessionDriverBindingStatus | null,
   key: string,
 ): string {
+  const direct = route && key in route ? (route as unknown as Record<string, unknown>)[key] : null;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
   const value = route && "metadata" in route ? (route as { metadata?: Record<string, unknown> }).metadata?.[key] : null;
   return typeof value === "string" ? value.trim() : "";
 }

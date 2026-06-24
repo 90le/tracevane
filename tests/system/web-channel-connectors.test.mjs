@@ -100,6 +100,8 @@ test("Channel Connectors diagnostics demotes generated daemon bindings to eviden
   assert.match(diagnostics, /问题行优先/);
   assert.match(diagnostics, /break-all/);
   assert.match(diagnostics, /max-w-full/);
+  assert.match(diagnostics, /overflow-x-auto/);
+  assert.match(diagnostics, /flex-wrap/);
 });
 
 test("Channel Connectors session events prioritize human-readable incident summaries", () => {
@@ -145,8 +147,12 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(types, /lastCommand: string \| null/);
   assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
   assert.match(types, /workDir: string/);
+  assert.match(types, /peerKind: string \| null/);
+  assert.match(types, /peerId: string \| null/);
   assert.match(daemon, /permissionMode: project.permissionMode/);
   assert.match(daemon, /workDir: project.workDir/);
+  assert.match(daemon, /peerKind: normalizeString\(binding\.metadata\?\.peerKind\) \|\| null/);
+  assert.match(daemon, /peerId: normalizeString\(binding\.metadata\?\.peerId\) \|\| null/);
   assert.match(daemon, /readChannelConnectorSessionControls/);
   assert.match(daemon, /sessionControl: control \?/);
   assert.match(daemon, /action === "reset-conversation"/);
@@ -162,6 +168,18 @@ test("Model Gateway browser model list uses namespaced API path", () => {
   assert.match(api, /\$\{BASE\}\/models/);
   assert.doesNotMatch(api, /apiRequest<ModelGatewayModelListResponse>\(`\/v1\/models/);
   assert.match(routes, /\/api\/model-gateway\/models/);
+});
+
+test("Channel Connectors route and log views keep dense evidence within responsive bounds", () => {
+  const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
+  const diagnostics = read(`${VIEWS_DIR}/DiagnosticsView.tsx`);
+  const table = read("apps/web/src/design/ui/table.tsx");
+  assert.match(table, /max-w-full overflow-x-auto/);
+  assert.match(routes, /min-w-\[980px\]/);
+  assert.match(routes, /break-all/);
+  assert.match(routes, /flex-wrap justify-end/);
+  assert.match(diagnostics, /overflow-x-auto/);
+  assert.match(diagnostics, /whitespace-pre-wrap/);
 });
 
 

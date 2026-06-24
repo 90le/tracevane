@@ -192,7 +192,7 @@ export function RoutesView({
 
   return (
     <div className="grid gap-[18px]">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-ink-strong">绑定路由</h2>
           <p className="text-sm text-muted">
@@ -259,7 +259,7 @@ export function RoutesView({
           }
         />
       ) : (
-        <Table>
+        <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow>
               <TableHead>绑定路由</TableHead>
@@ -300,8 +300,8 @@ export function RoutesView({
               ].some((key) => Boolean(metaString(binding, key, "")));
               return (
                 <TableRow key={binding.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
+                  <TableCell className="max-w-[280px]">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="grid size-8 place-items-center rounded-[9px] bg-panel-3 text-muted">
                         <Route className="size-4" />
                       </span>
@@ -315,17 +315,17 @@ export function RoutesView({
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-sm text-muted">
+                  <TableCell className="max-w-[220px]">
+                    <span className="block break-all font-mono text-sm text-muted">
                       {peerKind} · {peerId}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="grid max-w-[360px]">
+                    <span className="grid max-w-[360px] min-w-0">
                       <strong className="truncate text-sm text-ink-strong">
                         {routeAgent} · {routeModel}
                       </strong>
-                      <span className="truncate text-xs text-muted">
+                      <span className="truncate text-xs text-muted" title={`${profile?.name ?? binding.agentProfileId} · ${routeWorkDir}`}>
                         {profile?.name ?? binding.agentProfileId} ·{" "}
                         {routeWorkDir}
                       </span>
@@ -365,7 +365,7 @@ export function RoutesView({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1.5">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       <Button
                         variant="ghost"
                         size="sm"

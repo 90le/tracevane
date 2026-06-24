@@ -115,6 +115,9 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   assert.match(usage, /tokenRows/);
   assert.match(usage, /最近 runtime 窗口/);
   assert.match(usage, /未返回 usage 的请求只计入请求数，不猜 token/);
+  assert.match(usage, /min-\[420px\]:grid-cols-2/);
+  assert.match(usage, /min-w-\[980px\]/);
+  assert.match(usage, /break-all font-medium/);
 });
 
 test("Overview view derives content from live status/providers/connections queries", () => {

@@ -998,6 +998,8 @@ export interface ChannelConnectorAgentSessionDriverBindingStatus {
   platform: string;
   accountId: string;
   botId: string | null;
+  peerKind: string | null;
+  peerId: string | null;
   agent: ChannelConnectorAgentId | string;
   model: string | null;
   permissionMode: ChannelConnectorPermissionMode | null;
