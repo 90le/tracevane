@@ -14,6 +14,7 @@
 ## 2. 复用与扩展
 
 - **复用**（IDE P1 已建，在 `apps/web/src/features/files/`）：`useFileOperations()`（createDirectory/createFile/rename/copy/move/remove/archive/unarchive/saveContent/upload，统一证据/toast）、数据层 `lib/api/files.ts` + `lib/query/files.ts`（全部写绑定 + mutation hooks 已就绪）、`types/files.ts` 契约。
+- **共享编辑控件（关键）**：文本编辑在 `/files` 与 `/ide` **共享同一控件**，而非各自实现或仅靠跳转。抽取 `apps/web/src/features/files/FileEditor.tsx`——封装 CodeMirror（复用 `features/ide/editor/CodeEditor.tsx`，或将其提升到 `shared/`）+ 内容读取 + 脏状态 + 保存（PUT `/api/files/content`）+ Cmd/Ctrl+S + saveState。`/ide` 的 `EditorArea` 重构为复用 `FileEditor`；`/files` 管理器的编辑/检视面板也用 `FileEditor`。这样编辑器、保存语义、脏状态、快捷键在两处完全一致（共享控件）。
 - **扩展**：文件管理器比 IDE Explorer 需要更多 UI——多视图渲染、批量选择、拖拽移动、上传（拖放）、下载/打包下载、详细元数据列、缩略图。这些作为新组件加到 `features/files/`（manager 专用），不污染 IDE Explorer。
 
 ## 3. 布局（系统文件管理器形态）
@@ -39,7 +40,7 @@
 
 ## 5. 文件操作（真 CRUD，全接现有后端）
 
-- 单项：新建文件/目录、重命名、复制/移动（拖拽或对话框选目标）、下载、打包、解包、删除（危险确认）、编辑（文本→打开到 `/ide?file=`，或内置只读预览）。
+- 单项：新建文件/目录、重命名、复制/移动（拖拽或对话框选目标）、下载、打包、解包、删除（危险确认）、**编辑（文本文件直接在管理器内编辑，使用共享 `FileEditor` 控件，与 `/ide` 一致的保存/脏状态/Cmd+S；非文本/二进制只读预览）**。
 - **批量**：多选（Shift/Cmd + 框选）→ 批量复制/移动/删除/打包/下载。批量复用 `useFileOperations`（delete/archive 已支持 paths 数组；copy/move 循环或后端批量——核对后端是否支持批量，不支持则前端循环+进度）。
 - **上传**：拖放上传 + 按钮（`upload`，dataBase64；大文件分片若后端支持，否则单文件）。
 - **下载**：单文件 download；多文件 download-archive（后端 `GET /api/files/download-archive`）。
@@ -52,10 +53,11 @@
 - 筛选：按类型（文件/目录/图片/...）、按隐藏文件开关。
 - 排序：名/大小/时间/类型，升降序。
 
-## 7. 检视器（选中项）
+## 7. 检视器（选中项）与内联编辑
 
-- 右侧检视器：选中文件元数据（大小/时间/类型/路径）+ 文本/MD 只读预览（复用 CodeBlock/MarkdownPreview 只读模式）+ 图片缩略图。
-- 多选时显示"N 项已选 + 合计大小"。
+- 右侧检视器：选中文件元数据（大小/时间/类型/路径）+ 图片缩略图。
+- **文本/Markdown 文件：内联编辑**——检视器渲染共享 `FileEditor`（可编辑，与 `/ide` 同控件：CodeMirror + 脏状态 + PUT 保存 + Cmd/Ctrl+S + saveState）。非文本/二进制：只读预览（CodeBlock）。
+- 多选时显示"N 项已选 + 合计大小"，不进入编辑。
 
 ## 8. 错误处理与边界
 
@@ -75,7 +77,7 @@
 - 不做"进入压缩包浏览"（后端无；压缩包=解包）。
 - 不做回收站（后端无永久→回收语义；如实永久删除）。
 - 不做权限/属主编辑（只读显示元数据）。
-- 不复制 IDE 编辑器（文本编辑链出 `/ide`；管理器内置只读预览）。
+- 不复制 IDE 编辑器逻辑：文本编辑通过共享 `FileEditor` 控件（`/files` 与 `/ide` 共用），不各自实现。
 - 不做云端/远程文件系统（本地优先，现有 roots）。
 
 ## 11. 分阶段（建议，单 spec 内增量）
