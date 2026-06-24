@@ -2,18 +2,15 @@ import * as React from "react";
 import {
   Activity,
   ArrowRight,
-  Bot,
   Plug,
-  SquareTerminal,
   Terminal,
-  Users,
 } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 
-import { useAgentRuntimeRunsQuery, useAgentsSummaryQuery } from "@/lib/query/agents";
+import { useAgentRuntimeRunsQuery } from "@/lib/query/agents";
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import { useModelGatewayStatusQuery } from "@/lib/query/model-gateway";
 
@@ -30,18 +27,14 @@ import {
 const AGENT_CLI_IDS = new Set(["claude", "codex", "opencode"]);
 
 /**
- * Workbench overview — deliberately compact. Detailed live/session/evidence
- * lists are owned by `runs`, `sessions`, and `evidence` so the overview does
- * not duplicate the IM Channels or Model Gateway pages.
+ * Workbench overview — deliberately compact. Detailed runtime/evidence
+ * lists are owned by `runs` and `evidence` so the overview does not duplicate
+ * IM Channels, IDE terminal, or Model Gateway pages.
  */
 export function OverviewView({ goToView }: CliAgentsViewProps) {
-  const agents = useAgentsSummaryQuery();
   const terminalStatus = useTerminalStatusQuery();
   const gateway = useModelGatewayStatusQuery();
   const runs = useAgentRuntimeRunsQuery();
-
-  const agentRows = agents.data?.agents ?? [];
-  const enabledAgents = agentRows.filter((a) => a.enabled).length;
 
   const binaries = terminalStatus.data?.binaries ?? [];
   const agentBinaries = binaries.filter((b) => AGENT_CLI_IDS.has(b.id));
@@ -59,7 +52,7 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
         <div className="grid gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-1.5 text-sm font-medium text-ink-strong [&_svg]:size-4 [&_svg]:text-primary">
-              <Bot />
+              <Terminal />
               CLI 代理工作台
             </span>
             <ToneBadge tone={installedAgents >= 3 ? "ok" : "warn"}>
@@ -70,8 +63,7 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
             </ToneBadge>
           </div>
           <p className="max-w-[84ch] text-sm text-muted">
-            本页只做 Agent 运行入口：Persona、Codex / Claude Code / OpenCode CLI、统一
-            Agent Run 和运行证据。模型与协议路由属于
+            本页只做 Codex / Claude Code / OpenCode 的运行视角：CLI 就绪、Agent Run 和运行证据。通用终端属于 IDE；模型与协议路由属于
             <button
               type="button"
               className="mx-1 inline text-primary underline-offset-2 hover:underline"
@@ -89,13 +81,7 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
             </button>
             。
           </p>
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <StatTile
-              icon={<Users />}
-              label="Persona 代理"
-              value={agents.isLoading ? "—" : agentRows.length}
-              sub={`${enabledAgents} 已启用`}
-            />
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             <StatTile
               icon={<Activity />}
               label="Agent Run"
@@ -131,14 +117,6 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
               onClick={() => goToView("runs")}
             />
             <Row
-              icon={<Bot />}
-              iconClass={toneIconClass(enabledAgents > 0 ? "ok" : "mute")}
-              title={`${enabledAgents} 个已启用 persona`}
-              subtitle={`共 ${agentRows.length} 个配置代理`}
-              trailing={<ArrowRight className="size-4 text-subtle" />}
-              onClick={() => goToView("personas")}
-            />
-            <Row
               icon={<Terminal />}
               iconClass={toneIconClass(installedAgents >= 3 ? "ok" : "warn")}
               title={`${installedAgents} 个 Agent CLI 已安装`}
@@ -147,12 +125,12 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
               onClick={() => goToView("cli")}
             />
             <Row
-              icon={<SquareTerminal />}
-              iconClass={toneIconClass((totals?.terminal ?? 0) > 0 ? "ok" : "mute")}
-              title={`${totals?.terminal ?? 0} 个终端会话`}
-              subtitle="启动 / 结束 / 删除控制在终端会话页"
+              icon={<Activity />}
+              iconClass={toneIconClass((totals?.terminal ?? 0) > 0 ? "info" : "mute")}
+              title={`${totals?.terminal ?? 0} 个来自终端的 Agent Run`}
+              subtitle="查看运行证据；通用终端管理在 IDE"
               trailing={<ArrowRight className="size-4 text-subtle" />}
-              onClick={() => goToView("sessions")}
+              onClick={() => goToView("runs")}
             />
           </div>
         </Panel>

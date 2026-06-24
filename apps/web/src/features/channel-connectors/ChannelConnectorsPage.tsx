@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { LayoutDashboard, PlugZap, ScrollText, Terminal } from "lucide-react";
+import { LayoutDashboard, MessageSquare, PlugZap, ScrollText } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 
@@ -22,7 +22,7 @@ const PRIMARY_TABS: ReadonlyArray<{
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
   { view: "bindings", label: "平台绑定", icon: PlugZap },
-  { view: "sessions", label: "IM 会话", icon: Terminal },
+  { view: "sessions", label: "IM 会话", icon: MessageSquare },
   { view: "logs", label: "投递日志", icon: ScrollText },
 ];
 

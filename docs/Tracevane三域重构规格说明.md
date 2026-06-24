@@ -10,7 +10,7 @@
 
 - **Model Gateway**：完成度最高，核心是 Provider/模型目录/协议适配/路由/用量/客户端配置；后续以稳定性、真实统计、Codex Account context 和跨协议 smoke 为主。
 - **IM Channels**：目前更接近可观察面板，距离“可创建、可绑定、可测试、可投递、可删除”的生产级渠道管理还有差距；详细目标见 `IM渠道目标与设计.md`。
-- **CLI Agents**：必须从 OpenClaw/Persona 混杂表达里收敛为本地 CLI runtime 控制面，聚焦 Codex CLI、Claude Code、OpenCode 的安装、会话、运行投影和证据；详细目标见 `CLI代理目标与设计.md`。
+- **CLI Agents**：必须从 OpenClaw/Persona/通用终端混杂表达里收敛为本地 CLI runtime 观察面，聚焦 Codex CLI、Claude Code、OpenCode 的安装、运行投影和证据；详细目标见 `CLI代理目标与设计.md`。
 
 设计原则不变：三个域可以在前端形成一个“Agent Connectivity”闭环，但后端写边界不能混合。Gateway 不拥有 IM token 和 PTY，IM 不拥有 Provider，CLI Agents 不拥有模型路由写入。
 
@@ -27,7 +27,7 @@
 
 1. **Model Gateway 是协议与路由边界**：它要面对 OpenAI Responses、Chat-compatible、Anthropic Messages、客户端配置写入、Provider 密钥、账号池和用量统计。
 2. **IM Channels 是外部消息入口边界**：它要面对飞书/企业微信/Octo 等平台账号、webhook/长连接、绑定、投递、重试和守护服务。
-3. **CLI Agents 是本地 Agent Runtime 边界**：它要面对 Codex/Claude Code/OpenCode CLI、PTY/终端、Persona、运行证据和用户操作。
+3. **CLI Agents 是本地 Agent Runtime 观察边界**：它要面对 Codex/Claude Code/OpenCode CLI、Agent Run、运行证据和用户操作；通用 PTY/终端由 IDE/terminal 模块拥有。
 4. 强行合并会扩大 blast radius：Provider 密钥、IM token、终端会话控制、客户端配置写入会混在一个服务里，回归和权限边界更难控。
 
 ### 哪些东西可以“像一个域”一样呈现
@@ -58,7 +58,7 @@
 
 - CLI 进程运行中/已退出状态。
 - IM 平台账号与 IM 投递状态。
-- Persona 编辑与 Agent 任务编排。
+- Persona 编辑、Agent 任务编排和通用终端管理。
 
 ### 3.2 IM Channels / Channel Connectors
 
@@ -79,13 +79,14 @@
 **拥有：**
 
 - Codex / Claude Code / OpenCode CLI 安装状态。
-- Persona、CLI runtime、终端 session、Agent Run 投影、证据聚合。
-- 用户从本地 CLI 或 IM 任务进入后的运行态观察。
+- CLI runtime、Agent Run 投影、证据聚合。
+- 用户从本地 CLI、IDE 终端、IM 任务或 Chat 进入后的运行态观察。
 
 **不拥有：**
 
 - 直接修改 Provider、模型路由、账号池。
 - 直接修改 IM 平台账号、app secret、长连接守护服务。
+- 管理通用终端 tab、PTY 输入/resize、终端删除；这些属于 IDE/terminal。
 
 ## 4. 统一 Agent Run 抽象
 
@@ -116,13 +117,12 @@
 
 ### CLI Agents
 
-主 tab 调整为：概览 / 运行中 / Persona / CLI / 终端会话 / 原始证据。
+主 tab 收敛为：概览 / 运行中 / CLI / 原始证据。
 
 - 概览：只做入口、健康摘要和边界说明。
 - 运行中：统一 Agent Runs。
-- Persona：身份/能力/绑定只读详情。
-- CLI：CLI 安装与版本状态。
-- 终端会话：终端 session 写操作。
+- CLI：Codex / Claude Code / OpenCode 安装与版本状态。
+- 终端来源的运行只作为 Agent Run 证据出现，通用终端写操作回 IDE。
 - 原始证据：IM driver events、chat sessions 的原始证据。
 
 ### IM Channels
@@ -153,7 +153,7 @@
 ## 8. 验收标准
 
 - `/api/agents/runs` 可构造终端、IM、chat 三类只读运行投影。
-- CLI Agents 页面有“运行中”主 tab，概览不再重复 IM 事件列表和终端会话列表。
+- CLI Agents 页面有“运行中”主 tab，概览不再重复 IM 事件列表、Persona 管理和终端会话列表。
 - Model Gateway 概览的 “Agent Cockpit” 改为 “路由 Cockpit”，明确 Gateway 只管路由不管运行进程。
 - IM Channels tab 文案表达平台绑定、IM 会话、投递日志。
 - `npm run build:api`、`npm run typecheck:web`、`npm run build:web` 和相关系统测试通过。

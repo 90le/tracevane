@@ -7,7 +7,7 @@ import {
   RadioTower,
   Send,
   Server,
-  Terminal,
+  MessageSquare,
 } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
@@ -283,8 +283,8 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
           sub="Agent session driver 事件，只读。"
           action={
             <Button variant="ghost" size="sm" onClick={() => goToView("sessions")}>
-              <Terminal className="size-3.5" />
-              查看会话
+              <MessageSquare className="size-3.5" />
+              查看 IM 会话
             </Button>
           }
         />

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, AlertTriangle, Recycle, Terminal, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, MessageSquare, Recycle, XCircle } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -148,7 +148,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Panel>
         <PanelHead
           title="活跃会话"
-          sub="持久 CLI Agent session；kill / reap 为写操作，需确认。"
+          sub="IM 触发的持久 Agent session；kill / reap 为写操作，需确认。"
           action={
             <div className="flex items-center gap-2">
               <Badge variant="outline">
@@ -171,7 +171,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           <EmptyState
             title="暂无活跃会话"
             description="私聊/群聊触发 Agent 后会在这里显示持久会话。"
-            icon={<Terminal />}
+            icon={<MessageSquare />}
           />
         ) : (
           <div className="grid gap-2 p-3">
@@ -184,7 +184,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                 >
                   <div className="flex items-center gap-3">
                     <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
-                      <Terminal />
+                      <MessageSquare />
                     </span>
                     <span className="grid min-w-0 flex-1">
                       <strong className="truncate text-base text-ink-strong">

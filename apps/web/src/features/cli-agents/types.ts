@@ -12,7 +12,7 @@
  *  - Chat bootstrap / terminal status → `@/features/dashboard/types`
  */
 
-// --- Agents (persona profiles) ---------------------------------------------
+// --- Agents (legacy profile contracts; not a primary CLI Agents view) -------
 export type {
   AgentSummary,
   AgentsSummaryPayload,
@@ -30,7 +30,7 @@ export type {
   AgentRuntimeRunsResponse,
 } from "../../../../../types/agents";
 
-// --- Terminal (CLI binaries + persisted sessions) --------------------------
+// --- Terminal (CLI binary readiness + Agent Run evidence references) --------
 export type {
   TerminalStatusPayload,
   TerminalBinaryStatus,
@@ -52,17 +52,13 @@ export type {
  * The `data-view` set for the workbench, driven from the URL (`?view=`):
  *  - overview  — concise readiness roll-up
  *  - runs      — unified runtime run list across terminal / IM / chat sources
- *  - personas  — persona/agent list + detail (read-only; routing deep-links out)
  *  - cli       — Codex / Claude Code / OpenCode CLI runtime status
- *  - sessions  — persisted terminal sessions + launch / end / delete controls
  *  - evidence  — raw IM async agent-session + chat-session evidence (read-only)
  */
 export const CLI_AGENTS_VIEWS = [
   "overview",
   "runs",
-  "personas",
   "cli",
-  "sessions",
   "evidence",
 ] as const;
 
@@ -70,7 +66,7 @@ export type CliAgentsView = (typeof CLI_AGENTS_VIEWS)[number];
 
 /** Navigation params a view can carry across a sub-view switch. */
 export interface CliAgentsViewNavParams {
-  /** Deep-link a persona id for the `personas` detail pane (`?agent=`). */
+  /** Reserved for future deep-link params; currently unused after CLI/terminal scope reduction. */
   agent?: string;
 }
 
@@ -80,7 +76,7 @@ export interface CliAgentsViewNavigation {
 }
 
 export interface CliAgentsViewProps extends CliAgentsViewNavigation {
-  /** Selected persona id for the `personas` detail pane; null when unset. */
+  /** Reserved compatibility prop for view components; currently always null. */
   selectedAgent: string | null;
 }
 

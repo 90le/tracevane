@@ -73,7 +73,7 @@ const QUICK_LAUNCH: QuickLaunchEntry[] = [
   { id: "im-channels", label: "IM 渠道", detail: "绑定 / 会话 / 守护进程", icon: "channel", to: ROUTES.imChannels },
   { id: "external", label: "外部接入", detail: "MCP / 工具 / 连接证据", icon: "external", to: ROUTES.external },
   { id: "recovery", label: "恢复", detail: "自愈守护与修复记录", icon: "recovery", to: ROUTES.recovery },
-  { id: "cli-agents", label: "CLI 代理", detail: "本地 Agent CLI 与终端", icon: "system", to: ROUTES.cliAgents },
+  { id: "cli-agents", label: "CLI 代理", detail: "本地 Agent CLI 运行", icon: "system", to: ROUTES.cliAgents },
 ];
 
 /**

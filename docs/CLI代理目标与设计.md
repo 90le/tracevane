@@ -5,7 +5,7 @@
 
 ## 1. Current assessment
 
-CLI Agents must be refocused. It should be a Codex / Claude Code / OpenCode runtime workbench. It should not be a generic OpenClaw agent/profile/persona management UI.
+CLI Agents must be refocused. It is a Codex / Claude Code / OpenCode runtime workbench, not a generic OpenClaw agent/profile/persona management UI and not a terminal manager.
 
 ## 2. Product goal
 
@@ -13,7 +13,7 @@ CLI Agents should answer:
 
 - Is Codex / Claude Code / OpenCode installed and usable?
 - Which gateway/model config will each CLI use?
-- Can the user start or resume a CLI session?
+- Which Agent run should the user inspect, stop or resume through its owning runtime?
 - What Agent Runs are active or failed?
 - Which terminal/chat/IM source created each run?
 - What evidence proves what happened?
@@ -31,15 +31,16 @@ Per CLI:
 - gateway endpoint readiness
 - context/compaction capability if detectable from official config or local state
 
-### Terminal session
+### Agent terminal reference
 
-- session id
-- CLI type
-- command/profile
+Terminal is owned by IDE / terminal backend. CLI Agents may only show terminal-sourced Agent Runs and evidence links:
+
+- source terminal session id
+- CLI type when inferred
 - cwd/workspace
 - status
 - recent output/error summary
-- resume/stop/delete capability where safe
+- link to IDE terminal for generic terminal operations
 
 ### Agent Run
 
@@ -91,4 +92,5 @@ P1:
 - Do not edit IM accounts or bindings here.
 - Do not edit provider secrets here.
 - Do not recreate OpenClaw generic agents/channels UI.
+- Do not manage generic terminal tabs, shell sessions, resize/input, or terminal deletion here; those belong to IDE / terminal.
 - Do not infer unsupported CLI context behavior from guesswork.

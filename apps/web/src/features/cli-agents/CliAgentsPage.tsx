@@ -2,10 +2,8 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Activity,
-  Bot,
   LayoutDashboard,
   ListChecks,
-  SquareTerminal,
   Terminal,
 } from "lucide-react";
 
@@ -21,9 +19,7 @@ import {
   CliRuntimeView,
   EvidenceView,
   OverviewView,
-  PersonasView,
   RunsView,
-  SessionsView,
 } from "./views";
 
 /** Primary `viewbar` tabs (mirrors the established feature pages). */
@@ -34,9 +30,7 @@ const TABS: ReadonlyArray<{
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
   { view: "runs", label: "运行中", icon: ListChecks },
-  { view: "personas", label: "Persona", icon: Bot },
   { view: "cli", label: "CLI", icon: Terminal },
-  { view: "sessions", label: "终端会话", icon: SquareTerminal },
   { view: "evidence", label: "原始证据", icon: Activity },
 ];
 
@@ -46,9 +40,7 @@ const VIEW_COMPONENTS: Record<
 > = {
   overview: OverviewView,
   runs: RunsView,
-  personas: PersonasView,
   cli: CliRuntimeView,
-  sessions: SessionsView,
   evidence: EvidenceView,
 };
 
@@ -59,30 +51,22 @@ function isCliAgentsView(value: string | null): value is CliAgentsView {
 /**
  * CLI Agent Workbench (`/cli-agents`) page. Owns the primary `viewbar` tabs and
  * a URL-driven view state machine over the `data-view` set
- * (`overview|runs|personas|cli|sessions|evidence`). The active view and the persona
- * deep-link (`?agent=`) come entirely from the search params, so views are
+ * (`overview|runs|cli|evidence`). The active view comes entirely from
+ * the search params, so views are
  * deep-linkable and browser back/forward work. Content lives in `./views`.
  */
 export function CliAgentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const viewParam = searchParams.get("view");
-  const agentParam = searchParams.get("agent");
-
   const resolvedView: CliAgentsView = isCliAgentsView(viewParam) ? viewParam : "overview";
-  const selectedAgent = agentParam && agentParam.length > 0 ? agentParam : null;
-
   const goToView = React.useCallback<CliAgentsViewProps["goToView"]>(
-    (view: CliAgentsView, params?: CliAgentsViewNavParams) => {
+    (view: CliAgentsView, _params?: CliAgentsViewNavParams) => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
           next.set("view", view);
-          if (params?.agent) {
-            next.set("agent", params.agent);
-          } else {
-            next.delete("agent");
-          }
+          next.delete("agent");
           return next;
         },
         { replace: false },
@@ -122,7 +106,7 @@ export function CliAgentsPage() {
         })}
       </nav>
 
-      <ActiveView goToView={goToView} selectedAgent={selectedAgent} />
+      <ActiveView goToView={goToView} selectedAgent={null} />
     </div>
   );
 }

@@ -21,7 +21,7 @@
 - 新增只读 BFF/API 聚合：`/api/agents/runs`。
 - 新增共享类型和纯聚合函数。
 - 前端新增/调整 tab、文案、概览布局和只读投影页。
-- 删除或下沉重复列表展示。
+- 删除或下沉重复列表展示，尤其是 CLI Agents 内的 Persona/终端管理入口。
 - 补充系统测试覆盖聚合合同。
 
 ### 不能做
@@ -47,7 +47,7 @@
 
 - 决定保留三域，写入 spec。
 - 新增 Agent Run 类型、后端聚合、前端查询和“运行中”页。
-- 修改 CLI Agents 概览，降低重复。
+- 修改 CLI Agents 概览，降低重复；终端管理下沉到 IDE。
 - 修正 Model Gateway / IM Channels 容易误导的文案。
 - 跑测试并提交。
 
@@ -113,7 +113,7 @@
 第一、第二阶段已经把“运行态观察”和“路由配置”边界拆清。下一阶段不再继续堆概览页，而是补齐两个薄弱域的可用性：
 
 1. **IM Channels P0**：把平台绑定从“能看”推进到“能用”。需要支持账号/机器人凭据填写、保存、测试、启停、绑定、新建、修改、删除、投递日志和错误提示。详见 `IM渠道目标与设计.md`。
-2. **CLI Agents P0**：把 CLI 代理从 OpenClaw 混杂概念里拆出来，明确 Codex CLI / Claude Code / OpenCode 的安装状态、配置引用、运行中会话、终端证据和安全操作。详见 `CLI代理目标与设计.md`。
+2. **CLI Agents P0**：把 CLI 代理从 OpenClaw/Persona/通用终端混杂概念里拆出来，明确 Codex CLI / Claude Code / OpenCode 的安装状态、配置引用、运行中 Agent Run、终端证据引用和安全操作。详见 `CLI代理目标与设计.md`。
 3. **Model Gateway 持续 P0**：继续保持 Provider、Codex Account、路由、用量、上下文、协议适配的稳定性；不要把 IM/CLI 的写操作塞回 Gateway。
 
 ### 本阶段可以做
@@ -126,6 +126,6 @@
 ### 本阶段不能做
 
 - 不能把 IM token、Provider key、PTY 控制合并到一个配置页。
-- 不能继续用 OpenClaw 概念替代 Codex/Claude/OpenCode 的真实 CLI 能力。
+- 不能继续用 OpenClaw/Persona/通用终端概念替代 Codex/Claude/OpenCode 的真实 CLI 能力。
 - 不能用假在线、假绑定、假缓存、假运行态填 UI。
 - 不能为了“统一”删除已有真实 Provider、账号池、IM 会话或终端历史。

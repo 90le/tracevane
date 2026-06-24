@@ -103,7 +103,7 @@ export function buildAgentRuntimeRunsPayload(input: {
         {
           kind: "terminal-session",
           label: session.sessionId,
-          href: `#/cli-agents?view=sessions`,
+          href: `#/ide`,
         },
       ],
     });

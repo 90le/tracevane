@@ -144,4 +144,5 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
   assert.equal(payload.runs.some((run) => run.id === "chat:chat-idle-history"), false);
   assert.equal(payload.runs[1].status, "failed");
   assert.equal(payload.runs[2].cli, "codex");
+  assert.equal(payload.runs[2].evidenceRefs[0].href, "#/ide");
 });

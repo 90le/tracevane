@@ -41,14 +41,14 @@ function runTone(run: AgentRuntimeRunSummary): WorkbenchTone {
 function targetHref(run: AgentRuntimeRunSummary): string {
   const first = run.evidenceRefs.find((ref) => ref.href)?.href;
   if (first) return first;
-  if (run.source === "terminal") return "#/cli-agents?view=sessions";
+  if (run.source === "terminal") return "#/ide";
   if (run.source === "im-channel") return "#/im-channels?view=sessions";
   return "#/chat";
 }
 
 /**
  * Unified Agent Run view. This is intentionally a projection, not a fourth
- * owning runtime: terminal sessions, IM agent sessions and chat sessions keep
+ * owning runtime: IDE terminal sessions, IM agent sessions and chat sessions keep
  * their original owners while CLI Agents becomes the operator's runtime list.
  */
 export function RunsView(_props: CliAgentsViewProps) {
@@ -61,7 +61,7 @@ export function RunsView(_props: CliAgentsViewProps) {
       <Panel>
         <PanelHead
           title="运行中 / Agent Runs"
-          sub="统一展示终端、IM 渠道、对话三类 Agent 运行状态；写操作仍回到各自归属页。"
+          sub="统一展示终端来源、IM 渠道、对话三类 Agent 运行状态；终端写操作回到 IDE。"
           action={
             <Button variant="outline" size="sm" onClick={() => void runs.refetch()}>
               <RefreshCw />
@@ -72,7 +72,7 @@ export function RunsView(_props: CliAgentsViewProps) {
         <div className="grid grid-cols-2 gap-2.5 border-b border-line p-4 sm:grid-cols-5">
           <StatTile icon={<Activity />} label="全部 Run" value={totals?.total ?? "—"} />
           <StatTile icon={<Activity />} label="运行中" value={totals?.running ?? "—"} />
-          <StatTile icon={<SquareTerminal />} label="终端" value={totals?.terminal ?? "—"} />
+          <StatTile icon={<SquareTerminal />} label="终端来源" value={totals?.terminal ?? "—"} />
           <StatTile icon={<RadioTower />} label="IM" value={totals?.imChannel ?? "—"} />
           <StatTile icon={<MessageSquare />} label="对话" value={totals?.chat ?? "—"} />
         </div>
@@ -133,7 +133,7 @@ export function RunsView(_props: CliAgentsViewProps) {
         <dl className="grid gap-2.5 p-4 sm:grid-cols-3">
           <Fact label="Model Gateway">只管理模型、Provider、协议、路由和客户端配置。</Fact>
           <Fact label="IM Channels">只管理平台账号、绑定、IM 会话和消息投递。</Fact>
-          <Fact label="CLI Agents">聚合 Agent 运行态、Persona、CLI 状态和证据。</Fact>
+          <Fact label="CLI Agents">聚合 Agent 运行态、CLI 状态和证据；不管理通用终端。</Fact>
         </dl>
       </Panel>
     </div>
