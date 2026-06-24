@@ -59,6 +59,10 @@ test("Channel Connectors route view keeps routing separate from platform credent
   assert.match(routes, /一个平台账号可以复制出多条路由/);
   assert.match(routes, /复制路由/);
   assert.match(routes, /已复制为停用路由/);
+  assert.match(routes, /删除副本路由/);
+  assert.match(routes, /默认路由·保护/);
+  assert.match(routes, /默认路由受保护/);
+  assert.match(routes, /isCopiedRoute/);
   assert.match(routes, /实际 Agent \/ 模型/);
   assert.match(routes, /独立覆盖/);
   assert.doesNotMatch(routes, /appSecret/);

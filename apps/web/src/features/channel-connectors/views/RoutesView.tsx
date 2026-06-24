@@ -1,8 +1,23 @@
 import * as React from "react";
-import { Copy, Pencil, PlugZap, Route, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Copy,
+  Pencil,
+  PlugZap,
+  Route,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
 import {
   Table,
@@ -34,6 +49,10 @@ function metaString(
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function isCopiedRoute(binding: ChannelConnectorPlatformBinding): boolean {
+  return /-route-[a-z0-9]+$/i.test(binding.id);
+}
+
 export function RoutesView({
   selectedBinding,
   goToView,
@@ -42,6 +61,8 @@ export function RoutesView({
   const saveMutation = useSaveChannelConnectorsConfigMutation();
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] =
+    React.useState<ChannelConnectorPlatformBinding | null>(null);
+  const [deleteTarget, setDeleteTarget] =
     React.useState<ChannelConnectorPlatformBinding | null>(null);
 
   const config = configQuery.data?.config ?? null;
@@ -99,6 +120,37 @@ export function RoutesView({
       `${binding.displayName} ${binding.id} ${binding.platform} ${binding.agentProfileId} ${binding.accountId} ${metaString(binding, "peerKind", "")} ${metaString(binding, "peerId", "")} ${metaString(binding, "routeAgent", profile?.agent ?? "")} ${metaString(binding, "routeModel", profile?.model ?? "")}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
+
+  const deleteRoute = () => {
+    if (!config || !deleteTarget) return;
+    if (!isCopiedRoute(deleteTarget)) {
+      toast.warning("默认路由受保护", {
+        description: "请复制出新路由后调整，默认路由不允许在路由页删除。",
+      });
+      setDeleteTarget(null);
+      return;
+    }
+    saveMutation.mutate(
+      {
+        config: {
+          ...config,
+          updatedAt: new Date().toISOString(),
+          platformBindings: config.platformBindings.filter(
+            (item) => item.id !== deleteTarget.id,
+          ),
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success("已删除副本路由", { description: deleteTarget.id });
+          setDeleteTarget(null);
+          void configQuery.refetch();
+        },
+        onError: (error) =>
+          toast.error("删除路由失败", { description: error.message }),
+      },
+    );
+  };
 
   const duplicateRoute = (binding: ChannelConnectorPlatformBinding) => {
     if (!config) return;
@@ -273,11 +325,21 @@ export function RoutesView({
                         {profile?.name ?? binding.agentProfileId} ·{" "}
                         {routeWorkDir}
                       </span>
-                      {hasRouteOverride && (
-                        <Badge variant="info" className="mt-1 w-fit">
-                          独立覆盖
+                      <span className="mt-1 flex flex-wrap gap-1.5">
+                        {hasRouteOverride && (
+                          <Badge variant="info" className="w-fit">
+                            独立覆盖
+                          </Badge>
+                        )}
+                        <Badge
+                          variant={isCopiedRoute(binding) ? "outline" : "warn"}
+                          className="w-fit"
+                        >
+                          {isCopiedRoute(binding)
+                            ? "副本路由"
+                            : "默认路由·保护"}
                         </Badge>
-                      )}
+                      </span>
                     </span>
                   </TableCell>
                   <TableCell>
@@ -317,6 +379,27 @@ export function RoutesView({
                         <Pencil />
                         编辑路由
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={
+                          isCopiedRoute(binding)
+                            ? "text-red hover:bg-red-soft"
+                            : "text-muted"
+                        }
+                        onClick={() => setDeleteTarget(binding)}
+                        disabled={
+                          saveMutation.isPending || !isCopiedRoute(binding)
+                        }
+                        title={
+                          isCopiedRoute(binding)
+                            ? "删除副本路由"
+                            : "默认路由受保护，不能删除"
+                        }
+                      >
+                        <Trash2 />
+                        删除
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -334,6 +417,49 @@ export function RoutesView({
         agentProfiles={agentProfiles}
         onSaved={() => void configQuery.refetch()}
       />
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red">
+              <AlertTriangle className="size-4" />
+            </span>
+            <DialogTitle>删除副本路由</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            删除{" "}
+            <strong className="text-ink-strong">
+              {deleteTarget?.displayName || deleteTarget?.id}
+            </strong>{" "}
+            只会移除这条副本路由，不影响同账号的默认路由、平台凭据和历史日志。默认路由在路由页受保护，不能删除。
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={saveMutation.isPending}
+            >
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={deleteRoute}
+              disabled={
+                saveMutation.isPending ||
+                !deleteTarget ||
+                !isCopiedRoute(deleteTarget)
+              }
+            >
+              {saveMutation.isPending ? "删除中…" : "确认删除副本路由"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
