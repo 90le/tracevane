@@ -8586,14 +8586,9 @@ export function createModelGatewayService(
     return profileValue || modelValue || null;
   }
 
-  function deriveAutoCompactTokenLimit(contextWindow: number | null, maxOutputTokens: number | null): number | null {
+  function deriveCodexAutoCompactTokenLimit(contextWindow: number | null): number | null {
     if (!contextWindow) return null;
-    const outputReserve = Math.min(
-      Math.max(maxOutputTokens || DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS, DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS),
-      Math.floor(contextWindow * 0.5),
-    );
-    const usableInputWindow = Math.max(1_024, contextWindow - outputReserve);
-    return Math.max(1_024, Math.floor(usableInputWindow * 0.85));
+    return Math.max(1_024, Math.floor(contextWindow * 0.95));
   }
 
   function withResolvedAppConnectionBudget(profile: ModelGatewayAppConnectionProfile): ModelGatewayAppConnectionProfile {
@@ -8603,7 +8598,7 @@ export function createModelGatewayService(
       ?? DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW;
     const maxOutputTokens = mergeAppConnectionBudget(normalized.maxOutputTokens, budget.maxOutputTokens)
       ?? DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS;
-    const derivedCompactLimit = deriveAutoCompactTokenLimit(contextWindow, maxOutputTokens);
+    const derivedCompactLimit = deriveCodexAutoCompactTokenLimit(contextWindow);
     return {
       ...normalized,
       contextWindow,

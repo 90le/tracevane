@@ -6030,13 +6030,85 @@ test("model gateway app connections resolve budgets from each selected app model
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-small"/);
   assert.match(codexConfig, /^model_context_window = 64000$/m);
-  assert.match(codexConfig, /^model_auto_compact_token_limit = 47436$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 60800$/m);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
   assert.equal(opencodeConfig.model, "tracevane-gateway/small");
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].contextWindow, 64000);
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].maxOutputTokens, 8192);
+});
+
+test("model gateway app connections derive Codex auto compact from selected Codex account model window", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-account-compact-budget",
+      name: "Codex Account Compact Budget",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [
+          { id: "gpt-5.5", contextWindow: 1050000, maxOutputTokens: 8192 },
+          { id: "gpt-5.4", contextWindow: 272000, maxOutputTokens: 8192 },
+        ],
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-codex-compact-budget" });
+
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.writeFileSync(codexPath, "", "utf8");
+
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-5.5",
+      appModels: { codex: "gpt-5.5" },
+      contextWindow: null,
+      autoCompactTokenLimit: null,
+      maxOutputTokens: null,
+    },
+  });
+  service.applyAppConnection(undefined, { appId: "codex" });
+  let codexConfig = fs.readFileSync(codexPath, "utf8");
+  assert.match(codexConfig, /model = "gpt-5\.5"/);
+  assert.match(codexConfig, /^model_context_window = 272000$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 258400$/m);
+
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      appModels: { codex: "gpt-5.4" },
+      contextWindow: null,
+      autoCompactTokenLimit: null,
+      maxOutputTokens: null,
+    },
+  });
+  service.applyAppConnection(undefined, { appId: "codex" });
+  codexConfig = fs.readFileSync(codexPath, "utf8");
+  assert.match(codexConfig, /model = "gpt-5\.4"/);
+  assert.match(codexConfig, /^model_context_window = 1000000$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 950000$/m);
 });
 
 test("model gateway app connections keep per-model catalog budgets for mixed agent models", () => {
