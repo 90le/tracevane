@@ -116,4 +116,7 @@ test("Channel Connectors deliveries expose global concurrency and queue policy",
   assert.match(sessions, /maxConcurrentTurns/);
   assert.match(sessions, /queueMaxRecords/);
   assert.match(sessions, /不同会话竞争这个全局槽位/);
+  assert.match(sessions, /保存并重启/);
+  assert.match(sessions, /useManageChannelConnectorsDaemonServiceMutation/);
+  assert.match(sessions, /运行中已同步/);
 });

@@ -20,6 +20,7 @@ import {
   useChannelConnectorsAgentSessionsQuery,
   useChannelConnectorsConfigQuery,
   useManageChannelConnectorsAgentSessionsMutation,
+  useManageChannelConnectorsDaemonServiceMutation,
   useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import type {
@@ -109,6 +110,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const configQuery = useChannelConnectorsConfigQuery();
   const manageMutation = useManageChannelConnectorsAgentSessionsMutation();
   const saveConfigMutation = useSaveChannelConnectorsConfigMutation();
+  const restartDaemonMutation = useManageChannelConnectorsDaemonServiceMutation();
 
   const [confirm, setConfirm] = React.useState<
     | null
@@ -154,31 +156,55 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const recentEvents = data?.recentEvents ?? [];
   const visibleEvents = importantEvents(recentEvents);
   const policy = data?.policy;
+  const defaultPolicy = React.useMemo(() => ({
+    maxSessions: 8,
+    maxConcurrentTurns: 4,
+    idleTimeoutMs: 10 * 60_000,
+    busyStrategy: "reject" as const,
+    queueMaxRecords: 200,
+    queueMaxAgeMs: 24 * 60 * 60_000,
+  }), []);
+  const persistedPolicy = policyConfig ?? defaultPolicy;
+  const [policyDraft, setPolicyDraft] = React.useState(persistedPolicy);
 
-  const pending = manageMutation.isPending || saveConfigMutation.isPending;
+  React.useEffect(() => {
+    setPolicyDraft(policyConfig ?? defaultPolicy);
+  }, [defaultPolicy, policyConfig]);
 
-  const savePolicy = (patch: Partial<NonNullable<typeof policyConfig>>) => {
+  const policyDirty = JSON.stringify(policyDraft) !== JSON.stringify(persistedPolicy);
+  const runtimeMatchesDraft = policy?.maxConcurrentTurns === policyDraft.maxConcurrentTurns
+    && policy?.maxSessions === policyDraft.maxSessions
+    && policy?.busyStrategy === policyDraft.busyStrategy
+    && policy?.queueMaxRecords === policyDraft.queueMaxRecords;
+  const pending = manageMutation.isPending || saveConfigMutation.isPending || restartDaemonMutation.isPending;
+
+  const savePolicy = (restartAfterSave = false) => {
     if (!config) return;
-    const current = policyConfig ?? {
-      maxSessions: 8,
-      maxConcurrentTurns: 4,
-      idleTimeoutMs: 10 * 60_000,
-      busyStrategy: "reject" as const,
-      queueMaxRecords: 200,
-      queueMaxAgeMs: 24 * 60 * 60_000,
-    };
     saveConfigMutation.mutate(
       {
         config: {
           ...config,
           updatedAt: new Date().toISOString(),
-          agentSessionPolicy: { ...current, ...patch },
+          agentSessionPolicy: policyDraft,
         },
       },
       {
         onSuccess: () => {
-          toast.success("已保存 IM Agent 并发策略", { description: "重启守护服务后运行中 daemon 会读取新策略。" });
           void configQuery.refetch();
+          if (restartAfterSave) {
+            restartDaemonMutation.mutate(
+              { action: "restart", runCommands: true },
+              {
+                onSuccess: () => {
+                  toast.success("已保存并重启 IM 守护", { description: "新的全局并发/队列策略已加载。" });
+                  void sessionsQuery.refetch();
+                },
+                onError: (error) => toast.error("保存成功，但重启失败", { description: error.message }),
+              },
+            );
+            return;
+          }
+          toast.success("已保存 IM Agent 并发策略", { description: "点击“保存并重启”可立即让运行中 daemon 生效。" });
         },
         onError: (error) => toast.error("保存并发策略失败", { description: error.message }),
       },
@@ -230,22 +256,22 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         <PanelHead
           title="全局并发 / 队列策略"
           sub="针对不同 IM 会话的 Agent turn。maxConcurrentTurns 是真正的同时执行上限；超过后按策略拒绝或排队。"
-          action={<Badge variant={policy?.busyStrategy === "queue" ? "ok" : "warn"}>{policy?.busyStrategy === "queue" ? "队列" : "超出即拒绝"}</Badge>}
+          action={<Badge variant={runtimeMatchesDraft ? "ok" : "warn"}>{runtimeMatchesDraft ? "运行中已同步" : "需重启生效"}</Badge>}
         />
         <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-ink-strong">最大同时执行</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyConfig?.maxConcurrentTurns ?? policy?.maxConcurrentTurns ?? 4} onChange={(e) => savePolicy({ maxConcurrentTurns: Number(e.target.value) || 1 })} />
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxConcurrentTurns} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxConcurrentTurns: Number(e.target.value) || 1 }))} />
             <span className="text-xs text-subtle">不同会话竞争这个全局槽位。</span>
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-ink-strong">持久会话缓存</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyConfig?.maxSessions ?? policy?.maxSessions ?? 8} onChange={(e) => savePolicy({ maxSessions: Number(e.target.value) || 1 })} />
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxSessions} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxSessions: Number(e.target.value) || 1 }))} />
             <span className="text-xs text-subtle">空闲 session 保留上限，不等于并发。</span>
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-ink-strong">超出策略</span>
-            <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyConfig?.busyStrategy ?? policy?.busyStrategy ?? "reject"} onChange={(e) => savePolicy({ busyStrategy: e.target.value === "queue" ? "queue" : "reject" })}>
+            <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyDraft.busyStrategy} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, busyStrategy: e.target.value === "queue" ? "queue" : "reject" }))}>
               <option value="reject">直接拒绝</option>
               <option value="queue">进入 FIFO 队列</option>
             </select>
@@ -253,12 +279,17 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-ink-strong">队列容量</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyConfig?.queueMaxRecords ?? policy?.queueMaxRecords ?? 200} onChange={(e) => savePolicy({ queueMaxRecords: Number(e.target.value) || 0 })} />
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyDraft.queueMaxRecords} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, queueMaxRecords: Number(e.target.value) || 0 }))} />
             <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
           </label>
         </div>
-        <div className="border-t border-line px-4 py-2.5 text-sm text-muted">
-          当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；保存后请在“守护诊断”重启 daemon 让策略完全生效。
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-sm text-muted">
+          <span>当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；运行策略 {policy?.maxConcurrentTurns ?? "—"} 并发 / {policy?.busyStrategy === "queue" ? "队列" : "拒绝"}。</span>
+          <span className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => setPolicyDraft(persistedPolicy)}>撤销</Button>
+            <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => savePolicy(false)}>保存策略</Button>
+            <Button variant="primary" size="sm" disabled={pending || (!policyDirty && runtimeMatchesDraft)} onClick={() => savePolicy(true)}>保存并重启</Button>
+          </span>
         </div>
       </Panel>
 
