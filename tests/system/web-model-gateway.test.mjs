@@ -114,9 +114,13 @@ test("Usage view derives rows from live usage/status queries (no fabricated plac
   assert.match(usage, /requestRows/);
   assert.match(usage, /tokenRows/);
   assert.match(usage, /最近 runtime 窗口/);
-  assert.match(usage, /未返回 usage 的请求只计入请求数，不猜 token/);
+  assert.match(usage, /未返回 usage\s+的请求只计入请求数，不猜 token/);
   assert.match(usage, /min-\[420px\]:grid-cols-2/);
-  assert.match(usage, /min-w-\[980px\]/);
+  assert.match(usage, /min-w-full/);
+  assert.match(usage, /hidden text-right md:table-cell/);
+  assert.match(usage, /hidden text-right lg:table-cell/);
+  assert.match(usage, /md:hidden/);
+  assert.doesNotMatch(usage, /移动端 Token 消耗排行/);
   assert.match(usage, /break-all font-medium/);
 });
 

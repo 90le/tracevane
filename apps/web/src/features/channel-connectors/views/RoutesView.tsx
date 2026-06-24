@@ -176,7 +176,8 @@ export function RoutesView({
       {
         onSuccess: async () => {
           toast.success("已复制为停用路由", {
-            description: "已打开编辑器；请设置来源 ID、Agent、模型、目录和权限后再启用。",
+            description:
+              "已打开编辑器；请设置来源 ID、Agent、模型、目录和权限后再启用。",
           });
           const refetched = await configQuery.refetch();
           const created = refetched.data?.config.platformBindings.find(
@@ -259,14 +260,14 @@ export function RoutesView({
           }
         />
       ) : (
-        <Table className="min-w-[980px]">
+        <Table className="min-w-full">
           <TableHeader>
             <TableRow>
               <TableHead>绑定路由</TableHead>
-              <TableHead>来源</TableHead>
+              <TableHead className="hidden md:table-cell">来源</TableHead>
               <TableHead>实际 Agent / 模型</TableHead>
-              <TableHead>权限</TableHead>
-              <TableHead>状态</TableHead>
+              <TableHead className="hidden lg:table-cell">权限</TableHead>
+              <TableHead className="hidden md:table-cell">状态</TableHead>
               <TableHead className="text-right">动作</TableHead>
             </TableRow>
           </TableHeader>
@@ -300,9 +301,9 @@ export function RoutesView({
               ].some((key) => Boolean(metaString(binding, key, "")));
               return (
                 <TableRow key={binding.id}>
-                  <TableCell className="max-w-[280px]">
+                  <TableCell className="max-w-[260px]">
                     <div className="flex min-w-0 items-center gap-3">
-                      <span className="grid size-8 place-items-center rounded-[9px] bg-panel-3 text-muted">
+                      <span className="hidden size-8 place-items-center rounded-[9px] bg-panel-3 text-muted sm:grid">
                         <Route className="size-4" />
                       </span>
                       <span className="grid min-w-0">
@@ -312,20 +313,31 @@ export function RoutesView({
                         <span className="truncate text-sm text-muted">
                           {binding.platform} · acct {binding.accountId || "—"}
                         </span>
+                        <span className="mt-1 block break-all font-mono text-xs text-muted md:hidden">
+                          {peerKind} · {peerId}
+                        </span>
+                        <span className="mt-1 md:hidden">
+                          <Badge variant={binding.enabled ? "ok" : "mute"}>
+                            {binding.enabled ? "启用" : "停用"}
+                          </Badge>
+                        </span>
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[220px]">
+                  <TableCell className="hidden max-w-[220px] md:table-cell">
                     <span className="block break-all font-mono text-sm text-muted">
                       {peerKind} · {peerId}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="grid max-w-[360px] min-w-0">
+                    <span className="grid min-w-0 max-w-[360px]">
                       <strong className="truncate text-sm text-ink-strong">
                         {routeAgent} · {routeModel}
                       </strong>
-                      <span className="truncate text-xs text-muted" title={`${profile?.name ?? binding.agentProfileId} · ${routeWorkDir}`}>
+                      <span
+                        className="truncate text-xs text-muted"
+                        title={`${profile?.name ?? binding.agentProfileId} · ${routeWorkDir}`}
+                      >
                         {profile?.name ?? binding.agentProfileId} ·{" "}
                         {routeWorkDir}
                       </span>
@@ -346,7 +358,7 @@ export function RoutesView({
                       </span>
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden lg:table-cell">
                     <div className="flex flex-wrap gap-1.5">
                       <Badge variant="outline">
                         {binding.allowlist.length} 允许
@@ -359,7 +371,7 @@ export function RoutesView({
                       </Badge>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <Badge variant={binding.enabled ? "ok" : "mute"}>
                       {binding.enabled ? "启用" : "停用"}
                     </Badge>

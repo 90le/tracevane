@@ -175,7 +175,11 @@ test("Channel Connectors route and log views keep dense evidence within responsi
   const diagnostics = read(`${VIEWS_DIR}/DiagnosticsView.tsx`);
   const table = read("apps/web/src/design/ui/table.tsx");
   assert.match(table, /max-w-full overflow-x-auto/);
-  assert.match(routes, /min-w-\[980px\]/);
+  assert.match(routes, /min-w-full/);
+  assert.match(routes, /hidden md:table-cell/);
+  assert.match(routes, /hidden lg:table-cell/);
+  assert.match(routes, /md:hidden/);
+  assert.doesNotMatch(routes, /移动端绑定路由卡片/);
   assert.match(routes, /break-all/);
   assert.match(routes, /flex-wrap justify-end/);
   assert.match(diagnostics, /overflow-x-auto/);

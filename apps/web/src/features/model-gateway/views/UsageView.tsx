@@ -315,46 +315,54 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 按 total tokens 排序；未 metered 请求不会被估算 token。
               </p>
             </div>
-            <Table className="min-w-[980px]">
+            <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>模型</TableHead>
                   <TableHead className="text-right">请求次数</TableHead>
-                  <TableHead className="text-right">Metered</TableHead>
-                  <TableHead className="text-right">输入 Token</TableHead>
-                  <TableHead className="text-right">输出 Token</TableHead>
-                  <TableHead className="text-right">缓存命中</TableHead>
-                  <TableHead className="text-right">缓存写入</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">Metered</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">输入 Token</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">输出 Token</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">缓存命中</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">缓存写入</TableHead>
                   <TableHead className="text-right">Token 消耗</TableHead>
-                  <TableHead className="text-right">最新请求</TableHead>
+                  <TableHead className="hidden text-right lg:table-cell">最新请求</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tokenRows.map((m) => (
                   <TableRow key={m.model}>
-                    <TableCell className="max-w-[220px] break-all font-medium text-ink-strong">{m.model}</TableCell>
+                    <TableCell className="max-w-[260px] break-all font-medium text-ink-strong">
+                      {m.model}
+                      <span className="mt-1 block text-xs font-normal tabular-nums text-muted md:hidden">
+                        metered {compact(m.meteredRequestCount)} · cache {compact(m.cacheReadTokens)} / {compact(m.cacheCreationTokens)}
+                      </span>
+                      <span className="mt-1 block text-xs font-normal tabular-nums text-muted lg:hidden">
+                        最新 {formatDateTime(m.latestRequestAt)}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-right tabular-nums text-muted">
                       {compact(m.requestCount)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
+                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
                       {compact(m.meteredRequestCount)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
+                    <TableCell className="hidden text-right tabular-nums text-muted lg:table-cell">
                       {compact(m.inputTokens)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
+                    <TableCell className="hidden text-right tabular-nums text-muted lg:table-cell">
                       {compact(m.outputTokens)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
+                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
                       {compact(m.cacheReadTokens)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
+                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
                       {compact(m.cacheCreationTokens)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-ink">
                       {compact(m.totalTokens)}
                     </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums text-muted">
+                    <TableCell className="hidden text-right text-xs tabular-nums text-muted lg:table-cell">
                       {formatDateTime(m.latestRequestAt)}
                     </TableCell>
                   </TableRow>
