@@ -72,7 +72,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
 
   const run = (action: ChannelConnectorsDaemonAction, successMsg: string) => {
     manageMutation.mutate(
-      { action, runCommands: action !== "status" },
+      { action, runCommands: true },
       {
         onSuccess: (result) => {
           onMutated?.();

@@ -167,6 +167,24 @@ test("Overview view exposes an Agent cockpit for route and client readiness", ()
 });
 
 
+test("Daemon service panel refreshes real supervisor status", () => {
+  const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
+  assert.match(panel, /runCommands: true/);
+  assert.doesNotMatch(panel, /runCommands: action !== "status"/);
+  assert.match(panel, /激活/);
+  assert.match(panel, /开机自启/);
+});
+
+test("Providers view runs Codex login as a tracked dialog flow", () => {
+  const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
+  assert.match(providers, /Codex 账户登录/);
+  assert.match(providers, /usePollCodexAccountLoginMutation/);
+  assert.match(providers, /setCodexLoginDialogOpen\(true\)/);
+  assert.match(providers, /Tracevane 会自动轮询并创建 Provider/);
+  assert.match(providers, /我已完成授权，立即检查/);
+  assert.doesNotMatch(providers, /打开 \$\{result\.verificationUrl\} 并输入 \$\{result\.userCode\}/);
+});
+
 test("Providers view aggregates endpoint risk and smokes every active scope for that provider", () => {
   const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
   assert.match(providers, /activeRoutesForProvider/);

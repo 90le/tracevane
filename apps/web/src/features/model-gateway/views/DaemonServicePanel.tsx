@@ -71,7 +71,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
 
   const run = (action: ModelGatewayDaemonServiceAction, successMsg: string) => {
     manageMutation.mutate(
-      { action, runCommands: action !== "status" },
+      { action, runCommands: true },
       {
         onSuccess: (result) => {
           onMutated?.();

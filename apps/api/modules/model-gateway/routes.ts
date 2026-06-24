@@ -207,9 +207,9 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     }
   });
 
-  router.get("/api/model-gateway/daemon-service", (_req, res, routeCtx) => {
+  router.get("/api/model-gateway/daemon-service", async (_req, res, routeCtx) => {
     try {
-      sendJson(res, 200, routeCtx.services.modelGateway.getDaemonService());
+      sendJson(res, 200, await routeCtx.services.modelGateway.getDaemonService());
     } catch (error) {
       sendModelGatewayError(res, error);
     }

@@ -6844,6 +6844,48 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   }
 });
 
+test("model gateway daemon service status probes supervisor by default", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const calls = [];
+  const service = createModelGatewayService(config, {
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(`${command.command} ${command.args.join(" ")}`);
+      if (command.args.includes("is-active")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "active\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      if (command.args.includes("is-enabled")) {
+        return {
+          ...command,
+          ok: true,
+          exitCode: 0,
+          stdout: "enabled\n",
+          stderr: "",
+          error: null,
+        };
+      }
+      return { ...command, ok: true, exitCode: 0, stdout: "ok\n", stderr: "", error: null };
+    },
+  });
+
+  const result = await service.getDaemonService();
+  const statusCommands = result.plan.selectedTemplate.commands.status || [];
+
+  assert.equal(result.action, "status");
+  assert.equal(result.applied, true);
+  assert.equal(result.serviceManager.checked, true);
+  assert.equal(result.serviceManager.active, true);
+  assert.equal(result.serviceManager.enabled, true);
+  assert.deepEqual(calls, statusCommands.map((command) => `${command.command} ${command.args.join(" ")}`));
+});
+
 test("model gateway daemon service management exposes templates and guarded install", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -6854,7 +6896,8 @@ test("model gateway daemon service management exposes templates and guarded inst
     const status = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`);
     assert.equal(status.status, 200);
     assert.equal(status.body.action, "status");
-    assert.equal(status.body.applied, false);
+    assert.equal(status.body.applied, true);
+    assert.equal(status.body.serviceManager.checked, true);
     assert.equal(status.body.installed, false);
     assert.equal(status.body.plan.daemonEntry.endsWith("dist/apps/api/model-gateway-daemon.js"), true);
     assert.deepEqual(

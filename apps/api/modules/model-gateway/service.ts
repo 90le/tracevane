@@ -5534,7 +5534,7 @@ export interface ModelGatewayService {
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
   getUsageLedger(): ModelGatewayUsageLedgerResponse;
-  getDaemonService(): ModelGatewayDaemonServiceResponse;
+  getDaemonService(): Promise<ModelGatewayDaemonServiceResponse>;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
   startCodexAccountLogin(req: http.IncomingMessage | undefined, payload?: ModelGatewayCodexAccountLoginStartRequest): Promise<ModelGatewayCodexAccountLoginStartResponse>;
@@ -7399,9 +7399,15 @@ export function createModelGatewayService(
     });
   }
 
-  function getDaemonService(): ModelGatewayDaemonServiceResponse {
+  async function getDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {
+    const plan = createModelGatewayDaemonServicePlan(config);
+    const commands = plan.selectedTemplate.commands.status || [];
+    const commandsRun: ModelGatewayDaemonServiceCommandResult[] = [];
+    for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
     return daemonServiceResponse({
       action: "status",
+      applied: commandsRun.length > 0,
+      commandsRun: normalizeDaemonServiceCommandResults("status", commandsRun),
     });
   }
 
@@ -7869,8 +7875,8 @@ export function createModelGatewayService(
     for (const scope of session.setActiveScopes) {
       if (provider.appScopes.includes(scope)) registry.activeProviders[scope] = provider.id;
     }
-    writeRegistry(registry);
     setSecretValue(authRef, JSON.stringify(bundle));
+    writeRegistry(registry);
     return toProviderView(provider);
   }
 

@@ -1,8 +1,16 @@
 import * as React from "react";
-import { Activity, Bot, FlaskConical, KeyRound, Loader2, Plus, Settings2, Users } from "lucide-react";
+import { Activity, Bot, Check, Copy, ExternalLink, FlaskConical, KeyRound, Loader2, Plus, Settings2, Users } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import {
   Table,
   TableBody,
@@ -24,6 +32,7 @@ import { toast } from "@/design/ui/sonner";
 
 import {
   useModelGatewayProvidersQuery,
+  usePollCodexAccountLoginMutation,
   useSmokeModelGatewayActiveRouteMutation,
   useStartCodexAccountLoginMutation,
   useTestModelGatewayProviderMutation,
@@ -32,6 +41,7 @@ import {
   MODEL_GATEWAY_API_FORMATS,
   type ModelGatewayApiFormat,
   type ModelGatewayActiveRouteStatus,
+  type ModelGatewayCodexAccountLoginStartResponse,
   type ModelGatewayProviderSourceType,
   type ModelGatewayProviderView,
 } from "../types";
@@ -188,9 +198,49 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   const smokeMutation = useSmokeModelGatewayActiveRouteMutation();
   const testMutation = useTestModelGatewayProviderMutation();
   const codexLoginMutation = useStartCodexAccountLoginMutation();
+  const codexPollMutation = usePollCodexAccountLoginMutation();
 
   const [smokingKey, setSmokingKey] = React.useState<string | null>(null);
   const [testingId, setTestingId] = React.useState<string | null>(null);
+  const [codexLogin, setCodexLogin] = React.useState<ModelGatewayCodexAccountLoginStartResponse | null>(null);
+  const [codexLoginDialogOpen, setCodexLoginDialogOpen] = React.useState(false);
+  const [codexLoginStatus, setCodexLoginStatus] = React.useState<"pending" | "completed" | "expired" | "failed">("pending");
+  const [codexLoginMessage, setCodexLoginMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!codexLoginDialogOpen || !codexLogin || codexLoginStatus !== "pending") return;
+    const intervalMs = Math.max(1, codexLogin.pollIntervalSeconds || 3) * 1000;
+    const timer = window.setTimeout(() => {
+      codexPollMutation.mutate(
+        { loginId: codexLogin.loginId },
+        {
+          onSuccess: (result) => {
+            setCodexLoginStatus(result.status);
+            setCodexLoginMessage(result.message);
+            if (result.status === "completed") {
+              toast.success("Codex 账户已添加", {
+                description: result.provider
+                  ? `${result.provider.name} · ${result.provider.accountProvider?.accounts.length ?? 0} 个账号`
+                  : result.message ?? undefined,
+              });
+              setCodexLoginDialogOpen(false);
+              setCodexLogin(null);
+              void providersQuery.refetch();
+              goToView("accounts", result.provider ? { provider: result.provider.id } : undefined);
+            } else if (result.status === "expired" || result.status === "failed") {
+              toast.error("Codex 登录未完成", { description: result.message ?? "请重新发起登录" });
+            }
+          },
+          onError: (error) => {
+            setCodexLoginStatus("failed");
+            setCodexLoginMessage(error.message);
+            toast.error("Codex 登录轮询失败", { description: error.message });
+          },
+        },
+      );
+    }, intervalMs);
+    return () => window.clearTimeout(timer);
+  }, [codexLogin, codexLoginDialogOpen, codexLoginStatus, codexPollMutation, goToView, providersQuery]);
 
   const handleActiveRouteSmoke = (provider: ModelGatewayProviderView, route: ModelGatewayActiveRouteStatus) => {
     const { scope } = route;
@@ -256,16 +306,49 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   };
 
   const handleCodexLogin = () => {
-    // Codex login is a dedicated flow that lands in the account pool view.
     codexLoginMutation.mutate(undefined, {
       onSuccess: (result) => {
-        toast("Codex 设备登录", {
-          description: `打开 ${result.verificationUrl} 并输入 ${result.userCode}`,
-        });
-        goToView("accounts");
+        setCodexLogin(result);
+        setCodexLoginStatus("pending");
+        setCodexLoginMessage("请在浏览器完成授权；Tracevane 会自动轮询并创建 Provider。");
+        setCodexLoginDialogOpen(true);
       },
       onError: (error) => toast.error("无法发起 Codex 登录", { description: error.message }),
     });
+  };
+
+  const copyCodexUserCode = async () => {
+    if (!codexLogin) return;
+    try {
+      await navigator.clipboard.writeText(codexLogin.userCode);
+      toast.success("已复制 Codex 登录码");
+    } catch {
+      toast.error("复制失败", { description: codexLogin.userCode });
+    }
+  };
+
+  const pollCodexLoginNow = () => {
+    if (!codexLogin || codexPollMutation.isPending) return;
+    codexPollMutation.mutate(
+      { loginId: codexLogin.loginId },
+      {
+        onSuccess: (result) => {
+          setCodexLoginStatus(result.status);
+          setCodexLoginMessage(result.message);
+          if (result.status === "completed") {
+            toast.success("Codex 账户已添加", { description: result.provider?.name ?? result.message ?? undefined });
+            setCodexLoginDialogOpen(false);
+            setCodexLogin(null);
+            void providersQuery.refetch();
+            goToView("accounts", result.provider ? { provider: result.provider.id } : undefined);
+          }
+        },
+        onError: (error) => {
+          setCodexLoginStatus("failed");
+          setCodexLoginMessage(error.message);
+        },
+      },
+    );
   };
 
   if (providersQuery.isLoading) {
@@ -459,6 +542,77 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
         <Plus className="mr-1 inline size-3" />
         删除 Provider 在「配置 → 危险操作」中执行，需确认。
       </p>
+
+      <Dialog open={codexLoginDialogOpen} onOpenChange={setCodexLoginDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+              <Bot />
+            </span>
+            <DialogTitle>Codex 账户登录</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            {codexLogin ? (
+              <div className="grid gap-4">
+                <p className="text-sm text-muted">
+                  Tracevane 已创建 Codex 设备登录会话。请打开官方授权页输入验证码；授权完成后这里会自动创建账号制 Provider。
+                </p>
+                <div className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3">
+                  <span className="text-xs text-subtle">验证码</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="rounded-sm bg-panel-3 px-3 py-2 font-mono text-lg font-semibold text-ink-strong">
+                      {codexLogin.userCode}
+                    </code>
+                    <Button variant="outline" size="sm" onClick={() => void copyCodexUserCode()}>
+                      <Copy />
+                      复制
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3">
+                  <span className="text-xs text-subtle">授权页</span>
+                  <a
+                    href={codexLogin.verificationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                  >
+                    {codexLogin.verificationUrl}
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={codexLoginStatus === "completed" ? "ok" : codexLoginStatus === "pending" ? "warn" : "bad"}>
+                    {codexLoginStatus === "pending" ? "等待授权" : codexLoginStatus === "completed" ? "已完成" : codexLoginStatus === "expired" ? "已过期" : "失败"}
+                  </Badge>
+                  <span className="text-sm text-muted">{codexLoginMessage ?? "正在等待授权结果…"}</span>
+                </div>
+                <p className="text-xs text-subtle">
+                  到期时间：{new Date(codexLogin.expiresAt).toLocaleString()} · 轮询间隔 {codexLogin.pollIntervalSeconds}s
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">尚未创建登录会话。</p>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setCodexLoginDialogOpen(false)}>
+              稍后处理
+            </Button>
+            {codexLogin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={pollCodexLoginNow}
+                disabled={codexPollMutation.isPending || codexLoginStatus !== "pending"}
+              >
+                {codexPollMutation.isPending ? <Loader2 className="animate-spin" /> : <Check />}
+                我已完成授权，立即检查
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </TooltipProvider>
   );
