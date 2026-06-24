@@ -39,6 +39,49 @@ const EVENT_TONE: Record<
   "turn.fallback": "warn",
 };
 
+function humanEvent(event: ChannelConnectorAgentSessionDriverRuntimeEvent): {
+  title: string;
+  detail: string;
+  action: string;
+  variant: "ok" | "warn" | "bad" | "mute";
+} {
+  if (event.error) {
+    return {
+      title: "Agent 执行失败",
+      detail: event.error,
+      action: "需要检查模型路由 / Agent 日志",
+      variant: "bad",
+    };
+  }
+  switch (event.type) {
+    case "turn.failed":
+      return { title: "Agent 回合失败", detail: event.reason || "上游返回失败或本地执行异常", action: "查看诊断日志", variant: "bad" };
+    case "turn.fallback":
+      return { title: "已触发 fallback", detail: event.reason || "主路径不可用，已尝试备用投递", action: "检查路由模型是否匹配", variant: "warn" };
+    case "turn.started":
+      return { title: "开始处理消息", detail: `${event.agent} 正在处理 ${event.bindingId}`, action: "等待回复", variant: "ok" };
+    case "turn.finished":
+      return { title: "Agent 回复完成", detail: event.reason || `${event.agent} 已完成本回合`, action: "等待 IM 平台投递", variant: "ok" };
+    case "session.created":
+      return { title: "新会话已创建", detail: event.sessionId || "为该 IM 来源创建持久会话", action: "可继续复用上下文", variant: "ok" };
+    case "session.killed":
+      return { title: "会话已终止", detail: event.reason || event.sessionId || "手动或策略终止", action: "下次消息会重新创建", variant: "warn" };
+    case "session.reaped":
+      return { title: "空闲会话已回收", detail: event.reason || event.sessionId || "超过空闲策略", action: "无需处理", variant: "mute" };
+    case "session.stopped":
+    case "session.disposed":
+      return { title: "会话已停止", detail: event.reason || event.sessionId || "会话生命周期结束", action: "无需处理", variant: "mute" };
+    default:
+      return { title: event.type, detail: event.reason || event.sessionId || "运行时事件", action: "只读证据", variant: EVENT_TONE[event.type] };
+  }
+}
+
+function importantEvents(events: ChannelConnectorAgentSessionDriverRuntimeEvent[]) {
+  const highSignal = events.filter((event) => event.error || event.type === "turn.failed" || event.type === "turn.fallback");
+  const routine = events.filter((event) => !highSignal.includes(event));
+  return [...highSignal, ...routine].slice(0, 12);
+}
+
 function sessionBadge(session: ChannelConnectorAgentSessionRuntimeStatus): {
   variant: "ok" | "warn" | "bad" | "mute";
   label: string;
@@ -99,6 +142,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const data = sessionsQuery.data;
   const activeSessions = data?.activeSessions ?? [];
   const recentEvents = data?.recentEvents ?? [];
+  const visibleEvents = importantEvents(recentEvents);
   const policy = data?.policy;
 
   const pending = manageMutation.isPending;
@@ -231,33 +275,40 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         )}
       </Panel>
 
-      {/* Recent events — read-only trace */}
+      {/* Recent events — human-readable trace */}
       <Panel>
-        <PanelHead title="最近投递/会话事件" sub="session / turn / delivery 生命周期事件，只读。" />
+        <PanelHead
+          title="需要关注的会话事件"
+          sub="失败和 fallback 优先；原始事件类型保留为小标签，便于排查但不占主视觉。"
+        />
         {recentEvents.length === 0 ? (
           <EmptyState title="暂无事件" description="尚无 session / turn 事件记录。" />
         ) : (
-          <div className="py-1.5">
-            {recentEvents.map((event, index) => (
-              <div
-                key={`${event.type}-${event.sessionId ?? "none"}-${index}`}
-                className="flex items-center gap-3 px-4 py-2.5"
-              >
-                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
-                  <Activity />
-                </span>
-                <span className="grid min-w-0 flex-1">
-                  <strong className="truncate text-base text-ink-strong">{event.type}</strong>
-                  <span className="truncate text-sm text-muted">
-                    {event.agent} · {event.bindingId} · {formatTime(event.checkedAt)}
-                    {event.reason ? ` · ${event.reason}` : ""}
+          <div className="grid gap-2 p-3">
+            {visibleEvents.map((event, index) => {
+              const view = humanEvent(event);
+              return (
+                <div
+                  key={`${event.type}-${event.sessionId ?? "none"}-${index}`}
+                  className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                    <Activity />
                   </span>
-                </span>
-                <Badge variant={event.error ? "bad" : EVENT_TONE[event.type]}>
-                  {event.error ? "失败" : "ok"}
-                </Badge>
-              </div>
-            ))}
+                  <span className="grid min-w-0 gap-1">
+                    <strong className="truncate text-base text-ink-strong">{view.title}</strong>
+                    <span className="break-words text-sm text-muted">{view.detail}</span>
+                    <span className="truncate text-xs text-subtle">
+                      {event.agent} · {event.bindingId} · {formatTime(event.checkedAt)} · {view.action}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap justify-start gap-1.5 sm:justify-end">
+                    <Badge variant={view.variant}>{view.variant === "bad" ? "需处理" : view.variant === "warn" ? "关注" : "正常"}</Badge>
+                    <Badge variant="outline">{event.type}</Badge>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </Panel>

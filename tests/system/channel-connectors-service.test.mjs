@@ -1490,6 +1490,32 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   service.saveNativeConfig({ config: publicConfig.config });
   const afterRedactedRoundTrip = service.getNativeConfig();
   assert.equal(afterRedactedRoundTrip.config.platformBindings[0].metadata.botToken, "test-token");
+
+  service.saveNativeConfig({
+    config: {
+      ...afterRedactedRoundTrip.config,
+      platformBindings: [
+        {
+          ...afterRedactedRoundTrip.config.platformBindings[0],
+          metadata: {
+            ...afterRedactedRoundTrip.config.platformBindings[0].metadata,
+            routeAgent: "opencode",
+            routeModel: "glm-5",
+            routeWorkDir: path.join(root, "route-workspace"),
+            routePermissionMode: "full-auto",
+          },
+        },
+      ],
+    },
+  });
+  const routePreview = service.getDaemonConfig();
+  const routeProject = routePreview.config.projects.find((project) => project.id === "claude-main--octo-bot-a");
+  assert.ok(routeProject, "route override creates a per-binding runtime project");
+  assert.equal(routeProject.agent, "opencode");
+  assert.equal(routeProject.model, "glm-5");
+  assert.equal(routeProject.workDir, path.join(root, "route-workspace"));
+  assert.equal(routeProject.permissionMode, "full-auto");
+  assert.equal(routeProject.platformBindings[0].agent, "opencode");
 });
 
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {

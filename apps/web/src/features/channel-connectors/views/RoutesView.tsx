@@ -42,7 +42,8 @@ export function RoutesView({ selectedBinding, goToView }: ChannelConnectorsViewP
   }
 
   const filtered = bindings.filter((binding) => {
-    const haystack = `${binding.displayName} ${binding.id} ${binding.platform} ${binding.agentProfileId} ${binding.accountId} ${metaString(binding, "peerKind", "")} ${metaString(binding, "peerId", "")}`.toLowerCase();
+    const profile = agentProfiles.find((item) => item.id === binding.agentProfileId);
+    const haystack = `${binding.displayName} ${binding.id} ${binding.platform} ${binding.agentProfileId} ${binding.accountId} ${metaString(binding, "peerKind", "")} ${metaString(binding, "peerId", "")} ${metaString(binding, "routeAgent", profile?.agent ?? "")} ${metaString(binding, "routeModel", profile?.model ?? "")}`.toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   });
 
@@ -62,13 +63,17 @@ export function RoutesView({ selectedBinding, goToView }: ChannelConnectorsViewP
       ) : (
         <Table>
           <TableHeader>
-            <TableRow><TableHead>绑定路由</TableHead><TableHead>来源</TableHead><TableHead>Agent Profile</TableHead><TableHead>权限</TableHead><TableHead>状态</TableHead><TableHead className="text-right">动作</TableHead></TableRow>
+            <TableRow><TableHead>绑定路由</TableHead><TableHead>来源</TableHead><TableHead>实际 Agent / 模型</TableHead><TableHead>权限</TableHead><TableHead>状态</TableHead><TableHead className="text-right">动作</TableHead></TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map((binding) => {
               const profile = agentProfiles.find((item) => item.id === binding.agentProfileId);
               const peerKind = metaString(binding, "peerKind", "未指定");
               const peerId = metaString(binding, "peerId", "*");
+              const routeAgent = metaString(binding, "routeAgent", profile?.agent ?? "unknown");
+              const routeModel = metaString(binding, "routeModel", profile?.model ?? "网关默认路由");
+              const routeWorkDir = metaString(binding, "routeWorkDir", profile?.workDir ?? "—");
+              const hasRouteOverride = ["routeAgent", "routeModel", "routeWorkDir", "routePermissionMode"].some((key) => Boolean(metaString(binding, key, "")));
               return (
                 <TableRow key={binding.id}>
                   <TableCell>
@@ -78,7 +83,7 @@ export function RoutesView({ selectedBinding, goToView }: ChannelConnectorsViewP
                     </div>
                   </TableCell>
                   <TableCell><span className="font-mono text-sm text-muted">{peerKind} · {peerId}</span></TableCell>
-                  <TableCell><span className="grid"><strong className="text-sm text-ink-strong">{profile?.name ?? binding.agentProfileId}</strong><span className="text-xs text-muted">{profile?.agent ?? "unknown"}{profile?.model ? ` · ${profile.model}` : ""}</span></span></TableCell>
+                  <TableCell><span className="grid max-w-[360px]"><strong className="truncate text-sm text-ink-strong">{routeAgent} · {routeModel}</strong><span className="truncate text-xs text-muted">{profile?.name ?? binding.agentProfileId} · {routeWorkDir}</span>{hasRouteOverride && <Badge variant="info" className="mt-1 w-fit">独立覆盖</Badge>}</span></TableCell>
                   <TableCell><div className="flex flex-wrap gap-1.5"><Badge variant="outline">{binding.allowlist.length} 允许</Badge><Badge variant="outline">{binding.adminUsers.length} 管理员</Badge><Badge variant="outline">{binding.disabledCommands.length} 禁用</Badge></div></TableCell>
                   <TableCell><Badge variant={binding.enabled ? "ok" : "mute"}>{binding.enabled ? "启用" : "停用"}</Badge></TableCell>
                   <TableCell><div className="flex justify-end"><Button variant="ghost" size="sm" onClick={() => setEditing(binding)}><Pencil />编辑路由</Button></div></TableCell>

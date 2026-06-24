@@ -889,10 +889,88 @@ async function requestDaemonAgentSessions(
   return body as ChannelConnectorAgentSessionDriverStatusResponse;
 }
 
+
+function bindingRouteMetadataString(
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
+  key: string,
+): string {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  const value = metadata[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+
+function effectiveRouteProject(
+  profile: ChannelConnectorsNativeConfig["agentProfiles"][number],
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
+): ChannelConnectorsDaemonRuntimeConfig["projects"][number] {
+  const routeAgent = bindingRouteMetadataString(binding, "routeAgent");
+  const routeModel = bindingRouteMetadataString(binding, "routeModel");
+  const routeWorkDir = bindingRouteMetadataString(binding, "routeWorkDir");
+  const routePermissionMode = bindingRouteMetadataString(binding, "routePermissionMode");
+  const hasOverride = Boolean(routeAgent || routeModel || routeWorkDir || routePermissionMode);
+  const agent = isRuntimeAgentId(routeAgent) ? routeAgent : profile.agent;
+  const permissionMode = isPermissionMode(routePermissionMode) ? routePermissionMode : profile.permissionMode;
+  const model = routeModel || profile.model;
+  const workDir = routeWorkDir || profile.workDir;
+  return {
+    id: hasOverride ? `${profile.id}--${binding.id}` : profile.id,
+    name: hasOverride ? `${profile.name} / ${binding.displayName || binding.id}` : profile.name,
+    workDir,
+    agent,
+    model,
+    permissionMode,
+    gatewayEndpoint: profile.gatewayEndpoint,
+    gatewayKeyRef: profile.gatewayKeyRef,
+    appProfileRef: profile.appProfileRef,
+    platformBindings: [
+      {
+        id: binding.id,
+        platform: binding.platform,
+        accountId: binding.accountId,
+        botId: binding.botId,
+        displayName: binding.displayName,
+        agent,
+        enabled: binding.enabled,
+        allowlist: binding.allowlist,
+        adminUsers: binding.adminUsers,
+        disabledCommands: binding.disabledCommands,
+        metadata: binding.metadata,
+      },
+    ],
+  };
+}
+
 function buildRuntimeConfig(
   nativeConfig: ChannelConnectorsNativeConfig,
   paths: ChannelConnectorsPaths,
 ): ChannelConnectorsDaemonRuntimeConfig {
+  const projects: ChannelConnectorsDaemonRuntimeConfig["projects"] = [];
+  for (const profile of nativeConfig.agentProfiles) {
+    const bindings = nativeConfig.platformBindings.filter((binding) => binding.agentProfileId === profile.id);
+    const defaultBindings = bindings.filter((binding) => {
+      const routeAgent = bindingRouteMetadataString(binding, "routeAgent");
+      const routeModel = bindingRouteMetadataString(binding, "routeModel");
+      const routeWorkDir = bindingRouteMetadataString(binding, "routeWorkDir");
+      const routePermissionMode = bindingRouteMetadataString(binding, "routePermissionMode");
+      return !(routeAgent || routeModel || routeWorkDir || routePermissionMode);
+    });
+    projects.push({
+      id: profile.id,
+      name: profile.name,
+      workDir: profile.workDir,
+      agent: profile.agent,
+      model: profile.model,
+      permissionMode: profile.permissionMode,
+      gatewayEndpoint: profile.gatewayEndpoint,
+      gatewayKeyRef: profile.gatewayKeyRef,
+      appProfileRef: profile.appProfileRef,
+      platformBindings: defaultBindings.map((binding) => effectiveRouteProject(profile, binding).platformBindings[0]),
+    });
+    for (const binding of bindings) {
+      if (!defaultBindings.includes(binding)) projects.push(effectiveRouteProject(profile, binding));
+    }
+  }
   return {
     version: 1,
     management: {
@@ -911,37 +989,9 @@ function buildRuntimeConfig(
       endpoint: gatewayEndpoint(),
       clientKeyRef: "tracevane-gateway-client-key",
     },
-    projects: [
-      ...nativeConfig.agentProfiles.map((profile) => ({
-        id: profile.id,
-        name: profile.name,
-        workDir: profile.workDir,
-        agent: profile.agent,
-        model: profile.model,
-        permissionMode: profile.permissionMode,
-        gatewayEndpoint: profile.gatewayEndpoint,
-        gatewayKeyRef: profile.gatewayKeyRef,
-        appProfileRef: profile.appProfileRef,
-        platformBindings: nativeConfig.platformBindings
-          .filter((binding) => binding.agentProfileId === profile.id)
-          .map((binding) => ({
-            id: binding.id,
-            platform: binding.platform,
-            accountId: binding.accountId,
-            botId: binding.botId,
-            displayName: binding.displayName,
-            agent: profile.agent,
-            enabled: binding.enabled,
-            allowlist: binding.allowlist,
-            adminUsers: binding.adminUsers,
-            disabledCommands: binding.disabledCommands,
-            metadata: binding.metadata,
-          })),
-      })),
-    ],
+    projects,
   };
 }
-
 function isSensitiveMetadataKey(key: string): boolean {
   const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
   return normalized === "apikey"
@@ -2081,7 +2131,7 @@ function resolveRuntimeBindingById(
       : null;
   if (!binding) return null;
   const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
-  const project = runtimeConfig.projects.find((candidate) => candidate.id === binding.agentProfileId);
+  const project = runtimeConfig.projects.find((candidate) => candidate.platformBindings.some((runtimeBinding) => runtimeBinding.id === binding.id));
   const runtimeBinding = project?.platformBindings.find((candidate) => candidate.id === binding.id);
   if (!agentProfile || !project || !runtimeBinding) return null;
   return { binding, agentProfile, project, runtimeBinding };
@@ -2125,7 +2175,7 @@ function resolveRuntimeBindingForPlatform(
         : null;
   if (!binding) return null;
   const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
-  const project = runtimeConfig.projects.find((candidate) => candidate.id === binding.agentProfileId);
+  const project = runtimeConfig.projects.find((candidate) => candidate.platformBindings.some((runtimeBinding) => runtimeBinding.id === binding.id));
   const runtimeBinding = project?.platformBindings.find((candidate) => candidate.id === binding.id);
   if (!agentProfile || !project || !runtimeBinding) return null;
   return { binding, agentProfile, project, runtimeBinding };
@@ -2681,11 +2731,11 @@ export function createChannelConnectorsService(
 
     const baseAgentDispatch = {
       status: "skipped" as const,
-      agent: resolved?.agentProfile.agent || null,
-      model: resolved?.agentProfile.model || null,
-      workDir: resolved?.agentProfile.workDir || null,
-      gatewayEndpoint: resolved?.agentProfile.gatewayEndpoint || null,
-      gatewayKeyRef: resolved?.agentProfile.gatewayKeyRef || null,
+      agent: resolved?.project.agent || null,
+      model: resolved?.project.model || null,
+      workDir: resolved?.project.workDir || null,
+      gatewayEndpoint: resolved?.project.gatewayEndpoint || null,
+      gatewayKeyRef: resolved?.project.gatewayKeyRef || null,
     };
     const finish = (response: ChannelConnectorFeishuWebhookResponse): ChannelConnectorFeishuWebhookResponse => {
       writeJsonLine(eventPath, {
@@ -3094,6 +3144,7 @@ export function createChannelConnectorsService(
     const nativeConfig = readNativeConfig(config, resolvedPaths, now());
     const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
     const resolved = resolveOctoBinding(request, nativeConfig.platformBindings, nativeConfig.agentProfiles);
+    const runtimeResolved = resolved ? resolveRuntimeBindingById(nativeConfig, runtimeConfig, resolved.binding.id) : null;
     const skippedReason = shouldSkipOctoMessage(request, resolved);
     if (skippedReason) {
       return buildSkippedOctoResponse(checkedAt, request, skippedReason, resolvedPaths.octoEventLogFile, resolved);
@@ -3103,6 +3154,13 @@ export function createChannelConnectorsService(
     let message = request.message;
     const binding = resolved.binding;
     const agentProfile = resolved.agentProfile;
+    const runtimeProject = runtimeResolved?.project ?? {
+      agent: agentProfile.agent,
+      model: agentProfile.model,
+      workDir: agentProfile.workDir,
+      gatewayEndpoint: agentProfile.gatewayEndpoint,
+      gatewayKeyRef: agentProfile.gatewayKeyRef,
+    };
     const aliasResolution = resolveChannelConnectorBindingCommandAlias(
       binding,
       extractOctoContent(message),
@@ -3201,11 +3259,11 @@ export function createChannelConnectorsService(
       },
       agentDispatch: {
         status: dispatchStatus,
-        agent: agentProfile.agent,
-        model: agentProfile.model,
-        workDir: agentProfile.workDir,
-        gatewayEndpoint: agentProfile.gatewayEndpoint,
-        gatewayKeyRef: agentProfile.gatewayKeyRef,
+        agent: runtimeProject.agent,
+        model: runtimeProject.model,
+        workDir: runtimeProject.workDir,
+        gatewayEndpoint: runtimeProject.gatewayEndpoint,
+        gatewayKeyRef: runtimeProject.gatewayKeyRef,
       },
       commandAction,
       transport,

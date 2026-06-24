@@ -9,12 +9,16 @@ import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } 
 import { toast } from "@/design/ui/sonner";
 
 import { useSaveChannelConnectorsConfigMutation } from "@/lib/query/channel-connectors";
+import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import type {
   ChannelConnectorsNativeConfig,
   ChannelConnectorAgentProfile,
   ChannelConnectorPlatformBinding,
   ChannelConnectorPlatformId,
+  ChannelConnectorAgentId,
+  ChannelConnectorPermissionMode,
 } from "../types";
+import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from "../types";
 
 type EditorMode = "create" | "edit";
 
@@ -53,6 +57,10 @@ interface RouteState {
   allowlist: string;
   adminUsers: string;
   disabledCommands: string;
+  routeAgent: ChannelConnectorAgentId;
+  routeModel: string;
+  routeWorkDir: string;
+  routePermissionMode: ChannelConnectorPermissionMode;
 }
 
 const ACCOUNT_METADATA_KEYS = new Set([
@@ -77,6 +85,10 @@ const ROUTE_METADATA_KEYS = new Set([
   "sessionMode",
   "busyGuard",
   "attachmentStaging",
+  "routeAgent",
+  "routeModel",
+  "routeWorkDir",
+  "routePermissionMode",
 ]);
 
 function createBindingId(platform: ChannelConnectorPlatformId): string {
@@ -155,7 +167,16 @@ function toAccountState(
 function toRouteState(
   binding: ChannelConnectorPlatformBinding | null,
   defaultAgentProfileId: string,
+  profile: ChannelConnectorAgentProfile | undefined,
 ): RouteState {
+  const rawAgent = readMeta(binding, "routeAgent") || profile?.agent || "codex";
+  const routeAgent = (CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(rawAgent)
+    ? (rawAgent as ChannelConnectorAgentId)
+    : "codex";
+  const rawPermissionMode = readMeta(binding, "routePermissionMode") || profile?.permissionMode || "suggest";
+  const routePermissionMode = (["suggest", "read-only", "auto-edit", "full-auto", "plan", "yolo"] as const).includes(rawPermissionMode as ChannelConnectorPermissionMode)
+    ? (rawPermissionMode as ChannelConnectorPermissionMode)
+    : "suggest";
   return {
     displayName: binding?.displayName ?? "",
     agentProfileId: binding?.agentProfileId ?? defaultAgentProfileId,
@@ -168,6 +189,10 @@ function toRouteState(
     allowlist: (binding?.allowlist ?? []).join(", "),
     adminUsers: (binding?.adminUsers ?? []).join(", "),
     disabledCommands: (binding?.disabledCommands ?? []).join(", "),
+    routeAgent,
+    routeModel: readMeta(binding, "routeModel") || profile?.model || "",
+    routeWorkDir: readMeta(binding, "routeWorkDir") || profile?.workDir || "",
+    routePermissionMode,
   };
 }
 
@@ -338,6 +363,10 @@ function buildRouteMetadata(binding: ChannelConnectorPlatformBinding | null, sta
   next.sessionMode = state.sessionMode;
   next.busyGuard = state.busyGuard;
   next.attachmentStaging = state.attachmentStaging;
+  next.routeAgent = state.routeAgent;
+  mergeString(next, "routeModel", state.routeModel);
+  mergeString(next, "routeWorkDir", state.routeWorkDir);
+  next.routePermissionMode = state.routePermissionMode;
   return next;
 }
 
@@ -545,15 +574,19 @@ export function RouteEditor({
 }) {
   const [state, setState] = React.useState<RouteState | null>(null);
   const { save, pending } = useSaveBinding({ config, binding, mode: "edit", onSaved, onOpenChange });
+  const gatewayModelsQuery = useModelGatewayModelsQuery({ enabled: open, staleTime: 30_000 });
   const defaultAgentProfileId = config?.defaultAgentProfileId || agentProfiles[0]?.id || "default";
 
   React.useEffect(() => {
-    if (open) setState(toRouteState(binding, defaultAgentProfileId));
-  }, [binding, defaultAgentProfileId, open]);
+    const profileId = binding?.agentProfileId ?? defaultAgentProfileId;
+    const profile = agentProfiles.find((item) => item.id === profileId);
+    if (open) setState(toRouteState(binding, defaultAgentProfileId, profile));
+  }, [agentProfiles, binding, defaultAgentProfileId, open]);
 
   if (!binding || !state || !config) return null;
   const patch = (next: Partial<RouteState>) => setState((prev) => (prev ? { ...prev, ...next } : prev));
   const selectedProfile = agentProfiles.find((profile) => profile.id === state.agentProfileId);
+  const gatewayModels = gatewayModelsQuery.data?.models ?? gatewayModelsQuery.data?.data ?? [];
 
   const handleSave = () => {
     const nextBinding: ChannelConnectorPlatformBinding = {
@@ -595,15 +628,59 @@ export function RouteEditor({
             {toggleInput(state.enabled, (enabled) => patch({ enabled }), "启用此绑定路由")}
           </FormSection>
 
-          <FormSection title="Agent 目标" sub="模型路由归 Model Gateway 管理，这里只读预览。">
-            <SelectField label="Agent Profile" value={state.agentProfileId} onChange={(agentProfileId) => patch({ agentProfileId })}>
+          <FormSection title="Agent 目标" sub="每条绑定路由可独立覆盖启动目录、Agent、默认模型和权限；Agent Profile 只作为模板与密钥引用。">
+            <SelectField
+              label="Agent Profile 模板"
+              hint="保存密钥引用与默认值；下面的路由覆盖会写入运行时配置。"
+              value={state.agentProfileId}
+              onChange={(agentProfileId) => {
+                const profile = agentProfiles.find((item) => item.id === agentProfileId);
+                patch({
+                  agentProfileId,
+                  routeAgent: profile?.agent ?? state.routeAgent,
+                  routeModel: profile?.model ?? state.routeModel,
+                  routeWorkDir: profile?.workDir ?? state.routeWorkDir,
+                  routePermissionMode: profile?.permissionMode ?? state.routePermissionMode,
+                });
+              }}
+            >
               {!agentProfiles.some((profile) => profile.id === state.agentProfileId) && <option value={state.agentProfileId}>{state.agentProfileId}</option>}
               {agentProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.agent}</option>)}
             </SelectField>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectField label="路由 Agent" value={state.routeAgent} onChange={(routeAgent) => patch({ routeAgent: routeAgent as ChannelConnectorAgentId })}>
+                {CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
+              </SelectField>
+              <SelectField
+                label="默认模型"
+                hint={gatewayModelsQuery.error ? `模型列表加载失败：${gatewayModelsQuery.error.message}` : "来自 Model Gateway /v1/models；留空则使用网关默认路由。"}
+                value={state.routeModel}
+                onChange={(routeModel) => patch({ routeModel })}
+              >
+                <option value="">网关默认路由</option>
+                {state.routeModel && !gatewayModels.some((model) => model.id === state.routeModel) && <option value={state.routeModel}>{state.routeModel}</option>}
+                {gatewayModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.display_name || model.id}{model.providerIds?.length ? ` · ${model.providerIds.join(", ")}` : ""}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+            <Field label="默认启动目录" hint="每条 IM 路由独立传给 Agent；用于区分项目/仓库。">
+              <Input value={state.routeWorkDir} onChange={(e) => patch({ routeWorkDir: e.target.value })} placeholder={selectedProfile?.workDir ?? "/path/to/project"} />
+            </Field>
+            <SelectField label="权限模式" value={state.routePermissionMode} onChange={(routePermissionMode) => patch({ routePermissionMode: routePermissionMode as ChannelConnectorPermissionMode })}>
+              <option value="suggest">suggest</option>
+              <option value="read-only">read-only</option>
+              <option value="auto-edit">auto-edit</option>
+              <option value="full-auto">full-auto</option>
+              <option value="plan">plan</option>
+              <option value="yolo">yolo</option>
+            </SelectField>
             <div className="grid gap-2 rounded-sm border border-line bg-panel p-3 text-sm text-muted sm:grid-cols-2">
-              <span>Agent：<strong className="text-ink-strong">{selectedProfile?.agent ?? "—"}</strong></span>
-              <span>模型：<strong className="text-ink-strong">{selectedProfile?.model ?? "默认路由"}</strong></span>
-              <span className="sm:col-span-2">工作目录：<strong className="text-ink-strong">{selectedProfile?.workDir ?? "—"}</strong></span>
+              <span>实际 Agent：<strong className="text-ink-strong">{state.routeAgent}</strong></span>
+              <span>实际模型：<strong className="text-ink-strong">{state.routeModel || "网关默认路由"}</strong></span>
+              <span className="sm:col-span-2">实际目录：<strong className="break-all text-ink-strong">{state.routeWorkDir || selectedProfile?.workDir || "—"}</strong></span>
             </div>
           </FormSection>
 

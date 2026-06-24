@@ -55,7 +55,8 @@ test("Channel Connectors route view keeps routing separate from platform credent
   const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
   assert.match(routes, /绑定路由/);
   assert.match(routes, /平台凭据在/);
-  assert.match(routes, /Agent Profile/);
+  assert.match(routes, /实际 Agent \/ 模型/);
+  assert.match(routes, /独立覆盖/);
   assert.doesNotMatch(routes, /appSecret/);
   assert.doesNotMatch(routes, /botToken/);
 });
@@ -72,6 +73,10 @@ test("Channel Connectors account and route editors use wide Sheets with platform
   assert.match(editor, /编辑绑定路由/);
   assert.match(editor, /来源类型/);
   assert.match(editor, /allowlist/);
+  assert.match(editor, /useModelGatewayModelsQuery/);
+  assert.match(editor, /默认启动目录/);
+  assert.match(editor, /路由 Agent/);
+  assert.match(editor, /routeModel/);
 });
 
 test("Channel Connectors diagnostics demotes generated daemon bindings to evidence", () => {
@@ -79,5 +84,16 @@ test("Channel Connectors diagnostics demotes generated daemon bindings to eviden
   assert.match(diagnostics, /生成配置证据/);
   assert.match(diagnostics, /不再作为第二套用户编辑列表/);
   assert.match(diagnostics, /DaemonServicePanel/);
-  assert.match(diagnostics, /最近日志/);
+  assert.match(diagnostics, /日志摘要/);
+  assert.match(diagnostics, /问题行优先/);
+  assert.match(diagnostics, /break-all/);
+  assert.match(diagnostics, /max-w-full/);
+});
+
+test("Channel Connectors session events prioritize human-readable incident summaries", () => {
+  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
+  assert.match(sessions, /需要关注的会话事件/);
+  assert.match(sessions, /Agent 执行失败/);
+  assert.match(sessions, /已触发 fallback/);
+  assert.match(sessions, /原始事件类型保留为小标签/);
 });

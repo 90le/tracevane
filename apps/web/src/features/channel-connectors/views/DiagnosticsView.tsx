@@ -16,11 +16,31 @@ import type { ChannelConnectorsViewProps } from "./types";
 import { Panel, PanelHead, Row, formatTime } from "./_shared";
 import { DaemonServicePanel } from "./DaemonServicePanel";
 
+function isProblemLogLine(line: string): boolean {
+  return /\b(error|failed|failure|exception|fatal|timeout|denied|warn|502|500|401|403)\b/i.test(line);
+}
+
+function truncateLogLine(line: string, max = 260): string {
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
+function summarizeLogs(lines: string[]) {
+  const problemLines = lines.filter(isProblemLogLine);
+  const lastLine = [...lines].reverse().find((line) => line.trim()) ?? "";
+  return {
+    total: lines.length,
+    problemLines: problemLines.slice(-8).reverse(),
+    problemCount: problemLines.length,
+    lastLine,
+  };
+}
+
 export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
   const statusQuery = useChannelConnectorsStatusQuery();
   const daemonConfigQuery = useChannelConnectorsDaemonConfigQuery();
   const logsQuery = useChannelConnectorsDaemonLogsQuery();
   const [showNative, setShowNative] = React.useState(false);
+  const [showRawLogs, setShowRawLogs] = React.useState(false);
 
   if (statusQuery.isLoading || daemonConfigQuery.isLoading || logsQuery.isLoading) {
     return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-12 w-full" /><SkeletonRow /><SkeletonRow /></div>;
@@ -35,6 +55,7 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
   const config = daemonConfigQuery.data?.config;
   const nativeBindings = (config?.projects ?? []).flatMap((project) => project.platformBindings.map((binding) => ({ project, binding })));
   const lines = logsQuery.data?.lines ?? [];
+  const logSummary = summarizeLogs(lines);
 
   return (
     <div className="grid gap-[18px]">
@@ -73,11 +94,43 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
 
       <Panel>
         <PanelHead
-          title="最近日志"
+          title="日志摘要"
           sub={logsQuery.data?.logFile ?? "daemon logs"}
-          action={<Button variant="outline" size="sm" onClick={() => void logsQuery.refetch()} disabled={logsQuery.isFetching}><RefreshCw className={logsQuery.isFetching ? "animate-spin" : undefined} />刷新</Button>}
+          action={
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowRawLogs((value) => !value)}>{showRawLogs ? "收起原始日志" : "原始日志"}</Button>
+              <Button variant="outline" size="sm" onClick={() => void logsQuery.refetch()} disabled={logsQuery.isFetching}><RefreshCw className={logsQuery.isFetching ? "animate-spin" : undefined} />刷新</Button>
+            </div>
+          }
         />
-        {lines.length === 0 ? <EmptyState title="暂无日志" description="守护进程尚未输出日志。" icon={<ScrollText />} /> : <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words border-t border-line bg-panel-2 px-4 py-3 font-mono text-xs text-muted">{lines.slice(-120).join("\n")}</pre>}
+        {lines.length === 0 ? (
+          <EmptyState title="暂无日志" description="守护进程尚未输出日志。" icon={<ScrollText />} />
+        ) : (
+          <div className="grid gap-3 border-t border-line p-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">日志行数</div><div className="text-lg font-semibold text-ink-strong">{logSummary.total}</div></div>
+              <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">疑似问题行</div><div className="text-lg font-semibold text-ink-strong">{logSummary.problemCount}</div></div>
+              <div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">最新输出</div><div className="break-all text-sm text-muted">{truncateLogLine(logSummary.lastLine, 120) || "—"}</div></div>
+            </div>
+            {logSummary.problemLines.length > 0 ? (
+              <div className="grid gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong"><ScrollText className="size-4" />问题行优先</div>
+                {logSummary.problemLines.map((line, index) => (
+                  <code key={`${line}-${index}`} className="block max-w-full overflow-hidden rounded-sm border border-amber bg-amber-soft px-3 py-2 font-mono text-xs text-amber break-all">
+                    {truncateLogLine(line)}
+                  </code>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-muted">未发现 error / failed / timeout / 5xx 等高信号日志。</div>
+            )}
+            {showRawLogs && (
+              <pre className="max-h-[min(52vh,520px)] max-w-full overflow-auto whitespace-pre-wrap break-all rounded-sm border border-line bg-panel-2 px-4 py-3 font-mono text-xs text-muted">
+                {lines.slice(-160).join("\n")}
+              </pre>
+            )}
+          </div>
+        )}
       </Panel>
     </div>
   );
