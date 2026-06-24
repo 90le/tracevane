@@ -13,12 +13,14 @@ export type {
   ChannelConnectorAgentId,
   ChannelConnectorPlatformId,
   ChannelConnectorPermissionMode,
+  ChannelConnectorBusyStrategy,
   ChannelConnectorReasoningEffort,
   ChannelConnectorsSupervisorKind,
   ChannelConnectorsDaemonAction,
   // Config / bindings
   ChannelConnectorAgentProfile,
   ChannelConnectorPlatformBinding,
+  ChannelConnectorAgentSessionPolicyConfig,
   ChannelConnectorsNativeConfig,
   ChannelConnectorsBindingPolicy,
   // Daemon

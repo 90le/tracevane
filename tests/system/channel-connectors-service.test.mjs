@@ -1411,6 +1411,9 @@ test("native Channel Connectors store persists agent profiles and derives daemon
 
   const initial = service.getNativeConfig();
   assert.equal(initial.config.agentProfiles[0].id, "default-codex");
+  assert.equal(initial.config.agentSessionPolicy.maxSessions, 8);
+  assert.equal(initial.config.agentSessionPolicy.maxConcurrentTurns, 4);
+  assert.equal(initial.config.agentSessionPolicy.busyStrategy, "reject");
   assert.deepEqual(initial.supportedAgents, ["codex", "claude-code", "opencode"]);
   assert.ok(initial.permissionModes.includes("full-auto"));
   assert.throws(() => service.saveNativeConfig({
@@ -1431,6 +1434,14 @@ test("native Channel Connectors store persists agent profiles and derives daemon
     config: {
       ...initial.config,
       defaultAgentProfileId: "claude-main",
+      agentSessionPolicy: {
+        maxSessions: 12,
+        maxConcurrentTurns: 3,
+        idleTimeoutMs: 120_000,
+        busyStrategy: "queue",
+        queueMaxRecords: 50,
+        queueMaxAgeMs: 600_000,
+      },
       agentProfiles: [
         {
           id: "claude-main",
@@ -1469,6 +1480,8 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(fs.existsSync(saved.configPath), true);
 
   const preview = service.getDaemonConfig();
+  assert.equal(preview.config.agentSessionPolicy.maxConcurrentTurns, 3);
+  assert.equal(preview.config.agentSessionPolicy.busyStrategy, "queue");
   assert.equal(preview.config.projects[0].id, "claude-main");
   assert.equal(preview.config.projects[0].agent, "claude-code");
   assert.equal(preview.config.projects[0].model, "gpt-5");

@@ -820,6 +820,18 @@ export interface ChannelConnectorsDaemonManagerStatus {
   lastError: string | null;
 }
 
+
+export type ChannelConnectorBusyStrategy = "reject" | "queue";
+
+export interface ChannelConnectorAgentSessionPolicyConfig {
+  maxSessions: number;
+  maxConcurrentTurns: number;
+  idleTimeoutMs: number;
+  busyStrategy: ChannelConnectorBusyStrategy;
+  queueMaxRecords: number;
+  queueMaxAgeMs: number;
+}
+
 export interface ChannelConnectorsDaemonRuntimeConfig {
   version: 1;
   management: {
@@ -838,6 +850,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     endpoint: string;
     clientKeyRef: "tracevane-gateway-client-key";
   };
+  agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
   projects: Array<{
     id: string;
     name: string;
@@ -896,6 +909,7 @@ export interface ChannelConnectorsNativeConfig {
   version: 1;
   updatedAt: string;
   defaultAgentProfileId: string;
+  agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
   agentProfiles: ChannelConnectorAgentProfile[];
   platformBindings: ChannelConnectorPlatformBinding[];
 }
@@ -1045,7 +1059,13 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
   policy: {
     idleTimeoutMs: number;
     maxSessions: number;
+    maxConcurrentTurns?: number;
+    activeTurns?: number;
+    queuedTurns?: number;
     fallbackOnCrash: boolean;
+    busyStrategy?: ChannelConnectorBusyStrategy;
+    queueMaxRecords?: number;
+    queueMaxAgeMs?: number;
   };
   requestedPersistentBindings: ChannelConnectorAgentSessionDriverBindingStatus[];
   bindings: ChannelConnectorAgentSessionDriverBindingStatus[];

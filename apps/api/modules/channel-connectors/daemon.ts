@@ -326,8 +326,8 @@ const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES = 1_600;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
-const PENDING_AGENT_RUN_MAX_AGE_MS = 24 * 60 * 60_000;
-const PENDING_AGENT_RUN_MAX_RECORDS = 200;
+const DEFAULT_PENDING_AGENT_RUN_MAX_AGE_MS = 24 * 60 * 60_000;
+const DEFAULT_PENDING_AGENT_RUN_MAX_RECORDS = 200;
 
 const channelAgentSessionDriverEvents: ChannelConnectorAgentSessionDriverEvent[] = [];
 
@@ -673,11 +673,7 @@ interface ChannelDaemonAgentSessionDriverState {
   defaultMode: "persistent";
   implementation: "native-cli-session-drivers";
   persistentDriverReady: true;
-  policy: {
-    idleTimeoutMs: number;
-    maxSessions: number;
-    fallbackOnCrash: boolean;
-  };
+  policy: ChannelConnectorAgentSessionDriverStatusResponse["policy"];
   requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
   bindings: ChannelDaemonAgentSessionDriverBindingState[];
   activeSessions: ChannelConnectorAgentSessionDriverStatus[];
@@ -1228,7 +1224,7 @@ function readPendingAgentRunStore(config: ChannelConnectorsDaemonRuntimeConfig):
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const values = isRecord(raw) && Array.isArray(raw.records) ? raw.records : [];
-    const cutoff = Date.now() - PENDING_AGENT_RUN_MAX_AGE_MS;
+    const cutoff = Date.now() - (config.agentSessionPolicy?.queueMaxAgeMs || DEFAULT_PENDING_AGENT_RUN_MAX_AGE_MS);
     const records = values
       .map((item) => normalizePendingAgentRunRecord(item))
       .filter((item): item is ChannelDaemonPendingAgentRunRecord => {
@@ -1237,7 +1233,7 @@ function readPendingAgentRunStore(config: ChannelConnectorsDaemonRuntimeConfig):
         return !Number.isFinite(queuedAtMs) || queuedAtMs >= cutoff;
       })
       .sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt))
-      .slice(-PENDING_AGENT_RUN_MAX_RECORDS);
+      .slice(-(config.agentSessionPolicy?.queueMaxRecords || DEFAULT_PENDING_AGENT_RUN_MAX_RECORDS));
     return {
       version: 1,
       updatedAt: normalizeString(isRecord(raw) ? raw.updatedAt : null) || new Date().toISOString(),
@@ -1256,7 +1252,7 @@ function writePendingAgentRunStore(
   const records = store.records
     .slice()
     .sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt))
-    .slice(-PENDING_AGENT_RUN_MAX_RECORDS);
+    .slice(-(config.agentSessionPolicy?.queueMaxRecords || DEFAULT_PENDING_AGENT_RUN_MAX_RECORDS));
   writeJsonFileAtomic(pendingAgentRunsPath(config), {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -1602,7 +1598,12 @@ function buildAgentSessionDriverState(
     defaultMode: "persistent",
     implementation: "native-cli-session-drivers",
     persistentDriverReady: true,
-    policy: channelAgentSessionDriverPool.policy(),
+    policy: {
+      ...channelAgentSessionDriverPool.policy(),
+      busyStrategy: config.agentSessionPolicy?.busyStrategy || "reject",
+      queueMaxRecords: config.agentSessionPolicy?.queueMaxRecords || DEFAULT_PENDING_AGENT_RUN_MAX_RECORDS,
+      queueMaxAgeMs: config.agentSessionPolicy?.queueMaxAgeMs || DEFAULT_PENDING_AGENT_RUN_MAX_AGE_MS,
+    },
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
     bindings,
     activeSessions,
@@ -1622,7 +1623,12 @@ function agentSessionDriverStatusResponse(
     ok: true,
     checkedAt: new Date().toISOString(),
     ...state,
-    policy: channelAgentSessionDriverPool.policy(),
+    policy: {
+      ...channelAgentSessionDriverPool.policy(),
+      busyStrategy: config.agentSessionPolicy?.busyStrategy || "reject",
+      queueMaxRecords: config.agentSessionPolicy?.queueMaxRecords || DEFAULT_PENDING_AGENT_RUN_MAX_RECORDS,
+      queueMaxAgeMs: config.agentSessionPolicy?.queueMaxAgeMs || DEFAULT_PENDING_AGENT_RUN_MAX_AGE_MS,
+    },
     ...(input.reaped == null ? {} : { reaped: input.reaped }),
     killed: input.killed ?? null,
   };
@@ -13100,6 +13106,13 @@ function dropPendingAgentRunsBecauseQueuesAreDisabled(
 async function main(): Promise<void> {
   const configPath = configPathFromArgv(process.argv.slice(2));
   const config = readConfig(configPath);
+  channelAgentSessionDriverPool.configurePolicy({
+    idleTimeoutMs: config.agentSessionPolicy?.idleTimeoutMs,
+    maxSessions: config.agentSessionPolicy?.maxSessions,
+    maxConcurrentTurns: config.agentSessionPolicy?.maxConcurrentTurns,
+    queueMaxRecords: config.agentSessionPolicy?.queueMaxRecords,
+    busyStrategy: config.agentSessionPolicy?.busyStrategy,
+  });
   ensureDir(config.paths.root);
   ensureDir(config.paths.state);
   const state = createDaemonState(config);
@@ -13118,7 +13131,9 @@ async function main(): Promise<void> {
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
-  dropPendingAgentRunsBecauseQueuesAreDisabled(config);
+  if ((config.agentSessionPolicy?.busyStrategy || "reject") !== "queue") {
+    dropPendingAgentRunsBecauseQueuesAreDisabled(config);
+  }
 
   void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {

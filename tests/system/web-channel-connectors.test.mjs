@@ -108,3 +108,12 @@ test("Model Gateway browser model list uses namespaced API path", () => {
   assert.doesNotMatch(api, /apiRequest<ModelGatewayModelListResponse>\(`\/v1\/models/);
   assert.match(routes, /\/api\/model-gateway\/models/);
 });
+
+
+test("Channel Connectors deliveries expose global concurrency and queue policy", () => {
+  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
+  assert.match(sessions, /全局并发 \/ 队列策略/);
+  assert.match(sessions, /maxConcurrentTurns/);
+  assert.match(sessions, /queueMaxRecords/);
+  assert.match(sessions, /不同会话竞争这个全局槽位/);
+});

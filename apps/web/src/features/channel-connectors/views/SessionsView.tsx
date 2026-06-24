@@ -16,7 +16,12 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
-import { useChannelConnectorsAgentSessionsQuery, useManageChannelConnectorsAgentSessionsMutation } from "@/lib/query/channel-connectors";
+import {
+  useChannelConnectorsAgentSessionsQuery,
+  useChannelConnectorsConfigQuery,
+  useManageChannelConnectorsAgentSessionsMutation,
+  useSaveChannelConnectorsConfigMutation,
+} from "@/lib/query/channel-connectors";
 import type {
   ChannelConnectorAgentSessionDriverRuntimeEvent,
   ChannelConnectorAgentSessionRuntimeStatus,
@@ -101,7 +106,9 @@ function formatIdle(idleMs: number): string {
 
 export function SessionsView(_props: ChannelConnectorsViewProps) {
   const sessionsQuery = useChannelConnectorsAgentSessionsQuery();
+  const configQuery = useChannelConnectorsConfigQuery();
   const manageMutation = useManageChannelConnectorsAgentSessionsMutation();
+  const saveConfigMutation = useSaveChannelConnectorsConfigMutation();
 
   const [confirm, setConfirm] = React.useState<
     | null
@@ -110,7 +117,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   >(null);
   const [evidence, setEvidence] = React.useState<string | null>(null);
 
-  if (sessionsQuery.isLoading) {
+  if (sessionsQuery.isLoading || configQuery.isLoading) {
     return (
       <div className="grid gap-[18px]" role="status" aria-busy="true">
         <Skeleton className="h-12 w-full" />
@@ -125,11 +132,12 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     );
   }
 
-  if (sessionsQuery.error) {
+  const loadError = sessionsQuery.error ?? configQuery.error;
+  if (loadError) {
     return (
       <ErrorState
         title="无法加载会话"
-        description={sessionsQuery.error.message}
+        description={loadError.message}
         action={
           <Button variant="outline" size="sm" onClick={() => void sessionsQuery.refetch()}>
             重试
@@ -140,12 +148,42 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   }
 
   const data = sessionsQuery.data;
+  const config = configQuery.data?.config ?? null;
+  const policyConfig = config?.agentSessionPolicy;
   const activeSessions = data?.activeSessions ?? [];
   const recentEvents = data?.recentEvents ?? [];
   const visibleEvents = importantEvents(recentEvents);
   const policy = data?.policy;
 
-  const pending = manageMutation.isPending;
+  const pending = manageMutation.isPending || saveConfigMutation.isPending;
+
+  const savePolicy = (patch: Partial<NonNullable<typeof policyConfig>>) => {
+    if (!config) return;
+    const current = policyConfig ?? {
+      maxSessions: 8,
+      maxConcurrentTurns: 4,
+      idleTimeoutMs: 10 * 60_000,
+      busyStrategy: "reject" as const,
+      queueMaxRecords: 200,
+      queueMaxAgeMs: 24 * 60 * 60_000,
+    };
+    saveConfigMutation.mutate(
+      {
+        config: {
+          ...config,
+          updatedAt: new Date().toISOString(),
+          agentSessionPolicy: { ...current, ...patch },
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success("已保存 IM Agent 并发策略", { description: "重启守护服务后运行中 daemon 会读取新策略。" });
+          void configQuery.refetch();
+        },
+        onError: (error) => toast.error("保存并发策略失败", { description: error.message }),
+      },
+    );
+  };
 
   const runReap = () => {
     manageMutation.mutate(
@@ -188,6 +226,42 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
 
   return (
     <div className="grid gap-[18px]">
+      <Panel>
+        <PanelHead
+          title="全局并发 / 队列策略"
+          sub="针对不同 IM 会话的 Agent turn。maxConcurrentTurns 是真正的同时执行上限；超过后按策略拒绝或排队。"
+          action={<Badge variant={policy?.busyStrategy === "queue" ? "ok" : "warn"}>{policy?.busyStrategy === "queue" ? "队列" : "超出即拒绝"}</Badge>}
+        />
+        <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-ink-strong">最大同时执行</span>
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyConfig?.maxConcurrentTurns ?? policy?.maxConcurrentTurns ?? 4} onChange={(e) => savePolicy({ maxConcurrentTurns: Number(e.target.value) || 1 })} />
+            <span className="text-xs text-subtle">不同会话竞争这个全局槽位。</span>
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-ink-strong">持久会话缓存</span>
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyConfig?.maxSessions ?? policy?.maxSessions ?? 8} onChange={(e) => savePolicy({ maxSessions: Number(e.target.value) || 1 })} />
+            <span className="text-xs text-subtle">空闲 session 保留上限，不等于并发。</span>
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-ink-strong">超出策略</span>
+            <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyConfig?.busyStrategy ?? policy?.busyStrategy ?? "reject"} onChange={(e) => savePolicy({ busyStrategy: e.target.value === "queue" ? "queue" : "reject" })}>
+              <option value="reject">直接拒绝</option>
+              <option value="queue">进入 FIFO 队列</option>
+            </select>
+            <span className="text-xs text-subtle">队列只限制不同会话的全局竞争。</span>
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-ink-strong">队列容量</span>
+            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyConfig?.queueMaxRecords ?? policy?.queueMaxRecords ?? 200} onChange={(e) => savePolicy({ queueMaxRecords: Number(e.target.value) || 0 })} />
+            <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
+          </label>
+        </div>
+        <div className="border-t border-line px-4 py-2.5 text-sm text-muted">
+          当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；保存后请在“守护诊断”重启 daemon 让策略完全生效。
+        </div>
+      </Panel>
+
       {/* Active sessions — read-only with guarded controls */}
       <Panel>
         <PanelHead

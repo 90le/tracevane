@@ -9,7 +9,7 @@ import { Sheet, SheetBody, SheetContent, SheetFooter, SheetHeader, SheetTitle } 
 import { toast } from "@/design/ui/sonner";
 
 import { useSaveChannelConnectorsConfigMutation } from "@/lib/query/channel-connectors";
-import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
+import { useModelGatewayModelsQuery, useModelGatewayProvidersQuery } from "@/lib/query/model-gateway";
 import type {
   ChannelConnectorsNativeConfig,
   ChannelConnectorAgentProfile,
@@ -337,6 +337,31 @@ function PlatformCredentialFields({
   );
 }
 
+function modelChoicesFromProviders(providers: Array<{ enabled?: boolean; id: string; models?: { models?: Array<{ id: string; label?: string; aliases?: string[] }> } }>) {
+  const byId = new Map<string, { id: string; display_name: string; providerIds: string[] }>();
+  for (const provider of providers) {
+    if (provider.enabled === false) continue;
+    for (const model of provider.models?.models ?? []) {
+      if (!model.id) continue;
+      const existing = byId.get(model.id);
+      if (existing) {
+        if (!existing.providerIds.includes(provider.id)) existing.providerIds.push(provider.id);
+      } else {
+        byId.set(model.id, {
+          id: model.id,
+          display_name: model.label || model.id,
+          providerIds: [provider.id],
+        });
+      }
+      for (const alias of model.aliases ?? []) {
+        if (!alias || byId.has(alias)) continue;
+        byId.set(alias, { id: alias, display_name: `${alias} → ${model.id}`, providerIds: [provider.id] });
+      }
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
+}
+
 function buildAccountMetadata(binding: ChannelConnectorPlatformBinding | null, state: AccountState) {
   const base = stripKeys(binding?.metadata ?? {}, ACCOUNT_METADATA_KEYS);
   const advanced = parseMetadata(state.metadataJson);
@@ -574,7 +599,8 @@ export function RouteEditor({
 }) {
   const [state, setState] = React.useState<RouteState | null>(null);
   const { save, pending } = useSaveBinding({ config, binding, mode: "edit", onSaved, onOpenChange });
-  const gatewayModelsQuery = useModelGatewayModelsQuery({ enabled: open, staleTime: 30_000 });
+  const gatewayModelsQuery = useModelGatewayModelsQuery({ enabled: open, staleTime: 30_000, retry: 1 });
+  const gatewayProvidersQuery = useModelGatewayProvidersQuery({ enabled: open, staleTime: 30_000, retry: 1 });
   const defaultAgentProfileId = config?.defaultAgentProfileId || agentProfiles[0]?.id || "default";
 
   React.useEffect(() => {
@@ -586,7 +612,10 @@ export function RouteEditor({
   if (!binding || !state || !config) return null;
   const patch = (next: Partial<RouteState>) => setState((prev) => (prev ? { ...prev, ...next } : prev));
   const selectedProfile = agentProfiles.find((profile) => profile.id === state.agentProfileId);
-  const gatewayModels = gatewayModelsQuery.data?.models ?? gatewayModelsQuery.data?.data ?? [];
+  const catalogModels = gatewayModelsQuery.data?.models ?? gatewayModelsQuery.data?.data ?? [];
+  const providerModels = modelChoicesFromProviders(gatewayProvidersQuery.data?.providers ?? []);
+  const gatewayModels = catalogModels.length > 0 ? catalogModels : providerModels;
+  const modelSourceLabel = catalogModels.length > 0 ? "模型目录" : providerModels.length > 0 ? "Provider 配置" : "手动输入";
 
   const handleSave = () => {
     const nextBinding: ChannelConnectorPlatformBinding = {
@@ -653,7 +682,7 @@ export function RouteEditor({
               </SelectField>
               <SelectField
                 label="默认模型"
-                hint={gatewayModelsQuery.error ? `模型列表加载失败，可在下方手动填写：${gatewayModelsQuery.error.message}` : "来自 Model Gateway 模型列表；留空则使用网关默认路由。"}
+                hint={gatewayModelsQuery.error && providerModels.length === 0 ? `模型列表加载失败，可在下方手动填写：${gatewayModelsQuery.error.message}` : `来自 Model Gateway ${modelSourceLabel}；留空则使用网关默认路由。`}
                 value={state.routeModel}
                 onChange={(routeModel) => patch({ routeModel })}
               >

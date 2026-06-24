@@ -95,6 +95,9 @@ export interface ChannelConnectorAgentSessionDriverPoolOptions {
   nowMs?: () => number;
   idleTimeoutMs?: number;
   maxSessions?: number;
+  maxConcurrentTurns?: number;
+  queueMaxRecords?: number;
+  busyStrategy?: "reject" | "queue";
   fallbackOnCrash?: boolean;
   onEvent?: (event: ChannelConnectorAgentSessionDriverEvent) => void;
 }
@@ -112,6 +115,15 @@ interface ChannelConnectorAgentSessionDriverPoolEntry {
 
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_MAX_SESSIONS = 8;
+const DEFAULT_MAX_CONCURRENT_TURNS = 4;
+const DEFAULT_QUEUE_MAX_RECORDS = 200;
+
+interface ChannelConnectorAgentSessionDriverTurnSlotWaiter {
+  resolve: (slot: { release: () => void }) => void;
+  reject: (error: Error) => void;
+  signal: AbortSignal | null;
+  abort: (() => void) | null;
+}
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -175,9 +187,14 @@ export function resolveChannelConnectorAgentSessionDriverMode(
 export class ChannelConnectorAgentSessionDriverPool {
   private readonly factory: ChannelConnectorAgentSessionDriverFactory;
   private readonly nowMs: () => number;
-  private readonly idleTimeoutMs: number;
-  private readonly maxSessions: number;
-  private readonly fallbackOnCrash: boolean;
+  private idleTimeoutMs: number;
+  private maxSessions: number;
+  private maxConcurrentTurns: number;
+  private queueMaxRecords: number;
+  private busyStrategy: "reject" | "queue";
+  private fallbackOnCrash: boolean;
+  private activeTurns = 0;
+  private readonly turnQueue: ChannelConnectorAgentSessionDriverTurnSlotWaiter[] = [];
   private readonly onEvent: ((event: ChannelConnectorAgentSessionDriverEvent) => void) | null;
   private readonly sessions = new Map<string, ChannelConnectorAgentSessionDriverPoolEntry>();
 
@@ -190,12 +207,21 @@ export class ChannelConnectorAgentSessionDriverPool {
     this.maxSessions = Number.isFinite(Number(options.maxSessions))
       ? Math.max(1, Number(options.maxSessions))
       : DEFAULT_MAX_SESSIONS;
+    this.maxConcurrentTurns = Number.isFinite(Number(options.maxConcurrentTurns))
+      ? Math.max(1, Number(options.maxConcurrentTurns))
+      : DEFAULT_MAX_CONCURRENT_TURNS;
+    this.queueMaxRecords = Number.isFinite(Number(options.queueMaxRecords))
+      ? Math.max(0, Number(options.queueMaxRecords))
+      : DEFAULT_QUEUE_MAX_RECORDS;
+    this.busyStrategy = options.busyStrategy === "queue" ? "queue" : "reject";
     this.fallbackOnCrash = options.fallbackOnCrash !== false;
     this.onEvent = options.onEvent || null;
   }
 
   async runTurn(input: ChannelConnectorAgentSessionDriverTurnInput): Promise<ChannelConnectorAgentTurnResult> {
     if (input.mode !== "persistent") return input.runOneShot();
+    const turnSlot = await this.acquireTurnSlot(input.signal || null);
+    try {
     const poolKey = channelConnectorAgentSessionDriverPoolKey(input.key);
     let entry = this.sessions.get(poolKey);
     if (!entry) {
@@ -304,6 +330,9 @@ export class ChannelConnectorAgentSessionDriverPool {
       input.signal?.removeEventListener("abort", abortListener);
       if (entry) entry.running = Math.max(0, entry.running - 1);
     }
+    } finally {
+      turnSlot.release();
+    }
   }
 
   async stopSession(key: ChannelConnectorAgentSessionDriverKeyInput, reason = "manual-stop"): Promise<{ stopped: boolean; sessionId: string | null }> {
@@ -366,12 +395,79 @@ export class ChannelConnectorAgentSessionDriverPool {
       }));
   }
 
-  policy(): { idleTimeoutMs: number; maxSessions: number; fallbackOnCrash: boolean } {
+  configurePolicy(policy: { idleTimeoutMs?: number; maxSessions?: number; maxConcurrentTurns?: number; queueMaxRecords?: number; busyStrategy?: "reject" | "queue"; fallbackOnCrash?: boolean }): void {
+    if (Number.isFinite(Number(policy.idleTimeoutMs))) {
+      this.idleTimeoutMs = Math.max(1, Number(policy.idleTimeoutMs));
+    }
+    if (Number.isFinite(Number(policy.maxSessions))) {
+      this.maxSessions = Math.max(1, Number(policy.maxSessions));
+    }
+    if (Number.isFinite(Number(policy.maxConcurrentTurns))) {
+      this.maxConcurrentTurns = Math.max(1, Number(policy.maxConcurrentTurns));
+    }
+    if (Number.isFinite(Number(policy.queueMaxRecords))) {
+      this.queueMaxRecords = Math.max(0, Number(policy.queueMaxRecords));
+    }
+    if (policy.busyStrategy === "queue" || policy.busyStrategy === "reject") this.busyStrategy = policy.busyStrategy;
+    if (typeof policy.fallbackOnCrash === "boolean") this.fallbackOnCrash = policy.fallbackOnCrash;
+    this.drainTurnQueue();
+  }
+
+  policy(): { idleTimeoutMs: number; maxSessions: number; maxConcurrentTurns: number; activeTurns: number; queuedTurns: number; fallbackOnCrash: boolean } {
     return {
       idleTimeoutMs: this.idleTimeoutMs,
       maxSessions: this.maxSessions,
+      maxConcurrentTurns: this.maxConcurrentTurns,
+      activeTurns: this.activeTurns,
+      queuedTurns: this.turnQueue.length,
       fallbackOnCrash: this.fallbackOnCrash,
     };
+  }
+
+  private acquireTurnSlot(signal: AbortSignal | null): Promise<{ release: () => void }> {
+    if (this.activeTurns < this.maxConcurrentTurns) {
+      this.activeTurns += 1;
+      return Promise.resolve({ release: () => this.releaseTurnSlot() });
+    }
+    if (this.busyStrategy !== "queue") {
+      return Promise.reject(new Error("Global IM Agent concurrency limit reached."));
+    }
+    if (this.turnQueue.length >= this.queueMaxRecords) {
+      return Promise.reject(new Error("Global IM Agent queue is full."));
+    }
+    return new Promise((resolve, reject) => {
+      const waiter: ChannelConnectorAgentSessionDriverTurnSlotWaiter = { resolve, reject, signal, abort: null };
+      waiter.abort = () => {
+        const index = this.turnQueue.indexOf(waiter);
+        if (index >= 0) this.turnQueue.splice(index, 1);
+        reject(new Error("Global IM Agent queued turn aborted."));
+      };
+      if (signal?.aborted) {
+        waiter.abort();
+        return;
+      }
+      if (signal && waiter.abort) signal.addEventListener("abort", waiter.abort, { once: true });
+      this.turnQueue.push(waiter);
+    });
+  }
+
+  private releaseTurnSlot(): void {
+    this.activeTurns = Math.max(0, this.activeTurns - 1);
+    this.drainTurnQueue();
+  }
+
+  private drainTurnQueue(): void {
+    while (this.activeTurns < this.maxConcurrentTurns && this.turnQueue.length > 0) {
+      const waiter = this.turnQueue.shift();
+      if (!waiter) return;
+      if (waiter.signal && waiter.abort) waiter.signal.removeEventListener("abort", waiter.abort);
+      if (waiter.signal?.aborted) {
+        waiter.reject(new Error("Global IM Agent queued turn aborted."));
+        continue;
+      }
+      this.activeTurns += 1;
+      waiter.resolve({ release: () => this.releaseTurnSlot() });
+    }
   }
 
   private async trimToCapacity(): Promise<void> {

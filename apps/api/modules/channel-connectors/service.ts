@@ -185,6 +185,14 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
   "plan",
   "yolo",
 ];
+const DEFAULT_AGENT_SESSION_POLICY = {
+  maxSessions: 8,
+  maxConcurrentTurns: 4,
+  idleTimeoutMs: 10 * 60_000,
+  busyStrategy: "reject" as const,
+  queueMaxRecords: 200,
+  queueMaxAgeMs: 24 * 60 * 60_000,
+};
 
 export type ChannelConnectorsDaemonCommandRunner = (
   command: ChannelConnectorsDaemonCommand,
@@ -391,6 +399,25 @@ function isPermissionMode(value: unknown): value is ChannelConnectorPermissionMo
   return (PERMISSION_MODES as readonly string[]).includes(String(value));
 }
 
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(number)));
+}
+
+function normalizeAgentSessionPolicy(value: unknown): ChannelConnectorsNativeConfig["agentSessionPolicy"] {
+  const input = isRecord(value) ? value : {};
+  const busyStrategy = normalizeString(input.busyStrategy) === "queue" ? "queue" : "reject";
+  return {
+    maxSessions: boundedInteger(input.maxSessions, DEFAULT_AGENT_SESSION_POLICY.maxSessions, 1, 128),
+    maxConcurrentTurns: boundedInteger(input.maxConcurrentTurns, DEFAULT_AGENT_SESSION_POLICY.maxConcurrentTurns, 1, 128),
+    idleTimeoutMs: boundedInteger(input.idleTimeoutMs, DEFAULT_AGENT_SESSION_POLICY.idleTimeoutMs, 30_000, 24 * 60 * 60_000),
+    busyStrategy,
+    queueMaxRecords: boundedInteger(input.queueMaxRecords, DEFAULT_AGENT_SESSION_POLICY.queueMaxRecords, 0, 5000),
+    queueMaxAgeMs: boundedInteger(input.queueMaxAgeMs, DEFAULT_AGENT_SESSION_POLICY.queueMaxAgeMs, 60_000, 7 * 24 * 60 * 60_000),
+  };
+}
+
 function defaultNativeConfig(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
@@ -400,6 +427,7 @@ function defaultNativeConfig(
     version: 1,
     updatedAt: now.toISOString(),
     defaultAgentProfileId: "default-codex",
+    agentSessionPolicy: DEFAULT_AGENT_SESSION_POLICY,
     agentProfiles: [
       {
         id: "default-codex",
@@ -519,6 +547,7 @@ function normalizeNativeConfig(
     version: 1,
     updatedAt: normalizeString(input.updatedAt, now.toISOString()),
     defaultAgentProfileId,
+    agentSessionPolicy: normalizeAgentSessionPolicy(input.agentSessionPolicy),
     agentProfiles,
     platformBindings,
   };
@@ -989,6 +1018,7 @@ function buildRuntimeConfig(
       endpoint: gatewayEndpoint(),
       clientKeyRef: "tracevane-gateway-client-key",
     },
+    agentSessionPolicy: nativeConfig.agentSessionPolicy,
     projects,
   };
 }

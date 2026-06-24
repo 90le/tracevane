@@ -51,7 +51,7 @@ Agent profiles remain read-only on the IM page. They are owned by the native Cha
 
 ### IM session and delivery log
 
-Runtime sessions, command events, daemon status, and logs remain operational evidence. IM Channels may display and operate them, but should not own generic terminal/PTY lifecycle.
+Runtime sessions, command events, daemon status, and logs remain operational evidence. IM Channels may display and operate them, but should not own generic terminal/PTY lifecycle. Different IM conversations compete for `agentSessionPolicy.maxConcurrentTurns` global Agent execution slots; overflow can be rejected or placed into a FIFO queue. `maxSessions` is only the persistent session cache cap, not the execution concurrency cap.
 
 
 ## 4. Frontend information architecture
@@ -68,7 +68,7 @@ Required UI boundaries:
 
 - 平台账号 owns platform credentials, callback URL, connection mode, and platform smoke.
 - 绑定路由 owns source matching, Agent profile template, per-route Agent/model/workdir/permission overrides, allowlist/admin/commands, and session policy.
-- 会话投递 owns runtime evidence and human-readable failure diagnosis.
+- 会话投递 owns runtime evidence, human-readable failure diagnosis, and global different-session concurrency / queue policy.
 - 守护诊断 owns daemon/service checks and generated config evidence.
 - Agent profiles and daemon native bindings must not be displayed as equal first-screen panels beside user-editable bindings.
 - Raw `metadata` JSON is advanced fallback only; normal account creation/editing must use platform-specific fields.
