@@ -66,6 +66,11 @@ test("OpenClaw guard service status probes live manager state instead of preserv
   assert.doesNotMatch(service, /activeState: stored\.activeState \|\| snapshot\.activeState/);
 });
 
+test("OpenClaw config page keeps hooks before loading returns to avoid blank screens", () => {
+  const page = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
+  assert.ok(page.indexOf("useSelectedKey") < page.indexOf("if (config.isLoading"), "selection hook must run before loading/error early returns");
+});
+
 test("OpenClaw config page saves first-stage safe fields through typed PATCH", () => {
   const api = read("apps/web/src/lib/api/platform-read.ts");
   const query = read("apps/web/src/lib/query/platform-read.ts");

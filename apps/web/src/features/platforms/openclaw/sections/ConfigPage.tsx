@@ -80,10 +80,8 @@ export function ConfigPage() {
 
   React.useEffect(() => {
     if (config.data && !patchConfig.isPending) setDraft(draftFromConfig(config.data));
-  }, [config.data?.checkedAt]);
+  }, [config.data?.checkedAt, patchConfig.isPending]);
 
-  if (config.isLoading || diagnostics.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[280px] w-full" /></div>;
-  if (config.error) return <ErrorState title="无法加载 OpenClaw 配置摘要" description={config.error.message} />;
   const data = config.data;
   const diag = diagnostics.data;
   const mcpServers = Object.entries(data?.mcp?.servers ?? {});
@@ -94,6 +92,9 @@ export function ConfigPage() {
   ];
   const [selectedConfigKey, setSelectedConfigKey] = useSelectedKey(configRows.map((item) => item.id));
   const selectedConfig = configRows.find((item) => item.id === selectedConfigKey) ?? configRows[0];
+
+  if (config.isLoading || diagnostics.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[280px] w-full" /></div>;
+  if (config.error) return <ErrorState title="无法加载 OpenClaw 配置摘要" description={config.error.message} />;
   const currentDraft = draftFromConfig(data);
   const dirty = JSON.stringify(draft) !== JSON.stringify(currentDraft);
   const setField = (key: keyof ConfigDraft) => (value: string) => setDraft((prev) => ({ ...prev, [key]: value }));
