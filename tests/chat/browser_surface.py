@@ -2,8 +2,31 @@ from __future__ import annotations
 
 import json
 import time
+from urllib.parse import urlsplit, urlunsplit
 from typing import Iterable
 
+
+
+def canonical_chat_url(url: str) -> str:
+    """Return the current HashRouter Chat URL for legacy acceptance URLs.
+
+    Older smoke tests predate the app shell HashRouter and still navigate to
+    `/chat`, `/chat/workbench`, or `/chat/s/<sessionRef>`. The product route is
+    now `/#/chat` with an optional `session` query param managed by the UI; this
+    helper keeps browser smokes exercising the real Chat surface instead of the
+    Dashboard fallback.
+    """
+    parsed = urlsplit(url)
+    path = parsed.path.rstrip('/') or '/'
+    if path in {'/chat', '/chat/workbench'}:
+        return urlunsplit((parsed.scheme, parsed.netloc, '/', parsed.query, '/chat'))
+    if path.startswith('/chat/s/'):
+        # Keep the opaque ref visible for diagnostics. Most tests select the
+        # created row after navigation; direct session decoding belongs to the UI.
+        session_ref = path.rsplit('/', 1)[-1]
+        hash_value = f'/chat?sessionRef={session_ref}'
+        return urlunsplit((parsed.scheme, parsed.netloc, '/', parsed.query, hash_value))
+    return url
 
 def collect_chat_surface_diagnostics(page) -> dict[str, object]:
     return page.evaluate(
@@ -53,6 +76,7 @@ def wait_for_chat_surface(
     selectors: Iterable[str] = (".chat-shell-session-list",),
     timeout: int = 90000,
 ) -> None:
+    url = canonical_chat_url(url)
     deadline = time.monotonic() + (timeout / 1000)
     attempts: list[dict[str, object]] = []
     first_navigation = True

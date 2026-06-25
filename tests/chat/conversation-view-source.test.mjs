@@ -83,3 +83,12 @@ test('ConversationView aborts in-flight Files uploads when removed or switching 
   assert.match(source, /uploadControllersRef\.current\.get\(file\.id\)\?\.abort\(\)/);
   assert.match(source, /for \(const controller of uploadControllersRef\.current\.values\(\)\)/);
 });
+
+
+test('ConversationView handles mixed text and file paste through Files uploads', () => {
+  assert.match(source, /const handleComposerPaste = \(event: React\.ClipboardEvent<HTMLTextAreaElement>\) => \{/);
+  assert.match(source, /event\.preventDefault\(\)/);
+  assert.match(source, /clipboard\.getData\("text\/plain"\)/);
+  assert.match(source, /void uploadFiles\(pastedFiles\)/);
+  assert.match(source, /onPaste=\{handleComposerPaste\}/);
+});

@@ -10,7 +10,7 @@ from urllib.parse import unquote
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
-from browser_surface import wait_for_active_session, wait_for_chat_surface
+from browser_surface import canonical_chat_url, wait_for_active_session, wait_for_chat_surface
 from upload_request import install_files_upload_routes, read_upload_payload
 
 
@@ -47,11 +47,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -60,7 +62,7 @@ def open_new_chat(page) -> str:
         wait_for_active_session(page, session_key, timeout=15000)
     except PlaywrightTimeoutError:
         page.goto(
-            f"http://127.0.0.1:5176/chat/s/{session_ref(session_key)}",
+            canonical_chat_url(f"http://127.0.0.1:5176/chat/s/{session_ref(session_key)}"),
             wait_until="domcontentloaded",
             timeout=30000,
         )
@@ -91,43 +93,14 @@ def runtime(active_run_id: str | None):
     }
 
 
-def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, object]:
-    file_name = str(payload.get("fileName") or "paste-mixed-file.txt")
-    relative_path = f"uploads/{int(time.time() * 1000)}-{file_name}"
-    resource_ref = f"uploads:{relative_path.removeprefix('uploads/')}"
-    mime_type = str(payload.get("mimeType") or "text/plain")
-    return {
-        "ok": True,
-        "sessionKey": session_key,
-        "id": f"upload-{file_name}",
-        "relativePath": relative_path,
-        "resourceRef": resource_ref,
-        "fileName": file_name,
-        "mimeType": mime_type,
-        "resource": {
-            "id": f"resource-{file_name}",
-            "kind": "file",
-            "fileName": file_name,
-            "mimeType": mime_type,
-            "relativePath": relative_path,
-            "resourceRef": resource_ref,
-            "source": "user_upload",
-            "url": f"/api/chat/sessions/{session_key}/resources/{resource_ref}",
-            "downloadUrl": f"/api/chat/sessions/{session_key}/resources/{resource_ref}?download=1",
-        },
-    }
-
-
 def paste_text_and_file(page, text: str, file_name: str) -> None:
     page.locator(".chat-composer-editor").first.evaluate(
         """(editor, payload) => {
             editor.focus();
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(editor);
-            range.collapse(false);
-            selection?.removeAllRanges();
-            selection?.addRange(range);
+            if (typeof editor.setSelectionRange === 'function') {
+                const end = (editor.value || '').length;
+                editor.setSelectionRange(end, end);
+            }
 
             const data = new DataTransfer();
             data.setData('text/plain', payload.text);
@@ -149,7 +122,7 @@ def paste_text_and_file(page, text: str, file_name: str) -> None:
             const cancelled = !editor.dispatchEvent(event);
             window.__composerPasteMixed = {
                 defaultPrevented: Boolean(event.defaultPrevented || cancelled),
-                text: editor.textContent || '',
+                text: editor.value || editor.textContent || '',
             };
         }""",
         {"text": text, "fileName": file_name},
@@ -166,10 +139,10 @@ def assert_file_ref_payload(payload: dict[str, object], token: str, file_name: s
     file_ref = file_refs[0]
     if not isinstance(file_ref, dict) or file_ref.get("fileName") != file_name:
         raise AssertionError(f"unexpected pasted fileRef: {file_ref}")
-    if not str(file_ref.get("relativePath") or "").startswith("uploads/"):
-        raise AssertionError(f"pasted fileRef must point at uploads/: {file_ref}")
-    if not str(file_ref.get("resourceRef") or "").startswith("uploads:"):
-        raise AssertionError(f"pasted fileRef must expose uploads: resourceRef: {file_ref}")
+    if not str(file_ref.get("relativePath") or "").startswith(".tracevane/chat-uploads/"):
+        raise AssertionError(f"pasted fileRef must point at shared Chat upload directory: {file_ref}")
+    if not str(file_ref.get("resourceRef") or "").startswith("files:project-root:"):
+        raise AssertionError(f"pasted fileRef must expose Files API resourceRef: {file_ref}")
     if payload.get("attachments"):
         raise AssertionError(f"pasted upload must not fall back to inline attachments: {payload.get('attachments')}")
 
@@ -186,16 +159,6 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 900})
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
-
-        def handle_upload(route):
-            payload = read_upload_payload(route.request)
-            upload_payloads.append(payload)
-            session_key = route_session_key(route.request.url, "/upload")
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps(upload_response(session_key, payload)),
-            )
 
         def handle_send(route):
             payload = read_upload_payload(route.request)
@@ -237,7 +200,7 @@ def main() -> None:
         if not paste_state or not paste_state.get("defaultPrevented"):
             raise AssertionError(f"mixed paste should prevent the browser default action: {paste_state}")
 
-        wait_for_count(page, upload_payloads, 1, "/upload POST")
+        wait_for_count(page, upload_payloads, 1, "Files upload init")
         if upload_payloads[0].get("fileName") != file_name:
             raise AssertionError(f"upload lost pasted file name: {upload_payloads[0]}")
 

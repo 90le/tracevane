@@ -544,6 +544,32 @@ export function ConversationView({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboard = event.clipboardData;
+    const pastedFiles = Array.from(clipboard.files ?? []).filter((file) => file.size >= 0);
+    if (!pastedFiles.length) return;
+
+    event.preventDefault();
+    const pastedText = clipboard.getData("text/plain");
+    if (pastedText) {
+      const target = event.currentTarget;
+      const selectionStart = target.selectionStart ?? draft.length;
+      const selectionEnd = target.selectionEnd ?? selectionStart;
+      setDraft((current) => {
+        const start = Math.max(0, Math.min(selectionStart, current.length));
+        const end = Math.max(start, Math.min(selectionEnd, current.length));
+        return `${current.slice(0, start)}${pastedText}${current.slice(end)}`;
+      });
+      window.setTimeout(() => {
+        const nextCursor = selectionStart + pastedText.length;
+        target.setSelectionRange(nextCursor, nextCursor);
+      }, 0);
+    }
+
+    void uploadFiles(pastedFiles);
+  };
+
+
   const attachWorkspaceFile = (filePath: string, fileName: string) => {
     const rootId = effectiveWorkspacePickerRootId || "project-root";
     const isProjectRoot = rootId === workspaceRootId || rootId === "project-root";
@@ -836,6 +862,7 @@ export function ConversationView({
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={handleComposerPaste}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
