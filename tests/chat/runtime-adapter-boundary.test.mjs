@@ -111,3 +111,8 @@ test('ChatService delegates gateway file-reference text formatting to shared tra
   assert.doesNotMatch(serviceSource, /function compileOpenClawGatewayMessageText/, 'service must not own OpenClaw-specific message compilation');
   assert.match(serviceSource, /function compileRuntimeTransportMessage/, 'service may only select runtime transport behavior');
 });
+
+
+test('OpenClaw runtime adapter forwards structured fileRefs beside transport text', () => {
+  assert.match(openClawAdapterSource, /fileRefs: input\.fileRefs \|\| \[\]/, 'OpenClaw adapter should pass structured Files API refs to compatible gateways');
+});

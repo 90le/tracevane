@@ -49,6 +49,7 @@ export function createOpenClawGatewayChatRuntimeAdapter(
         deliver: input.deliver,
         idempotencyKey: input.idempotencyKey,
         attachments: input.attachments,
+        fileRefs: input.fileRefs || [],
       });
       return normalizeChatRuntimeSendResult(raw, input.idempotencyKey);
     },
