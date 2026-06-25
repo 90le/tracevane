@@ -63,7 +63,7 @@ test("authoritative docs record the IA correction and non-core status", () => {
   assert.match(product, /External \/ Long Tasks legacy pages/);
   assert.match(product, /Do not expose as primary domains/);
   assert.match(frontend, /`\/external`, `\/long-tasks`, and legacy `\/recovery` are no longer first-class sidebar entries/);
-  assert.match(frontend, /Platform Guard \(`\/platforms\/openclaw\/recovery`\)/);
+  assert.match(frontend, /Preferred route: `\/platforms\/openclaw\/guard`/);
   assert.match(architecture, /not a primary owner domain/);
   assert.match(architecture, /Not Tracevane business-data recovery/);
   assert.match(research, /Tracevane 信息架构收敛与一级导航减法/);
