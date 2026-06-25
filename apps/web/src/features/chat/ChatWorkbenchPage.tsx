@@ -40,6 +40,7 @@ import type {
 } from "./types";
 import {
   runStateTone,
+  runtimeAgentLabel,
   sessionSourceLabel,
   sessionTitle,
   shouldShowRunState,
@@ -321,7 +322,7 @@ export function ChatWorkbenchPage() {
     ? sessionSourceLabel(selectedSession)
     : "Tracevane";
   const runtimeTarget = selectedSession?.runtimeTarget ?? null;
-  const selectedAgent = runtimeTarget?.agent || selectedSession?.agentId || "选择 Agent";
+  const selectedAgent = runtimeAgentLabel(selectedSession);
   const selectedModel = runtimeTarget?.model || "使用默认模型路由";
   const selectedWorkdir =
     runtimeTarget?.workDir ||

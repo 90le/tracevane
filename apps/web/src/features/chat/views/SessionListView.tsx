@@ -65,7 +65,13 @@ import type {
   ChatRuntimePermissionMode,
   ChatSessionRow,
 } from "../types";
-import { runStateTone, sessionSourceLabel, sessionTitle, shouldShowRunState } from "../_shared";
+import {
+  runStateTone,
+  runtimeAgentLabel,
+  sessionSourceLabel,
+  sessionTitle,
+  shouldShowRunState,
+} from "../_shared";
 
 type SessionDialogState =
   | { kind: "create" }
@@ -894,6 +900,7 @@ export function SessionListView({
             )}
             {visible.map((s) => {
               const st = runStateTone(s.runtime?.state);
+              const agentLabel = runtimeAgentLabel(s);
               const source = sessionSourceLabel(s);
               const preview =
                 s.lastMessagePreview?.trim() ||
@@ -941,7 +948,7 @@ export function SessionListView({
                         {preview}
                       </span>
                       <span className="truncate text-2xs text-subtle">
-                        {s.agentId} · {source} · {folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null)}
+                        {agentLabel} · {source} · {folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null)}
                         {s.presentation?.archived ? " · 已归档" : ""}
                         {!manageable ? " · 只读" : ""}
                       </span>

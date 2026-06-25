@@ -70,6 +70,17 @@ function readableRawToken(value: string | null | undefined): string | null {
   const normalized = value?.trim();
   if (!normalized) return null;
   switch (normalized) {
+    case "codex":
+      return "Codex";
+    case "claude":
+    case "claude-code":
+      return "Claude Code";
+    case "opencode":
+      return "OpenCode";
+    case "openclaw":
+      return "OpenClaw";
+    case "main":
+      return "默认 Agent";
     case "agent-chat":
       return "网页";
     case "webchat":
@@ -93,6 +104,19 @@ function readableRawToken(value: string | null | undefined): string | null {
     default:
       return normalized;
   }
+}
+
+/** Human-facing runtime target label. */
+export function runtimeAgentLabel(session: Pick<ChatSessionRow, "agentId" | "runtimeTarget"> | null | undefined): string {
+  if (!session) return "选择 Agent";
+  const runtimeAgent = readableRawToken(session.runtimeTarget?.agent);
+  if (session.runtimeTarget?.adapterKind === "native-cli") {
+    return runtimeAgent ? `${runtimeAgent} CLI` : "本地 CLI";
+  }
+  if (session.runtimeTarget?.adapterKind === "openclaw-gateway") {
+    return runtimeAgent ? `${runtimeAgent} 平台 Agent` : "OpenClaw 平台 Agent";
+  }
+  return readableRawToken(session.agentId) || "Agent";
 }
 
 /** Human-facing source label for Chat rows; never leak empty/unknown/raw debug terms. */

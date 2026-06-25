@@ -13,6 +13,10 @@ test('Chat shared labels do not expose raw unknown state or raw source fields', 
   assert.match(source, /label: "状态未同步"/);
   assert.doesNotMatch(source, /label: state \|\| "未知"/);
   assert.match(source, /export function sessionSourceLabel/);
+  assert.match(source, /export function runtimeAgentLabel/);
+  assert.match(source, /case "claude-code":/);
+  assert.match(source, /return "Claude Code"/);
+  assert.match(source, /return "OpenCode"/);
   assert.match(source, /adapter === "native-cli"/);
   assert.match(source, /adapter === "openclaw-gateway"/);
 });
