@@ -592,12 +592,6 @@ export interface ChatDeleteSessionResponse {
   sessionKey: string;
 }
 
-export interface ChatFileUploadRequest {
-  fileName: string;
-  content: string; // base64 encoded
-  mimeType?: string;
-}
-
 export interface ChatFileUploadResponse {
   ok: boolean;
   relativePath: string; // relative path from workspace root, for @path reference

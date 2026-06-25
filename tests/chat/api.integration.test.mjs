@@ -33,6 +33,58 @@ async function runWithRetries(task, attempts = 3) {
   throw lastError instanceof Error ? lastError : new Error('retry failed');
 }
 
+
+async function uploadIntegrationFileViaFilesApi(baseUrl, fileName, content, mimeType) {
+  const summaryResponse = await fetch(`${baseUrl}/api/files/summary`);
+  assert.equal(summaryResponse.ok, true);
+  const summary = await summaryResponse.json();
+  const rootId = summary.defaultRootId || summary.roots?.[0]?.id;
+  assert.ok(rootId, 'files summary should expose a default root');
+
+  const relativePath = `.tracevane/chat-integration/${Date.now()}-${fileName}`;
+  const initResponse = await fetch(`${baseUrl}/api/files/uploads/init`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      rootId,
+      directoryPath: '',
+      fileName,
+      relativePath,
+      size: content.length,
+      chunkSize: 1024 * 1024,
+      conflictPolicy: 'rename',
+    }),
+  });
+  assert.equal(initResponse.ok, true);
+  const init = await initResponse.json();
+
+  if (!init.skipped && !init.instant) {
+    const chunkResponse = await fetch(`${baseUrl}/api/files/uploads/${encodeURIComponent(init.uploadId)}/chunks/0`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: content,
+    });
+    assert.equal(chunkResponse.ok, true);
+
+    const completeResponse = await fetch(`${baseUrl}/api/files/uploads/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ uploadId: init.uploadId }),
+    });
+    assert.equal(completeResponse.ok, true);
+  }
+
+  const targetPath = init.targetPath || relativePath;
+  return {
+    rootId,
+    relativePath: targetPath,
+    resourceRef: `files:${rootId}:${targetPath}`,
+    fileName,
+    kind: mimeType.startsWith('image/') ? 'image' : mimeType.startsWith('video/') ? 'video' : 'file',
+    mimeType,
+  };
+}
+
 async function runIntegrationTest(t, task) {
   try {
     await task();
@@ -209,18 +261,12 @@ integrationTest('send keeps file refs out of user-visible text while exposing re
   const created = await createTracevaneSession(tracevane.baseUrl, 'main');
   const sessionKey = created.session.key;
 
-  const uploadResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/upload`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      fileName: 'report.pdf',
-      content: Buffer.from('pdf').toString('base64'),
-      mimeType: 'application/pdf',
-    }),
-  });
-  const uploadPayload = await uploadResponse.json();
-  assert.equal(uploadResponse.ok, true);
-  assert.equal(uploadPayload.ok, true);
+  const uploadPayload = await uploadIntegrationFileViaFilesApi(
+    tracevane.baseUrl,
+    'report.pdf',
+    Buffer.from('pdf'),
+    'application/pdf',
+  );
 
   const sendResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/send`, {
     method: 'POST',
@@ -231,10 +277,12 @@ integrationTest('send keeps file refs out of user-visible text while exposing re
       fileRefs: [
         {
           id: 'file-ref-1',
+          rootId: uploadPayload.rootId,
           relativePath: uploadPayload.relativePath,
+          resourceRef: uploadPayload.resourceRef,
           fileName: uploadPayload.fileName,
-          kind: 'file',
-          mimeType: 'application/pdf',
+          kind: uploadPayload.kind,
+          mimeType: uploadPayload.mimeType,
         },
       ],
     }),

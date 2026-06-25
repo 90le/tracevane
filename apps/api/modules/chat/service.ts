@@ -24,8 +24,6 @@ import type {
   ChatDeleteSessionResponse,
   ChatDeleteOrganizerFolderResponse,
   ChatDiagnostics,
-  ChatFileUploadRequest,
-  ChatFileUploadResponse,
   ChatHistoryCursor,
   ChatHistoryDateBucket,
   ChatHistoryDatesPayload,
@@ -206,7 +204,6 @@ import {
   normalizeComposerDocument,
   serializeComposerDocumentToMarkdown,
 } from '../../../../lib/composer-model.js';
-import { buildTracevaneResourceRefFromRelativePath } from '../../../../lib/tracevane-resource-refs.js';
 import {
   buildGatewayConnectRequest,
   loadGatewayAuthContext,
@@ -867,8 +864,6 @@ export interface ChatService {
   deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse>;
   abort(sessionKey: string): Promise<ChatAbortResponse>;
   reset(sessionKey: string): Promise<ChatResetResponse>;
-  uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse>;
-  uploadFileBytes(sessionKey: string, payload: { fileName: string; content: Buffer; mimeType?: string }): Promise<ChatFileUploadResponse>;
   attachGatewayClient(
     payload: ChatGatewayAttachPayload,
     runtime: ChatGatewayRuntime,
@@ -7023,37 +7018,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
-  async function uploadFileBytesImpl(
-    sessionKey: string,
-    payload: { fileName: string; content: Buffer; mimeType?: string },
-  ): Promise<ChatFileUploadResponse> {
-    const session = await requireSession(sessionKey);
-    requireWritable(session, 'send');
-
-    const { relativePath, absolutePath } = mediaBridge.saveBufferToWorkspace(
-      sessionKey,
-      payload.fileName,
-      payload.content,
-    );
-
-    const stat = safeStatSync(absolutePath);
-    if (!stat) {
-      throw new ChatServiceError(500, buildChatError('internal_error', 'Failed to save file'));
-    }
-    const resource = mediaBridge.buildUserUploadResource(sessionKey, relativePath);
-
-    return {
-      ok: true,
-      relativePath,
-      resourceRef: buildTracevaneResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
-      resource,
-      absolutePath,
-      fileName: payload.fileName,
-      mimeType: payload.mimeType || resource.mimeType,
-      kind: resource.kind,
-      size: stat.size,
-    };
-  }
 
   return {
     async getHealth(): Promise<ChatDiagnostics> {
@@ -8024,18 +7988,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         session: inMemory.row,
         runtime: inMemory.row.runtime,
       };
-    },
-
-    async uploadFile(sessionKey: string, payload: ChatFileUploadRequest): Promise<ChatFileUploadResponse> {
-      return uploadFileBytesImpl(sessionKey, {
-        fileName: payload.fileName,
-        content: Buffer.from(payload.content.replace(/^data:[^;]+;base64,/i, ''), 'base64'),
-        mimeType: payload.mimeType,
-      });
-    },
-
-    async uploadFileBytes(sessionKey: string, payload: { fileName: string; content: Buffer; mimeType?: string }): Promise<ChatFileUploadResponse> {
-      return uploadFileBytesImpl(sessionKey, payload);
     },
 
     async attachGatewayClient(
