@@ -104,10 +104,12 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(page, /title: "网关"/);
   assert.match(page, /title: "扩展"/);
   assert.match(page, /title: "浏览日志"/);
-  assert.match(page, /服务商.*MCP 服务.*命令/s);
-  assert.match(page, /parseJsonField/);
-  assert.match(page, /配置页按 Settings 子页面分层/);
+  assert.match(page, /原生命令/);
+  assert.match(page, /启用 Browser/);
+  assert.match(page, /常用项使用下拉、开关和数字控件/);
   assert.doesNotMatch(page, /DetailRail/);
+  assert.doesNotMatch(page, /高级证据/);
+  assert.doesNotMatch(page, /parseJsonField/);
   assert.doesNotMatch(page, /xl:grid-cols-\[minmax\(0,1fr\)_380px\]/);
   assert.doesNotMatch(page, /config\.isLoading \|\| diagnostics\.isLoading/);
 });
@@ -141,7 +143,8 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
   const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
   assert.match(config, /配置页按 Settings 子页面分层/);
-  assert.match(config, /不使用左右常驻详情栏/);
+  assert.match(config, /常用项使用下拉、开关和数字控件/);
+  assert.doesNotMatch(config, /高级证据/);
   assert.match(agents, /不是 Tracevane CLI Agents/);
   assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
   assert.match(channels, /不是 Tracevane IM 渠道/);

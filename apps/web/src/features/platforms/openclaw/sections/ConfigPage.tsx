@@ -6,11 +6,11 @@ import { toast } from "@/design/ui/sonner";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
 import { useOpenClawConfigSummaryQuery, usePatchOpenClawConfigMutation, useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, JsonSnippet, Panel, PanelHead, ReadOnlyStrip, RefreshButton, ResponsiveTable, SelectableRow, WorkbenchToolbar, fmtDate } from "../components";
+import { BoundaryBadge, Panel, PanelHead, ReadOnlyStrip, RefreshButton, WorkbenchToolbar, fmtDate } from "../components";
 import { StatTile } from "../../_shared";
 import type { ConfigPatchPayload, ConfigSummaryPayload } from "../../../../../../../types/config";
 
-type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "extensions" | "browserLogging" | "advanced";
+type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "extensions" | "browserLogging";
 
 interface ConfigDraft {
   model: string;
@@ -77,18 +77,57 @@ interface ConfigDraft {
   queueDebounceMs: string;
   queueCap: string;
   queueDrop: string;
-  sessionResetJson: string;
-  commandsJson: string;
-  hooksJson: string;
-  mcpJson: string;
-  skillsJson: string;
-  acpJson: string;
-  pluginsJson: string;
-  browserJson: string;
-  loggingJson: string;
+  sessionResetMode: string;
+  sessionResetAtHour: string;
+  sessionResetIdleMinutes: string;
+  commandsNative: string;
+  commandsNativeSkills: string;
+  commandsText: boolean;
+  commandsBash: boolean;
+  commandsConfig: boolean;
+  commandsMcp: boolean;
+  commandsPlugins: boolean;
+  commandsDebug: boolean;
+  commandsRestart: boolean;
+  commandsOwnerDisplay: string;
+  commandsBashForegroundMs: string;
+  hooksInternalEnabled: boolean;
+  mcpSessionIdleTtlMs: string;
+  skillsWatch: boolean;
+  skillsWatchDebounceMs: string;
+  skillsNodeManager: string;
+  skillsPreferBrew: boolean;
+  skillsAllowUploadedArchives: boolean;
+  skillsMaxSkillsInPrompt: string;
+  skillsMaxSkillsPromptChars: string;
+  acpEnabled: boolean;
+  acpDispatchEnabled: boolean;
+  acpBackend: string;
+  acpDefaultAgent: string;
+  acpMaxConcurrentSessions: string;
+  pluginsEnabled: boolean;
+  pluginsMemorySlot: string;
+  pluginsContextEngineSlot: string;
+  browserEnabled: boolean;
+  browserEvaluateEnabled: boolean;
+  browserDefaultProfile: string;
+  browserCdpUrl: string;
+  browserHeadless: boolean;
+  browserNoSandbox: boolean;
+  browserAttachOnly: boolean;
+  browserSnapshotMode: string;
+  browserTabCleanupEnabled: boolean;
+  browserTabCleanupIdleMinutes: string;
+  browserTabCleanupMaxTabsPerSession: string;
+  loggingLevel: string;
+  loggingConsoleLevel: string;
+  loggingConsoleStyle: string;
+  loggingRedactSensitive: string;
+  loggingMaxFileBytes: string;
+  loggingFile: string;
 }
 
-const CONFIG_SECTION_IDS = new Set<ConfigSection>(["defaults", "models", "runtime", "security", "gateway", "messages", "extensions", "browserLogging", "advanced"]);
+const CONFIG_SECTION_IDS = new Set<ConfigSection>(["defaults", "models", "runtime", "security", "gateway", "messages", "extensions", "browserLogging"]);
 
 const CONFIG_SECTIONS: Array<{ id: ConfigSection; title: string; desc: string }> = [
   { id: "defaults", title: "基础", desc: "目录、并发、超时" },
@@ -99,13 +138,10 @@ const CONFIG_SECTIONS: Array<{ id: ConfigSection; title: string; desc: string }>
   { id: "messages", title: "会话消息", desc: "队列、ack、DM" },
   { id: "extensions", title: "扩展", desc: "命令 / MCP / 技能 / 插件 / ACP" },
   { id: "browserLogging", title: "浏览日志", desc: "Browser / Logging" },
-  { id: "advanced", title: "高级证据", desc: "服务商只读证据" },
 ];
 
 const joinList = (values: string[] | undefined) => (values ?? []).join("\n");
 const splitList = (value: string) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
-const jsonText = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
-const text = (value: unknown) => value == null ? "" : String(value);
 const numberText = (value: unknown) => Number.isFinite(Number(value)) ? String(Number(value)) : "";
 
 function numberOrNull(value: string): number | null {
@@ -191,24 +227,55 @@ function draftFromConfig(data: ConfigSummaryPayload | undefined): ConfigDraft {
     queueDebounceMs: numberText(data?.messages.queue.debounceMs),
     queueCap: numberText(data?.messages.queue.cap),
     queueDrop: data?.messages.queue.drop ?? "summarize",
-    sessionResetJson: jsonText(data?.sessionReset ?? {}),
-    commandsJson: jsonText(data?.commands ?? {}),
-    hooksJson: jsonText(data?.hooks ?? {}),
-    mcpJson: jsonText(data?.mcp ?? {}),
-    skillsJson: jsonText(data?.skills ?? {}),
-    acpJson: jsonText(data?.acp ?? {}),
-    pluginsJson: jsonText(data?.plugins ?? {}),
-    browserJson: jsonText(data?.browser ?? {}),
-    loggingJson: jsonText(data?.logging ?? {}),
+    sessionResetMode: data?.sessionReset.mode ?? "idle",
+    sessionResetAtHour: numberText(data?.sessionReset.atHour),
+    sessionResetIdleMinutes: numberText(data?.sessionReset.idleMinutes),
+    commandsNative: data?.commands.native ?? "auto",
+    commandsNativeSkills: data?.commands.nativeSkills ?? "auto",
+    commandsText: data?.commands.text ?? false,
+    commandsBash: data?.commands.bash ?? false,
+    commandsConfig: data?.commands.config ?? false,
+    commandsMcp: data?.commands.mcp ?? false,
+    commandsPlugins: data?.commands.plugins ?? false,
+    commandsDebug: data?.commands.debug ?? false,
+    commandsRestart: data?.commands.restart ?? true,
+    commandsOwnerDisplay: data?.commands.ownerDisplay ?? "raw",
+    commandsBashForegroundMs: numberText(data?.commands.bashForegroundMs),
+    hooksInternalEnabled: data?.hooks.internal.enabled ?? true,
+    mcpSessionIdleTtlMs: numberText(data?.mcp?.sessionIdleTtlMs),
+    skillsWatch: data?.skills?.load?.watch ?? false,
+    skillsWatchDebounceMs: numberText(data?.skills?.load?.watchDebounceMs),
+    skillsNodeManager: data?.skills?.install?.nodeManager ?? "",
+    skillsPreferBrew: data?.skills?.install?.preferBrew ?? false,
+    skillsAllowUploadedArchives: data?.skills?.install?.allowUploadedArchives ?? false,
+    skillsMaxSkillsInPrompt: numberText(data?.skills?.limits?.maxSkillsInPrompt),
+    skillsMaxSkillsPromptChars: numberText(data?.skills?.limits?.maxSkillsPromptChars),
+    acpEnabled: data?.acp?.enabled ?? false,
+    acpDispatchEnabled: data?.acp?.dispatch?.enabled ?? false,
+    acpBackend: data?.acp?.backend ?? "",
+    acpDefaultAgent: data?.acp?.defaultAgent ?? "",
+    acpMaxConcurrentSessions: numberText(data?.acp?.maxConcurrentSessions),
+    pluginsEnabled: data?.plugins?.enabled ?? true,
+    pluginsMemorySlot: data?.plugins?.slots?.memory ?? "",
+    pluginsContextEngineSlot: data?.plugins?.slots?.contextEngine ?? "",
+    browserEnabled: data?.browser?.enabled ?? false,
+    browserEvaluateEnabled: data?.browser?.evaluateEnabled ?? false,
+    browserDefaultProfile: data?.browser?.defaultProfile ?? "",
+    browserCdpUrl: data?.browser?.cdpUrl ?? "",
+    browserHeadless: data?.browser?.headless ?? true,
+    browserNoSandbox: data?.browser?.noSandbox ?? false,
+    browserAttachOnly: data?.browser?.attachOnly ?? false,
+    browserSnapshotMode: data?.browser?.snapshotDefaults?.mode ?? "",
+    browserTabCleanupEnabled: data?.browser?.tabCleanup?.enabled ?? false,
+    browserTabCleanupIdleMinutes: numberText(data?.browser?.tabCleanup?.idleMinutes),
+    browserTabCleanupMaxTabsPerSession: numberText(data?.browser?.tabCleanup?.maxTabsPerSession),
+    loggingLevel: data?.logging?.level ?? "info",
+    loggingConsoleLevel: data?.logging?.consoleLevel ?? "info",
+    loggingConsoleStyle: data?.logging?.consoleStyle ?? "auto",
+    loggingRedactSensitive: data?.logging?.redactSensitive ?? "tools",
+    loggingMaxFileBytes: numberText(data?.logging?.maxFileBytes),
+    loggingFile: data?.logging?.file ?? "",
   };
-}
-
-function parseJsonField<T extends Record<string, unknown>>(value: string, label: string): T {
-  const trimmed = value.trim();
-  if (!trimmed) return {} as T;
-  const parsed = JSON.parse(trimmed) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${label} 必须是 JSON 对象`);
-  return parsed as T;
 }
 
 function draftToPatch(draft: ConfigDraft, current: ConfigSummaryPayload): ConfigPatchPayload {
@@ -327,15 +394,101 @@ function draftToPatch(draft: ConfigDraft, current: ConfigSummaryPayload): Config
       models: provider.models.map((model) => ({ ...model })),
       extra: provider.extra,
     })),
-    sessionReset: parseJsonField(draft.sessionResetJson, "会话重置 JSON"),
-    commands: parseJsonField(draft.commandsJson, "命令 JSON"),
-    hooks: parseJsonField(draft.hooksJson, "钩子 JSON"),
-    mcp: parseJsonField(draft.mcpJson, "MCP JSON"),
-    skills: parseJsonField(draft.skillsJson, "技能 JSON"),
-    acp: parseJsonField(draft.acpJson, "ACP JSON"),
-    plugins: parseJsonField(draft.pluginsJson, "插件 JSON"),
-    browser: parseJsonField(draft.browserJson, "浏览器 JSON"),
-    logging: parseJsonField(draft.loggingJson, "日志 JSON"),
+    sessionReset: {
+      ...current.sessionReset,
+      mode: draft.sessionResetMode.trim(),
+      atHour: numberOrNull(draft.sessionResetAtHour),
+      idleMinutes: numberOrNull(draft.sessionResetIdleMinutes),
+    },
+    commands: {
+      ...current.commands,
+      native: draft.commandsNative.trim(),
+      nativeSkills: draft.commandsNativeSkills.trim(),
+      text: draft.commandsText,
+      bash: draft.commandsBash,
+      config: draft.commandsConfig,
+      mcp: draft.commandsMcp,
+      plugins: draft.commandsPlugins,
+      debug: draft.commandsDebug,
+      restart: draft.commandsRestart,
+      ownerDisplay: draft.commandsOwnerDisplay.trim(),
+      bashForegroundMs: numberOrNull(draft.commandsBashForegroundMs),
+    },
+    hooks: {
+      internal: {
+        ...current.hooks.internal,
+        enabled: draft.hooksInternalEnabled,
+      },
+    },
+    mcp: {
+      ...(current.mcp ?? {}),
+      sessionIdleTtlMs: numberOrNull(draft.mcpSessionIdleTtlMs),
+    },
+    skills: {
+      ...(current.skills ?? {}),
+      load: {
+        ...(current.skills?.load ?? {}),
+        watch: draft.skillsWatch,
+        watchDebounceMs: numberOrNull(draft.skillsWatchDebounceMs),
+      },
+      install: {
+        ...(current.skills?.install ?? {}),
+        nodeManager: draft.skillsNodeManager.trim() as "" | "npm" | "pnpm" | "yarn" | "bun",
+        preferBrew: draft.skillsPreferBrew,
+        allowUploadedArchives: draft.skillsAllowUploadedArchives,
+      },
+      limits: {
+        ...(current.skills?.limits ?? {}),
+        maxSkillsInPrompt: numberOrNull(draft.skillsMaxSkillsInPrompt),
+        maxSkillsPromptChars: numberOrNull(draft.skillsMaxSkillsPromptChars),
+      },
+    },
+    acp: {
+      ...(current.acp ?? {}),
+      enabled: draft.acpEnabled,
+      dispatch: { enabled: draft.acpDispatchEnabled },
+      backend: draft.acpBackend.trim(),
+      defaultAgent: draft.acpDefaultAgent.trim(),
+      maxConcurrentSessions: positive(draft.acpMaxConcurrentSessions, current.acp?.maxConcurrentSessions || 1),
+    },
+    plugins: {
+      ...(current.plugins ?? {}),
+      enabled: draft.pluginsEnabled,
+      slots: {
+        ...(current.plugins?.slots ?? {}),
+        memory: draft.pluginsMemorySlot.trim(),
+        contextEngine: draft.pluginsContextEngineSlot.trim(),
+      },
+    },
+    browser: {
+      ...(current.browser ?? {}),
+      enabled: draft.browserEnabled,
+      evaluateEnabled: draft.browserEvaluateEnabled,
+      defaultProfile: draft.browserDefaultProfile.trim(),
+      cdpUrl: draft.browserCdpUrl.trim(),
+      headless: draft.browserHeadless,
+      noSandbox: draft.browserNoSandbox,
+      attachOnly: draft.browserAttachOnly,
+      snapshotDefaults: {
+        ...(current.browser?.snapshotDefaults ?? {}),
+        mode: draft.browserSnapshotMode.trim(),
+      },
+      tabCleanup: {
+        ...(current.browser?.tabCleanup ?? {}),
+        enabled: draft.browserTabCleanupEnabled,
+        idleMinutes: numberOrNull(draft.browserTabCleanupIdleMinutes),
+        maxTabsPerSession: numberOrNull(draft.browserTabCleanupMaxTabsPerSession),
+      },
+    },
+    logging: {
+      ...(current.logging ?? {}),
+      level: draft.loggingLevel.trim(),
+      consoleLevel: draft.loggingConsoleLevel.trim(),
+      consoleStyle: draft.loggingConsoleStyle.trim(),
+      redactSensitive: draft.loggingRedactSensitive.trim(),
+      maxFileBytes: positive(draft.loggingMaxFileBytes, current.logging?.maxFileBytes || 1048576),
+      file: draft.loggingFile.trim(),
+    },
   } as ConfigPatchPayload;
 }
 
@@ -360,15 +513,11 @@ function ToggleField({ label, checked, onChange, helper }: { label: string; chec
 }
 
 function SectionNav({ active, onChange }: { active: ConfigSection; onChange: (section: ConfigSection) => void }) {
-  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
+  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
 }
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-0 overflow-hidden rounded-sm border border-line md:grid-cols-2">{children}</div>;
-}
-
-function ConfigEmptyHint({ children }: { children: React.ReactNode }) {
-  return <div className="border-t border-line px-4 py-3 text-xs text-muted">{children}</div>;
 }
 
 const COMPACTION_OPTIONS = [opt("safeguard", "保护模式：接近上限时压缩", "推荐默认，避免上下文溢出。"), opt("auto", "自动压缩", "更积极地自动整理上下文。"), opt("off", "关闭压缩", "不建议长会话使用。")];
@@ -384,6 +533,14 @@ const DM_SCOPE_OPTIONS = [opt("per-channel-peer", "按渠道 + 私聊对象隔�
 const ACK_SCOPE_OPTIONS = [opt("group-mentions", "仅群聊 @ 场景"), opt("all", "全部消息"), opt("none", "不发送确认")];
 const QUEUE_MODE_OPTIONS = [opt("collect", "合并收集"), opt("parallel", "并行处理"), opt("serial", "串行排队")];
 const QUEUE_DROP_OPTIONS = [opt("summarize", "超限后总结压缩"), opt("drop-oldest", "丢弃最早消息"), opt("reject-new", "拒绝新消息")];
+const BOOLEAN_AUTO_OPTIONS = [opt("auto", "自动"), opt("on", "开启"), opt("off", "关闭")];
+const SESSION_RESET_OPTIONS = [opt("idle", "空闲后重置"), opt("daily", "每天固定时间重置")];
+const OWNER_DISPLAY_OPTIONS = [opt("raw", "原样显示"), opt("hash", "哈希脱敏"), opt("hidden", "隐藏")];
+const NODE_MANAGER_OPTIONS = [opt("", "自动选择"), opt("npm", "npm"), opt("pnpm", "pnpm"), opt("yarn", "yarn"), opt("bun", "bun")];
+const BROWSER_SNAPSHOT_OPTIONS = [opt("", "跟随默认"), opt("efficient", "高效快照"), opt("full", "完整快照")];
+const LOG_LEVEL_OPTIONS = [opt("trace", "Trace 追踪"), opt("debug", "Debug 调试"), opt("info", "Info 常规"), opt("warn", "Warn 警告"), opt("error", "Error 错误")];
+const CONSOLE_STYLE_OPTIONS = [opt("auto", "自动"), opt("pretty", "美化"), opt("plain", "纯文本")];
+const REDACTION_OPTIONS = [opt("off", "关闭脱敏"), opt("tools", "工具参数脱敏"), opt("all", "全部敏感字段脱敏")];
 
 
 function renderSection(section: ConfigSection, draft: ConfigDraft, setField: (key: keyof ConfigDraft) => (value: string) => void, setBool: (key: keyof ConfigDraft) => (value: boolean) => void, data: ConfigSummaryPayload | undefined) {
@@ -393,9 +550,9 @@ function renderSection(section: ConfigSection, draft: ConfigDraft, setField: (ke
   if (section === "security") return <Panel><PanelHead title="安全与工具" sub="沙箱、工具执行和审批默认策略。" /><FieldGrid><SelectField label="沙箱模式" value={draft.sandboxMode} onChange={setField("sandboxMode")} options={SANDBOX_MODE_OPTIONS} /><SelectField label="工作区权限" value={draft.sandboxWorkspaceAccess} onChange={setField("sandboxWorkspaceAccess")} options={WORKSPACE_ACCESS_OPTIONS} /><TextField label="沙箱作用域" value={draft.sandboxScope} onChange={setField("sandboxScope")} /><TextField label="会话工具可见性" value={draft.sandboxSessionToolsVisibility} onChange={setField("sandboxSessionToolsVisibility")} /><TextField label="沙箱空闲清理小时" type="number" value={draft.sandboxPruneIdleHours} onChange={setField("sandboxPruneIdleHours")} /><TextField label="沙箱最大保留天数" type="number" value={draft.sandboxPruneMaxAgeDays} onChange={setField("sandboxPruneMaxAgeDays")} /><TextField label="工具配置档" value={draft.toolsProfile} onChange={setField("toolsProfile")} /><TextField label="执行主机" value={draft.execHost} onChange={setField("execHost")} /><TextField label="执行模式" value={draft.execMode} onChange={setField("execMode")} helper="设置后会覆盖 ask/security" /><SelectField label="执行询问策略" value={draft.execAsk} onChange={setField("execAsk")} options={EXEC_ASK_OPTIONS} /><SelectField label="执行安全级别" value={draft.execSecurity} onChange={setField("execSecurity")} options={SECURITY_OPTIONS} /><TextField label="执行超时秒" type="number" value={draft.execTimeoutSec} onChange={setField("execTimeoutSec")} /><SelectField label="审批安全级别" value={draft.approvalSecurity} onChange={setField("approvalSecurity")} options={SECURITY_OPTIONS} /><SelectField label="审批询问策略" value={draft.approvalAsk} onChange={setField("approvalAsk")} options={EXEC_ASK_OPTIONS} /><SelectField label="审批失败策略" value={draft.approvalAskFallback} onChange={setField("approvalAskFallback")} options={APPROVAL_FALLBACK_OPTIONS} /><ToggleField label="允许提权工具" checked={draft.toolsElevatedEnabled} onChange={setBool("toolsElevatedEnabled")} /><ToggleField label="文件系统仅限工作区" checked={draft.fsWorkspaceOnly} onChange={setBool("fsWorkspaceOnly")} /><ToggleField label="技能自动审批" checked={draft.approvalAutoAllowSkills} onChange={setBool("approvalAutoAllowSkills")} /></FieldGrid></Panel>;
   if (section === "gateway") return <Panel><PanelHead title="网关与控制台" sub="OpenClaw 网关监听、认证、限流和控制台。" /><FieldGrid><TextField label="端口" type="number" value={draft.gatewayPort} onChange={setField("gatewayPort")} /><SelectField label="运行模式" value={draft.gatewayMode} onChange={setField("gatewayMode")} options={GATEWAY_MODE_OPTIONS} /><SelectField label="监听范围" value={draft.gatewayBind} onChange={setField("gatewayBind")} options={GATEWAY_BIND_OPTIONS} /><TextField label="自定义监听主机" value={draft.gatewayCustomBindHost} onChange={setField("gatewayCustomBindHost")} /><SelectField label="认证模式" value={draft.gatewayAuthMode} onChange={setField("gatewayAuthMode")} options={AUTH_MODE_OPTIONS} /><TextField label="限流最大尝试" type="number" value={draft.gatewayRateLimitMaxAttempts} onChange={setField("gatewayRateLimitMaxAttempts")} /><TextField label="限流窗口毫秒" type="number" value={draft.gatewayRateLimitWindowMs} onChange={setField("gatewayRateLimitWindowMs")} /><TextField label="锁定时长毫秒" type="number" value={draft.gatewayRateLimitLockoutMs} onChange={setField("gatewayRateLimitLockoutMs")} /><TextField label="控制台路径" value={draft.controlUiBasePath} onChange={setField("controlUiBasePath")} /><TextField label="允许来源" value={draft.controlUiAllowedOrigins} onChange={setField("controlUiAllowedOrigins")} multiline helper="每行一个 origin" /><ToggleField label="允许 Tailscale" checked={draft.gatewayAllowTailscale} onChange={setBool("gatewayAllowTailscale")} /><ToggleField label="本机免限流" checked={draft.gatewayRateLimitExemptLoopback} onChange={setBool("gatewayRateLimitExemptLoopback")} /><ToggleField label="启用控制台" checked={draft.controlUiEnabled} onChange={setBool("controlUiEnabled")} /><ToggleField label="允许不安全认证" checked={draft.controlUiAllowInsecureAuth} onChange={setBool("controlUiAllowInsecureAuth")} /></FieldGrid></Panel>;
   if (section === "messages") return <Panel><PanelHead title="会话与消息" sub="私聊范围、线程绑定、确认反馈和队列策略。" /><FieldGrid><SelectField label="私聊会话范围" value={draft.sessionDmScope} onChange={setField("sessionDmScope")} options={DM_SCOPE_OPTIONS} /><TextField label="线程空闲小时" type="number" value={draft.threadBindingsIdleHours} onChange={setField("threadBindingsIdleHours")} /><TextField label="线程最大保留小时" type="number" value={draft.threadBindingsMaxAgeHours} onChange={setField("threadBindingsMaxAgeHours")} /><TextField label="回复前缀" value={draft.responsePrefix} onChange={setField("responsePrefix")} /><TextField label="确认表情" value={draft.ackReaction} onChange={setField("ackReaction")} /><SelectField label="确认表情范围" value={draft.ackReactionScope} onChange={setField("ackReactionScope")} options={ACK_SCOPE_OPTIONS} /><SelectField label="队列模式" value={draft.queueMode} onChange={setField("queueMode")} options={QUEUE_MODE_OPTIONS} /><TextField label="队列合并延迟毫秒" type="number" value={draft.queueDebounceMs} onChange={setField("queueDebounceMs")} /><TextField label="队列容量" type="number" value={draft.queueCap} onChange={setField("queueCap")} /><SelectField label="超限策略" value={draft.queueDrop} onChange={setField("queueDrop")} options={QUEUE_DROP_OPTIONS} /><ToggleField label="启用线程绑定" checked={draft.threadBindingsEnabled} onChange={setBool("threadBindingsEnabled")} /><ToggleField label="回复后移除确认" checked={draft.removeAckAfterReply} onChange={setBool("removeAckAfterReply")} /></FieldGrid></Panel>;
-  if (section === "extensions") return <Panel><PanelHead title="扩展与命令" sub="低频扩展对象以受保护 JSON 编辑：保存前会校验必须是对象，并走后端 schema 归一化。" /><FieldGrid><TextField label="命令配置 JSON" value={draft.commandsJson} onChange={setField("commandsJson")} multiline helper="commands：原生命令、/bash、/config、owner 显示等。" /><TextField label="内部钩子 JSON" value={draft.hooksJson} onChange={setField("hooksJson")} multiline helper="hooks.internal：总开关与各 hook 配置。" /><TextField label="MCP 配置 JSON" value={draft.mcpJson} onChange={setField("mcpJson")} multiline helper="mcp：会话 TTL 与 servers；复杂 server 字段需保持合法 JSON。" /><TextField label="技能配置 JSON" value={draft.skillsJson} onChange={setField("skillsJson")} multiline helper="skills：加载路径、watch、安装器、提示词限制等。" /><TextField label="ACP 配置 JSON" value={draft.acpJson} onChange={setField("acpJson")} multiline helper="acp：协议开关、调度、后端、允许 Agent、并发会话。" /><TextField label="插件配置 JSON" value={draft.pluginsJson} onChange={setField("pluginsJson")} multiline helper="plugins：全局开关、白名单、黑名单、加载路径、插槽和 entries。" /><TextField label="会话重置 JSON" value={draft.sessionResetJson} onChange={setField("sessionResetJson")} multiline helper="session.reset：daily/idle、按类型/渠道覆盖。" /></FieldGrid></Panel>;
-  if (section === "browserLogging") return <Panel><PanelHead title="浏览器与日志" sub="浏览器自动化和日志策略；复杂 profile / SSRF / 清理策略走受保护 JSON。" /><FieldGrid><TextField label="浏览器配置 JSON" value={draft.browserJson} onChange={setField("browserJson")} multiline helper="browser：CDP、profiles、超时、headless、tabCleanup、ssrfPolicy。" /><TextField label="日志配置 JSON" value={draft.loggingJson} onChange={setField("loggingJson")} multiline helper="logging：level、consoleLevel、file、maxFileBytes、redactSensitive。" /></FieldGrid></Panel>;
-  return <Panel><PanelHead title="高级证据" sub="服务商和密钥归模型网关管理；这里仅显示运行证据，避免无保护覆盖。" /><ResponsiveTable columns={["区域", "证据"]} rows={[<SelectableRow key="providers" id="providers" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">服务商</td><td className="px-4 py-3"><JsonSnippet value={data?.providers ?? []} /></td></SelectableRow>, <SelectableRow key="mcp" id="mcp" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">MCP 服务</td><td className="px-4 py-3"><JsonSnippet value={data?.mcp?.servers ?? {}} /></td></SelectableRow>, <SelectableRow key="commands" id="commands" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">命令</td><td className="px-4 py-3"><JsonSnippet value={data?.commands ?? {}} /></td></SelectableRow>]} empty="无高级证据" /></Panel>;
+  if (section === "extensions") return <Panel><PanelHead title="扩展与命令" sub="常用扩展能力改为开关和下拉；MCP server、插件 entries 等复杂对象交给对应管理域，不在这里开放裸编辑。" /><FieldGrid><SelectField label="原生命令" value={draft.commandsNative} onChange={setField("commandsNative")} options={BOOLEAN_AUTO_OPTIONS} /><SelectField label="内置技能命令" value={draft.commandsNativeSkills} onChange={setField("commandsNativeSkills")} options={BOOLEAN_AUTO_OPTIONS} /><ToggleField label="启用文本命令" checked={draft.commandsText} onChange={setBool("commandsText")} helper="让不支持原生命令菜单的渠道解析 /command 文本。" /><ToggleField label="允许 /bash 主机命令" checked={draft.commandsBash} onChange={setBool("commandsBash")} helper="仍受工具权限与审批策略约束。" /><ToggleField label="允许聊天命令改配置" checked={draft.commandsConfig} onChange={setBool("commandsConfig")} /><ToggleField label="允许聊天命令管理 MCP" checked={draft.commandsMcp} onChange={setBool("commandsMcp")} /><ToggleField label="允许聊天命令切换插件" checked={draft.commandsPlugins} onChange={setBool("commandsPlugins")} /><ToggleField label="允许 debug 命令" checked={draft.commandsDebug} onChange={setBool("commandsDebug")} /><ToggleField label="允许命令重启" checked={draft.commandsRestart} onChange={setBool("commandsRestart")} /><SelectField label="操作者显示" value={draft.commandsOwnerDisplay} onChange={setField("commandsOwnerDisplay")} options={OWNER_DISPLAY_OPTIONS} /><TextField label="/bash 前台等待毫秒" type="number" value={draft.commandsBashForegroundMs} onChange={setField("commandsBashForegroundMs")} helper="0 表示立即后台；留空跟随默认。" /><ToggleField label="启用内部钩子" checked={draft.hooksInternalEnabled} onChange={setBool("hooksInternalEnabled")} /><TextField label="MCP 会话空闲 TTL 毫秒" type="number" value={draft.mcpSessionIdleTtlMs} onChange={setField("mcpSessionIdleTtlMs")} helper="这里只设置 TTL；MCP server 明细在外部连接域维护。" /><ToggleField label="监听技能目录变化" checked={draft.skillsWatch} onChange={setBool("skillsWatch")} /><TextField label="技能监听防抖毫秒" type="number" value={draft.skillsWatchDebounceMs} onChange={setField("skillsWatchDebounceMs")} /><SelectField label="技能安装 Node 管理器" value={draft.skillsNodeManager} onChange={setField("skillsNodeManager")} options={NODE_MANAGER_OPTIONS} /><ToggleField label="技能安装优先 Homebrew" checked={draft.skillsPreferBrew} onChange={setBool("skillsPreferBrew")} /><ToggleField label="允许上传技能压缩包" checked={draft.skillsAllowUploadedArchives} onChange={setBool("skillsAllowUploadedArchives")} /><TextField label="提示词最多注入技能数" type="number" value={draft.skillsMaxSkillsInPrompt} onChange={setField("skillsMaxSkillsInPrompt")} /><TextField label="技能提示词最大字符" type="number" value={draft.skillsMaxSkillsPromptChars} onChange={setField("skillsMaxSkillsPromptChars")} /><ToggleField label="启用 ACP" checked={draft.acpEnabled} onChange={setBool("acpEnabled")} /><ToggleField label="启用 ACP 调度" checked={draft.acpDispatchEnabled} onChange={setBool("acpDispatchEnabled")} /><TextField label="ACP 后端" value={draft.acpBackend} onChange={setField("acpBackend")} helper="例如 acpx；留空跟随宿主默认。" /><TextField label="ACP 默认 Agent" value={draft.acpDefaultAgent} onChange={setField("acpDefaultAgent")} /><TextField label="ACP 最大并发会话" type="number" value={draft.acpMaxConcurrentSessions} onChange={setField("acpMaxConcurrentSessions")} /><ToggleField label="启用插件系统" checked={draft.pluginsEnabled} onChange={setBool("pluginsEnabled")} /><TextField label="Memory 插槽" value={draft.pluginsMemorySlot} onChange={setField("pluginsMemorySlot")} helper="填写插件 id，或 none 显式关闭。" /><TextField label="Context Engine 插槽" value={draft.pluginsContextEngineSlot} onChange={setField("pluginsContextEngineSlot")} /></FieldGrid></Panel>;
+  if (section === "browserLogging") return <Panel><PanelHead title="浏览器与日志" sub="浏览器自动化和日志策略改为明确控件；复杂 profile 矩阵和 SSRF 白名单后续应进入专门子页。" /><FieldGrid><ToggleField label="启用 Browser" checked={draft.browserEnabled} onChange={setBool("browserEnabled")} /><ToggleField label="启用 Evaluate" checked={draft.browserEvaluateEnabled} onChange={setBool("browserEvaluateEnabled")} /><TextField label="默认 Profile" value={draft.browserDefaultProfile} onChange={setField("browserDefaultProfile")} /><TextField label="远程 CDP 地址" value={draft.browserCdpUrl} onChange={setField("browserCdpUrl")} helper="留空使用本地派生端口。" /><ToggleField label="无头模式" checked={draft.browserHeadless} onChange={setBool("browserHeadless")} /><ToggleField label="禁用 Chrome 沙箱" checked={draft.browserNoSandbox} onChange={setBool("browserNoSandbox")} /><ToggleField label="仅附着现有会话" checked={draft.browserAttachOnly} onChange={setBool("browserAttachOnly")} /><SelectField label="默认快照模式" value={draft.browserSnapshotMode} onChange={setField("browserSnapshotMode")} options={BROWSER_SNAPSHOT_OPTIONS} /><ToggleField label="启用标签页自动清理" checked={draft.browserTabCleanupEnabled} onChange={setBool("browserTabCleanupEnabled")} /><TextField label="标签空闲清理分钟" type="number" value={draft.browserTabCleanupIdleMinutes} onChange={setField("browserTabCleanupIdleMinutes")} /><TextField label="每会话最大标签数" type="number" value={draft.browserTabCleanupMaxTabsPerSession} onChange={setField("browserTabCleanupMaxTabsPerSession")} /><SelectField label="日志级别" value={draft.loggingLevel} onChange={setField("loggingLevel")} options={LOG_LEVEL_OPTIONS} /><SelectField label="控制台日志级别" value={draft.loggingConsoleLevel} onChange={setField("loggingConsoleLevel")} options={LOG_LEVEL_OPTIONS} /><SelectField label="控制台样式" value={draft.loggingConsoleStyle} onChange={setField("loggingConsoleStyle")} options={CONSOLE_STYLE_OPTIONS} /><SelectField label="敏感字段脱敏" value={draft.loggingRedactSensitive} onChange={setField("loggingRedactSensitive")} options={REDACTION_OPTIONS} /><TextField label="日志文件路径" value={draft.loggingFile} onChange={setField("loggingFile")} /><TextField label="日志文件最大字节" type="number" value={draft.loggingMaxFileBytes} onChange={setField("loggingMaxFileBytes")} /></FieldGrid></Panel>;
+  return null;
 }
 
 export function ConfigPage() {
@@ -446,7 +603,7 @@ export function ConfigPage() {
   };
   const activeMeta = CONFIG_SECTIONS.find((section) => section.id === activeSection) ?? CONFIG_SECTIONS[0];
   return <div className="grid gap-[18px]">
-    <ReadOnlyStrip>配置页按 Settings 子页面分层：基础、模型、策略、安全、网关、会话消息、扩展、浏览日志和高级证据；不使用左右常驻详情栏，低频 JSON 默认只在对应子页出现。</ReadOnlyStrip>
+    <ReadOnlyStrip>配置页按 Settings 子页面分层：基础、模型、策略、安全、网关、会话消息、扩展、浏览日志；常用项使用下拉、开关和数字控件，复杂对象回到各自 owner 域。</ReadOnlyStrip>
     <Panel>
       <WorkbenchToolbar title="OpenClaw 配置" description="分组设置工作台，避免一个巨型表单和无保护覆盖。"><RefreshButton loading={config.isFetching} onClick={() => { void config.refetch(); void diagnostics.refetch(); }} /><BoundaryBadge /><Badge variant={dirty ? "warn" : "mute"}>{dirty ? "有未保存修改" : `已检查 ${fmtDate(data?.checkedAt)}`}</Badge></WorkbenchToolbar>
       <SectionNav active={activeSection} onChange={setActiveSection} />
@@ -454,7 +611,6 @@ export function ConfigPage() {
     </Panel>
     <div className="grid gap-[18px]">
       {renderSection(activeSection, draft, setField, setBool, data)}
-      {activeSection === "advanced" ? <ConfigEmptyHint>高级证据页当前只展示 服务商 / MCP / 命令 摘要；服务商、密钥和模型路由编辑请回到模型网关，避免平台配置页重复职责。</ConfigEmptyHint> : null}
       <Panel><div className="flex flex-wrap items-center gap-2 px-4 py-3"><Button size="sm" onClick={save} disabled={!dirty || patchConfig.isPending}>{patchConfig.isPending ? "保存中…" : "保存当前配置"}</Button><Button variant="ghost" size="sm" onClick={() => setDraft(currentDraft)} disabled={!dirty || patchConfig.isPending}>重置</Button>{savedAt ? <span className="text-xs text-muted">最近保存：{fmtDate(savedAt)}</span> : null}</div></Panel>
     </div>
   </div>;
