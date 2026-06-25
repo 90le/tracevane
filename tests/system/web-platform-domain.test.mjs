@@ -129,7 +129,7 @@ test("OpenClaw workbench pages support refreshable selectable detail workflows",
     assert.match(source, /useSelectedKey/);
     assert.match(source, /SelectableRow/);
   }
-  for (const page of ["SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+  for (const page of ["SkillsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
     const source = read(`apps/web/src/features/platforms/openclaw/sections/${page}.tsx`);
     assert.match(source, /DetailRail/);
   }
@@ -163,12 +163,13 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(channels, /useDeleteChannelAccountMutation/);
   assert.match(channels, /新增 Channel/);
   assert.match(channels, /新增 Bot/);
-  assert.match(channels, /Channel 是平台类型/);
+  assert.match(channels, /字段来自 OpenClaw channel catalog/);
+  assert.match(channels, /FieldGroups/);
   assert.match(bindings, /useCreateChannelBindingMutation/);
   assert.match(bindings, /useUpdateChannelBindingMutation/);
   assert.match(bindings, /useDeleteChannelBindingMutation/);
   assert.match(bindings, /新增绑定/);
-  assert.match(bindings, /Bot 到 Agent\/ACP/);
+  assert.match(bindings, /Bot \/ Account 到 Agent 或 ACP/);
   for (const source of [agents, channels, bindings]) {
     assert.doesNotMatch(source, /OwnerHandoff/);
     assert.doesNotMatch(source, /打开绑定路由|打开 CLI Agents|打开 IM 渠道/);
