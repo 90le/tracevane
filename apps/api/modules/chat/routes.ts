@@ -16,7 +16,6 @@ import type {
   ChatResourceResolveRequest,
   ChatSendRequest,
 } from "../../../../types/chat.js";
-import type { ChatSlashGatewayRequest } from "./service.js";
 import { isChatServiceError } from "./errors.js";
 import { buildContentDisposition } from "./media-bridge.js";
 import {
@@ -581,24 +580,6 @@ export function registerChatRoutes(
     },
   );
 
-  router.post(
-    "/api/chat/sessions/:sessionKey/slash-gateway",
-    async (req, res, routeCtx, params) => {
-      try {
-        const payload = await parseJsonBody<ChatSlashGatewayRequest>(req);
-        sendJson(
-          res,
-          200,
-          await routeCtx.services.chat.requestSlashGateway(
-            params.sessionKey,
-            payload,
-          ),
-        );
-      } catch (error) {
-        sendChatError(res, error);
-      }
-    },
-  );
 
   router.post(
     "/api/chat/sessions/:sessionKey/send",

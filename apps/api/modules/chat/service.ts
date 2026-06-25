@@ -770,10 +770,6 @@ async function probeGatewaySocket(config: TracevaneServerConfig): Promise<boolea
   });
 }
 
-export interface ChatSlashGatewayRequest {
-  method: string;
-  params?: Record<string, unknown> | null;
-}
 
 export interface ChatService {
   getHealth(): Promise<ChatDiagnostics>;
@@ -822,7 +818,6 @@ export interface ChatService {
   enqueue(sessionKey: string, payload: ChatSendRequest): Promise<ChatQueuePayload>;
   patchQueueEntry(sessionKey: string, entryId: string, payload: ChatPatchQueueEntryRequest): Promise<ChatQueuePayload>;
   deleteQueueEntry(sessionKey: string, entryId: string): Promise<ChatQueuePayload>;
-  requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown>;
   send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck>;
   resolveResourceRefs(sessionKey: string, payload: ChatResourceResolveRequest): Promise<ChatResourceResolveResponse>;
   resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia>;
@@ -2288,26 +2283,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
   }
 
-  function normalizeSlashGatewayParams(value: unknown): Record<string, unknown> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
-    }
-    return { ...(value as Record<string, unknown>) };
-  }
-
-  function resolveSlashGatewayTargetKey(
-    currentSession: ChatSessionRow,
-    params: Record<string, unknown>,
-  ): string {
-    const targetKey = normalizeString(params.key || params.sessionKey || currentSession.key, currentSession.key);
-    if (deriveAgentIdFromSessionKey(targetKey) !== currentSession.agentId) {
-      throw new ChatServiceError(
-        400,
-        buildChatError('invalid_request', `Slash command target '${targetKey}' is outside the current agent scope`),
-      );
-    }
-    return targetKey;
-  }
 
   function currentTracevaneHistory(state: TracevaneManagedSessionState): ChatMessageItem[] {
     return normalizeMessageLedger(supplementHistoryWithRunState(state.row.key, state.messages.slice()));
@@ -7309,93 +7284,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return await buildQueuePayload(sessionKey);
     },
 
-    async requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown> {
-      const session = await requireSession(sessionKey);
-      requireFrontendVisible(session);
-
-      const method = normalizeString(payload?.method).toLowerCase();
-      const params = normalizeSlashGatewayParams(payload?.params);
-
-      switch (method) {
-        case 'models.list':
-          return await requestGateway<Record<string, unknown>>(options.config, 'models.list', {});
-        case 'skills.status':
-          return await requestGateway<Record<string, unknown>>(options.config, 'skills.status', {
-            agentId: normalizeString(params.agentId),
-          });
-        case 'agents.list':
-          return await requestGateway<Record<string, unknown>>(options.config, 'agents.list', {});
-        case 'sessions.list':
-          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {});
-        case 'config.get':
-          return await requestGateway<Record<string, unknown>>(options.config, 'config.get', {});
-        case 'config.schema.lookup':
-          return await requestGateway<Record<string, unknown>>(options.config, 'config.schema.lookup', {
-            path: normalizeString(params.path),
-          });
-        case 'exec.approvals.get':
-          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.get', {});
-        case 'exec.approvals.set':
-          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.set', {
-            baseHash: normalizeString(params.baseHash),
-            file: params.file,
-          });
-        case 'exec.approvals.node.get':
-          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.node.get', {
-            nodeId: normalizeString(params.nodeId),
-          });
-        case 'exec.approvals.node.set':
-          return await requestGateway<Record<string, unknown>>(options.config, 'exec.approvals.node.set', {
-            nodeId: normalizeString(params.nodeId),
-            baseHash: normalizeString(params.baseHash),
-            file: params.file,
-          });
-        case 'tools.effective':
-          return await requestGateway<Record<string, unknown>>(options.config, 'tools.effective', {
-            sessionKey,
-          });
-        case 'sessions.compact':
-          requireWritable(session, 'send');
-          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.compact', {
-            key: sessionKey,
-          });
-        case 'sessions.patch': {
-          requireWritable(session, 'send');
-          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.patch', {
-            ...params,
-            key: sessionKey,
-          });
-        }
-        case 'sessions.steer': {
-          requireWritable(session, 'send');
-          const targetKey = resolveSlashGatewayTargetKey(session, params);
-          return await requestGateway<Record<string, unknown>>(options.config, 'sessions.steer', {
-            ...params,
-            key: targetKey,
-          });
-        }
-        case 'chat.abort': {
-          requireWritable(session, 'abort');
-          const targetKey = resolveSlashGatewayTargetKey(session, params);
-          return await requestGateway<Record<string, unknown>>(options.config, 'chat.abort', {
-            sessionKey: targetKey,
-          });
-        }
-        case 'chat.send': {
-          requireWritable(session, 'send');
-          const targetKey = resolveSlashGatewayTargetKey(session, params);
-          return await requestGateway<Record<string, unknown>>(options.config, 'chat.send', {
-            ...params,
-            sessionKey: targetKey,
-          });
-        }
-        default:
-          throw new ChatServiceError(
-            400,
-            buildChatError('invalid_request', `Unsupported Tracevane slash gateway method '${method || '<empty>'}'`),
-          );
-      }
-    },
 
     async send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck> {
       return await performDirectSend(sessionKey, payload);

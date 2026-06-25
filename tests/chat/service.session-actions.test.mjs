@@ -13,6 +13,7 @@ import {
   createTracevaneContext,
   createTracevaneServer,
 } from '../../dist/apps/api/index.js';
+import { requestOpenClawGateway } from '../../dist/apps/api/modules/platforms/openclaw-gateway.js';
 import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../dist/types/chat.js';
 
 function createLogger() {
@@ -424,8 +425,8 @@ test('blocked queued message can be retried without sending a separate nudge', a
   }
 });
 
-test('slash gateway proxy forwards local slash rpc through the Tracevane backend gateway transport', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-slash-gateway-'));
+test('OpenClaw platform gateway proxy forwards local management rpc through the backend gateway transport', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-openclaw-gateway-'));
   const gateway = await startFakeGateway({
     onRequest({ method, params }) {
       if (method === 'models.list') {
@@ -483,13 +484,13 @@ test('slash gateway proxy forwards local slash rpc through the Tracevane backend
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
     const created = await context.services.chat.createSession('main', {});
 
-    const models = await context.services.chat.requestSlashGateway(created.session.key, {
+    const models = await requestOpenClawGateway(context.config, {
       method: 'models.list',
       params: {},
     });
     assert.equal(models.models?.[0]?.id, 'gpt-5.4');
 
-    const skills = await context.services.chat.requestSlashGateway(created.session.key, {
+    const skills = await requestOpenClawGateway(context.config, {
       method: 'skills.status',
       params: {
         agentId: 'main',
@@ -497,13 +498,13 @@ test('slash gateway proxy forwards local slash rpc through the Tracevane backend
     });
     assert.equal(skills.skills?.[0]?.name, 'calendar');
 
-    const approvals = await context.services.chat.requestSlashGateway(created.session.key, {
+    const approvals = await requestOpenClawGateway(context.config, {
       method: 'exec.approvals.get',
       params: {},
     });
     assert.equal(approvals.file?.agents?.main?.allowlist?.[0]?.pattern, 'git status');
 
-    await context.services.chat.requestSlashGateway(created.session.key, {
+    await requestOpenClawGateway(context.config, {
       method: 'exec.approvals.set',
       params: {
         baseHash: 'hash-1',
@@ -518,10 +519,10 @@ test('slash gateway proxy forwards local slash rpc through the Tracevane backend
       },
     });
 
-    await context.services.chat.requestSlashGateway(created.session.key, {
+    await requestOpenClawGateway(context.config, {
       method: 'sessions.patch',
       params: {
-        key: 'agent:other:main',
+        sessionKey: created.session.key,
         model: 'gpt-5.4',
       },
     });

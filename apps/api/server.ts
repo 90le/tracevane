@@ -26,6 +26,7 @@ import { registerGitRoutes } from './modules/git/routes.js';
 import { handleModelGatewayRealtimeUnsupportedUpgrade } from './modules/model-gateway/realtime.js';
 import { registerModelGatewayRoutes } from './modules/model-gateway/routes.js';
 import { registerOpenClawRecoveryRoutes } from './modules/openclaw-recovery/routes.js';
+import { registerOpenClawGatewayRoutes } from './modules/platforms/openclaw-gateway-routes.js';
 import { registerSkillsRoutes } from './modules/skills/routes.js';
 import { registerSystemRoutes } from './modules/system/routes.js';
 import { registerTerminalRoutes } from './modules/terminal/routes.js';
@@ -49,6 +50,7 @@ export function createTracevaneRouter(ctx: TracevaneApiContext): TracevaneRouter
   registerChannelsRoutes(router, ctx);
   registerModelGatewayRoutes(router);
   registerOpenClawRecoveryRoutes(router);
+  registerOpenClawGatewayRoutes(router);
   registerConfigRoutes(router, ctx);
   registerCronRoutes(router, ctx);
   registerSkillsRoutes(router, ctx);
