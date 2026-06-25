@@ -25,3 +25,10 @@ test('SessionListView exposes runtime target editing for managed sessions', () =
   assert.match(source, /保存运行目标/);
   assert.match(source, /runtimeTarget: \{/);
 });
+
+test('SessionListView defaults new sessions to native CLI Codex instead of OpenClaw webchat', () => {
+  assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
+  assert.match(source, /agent: "codex", label: "Codex CLI"/);
+  assert.match(source, /agent: "openclaw", label: "OpenClaw 平台 Agent"/);
+  assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
+});

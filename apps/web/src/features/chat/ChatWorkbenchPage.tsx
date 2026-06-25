@@ -54,8 +54,8 @@ const EMPTY_TURN: LiveAssistantTurn = {
  * Chat Agent Operations Workbench (`/chat`).
  *
  * Layout: Domain Console prototype. A single primary stage owns the selected
- * Agent conversation; the session index is a bounded stage section and evidence
- * opens only on demand in a drawer. This intentionally avoids the old permanent
+ * Agent conversation; the session index is a bounded stage section and runtime
+ * details open only on demand in a drawer. This intentionally avoids the old permanent
  * left-list / center-chat / right-inspector three-column admin shell.
  *
  * Data: the bootstrap query owns the roster + the selected session's read

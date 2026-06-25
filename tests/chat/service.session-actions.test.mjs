@@ -434,6 +434,55 @@ test('native CLI chat sessions send through channel connector runner and persist
   }
 });
 
+test('native CLI chat sessions default to the Tracevane project root when no workDir is set', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-default-workdir-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'default cwd reply' }] } })}\n`,
+            stderr: '',
+            durationMs: 5,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native default cwd',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        permissionMode: 'yolo',
+      },
+    });
+
+    await context.services.chat.send(created.session.key, {
+      text: 'hello default cwd',
+      clientRequestId: 'native-default-cwd-1',
+    });
+
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].cwd, context.config.projectRoot);
+    assert.notEqual(runnerCalls[0].cwd, root);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('patching a chat session can update runtime target metadata', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-patch-'));

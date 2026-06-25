@@ -99,16 +99,18 @@ type FolderOption = {
 };
 
 
+const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
+
 const CHAT_RUNTIME_AGENT_OPTIONS: Array<{
   adapterKind: ChatRuntimeAdapterKind;
   agent: ChatRuntimeAgentId;
   label: string;
   description: string;
 }> = [
-  { adapterKind: "openclaw-gateway", agent: "openclaw", label: "OpenClaw 平台 Agent", description: "兼容当前 OpenClaw Gateway 会话" },
-  { adapterKind: "native-cli", agent: "codex", label: "Codex CLI", description: "本地 Codex 会话，后续走 native CLI adapter" },
-  { adapterKind: "native-cli", agent: "claude-code", label: "Claude Code", description: "本地 Claude Code 会话" },
-  { adapterKind: "native-cli", agent: "opencode", label: "OpenCode", description: "本地 OpenCode 会话" },
+  { adapterKind: "native-cli", agent: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
+  { adapterKind: "native-cli", agent: "claude-code", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
+  { adapterKind: "native-cli", agent: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
+  { adapterKind: "openclaw-gateway", agent: "openclaw", label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
 ];
 
 const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode | ""; label: string }> = [
@@ -163,7 +165,7 @@ export function SessionListView({
   const [folderFilter, setFolderFilter] = React.useState<FolderFilter>("all");
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
-  const [runtimeAgent, setRuntimeAgent] = React.useState<ChatRuntimeAgentId>("openclaw");
+  const [runtimeAgent, setRuntimeAgent] = React.useState<ChatRuntimeAgentId>(DEFAULT_RUNTIME_AGENT);
   const [runtimeModel, setRuntimeModel] = React.useState("");
   const [runtimeWorkDir, setRuntimeWorkDir] = React.useState("");
   const [runtimePermissionMode, setRuntimePermissionMode] = React.useState<ChatRuntimePermissionMode | "">("");
@@ -187,13 +189,13 @@ export function SessionListView({
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
     if (dialog?.kind === "create") {
       setLabelDraft("");
-      setRuntimeAgent("openclaw");
+      setRuntimeAgent(DEFAULT_RUNTIME_AGENT);
       setRuntimeModel("");
       setRuntimeWorkDir("");
       setRuntimePermissionMode("");
     }
     if (dialog?.kind === "edit-runtime") {
-      setRuntimeAgent(dialog.session.runtimeTarget?.agent || "openclaw");
+      setRuntimeAgent(dialog.session.runtimeTarget?.agent || DEFAULT_RUNTIME_AGENT);
       setRuntimeModel(dialog.session.runtimeTarget?.model || "");
       setRuntimeWorkDir(dialog.session.runtimeTarget?.workDir || "");
       setRuntimePermissionMode(dialog.session.runtimeTarget?.permissionMode || "");
@@ -1239,7 +1241,7 @@ export function SessionListView({
                     当前保存运行目标：{selectedRuntimeOption.adapterKind} / {selectedRuntimeOption.agent}
                     {runtimeModel.trim() ? ` / ${runtimeModel.trim()}` : " / 默认模型"}
                     {runtimeWorkDir.trim() ? ` / ${runtimeWorkDir.trim()}` : " / 默认目录"}。
-                    native CLI 执行器接入后会按这里的 Agent、模型、目录和权限启动会话。
+                    发送时会按这里的 Agent、模型、目录和权限启动或恢复对应运行时会话。
                   </p>
                 </div>
               </DialogBody>

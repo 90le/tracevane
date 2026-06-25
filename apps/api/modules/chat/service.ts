@@ -6463,7 +6463,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return {
       id: safeRuntimePathSegment(`chat-${session.key}`, 'chat-session'),
       name: normalizeString(session.label, 'Tracevane Chat'),
-      workDir: normalizeString(target.workDir) || options.config.openclawRoot || options.config.projectRoot,
+      workDir: normalizeString(target.workDir) || options.config.projectRoot || options.config.openclawRoot,
       agent,
       model: normalizeString(target.model) || null,
       permissionMode: normalizeNativePermissionMode(target.permissionMode),
