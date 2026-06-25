@@ -54,6 +54,26 @@ test("OpenClaw read surfaces are split into workbench pages instead of one aggre
   assert.match(components, /ReadOnlyStrip/);
 });
 
+
+
+test("OpenClaw workbench pages support refreshable selectable detail workflows", () => {
+  const components = read("apps/web/src/features/platforms/openclaw/components.tsx");
+  assert.match(components, /export function SelectableRow/);
+  assert.match(components, /aria-selected=\{selected\}/);
+  assert.match(components, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(components, /export function RefreshButton/);
+  assert.match(components, /export function useSelectedKey/);
+
+  for (const page of ["ConfigPage", "AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+    const source = read(`apps/web/src/features/platforms/openclaw/sections/${page}.tsx`);
+    assert.match(source, /RefreshButton/);
+    assert.match(source, /refetch\(\)/);
+    assert.match(source, /useSelectedKey/);
+    assert.match(source, /SelectableRow/);
+    assert.match(source, /DetailRail/);
+  }
+});
+
 test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () => {
   const config = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
   const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");

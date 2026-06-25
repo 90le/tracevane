@@ -241,3 +241,17 @@ apps/web/src/features/platforms/
 - 桌面/移动无横向溢出风险：长文本、长路径、技术 ID 必须 truncate/wrap。
 - TypeScript、web build、platform system tests 通过。
 - 文档与系统测试同步更新。
+
+## 8. 前端功能闭环要求
+
+OpenClaw 子页面不是静态报表。每个 read/evidence 页面必须提供最小可用交互闭环：
+
+- 可刷新：工具条提供刷新动作，触发对应 query refetch，并显示 loading/spinner 状态。
+- 可筛选/搜索：对象多于一组时提供搜索或状态过滤。
+- 可选择：表格行可点击、可键盘 Enter/Space 选择，具备 `aria-selected` 和明确选中态。
+- 可联动：右侧详情 rail 必须显示当前选中对象，不能永远展示第一条。
+- 可恢复：过滤结果为空时显示空状态，详情 rail 不崩溃；过滤结果变化时自动选择仍存在的对象或第一条。
+- 可读：技术 ID、路径和 JSON 摘要必须 truncate/wrap，不得撑破页面。
+- 可边界：只读页面必须持续显示 read-only 和 owner-domain handoff，避免用户误解为可在 Platform 编辑所有东西。
+
+当前实现通过 `SelectableRow`、`useSelectedKey`、`RefreshButton`、`ResponsiveTable` 和 `DetailRail` 收敛交互模式。后续新增 section 必须复用这些模式，除非有明确设计原因和测试覆盖。

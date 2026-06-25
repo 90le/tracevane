@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, RefreshCw, Search } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
@@ -86,6 +86,61 @@ export function OwnerHandoff({
         <Link to={to}>{action}<ArrowRight /></Link>
       </Button>
     </div>
+  );
+}
+
+
+export function useSelectedKey(keys: string[]): [string | null, React.Dispatch<React.SetStateAction<string | null>>] {
+  const [selectedKey, setSelectedKey] = React.useState<string | null>(keys[0] ?? null);
+  const joinedKeys = keys.join("\u001f");
+  React.useEffect(() => {
+    setSelectedKey((current) => {
+      if (current && keys.includes(current)) return current;
+      return keys[0] ?? null;
+    });
+  }, [joinedKeys]);
+  return [selectedKey, setSelectedKey];
+}
+
+export function SelectableRow({
+  id,
+  selected,
+  onSelect,
+  children,
+}: {
+  id: string;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(id);
+    }
+  };
+  return (
+    <tr
+      tabIndex={0}
+      aria-selected={selected}
+      onClick={() => onSelect(id)}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        "cursor-pointer outline-none transition hover:bg-panel-2 focus:bg-panel-2 focus:ring-2 focus:ring-accent-soft",
+        selected && "bg-accent-soft/60"
+      )}
+    >
+      {children}
+    </tr>
+  );
+}
+
+export function RefreshButton({ onClick, loading = false }: { onClick: () => void; loading?: boolean }) {
+  return (
+    <Button variant="outline" size="sm" onClick={onClick} disabled={loading}>
+      <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+      刷新
+    </Button>
   );
 }
 
