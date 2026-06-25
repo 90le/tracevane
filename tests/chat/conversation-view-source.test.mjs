@@ -36,6 +36,16 @@ test('ConversationView keeps composer file refs structured and removable across 
   assert.match(source, /结构化 fileRef/);
 });
 
+test('ConversationView persists text and ready Files attachments per selected session', () => {
+  assert.match(source, /const COMPOSER_DRAFT_PREFIX = "tracevane\.chat\.composer-draft:"/);
+  assert.match(source, /function composerDraftStorageKey/);
+  assert.match(source, /function parsePersistedComposerDraft/);
+  assert.match(source, /function buildPersistedComposerDraft/);
+  assert.match(source, /filter\(\(item\) => item\.status === "ready"\)/);
+  assert.match(source, /window\.localStorage\.setItem\(key, JSON\.stringify\(persisted\)\)/);
+  assert.match(source, /window\.localStorage\.removeItem\(composerDraftStorageKey\(sessionKey\)\)/);
+});
+
 
 test('ConversationView uses Files roots explicitly and sends Files-root refs safely', () => {
   assert.match(source, /const filesRoots = filesSummary\.data\?\.roots \?\? \[\]/);

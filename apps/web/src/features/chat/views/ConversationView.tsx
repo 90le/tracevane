@@ -97,6 +97,61 @@ function canInlinePreviewAttachment(item: ComposerFileRefItem): boolean {
   return item.kind === "image" || item.kind === "video" || /^(application\/pdf|text\/|application\/json)/i.test(item.mimeType || "");
 }
 
+const COMPOSER_DRAFT_PREFIX = "tracevane.chat.composer-draft:";
+
+type PersistedComposerFileRef = Omit<ComposerFileRefItem, "status" | "error">;
+
+interface PersistedComposerDraft {
+  version: 2;
+  updatedAt: string;
+  text: string;
+  fileRefs: PersistedComposerFileRef[];
+}
+
+function composerDraftStorageKey(sessionKey: string): string {
+  return `${COMPOSER_DRAFT_PREFIX}${sessionKey}`;
+}
+
+function parsePersistedComposerDraft(raw: string | null): PersistedComposerDraft | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedComposerDraft>;
+    if (parsed.version !== 2) return null;
+    const text = typeof parsed.text === "string" ? parsed.text : "";
+    const fileRefs = Array.isArray(parsed.fileRefs)
+      ? parsed.fileRefs.filter((item): item is PersistedComposerFileRef => (
+        Boolean(item)
+        && typeof item.id === "string"
+        && typeof item.relativePath === "string"
+        && typeof item.fileName === "string"
+        && (item.kind === "file" || item.kind === "image" || item.kind === "video")
+      ))
+      : [];
+    if (!text.trim() && fileRefs.length === 0) return null;
+    return {
+      version: 2,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+      text,
+      fileRefs,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildPersistedComposerDraft(text: string, fileRefs: ComposerFileRefItem[]): PersistedComposerDraft | null {
+  const readyFileRefs: PersistedComposerFileRef[] = fileRefs
+    .filter((item) => item.status === "ready")
+    .map(({ status: _status, error: _error, ...item }) => item);
+  if (!text.trim() && readyFileRefs.length === 0) return null;
+  return {
+    version: 2,
+    updatedAt: new Date().toISOString(),
+    text,
+    fileRefs: readyFileRefs,
+  };
+}
+
 function ToolCallBlock({
   tool,
 }: {
@@ -324,6 +379,7 @@ export function ConversationView({
   const [workspacePickerDir, setWorkspacePickerDir] = React.useState("");
   const [workspacePickerRootId, setWorkspacePickerRootId] = React.useState<string | null>(null);
   const [previewFile, setPreviewFile] = React.useState<ComposerFileRefItem | null>(null);
+  const [draftLoadedSessionKey, setDraftLoadedSessionKey] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -351,15 +407,34 @@ export function ConversationView({
   );
 
   React.useEffect(() => {
-    setDraft("");
-    setFileRefs([]);
+    const persisted = sessionKey && typeof window !== "undefined"
+      ? parsePersistedComposerDraft(window.localStorage.getItem(composerDraftStorageKey(sessionKey)))
+      : null;
+    setDraft(persisted?.text ?? "");
+    setFileRefs((persisted?.fileRefs ?? []).map((item) => ({
+      ...item,
+      status: "ready",
+      source: item.source ?? "files",
+    })));
     setUploadError(null);
     setWorkspacePickerOpen(false);
     setWorkspacePickerDir("");
     setWorkspacePickerRootId(null);
     setPreviewFile(null);
+    setDraftLoadedSessionKey(sessionKey);
     cancelledUploadIdsRef.current.clear();
   }, [sessionKey]);
+
+  React.useEffect(() => {
+    if (!sessionKey || draftLoadedSessionKey !== sessionKey || typeof window === "undefined") return;
+    const key = composerDraftStorageKey(sessionKey);
+    const persisted = buildPersistedComposerDraft(draft, fileRefs);
+    if (!persisted) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(persisted));
+  }, [draft, fileRefs, sessionKey, draftLoadedSessionKey]);
 
   React.useEffect(() => {
     if (!workspacePickerOpen || !workspaceRootId) return;
@@ -392,6 +467,9 @@ export function ConversationView({
     const text = draft.trim();
     if (!hasPayload || !canSend || sending || uploading || hasPendingFileRefs || hasFailedFileRefs) return;
     onSend({ text, fileRefs: readyFileRefs.length ? readyFileRefs : undefined });
+    if (sessionKey && typeof window !== "undefined") {
+      window.localStorage.removeItem(composerDraftStorageKey(sessionKey));
+    }
     setDraft("");
     setFileRefs([]);
     setUploadError(null);
