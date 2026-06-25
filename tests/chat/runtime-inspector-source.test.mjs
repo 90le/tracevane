@@ -23,3 +23,13 @@ test('RuntimeInspectorView keeps destructive reset confirmed and does not expose
   assert.doesNotMatch(source, /label: "控制"/);
   assert.doesNotMatch(source, /host-exec/);
 });
+
+
+test('RuntimeInspector diagnostics are runtime-aware and keep OpenClaw transport details out of native sessions', () => {
+  assert.match(source, /const isOpenClawGateway = adapterKind === "openclaw-gateway"/);
+  assert.match(source, /"运行类型",\s*isOpenClawGateway\s*\? "OpenClaw Gateway"\s*: adapterKind === "native-cli"\s*\? "Native CLI"\s*: "—"/);
+  assert.match(source, /if \(isOpenClawGateway\) \{/);
+  assert.match(source, /"OpenClaw 网关可达"/);
+  assert.match(source, /diagnostics\.notes\.filter\(\(note\) => !\/gateway\|openclaw\|同源\|原始帧\/i\.test\(note\)\)/);
+  assert.doesNotMatch(source, /\["网关可达", boolTone\(diagnostics\.gatewayReachable\)\.label\]/);
+});

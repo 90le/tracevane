@@ -259,19 +259,44 @@ function QueueTab({ sessionKey, items }: { sessionKey: string; items: ChatQueued
   );
 }
 
-function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }) {
+function DiagnosticsTab({
+  diagnostics,
+  session,
+}: {
+  diagnostics: ChatDiagnostics | null;
+  session: ChatSessionRow | null;
+}) {
   if (!diagnostics) {
     return <p className="p-3 text-sm text-muted">暂无诊断数据。</p>;
   }
+  const adapterKind = session?.runtimeTarget?.adapterKind ?? null;
+  const isOpenClawGateway = adapterKind === "openclaw-gateway";
   const rows: Array<[string, React.ReactNode]> = [
-    ["网关可达", boolTone(diagnostics.gatewayReachable).label],
+    [
+      "运行类型",
+      isOpenClawGateway
+        ? "OpenClaw Gateway"
+        : adapterKind === "native-cli"
+          ? "Native CLI"
+          : "—",
+    ],
     ["传输", diagnostics.transport],
     ["鉴权", diagnostics.authMode],
     ["历史截断", boolTone(diagnostics.historyTruncated).label],
     ["截断模式", diagnostics.truncationMode],
-    ["同源要求", boolTone(diagnostics.sameOriginRequired).label],
-    ["暴露原始帧", boolTone(diagnostics.rawGatewayFramesExposed).label],
   ];
+  if (isOpenClawGateway) {
+    rows.splice(
+      1,
+      0,
+      ["OpenClaw 网关可达", boolTone(diagnostics.gatewayReachable).label],
+      ["同源要求", boolTone(diagnostics.sameOriginRequired).label],
+      ["暴露原始帧", boolTone(diagnostics.rawGatewayFramesExposed).label],
+    );
+  }
+  const notes = isOpenClawGateway
+    ? diagnostics.notes
+    : diagnostics.notes.filter((note) => !/gateway|openclaw|同源|原始帧/i.test(note));
   return (
     <div className="grid gap-2 p-3 pb-4">
       <dl className="grid gap-2">
@@ -282,9 +307,9 @@ function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }
           </div>
         ))}
       </dl>
-      {diagnostics.notes.length > 0 && (
+      {notes.length > 0 && (
         <div className="grid gap-1">
-          {diagnostics.notes.map((note, i) => (
+          {notes.map((note, i) => (
             <p key={i} className="rounded-sm bg-panel-2 px-2.5 py-1.5 text-xs text-muted">
               {note}
             </p>
@@ -387,7 +412,7 @@ export function RuntimeInspectorView({
         ) : tab === "queue" ? (
           <QueueTab sessionKey={sessionKey} items={queueItems} />
         ) : (
-          <DiagnosticsTab diagnostics={diagnostics} />
+          <DiagnosticsTab diagnostics={diagnostics} session={session} />
         )}
       </div>
 
