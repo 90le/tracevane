@@ -261,6 +261,7 @@ export async function uploadChatFile(
 
   return {
     ok: true,
+    rootId: root.id,
     relativePath: targetPath,
     resourceRef,
     resource: {

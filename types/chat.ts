@@ -594,7 +594,8 @@ export interface ChatDeleteSessionResponse {
 
 export interface ChatFileUploadResponse {
   ok: boolean;
-  relativePath: string; // relative path from workspace root, for @path reference
+  rootId: string;
+  relativePath: string; // path relative to the Files API root, for @path/fileRef reference
   resourceRef: string;
   resource: ChatResourceItem;
   absolutePath: string;

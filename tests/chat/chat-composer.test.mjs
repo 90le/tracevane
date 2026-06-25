@@ -224,14 +224,45 @@ test('composer serialization uses stable markdown destinations for refs with spa
   );
 });
 
+test('composer serialization preserves explicit Files API resource refs', () => {
+  const markdown = serializeComposerDocumentToMarkdown([
+    { type: 'text', id: 'text-1', text: '请看 ' },
+    { type: 'resource-ref', id: 'ref-1', attachmentId: 'file-1', display: 'inline-chip' },
+  ], [
+    {
+      id: 'file-1',
+      type: 'file',
+      fileName: '外部资料.md',
+      rootId: 'home-root',
+      relativePath: 'Desktop/外部资料.md',
+      resourceRef: 'files:home-root:Desktop/外部资料.md',
+    },
+  ]);
+
+  assert.equal(
+    markdown,
+    '请看 [@外部资料.md](files:home-root:Desktop/外部资料.md "tracevane:inline-chip")',
+  );
+});
+
 test('composer file refs carry canonical tracevane resource refs', () => {
   const refs = buildComposerFileRefs([
     { id: 'img-1', type: 'image', fileName: 'diagram.png', relativePath: 'uploads/diagram.png' },
     { id: 'doc-1', type: 'file', fileName: 'notes.md', relativePath: 'docs/notes.md' },
+    {
+      id: 'files-1',
+      type: 'file',
+      fileName: 'outside.md',
+      rootId: 'home-root',
+      relativePath: 'Desktop/outside.md',
+      resourceRef: 'files:home-root:Desktop/outside.md',
+    },
   ]);
 
   assert.equal(refs[0]?.resourceRef, 'uploads:diagram.png');
   assert.equal(refs[1]?.resourceRef, 'workspace:docs/notes.md');
+  assert.equal(refs[2]?.rootId, 'home-root');
+  assert.equal(refs[2]?.resourceRef, 'files:home-root:Desktop/outside.md');
 });
 
 test('tracevane resource ref helpers keep display refs portable', () => {

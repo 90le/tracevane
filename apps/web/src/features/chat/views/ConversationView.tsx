@@ -514,6 +514,7 @@ export function ConversationView({
         }
         const readyItem: ComposerFileRefItem = {
           id: item.resource.id,
+          rootId: item.rootId,
           relativePath: item.relativePath,
           resourceRef: item.resourceRef,
           fileName: item.fileName,

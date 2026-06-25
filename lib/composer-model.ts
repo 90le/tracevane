@@ -11,8 +11,10 @@ import type {
   ChatSendFileRef,
 } from '../types/chat.js';
 import {
+  buildTracevaneFilesResourceRef,
   buildTracevaneResourceRefFromRelativePath,
   formatMarkdownResourceDestination,
+  parseTracevaneResourceRef,
 } from './tracevane-resource-refs.js';
 
 export interface ChatComposerAttachmentRefLike {
@@ -22,6 +24,8 @@ export interface ChatComposerAttachmentRefLike {
   fileName?: string;
   mimeType?: string | null;
   relativePath?: string | null;
+  rootId?: string | null;
+  resourceRef?: string | null;
 }
 
 function randomId(prefix: string): string {
@@ -133,8 +137,21 @@ function escapeMarkdownLabel(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
 }
 
+function normalizeExplicitResourceRef(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || !parseTracevaneResourceRef(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
 function attachmentHref(attachment: ChatComposerAttachmentRefLike): string | null {
-  return buildTracevaneResourceRefFromRelativePath(attachment.relativePath);
+  return normalizeExplicitResourceRef(attachment.resourceRef)
+    || buildTracevaneFilesResourceRef(attachment.rootId, attachment.relativePath)
+    || buildTracevaneResourceRefFromRelativePath(attachment.relativePath);
 }
 
 function attachmentMap(
@@ -472,7 +489,9 @@ export function buildComposerFileRefs(
       if (!relativePath) {
         return null;
       }
-      const resourceRef = buildTracevaneResourceRefFromRelativePath(relativePath);
+      const resourceRef = normalizeExplicitResourceRef(attachment.resourceRef)
+        || buildTracevaneFilesResourceRef(attachment.rootId, relativePath)
+        || buildTracevaneResourceRefFromRelativePath(relativePath);
       const item: ChatSendFileRef = {
         id: attachment.id,
         relativePath,
@@ -480,6 +499,10 @@ export function buildComposerFileRefs(
         kind: attachmentKind(attachment),
         mimeType: attachment.mimeType || null,
       };
+      const rootId = typeof attachment.rootId === 'string' ? attachment.rootId.trim() : '';
+      if (rootId) {
+        item.rootId = rootId;
+      }
       if (resourceRef) {
         item.resourceRef = resourceRef;
       }

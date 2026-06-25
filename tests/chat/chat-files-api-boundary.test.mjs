@@ -21,6 +21,7 @@ test("chat composer uploads use the shared Files API contract", () => {
   assert.match(chatApi, /completeFileUpload\(/);
   assert.match(chatApi, /\/api\/files\/download\?/);
   assert.match(chatApi, /files:\$\{rootId\}:\$\{normalizePortablePath\(relativePath\)\}/);
+  assert.match(chatApi, /rootId: root\.id/);
   assert.doesNotMatch(chatApi, /new FormData\(/);
   assert.doesNotMatch(chatApi, /sessions\/\$\{encodeSessionKey\(sessionKey\)\}\/upload/);
 });
@@ -29,6 +30,7 @@ test("chat workspace picker keeps directory selection on Files browse roots", ()
   assert.match(chatView, /useFilesSummaryQuery\(/);
   assert.match(chatView, /useFilesBrowseQuery\(/);
   assert.match(chatView, /files:\$\{rootId\}:\$\{filePath\}/);
+  assert.match(chatView, /rootId: item\.rootId/);
   assert.doesNotMatch(chatView, /workspace:\$\{filePath\}/);
   assert.match(chatView, /buildFilesDownloadUrl\(rootId, filePath, false\)/);
   assert.match(chatView, /chat-composer-preview-dialog/);
