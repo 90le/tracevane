@@ -107,7 +107,6 @@ export function ChatWorkbenchPage() {
   const overlays = history?.overlays ?? [];
   const historyMessages: ChatMessageItem[] = history?.messages ?? [];
   const queueItems = bootstrap.data?.queue?.items ?? [];
-  const controls = bootstrap.data?.controls ?? null;
 
   // --- Live streaming state -------------------------------------------------
   const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(
@@ -313,6 +312,14 @@ export function ChatWorkbenchPage() {
     selectedSession?.deliveryContext?.to ||
     "当前工作区";
 
+  const runDetailAttention = Boolean(
+    runtime?.activeRunId ||
+      runtime?.lastErrorMessage ||
+      queueItems.length > 0 ||
+      overlays.length > 0 ||
+      (observability?.toolCards?.length ?? 0) > 0,
+  );
+
   const inspector = (
     <EvidenceInspectorView
       sessionKey={selectedKey}
@@ -322,7 +329,6 @@ export function ChatWorkbenchPage() {
       overlays={overlays}
       diagnostics={diagnostics}
       queueItems={queueItems}
-      controls={controls}
     />
   );
 
@@ -406,12 +412,13 @@ export function ChatWorkbenchPage() {
               />
             </Button>
             <Button
-              variant="outline"
+              variant={runDetailAttention ? "primary" : "outline"}
               size="sm"
               onClick={() => setInspectorOpen(true)}
+              title="查看运行详情、队列和诊断"
             >
               <Activity />
-              证据
+              运行详情
             </Button>
           </div>
         </header>
@@ -443,9 +450,9 @@ export function ChatWorkbenchPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Evidence is contextual and temporary, never a permanent third column. */}
+      {/* Run details are contextual and temporary, never a permanent third column. */}
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-        <SheetContent side="right" className="p-0">
+        <SheetContent side="right" className="w-[min(380px,92vw)] p-0">
           <div className="h-full min-h-0 overflow-hidden">{inspector}</div>
         </SheetContent>
       </Sheet>

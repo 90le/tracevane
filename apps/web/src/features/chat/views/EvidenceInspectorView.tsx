@@ -1,11 +1,9 @@
 import * as React from "react";
 import {
   Activity,
-  AlertTriangle,
   ListChecks,
   RadioTower,
   RotateCcw,
-  ShieldCheck,
   Trash2,
   Wrench,
 } from "lucide-react";
@@ -28,7 +26,6 @@ import { Fact, ToneBadge, formatTime } from "@/features/cli-agents/views/_shared
 
 import {
   useDeleteChatQueueEntryMutation,
-  usePatchChatControlsMutation,
   useResetChatSessionMutation,
 } from "@/lib/query/chat";
 import type {
@@ -38,7 +35,6 @@ import type {
   ChatQueuedMessageItem,
   ChatRunOverlay,
   ChatRuntimeState,
-  ChatSessionControlsPayload,
   ChatSessionRow,
 } from "../types";
 import { CHAT_INSPECTOR_TABS } from "../types";
@@ -48,18 +44,21 @@ const TAB_META: Record<
   ChatInspectorTab,
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  evidence: { label: "证据", icon: Activity },
+  evidence: { label: "概览", icon: Activity },
   queue: { label: "队列", icon: ListChecks },
-  controls: { label: "控制", icon: ShieldCheck },
   diagnostics: { label: "诊断", icon: RadioTower },
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-3 pt-3 text-xs font-medium uppercase tracking-wide text-subtle">
+    <div className="px-3 pt-3 text-xs font-medium tracking-wide text-subtle">
       {children}
     </div>
   );
+}
+
+function InlineEmpty({ children }: { children: React.ReactNode }) {
+  return <p className="px-3 py-2 text-sm text-muted">{children}</p>;
 }
 
 function EvidenceTab({
@@ -99,70 +98,74 @@ function EvidenceTab({
         </>
       )}
 
-      <SectionLabel>运行 overlay</SectionLabel>
-      {overlays.length === 0 ? (
-        <p className="px-3 text-sm text-muted">暂无运行投影。</p>
-      ) : (
-        <div className="grid gap-1 px-2">
-          {overlays.slice(0, 8).map((o) => {
-            const st = runStateTone(o.lifecycle === "running" ? "running" : o.lifecycle);
-            return (
-              <div
-                key={o.runId}
-                className="grid gap-0.5 rounded-sm border border-line bg-panel-2 px-2.5 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs text-ink-strong">{o.runId}</span>
-                  <ToneBadge tone={st.tone}>{o.lifecycle}</ToneBadge>
+      {overlays.length > 0 && (
+        <>
+          <SectionLabel>运行投影</SectionLabel>
+          <div className="grid gap-1 px-2">
+            {overlays.slice(0, 8).map((o) => {
+              const st = runStateTone(o.lifecycle === "running" ? "running" : o.lifecycle);
+              return (
+                <div
+                  key={o.runId}
+                  className="grid gap-0.5 rounded-sm border border-line bg-panel-2 px-2.5 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-mono text-xs text-ink-strong">{o.runId}</span>
+                    <ToneBadge tone={st.tone}>{o.lifecycle}</ToneBadge>
+                  </div>
+                  {o.previewText && (
+                    <span className="truncate text-xs text-muted">{o.previewText}</span>
+                  )}
                 </div>
-                {o.previewText && (
-                  <span className="truncate text-xs text-muted">{o.previewText}</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      <SectionLabel>工具卡</SectionLabel>
-      {toolCards.length === 0 ? (
-        <p className="px-3 text-sm text-muted">暂无工具调用证据。</p>
-      ) : (
-        <div className="grid gap-1 px-2">
-          {toolCards.slice(0, 10).map((t) => {
-            const st = toolStatusTone(t.status);
-            return (
-              <div
-                key={t.toolCallId}
-                className="flex items-center gap-2 rounded-sm border border-line bg-panel-2 px-2.5 py-1.5"
-              >
-                <span className="grid size-5 shrink-0 place-items-center rounded-[6px] bg-panel-3 text-muted [&_svg]:size-3">
-                  <Wrench />
-                </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-strong">
-                  {t.name}
-                </span>
-                <ToneBadge tone={t.isError ? "bad" : st.tone}>{st.label}</ToneBadge>
-              </div>
-            );
-          })}
-        </div>
+      {toolCards.length > 0 && (
+        <>
+          <SectionLabel>工具调用</SectionLabel>
+          <div className="grid gap-1 px-2">
+            {toolCards.slice(0, 10).map((t) => {
+              const st = toolStatusTone(t.status);
+              return (
+                <div
+                  key={t.toolCallId}
+                  className="flex items-center gap-2 rounded-sm border border-line bg-panel-2 px-2.5 py-1.5"
+                >
+                  <span className="grid size-5 shrink-0 place-items-center rounded-[6px] bg-panel-3 text-muted [&_svg]:size-3">
+                    <Wrench />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-strong">
+                    {t.name}
+                  </span>
+                  <ToneBadge tone={t.isError ? "bad" : st.tone}>{st.label}</ToneBadge>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      <SectionLabel>时间线</SectionLabel>
-      {timeline.length === 0 ? (
-        <p className="px-3 text-sm text-muted">暂无活动。</p>
-      ) : (
-        <div className="grid gap-1 px-3">
-          {timeline.slice(0, 10).map((item) => (
-            <div key={item.id} className="grid gap-0.5">
-              <strong className="text-sm text-ink-strong">{item.title}</strong>
-              <span className="text-xs text-muted">
-                {item.detail ?? "—"} · {formatTime(item.emittedAt)}
-              </span>
-            </div>
-          ))}
-        </div>
+      {timeline.length > 0 && (
+        <>
+          <SectionLabel>时间线</SectionLabel>
+          <div className="grid gap-1 px-3">
+            {timeline.slice(0, 10).map((item) => (
+              <div key={item.id} className="grid gap-0.5">
+                <strong className="text-sm text-ink-strong">{item.title}</strong>
+                <span className="text-xs text-muted">
+                  {item.detail ?? "—"} · {formatTime(item.emittedAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!usage && overlays.length === 0 && toolCards.length === 0 && timeline.length === 0 && (
+        <InlineEmpty>当前没有运行投影、工具调用或时间线活动。</InlineEmpty>
       )}
     </div>
   );
@@ -251,91 +254,6 @@ function QueueTab({ sessionKey, items }: { sessionKey: string; items: ChatQueued
   );
 }
 
-function ControlsTab({
-  sessionKey,
-  controls,
-}: {
-  sessionKey: string;
-  controls: ChatSessionControlsPayload | null;
-}) {
-  const patchMutation = usePatchChatControlsMutation();
-  const [confirm, setConfirm] = React.useState<boolean | null>(null);
-
-  const current = controls?.controls.allowHostManagementExec ?? false;
-  const globalEnabled = controls?.globalHostManagementExecEnabled ?? false;
-
-  const apply = (next: boolean) => {
-    patchMutation.mutate(
-      { sessionKey, payload: { allowHostManagementExec: next } },
-      {
-        onSuccess: () => toast.success(next ? "已允许主机管理执行" : "已禁用主机管理执行"),
-        onError: (error) => toast.error("更新控制策略失败", { description: error.message }),
-        onSettled: () => setConfirm(null),
-      },
-    );
-  };
-
-  return (
-    <div className="grid gap-3 p-3 pb-4">
-      <div className="grid gap-1 rounded-sm border border-line bg-panel-2 p-3">
-        <div className="flex items-center gap-2">
-          <strong className="text-sm text-ink-strong">主机管理执行</strong>
-          <ToneBadge tone={current ? "warn" : "mute"}>{current ? "已允许" : "已禁用"}</ToneBadge>
-        </div>
-        <p className="text-xs text-muted">
-          允许该会话执行主机管理类工具。这是一项敏感策略，开启需确认。
-        </p>
-        <div className="mt-1 flex items-center gap-2">
-          <Button
-            variant={current ? "outline" : "primary"}
-            size="sm"
-            disabled={patchMutation.isPending || !globalEnabled}
-            onClick={() => (current ? apply(false) : setConfirm(true))}
-          >
-            {current ? "禁用" : "允许"}
-          </Button>
-          {!globalEnabled && <Badge variant="mute">全局已禁用</Badge>}
-        </div>
-        <span className="mt-1 text-xs text-subtle">
-          更新于 {formatTime(controls?.controls.updatedAt)}
-        </span>
-      </div>
-
-      <Dialog open={confirm === true} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
-              <AlertTriangle />
-            </span>
-            <DialogTitle>允许主机管理执行</DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            开启后该会话的 Agent 将可执行主机管理类工具，可能影响宿主系统。确认开启？
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirm(null)}
-              disabled={patchMutation.isPending}
-            >
-              取消
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={patchMutation.isPending}
-              onClick={() => apply(true)}
-            >
-              {patchMutation.isPending ? "更新中…" : "确认允许"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }) {
   if (!diagnostics) {
     return <p className="p-3 text-sm text-muted">暂无诊断数据。</p>;
@@ -373,9 +291,8 @@ function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }
 }
 
 /**
- * Right column: the evidence inspector. Tabs across run evidence, the outbound
- * queue (delete is confirmed), per-session controls (host-exec toggle is
- * confirmed when enabling), and gateway diagnostics. Also owns the destructive
+ * Temporary run details drawer. Tabs across run summary, the outbound
+ * queue (delete is confirmed), and gateway diagnostics. Also owns the destructive
  * session reset (confirmed).
  */
 export function EvidenceInspectorView({
@@ -386,7 +303,6 @@ export function EvidenceInspectorView({
   overlays,
   diagnostics,
   queueItems,
-  controls,
 }: {
   sessionKey: string | null;
   session: ChatSessionRow | null;
@@ -395,7 +311,6 @@ export function EvidenceInspectorView({
   overlays: ChatRunOverlay[];
   diagnostics: ChatDiagnostics | null;
   queueItems: ChatQueuedMessageItem[];
-  controls: ChatSessionControlsPayload | null;
 }) {
   const [tab, setTab] = React.useState<ChatInspectorTab>("evidence");
   const [resetConfirm, setResetConfirm] = React.useState(false);
@@ -412,6 +327,12 @@ export function EvidenceInspectorView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-line px-3 py-3">
+        <div className="pr-8">
+          <h2 className="text-md font-semibold text-ink-strong">运行详情</h2>
+          <p className="mt-0.5 text-xs text-muted">只在需要排查执行、队列或网关问题时查看。</p>
+        </div>
+      </div>
       <div className="flex items-center gap-1 border-b border-line p-2">
         {CHAT_INSPECTOR_TABS.map((id) => {
           const meta = TAB_META[id];
@@ -450,7 +371,7 @@ export function EvidenceInspectorView({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {!sessionKey ? (
-          <EmptyState icon={<Activity />} title="未选择会话" description="选择会话以查看证据与控制。" />
+          <EmptyState icon={<Activity />} title="未选择会话" description="选择会话以查看运行详情。" />
         ) : tab === "evidence" ? (
           <EvidenceTab
             runtime={runtime}
@@ -460,8 +381,6 @@ export function EvidenceInspectorView({
           />
         ) : tab === "queue" ? (
           <QueueTab sessionKey={sessionKey} items={queueItems} />
-        ) : tab === "controls" ? (
-          <ControlsTab sessionKey={sessionKey} controls={controls} />
         ) : (
           <DiagnosticsTab diagnostics={diagnostics} />
         )}

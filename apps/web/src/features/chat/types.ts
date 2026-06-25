@@ -85,7 +85,6 @@ export interface LiveAssistantTurn {
 export const CHAT_INSPECTOR_TABS = [
   "evidence",
   "queue",
-  "controls",
   "diagnostics",
 ] as const;
 export type ChatInspectorTab = (typeof CHAT_INSPECTOR_TABS)[number];
