@@ -28,7 +28,7 @@ import { chatKeys } from "@/lib/query/chat";
 
 import {
   ConversationView,
-  EvidenceInspectorView,
+  RuntimeInspectorView,
   SessionListView,
 } from "./views";
 import type {
@@ -317,8 +317,11 @@ export function ChatWorkbenchPage() {
     selectedSession?.source?.surface ||
     selectedSession?.source?.channel ||
     "网页 / 本地";
-  const selectedModel = "由模型网关路由";
+  const runtimeTarget = selectedSession?.runtimeTarget ?? null;
+  const selectedAgent = runtimeTarget?.agent || selectedSession?.agentId || "选择 Agent";
+  const selectedModel = runtimeTarget?.model || "使用默认模型路由";
   const selectedWorkdir =
+    runtimeTarget?.workDir ||
     selectedSession?.deliveryContext?.threadId ||
     selectedSession?.deliveryContext?.to ||
     "当前工作区";
@@ -332,7 +335,7 @@ export function ChatWorkbenchPage() {
   );
 
   const inspector = (
-    <EvidenceInspectorView
+    <RuntimeInspectorView
       sessionKey={selectedKey}
       session={selectedSession}
       runtime={runtime}
@@ -392,7 +395,7 @@ export function ChatWorkbenchPage() {
               <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">
                 <Bot />
                 <span className="truncate">
-                  {selectedSession?.agentId ?? "选择 Agent"}
+                  {selectedAgent}
                 </span>
               </span>
               <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">

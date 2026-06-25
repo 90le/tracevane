@@ -88,7 +88,7 @@ export interface LiveAssistantTurn {
 
 /** Center-pane view selector for the conversation column. */
 export const CHAT_INSPECTOR_TABS = [
-  "evidence",
+  "overview",
   "queue",
   "diagnostics",
 ] as const;

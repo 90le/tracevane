@@ -1,3 +1,3 @@
 export { SessionListView } from "./SessionListView";
 export { ConversationView } from "./ConversationView";
-export { EvidenceInspectorView } from "./EvidenceInspectorView";
+export { RuntimeInspectorView } from "./RuntimeInspectorView";

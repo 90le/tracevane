@@ -44,7 +44,7 @@ const TAB_META: Record<
   ChatInspectorTab,
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  evidence: { label: "概览", icon: Activity },
+  overview: { label: "概览", icon: Activity },
   queue: { label: "队列", icon: ListChecks },
   diagnostics: { label: "诊断", icon: RadioTower },
 };
@@ -61,7 +61,7 @@ function InlineEmpty({ children }: { children: React.ReactNode }) {
   return <p className="px-3 py-2 text-sm text-muted">{children}</p>;
 }
 
-function EvidenceTab({
+function RuntimeOverviewTab({
   runtime,
   session,
   observability,
@@ -295,7 +295,7 @@ function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }
  * queue (delete is confirmed), and gateway diagnostics. Also owns the destructive
  * session reset (confirmed).
  */
-export function EvidenceInspectorView({
+export function RuntimeInspectorView({
   sessionKey,
   session,
   runtime,
@@ -312,7 +312,7 @@ export function EvidenceInspectorView({
   diagnostics: ChatDiagnostics | null;
   queueItems: ChatQueuedMessageItem[];
 }) {
-  const [tab, setTab] = React.useState<ChatInspectorTab>("evidence");
+  const [tab, setTab] = React.useState<ChatInspectorTab>("overview");
   const [resetConfirm, setResetConfirm] = React.useState(false);
   const resetMutation = useResetChatSessionMutation();
 
@@ -372,8 +372,8 @@ export function EvidenceInspectorView({
       <div className="min-h-0 flex-1 overflow-auto">
         {!sessionKey ? (
           <EmptyState icon={<Activity />} title="未选择会话" description="选择会话以查看运行详情。" />
-        ) : tab === "evidence" ? (
-          <EvidenceTab
+        ) : tab === "overview" ? (
+          <RuntimeOverviewTab
             runtime={runtime}
             session={session}
             observability={observability}
@@ -421,4 +421,4 @@ export function EvidenceInspectorView({
   );
 }
 
-export default EvidenceInspectorView;
+export default RuntimeInspectorView;
