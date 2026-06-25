@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const serviceSource = readFileSync(new URL('../../apps/api/modules/chat/service.ts', import.meta.url), 'utf8');
 const openClawAdapterSource = readFileSync(new URL('../../apps/api/modules/chat/openclaw-runtime/adapter.ts', import.meta.url), 'utf8');
+const nativeCliAdapterSource = readFileSync(new URL('../../apps/api/modules/chat/native-cli-runtime/adapter.ts', import.meta.url), 'utf8');
 
 function sliceFunctionBody(source, functionName) {
   const marker = `function ${functionName}`;
@@ -40,6 +41,27 @@ test('ChatService keeps raw OpenClaw gateway calls inside the OpenClaw runtime a
 
   assert.match(openClawAdapterSource, /requestGateway(?:<[^>]+>)?\(/, 'OpenClaw adapter owns gateway RPC calls');
   assert.match(openClawAdapterSource, /requestViaSessionBridge/, 'OpenClaw adapter receives the bridge requester explicitly');
+});
+
+test('ChatService keeps native CLI runner details inside the native runtime adapter boundary', () => {
+  const adapterBody = sliceFunctionBody(serviceSource, 'createCurrentChatRuntimeAdapter');
+  assert.match(adapterBody, /createNativeCliChatRuntimeAdapter/, 'ChatService should delegate native adapter creation');
+  assert.doesNotMatch(adapterBody, /runChannelConnectorAgentTurn/, 'ChatService adapter selector must not own native CLI process execution');
+  assert.doesNotMatch(adapterBody, /resolveChannelConnectorGatewayClientKey/, 'ChatService adapter selector must not own gateway client key wiring');
+
+  assert.doesNotMatch(
+    serviceSource,
+    /function buildChatNativeProject/,
+    'ChatService should not own native CLI project construction',
+  );
+  assert.doesNotMatch(
+    serviceSource,
+    /function buildChatNativeMessage/,
+    'ChatService should not own native CLI inbound message construction',
+  );
+  assert.match(nativeCliAdapterSource, /runChannelConnectorAgentTurn/, 'native CLI adapter owns process execution');
+  assert.match(nativeCliAdapterSource, /resolveChannelConnectorGatewayClientKey/, 'native CLI adapter owns gateway client key wiring');
+  assert.match(nativeCliAdapterSource, /export function assertSupportedNativeRuntimeTarget/, 'native runtime validation stays with native adapter');
 });
 
 

@@ -5,7 +5,6 @@ import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
-import { MODEL_GATEWAY_DEFAULT_HOST, MODEL_GATEWAY_DEFAULT_PORT } from '../../../../types/model-gateway.js';
 import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
 import type {
   ChatAbortResponse,
@@ -62,12 +61,6 @@ import type {
   ChatStreamEvent,
   ChatToolCard,
 } from '../../../../types/chat.js';
-import type {
-  ChannelConnectorAgentId,
-  ChannelConnectorOctoInboundMessage,
-  ChannelConnectorPermissionMode,
-  ChannelConnectorsDaemonRuntimeConfig,
-} from '../../../../types/channel-connectors.js';
 import type { SystemService } from '../system/service.js';
 import { readJsonFile, writeJsonFile } from '../../core/state.js';
 import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
@@ -156,13 +149,9 @@ import {
 } from './run-projection-store.js';
 import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
 import {
-  runChannelConnectorAgentTurn,
   type ChannelConnectorAgentProcessRunner,
   type ChannelConnectorAgentProgressEvent,
-  type ChannelConnectorRuntimeBinding,
-  type ChannelConnectorRuntimeProject,
 } from '../channel-connectors/agent-runner.js';
-import { resolveChannelConnectorGatewayClientKey } from '../channel-connectors/gateway-secret.js';
 import {
   LruMap,
   clipPreview,
@@ -207,6 +196,11 @@ import {
   loadGatewayAuthContext,
 } from './openclaw-runtime/gateway-auth.js';
 import { createOpenClawGatewayChatRuntimeAdapter } from './openclaw-runtime/adapter.js';
+import {
+  assertSupportedNativeRuntimeTarget,
+  createNativeCliChatRuntimeAdapter,
+  type NativeChatActiveRuns,
+} from './native-cli-runtime/adapter.js';
 import {
   createSessionGatewayBridge,
   rejectBridgePending,
@@ -903,7 +897,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const frontendSseSubscribers = new Map<string, Set<http.ServerResponse>>();
   const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
   const sessionBridges = new Map<string, SessionGatewayBridge>();
-  const nativeActiveRuns = new Map<string, { runId: string; controller: AbortController; startedAt: string }>();
+  const nativeActiveRuns: NativeChatActiveRuns = new Map();
   const streamReplayState = createChatStreamReplayState();
   const queueFlushSessions = new Set<string>();
   const queueFlushRerunSessions = new Set<string>();
@@ -6542,123 +6536,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
 
-  function safeRuntimePathSegment(value: string, fallback: string): string {
-    const normalized = normalizeString(value)
-      .replace(/[^a-zA-Z0-9._-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 96);
-    return normalized || fallback;
-  }
-
-  function resolveChatGatewayEndpoint(): string {
-    return `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}/v1`;
-  }
-
-  function buildChatChannelConnectorPaths(): Pick<ChannelConnectorsDaemonRuntimeConfig, 'paths'>['paths'] {
-    const root = path.join(options.config.openclawRoot, 'tracevane', 'chat-native-cli');
-    return {
-      root,
-      state: path.join(root, 'state'),
-      log: path.join(root, 'logs'),
-      runtime: path.join(root, 'runtime'),
-      octoEvents: path.join(root, 'octo-events'),
-      feishuEvents: path.join(root, 'feishu-events'),
-    };
-  }
-
-  function normalizeNativeChatAgent(agent: string | null | undefined): ChannelConnectorAgentId | null {
-    const normalized = normalizeString(agent);
-    if (normalized === 'codex' || normalized === 'openai-codex' || normalized === 'codex-cli') return 'codex';
-    if (normalized === 'claude-code' || normalized === 'claude' || normalized === 'claude-code-cli') return 'claude-code';
-    if (normalized === 'opencode' || normalized === 'open-code' || normalized === 'open_code') return 'opencode';
-    return null;
-  }
-
-  function assertSupportedNativeRuntimeTarget(target: ChatSessionRuntimeTarget): void {
-    if (target.adapterKind !== 'native-cli') {
-      return;
-    }
-    if (normalizeNativeChatAgent(target.agent)) {
-      return;
-    }
-    throw new ChatServiceError(400, buildChatError(
-      'invalid_request',
-      `Native CLI agent '${target.agent || 'unknown'}' is not supported. Supported agents: codex, claude-code, opencode`,
-    ));
-  }
-
-  function normalizeNativePermissionMode(value: string | null | undefined): ChannelConnectorPermissionMode {
-    const normalized = normalizeString(value);
-    if (
-      normalized === 'read-only'
-      || normalized === 'auto-edit'
-      || normalized === 'full-auto'
-      || normalized === 'plan'
-      || normalized === 'yolo'
-    ) {
-      return normalized;
-    }
-    return 'suggest';
-  }
-
-  function buildChatNativeBinding(agent: ChannelConnectorAgentId): ChannelConnectorRuntimeBinding {
-    return {
-      id: 'tracevane-chat-web',
-      platform: 'octo',
-      accountId: 'tracevane-chat',
-      botId: null,
-      displayName: 'Tracevane Chat',
-      agent,
-      enabled: true,
-      allowlist: [],
-      adminUsers: [],
-      disabledCommands: [],
-      metadata: {
-        source: 'tracevane-chat',
-        nativeCli: true,
-      },
-    };
-  }
-
-  function buildChatNativeProject(session: ChatSessionRow, agent: ChannelConnectorAgentId): ChannelConnectorRuntimeProject {
-    const target = session.runtimeTarget;
-    const gatewayEndpoint = resolveChatGatewayEndpoint();
-    return {
-      id: safeRuntimePathSegment(`chat-${session.key}`, 'chat-session'),
-      name: normalizeString(session.label, 'Tracevane Chat'),
-      workDir: normalizeString(target.workDir) || options.config.projectRoot || options.config.openclawRoot,
-      agent,
-      model: normalizeString(target.model) || null,
-      permissionMode: normalizeNativePermissionMode(target.permissionMode),
-      gatewayEndpoint,
-      gatewayKeyRef: 'tracevane-gateway-client-key',
-      appProfileRef: 'tracevane-chat',
-      platformBindings: [buildChatNativeBinding(agent)],
-    };
-  }
-
-  function buildChatNativeMessage(input: ChatRuntimeSendInput): ChannelConnectorOctoInboundMessage {
-    const nativeAttachments = mediaBridge.buildNativeInboundAttachments(
-      input.sessionKey,
-      input.fileRefs,
-      input.attachments,
-    );
-    return {
-      messageId: input.idempotencyKey,
-      fromUid: 'tracevane-web-user',
-      channelId: input.sessionKey,
-      channelType: 1,
-      timestamp: Date.now(),
-      payload: {
-        type: 1,
-        content: input.message,
-        plain: input.message,
-      },
-      attachments: nativeAttachments.length ? nativeAttachments : undefined,
-    };
-  }
-
-
   function normalizedRuntimeTargetIdentity(target: ChatSessionRuntimeTarget): string {
     return JSON.stringify({
       adapterKind: normalizeString(target.adapterKind),
@@ -6708,112 +6585,21 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     registryCache = registry;
   }
 
-  function createNativeCliChatRuntimeAdapter(session: ChatSessionRow): ChatRuntimeAdapter {
-    const agent = normalizeNativeChatAgent(session.runtimeTarget.agent);
-    return {
-      kind: 'native-cli',
-      async send(input: ChatRuntimeSendInput) {
-        if (!agent) {
-          return {
-            status: 'started',
-            runId: input.idempotencyKey,
-            raw: { ok: false, error: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.` },
-            terminalState: 'error',
-            assistantText: null,
-            errorMessage: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.`,
-          };
-        }
-        const paths = buildChatChannelConnectorPaths();
-        const project = buildChatNativeProject(session, agent);
-        const binding = project.platformBindings[0];
-        const registryEntry = getRegistryEntry(session.key);
-        const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
-        const runId = input.idempotencyKey;
-        const controller = new AbortController();
-        nativeActiveRuns.set(input.sessionKey, {
-          runId,
-          controller,
-          startedAt: new Date().toISOString(),
-        });
-        try {
-          const result = await runChannelConnectorAgentTurn({
-            project,
-            binding,
-            message: buildChatNativeMessage(input),
-            sessionKey: input.sessionKey,
-            gatewayEndpoint: project.gatewayEndpoint,
-            gatewayClientKey: resolveChannelConnectorGatewayClientKey({ paths }),
-            agentRuntimeDir: path.join(
-              paths.runtime,
-              safeRuntimePathSegment(agent, 'agent'),
-              safeRuntimePathSegment(input.sessionKey, 'session'),
-            ),
-            session: registryEntry?.runtimeSession || null,
-            signal: controller.signal,
-            onProgress: (event) => {
-              progressEvents.push(event);
-              applyNativeCliProgressEvent(input.sessionKey, input.idempotencyKey, event);
-            },
-            processRunner: options.agentProcessRunner,
-          });
-          return {
-            status: 'started',
-            runId,
-            raw: {
-              ...result,
-              progressEvents,
-            } as unknown as Record<string, unknown>,
-            terminalState: result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'error',
-            assistantText: result.replyText,
-            errorMessage: result.error,
-            durationMs: result.durationMs,
-            nativeSession: result.session,
-          };
-        } finally {
-          if (nativeActiveRuns.get(input.sessionKey)?.runId === runId) {
-            nativeActiveRuns.delete(input.sessionKey);
-          }
-        }
-      },
-      async abort(input: ChatRuntimeAbortInput) {
-        const active = nativeActiveRuns.get(input.sessionKey);
-        if (!active) {
-          return normalizeChatRuntimeAbortResult({
-            aborted: false,
-            runIds: [],
-            native: true,
-          });
-        }
-        active.controller.abort();
-        return normalizeChatRuntimeAbortResult({
-          aborted: true,
-          runIds: [active.runId],
-          native: true,
-          startedAt: active.startedAt,
-        });
-      },
-      async reset() {
-        return normalizeChatRuntimeResetResult({ ok: true, native: true });
-      },
-      async deleteSession() {
-        return normalizeChatRuntimeDeleteResult({ ok: true, native: true });
-      },
-      async listSessions() {
-        return normalizeChatRuntimeListSessionsResult({ sessions: [] });
-      },
-      async readHistory() {
-        return normalizeChatRuntimeHistoryResult({ messages: [] });
-      },
-    };
-  }
-
   function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {
     return session?.runtimeTarget?.adapterKind === 'openclaw-gateway';
   }
 
   function createCurrentChatRuntimeAdapter(session?: ChatSessionRow | null): ChatRuntimeAdapter {
     if (session?.runtimeTarget.adapterKind === 'native-cli') {
-      return createNativeCliChatRuntimeAdapter(session);
+      return createNativeCliChatRuntimeAdapter({
+        config: options.config,
+        session,
+        runtimeSession: getRegistryEntry(session.key)?.runtimeSession || null,
+        activeRuns: nativeActiveRuns,
+        mediaBridge,
+        onProgress: applyNativeCliProgressEvent,
+        processRunner: options.agentProcessRunner,
+      });
     }
     return createOpenClawGatewayChatRuntimeAdapter({
       config: options.config,
