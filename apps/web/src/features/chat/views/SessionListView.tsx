@@ -9,9 +9,6 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
-  Panel,
-  PanelHead,
-  Row,
   ToneBadge,
   formatTime,
   toneIconClass,
@@ -54,6 +51,8 @@ export function SessionListView({
       const hay = [
         sessionTitle(s),
         s.agentId,
+        s.source?.originLabel ?? "",
+        s.source?.surface ?? "",
         s.source?.channel ?? "",
         s.lastMessagePreview ?? "",
       ]
@@ -64,24 +63,32 @@ export function SessionListView({
   }, [sessions, filter]);
 
   return (
-    <Panel className="flex h-full min-h-0 flex-col">
-      <PanelHead
-        title="会话"
-        sub={`${sessions.length} 个 Agent 会话`}
-        action={
-          <Button variant="outline" size="sm" onClick={onRefresh}>
+    <section className="flex h-full min-h-0 flex-col bg-panel">
+      <div className="grid gap-2 border-b border-line p-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-md font-semibold text-ink-strong">
+              Agent 会话
+            </h3>
+            <span className="block truncate text-xs text-subtle">
+              {sessions.length} 个会话
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onRefresh}
+            title="刷新会话"
+          >
             <RefreshCw className={cn(isFetching && "animate-spin")} />
-            刷新
           </Button>
-        }
-      />
-      <div className="border-b border-line p-2">
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="按标题 / 代理 / 渠道筛选"
+            placeholder="搜索会话 / Agent / 来源"
             className="pl-8"
             aria-label="筛选会话"
           />
@@ -115,32 +122,57 @@ export function SessionListView({
             }
           />
         ) : (
-          <div className="grid gap-0.5 p-1">
+          <div className="grid gap-px p-1">
             {visible.map((s) => {
               const st = runStateTone(s.runtime?.state);
+              const source =
+                s.source?.originLabel ||
+                s.source?.surface ||
+                s.source?.channel ||
+                "本地";
+              const preview = s.lastMessagePreview?.trim() || "暂无最近消息";
               return (
-                <div
+                <button
                   key={s.key}
+                  type="button"
+                  onClick={() => onSelect(s.key)}
                   className={cn(
-                    "rounded-sm",
+                    "flex min-w-0 items-center gap-3 rounded-sm px-3 py-2.5 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
                     s.key === selectedKey && "bg-primary-soft",
                   )}
                 >
-                  <Row
-                    icon={<MessageSquare />}
-                    iconClass={toneIconClass(st.tone)}
-                    title={sessionTitle(s)}
-                    subtitle={`${s.agentId} · ${s.source?.channel ?? "—"} · ${formatTime(s.updatedAt)}`}
-                    trailing={<ToneBadge tone={st.tone}>{st.label}</ToneBadge>}
-                    onClick={() => onSelect(s.key)}
-                  />
-                </div>
+                  <span
+                    className={cn(
+                      "grid size-10 shrink-0 place-items-center rounded-md [&_svg]:size-4",
+                      toneIconClass(st.tone),
+                    )}
+                  >
+                    <MessageSquare />
+                  </span>
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <strong className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-strong">
+                        {sessionTitle(s)}
+                      </strong>
+                      <span className="shrink-0 text-xs text-subtle">
+                        {formatTime(s.updatedAt)}
+                      </span>
+                    </span>
+                    <span className="truncate text-xs text-muted">
+                      {preview}
+                    </span>
+                    <span className="truncate text-2xs text-subtle">
+                      {s.agentId} · {source}
+                    </span>
+                  </span>
+                  <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
+                </button>
               );
             })}
           </div>
         )}
       </div>
-    </Panel>
+    </section>
   );
 }
 

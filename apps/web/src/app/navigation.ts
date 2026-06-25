@@ -35,16 +35,76 @@ export interface PageMeta {
 export const NAV_GROUP_ORDER: NavGroup[] = ["总览", "工作", "连接", "平台"];
 
 export const NAV_ITEMS: NavItem[] = [
-  { path: "/dashboard", label: "总览", title: "总览", subtitle: "全局状态、关键入口与下一步动作。", group: "总览", icon: LayoutDashboard, status: "ready" },
+  {
+    path: "/dashboard",
+    label: "总览",
+    title: "总览",
+    subtitle: "全局状态、关键入口与下一步动作。",
+    group: "总览",
+    icon: LayoutDashboard,
+    status: "ready",
+  },
 
-  { path: "/workspace", label: "工作区", title: "工作区", subtitle: "文件、编辑器、终端、Git、预览和 Agent handoff 的主工作面。", group: "工作", icon: Boxes, status: "ready" },
-  { path: "/chat", label: "对话", title: "本地对话", subtitle: "面向当前工作上下文的本地 Agent 对话。", group: "工作", icon: MessageSquare, status: "ready" },
-  { path: "/cli-agents", label: "CLI 代理", title: "CLI 代理", subtitle: "Codex、Claude Code、OpenCode 等本地 Agent runtime 的安装、检测与运行。", group: "工作", icon: Terminal, status: "ready", aliases: ["/long-tasks"] },
+  {
+    path: "/workspace",
+    label: "工作区",
+    title: "工作区",
+    subtitle: "文件、编辑器、终端、Git、预览和 Agent handoff 的主工作面。",
+    group: "工作",
+    icon: Boxes,
+    status: "ready",
+  },
+  {
+    path: "/chat",
+    label: "Agent 会话",
+    title: "Agent 会话",
+    subtitle:
+      "统一承载 Web、IM、CLI、OpenClaw 与未来平台触发的所有 Agent 对话。",
+    group: "工作",
+    icon: MessageSquare,
+    status: "ready",
+  },
+  {
+    path: "/cli-agents",
+    label: "CLI 代理",
+    title: "CLI 代理",
+    subtitle:
+      "Codex、Claude Code、OpenCode 等本地 Agent runtime 的安装、检测与运行。",
+    group: "工作",
+    icon: Terminal,
+    status: "ready",
+    aliases: ["/long-tasks"],
+  },
 
-  { path: "/model-gateway", label: "模型网关", title: "模型网关", subtitle: "Provider、模型、协议、路由和客户端接入。", group: "连接", icon: Plug, status: "ready" },
-  { path: "/im-channels", label: "IM 渠道", title: "IM 渠道", subtitle: "连接飞书、企微、Telegram 等第三方 IM，让消息进入 Agent。", group: "连接", icon: Network, status: "ready" },
+  {
+    path: "/model-gateway",
+    label: "模型网关",
+    title: "模型网关",
+    subtitle: "Provider、模型、协议、路由和客户端接入。",
+    group: "连接",
+    icon: Plug,
+    status: "ready",
+  },
+  {
+    path: "/im-channels",
+    label: "IM 渠道",
+    title: "IM 渠道",
+    subtitle: "连接飞书、企微、Telegram 等第三方 IM，让消息进入 Agent。",
+    group: "连接",
+    icon: Network,
+    status: "ready",
+  },
 
-  { path: "/platforms", label: "平台", title: "平台", subtitle: "第三方平台管理入口；当前平台为 OpenClaw。", group: "平台", icon: Bot, status: "ready", aliases: ["/recovery", "/runtime-admin"] },
+  {
+    path: "/platforms",
+    label: "平台",
+    title: "平台",
+    subtitle: "第三方平台管理入口；当前平台为 OpenClaw。",
+    group: "平台",
+    icon: Bot,
+    status: "ready",
+    aliases: ["/recovery", "/runtime-admin"],
+  },
 ];
 
 const OPENCLAW_SECTION_LABELS: Record<string, string> = {
@@ -60,7 +120,10 @@ const OPENCLAW_SECTION_LABELS: Record<string, string> = {
   diagnostics: "诊断",
 };
 
-export function navItemsByGroup(): Array<{ group: NavGroup; items: NavItem[] }> {
+export function navItemsByGroup(): Array<{
+  group: NavGroup;
+  items: NavItem[];
+}> {
   return NAV_GROUP_ORDER.map((group) => ({
     group,
     items: NAV_ITEMS.filter((item) => item.group === group),
@@ -71,15 +134,27 @@ export function normalizePath(pathname: string, search = ""): string {
   return `${pathname}${search || ""}`;
 }
 
-export function isNavItemActive(item: NavItem, pathname: string, search = ""): boolean {
+export function isNavItemActive(
+  item: NavItem,
+  pathname: string,
+  search = "",
+): boolean {
   const current = normalizePath(pathname, search);
   if (item.path.includes("?")) return current === item.path;
   if (pathname === item.path) return true;
-  if (item.path === "/platforms" && pathname.startsWith("/platforms/")) return true;
-  return item.aliases?.some((alias) => pathname === alias || pathname.startsWith(`${alias}/`)) ?? false;
+  if (item.path === "/platforms" && pathname.startsWith("/platforms/"))
+    return true;
+  return (
+    item.aliases?.some(
+      (alias) => pathname === alias || pathname.startsWith(`${alias}/`),
+    ) ?? false
+  );
 }
 
-export function findNavItem(pathname: string, search = ""): NavItem | undefined {
+export function findNavItem(
+  pathname: string,
+  search = "",
+): NavItem | undefined {
   return NAV_ITEMS.find((item) => isNavItemActive(item, pathname, search));
 }
 
@@ -95,9 +170,10 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
     const sectionLabel = OPENCLAW_SECTION_LABELS[section] ?? "总览";
     label = section === "overview" ? "OpenClaw" : sectionLabel;
     title = section === "overview" ? "OpenClaw" : `OpenClaw / ${sectionLabel}`;
-    subtitle = section === "overview"
-      ? item.subtitle
-      : `OpenClaw 平台子页面：${sectionLabel}。模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。`;
+    subtitle =
+      section === "overview"
+        ? item.subtitle
+        : `OpenClaw 平台子页面：${sectionLabel}。模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。`;
     breadcrumbs[0] = { label: "平台", path: "/platforms" };
     breadcrumbs.push({ label: "OpenClaw", path: "/platforms/openclaw" });
     if (section !== "overview") breadcrumbs.push({ label: sectionLabel });

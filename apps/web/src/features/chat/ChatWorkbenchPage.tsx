@@ -2,16 +2,19 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Activity,
+  Bot,
+  FolderOpen,
+  Menu,
   MessagesSquare,
-  PanelLeft,
   RefreshCw,
   Send,
 } from "lucide-react";
 
+import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { Sheet, SheetContent } from "@/design/ui/sheet";
 import { toast } from "@/design/ui/sonner";
-import { StatTile } from "@/features/cli-agents/views/_shared";
+import { ToneBadge } from "@/features/cli-agents/views/_shared";
 
 import {
   useAbortChatSessionMutation,
@@ -48,9 +51,10 @@ const EMPTY_TURN: LiveAssistantTurn = {
 /**
  * Chat Agent Operations Workbench (`/chat`).
  *
- * Layout: session roster (left) + conversation with the composer / run controls
- * (center) + the evidence inspector (right). On narrow viewports the roster and
- * inspector collapse into drawers.
+ * Layout: Domain Console prototype. A single primary stage owns the selected
+ * Agent conversation; the session index is a bounded stage section and evidence
+ * opens only on demand in a drawer. This intentionally avoids the old permanent
+ * left-list / center-chat / right-inspector three-column admin shell.
  *
  * Data: the bootstrap query owns the roster + the selected session's read
  * snapshot (history, queue, controls, diagnostics). Sending a message POSTs
@@ -70,14 +74,16 @@ export function ChatWorkbenchPage() {
   const bootstrap = useChatBootstrapQuery({ sessionKey: sessionParam });
 
   const sessions = bootstrap.data?.sessions ?? [];
-  const selectedKey = sessionParam ?? bootstrap.data?.selectedSessionKey ?? null;
+  const selectedKey =
+    sessionParam ?? bootstrap.data?.selectedSessionKey ?? null;
 
   const history = bootstrap.data?.history ?? null;
   const selectedSession =
     sessions.find((s) => s.key === selectedKey) ?? history?.session ?? null;
   const runtime = history?.runtime ?? selectedSession?.runtime ?? null;
   const permissions = selectedSession?.permissions ?? null;
-  const diagnostics = history?.diagnostics ?? bootstrap.data?.diagnostics ?? null;
+  const diagnostics =
+    history?.diagnostics ?? bootstrap.data?.diagnostics ?? null;
   const observability = history?.observability ?? null;
   const overlays = history?.overlays ?? [];
   const historyMessages: ChatMessageItem[] = history?.messages ?? [];
@@ -85,7 +91,9 @@ export function ChatWorkbenchPage() {
   const controls = bootstrap.data?.controls ?? null;
 
   // --- Live streaming state -------------------------------------------------
-  const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(null);
+  const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(
+    null,
+  );
   // We only open the SSE stream while a send is in-flight / streaming.
   const [streamEnabled, setStreamEnabled] = React.useState(false);
   const activeRunIdRef = React.useRef<string | null>(null);
@@ -94,7 +102,9 @@ export function ChatWorkbenchPage() {
   const abortMutation = useAbortChatSessionMutation();
 
   const refetchSelected = React.useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: chatKeys.bootstrap(selectedKey) });
+    void queryClient.invalidateQueries({
+      queryKey: chatKeys.bootstrap(selectedKey),
+    });
     void bootstrap.refetch();
   }, [queryClient, selectedKey, bootstrap]);
 
@@ -166,7 +176,11 @@ export function ChatWorkbenchPage() {
         }
         case "aborted": {
           if (activeRun && runId && runId !== activeRun) return;
-          setLiveTurn((prev) => ({ ...(prev ?? EMPTY_TURN), done: true, aborted: true }));
+          setLiveTurn((prev) => ({
+            ...(prev ?? EMPTY_TURN),
+            done: true,
+            aborted: true,
+          }));
           setStreamEnabled(false);
           activeRunIdRef.current = null;
           refetchSelected();
@@ -199,7 +213,9 @@ export function ChatWorkbenchPage() {
     if (stream.status === "error") {
       setStreamEnabled(false);
       activeRunIdRef.current = null;
-      setLiveTurn((prev) => (prev && !prev.done ? { ...prev, done: true } : prev));
+      setLiveTurn((prev) =>
+        prev && !prev.done ? { ...prev, done: true } : prev,
+      );
     }
   }, [stream.status]);
 
@@ -224,7 +240,10 @@ export function ChatWorkbenchPage() {
       {
         onSuccess: (ack) => {
           activeRunIdRef.current = ack.runId;
-          setLiveTurn((prev) => ({ ...(prev ?? EMPTY_TURN), runId: ack.runId }));
+          setLiveTurn((prev) => ({
+            ...(prev ?? EMPTY_TURN),
+            runId: ack.runId,
+          }));
           if (ack.status === "duplicate_completed") {
             setStreamEnabled(false);
             setLiveTurn(null);
@@ -246,9 +265,12 @@ export function ChatWorkbenchPage() {
       onSuccess: (res) => {
         toast.success(res.aborted ? "运行已中止" : "无活跃运行");
         setStreamEnabled(false);
-        setLiveTurn((prev) => (prev ? { ...prev, done: true, aborted: true } : prev));
+        setLiveTurn((prev) =>
+          prev ? { ...prev, done: true, aborted: true } : prev,
+        );
       },
-      onError: (error) => toast.error("中止失败", { description: error.message }),
+      onError: (error) =>
+        toast.error("中止失败", { description: error.message }),
     });
   };
 
@@ -260,11 +282,17 @@ export function ChatWorkbenchPage() {
         ? "运行进行中"
         : null;
 
-  const runningCount = sessions.filter((s) =>
-    /running|streaming/.test(s.runtime?.state ?? ""),
-  ).length;
-  const writableCount = sessions.filter((s) => s.permissions?.canSend).length;
-  const totalTokens = observability?.usage?.totalTokens ?? 0;
+  const selectedState = runStateTone(runtime?.state);
+  const selectedSource =
+    selectedSession?.source?.originLabel ||
+    selectedSession?.source?.surface ||
+    selectedSession?.source?.channel ||
+    "网页 / 本地";
+  const selectedModel = "由模型网关路由";
+  const selectedWorkdir =
+    selectedSession?.deliveryContext?.threadId ||
+    selectedSession?.deliveryContext?.to ||
+    "当前工作区";
 
   const inspector = (
     <EvidenceInspectorView
@@ -292,54 +320,81 @@ export function ChatWorkbenchPage() {
   );
 
   return (
-    <div className="grid h-[calc(100dvh-7rem)] min-h-[560px] grid-rows-[auto_minmax(0,1fr)] gap-4">
-      {/* Hero / roll-up */}
-      <section className="grid gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-ink-strong">会话任务工作台</h1>
-            <p className="truncate text-sm text-muted">
-              {selectedSession
-                ? `${sessionTitle(selectedSession)} · ${runStateTone(runtime?.state).label}`
-                : "Agent 操作工作台：会话、运行、工具调用与证据。"}
-            </p>
-          </div>
-          <span className="flex-1" />
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden"
-            onClick={() => setListOpen(true)}
-          >
-            <PanelLeft />
-            会话
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="lg:hidden"
-            onClick={() => setInspectorOpen(true)}
-          >
-            <Activity />
-            证据
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => void bootstrap.refetch()}>
-            <RefreshCw className={bootstrap.isFetching ? "animate-spin" : undefined} />
-            刷新
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile icon={<MessagesSquare />} label="会话" value={sessions.length} sub={`${runningCount} 运行中`} />
-          <StatTile icon={<Send />} label="可写" value={writableCount} sub="允许发送" />
-          <StatTile icon={<Activity />} label="队列" value={queueItems.length} sub="待投递 / 阻塞" />
-          <StatTile icon={<Activity />} label="令牌" value={totalTokens} sub="当前历史" />
-        </div>
-      </section>
+    <div className="grid h-full min-h-0 min-w-0 overflow-hidden bg-panel md:grid-cols-[320px_minmax(0,1fr)]">
+      {/* Conversation switcher: persistent on desktop, drawer on mobile. */}
+      <aside className="hidden min-h-0 border-r border-line bg-panel md:block">
+        {list}
+      </aside>
 
-      {/* Three-column workbench */}
-      <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)_360px]">
-        <div className="hidden min-h-0 lg:block">{list}</div>
-        <div className="min-h-0">
+      <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-panel">
+        <header className="flex min-w-0 items-center gap-3 border-b border-line px-4 py-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setListOpen(true)}
+            aria-label="打开会话列表"
+          >
+            <Menu />
+          </Button>
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary-soft text-primary [&_svg]:size-4">
+            <Bot />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-lg font-semibold text-ink-strong">
+                {selectedSession ? sessionTitle(selectedSession) : "Agent 会话"}
+              </h1>
+              <ToneBadge tone={selectedState.tone}>
+                {selectedState.label}
+              </ToneBadge>
+            </div>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">
+                <Bot />
+                <span className="truncate">
+                  {selectedSession?.agentId ?? "选择 Agent"}
+                </span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">
+                <Activity />
+                <span className="truncate">{selectedModel}</span>
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">
+                <MessagesSquare />
+                <span className="truncate">{selectedSource}</span>
+              </span>
+              <span className="hidden min-w-0 items-center gap-1 lg:inline-flex [&_svg]:size-3.5">
+                <FolderOpen />
+                <span className="max-w-[280px] truncate">
+                  {selectedWorkdir}
+                </span>
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void bootstrap.refetch()}
+              title="刷新"
+            >
+              <RefreshCw
+                className={bootstrap.isFetching ? "animate-spin" : undefined}
+              />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInspectorOpen(true)}
+            >
+              <Activity />
+              证据
+            </Button>
+          </div>
+        </header>
+
+        <div className="min-h-0 overflow-hidden">
           <ConversationView
             sessionKey={selectedKey}
             messages={historyMessages}
@@ -347,7 +402,9 @@ export function ChatWorkbenchPage() {
             isLoading={bootstrap.isLoading && Boolean(selectedKey)}
             error={bootstrap.error ?? null}
             liveTurn={liveTurn}
-            streaming={stream.status === "open" || stream.status === "connecting"}
+            streaming={
+              stream.status === "open" || stream.status === "connecting"
+            }
             streamError={stream.status === "error" ? stream.error : null}
             sending={sendMutation.isPending}
             sendDisabledReason={sendDisabledReason}
@@ -356,17 +413,15 @@ export function ChatWorkbenchPage() {
             onRetry={() => void bootstrap.refetch()}
           />
         </div>
-        <div className="hidden min-h-0 rounded-md border border-line bg-panel shadow-sm lg:block">
-          {inspector}
-        </div>
-      </div>
+      </section>
 
-      {/* Mobile drawers */}
       <Sheet open={listOpen} onOpenChange={setListOpen}>
-        <SheetContent side="left" className="p-0">
+        <SheetContent side="left" className="w-[min(92vw,360px)] p-0">
           <div className="h-full min-h-0 overflow-hidden">{list}</div>
         </SheetContent>
       </Sheet>
+
+      {/* Evidence is contextual and temporary, never a permanent third column. */}
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent side="right" className="p-0">
           <div className="h-full min-h-0 overflow-hidden">{inspector}</div>

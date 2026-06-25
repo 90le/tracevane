@@ -1,6 +1,13 @@
 import * as React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Menu, Moon, Palette, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
+import {
+  Menu,
+  Moon,
+  Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sun,
+} from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
@@ -27,8 +34,17 @@ import {
   CommandItem,
   CommandList,
 } from "@/design/ui/command";
-import { PALETTES, useTheme, type Palette as PaletteName } from "@/app/providers";
-import { isNavItemActive, navItemsByGroup, resolvePageMeta, type NavItem } from "@/app/navigation";
+import {
+  PALETTES,
+  useTheme,
+  type Palette as PaletteName,
+} from "@/app/providers";
+import {
+  isNavItemActive,
+  navItemsByGroup,
+  resolvePageMeta,
+  type NavItem,
+} from "@/app/navigation";
 
 const PALETTE_LABELS: Record<PaletteName, string> = {
   default: "靛蓝",
@@ -37,7 +53,15 @@ const PALETTE_LABELS: Record<PaletteName, string> = {
   graphite: "石墨",
 };
 
-function NavList({ pathname, search, onNavigate }: { pathname: string; search: string; onNavigate?: () => void }) {
+function NavList({
+  pathname,
+  search,
+  onNavigate,
+}: {
+  pathname: string;
+  search: string;
+  onNavigate?: () => void;
+}) {
   return (
     <SidebarNav>
       {navItemsByGroup().map(({ group, items }) => (
@@ -68,14 +92,23 @@ function NavList({ pathname, search, onNavigate }: { pathname: string; search: s
 function WorkspaceBrand() {
   const { collapsed } = useSidebar();
   return (
-    <SidebarHeader className={cn("flex items-center gap-2.5 px-1", collapsed && "justify-center px-0")}>
+    <SidebarHeader
+      className={cn(
+        "flex items-center gap-2.5 px-1",
+        collapsed && "justify-center px-0",
+      )}
+    >
       <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
         T
       </div>
       {!collapsed && (
         <div className="min-w-0">
-          <div className="truncate text-md font-semibold text-ink-strong">Tracevane</div>
-          <div className="truncate text-2xs uppercase tracking-[.12em] text-subtle">工作台</div>
+          <div className="truncate text-md font-semibold text-ink-strong">
+            Tracevane
+          </div>
+          <div className="truncate text-2xs uppercase tracking-[.12em] text-subtle">
+            工作台
+          </div>
         </div>
       )}
     </SidebarHeader>
@@ -95,7 +128,10 @@ function CollapseToggle({
         variant="ghost"
         size={collapsed ? "icon" : "sm"}
         onClick={onToggle}
-        className={cn("text-subtle", collapsed ? "mx-auto" : "w-full justify-start gap-2")}
+        className={cn(
+          "text-subtle",
+          collapsed ? "mx-auto" : "w-full justify-start gap-2",
+        )}
         title={collapsed ? "展开导航" : "收起导航"}
         aria-label={collapsed ? "展开导航" : "收起导航"}
       >
@@ -186,7 +222,11 @@ function CommandPalette({
 
 export function AppShell() {
   const { pathname, search } = useLocation();
-  const pageMeta = React.useMemo(() => resolvePageMeta(pathname, search), [pathname, search]);
+  const pageMeta = React.useMemo(
+    () => resolvePageMeta(pathname, search),
+    [pathname, search],
+  );
+  const isChromeLessRoute = pathname === "/chat";
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
@@ -246,57 +286,93 @@ export function AppShell() {
             <SheetTitle>Tracevane</SheetTitle>
           </SheetHeader>
           <div className="overflow-auto p-[14px]">
-            <NavList pathname={pathname} search={search} onNavigate={() => setMobileNavOpen(false)} />
+            <NavList
+              pathname={pathname}
+              search={search}
+              onNavigate={() => setMobileNavOpen(false)}
+            />
           </div>
         </SheetContent>
       </Sheet>
 
-      <div className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+      <div
+        className={cn(
+          "grid min-w-0 overflow-hidden",
+          isChromeLessRoute
+            ? "grid-rows-[minmax(0,1fr)]"
+            : "grid-rows-[auto_minmax(0,1fr)]",
+        )}
+      >
         {/* Topbar */}
-        <header className="flex h-14 items-center gap-2 border-b border-line bg-panel px-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="打开导航"
-          >
-            <Menu />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
-              {pageMeta.breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={`${crumb.label}-${index}`}>
-                  {index > 0 ? <span className="text-subtle">/</span> : null}
-                  {crumb.path && index < pageMeta.breadcrumbs.length - 1 ? (
-                    <Link className="truncate hover:text-ink-strong" to={crumb.path}>{crumb.label}</Link>
-                  ) : (
-                    <span className="truncate" aria-current={index === pageMeta.breadcrumbs.length - 1 ? "page" : undefined}>{crumb.label}</span>
-                  )}
-                </React.Fragment>
-              ))}
+        {!isChromeLessRoute && (
+          <header className="flex h-14 items-center gap-2 border-b border-line bg-panel px-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="打开导航"
+            >
+              <Menu />
+            </Button>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+                {pageMeta.breadcrumbs.map((crumb, index) => (
+                  <React.Fragment key={`${crumb.label}-${index}`}>
+                    {index > 0 ? <span className="text-subtle">/</span> : null}
+                    {crumb.path && index < pageMeta.breadcrumbs.length - 1 ? (
+                      <Link
+                        className="truncate hover:text-ink-strong"
+                        to={crumb.path}
+                      >
+                        {crumb.label}
+                      </Link>
+                    ) : (
+                      <span
+                        className="truncate"
+                        aria-current={
+                          index === pageMeta.breadcrumbs.length - 1
+                            ? "page"
+                            : undefined
+                        }
+                      >
+                        {crumb.label}
+                      </span>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+              <div className="truncate text-md font-semibold text-ink-strong">
+                {pageMeta.title}
+              </div>
             </div>
-            <div className="truncate text-md font-semibold text-ink-strong">{pageMeta.title}</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCommandOpen(true)}
-            className={cn(
-              "hidden h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel-2 px-3 text-sm text-subtle outline-none transition-colors sm:flex",
-              "hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)]",
-            )}
-          >
-            <span>搜索 / 跳转</span>
-            <kbd className="rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs">⌘K</kbd>
-          </button>
-          <div className="flex items-center gap-1 sm:ml-2">
-            <PaletteToggle />
-            <ThemeToggle />
-          </div>
-        </header>
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className={cn(
+                "hidden h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel-2 px-3 text-sm text-subtle outline-none transition-colors sm:flex",
+                "hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)]",
+              )}
+            >
+              <span>搜索 / 跳转</span>
+              <kbd className="rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs">
+                ⌘K
+              </kbd>
+            </button>
+            <div className="flex items-center gap-1 sm:ml-2">
+              <PaletteToggle />
+              <ThemeToggle />
+            </div>
+          </header>
+        )}
 
         {/* Routed content — the only scroll region besides the sidebar nav */}
-        <main className="min-w-0 overflow-auto p-3 sm:p-5">
+        <main
+          className={cn(
+            "min-w-0 overflow-auto",
+            isChromeLessRoute ? "p-0" : "p-3 sm:p-5",
+          )}
+        >
           <Outlet />
         </main>
       </div>

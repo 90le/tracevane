@@ -4,6 +4,7 @@ import {
   Bot,
   Loader2,
   MessagesSquare,
+  Paperclip,
   Send,
   Square,
   User,
@@ -41,7 +42,9 @@ function ToolCallBlock({
         <span className="grid size-5 shrink-0 place-items-center rounded-[6px] bg-panel-3 text-muted [&_svg]:size-3">
           <Wrench />
         </span>
-        <span className="truncate font-mono text-sm text-ink-strong">{tool.name}</span>
+        <span className="truncate font-mono text-sm text-ink-strong">
+          {tool.name}
+        </span>
         <ToneBadge tone={tool.isError ? "bad" : st.tone}>{st.label}</ToneBadge>
       </div>
       {tool.argsPreview && (
@@ -88,7 +91,9 @@ function MessageBubble({ message }: { message: ChatMessageItem }) {
               <summary className="cursor-pointer select-none text-xs text-subtle">
                 {block.kind === "thinking" ? "思考过程" : "推理"}
               </summary>
-              <div className="mt-1 whitespace-pre-wrap break-words">{block.text}</div>
+              <div className="mt-1 whitespace-pre-wrap break-words">
+                {block.text}
+              </div>
             </details>
           ))}
         </div>
@@ -102,7 +107,9 @@ function MessageBubble({ message }: { message: ChatMessageItem }) {
             : "border border-line bg-panel text-ink",
         )}
       >
-        {message.text ? message.text : message.omitted ? (
+        {message.text ? (
+          message.text
+        ) : message.omitted ? (
           <span className="italic text-subtle">内容已省略。</span>
         ) : (
           <span className="italic text-subtle">无文本内容。</span>
@@ -138,8 +145,12 @@ function LiveTurn({ turn }: { turn: LiveAssistantTurn }) {
         {turn.aborted && <Badge variant="bad">已中止</Badge>}
       </div>
       <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
-        {turn.text || <span className="italic text-subtle">等待 Agent 响应…</span>}
-        {!turn.done && turn.text && <span className="ml-0.5 animate-pulse">▋</span>}
+        {turn.text || (
+          <span className="italic text-subtle">等待 Agent 响应…</span>
+        )}
+        {!turn.done && turn.text && (
+          <span className="ml-0.5 animate-pulse">▋</span>
+        )}
       </div>
       {turn.toolCards.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1.5">
@@ -212,13 +223,13 @@ export function ConversationView({
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-md border border-line bg-panel shadow-sm">
+    <section className="flex h-full min-h-0 flex-col bg-panel">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-4">
         {!sessionKey ? (
           <EmptyState
             icon={<MessagesSquare />}
             title="选择一个会话"
-            description="从左侧选择 Agent 会话以查看对话、工具调用与运行证据。"
+            description="从左侧会话列表选择，或通过 IM / Workspace / CLI 创建新的 Agent 会话。"
           />
         ) : isLoading ? (
           <div className="grid gap-3">
@@ -253,7 +264,7 @@ export function ConversationView({
       </div>
 
       {/* Composer / run controls */}
-      <div className="border-t border-line p-3">
+      <div className="border-t border-line bg-panel px-4 py-3">
         {streamError && (
           <div className="mb-2 flex items-center gap-2 rounded-sm border border-red bg-red-soft px-2.5 py-1.5 text-sm text-red">
             <AlertTriangle className="size-3.5 shrink-0" />
@@ -275,22 +286,19 @@ export function ConversationView({
           }
           aria-label="消息输入"
           className={cn(
-            "h-20 w-full resize-none rounded-sm border border-line bg-panel-2 px-3 py-2 text-base text-ink-strong outline-none transition-[border-color,box-shadow]",
+            "h-16 w-full resize-none rounded-md border border-line bg-panel-2 px-3 py-2 text-base text-ink-strong outline-none transition-[border-color,box-shadow]",
             "placeholder:text-subtle focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]",
             "disabled:cursor-not-allowed disabled:opacity-60",
           )}
         />
-        <div className="mt-2 flex items-center gap-2">
-          {sendDisabledReason ? (
-            <Badge variant="mute">{sendDisabledReason}</Badge>
-          ) : streaming ? (
-            <Badge variant="warn">
-              <Loader2 className="size-3 animate-spin" />
-              事件流已连接
-            </Badge>
-          ) : (
-            <Badge variant="ok">可发送</Badge>
-          )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" disabled={!sessionKey}>
+            <Paperclip />
+            附加上下文
+          </Button>
+          <Button variant="ghost" size="sm" disabled={!sessionKey}>
+            @ 文件
+          </Button>
           <span className="flex-1" />
           {streaming && !liveTurn?.done && (
             <Button

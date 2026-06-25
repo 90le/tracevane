@@ -29,14 +29,24 @@ import type {
   AttentionSeverity,
   QuickLaunchEntry,
 } from "./types";
-import { Panel, PanelHead, Row, ToneBadge, formatTime, toneIconClass } from "./views/_shared";
+import {
+  Panel,
+  PanelHead,
+  Row,
+  ToneBadge,
+  formatTime,
+  toneIconClass,
+} from "./views/_shared";
 import { ROUTES } from "./views/aggregate";
 import { useDashboardAggregate } from "./views/useDashboardAggregate";
 
 /** Cockpit auto-refresh cadence — refetch (NOT SSE), generous to avoid churn. */
 const REFRESH_INTERVAL_MS = 20_000;
 
-const ATTENTION_ICON: Record<AttentionIconKey, React.ComponentType<{ className?: string }>> = {
+const ATTENTION_ICON: Record<
+  AttentionIconKey,
+  React.ComponentType<{ className?: string }>
+> = {
   gateway: Plug,
   channel: Network,
   recovery: LifeBuoy,
@@ -59,17 +69,44 @@ const QUICK_LAUNCH_ICON: Record<
   ide: Boxes,
 };
 
-const SEVERITY_BADGE: Record<AttentionSeverity, { variant: "bad" | "warn" | "mute"; label: string }> = {
+const SEVERITY_BADGE: Record<
+  AttentionSeverity,
+  { variant: "bad" | "warn" | "mute"; label: string }
+> = {
   high: { variant: "bad", label: "高" },
   medium: { variant: "warn", label: "中" },
   low: { variant: "mute", label: "低" },
 };
 
 const QUICK_LAUNCH: QuickLaunchEntry[] = [
-  { id: "chat", label: "对话", detail: "继续或开始 Agent 会话", icon: "chat", to: ROUTES.chat },
-  { id: "model-gateway", label: "模型网关", detail: "Provider / 路由 / 用量", icon: "gateway", to: ROUTES.modelGateway },
-  { id: "im-channels", label: "IM 渠道", detail: "绑定 / 会话 / 守护进程", icon: "channel", to: ROUTES.imChannels },
-  { id: "cli-agents", label: "CLI 代理", detail: "本地 Agent CLI 运行", icon: "system", to: ROUTES.cliAgents },
+  {
+    id: "chat",
+    label: "Agent 会话",
+    detail: "继续或开始统一 Agent 会话",
+    icon: "chat",
+    to: ROUTES.chat,
+  },
+  {
+    id: "model-gateway",
+    label: "模型网关",
+    detail: "Provider / 路由 / 用量",
+    icon: "gateway",
+    to: ROUTES.modelGateway,
+  },
+  {
+    id: "im-channels",
+    label: "IM 渠道",
+    detail: "绑定 / 会话 / 守护进程",
+    icon: "channel",
+    to: ROUTES.imChannels,
+  },
+  {
+    id: "cli-agents",
+    label: "CLI 代理",
+    detail: "本地 Agent CLI 运行",
+    icon: "system",
+    to: ROUTES.cliAgents,
+  },
 ];
 
 /**
@@ -143,8 +180,10 @@ export function DashboardPage() {
     );
   }
 
-  const checkedAt = summary?.checkedAt ?? sources.health.data?.checkedAt ?? null;
-  const releaseVersion = summary?.server.version ?? sources.health.data?.version;
+  const checkedAt =
+    summary?.checkedAt ?? sources.health.data?.checkedAt ?? null;
+  const releaseVersion =
+    summary?.server.version ?? sources.health.data?.version;
 
   return (
     <div className="grid gap-[18px]">
@@ -171,7 +210,9 @@ export function DashboardPage() {
               onClick={refetchAll}
               disabled={isFetching}
             >
-              <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
+              <RefreshCw
+                className={cn("size-3.5", isFetching && "animate-spin")}
+              />
               刷新
             </Button>
           </span>
@@ -194,7 +235,9 @@ export function DashboardPage() {
                 <span className="text-xs text-subtle">{pillar.label}</span>
                 <ToneBadge tone={pillar.tone}>{pillar.value}</ToneBadge>
               </div>
-              <div className="mt-1.5 truncate text-sm text-muted">{pillar.detail}</div>
+              <div className="mt-1.5 truncate text-sm text-muted">
+                {pillar.detail}
+              </div>
             </button>
           ))}
         </div>
@@ -273,7 +316,9 @@ export function DashboardPage() {
               {activeWork.map((item) => (
                 <Row
                   key={item.id}
-                  icon={item.source === "chat" ? <MessageSquare /> : <Terminal />}
+                  icon={
+                    item.source === "chat" ? <MessageSquare /> : <Terminal />
+                  }
                   iconClass="bg-primary-soft text-primary"
                   title={item.title}
                   subtitle={item.detail}
@@ -306,7 +351,9 @@ export function DashboardPage() {
                   <strong className="truncate text-base text-ink-strong">
                     {entry.label}
                   </strong>
-                  <span className="truncate text-sm text-muted">{entry.detail}</span>
+                  <span className="truncate text-sm text-muted">
+                    {entry.detail}
+                  </span>
                 </span>
               </button>
             );
@@ -320,7 +367,11 @@ export function DashboardPage() {
           title="近期动态"
           sub="来自平台守护事件、运行摘要与渠道驱动"
           action={
-            <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.recovery)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(ROUTES.recovery)}
+            >
               <LifeBuoy className="size-3.5" />
               平台守护日志
             </Button>
