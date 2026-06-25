@@ -8,14 +8,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(here, "../..");
 const read = (relative) => readFileSync(path.join(rootDir, relative), "utf8");
 
-test("CLI Agents page keeps a focused workbench view set", () => {
+test("CLI Agents page keeps only the two useful workbench entries", () => {
   const page = read("apps/web/src/features/cli-agents/CliAgentsPage.tsx");
   const types = read("apps/web/src/features/cli-agents/types.ts");
 
-  assert.match(types, /"overview",\s*\n\s*"runs",\s*\n\s*"cli",\s*\n\s*"evidence"/);
+  assert.match(types, /CLI_AGENTS_VIEWS = \["runs", "cli"\]/);
   assert.match(page, /label: "运行台"/);
-  assert.match(page, /label: "启动台"/);
-  assert.match(page, /label: "证据索引"/);
+  assert.match(page, /label: "启动 \/ 修复"/);
+  assert.match(page, /: "runs"/);
+  assert.doesNotMatch(page, /label: "概览"|label: "证据索引"/);
   assert.doesNotMatch(page, /Persona|OpenClaw generic|通用频道 CRUD/);
 });
 
@@ -36,37 +37,31 @@ test("Runs view is table-first and only exposes proven terminal controls", () =>
   assert.doesNotMatch(source, /grid-cols-3.*card/i);
 });
 
-test("CLI Runtime view owns launch handoff but not provider or IM editing", () => {
+test("CLI Runtime view owns launch and install repair without provider or IM editing", () => {
   const source = read("apps/web/src/features/cli-agents/views/CliRuntimeView.tsx");
 
   assert.match(source, /Agent CLI 启动台/);
   assert.match(source, /useLaunchTerminalMutation/);
-  assert.match(source, /解析启动命令/);
+  assert.match(source, /useInstallTerminalCliMutation/);
+  assert.match(source, /确认安装/);
+  assert.match(source, /安装结果/);
+  assert.match(source, /复制提示/);
   assert.match(source, /navigator\.clipboard\?\.writeText/);
   assert.match(source, /document\.execCommand\("copy"\)/);
   assert.match(source, /void gateway\.refetch\(\)/);
   assert.match(source, /window\.location\.hash = "#\/ide"/);
   assert.match(source, /window\.location\.hash = "#\/model-gateway"/);
+  assert.match(source, /不会登录你的 OpenAI \/ Anthropic \/ OpenCode 账号/);
   assert.match(source, /不自动写 shell/);
   assert.doesNotMatch(source, /apiKey|secret|botId|绑定路由/);
 });
 
-test("Overview describes boundaries instead of duplicating Gateway or IM management", () => {
-  const source = read("apps/web/src/features/cli-agents/views/OverviewView.tsx");
+test("Terminal data layer exposes install as an explicit mutation", () => {
+  const api = read("apps/web/src/lib/api/terminal.ts");
+  const query = read("apps/web/src/lib/query/terminal.ts");
 
-  assert.match(source, /核心只做三件事/);
-  assert.match(source, /职责边界/);
-  assert.match(source, /Model Gateway/);
-  assert.match(source, /IM Channels/);
-  assert.doesNotMatch(source, /删除平台账号|Provider 新建|保存并重启/);
-});
-
-
-test("Evidence view translates raw session-driver events for operators", () => {
-  const source = read("apps/web/src/features/cli-agents/views/EvidenceView.tsx");
-
-  assert.match(source, /function eventLabel/);
-  assert.match(source, /Agent 回复完成/);
-  assert.match(source, /飞书/);
-  assert.doesNotMatch(source, /title=\{event\.type\}/);
+  assert.match(api, /installTerminalCli/);
+  assert.match(api, /\/api\/terminal\/install|`\$\{BASE\}\/install`/);
+  assert.match(query, /useInstallTerminalCliMutation/);
+  assert.match(query, /TerminalInstallResponse/);
 });

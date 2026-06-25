@@ -257,3 +257,22 @@ CLI Agents 已经从 OpenClaw/Persona/通用终端混杂状态中初步收敛：
 - `npm run typecheck:api`：通过。
 - `npm run typecheck:web`：通过。
 - `node --test tests/system/web-cli-agents.test.mjs`：通过。
+
+## 10. 2026-06-25 CLI 页面减法与未安装修复链路
+
+继续优化结论：CLI Agents 不应该保留“概览 / 证据索引”这类低价值独立页面。用户真正需要的是：
+
+1. **运行台**：当前有哪些 Agent Run、谁失败了、能不能停、证据在哪。
+2. **启动 / 修复**：Codex / Claude Code / OpenCode 是否可用；不可用时如何安装、验证、启动。
+
+本轮执行：
+
+- `CLI_AGENTS_VIEWS` 从 `overview / runs / cli / evidence` 收敛为 `runs / cli`。
+- 默认视图改为 `runs`，让用户进入页面先看到最有价值的运行管理台。
+- “启动台”更名为“启动 / 修复”，不再只是展示安装状态。
+- 接入 `/api/terminal/install`：未安装且后端支持安装时显示“安装”主操作。
+- 安装操作必须二次确认，确认文案明确：只安装 CLI 二进制，不登录外部账号、不写 Provider 密钥。
+- 未安装时可复制 install hint；安装后展示安装结果并刷新 CLI readiness 与 Gateway 依赖。
+- 保留 IDE 跳转：真正 PTY 输入、登录命令、shell 输出仍在 IDE 终端。
+
+设计边界继续保持：CLI Agents 不编辑 Provider、模型路由、IM 账号、IM 绑定或通用 terminal tab。

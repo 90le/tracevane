@@ -40,6 +40,8 @@ export type {
   TerminalLaunchCli,
   TerminalLaunchPayload,
   TerminalLaunchResponse,
+  TerminalInstallRequestId,
+  TerminalInstallResponse,
   TerminalEndPayload,
   TerminalEndResponse,
 } from "../../../../../types/terminal";
@@ -50,17 +52,10 @@ export type {
 
 /**
  * The `data-view` set for the workbench, driven from the URL (`?view=`):
- *  - overview  — concise readiness roll-up
- *  - runs      — unified runtime run list across terminal / IM / chat sources
- *  - cli       — Codex / Claude Code / OpenCode CLI runtime status
- *  - evidence  — raw IM async agent-session + chat-session evidence (read-only)
+ *  - runs      — primary Agent Run table across terminal / IM / chat sources
+ *  - cli       — Codex / Claude Code / OpenCode readiness, install repair and launch handoff
  */
-export const CLI_AGENTS_VIEWS = [
-  "overview",
-  "runs",
-  "cli",
-  "evidence",
-] as const;
+export const CLI_AGENTS_VIEWS = ["runs", "cli"] as const;
 
 export type CliAgentsView = (typeof CLI_AGENTS_VIEWS)[number];
 

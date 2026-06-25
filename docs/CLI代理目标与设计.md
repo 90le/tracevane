@@ -115,3 +115,24 @@ CLI Agents 的最新设计不是“第三个配置中心”，而是运行管理
    - 页面采用 viewbar + table/list + Dialog 确认。
    - 不使用卡片墙，不用重复状态卡堆满首屏。
    - Gateway/IM 只作为依赖引用和跳转，不显示可编辑副本。
+
+## 8. 2026-06-25 页面减法与安装修复
+
+CLI Agents 页面继续收敛为两个入口：
+
+1. **运行台**
+   - 默认入口。
+   - 聚合 Agent Runs。
+   - 支持搜索、筛选、stop/delete 已证明属于 Agent CLI 的 terminal session。
+   - IM/Chat/Gateway 只跳 owner 页面，不重复管理。
+
+2. **启动 / 修复**
+   - Codex / Claude Code / OpenCode readiness。
+   - 未安装时提供安装确认、复制安装提示、安装结果回显、重新检测。
+   - 已安装时提供启动命令解析、复制、跳 IDE。
+   - 安装 CLI 不等于登录账号；登录/授权仍需用户在 IDE 终端或官方流程里完成。
+
+删除独立导航入口：
+
+- `概览`：信息重复，无法提供关键管理价值。
+- `证据索引`：证据应跟随 Run 行和 owner link，而不是形成另一个只读列表页。

@@ -2,6 +2,8 @@ import { apiRequest } from "./client";
 import type {
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalInstallRequestId,
+  TerminalInstallResponse,
   TerminalLaunchPayload,
   TerminalLaunchResponse,
   TerminalSessionDescriptor,
@@ -65,6 +67,16 @@ export function launchTerminal(
   return apiRequest<TerminalLaunchResponse>(`${BASE}/launch`, {
     method: "POST",
     body: jsonBody(payload),
+  });
+}
+
+/** POST /api/terminal/install — install one supported CLI or all missing CLIs. */
+export function installTerminalCli(
+  cli: TerminalInstallRequestId,
+): Promise<TerminalInstallResponse> {
+  return apiRequest<TerminalInstallResponse>(`${BASE}/install`, {
+    method: "POST",
+    body: jsonBody({ cli }),
   });
 }
 

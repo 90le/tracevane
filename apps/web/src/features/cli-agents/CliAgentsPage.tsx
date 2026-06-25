@@ -1,8 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Activity,
-  LayoutDashboard,
   ListChecks,
   Terminal,
 } from "lucide-react";
@@ -15,12 +13,7 @@ import {
   type CliAgentsViewNavParams,
   type CliAgentsViewProps,
 } from "./types";
-import {
-  CliRuntimeView,
-  EvidenceView,
-  OverviewView,
-  RunsView,
-} from "./views";
+import { CliRuntimeView, RunsView } from "./views";
 
 /** Primary `viewbar` tabs (mirrors the established feature pages). */
 const TABS: ReadonlyArray<{
@@ -28,20 +21,16 @@ const TABS: ReadonlyArray<{
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { view: "overview", label: "概览", icon: LayoutDashboard },
   { view: "runs", label: "运行台", icon: ListChecks },
-  { view: "cli", label: "启动台", icon: Terminal },
-  { view: "evidence", label: "证据索引", icon: Activity },
+  { view: "cli", label: "启动 / 修复", icon: Terminal },
 ];
 
 const VIEW_COMPONENTS: Record<
   CliAgentsView,
   (props: CliAgentsViewProps) => React.JSX.Element
 > = {
-  overview: OverviewView,
   runs: RunsView,
   cli: CliRuntimeView,
-  evidence: EvidenceView,
 };
 
 function isCliAgentsView(value: string | null): value is CliAgentsView {
@@ -51,7 +40,7 @@ function isCliAgentsView(value: string | null): value is CliAgentsView {
 /**
  * CLI Agent Workbench (`/cli-agents`) page. Owns the primary `viewbar` tabs and
  * a URL-driven view state machine over the `data-view` set
- * (`overview|runs|cli|evidence`). The active view comes entirely from
+ * (`runs|cli`). The active view comes entirely from
  * the search params, so views are
  * deep-linkable and browser back/forward work. Content lives in `./views`.
  */
@@ -59,7 +48,7 @@ export function CliAgentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const viewParam = searchParams.get("view");
-  const resolvedView: CliAgentsView = isCliAgentsView(viewParam) ? viewParam : "overview";
+  const resolvedView: CliAgentsView = isCliAgentsView(viewParam) ? viewParam : "runs";
   const goToView = React.useCallback<CliAgentsViewProps["goToView"]>(
     (view: CliAgentsView, _params?: CliAgentsViewNavParams) => {
       setSearchParams(

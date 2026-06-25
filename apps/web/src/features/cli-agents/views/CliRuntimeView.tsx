@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   CircleSlash,
   Copy,
+  Download,
   ExternalLink,
   Play,
   Plug,
@@ -11,6 +12,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import { toast } from "@/design/ui/sonner";
 import {
   Table,
@@ -25,9 +34,14 @@ import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import { useModelGatewayStatusQuery } from "@/lib/query/model-gateway";
-import { useLaunchTerminalMutation } from "@/lib/query/terminal";
+import { useInstallTerminalCliMutation, useLaunchTerminalMutation } from "@/lib/query/terminal";
 
-import type { CliAgentsViewProps, TerminalLaunchCli, TerminalLaunchResponse } from "../types";
+import type {
+  CliAgentsViewProps,
+  TerminalInstallResponse,
+  TerminalLaunchCli,
+  TerminalLaunchResponse,
+} from "../types";
 import { Fact, Panel, PanelHead, ToneBadge, formatTime, toneIconClass } from "./_shared";
 
 /** Display order + labels for the agent CLIs. */
@@ -68,7 +82,10 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
   const terminalStatus = useTerminalStatusQuery();
   const gateway = useModelGatewayStatusQuery();
   const launch = useLaunchTerminalMutation();
+  const installCli = useInstallTerminalCliMutation();
   const [resolved, setResolved] = React.useState<TerminalLaunchResponse | null>(null);
+  const [installTarget, setInstallTarget] = React.useState<TerminalLaunchCli | null>(null);
+  const [installResult, setInstallResult] = React.useState<TerminalInstallResponse | null>(null);
 
   const binaries = terminalStatus.data?.binaries ?? [];
   const byId = new Map<string, (typeof binaries)[number]>(
@@ -82,6 +99,29 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
   const config = terminalStatus.data?.config;
   const health = gateway.data?.healthSummary;
   const gatewayReady = Boolean(health && health.okProviders > 0 && health.openCircuits === 0);
+
+  const selectedInstallTarget = installTarget ? installTargetById.get(installTarget) : null;
+  const selectedInstallBinary = installTarget ? byId.get(installTarget) : null;
+
+  const refreshReadiness = () => {
+    void terminalStatus.refetch();
+    void gateway.refetch();
+  };
+
+  const runInstall = () => {
+    if (!installTarget) return;
+    installCli.mutate(installTarget, {
+      onSuccess: (result) => {
+        setInstallResult(result);
+        setInstallTarget(null);
+        toast.success(result.success ? "CLI 安装完成" : "CLI 安装未完成", {
+          description: result.message,
+        });
+        refreshReadiness();
+      },
+      onError: (error) => toast.error("安装失败", { description: error.message }),
+    });
+  };
 
   const resolveLaunch = (cli: TerminalLaunchCli) => {
     launch.mutate(
@@ -106,10 +146,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                void terminalStatus.refetch();
-                void gateway.refetch();
-              }}
+              onClick={refreshReadiness}
             >
               <RefreshCw />
               刷新
@@ -195,16 +232,39 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            title={installed ? "解析可复制的启动命令" : "CLI 未安装，无法解析启动命令"}
-                            disabled={!installed || launch.isPending}
-                            onClick={() => resolveLaunch(id)}
-                          >
-                            <Play />
-                            解析启动命令
-                          </Button>
+                          {installed ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              title="解析可复制的启动命令"
+                              disabled={launch.isPending}
+                              onClick={() => resolveLaunch(id)}
+                            >
+                              <Play />
+                              启动命令
+                            </Button>
+                          ) : (
+                            <>
+                              {binary?.installSupported ? (
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  title="确认后在本机执行后端安装流程"
+                                  disabled={installCli.isPending}
+                                  onClick={() => setInstallTarget(id)}
+                                >
+                                  <Download />
+                                  安装
+                                </Button>
+                              ) : null}
+                              {installTarget?.installHint ? (
+                                <Button variant="outline" size="sm" onClick={() => copyText(installTarget.installHint)}>
+                                  <Copy />
+                                  复制提示
+                                </Button>
+                              ) : null}
+                            </>
+                          )}
                           <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/ide")}>
                             IDE
                             <ExternalLink />
@@ -219,6 +279,32 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
           )}
         </div>
       </Panel>
+
+      {installResult ? (
+        <Panel>
+          <PanelHead
+            title="安装结果"
+            sub={installResult.message}
+            action={<Button variant="outline" size="sm" onClick={() => setInstallResult(null)}>清除</Button>}
+          />
+          <div className="grid gap-2 p-4">
+            {installResult.results.map((result) => (
+              <div key={result.cli} className="rounded-md border border-line bg-panel-2 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-ink-strong">{result.label}</strong>
+                  <ToneBadge tone={result.success ? "ok" : "bad"}>
+                    {result.success ? (result.alreadyInstalled ? "已存在" : "成功") : "失败"}
+                  </ToneBadge>
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  {result.command || result.error || result.path || "无安装命令记录"}
+                </div>
+                {result.stderr ? <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-red">{result.stderr}</pre> : null}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
 
       {resolved ? (
         <Panel>
@@ -248,6 +334,24 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
           </div>
         </Panel>
       ) : null}
+
+      <Dialog open={Boolean(installTarget)} onOpenChange={(open) => !open && setInstallTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>安装 {selectedInstallTarget?.label || selectedInstallBinary?.label || installTarget}</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <p>这会在本机执行后端安装流程。它只安装 CLI 二进制，不会登录你的 OpenAI / Anthropic / OpenCode 账号，也不会写入模型 Provider 密钥。</p>
+            <div className="mt-3 rounded-md border border-line bg-panel-2 p-3 text-sm text-ink">
+              {selectedInstallTarget?.installHint || selectedInstallTarget?.packageName || "后端将选择可用安装方式。"}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInstallTarget(null)}>取消</Button>
+            <Button variant="primary" disabled={!installTarget || installCli.isPending} onClick={runInstall}>确认安装</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Panel>
         <PanelHead

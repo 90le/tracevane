@@ -11,12 +11,15 @@ import {
   endTerminalSession,
   getTerminalSession,
   getTerminalSessions,
+  installTerminalCli,
   launchTerminal,
 } from "../api/terminal";
 import type { ApiError } from "../api/errors";
 import type {
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalInstallRequestId,
+  TerminalInstallResponse,
   TerminalLaunchPayload,
   TerminalLaunchResponse,
   TerminalSessionDescriptor,
@@ -91,6 +94,16 @@ export function useLaunchTerminalMutation(
 ) {
   return useMutation<TerminalLaunchResponse, ApiError, TerminalLaunchPayload>({
     mutationFn: (payload) => launchTerminal(payload),
+    ...options,
+  });
+}
+
+/** Install a supported CLI (`POST /api/terminal/install`). Invalidates status by caller refetch. */
+export function useInstallTerminalCliMutation(
+  options?: MutationOpts<TerminalInstallResponse, TerminalInstallRequestId>,
+) {
+  return useMutation<TerminalInstallResponse, ApiError, TerminalInstallRequestId>({
+    mutationFn: (cli) => installTerminalCli(cli),
     ...options,
   });
 }
