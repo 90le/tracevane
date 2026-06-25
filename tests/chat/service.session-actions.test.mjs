@@ -668,6 +668,80 @@ test('native CLI reset and delete stay inside native adapter without OpenClaw ga
   }
 });
 
+test('native CLI chat abort cancels the active channel connector runner signal', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-abort-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    let runnerSignal = null;
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerSignal = request.signal;
+          await new Promise((resolve) => {
+            if (request.signal?.aborted) {
+              resolve();
+              return;
+            }
+            request.signal?.addEventListener('abort', resolve, { once: true });
+          });
+          return {
+            exitCode: null,
+            signal: 'SIGTERM',
+            stdout: '',
+            stderr: '',
+            durationMs: 12,
+            timedOut: false,
+            cancelled: true,
+            error: 'Agent process cancelled.',
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native abortable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    const sendPromise = context.services.chat.send(created.session.key, {
+      text: 'please run long native task',
+      clientRequestId: 'native-abort-1',
+    });
+
+    await waitFor(() => {
+      assert.ok(runnerSignal);
+    });
+
+    const abort = await context.services.chat.abort(created.session.key);
+    assert.equal(abort.ok, true);
+    assert.equal(abort.hadActiveRun, true);
+    assert.equal(abort.aborted, true);
+    assert.deepEqual(abort.runIds, ['native-abort-1']);
+    assert.equal(runnerSignal.aborted, true);
+
+    const ack = await sendPromise;
+    assert.equal(ack.runtime.state, 'aborted');
+    assert.equal(ack.runId, 'native-abort-1');
+
+    assert.deepEqual(
+      gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.abort'),
+      [],
+    );
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 
 test('native CLI chat sessions default to the Tracevane project root when no workDir is set', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-default-workdir-'));

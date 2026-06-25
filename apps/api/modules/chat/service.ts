@@ -898,6 +898,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const frontendSseSubscribers = new Map<string, Set<http.ServerResponse>>();
   const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
   const sessionBridges = new Map<string, SessionGatewayBridge>();
+  const nativeActiveRuns = new Map<string, { runId: string; controller: AbortController; startedAt: string }>();
   const streamReplayState = createChatStreamReplayState();
   const queueFlushSessions = new Set<string>();
   const queueFlushRerunSessions = new Set<string>();
@@ -6688,42 +6689,69 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         const binding = project.platformBindings[0];
         const registryEntry = getRegistryEntry(session.key);
         const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
-        const result = await runChannelConnectorAgentTurn({
-          project,
-          binding,
-          message: buildChatNativeMessage(input),
-          sessionKey: input.sessionKey,
-          gatewayEndpoint: project.gatewayEndpoint,
-          gatewayClientKey: resolveChannelConnectorGatewayClientKey({ paths }),
-          agentRuntimeDir: path.join(
-            paths.runtime,
-            safeRuntimePathSegment(agent, 'agent'),
-            safeRuntimePathSegment(input.sessionKey, 'session'),
-          ),
-          session: registryEntry?.runtimeSession || null,
-          onProgress: (event) => {
-            progressEvents.push(event);
-            applyNativeCliProgressEvent(input.sessionKey, input.idempotencyKey, event);
-          },
-          processRunner: options.agentProcessRunner,
-        });
         const runId = input.idempotencyKey;
-        return {
-          status: 'started',
+        const controller = new AbortController();
+        nativeActiveRuns.set(input.sessionKey, {
           runId,
-          raw: {
-            ...result,
-            progressEvents,
-          } as unknown as Record<string, unknown>,
-          terminalState: result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'error',
-          assistantText: result.replyText,
-          errorMessage: result.error,
-          durationMs: result.durationMs,
-          nativeSession: result.session,
-        };
+          controller,
+          startedAt: new Date().toISOString(),
+        });
+        try {
+          const result = await runChannelConnectorAgentTurn({
+            project,
+            binding,
+            message: buildChatNativeMessage(input),
+            sessionKey: input.sessionKey,
+            gatewayEndpoint: project.gatewayEndpoint,
+            gatewayClientKey: resolveChannelConnectorGatewayClientKey({ paths }),
+            agentRuntimeDir: path.join(
+              paths.runtime,
+              safeRuntimePathSegment(agent, 'agent'),
+              safeRuntimePathSegment(input.sessionKey, 'session'),
+            ),
+            session: registryEntry?.runtimeSession || null,
+            signal: controller.signal,
+            onProgress: (event) => {
+              progressEvents.push(event);
+              applyNativeCliProgressEvent(input.sessionKey, input.idempotencyKey, event);
+            },
+            processRunner: options.agentProcessRunner,
+          });
+          return {
+            status: 'started',
+            runId,
+            raw: {
+              ...result,
+              progressEvents,
+            } as unknown as Record<string, unknown>,
+            terminalState: result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'error',
+            assistantText: result.replyText,
+            errorMessage: result.error,
+            durationMs: result.durationMs,
+            nativeSession: result.session,
+          };
+        } finally {
+          if (nativeActiveRuns.get(input.sessionKey)?.runId === runId) {
+            nativeActiveRuns.delete(input.sessionKey);
+          }
+        }
       },
-      async abort() {
-        return normalizeChatRuntimeAbortResult({ aborted: false, runIds: [] });
+      async abort(input: ChatRuntimeAbortInput) {
+        const active = nativeActiveRuns.get(input.sessionKey);
+        if (!active) {
+          return normalizeChatRuntimeAbortResult({
+            aborted: false,
+            runIds: [],
+            native: true,
+          });
+        }
+        active.controller.abort();
+        return normalizeChatRuntimeAbortResult({
+          aborted: true,
+          runIds: [active.runId],
+          native: true,
+          startedAt: active.startedAt,
+        });
       },
       async reset() {
         return normalizeChatRuntimeResetResult({ ok: true, native: true });
