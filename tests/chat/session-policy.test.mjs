@@ -34,3 +34,39 @@ test('tracevane registry restore preserves sessionId', () => {
   assert.equal(restored.key, created.key);
   assert.equal(restored.kind, 'tracevane_managed');
 });
+
+test('tracevane registry restore defaults missing runtime target to native Codex', () => {
+  const restored = buildTracevaneManagedRowFromRegistry({
+    key: 'agent:main:agent-chat:direct:tracevane-legacy-no-runtime',
+    agentId: 'main',
+    sessionId: 'session-legacy',
+    label: 'Legacy Tracevane chat',
+    createdAt: '2026-06-26T00:00:00.000Z',
+    updatedAt: '2026-06-26T00:00:00.000Z',
+  }, true);
+
+  assert.deepEqual(restored.runtimeTarget, {
+    adapterKind: 'native-cli',
+    agent: 'codex',
+    model: null,
+    workDir: null,
+    permissionMode: null,
+  });
+  assert.equal(restored.source.channel, 'agent-chat');
+});
+
+test('legacy webchat tracevane registry restore remains legacy channel but native runtime', () => {
+  const restored = buildTracevaneManagedRowFromRegistry({
+    key: 'agent:main:webchat:direct:tracevane-legacy-webchat',
+    agentId: 'main',
+    sessionId: 'session-legacy-webchat',
+    label: 'Legacy WebChat key',
+    createdAt: '2026-06-26T00:00:00.000Z',
+    updatedAt: '2026-06-26T00:00:00.000Z',
+  }, true);
+
+  assert.equal(restored.source.channel, 'webchat');
+  assert.equal(restored.deliveryContext.channel, 'webchat');
+  assert.equal(restored.runtimeTarget.adapterKind, 'native-cli');
+  assert.equal(restored.runtimeTarget.agent, 'codex');
+});

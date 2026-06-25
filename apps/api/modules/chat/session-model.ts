@@ -53,16 +53,26 @@ export function buildDefaultTracevaneManagedRuntimeTarget(): ChatSessionRuntimeT
 export function normalizeChatSessionRuntimeTarget(
   target: Partial<ChatSessionRuntimeTarget> | undefined | null,
   fallbackAgentId: string,
+  fallbackTarget: ChatSessionRuntimeTarget = buildDefaultRuntimeTarget(fallbackAgentId),
 ): ChatSessionRuntimeTarget {
-  const fallback = buildDefaultRuntimeTarget(fallbackAgentId);
+  const fallback = fallbackTarget;
   const adapterKind = normalizeString(target?.adapterKind) as ChatRuntimeAdapterKind;
   return {
-    adapterKind: adapterKind === 'native-cli' ? 'native-cli' : 'openclaw-gateway',
+    adapterKind: adapterKind === 'native-cli' || adapterKind === 'openclaw-gateway'
+      ? adapterKind
+      : fallback.adapterKind,
     agent: (normalizeString(target?.agent) || fallback.agent) as ChatRuntimeAgentId,
     model: normalizeString(target?.model) || null,
     workDir: normalizeString(target?.workDir) || null,
     permissionMode: (normalizeString(target?.permissionMode) || null) as ChatRuntimePermissionMode | null,
   };
+}
+
+export function normalizeTracevaneManagedRuntimeTarget(
+  target: Partial<ChatSessionRuntimeTarget> | undefined | null,
+  fallbackAgentId: string,
+): ChatSessionRuntimeTarget {
+  return normalizeChatSessionRuntimeTarget(target, fallbackAgentId, buildDefaultTracevaneManagedRuntimeTarget());
 }
 
 export interface LocalSessionRecord {
@@ -172,7 +182,7 @@ export function buildTracevaneManagedSessionRow(agentId: string, label: string, 
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
-    runtimeTarget: normalizeChatSessionRuntimeTarget(
+    runtimeTarget: normalizeTracevaneManagedRuntimeTarget(
       runtimeTarget || buildDefaultTracevaneManagedRuntimeTarget(),
       agentId,
     ),
@@ -209,7 +219,7 @@ export function buildTracevaneManagedRowFromRegistry(
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
-    runtimeTarget: normalizeChatSessionRuntimeTarget(entry.runtimeTarget, entry.agentId),
+    runtimeTarget: normalizeTracevaneManagedRuntimeTarget(entry.runtimeTarget, entry.agentId),
   };
 }
 
@@ -265,7 +275,9 @@ export function mapLocalSessionRow(
     runtime: buildRuntimeState(gatewayConnected, policy.defaultWritable, {
       state: 'unknown',
     }),
-    runtimeTarget: normalizeChatSessionRuntimeTarget(registryEntry?.runtimeTarget, agentId),
+    runtimeTarget: kind === 'tracevane_managed'
+      ? normalizeTracevaneManagedRuntimeTarget(registryEntry?.runtimeTarget, agentId)
+      : normalizeChatSessionRuntimeTarget(registryEntry?.runtimeTarget, agentId),
   };
 }
 
