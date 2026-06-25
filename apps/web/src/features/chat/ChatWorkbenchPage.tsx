@@ -36,7 +36,7 @@ import type {
   ChatToolCard,
   LiveAssistantTurn,
 } from "./types";
-import { runStateTone, sessionTitle } from "./_shared";
+import { runStateTone, sessionTitle, shouldShowRunState } from "./_shared";
 
 const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
@@ -74,8 +74,27 @@ export function ChatWorkbenchPage() {
   const bootstrap = useChatBootstrapQuery({ sessionKey: sessionParam });
 
   const sessions = bootstrap.data?.sessions ?? [];
+  const preferredSession = React.useMemo(
+    () =>
+      sessions.find(
+        (s) => s.permissions?.canSend && !s.presentation?.archived,
+      ) ??
+      sessions.find(
+        (s) =>
+          s.runtime?.state &&
+          s.runtime.state !== "unknown" &&
+          !s.presentation?.archived,
+      ) ??
+      sessions.find((s) => !s.presentation?.archived) ??
+      sessions[0] ??
+      null,
+    [sessions],
+  );
   const selectedKey =
-    sessionParam ?? bootstrap.data?.selectedSessionKey ?? null;
+    sessionParam ??
+    bootstrap.data?.selectedSessionKey ??
+    preferredSession?.key ??
+    null;
 
   const history = bootstrap.data?.history ?? null;
   const selectedSession =
@@ -345,9 +364,11 @@ export function ChatWorkbenchPage() {
               <h1 className="truncate text-lg font-semibold text-ink-strong">
                 {selectedSession ? sessionTitle(selectedSession) : "Agent 会话"}
               </h1>
-              <ToneBadge tone={selectedState.tone}>
-                {selectedState.label}
-              </ToneBadge>
+              {shouldShowRunState(runtime?.state) && (
+                <ToneBadge tone={selectedState.tone}>
+                  {selectedState.label}
+                </ToneBadge>
+              )}
             </div>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
               <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">

@@ -16,7 +16,7 @@ import {
 
 import type { ApiError } from "@/lib/api/errors";
 import type { ChatSessionRow } from "../types";
-import { runStateTone, sessionTitle } from "../_shared";
+import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
 
 /**
  * Left column: the session roster. Organizer folders exist in the bootstrap
@@ -46,8 +46,19 @@ export function SessionListView({
 
   const visible = React.useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => {
+    const ordered = [...sessions].sort((a, b) => {
+      const aUnknown = a.runtime?.state === "unknown" ? 1 : 0;
+      const bUnknown = b.runtime?.state === "unknown" ? 1 : 0;
+      const aArchived = a.presentation?.archived ? 1 : 0;
+      const bArchived = b.presentation?.archived ? 1 : 0;
+      const aWritable = a.permissions?.canSend ? 0 : 1;
+      const bWritable = b.permissions?.canSend ? 0 : 1;
+      return (
+        aArchived - bArchived || aUnknown - bUnknown || aWritable - bWritable
+      );
+    });
+    if (!q) return ordered;
+    return ordered.filter((s) => {
       const hay = [
         sessionTitle(s),
         s.agentId,
@@ -130,7 +141,12 @@ export function SessionListView({
                 s.source?.surface ||
                 s.source?.channel ||
                 "本地";
-              const preview = s.lastMessagePreview?.trim() || "暂无最近消息";
+              const preview =
+                s.lastMessagePreview?.trim() ||
+                (s.kind === "observed_external"
+                  ? "外部观察会话"
+                  : "暂无最近消息");
+              const showState = shouldShowRunState(s.runtime?.state);
               return (
                 <button
                   key={s.key}
@@ -165,7 +181,9 @@ export function SessionListView({
                       {s.agentId} · {source}
                     </span>
                   </span>
-                  <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
+                  {showState && (
+                    <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
+                  )}
                 </button>
               );
             })}

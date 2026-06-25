@@ -29,7 +29,9 @@ export function runStateTone(state: ChatRunState | string | null | undefined): {
 }
 
 /** Map a tool-call status to a tone + label. */
-export function toolStatusTone(status: ChatToolStatus | string | null | undefined): {
+export function toolStatusTone(
+  status: ChatToolStatus | string | null | undefined,
+): {
   tone: ChatTone;
   label: string;
 } {
@@ -46,7 +48,9 @@ export function toolStatusTone(status: ChatToolStatus | string | null | undefine
 }
 
 /** Chinese label for a message role. */
-export function roleLabel(role: ChatMessageRole | string | null | undefined): string {
+export function roleLabel(
+  role: ChatMessageRole | string | null | undefined,
+): string {
   switch (role) {
     case "user":
       return "用户";
@@ -62,22 +66,60 @@ export function roleLabel(role: ChatMessageRole | string | null | undefined): st
 }
 
 /** Boolean → tone + label for permission / connectivity flags. */
-export function boolTone(value: boolean | null | undefined): { tone: ChatTone; label: string } {
+export function boolTone(value: boolean | null | undefined): {
+  tone: ChatTone;
+  label: string;
+} {
   return value ? { tone: "ok", label: "是" } : { tone: "mute", label: "否" };
 }
 
-/** A readable title for a session row. */
+function looksLikeRawAgentKey(value: string): boolean {
+  return /^agent:[^:]+:/.test(value) || /^[a-f0-9-]{24,}$/i.test(value);
+}
+
+function titleFromRawAgentKey(value: string): string | null {
+  const parts = value.split(":").filter(Boolean);
+  if (parts[0] !== "agent") return null;
+  const agent = parts[1] || "Agent";
+  const surface = parts[2] || "会话";
+  if (surface === "webchat") return `${agent} · Web 会话`;
+  if (surface === "dashboard") return `${agent} · 总览触发`;
+  if (surface === "main") return `${agent} · 默认会话`;
+  return `${agent} · ${surface}`;
+}
+
+/** A readable title for a session row. Never expose raw agent/session keys as the primary title. */
 export function sessionTitle(session: {
   label?: string | null;
   derivedTitle?: string | null;
   sessionId?: string | null;
   key?: string;
 }): string {
-  return (
-    session.label?.trim() ||
-    session.derivedTitle?.trim() ||
-    session.sessionId?.trim() ||
-    session.key ||
-    "会话"
-  );
+  const derived = session.derivedTitle?.trim();
+  if (derived && !looksLikeRawAgentKey(derived)) return derived;
+
+  const label = session.label?.trim();
+  if (label && !looksLikeRawAgentKey(label)) return label;
+  if (label) {
+    const parsed = titleFromRawAgentKey(label);
+    if (parsed) return parsed;
+  }
+
+  const key = session.key?.trim();
+  if (key) {
+    const parsed = titleFromRawAgentKey(key);
+    if (parsed) return parsed;
+  }
+
+  const sessionId = session.sessionId?.trim();
+  if (sessionId && !looksLikeRawAgentKey(sessionId))
+    return `会话 ${sessionId.slice(0, 8)}`;
+  return "Agent 会话";
+}
+
+/** Whether a runtime state is useful enough to show as a primary list badge. */
+export function shouldShowRunState(
+  state: ChatRunState | string | null | undefined,
+): boolean {
+  return Boolean(state && state !== "unknown");
 }
