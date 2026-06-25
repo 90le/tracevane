@@ -31,7 +31,7 @@ import {
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
-import { useFilesBrowseQuery, useFilesSummaryQuery } from "@/lib/query/files";
+import { useFileReadQuery, useFilesBrowseQuery, useFilesSummaryQuery } from "@/lib/query/files";
 
 import { ToneBadge, formatTime } from "@/features/cli-agents/views/_shared";
 
@@ -95,6 +95,32 @@ function inferComposerAttachmentKind(fileName: string, mimeType?: string | null)
 
 function canInlinePreviewAttachment(item: ComposerFileRefItem): boolean {
   return item.kind === "image" || item.kind === "video" || /^(application\/pdf|text\/|application\/json)/i.test(item.mimeType || "");
+}
+
+function canReadPreviewAttachment(item: ComposerFileRefItem | null): boolean {
+  if (!item || item.kind !== "file") return false;
+  return /^(text\/|application\/(json|xml|x-yaml|yaml|javascript|typescript))/i.test(item.mimeType || "")
+    || /\.(md|markdown|txt|json|jsonl|yaml|yml|toml|ini|csv|ts|tsx|js|jsx|mjs|cjs|css|html|xml|py|go|rs|java|kt|sh|bash|zsh)$/i.test(item.fileName);
+}
+
+function parseFilesResourceRef(value: string | null | undefined): { rootId: string; path: string } | null {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed.toLowerCase().startsWith("files:")) return null;
+  const body = trimmed.slice("files:".length);
+  const splitIndex = body.indexOf(":");
+  if (splitIndex <= 0) return null;
+  const rootId = body.slice(0, splitIndex).trim();
+  const filePath = body.slice(splitIndex + 1).trim().replace(/\\/g, "/").replace(/^\.\/+/, "");
+  return rootId && filePath ? { rootId, path: filePath } : null;
+}
+
+function resolveComposerFilesRef(item: ComposerFileRefItem | null): { rootId: string; path: string } | null {
+  if (!item) return null;
+  const parsed = parseFilesResourceRef(item.resourceRef);
+  if (parsed) return parsed;
+  const rootId = item.rootId?.trim();
+  const filePath = item.relativePath?.trim();
+  return rootId && filePath ? { rootId, path: filePath.replace(/\\/g, "/").replace(/^\.\/+/, "") } : null;
 }
 
 const COMPOSER_DRAFT_PREFIX = "tracevane.chat.composer-draft:";
@@ -406,6 +432,14 @@ export function ConversationView({
       }
       : null,
   );
+  const previewFilesRef = React.useMemo(() => resolveComposerFilesRef(previewFile), [previewFile]);
+  const previewRead = useFileReadQuery(
+    previewFilesRef && canReadPreviewAttachment(previewFile)
+      ? { rootId: previewFilesRef.rootId, path: previewFilesRef.path, limit: 192 * 1024 }
+      : null,
+    { enabled: Boolean(previewFile && previewFilesRef && canReadPreviewAttachment(previewFile)) },
+  );
+
 
   React.useEffect(() => {
     const persisted = sessionKey && typeof window !== "undefined"
@@ -730,7 +764,20 @@ export function ConversationView({
               </div>
             </DialogHeader>
             <DialogBody className="max-h-[68vh] overflow-auto">
-              {previewFile?.previewUrl && canInlinePreviewAttachment(previewFile) ? (
+              {previewFile && canReadPreviewAttachment(previewFile) ? (
+                previewRead.isLoading ? (
+                  <div className="grid gap-2 p-2"><SkeletonRow /><SkeletonRow /><SkeletonRow /></div>
+                ) : previewRead.error ? (
+                  <div className="rounded-md border border-red bg-red-soft p-4 text-sm text-red">
+                    文件预览加载失败：{previewRead.error.message}
+                  </div>
+                ) : (
+                  <pre className="max-h-[62vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-panel-2 p-3 font-mono text-xs leading-relaxed text-ink-strong">
+                    {previewRead.data?.content ?? "该文件没有可显示的文本内容。"}
+                    {previewRead.data?.truncated ? "\n\n… 已按 Files API 预览上限截断，请打开文件管理器或下载查看完整内容。" : ""}
+                  </pre>
+                )
+              ) : previewFile?.previewUrl && canInlinePreviewAttachment(previewFile) ? (
                 previewFile.kind === "image" ? (
                   <img
                     src={previewFile.previewUrl}

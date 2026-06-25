@@ -92,3 +92,14 @@ test('ConversationView handles mixed text and file paste through Files uploads',
   assert.match(source, /void uploadFiles\(pastedFiles\)/);
   assert.match(source, /onPaste=\{handleComposerPaste\}/);
 });
+
+
+test('ConversationView previews text-like attachments through Files read API', () => {
+  assert.match(source, /useFileReadQuery/);
+  assert.match(source, /function parseFilesResourceRef/);
+  assert.match(source, /function resolveComposerFilesRef/);
+  assert.match(source, /canReadPreviewAttachment/);
+  assert.match(source, /limit: 192 \* 1024/);
+  assert.match(source, /文件预览加载失败/);
+  assert.match(source, /已按 Files API 预览上限截断/);
+});
