@@ -6,8 +6,6 @@ import { useChannelConnectorsStatusQuery } from "@/lib/query/channel-connectors"
 import { useSystemDiagnosticsQuery } from "@/lib/query/external";
 
 import type {
-  ChannelConnectorsStatusResponse,
-  ModelGatewayStatusResponse,
   OpenClawRecoveryStatusPayload,
   PlatformCard,
   PlatformTone,
@@ -69,16 +67,6 @@ export function deriveControlUiUrl(
   return `${httpBase}${normalized.replace(/\/$/, "")}`;
 }
 
-function modelGatewayTone(gateway: ModelGatewayStatusResponse | undefined): PlatformTone {
-  if (!gateway) return "info";
-  return gateway.registry.providerCount > 0 ? "ok" : "warn";
-}
-
-function channelTone(channel: ChannelConnectorsStatusResponse | undefined): PlatformTone {
-  if (!channel) return "info";
-  return channel.runtime.reachable ? "ok" : "warn";
-}
-
 /**
  * Loads every source the platform overview synthesizes and builds the derived
  * platform-card view-model. All hooks are REUSED from their owning data layers
@@ -105,9 +93,6 @@ export function usePlatformsAggregate() {
   const cards: PlatformCard[] = React.useMemo(() => {
     const health = healthQuery.data;
     const recovery = recoveryQuery.data;
-    const gateway = gatewayQuery.data;
-    const channel = channelQuery.data;
-
     const ocTone = openClawTone(health, recovery);
     const gatewayUp = health?.gateway === "online" || health?.gatewayConnected === true;
     const recState = recovery?.status;
@@ -129,42 +114,8 @@ export function usePlatformsAggregate() {
         primary: { label: "查看 OpenClaw 平台", to: "/platforms/openclaw" },
         secondary: { label: "平台守护", to: "/platforms/openclaw/guard" },
       },
-      {
-        id: "model-gateway",
-        title: "模型网关",
-        category: "模型厂商账号 · 协议入口",
-        summary: gateway
-          ? `${gateway.registry.providerCount} 个 provider · 监听 ${gateway.listener.host}:${gateway.listener.port}`
-          : "网关状态未就绪",
-        status: modelGatewayTone(gateway) === "ok" ? "已连接" : gateway ? "无 provider" : "—",
-        tone: modelGatewayTone(gateway),
-        boundary: "Provider / 模型 / 路由 / 用量归模型网关主域；平台只做接入摘要。",
-        primary: { label: "查看模型网关", to: "/model-gateway" },
-      },
-      {
-        id: "channels",
-        title: "IM 渠道连接器",
-        category: "消息平台账号 · 机器人身份",
-        summary: channel
-          ? `${channel.runtime.reachable ? "守护进程在线" : "守护进程离线"} · Feishu ${channel.runtime.feishuConnections ?? 0} · Octo ${channel.runtime.octoConnections ?? 0}`
-          : "渠道运行时未就绪",
-        status: channelTone(channel) === "ok" ? "已连接" : channel ? "离线" : "—",
-        tone: channelTone(channel),
-        boundary: "IM 任务流、绑定与投递留在 IM 渠道主域；平台只做账号与底层健康。",
-        primary: { label: "查看 IM 渠道", to: "/im-channels" },
-      },
-      {
-        id: "external-mcp",
-        title: "集成证据",
-        category: "MCP / Skills / 工具能力 · 只读证据",
-        summary: "MCP server、Skills 与工具能力保留为平台下的只读集成证据。",
-        status: "证据",
-        tone: "info",
-        boundary: "外部能力只聚合证据；写入仍回到 Gateway、IM、Platform 或具体工具 owner。",
-        primary: { label: "查看集成证据", to: "/external" },
-      },
     ];
-  }, [healthQuery.data, recoveryQuery.data, gatewayQuery.data, channelQuery.data]);
+  }, [healthQuery.data, recoveryQuery.data]);
 
   const isLoading = queries.every((q) => q.isLoading);
   const allFailed = queries.every((q) => q.isError);

@@ -43,3 +43,20 @@ test("OpenClaw read surfaces bind to real backend APIs instead of fake CRUD", ()
   assert.match(views, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
   assert.match(views, /CLI 会话控制仍在 CLI 代理 \/ IDE 所属页面/);
 });
+
+
+test("Platform overview is a directory plus owner handoffs, not a platform card wall", () => {
+  const overview = read("apps/web/src/features/platforms/views/OverviewView.tsx");
+  const aggregate = read("apps/web/src/features/platforms/usePlatformsAggregate.ts");
+
+  assert.match(overview, /Platform directory\. This page is NOT a card wall/);
+  assert.match(overview, /title="平台目录"/);
+  assert.match(overview, /title="关联 Tracevane 域"/);
+  assert.match(overview, /title="兼容入口"/);
+  assert.match(overview, /只有真实第三方平台进入主列表/);
+  assert.match(overview, /关联域不伪装成平台/);
+  assert.match(overview, /集成证据（legacy \/external）/);
+  assert.doesNotMatch(aggregate, /id: "external-mcp"/);
+  assert.doesNotMatch(aggregate, /title: "模型网关"/);
+  assert.doesNotMatch(aggregate, /title: "IM 渠道连接器"/);
+});

@@ -49,10 +49,9 @@ test("dashboard and platform wording route integration evidence through support 
   assert.doesNotMatch(dashboard, /ROUTES\.external/);
   assert.match(dashboard, /任务监督/);
   assert.match(dashboard, /平台守护日志/);
-  assert.match(platformAggregate, /title: "集成证据"/);
+  assert.doesNotMatch(platformAggregate, /title: "集成证据"/);
+  assert.doesNotMatch(platformAggregate, /id: "external-mcp"/);
   assert.match(platformAggregate, /to: "\/platforms\/openclaw\/guard"/);
-  assert.match(platformAggregate, /查看集成证据/);
-  assert.doesNotMatch(platformAggregate, /查看外部接入/);
 });
 
 test("authoritative docs record the IA correction and non-core status", () => {
