@@ -277,7 +277,7 @@ export function AppShell() {
         </header>
 
         {/* Routed content — the only scroll region besides the sidebar nav */}
-        <main className="min-w-0 overflow-auto p-5">
+        <main className="min-w-0 overflow-auto p-3 sm:p-5">
           <Outlet />
         </main>
       </div>

@@ -369,7 +369,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
             return (
               <div key={id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Download className="size-4" /></span>
-                <span className="min-w-[220px] flex-1">
+                <span className="min-w-0 flex-1 basis-[180px]">
                   <strong className="block truncate text-sm text-ink-strong">安装 {label}</strong>
                   <span className="block truncate text-xs text-muted">{target?.installHint || target?.packageName || "缺少安装提示"}</span>
                 </span>
@@ -383,7 +383,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
           {!gatewayReady ? (
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
               <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Plug className="size-4" /></span>
-              <span className="min-w-[220px] flex-1">
+              <span className="min-w-0 flex-1 basis-[180px]">
                 <strong className="block truncate text-sm text-ink-strong">检查模型网关路由</strong>
                 <span className="block truncate text-xs text-muted">{health ? `${health.okProviders} 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断` : "状态未加载"}</span>
               </span>
@@ -393,7 +393,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
           {!ptyAvailable ? (
             <div className="flex flex-wrap items-center gap-3 px-4 py-3">
               <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Terminal className="size-4" /></span>
-              <span className="min-w-[220px] flex-1">
+              <span className="min-w-0 flex-1 basis-[180px]">
                 <strong className="block truncate text-sm text-ink-strong">PTY 不可用</strong>
                 <span className="block truncate text-xs text-muted">无法在 IDE 终端完成登录、启动或修复。</span>
               </span>

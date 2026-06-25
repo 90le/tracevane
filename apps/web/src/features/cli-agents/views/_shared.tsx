@@ -138,13 +138,13 @@ export function StatTile({
   sub?: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-1 rounded-md border border-line bg-panel-2 p-3">
+    <div className="min-w-0 flex-1 basis-[128px] border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r last:border-r-0">
       <span className="flex items-center gap-1.5 text-xs text-subtle [&_svg]:size-3.5">
         {icon}
         {label}
       </span>
-      <span className="text-xl font-semibold text-ink-strong">{value}</span>
-      {sub && <span className="truncate text-xs text-muted">{sub}</span>}
+      <span className="mt-0.5 block text-xl font-semibold tabular-nums text-ink-strong">{value}</span>
+      {sub && <span className="block truncate text-xs text-muted">{sub}</span>}
     </div>
   );
 }

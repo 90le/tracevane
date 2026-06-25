@@ -165,43 +165,39 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
           <span className="text-muted"> · </span>
           {failedEvents} 个需关注事件
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">平台绑定</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {bindings.length}
-            </div>
-            <span className="text-xs text-muted">{enabledBindings.length} 启用</span>
+        <dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">
+          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
+            <dt className="text-xs text-subtle">平台绑定</dt>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{bindings.length}</dd>
+            <dd className="truncate text-xs text-muted">{enabledBindings.length} 启用</dd>
           </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">活跃会话</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
+          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
+            <dt className="text-xs text-subtle">活跃会话</dt>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
               {activeSessions.length}
               {maxSessions != null && (
                 <small className="ml-0.5 text-sm font-normal text-muted">/{maxSessions}</small>
               )}
-            </div>
-            <span className="text-xs text-muted">{recentEvents.length} 条事件</span>
+            </dd>
+            <dd className="truncate text-xs text-muted">{recentEvents.length} 条事件</dd>
           </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">待 replay</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {pending?.count ?? 0}
-            </div>
-            <span className="text-xs text-muted">
+          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
+            <dt className="text-xs text-subtle">待 replay</dt>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{pending?.count ?? 0}</dd>
+            <dd className="truncate text-xs text-muted">
               {pending?.oldestQueuedAt ? `最早 ${formatTime(pending.oldestQueuedAt)}` : "无积压"}
-            </span>
+            </dd>
           </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">长连接</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
+          <div className="min-w-0 px-3 py-2.5">
+            <dt className="text-xs text-subtle">长连接</dt>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
               {(runtime?.octoConnections ?? 0) + (runtime?.feishuConnections ?? 0)}
-            </div>
-            <span className="text-xs text-muted">
+            </dd>
+            <dd className="truncate text-xs text-muted">
               {runtime?.octoConnections ?? 0} octo · {runtime?.feishuConnections ?? 0} feishu
-            </span>
+            </dd>
           </div>
-        </div>
+        </dl>
       </section>
 
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">

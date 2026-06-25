@@ -177,7 +177,7 @@ export function RunsView(_props: CliAgentsViewProps) {
             </Button>
           }
         />
-        <div className="grid grid-cols-2 gap-2.5 border-b border-line p-4 sm:grid-cols-5">
+        <div className="flex flex-wrap overflow-hidden border-b border-line bg-panel-2/40">
           <StatTile icon={<Activity />} label="全部 Run" value={totals?.total ?? "—"} />
           <StatTile icon={<Activity />} label="运行中" value={totals?.running ?? "—"} />
           <StatTile icon={<SquareTerminal />} label="终端来源" value={totals?.terminal ?? "—"} />
@@ -189,7 +189,7 @@ export function RunsView(_props: CliAgentsViewProps) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索 run / 模型 / 目录 / 错误 / session"
-            className="min-w-[240px] flex-1 sm:max-w-[420px]"
+            className="min-w-0 flex-1 basis-[220px] sm:max-w-[420px]"
           />
           {FILTERS.map((item) => (
             <Button
@@ -328,7 +328,7 @@ export function RunsView(_props: CliAgentsViewProps) {
               return (
                 <div key={run.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <span className={`grid size-8 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}>{sourceIcon(run.source)}</span>
-                  <span className="min-w-[220px] flex-1">
+                  <span className="min-w-0 flex-1 basis-[180px]">
                     <strong className="block truncate text-sm text-ink-strong">{run.title}</strong>
                     <span className="block truncate text-xs text-muted">{run.actionLabel} · {run.lastErrorSummary || run.actionReason}</span>
                   </span>

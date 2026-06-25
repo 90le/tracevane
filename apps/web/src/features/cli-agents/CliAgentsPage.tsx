@@ -68,8 +68,25 @@ export function CliAgentsPage() {
 
   return (
     <div className="grid gap-4">
+      <div className="border-b border-line pb-2 sm:hidden">
+        <label className="sr-only" htmlFor="cli-agents-mobile-view">
+          CLI 代理视图
+        </label>
+        <select
+          id="cli-agents-mobile-view"
+          value={resolvedView}
+          onChange={(event) => goToView(event.target.value as CliAgentsView)}
+          className="h-10 w-full rounded-sm border border-line-2 bg-panel px-3 text-base text-ink-strong outline-none focus-visible:shadow-[var(--ring)]"
+        >
+          {TABS.map(({ view, label }) => (
+            <option key={view} value={view}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
       <nav
-        className="flex flex-wrap gap-1 border-b border-line pb-2"
+        className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex"
         aria-label="CLI 代理视图"
       >
         {TABS.map(({ view, label, icon: Icon }) => {

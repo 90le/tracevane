@@ -240,6 +240,34 @@
     .tv-wb-panel { border-top: 1px solid var(--line); min-height: 200px; }
   }
 
+
+  /* Responsive dense tables: desktop stays a real table; phone uses stacked rows so the page never relies on horizontal dragging. */
+  @media (max-width: 640px) {
+    .tv-table-wrap { overflow-x: hidden; }
+    .tv-table,
+    .tv-table thead,
+    .tv-table tbody,
+    .tv-table tr,
+    .tv-table th,
+    .tv-table td {
+      display: block;
+      width: 100%;
+    }
+    .tv-table thead { display: none; }
+    .tv-table tr {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 0;
+    }
+    .tv-table tr:last-child { border-bottom: 0; }
+    .tv-table td {
+      padding: 7px 12px;
+      text-align: left !important;
+      white-space: normal;
+    }
+    .tv-table td:empty { display: none; }
+    .tv-table td > .justify-end { justify-content: flex-start; }
+  }
+
   /* status console: scrolling log body + status bar */
   .tv-console { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100%; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: var(--shadow-sm); }
   .tv-console-body { overflow: auto; padding: 16px 18px; font: 13px/1.7 var(--mono); color: var(--ink); background: var(--canvas); white-space: pre-wrap; }

@@ -78,7 +78,24 @@ export function ChannelConnectorsPage() {
 
   return (
     <div className="grid gap-4">
-      <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="IM 渠道视图">
+      <div className="border-b border-line pb-2 sm:hidden">
+        <label className="sr-only" htmlFor="channel-connectors-mobile-view">
+          IM 渠道视图
+        </label>
+        <select
+          id="channel-connectors-mobile-view"
+          value={resolvedView}
+          onChange={(event) => goToView(event.target.value as ChannelConnectorsView)}
+          className="h-10 w-full rounded-sm border border-line-2 bg-panel px-3 text-base text-ink-strong outline-none focus-visible:shadow-[var(--ring)]"
+        >
+          {PRIMARY_TABS.map(({ view, label }) => (
+            <option key={view} value={view}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <nav className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex" aria-label="IM 渠道视图">
         {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
           const active = resolvedView === view;
           return (
