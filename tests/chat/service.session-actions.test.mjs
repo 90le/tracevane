@@ -618,6 +618,121 @@ test('Claude Code chat sessions send through the native runner with model, permi
   }
 });
 
+test('OpenCode chat sessions send through the native runner with gateway model and workspace file refs', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-opencode-send-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          const opencodeConfig = JSON.parse(fs.readFileSync(
+            path.join(request.env.XDG_CONFIG_HOME, 'opencode', 'opencode.json'),
+            'utf8',
+          ));
+          assert.equal(opencodeConfig.model, 'tracevane-gateway/glm-5.2');
+          assert.equal(opencodeConfig.provider['tracevane-gateway'].options.baseURL.endsWith('/v1'), true);
+          assert.ok(opencodeConfig.provider['tracevane-gateway'].models['glm-5.2']);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: [
+              JSON.stringify({
+                type: 'step_start',
+                part: { type: 'step-start', sessionID: 'opencode-session-1' },
+              }),
+              JSON.stringify({
+                type: 'text',
+                part: {
+                  type: 'text',
+                  sessionID: 'opencode-session-1',
+                  messageID: 'message-opencode-1',
+                  text: 'opencode native reply',
+                  time: { start: 1782400000000, end: 1782400001000 },
+                },
+              }),
+              JSON.stringify({
+                type: 'step_finish',
+                part: { type: 'step-finish', sessionID: 'opencode-session-1', reason: 'stop' },
+              }),
+            ].join('\n') + '\n',
+            stderr: '',
+            durationMs: 10,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const workspaceFile = path.join(root, 'workspace', 'opencode.md');
+    fs.writeFileSync(workspaceFile, '# OpenCode native file context\n');
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'OpenCode runnable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'opencode',
+        model: 'glm-5.2',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    const ack = await context.services.chat.send(created.session.key, {
+      text: 'read this file through opencode',
+      clientRequestId: 'opencode-native-run-1',
+      fileRefs: [{
+        id: 'workspace-opencode',
+        relativePath: 'opencode.md',
+        resourceRef: 'workspace:opencode.md',
+        fileName: 'opencode.md',
+        kind: 'file',
+        mimeType: 'text/markdown',
+      }],
+    });
+
+    assert.equal(ack.status, 'started');
+    assert.equal(ack.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].agent, 'opencode');
+    assert.equal(runnerCalls[0].command, 'opencode');
+    assert.equal(runnerCalls[0].cwd, path.join(root, 'workspace'));
+    assert.equal(runnerCalls[0].permissionMode, 'yolo');
+    assert.ok(runnerCalls[0].args.includes('run'));
+    assert.ok(runnerCalls[0].args.includes('--format'));
+    assert.ok(runnerCalls[0].args.includes('json'));
+    assert.ok(runnerCalls[0].args.includes('--model'));
+    assert.ok(runnerCalls[0].args.includes('tracevane-gateway/glm-5.2'));
+    assert.ok(runnerCalls[0].args.includes('--dir'));
+    assert.ok(runnerCalls[0].args.includes(path.join(root, 'workspace')));
+    assert.match(runnerCalls[0].args.join('\n'), /read this file through opencode/);
+    assert.match(runnerCalls[0].args.join('\n'), new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
+    assert.equal(runnerCalls[0].env.TRACEVANE_GATEWAY_ENDPOINT.endsWith('/v1'), true);
+    assert.ok(runnerCalls[0].env.XDG_CONFIG_HOME);
+    assert.ok(runnerCalls[0].env.XDG_DATA_HOME);
+
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(history.messages[1].text, 'opencode native reply');
+
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].runtimeSession?.agentNativeSessionId, 'opencode-session-1');
+    assert.deepEqual(
+      gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.send'),
+      [],
+    );
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 
 test('patching runtime target clears native CLI resume session state', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-reset-'));
