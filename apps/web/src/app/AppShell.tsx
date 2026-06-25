@@ -28,7 +28,7 @@ import {
   CommandList,
 } from "@/design/ui/command";
 import { PALETTES, useTheme, type Palette as PaletteName } from "@/app/providers";
-import { navItemsByGroup, type NavItem } from "@/app/navigation";
+import { isNavItemActive, navItemsByGroup, resolvePageMeta, type NavItem } from "@/app/navigation";
 
 const PALETTE_LABELS: Record<PaletteName, string> = {
   default: "靛蓝",
@@ -37,14 +37,14 @@ const PALETTE_LABELS: Record<PaletteName, string> = {
   graphite: "石墨",
 };
 
-function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function NavList({ pathname, search, onNavigate }: { pathname: string; search: string; onNavigate?: () => void }) {
   return (
     <SidebarNav>
       {navItemsByGroup().map(({ group, items }) => (
         <SidebarGroup key={group} label={group}>
           {items.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.path || (item.path === "/platforms" && pathname.startsWith("/platforms/"));
+            const active = isNavItemActive(item, pathname, search);
             return (
               <SidebarItem
                 key={item.path}
@@ -185,7 +185,8 @@ function CommandPalette({
 }
 
 export function AppShell() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const pageMeta = React.useMemo(() => resolvePageMeta(pathname, search), [pathname, search]);
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
@@ -208,7 +209,11 @@ export function AppShell() {
   // Close the mobile drawer on route change.
   React.useEffect(() => {
     setMobileNavOpen(false);
-  }, [pathname]);
+  }, [pathname, search]);
+
+  React.useEffect(() => {
+    document.title = pageMeta.browserTitle;
+  }, [pageMeta.browserTitle]);
 
   // Cmd/Ctrl+K opens the command palette.
   React.useEffect(() => {
@@ -230,7 +235,7 @@ export function AppShell() {
       {/* Desktop sidebar — persistent, full-height, own scroll, collapsible */}
       <Sidebar collapsed={collapsed} className="hidden md:grid">
         <WorkspaceBrand />
-        <NavList pathname={pathname} />
+        <NavList pathname={pathname} search={search} />
         <CollapseToggle collapsed={collapsed} onToggle={toggleCollapsed} />
       </Sidebar>
 
@@ -241,7 +246,7 @@ export function AppShell() {
             <SheetTitle>Tracevane</SheetTitle>
           </SheetHeader>
           <div className="overflow-auto p-[14px]">
-            <NavList pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
+            <NavList pathname={pathname} search={search} onNavigate={() => setMobileNavOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
@@ -258,19 +263,33 @@ export function AppShell() {
           >
             <Menu />
           </Button>
-          <span className="text-md font-semibold text-ink-strong">Tracevane</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+              {pageMeta.breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={`${crumb.label}-${index}`}>
+                  {index > 0 ? <span className="text-subtle">/</span> : null}
+                  {crumb.path && index < pageMeta.breadcrumbs.length - 1 ? (
+                    <Link className="truncate hover:text-ink-strong" to={crumb.path}>{crumb.label}</Link>
+                  ) : (
+                    <span className="truncate" aria-current={index === pageMeta.breadcrumbs.length - 1 ? "page" : undefined}>{crumb.label}</span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="truncate text-md font-semibold text-ink-strong">{pageMeta.title}</div>
+          </div>
           <button
             type="button"
             onClick={() => setCommandOpen(true)}
             className={cn(
-              "ml-auto hidden h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel-2 px-3 text-sm text-subtle outline-none transition-colors sm:flex",
+              "hidden h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel-2 px-3 text-sm text-subtle outline-none transition-colors sm:flex",
               "hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)]",
             )}
           >
             <span>搜索 / 跳转</span>
             <kbd className="rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs">⌘K</kbd>
           </button>
-          <div className="ml-auto flex items-center gap-1 sm:ml-2">
+          <div className="flex items-center gap-1 sm:ml-2">
             <PaletteToggle />
             <ThemeToggle />
           </div>
