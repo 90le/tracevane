@@ -73,3 +73,13 @@ test('ConversationView keeps current Chat surface selectors for acceptance smoke
   assert.match(source, /chat-composer-pool-insert/);
   assert.match(source, /aria-label=\{`引用 \$\{file\.fileName\}`\}/);
 });
+
+
+test('ConversationView aborts in-flight Files uploads when removed or switching sessions', () => {
+  assert.match(source, /onUploadFile: \(file: File, signal\?: AbortSignal\) => Promise<ChatFileUploadResponse>/);
+  assert.match(source, /uploadControllersRef = React\.useRef\(new Map<string, AbortController>\(\)\)/);
+  assert.match(source, /const controller = new AbortController\(\)/);
+  assert.match(source, /onUploadFile\(file, controller\.signal\)/);
+  assert.match(source, /uploadControllersRef\.current\.get\(file\.id\)\?\.abort\(\)/);
+  assert.match(source, /for \(const controller of uploadControllersRef\.current\.values\(\)\)/);
+});

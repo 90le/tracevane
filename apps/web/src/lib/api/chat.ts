@@ -210,6 +210,7 @@ const CHAT_UPLOAD_DIRECTORY = ".tracevane/chat-uploads";
 export async function uploadChatFile(
   sessionKey: string,
   file: File,
+  signal?: AbortSignal,
 ): Promise<ChatFileUploadResponse> {
   const summary = await getFilesSummary();
   const root = summary.roots.find((item) => item.id === summary.defaultRootId) ?? summary.roots[0];
@@ -235,7 +236,7 @@ export async function uploadChatFile(
         if (init.uploadedChunks.includes(index)) continue;
         const start = index * init.chunkSize;
         const end = Math.min(file.size, start + init.chunkSize);
-        await uploadFileChunk(init.uploadId, index, file.slice(start, end));
+        await uploadFileChunk(init.uploadId, index, file.slice(start, end), undefined, signal);
       }
       await completeFileUpload({ uploadId: init.uploadId });
     } catch (error) {

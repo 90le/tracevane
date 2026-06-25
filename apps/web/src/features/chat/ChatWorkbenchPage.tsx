@@ -285,9 +285,9 @@ export function ChatWorkbenchPage() {
   }, [selectedKey, sendMutation, refetchSelected]);
 
   const handleUploadFile = React.useCallback(
-    async (file: File) => {
+    async (file: File, signal?: AbortSignal) => {
       if (!selectedKey) throw new Error("请先选择一个会话");
-      return await uploadMutation.mutateAsync({ sessionKey: selectedKey, file });
+      return await uploadMutation.mutateAsync({ sessionKey: selectedKey, file, signal });
     },
     [selectedKey, uploadMutation],
   );

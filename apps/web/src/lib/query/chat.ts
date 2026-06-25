@@ -285,15 +285,15 @@ export function useAssignChatSessionsToFolderMutation(
 export function useUploadChatFileMutation(
   options?: MutationOpts<
     ChatFileUploadResponse,
-    { sessionKey: string; file: File }
+    { sessionKey: string; file: File; signal?: AbortSignal }
   >,
 ) {
   return useMutation<
     ChatFileUploadResponse,
     ApiError,
-    { sessionKey: string; file: File }
+    { sessionKey: string; file: File; signal?: AbortSignal }
   >({
-    mutationFn: ({ sessionKey, file }) => uploadChatFile(sessionKey, file),
+    mutationFn: ({ sessionKey, file, signal }) => uploadChatFile(sessionKey, file, signal),
     ...options,
   });
 }

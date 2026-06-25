@@ -46,3 +46,9 @@ test("chat acceptance upload smokes do not mock the removed Chat upload route", 
   assert.doesNotMatch(chatAcceptanceSources, /sessions\/.*\/upload/);
   assert.match(chatAcceptanceSources, /install_files_upload_routes/);
 });
+
+
+test("chat upload transport passes abort signals to Files chunk uploads", () => {
+  assert.match(chatApi, /uploadChatFile\(\s*sessionKey: string,\s*file: File,\s*signal\?: AbortSignal/s);
+  assert.match(chatApi, /uploadFileChunk\(init\.uploadId, index, file\.slice\(start, end\), undefined, signal\)/);
+});

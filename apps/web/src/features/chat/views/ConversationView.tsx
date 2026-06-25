@@ -368,7 +368,7 @@ export function ConversationView({
   /** Non-null when send is unavailable — shown as a disabled hint. */
   sendDisabledReason: string | null;
   onSend: (payload: ChatSendRequest) => Promise<boolean>;
-  onUploadFile: (file: File) => Promise<ChatFileUploadResponse>;
+  onUploadFile: (file: File, signal?: AbortSignal) => Promise<ChatFileUploadResponse>;
   onAbort: () => void;
   onRetry: () => void;
 }) {
@@ -382,6 +382,7 @@ export function ConversationView({
   const [draftLoadedSessionKey, setDraftLoadedSessionKey] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
+  const uploadControllersRef = React.useRef(new Map<string, AbortController>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const filesSummary = useFilesSummaryQuery({ enabled: workspacePickerOpen });
@@ -422,6 +423,10 @@ export function ConversationView({
     setWorkspacePickerRootId(null);
     setPreviewFile(null);
     setDraftLoadedSessionKey(sessionKey);
+    for (const controller of uploadControllersRef.current.values()) {
+      controller.abort();
+    }
+    uploadControllersRef.current.clear();
     cancelledUploadIdsRef.current.clear();
   }, [sessionKey]);
 
@@ -497,9 +502,12 @@ export function ConversationView({
         status: "uploading",
         source: "upload",
       };
+      const controller = new AbortController();
+      uploadControllersRef.current.set(pendingId, controller);
       setFileRefs((prev) => [...prev, pendingItem]);
       try {
-        const item = await onUploadFile(file);
+        const item = await onUploadFile(file, controller.signal);
+        uploadControllersRef.current.delete(pendingId);
         if (cancelledUploadIdsRef.current.has(pendingId)) {
           cancelledUploadIdsRef.current.delete(pendingId);
           return;
@@ -518,6 +526,7 @@ export function ConversationView({
         };
         setFileRefs((prev) => prev.map((entry) => (entry.id === pendingId ? readyItem : entry)));
       } catch (error) {
+        uploadControllersRef.current.delete(pendingId);
         if (cancelledUploadIdsRef.current.has(pendingId)) {
           cancelledUploadIdsRef.current.delete(pendingId);
           return;
@@ -668,7 +677,11 @@ export function ConversationView({
                   className="chat-composer-attachment-remove rounded-full p-0.5 text-subtle hover:bg-panel-3 hover:text-ink"
                   aria-label={`移除 ${file.fileName}`}
                   onClick={() => {
-                    if (file.status === "uploading") cancelledUploadIdsRef.current.add(file.id);
+                    if (file.status === "uploading") {
+                      cancelledUploadIdsRef.current.add(file.id);
+                      uploadControllersRef.current.get(file.id)?.abort();
+                      uploadControllersRef.current.delete(file.id);
+                    }
                     setFileRefs((prev) => prev.filter((item) => item.id !== file.id));
                     if (file.status === "failed") setUploadError(null);
                   }}
