@@ -19,9 +19,20 @@ export interface ChatRuntimeSendResult {
   raw: Record<string, unknown>;
 }
 
+export interface ChatRuntimeAbortInput {
+  sessionKey: string;
+}
+
+export interface ChatRuntimeAbortResult {
+  aborted: boolean;
+  runIds: string[];
+  raw: Record<string, unknown>;
+}
+
 export interface ChatRuntimeAdapter {
   kind: ChatRuntimeAdapterKind;
   send(input: ChatRuntimeSendInput): Promise<ChatRuntimeSendResult>;
+  abort(input: ChatRuntimeAbortInput): Promise<ChatRuntimeAbortResult>;
 }
 
 export function normalizeChatRuntimeSendResult(
@@ -32,6 +43,17 @@ export function normalizeChatRuntimeSendResult(
   return {
     status: (CHAT_SEND_STATUS_MAP as Record<string, ChatSendStatus>)[rawStatus] || 'started',
     runId: normalizeString(raw.runId, fallbackRunId),
+    raw,
+  };
+}
+
+export function normalizeChatRuntimeAbortResult(raw: Record<string, unknown>): ChatRuntimeAbortResult {
+  const runIds = Array.isArray(raw.runIds)
+    ? raw.runIds.map((item: unknown) => String(item)).filter(Boolean)
+    : [];
+  return {
+    aborted: raw.aborted === true || runIds.length > 0,
+    runIds,
     raw,
   };
 }

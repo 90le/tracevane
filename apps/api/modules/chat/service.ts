@@ -67,8 +67,10 @@ import type { SystemService } from '../system/service.js';
 import { readJsonFile, writeJsonFile } from '../../core/state.js';
 import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
 import {
+  normalizeChatRuntimeAbortResult,
   normalizeChatRuntimeSendResult,
   type ChatRuntimeAdapter,
+  type ChatRuntimeAbortInput,
   type ChatRuntimeSendInput,
 } from './runtime-adapter.js';
 import {
@@ -6367,6 +6369,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         });
         return normalizeChatRuntimeSendResult(raw, input.idempotencyKey);
       },
+      async abort(input: ChatRuntimeAbortInput) {
+        const raw = await requestViaSessionBridge<Record<string, unknown>>(input.sessionKey, 'chat.abort', {
+          sessionKey: input.sessionKey,
+        });
+        return normalizeChatRuntimeAbortResult(raw);
+      },
     };
   }
 
@@ -7378,12 +7386,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only tracevane-managed sessions can be aborted in the current backend gate'));
       }
 
-      const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.abort', {
-        sessionKey,
-      });
-      const runIds = Array.isArray(raw.runIds) ? raw.runIds.map((item: unknown) => String(item)) : [];
+      const abortResult = await createCurrentChatRuntimeAdapter().abort({ sessionKey });
+      const runIds = abortResult.runIds;
       const localActiveRunId = inMemory.row.runtime.activeRunId || session.runtime.activeRunId || null;
-      const hadActiveRun = runIds.length > 0 || raw.aborted === true || Boolean(localActiveRunId);
+      const hadActiveRun = abortResult.aborted || Boolean(localActiveRunId);
       const abortRunId = runIds[0] || localActiveRunId;
       inMemory.row = {
         ...inMemory.row,
@@ -7468,9 +7474,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       );
       if (shouldAttemptAbort) {
         try {
-          await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.abort', {
-            sessionKey,
-          });
+          await createCurrentChatRuntimeAdapter().abort({ sessionKey });
         } catch (error) {
           const code = mapGatewayContractError(error, 'chat.abort failed before sessions.reset').code;
           if (code !== 'no_active_run' && code !== 'session_not_found' && code !== 'gateway_down') {
