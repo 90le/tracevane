@@ -51,7 +51,7 @@ def open_new_chat(page):
         click_enabled(option)
     picker.wait_for(state="hidden", timeout=15000)
     page.wait_for_function(
-        "() => document.querySelector(\".chat-composer-editor[contenteditable='true']\")",
+        "() => document.querySelector(\".chat-composer-editor\")",
         timeout=30000,
     )
     page.wait_for_load_state("networkidle")
@@ -103,7 +103,7 @@ def main():
 
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
 
         fill_editor(page, editor, prompt)

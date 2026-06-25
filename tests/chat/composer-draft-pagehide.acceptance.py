@@ -62,18 +62,22 @@ def open_new_chat(page) -> str:
 
 
 def set_editor_and_fire_pagehide(page, token: str):
-    page.locator(".chat-composer-editor[contenteditable='true']").first.wait_for(state="visible", timeout=10000)
+    page.locator(".chat-composer-editor").first.wait_for(state="visible", timeout=10000)
     page.evaluate(
         """(value) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             if (!editor) throw new Error('composer editor missing');
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -96,8 +100,8 @@ def read_persisted_draft(page, session_key: str) -> dict[str, object]:
 def wait_for_editor_text(page, token: str):
     page.wait_for_function(
         """(tokenValue) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
-            return Boolean(editor && (editor.textContent || '').includes(tokenValue));
+            const editor = document.querySelector('.chat-composer-editor');
+            return Boolean(editor && (editor.value || editor.textContent || '').includes(tokenValue));
         }""",
         arg=token,
         timeout=30000,

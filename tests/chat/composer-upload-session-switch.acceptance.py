@@ -38,12 +38,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -208,7 +212,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         first_session_key = open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         fill_editor(page, editor, f"{token} ")
         page.locator(".chat-composer-file-input").set_input_files(str(file_path))
         wait_for_count(page, upload_payloads, 1, "Files upload init")
@@ -223,14 +227,14 @@ def main() -> None:
         )
 
         second_session_key = open_new_chat(page)
-        fill_editor(page, page.locator(".chat-composer-editor[contenteditable='true']").first, other_token)
+        fill_editor(page, page.locator(".chat-composer-editor").first, other_token)
 
         page.wait_for_timeout(1500)
 
         goto_session(page, first_session_key)
         page.wait_for_function(
             """([tokenValue, fileName]) => {
-                const editorText = document.querySelector('.chat-composer-editor')?.textContent || '';
+                const editorText = document.querySelector('.chat-composer-editor')?.value || document.querySelector('.chat-composer-editor')?.textContent || '';
                 const item = Array.from(document.querySelectorAll('.chat-composer-pool-item.ready'))
                     .find((candidate) => (candidate.textContent || '').includes(fileName));
                 return Boolean(editorText.includes(tokenValue) && item);

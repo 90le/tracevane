@@ -37,12 +37,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -111,7 +115,7 @@ def runtime(active_run_id: str | None):
 def dispatch_composing_ctrl_enter(page) -> bool:
     return bool(page.evaluate(
         """() => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             if (!editor) throw new Error('composer editor missing');
             editor.focus();
             editor.dispatchEvent(new CompositionEvent('compositionstart', {
@@ -136,7 +140,7 @@ def dispatch_composing_ctrl_enter(page) -> bool:
 def finish_composition(page, token: str):
     page.evaluate(
         """(value) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             if (!editor) throw new Error('composer editor missing');
             editor.dispatchEvent(new CompositionEvent('compositionend', {
                 bubbles: true,
@@ -196,7 +200,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.locator(".chat-composer-send").first
         fill_editor(page, editor, token)
         wait_button_enabled(send_button)

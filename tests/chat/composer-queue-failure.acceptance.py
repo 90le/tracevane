@@ -38,12 +38,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -81,7 +85,7 @@ def upload_file_and_insert(page, file_path: Path):
     page.wait_for_function(
         """(fileName) => {
             const editor = document.querySelector('.chat-composer-editor');
-            return Boolean(editor && (editor.textContent || '').includes(`@${fileName}`));
+            return Boolean(editor && (editor.value || editor.textContent || '').includes(`@${fileName}`));
         }""",
         arg=file_path.name,
         timeout=10000,
@@ -219,7 +223,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.locator(".chat-composer-send").first
 
         fill_editor(page, editor, first_token)
@@ -239,7 +243,7 @@ def main() -> None:
         page.wait_for_function(
             """([message, tokenValue, fileName]) => {
                 const toast = document.querySelector('.chat-shell-toast-error');
-                const editorText = document.querySelector('.chat-composer-editor')?.textContent || '';
+                const editorText = document.querySelector('.chat-composer-editor')?.value || document.querySelector('.chat-composer-editor')?.textContent || '';
                 const poolText = Array.from(document.querySelectorAll('.chat-composer-pool-item.ready'))
                     .map((item) => item.textContent || '')
                     .join('\\n');
@@ -279,7 +283,7 @@ def main() -> None:
         result["sendRequests"] = len(captured_send_payloads)
         result["queueRequests"] = len(captured_queue_payloads)
         result["draftRetained"] = page.evaluate(
-            "(tokenValue) => (document.querySelector('.chat-composer-editor')?.textContent || '').includes(tokenValue)",
+            "(tokenValue) => (document.querySelector('.chat-composer-editor')?.value || document.querySelector('.chat-composer-editor')?.textContent || '').includes(tokenValue)",
             failed_token,
         )
         result["fileRefRetained"] = page.evaluate(

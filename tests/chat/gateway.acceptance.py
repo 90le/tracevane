@@ -288,7 +288,7 @@ def main() -> None:
         open_new_chat(page)
         result["created_session_selected"] = page.locator(".chat-shell-session-row.active").count() == 1
 
-        textarea = page.locator(".chat-composer-editor[contenteditable='true']").first
+        textarea = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
         stop_btn = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first
         refresh_btn = page.get_by_title(re.compile("刷新对话|Refresh conversation")).first

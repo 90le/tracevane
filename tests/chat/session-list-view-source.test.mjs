@@ -68,3 +68,14 @@ test('SessionListView gates new and edited sessions on CLI runtime readiness', (
   assert.match(source, /当前 Agent 运行器不可用/);
   assert.match(source, /disabled=\{busy \|\| !selectedRuntimeReadiness\.selectable\}/);
 });
+
+
+test('SessionListView keeps stable Chat list selectors for browser acceptance helpers', () => {
+  assert.match(source, /chat-shell-session-list/);
+  assert.match(source, /chat-shell-session-row/);
+  assert.match(source, /data-session-key=\{s\.key\}/);
+  assert.match(source, /active bg-primary-soft/);
+  assert.match(source, /chat-new-chat-trigger/);
+  assert.match(source, /chat-agent-picker/);
+  assert.match(source, /chat-agent-picker-option/);
+});

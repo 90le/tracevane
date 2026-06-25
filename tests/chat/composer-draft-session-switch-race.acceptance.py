@@ -84,13 +84,13 @@ def serialized(value: object) -> str:
 
 
 def editor_text(page) -> str:
-    return page.locator(".chat-composer-editor[contenteditable='true']").first.inner_text()
+    return page.locator(".chat-composer-editor").first.inner_text()
 
 
 def inject_draft_and_click_session_without_frame_gap(page, token: str, target_session_key: str) -> None:
     page.evaluate(
         """([tokenValue, targetSessionKey]) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             const targetRow = document.querySelector(`.chat-shell-session-row[data-session-key="${CSS.escape(targetSessionKey)}"]`);
             const targetButton = targetRow?.querySelector('.chat-shell-session-item');
             if (!editor) {
@@ -103,12 +103,16 @@ def inject_draft_and_click_session_without_frame_gap(page, token: str, target_se
                 throw new Error(`missing target session primary button ${targetSessionKey}`);
             }
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = tokenValue;
-            editor.append(textNode);
+            if ('value' in editor) {
+                editor.value = tokenValue;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = tokenValue;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -131,7 +135,7 @@ def collect_diagnostics(page, first_session_key: str, second_session_key: str) -
             return {
                 path: window.location.pathname,
                 activeSessionKey: document.querySelector('.chat-shell-session-row.active')?.getAttribute('data-session-key') || '',
-                editorText: document.querySelector('.chat-composer-editor[contenteditable="true"]')?.textContent || '',
+                editorText: document.querySelector('.chat-composer-editor')?.value || document.querySelector('.chat-composer-editor')?.textContent || '',
                 firstDraft: window.localStorage.getItem(draftKey(firstKey)),
                 secondDraft: window.localStorage.getItem(draftKey(secondKey)),
                 activeRowText: document.querySelector('.chat-shell-session-row.active')?.textContent || '',
@@ -171,8 +175,8 @@ def main() -> None:
         try:
             page.wait_for_function(
                 """(tokenValue) => {
-                    const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
-                    return Boolean(editor && (editor.textContent || '').includes(tokenValue));
+                    const editor = document.querySelector('.chat-composer-editor');
+                    return Boolean(editor && (editor.value || editor.textContent || '').includes(tokenValue));
                 }""",
                 arg=token,
                 timeout=8000,

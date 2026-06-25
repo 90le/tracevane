@@ -867,7 +867,7 @@ export function SessionListView({
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-panel">
+    <section className="chat-shell-session-list flex h-full min-h-0 flex-col bg-panel">
       <div className="grid gap-2 border-b border-line p-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1">
@@ -881,6 +881,7 @@ export function SessionListView({
           <Button
             variant="outline"
             size="sm"
+            className="chat-new-chat-trigger"
             onClick={() => setDialog({ kind: "create" })}
           >
             <Plus />
@@ -1024,9 +1025,10 @@ export function SessionListView({
               return (
                 <div
                   key={s.key}
+                  data-session-key={s.key}
                   className={cn(
-                    "group grid grid-cols-[minmax(0,1fr)_auto] items-stretch rounded-sm transition-colors hover:bg-panel-2",
-                    s.key === selectedKey && "bg-primary-soft",
+                    "chat-shell-session-row group grid grid-cols-[minmax(0,1fr)_auto] items-stretch rounded-sm transition-colors hover:bg-panel-2",
+                    s.key === selectedKey && "active bg-primary-soft",
                   )}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -1294,7 +1296,7 @@ export function SessionListView({
         open={Boolean(dialog)}
         onOpenChange={(open) => !open && setDialog(null)}
       >
-        <DialogContent className={dialog?.kind === "create" ? "w-[min(760px,94vw)]" : undefined}>
+        <DialogContent className={dialog?.kind === "create" ? "chat-agent-picker w-[min(760px,94vw)]" : undefined}>
           {dialog?.kind === "create" && (
             <>
               <DialogHeader>
@@ -1328,7 +1330,7 @@ export function SessionListView({
                             disabled={!readiness.selectable}
                             onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
                             className={cn(
-                              "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
+                              "chat-agent-picker-option grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",
                               !readiness.selectable && "cursor-not-allowed opacity-60 hover:border-line",
                             )}
@@ -1447,7 +1449,7 @@ export function SessionListView({
                             disabled={!readiness.selectable}
                             onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
                             className={cn(
-                              "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
+                              "chat-agent-picker-option grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",
                               !readiness.selectable && "cursor-not-allowed opacity-60 hover:border-line",
                             )}

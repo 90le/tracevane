@@ -38,12 +38,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -81,7 +85,7 @@ def upload_file_and_insert(page, file_path: Path):
     page.wait_for_function(
         """(fileName) => {
             const editor = document.querySelector('.chat-composer-editor');
-            return Boolean(editor && (editor.textContent || '').includes(`@${fileName}`));
+            return Boolean(editor && (editor.value || editor.textContent || '').includes(`@${fileName}`));
         }""",
         arg=file_path.name,
         timeout=10000,
@@ -287,7 +291,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.locator(".chat-composer-send").first
 
         fill_editor(page, editor, first_token)

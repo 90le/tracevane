@@ -38,12 +38,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -167,8 +171,8 @@ def wait_for_count(page, items: list[dict[str, object]], count: int, label: str,
 def wait_for_editor_resource(page, token: str, file_name: str, timeout=15000):
     page.wait_for_function(
         """([tokenValue, fileName]) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
-            const text = editor?.textContent || '';
+            const editor = document.querySelector('.chat-composer-editor');
+            const text = editor?.value || editor?.textContent || '';
             const resource = editor?.querySelector('[data-composer-node-type="resource"]');
             return Boolean(text.includes(tokenValue) && text.includes(`@${fileName}`) && resource);
         }""",
@@ -304,7 +308,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
 
         first_session_key = open_new_chat(page)
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         fill_editor(page, editor, f"{token} ")
         upload_file_and_insert(page, file_path)
         wait_for_count(page, upload_payloads, 1, "/upload")
@@ -313,7 +317,7 @@ def main() -> None:
         first_stored_before_switch = read_draft_storage(page, first_session_key)
 
         second_session_key = open_new_chat(page)
-        fill_editor(page, page.locator(".chat-composer-editor[contenteditable='true']").first, other_token)
+        fill_editor(page, page.locator(".chat-composer-editor").first, other_token)
         page.wait_for_timeout(450)
 
         goto_session(page, first_session_key)

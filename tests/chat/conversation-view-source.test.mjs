@@ -65,3 +65,11 @@ test('ConversationView uses Files roots explicitly and sends Files-root refs saf
   assert.match(source, /source: isProjectRoot \? "workspace" : "files"/);
   assert.match(source, /Files 根引用/);
 });
+
+
+test('ConversationView keeps current Chat surface selectors for acceptance smoke coverage', () => {
+  assert.match(source, /chat-conversation-pane/);
+  assert.match(source, /chat-conversation-thread/);
+  assert.match(source, /chat-composer-pool-insert/);
+  assert.match(source, /aria-label=\{`引用 \$\{file\.fileName\}`\}/);
+});

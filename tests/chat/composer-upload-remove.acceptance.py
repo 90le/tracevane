@@ -37,12 +37,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -176,7 +180,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.locator(".chat-composer-send").first
 
         fill_editor(page, editor, token)
@@ -210,7 +214,7 @@ def main() -> None:
                 const send = document.querySelector('.chat-composer-send');
                 return Boolean(
                     editor
-                    && (editor.textContent || '').includes(tokenValue)
+                    && (editor.value || editor.textContent || '').includes(tokenValue)
                     && !document.querySelector('.chat-composer-pool-item')
                     && !document.querySelector('.chat-shell-toast-error')
                     && send

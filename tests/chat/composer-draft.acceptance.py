@@ -68,7 +68,7 @@ def open_new_chat(page) -> str:
     page.wait_for_function(
         """() => (
             document.querySelector('.chat-shell-session-row.active')
-            && document.querySelector('.chat-composer-editor[contenteditable="true"]')
+            && document.querySelector('.chat-composer-editor')
         )""",
         timeout=30000,
     )
@@ -82,21 +82,21 @@ def goto_session(page, session_key: str) -> None:
     page.goto(f"http://127.0.0.1:5176/chat/s/{session_ref}", wait_until="domcontentloaded")
     page.wait_for_load_state("networkidle")
     page.wait_for_function(
-        "() => document.querySelector('.chat-composer-editor[contenteditable=\"true\"]')",
+        "() => document.querySelector('.chat-composer-editor')",
         timeout=30000,
     )
 
 
 def editor_text(page) -> str:
-    return page.locator(".chat-composer-editor[contenteditable='true']").first.inner_text()
+    return page.locator(".chat-composer-editor").first.inner_text()
 
 
 def wait_for_editor_text(page, token: str, timeout=30000) -> None:
     set_stage(f"wait editor text {token}")
     page.wait_for_function(
         """(token) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
-            return Boolean(editor && (editor.textContent || '').includes(token));
+            const editor = document.querySelector('.chat-composer-editor');
+            return Boolean(editor && (editor.value || editor.textContent || '').includes(token));
         }""",
         arg=token,
         timeout=timeout,
@@ -106,7 +106,7 @@ def wait_for_editor_text(page, token: str, timeout=30000) -> None:
 def collect_diagnostics(page) -> dict[str, object]:
     return page.evaluate(
         """() => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             const draftKeys = [];
             for (let index = 0; index < window.localStorage.length; index += 1) {
                 const key = window.localStorage.key(index) || '';
@@ -114,7 +114,7 @@ def collect_diagnostics(page) -> dict[str, object]:
             }
             return {
                 path: window.location.pathname,
-                editorText: editor?.textContent || '',
+                editorText: editor?.value || editor?.textContent || '',
                 draftKeys,
                 draftValues: Object.fromEntries(draftKeys.map((key) => [key, window.localStorage.getItem(key)])),
                 activeRowText: document.querySelector('.chat-shell-session-row.active')?.textContent || '',
@@ -139,13 +139,13 @@ def main() -> None:
 
         set_stage("create first chat")
         first_session_key = open_new_chat(page)
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         set_stage("fill first draft")
         fill_editor(page, editor, first_draft)
 
         set_stage("create second chat")
         second_session_key = open_new_chat(page)
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         set_stage("fill second draft")
         fill_editor(page, editor, second_draft)
 

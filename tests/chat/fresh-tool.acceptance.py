@@ -48,7 +48,7 @@ def open_new_chat(page):
     if not session_key:
         raise AssertionError(f"create session response missing session.key: {payload}")
     wait_for_active_session(page, session_key)
-    page.locator(".chat-composer-editor[contenteditable='true']").first.wait_for(state="visible", timeout=30000)
+    page.locator(".chat-composer-editor").first.wait_for(state="visible", timeout=30000)
     page.wait_for_load_state("networkidle")
     return session_key
 
@@ -170,7 +170,7 @@ def main() -> None:
 
         session_key = open_new_chat(page)
 
-        textarea = page.locator(".chat-composer-editor[contenteditable='true']").first
+        textarea = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
 
         prompt = (

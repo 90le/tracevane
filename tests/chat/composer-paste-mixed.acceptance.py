@@ -119,7 +119,7 @@ def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, o
 
 
 def paste_text_and_file(page, text: str, file_name: str) -> None:
-    page.locator(".chat-composer-editor[contenteditable='true']").first.evaluate(
+    page.locator(".chat-composer-editor").first.evaluate(
         """(editor, payload) => {
             editor.focus();
             const selection = window.getSelection();
@@ -227,8 +227,8 @@ def main() -> None:
         paste_text_and_file(page, token, file_name)
         page.wait_for_function(
             """(tokenValue) => {
-                const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
-                return Boolean(editor && (editor.textContent || '').includes(tokenValue));
+                const editor = document.querySelector('.chat-composer-editor');
+                return Boolean(editor && (editor.value || editor.textContent || '').includes(tokenValue));
             }""",
             arg=token,
             timeout=10000,

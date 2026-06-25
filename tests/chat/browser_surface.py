@@ -39,7 +39,7 @@ def wait_for_active_session(page, session_key: str, timeout: int = 90000) -> Non
                 || href.includes(`sessionRef=${encodeURIComponent(sessionRef)}`);
             return Boolean(
               (row?.getAttribute('data-session-key') === sessionKey || routeMatches)
-              && document.querySelector('.chat-composer-editor[contenteditable="true"]')
+              && document.querySelector('.chat-composer-editor')
             );
         }""",
         arg=session_key,

@@ -89,11 +89,7 @@ def wait_for_composer_focused(page, label: str, timeout=10000) -> None:
         page.wait_for_function(
             """() => {
                 const active = document.activeElement;
-                return Boolean(
-                    active
-                    && active.classList.contains('chat-composer-editor')
-                    && active.getAttribute('contenteditable') === 'true'
-                );
+                return Boolean(active && active.classList.contains('chat-composer-editor'));
             }""",
             timeout=timeout,
         )
@@ -130,15 +126,19 @@ def session_ref(session_key: str) -> str:
 
 
 def fill_editor(page, text: str) -> None:
-    page.locator(".chat-composer-editor[contenteditable='true']").first.evaluate(
+    page.locator(".chat-composer-editor").first.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',

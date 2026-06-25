@@ -565,8 +565,8 @@ export function ConversationView({
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-panel">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-4">
+    <section className="chat-conversation-pane flex h-full min-h-0 flex-col bg-panel">
+      <div ref={scrollRef} className="chat-conversation-thread min-h-0 flex-1 overflow-auto p-4">
         {!sessionKey ? (
           <EmptyState
             icon={<MessagesSquare />}
@@ -641,6 +641,16 @@ export function ConversationView({
                 <span className="max-w-56 truncate">{file.fileName}</span>
                 {file.status === "failed" && file.error && (
                   <span className="max-w-48 truncate text-[11px]">{file.error}</span>
+                )}
+                {file.status === "ready" && (
+                  <button
+                    type="button"
+                    className="chat-composer-pool-insert inline-flex items-center gap-1 rounded-full px-1 py-0.5 text-[11px] text-primary hover:bg-primary-soft"
+                    aria-label={`引用 ${file.fileName}`}
+                    onClick={() => setDraft((prev) => `${prev}${prev && !/\s$/.test(prev) ? " " : ""}@${file.fileName}`)}
+                  >
+                    引用
+                  </button>
                 )}
                 {file.status === "ready" && file.previewUrl && (
                   <button

@@ -65,15 +65,19 @@ def open_new_chat(page) -> str:
 def fill_editor(page, token: str) -> None:
     page.evaluate(
         """(tokenValue) => {
-            const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+            const editor = document.querySelector('.chat-composer-editor');
             if (!editor) throw new Error('missing composer editor');
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = tokenValue;
-            editor.append(textNode);
+            if ('value' in editor) {
+                editor.value = tokenValue;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = tokenValue;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',

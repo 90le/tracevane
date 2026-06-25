@@ -39,12 +39,16 @@ def fill_editor(page, locator, text: str):
     locator.evaluate(
         """(editor, value) => {
             editor.focus();
-            editor.replaceChildren();
-            const textNode = document.createElement('span');
-            textNode.className = 'chat-composer-editor-text';
-            textNode.dataset.composerNodeType = 'text';
-            textNode.textContent = value;
-            editor.appendChild(textNode);
+            if ('value' in editor) {
+                editor.value = value;
+            } else {
+                editor.replaceChildren();
+                const textNode = document.createElement('span');
+                textNode.className = 'chat-composer-editor-text';
+                textNode.dataset.composerNodeType = 'text';
+                textNode.textContent = value;
+                editor.appendChild(textNode);
+            }
             editor.dispatchEvent(new InputEvent('input', {
                 bubbles: true,
                 inputType: 'insertText',
@@ -138,7 +142,7 @@ def read_composer_diagnostics(page) -> dict[str, object]:
             const stop = document.querySelector('.chat-composer-stop');
             return {
               url: window.location.href,
-              editorText: (editor?.textContent || '').slice(0, 220),
+              editorText: (editor?.value || editor?.textContent || '').slice(0, 220),
               editorPlaceholder: editor?.getAttribute('data-placeholder') || '',
               sendDisabled: send ? send.hasAttribute('disabled') : null,
               stopVisible: Boolean(stop),
@@ -192,7 +196,7 @@ def measure_pressure_layout(page) -> dict[str, object]:
               queuePresentationMode: document.querySelector('.chat-queue-rail')?.getAttribute('data-presentation-mode') || '',
               queueItemCount: document.querySelectorAll('.chat-queue-rail__item').length,
               attachmentCount: document.querySelectorAll('.chat-composer-pool-item.ready').length,
-              composerTextLength: (document.querySelector('.chat-composer-editor')?.textContent || '').length,
+              composerTextLength: (document.querySelector('.chat-composer-editor')?.value || document.querySelector('.chat-composer-editor')?.textContent || '').length,
             };
         }"""
     )
@@ -348,7 +352,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         session_key = open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
 
         fill_editor(page, editor, "composer pressure starts active run")

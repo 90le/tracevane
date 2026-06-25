@@ -121,7 +121,7 @@ def upload_file_and_insert(page, file_path: Path):
     page.wait_for_function(
         """(fileName) => {
             const editor = document.querySelector('.chat-composer-editor');
-            return Boolean(editor && (editor.textContent || '').includes(`@${fileName}`));
+            return Boolean(editor && (editor.value || editor.textContent || '').includes(`@${fileName}`));
         }""",
         arg=file_path.name,
         timeout=10000,
@@ -233,7 +233,7 @@ def main() -> None:
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
 
-        editor = page.locator(".chat-composer-editor[contenteditable='true']").first
+        editor = page.locator(".chat-composer-editor").first
         send_button = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
 
         fill_editor(page, editor, f"{first_token} ")
@@ -247,8 +247,8 @@ def main() -> None:
         )
 
         page.wait_for_function(
-            "() => document.querySelector('.chat-composer-editor[contenteditable=\"true\"]')"
-            " && !document.querySelector('.chat-composer-editor[contenteditable=\"true\"]')?.textContent?.trim()",
+            "() => document.querySelector('.chat-composer-editor')"
+            " && !document.querySelector('.chat-composer-editor')?.textContent?.trim()",
             timeout=10000,
         )
         page.wait_for_function(

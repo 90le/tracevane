@@ -42,7 +42,7 @@ def wait_for_run_to_settle(page, timeout=60000):
         status_visible = running_status.count() > 0 and running_status.is_visible()
         composer_running = page.evaluate(
             """() => {
-                const editor = document.querySelector('.chat-composer-editor[contenteditable="true"]');
+                const editor = document.querySelector('.chat-composer-editor');
                 const placeholder = editor?.getAttribute('data-placeholder') || '';
                 return /reply is still running|回复生成中|生成中/i.test(placeholder);
             }"""
@@ -207,7 +207,7 @@ def main() -> None:
         first_created_url = page.url
         result["created_session_selected"] = bool(session_label_before)
 
-        textarea = page.locator(".chat-composer-editor[contenteditable='true']").first
+        textarea = page.locator(".chat-composer-editor").first
         send_btn = page.get_by_role("button", name=re.compile("^发送$|^Send$")).first
         stop_btn = page.get_by_role("button", name=re.compile("^停止$|^Stop$")).first
 
