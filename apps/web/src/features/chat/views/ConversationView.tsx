@@ -367,7 +367,7 @@ export function ConversationView({
   uploading: boolean;
   /** Non-null when send is unavailable — shown as a disabled hint. */
   sendDisabledReason: string | null;
-  onSend: (payload: ChatSendRequest) => void;
+  onSend: (payload: ChatSendRequest) => Promise<boolean>;
   onUploadFile: (file: File) => Promise<ChatFileUploadResponse>;
   onAbort: () => void;
   onRetry: () => void;
@@ -463,10 +463,11 @@ export function ConversationView({
   const hasFailedFileRefs = fileRefs.some((item) => item.status === "failed");
   const hasPayload = Boolean(draft.trim() || readyFileRefs.length);
 
-  const submit = () => {
+  const submit = async () => {
     const text = draft.trim();
     if (!hasPayload || !canSend || sending || uploading || hasPendingFileRefs || hasFailedFileRefs) return;
-    onSend({ text, fileRefs: readyFileRefs.length ? readyFileRefs : undefined });
+    const accepted = await onSend({ text, fileRefs: readyFileRefs.length ? readyFileRefs : undefined });
+    if (!accepted) return;
     if (sessionKey && typeof window !== "undefined") {
       window.localStorage.removeItem(composerDraftStorageKey(sessionKey));
     }
@@ -815,7 +816,7 @@ export function ConversationView({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
-              submit();
+              void submit();
             }
           }}
           disabled={!sessionKey || !canSend || sending}
@@ -865,7 +866,7 @@ export function ConversationView({
             size="sm"
             className="chat-composer-send"
             disabled={!sessionKey || !canSend || sending || uploading || hasPendingFileRefs || hasFailedFileRefs || !hasPayload}
-            onClick={submit}
+            onClick={() => void submit()}
           >
             {sending ? <Loader2 className="animate-spin" /> : <Send />}
             {sending ? "发送中…" : "发送"}

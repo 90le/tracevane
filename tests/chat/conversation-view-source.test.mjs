@@ -46,6 +46,14 @@ test('ConversationView persists text and ready Files attachments per selected se
   assert.match(source, /window\.localStorage\.removeItem\(composerDraftStorageKey\(sessionKey\)\)/);
 });
 
+test('ConversationView clears composer only after send is accepted', () => {
+  assert.match(source, /onSend: \(payload: ChatSendRequest\) => Promise<boolean>/);
+  assert.match(source, /const accepted = await onSend/);
+  assert.match(source, /if \(!accepted\) return/);
+  assert.match(source, /onClick=\{\(\) => void submit\(\)\}/);
+  assert.match(source, /void submit\(\)/);
+});
+
 
 test('ConversationView uses Files roots explicitly and sends Files-root refs safely', () => {
   assert.match(source, /const filesRoots = filesSummary\.data\?\.roots \?\? \[\]/);

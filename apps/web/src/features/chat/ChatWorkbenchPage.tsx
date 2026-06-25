@@ -258,33 +258,31 @@ export function ChatWorkbenchPage() {
     setListOpen(false);
   };
 
-  const handleSend = (payload: ChatSendRequest) => {
-    if (!selectedKey) return;
+  const handleSend = React.useCallback(async (payload: ChatSendRequest): Promise<boolean> => {
+    if (!selectedKey) return false;
     setLiveTurn({ ...EMPTY_TURN });
     setStreamEnabled(true);
-    sendMutation.mutate(
-      { sessionKey: selectedKey, payload },
-      {
-        onSuccess: (ack) => {
-          activeRunIdRef.current = ack.runId;
-          setLiveTurn((prev) => ({
-            ...(prev ?? EMPTY_TURN),
-            runId: ack.runId,
-          }));
-          if (ack.status === "duplicate_completed") {
-            setStreamEnabled(false);
-            setLiveTurn(null);
-            refetchSelected();
-          }
-        },
-        onError: (error) => {
-          setStreamEnabled(false);
-          setLiveTurn(null);
-          toast.error("发送失败", { description: error.message });
-        },
-      },
-    );
-  };
+    try {
+      const ack = await sendMutation.mutateAsync({ sessionKey: selectedKey, payload });
+      activeRunIdRef.current = ack.runId;
+      setLiveTurn((prev) => ({
+        ...(prev ?? EMPTY_TURN),
+        runId: ack.runId,
+      }));
+      if (ack.status === "duplicate_completed") {
+        setStreamEnabled(false);
+        setLiveTurn(null);
+        refetchSelected();
+      }
+      return true;
+    } catch (error) {
+      setStreamEnabled(false);
+      activeRunIdRef.current = null;
+      setLiveTurn(null);
+      toast.error("发送失败", { description: error instanceof Error ? error.message : String(error) });
+      return false;
+    }
+  }, [selectedKey, sendMutation, refetchSelected]);
 
   const handleUploadFile = React.useCallback(
     async (file: File) => {
