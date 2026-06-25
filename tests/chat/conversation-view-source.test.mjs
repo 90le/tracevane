@@ -12,5 +12,22 @@ test('ConversationView exposes a workspace file picker backed by the Files API',
   assert.match(source, /workspaceRootId/);
   assert.match(source, /@ 工作区文件/);
   assert.match(source, /attachWorkspaceFile/);
-  assert.match(source, /resourceRef: `workspace:\$\{filePath\}`/);
+  assert.match(source, /const resourceRef = `workspace:\$\{filePath\}`/);
+  assert.match(source, /resourceRef,/);
+});
+
+
+test('ConversationView keeps composer file refs structured and removable across upload states', () => {
+  assert.match(source, /type ComposerFileRefItem = ChatSendFileRef &/);
+  assert.match(source, /status: "uploading" \| "ready" \| "failed"/);
+  assert.match(source, /source: "upload" \| "workspace"/);
+  assert.match(source, /readyFileRefs/);
+  assert.match(source, /hasPendingFileRefs/);
+  assert.match(source, /hasFailedFileRefs/);
+  assert.match(source, /chat-composer-pool-item chat-composer-attachment/);
+  assert.match(source, /chat-composer-attachment-remove/);
+  assert.match(source, /chat-composer-file-input/);
+  assert.match(source, /chat-composer-send/);
+  assert.match(source, /cancelledUploadIdsRef/);
+  assert.match(source, /结构化 fileRef/);
 });

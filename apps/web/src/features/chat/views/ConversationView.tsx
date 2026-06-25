@@ -51,6 +51,18 @@ function parentPortablePath(value: string): string {
   return normalized.split("/").slice(0, -1).join("/");
 }
 
+type ComposerFileRefItem = ChatSendFileRef & {
+  status: "uploading" | "ready" | "failed";
+  source: "upload" | "workspace";
+  error?: string | null;
+};
+
+function composerFileSourceLabel(item: ComposerFileRefItem): string {
+  if (item.status === "uploading") return "上传中";
+  if (item.status === "failed") return "失败";
+  return item.source === "workspace" ? "工作区" : "上传";
+}
+
 function ToolCallBlock({
   tool,
 }: {
@@ -272,11 +284,12 @@ export function ConversationView({
   onRetry: () => void;
 }) {
   const [draft, setDraft] = React.useState("");
-  const [fileRefs, setFileRefs] = React.useState<ChatSendFileRef[]>([]);
+  const [fileRefs, setFileRefs] = React.useState<ComposerFileRefItem[]>([]);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false);
   const [workspacePickerDir, setWorkspacePickerDir] = React.useState("");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const cancelledUploadIdsRef = React.useRef(new Set<string>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const filesSummary = useFilesSummaryQuery({ enabled: workspacePickerOpen });
@@ -304,6 +317,7 @@ export function ConversationView({
     setUploadError(null);
     setWorkspacePickerOpen(false);
     setWorkspacePickerDir("");
+    cancelledUploadIdsRef.current.clear();
   }, [sessionKey]);
 
   // Keep the transcript pinned to the bottom as content / stream grows.
@@ -313,12 +327,18 @@ export function ConversationView({
   }, [messages, liveTurn?.text, liveTurn?.toolCards.length, sessionKey]);
 
   const canSend = !sendDisabledReason;
-  const hasPayload = Boolean(draft.trim() || fileRefs.length);
+  const readyFileRefs = React.useMemo(
+    () => fileRefs.filter((item) => item.status === "ready").map(({ status: _status, source: _source, error: _error, ...ref }) => ref),
+    [fileRefs],
+  );
+  const hasPendingFileRefs = fileRefs.some((item) => item.status === "uploading");
+  const hasFailedFileRefs = fileRefs.some((item) => item.status === "failed");
+  const hasPayload = Boolean(draft.trim() || readyFileRefs.length);
 
   const submit = () => {
     const text = draft.trim();
-    if (!hasPayload || !canSend || sending || uploading) return;
-    onSend({ text, fileRefs: fileRefs.length ? fileRefs : undefined });
+    if (!hasPayload || !canSend || sending || uploading || hasPendingFileRefs || hasFailedFileRefs) return;
+    onSend({ text, fileRefs: readyFileRefs.length ? readyFileRefs : undefined });
     setDraft("");
     setFileRefs([]);
     setUploadError(null);
@@ -331,38 +351,70 @@ export function ConversationView({
     const selected = Array.from(files).filter((file) => file.size >= 0);
     if (!selected.length) return;
     setUploadError(null);
-    try {
-      const uploaded = await Promise.all(selected.map((file) => onUploadFile(file)));
-      setFileRefs((prev) => [
-        ...prev,
-        ...uploaded.map((item) => ({
+
+    await Promise.all(selected.map(async (file) => {
+      const pendingId = `uploading:${crypto.randomUUID()}`;
+      const pendingItem: ComposerFileRefItem = {
+        id: pendingId,
+        relativePath: file.name,
+        resourceRef: pendingId,
+        fileName: file.name,
+        kind: "file",
+        mimeType: file.type || null,
+        status: "uploading",
+        source: "upload",
+      };
+      setFileRefs((prev) => [...prev, pendingItem]);
+      try {
+        const item = await onUploadFile(file);
+        if (cancelledUploadIdsRef.current.has(pendingId)) {
+          cancelledUploadIdsRef.current.delete(pendingId);
+          return;
+        }
+        const readyItem: ComposerFileRefItem = {
           id: item.resource.id,
           relativePath: item.relativePath,
           resourceRef: item.resourceRef,
           fileName: item.fileName,
           kind: item.kind,
           mimeType: item.mimeType,
-        } satisfies ChatSendFileRef)),
-      ]);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : String(error));
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+          status: "ready",
+          source: "upload",
+        };
+        setFileRefs((prev) => prev.map((entry) => (entry.id === pendingId ? readyItem : entry)));
+      } catch (error) {
+        if (cancelledUploadIdsRef.current.has(pendingId)) {
+          cancelledUploadIdsRef.current.delete(pendingId);
+          return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        setUploadError(message);
+        setFileRefs((prev) => prev.map((entry) => (
+          entry.id === pendingId
+            ? { ...entry, status: "failed", error: message }
+            : entry
+        )));
+      }
+    }));
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const attachWorkspaceFile = (filePath: string, fileName: string) => {
+    const resourceRef = `workspace:${filePath}`;
     setFileRefs((prev) => {
-      if (prev.some((item) => item.relativePath === filePath)) return prev;
+      if (prev.some((item) => item.resourceRef === resourceRef)) return prev;
       return [
         ...prev,
         {
-          id: `workspace:${filePath}`,
+          id: resourceRef,
           relativePath: filePath,
-          resourceRef: `workspace:${filePath}`,
+          resourceRef,
           fileName,
           kind: "file",
           mimeType: null,
+          status: "ready",
+          source: "workspace",
         },
       ];
     });
@@ -422,20 +474,39 @@ export function ConversationView({
           ref={fileInputRef}
           type="file"
           multiple
-          className="hidden"
+          className="chat-composer-file-input hidden"
           onChange={(event) => void uploadFiles(event.target.files ?? [])}
         />
         {fileRefs.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {fileRefs.map((file) => (
-              <span key={file.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-xs text-muted">
-                <Paperclip className="size-3" />
+              <span
+                key={file.id}
+                className={cn(
+                  "chat-composer-pool-item chat-composer-attachment inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
+                  file.status === "failed"
+                    ? "failed border-red bg-red-soft text-red"
+                    : file.status === "uploading"
+                      ? "uploading border-orange bg-orange-soft text-orange"
+                      : "ready border-line bg-panel-2 text-muted",
+                )}
+                title={file.status === "failed" ? file.error || "文件上传失败" : file.relativePath}
+              >
+                {file.status === "uploading" ? <Loader2 className="size-3 animate-spin" /> : <Paperclip className="size-3" />}
+                <span className="rounded-full bg-panel px-1.5 py-0.5 text-[10px] text-subtle">{composerFileSourceLabel(file)}</span>
                 <span className="max-w-56 truncate">{file.fileName}</span>
+                {file.status === "failed" && file.error && (
+                  <span className="max-w-48 truncate text-[11px]">{file.error}</span>
+                )}
                 <button
                   type="button"
-                  className="rounded-full p-0.5 text-subtle hover:bg-panel-3 hover:text-ink"
+                  className="chat-composer-attachment-remove rounded-full p-0.5 text-subtle hover:bg-panel-3 hover:text-ink"
                   aria-label={`移除 ${file.fileName}`}
-                  onClick={() => setFileRefs((prev) => prev.filter((item) => item.id !== file.id))}
+                  onClick={() => {
+                    if (file.status === "uploading") cancelledUploadIdsRef.current.add(file.id);
+                    setFileRefs((prev) => prev.filter((item) => item.id !== file.id));
+                    if (file.status === "failed") setUploadError(null);
+                  }}
                 >
                   <X className="size-3" />
                 </button>
@@ -506,7 +577,7 @@ export function ConversationView({
               )}
             </div>
             <div className="border-t border-line px-2.5 py-1.5 text-xs text-subtle">
-              附加文件会以 @path 形式发送给当前 Agent；默认面向项目工作目录。
+              附加文件会作为结构化 fileRef 传给当前 Agent；同时保留 @path 文本提示兼容，默认面向项目工作目录。
             </div>
           </div>
         )}
@@ -525,7 +596,7 @@ export function ConversationView({
           }
           aria-label="消息输入"
           className={cn(
-            "h-16 w-full resize-none rounded-md border border-line bg-panel-2 px-3 py-2 text-base text-ink-strong outline-none transition-[border-color,box-shadow]",
+            "chat-composer-editor h-16 w-full resize-none rounded-md border border-line bg-panel-2 px-3 py-2 text-base text-ink-strong outline-none transition-[border-color,box-shadow]",
             "placeholder:text-subtle focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]",
             "disabled:cursor-not-allowed disabled:opacity-60",
           )}
@@ -564,7 +635,8 @@ export function ConversationView({
           <Button
             variant="primary"
             size="sm"
-            disabled={!sessionKey || !canSend || sending || uploading || !hasPayload}
+            className="chat-composer-send"
+            disabled={!sessionKey || !canSend || sending || uploading || hasPendingFileRefs || hasFailedFileRefs || !hasPayload}
             onClick={submit}
           >
             {sending ? <Loader2 className="animate-spin" /> : <Send />}
