@@ -195,6 +195,14 @@ export function buildAgentRuntimeRunsPayload(input: {
       canOpen: true,
       canStop: canControl && isActiveTerminalStatus(state.status),
       canDelete: canControl && !isActiveTerminalStatus(state.status),
+      actionLabel: canControl
+        ? isActiveTerminalStatus(state.status)
+          ? "可在此停止"
+          : "可删除记录"
+        : "回 IDE 处理",
+      actionReason: canControl
+        ? "后端识别为 Codex / Claude Code / OpenCode Agent 终端会话。"
+        : "普通终端或未知 CLI 会话由 IDE 拥有，CLI Agents 只提供证据入口。",
       metadata: {
         sessionId: session.sessionId,
         profileId: session.profileId ?? null,
@@ -244,6 +252,8 @@ export function buildAgentRuntimeRunsPayload(input: {
       canOpen: true,
       canStop: false,
       canDelete: false,
+      actionLabel: "去 IM 渠道",
+      actionReason: "IM 会话的 kill / reset / route override 由 IM Channels 拥有。",
       metadata: {
         poolKey: session.poolKey,
         sessionId: session.sessionId,
@@ -293,6 +303,8 @@ export function buildAgentRuntimeRunsPayload(input: {
       canOpen: true,
       canStop: false,
       canDelete: false,
+      actionLabel: "去对话",
+      actionReason: "Chat run 的 abort / reset / history 由 Chat 页面拥有。",
       metadata: {
         sessionKey: session.key,
         sessionId: session.sessionId,

@@ -238,6 +238,10 @@ export interface AgentRuntimeRunSummary {
   canOpen: boolean;
   canStop: boolean;
   canDelete: boolean;
+  /** Short operator-facing action summary for the current owner boundary. */
+  actionLabel: string;
+  /** Explains why the run can or cannot be controlled from CLI Agents. */
+  actionReason: string;
   metadata: Record<string, string | number | boolean | null>;
   evidenceRefs: AgentRuntimeRunEvidenceRef[];
 }

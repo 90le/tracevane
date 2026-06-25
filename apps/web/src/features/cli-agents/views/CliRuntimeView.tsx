@@ -38,10 +38,25 @@ const AGENT_CLI_ORDER: ReadonlyArray<{ id: TerminalLaunchCli; label: string; pur
 ];
 
 function copyText(value: string): void {
-  void navigator.clipboard.writeText(value).then(
-    () => toast.success("启动命令已复制"),
-    () => toast.error("复制失败", { description: "浏览器未允许剪贴板访问。" }),
-  );
+  if (navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(value).then(
+      () => toast.success("启动命令已复制"),
+      () => toast.error("复制失败", { description: "浏览器未允许剪贴板访问。" }),
+    );
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (ok) toast.success("启动命令已复制");
+  else toast.error("复制失败", { description: "当前浏览器不支持自动复制，请手动选择命令。" });
 }
 
 /**
@@ -88,7 +103,14 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
           title="Agent CLI 启动台"
           sub="只管理 Codex / Claude Code / OpenCode 的 readiness、启动命令和 IDE 交接。Provider 与 IM 配置在各自页面。"
           action={
-            <Button variant="outline" size="sm" onClick={() => void terminalStatus.refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void terminalStatus.refetch();
+                void gateway.refetch();
+              }}
+            >
               <RefreshCw />
               刷新
             </Button>
@@ -176,6 +198,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                           <Button
                             variant="outline"
                             size="sm"
+                            title={installed ? "解析可复制的启动命令" : "CLI 未安装，无法解析启动命令"}
                             disabled={!installed || launch.isPending}
                             onClick={() => resolveLaunch(id)}
                           >

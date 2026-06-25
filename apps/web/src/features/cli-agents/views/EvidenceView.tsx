@@ -26,6 +26,37 @@ import {
   toneIconClass,
 } from "./_shared";
 
+function eventLabel(type: string): string {
+  switch (type) {
+    case "session.created":
+      return "新会话已创建";
+    case "session.stopped":
+      return "会话已停止";
+    case "session.killed":
+      return "会话已终止";
+    case "session.disposed":
+      return "会话已释放";
+    case "session.reaped":
+      return "空闲会话已回收";
+    case "turn.started":
+      return "开始处理消息";
+    case "turn.finished":
+      return "Agent 回复完成";
+    case "turn.failed":
+      return "Agent 处理失败";
+    case "turn.fallback":
+      return "触发 fallback";
+    default:
+      return type;
+  }
+}
+
+function platformPeerLabel(platform: string | null | undefined, peerKind: string | null | undefined): string {
+  const platformLabel = platform === "feishu" ? "飞书" : platform || "IM";
+  const peerLabel = peerKind === "user" ? "私聊" : peerKind === "group" ? "群聊" : "会话";
+  return `${platformLabel}${peerLabel}`;
+}
+
 /**
  * Async agent-session evidence — read-only. IM channel agent-sessions (active +
  * recent events) come from the Channel Connectors session driver; chat sessions
@@ -91,8 +122,7 @@ export function EvidenceView(_props: CliAgentsViewProps) {
           ) : (
             activeSessions.map((s) => {
               const binding = bindingsById.get(s.bindingId);
-              const peerKind = binding?.peerKind === "user" ? "私聊" : binding?.peerKind === "group" ? "群聊" : "会话";
-              const platform = binding?.platform === "feishu" ? "飞书" : binding?.platform || "IM";
+              const source = platformPeerLabel(binding?.platform, binding?.peerKind);
               const activeModel = s.sessionControl?.model || s.model || "—";
               const activeWorkDir = s.sessionControl?.workDir || s.workDir;
               return (
@@ -100,7 +130,7 @@ export function EvidenceView(_props: CliAgentsViewProps) {
                   key={s.poolKey || s.sessionId}
                   icon={<RadioTower />}
                   iconClass={toneIconClass(s.lastError ? "bad" : s.running > 0 ? "ok" : "mute")}
-                  title={`${platform}${peerKind} · ${s.agent}`}
+                  title={`${source} · ${s.agent}`}
                   subtitle={`${activeModel} · ${activeWorkDir} · ${formatIdle(s.idleMs)}`}
                   trailing={
                     <ToneBadge tone={s.lastError ? "bad" : s.running > 0 ? "ok" : "mute"}>
@@ -134,8 +164,8 @@ export function EvidenceView(_props: CliAgentsViewProps) {
                   key={`${event.checkedAt}-${i}`}
                   icon={<History />}
                   iconClass={toneIconClass(failed ? "bad" : "info")}
-                  title={event.type}
-                  subtitle={`${event.bindingId} · ${event.agent} · ${formatTime(event.checkedAt)}`}
+                  title={eventLabel(event.type)}
+                  subtitle={`${event.agent} · ${event.model ?? "—"} · ${event.workDir} · ${formatTime(event.checkedAt)}`}
                   trailing={
                     <ToneBadge tone={failed ? "bad" : "ok"}>
                       {event.error ?? event.reason ?? "ok"}

@@ -24,6 +24,9 @@ test("Runs view is table-first and only exposes proven terminal controls", () =>
 
   assert.match(source, /TableHeader/);
   assert.match(source, /FILTERS/);
+  assert.match(source, /placeholder="搜索 run \/ 模型 \/ 目录 \/ 错误 \/ session"/);
+  assert.match(source, /rowMatchesSearch/);
+  assert.match(source, /run\.actionReason/);
   assert.match(source, /run\.canStop/);
   assert.match(source, /run\.canDelete/);
   assert.match(source, /DialogTitle>停止 Agent 终端会话/);
@@ -39,7 +42,9 @@ test("CLI Runtime view owns launch handoff but not provider or IM editing", () =
   assert.match(source, /Agent CLI 启动台/);
   assert.match(source, /useLaunchTerminalMutation/);
   assert.match(source, /解析启动命令/);
-  assert.match(source, /navigator\.clipboard\.writeText/);
+  assert.match(source, /navigator\.clipboard\?\.writeText/);
+  assert.match(source, /document\.execCommand\("copy"\)/);
+  assert.match(source, /void gateway\.refetch\(\)/);
   assert.match(source, /window\.location\.hash = "#\/ide"/);
   assert.match(source, /window\.location\.hash = "#\/model-gateway"/);
   assert.match(source, /不自动写 shell/);
@@ -54,4 +59,14 @@ test("Overview describes boundaries instead of duplicating Gateway or IM managem
   assert.match(source, /Model Gateway/);
   assert.match(source, /IM Channels/);
   assert.doesNotMatch(source, /删除平台账号|Provider 新建|保存并重启/);
+});
+
+
+test("Evidence view translates raw session-driver events for operators", () => {
+  const source = read("apps/web/src/features/cli-agents/views/EvidenceView.tsx");
+
+  assert.match(source, /function eventLabel/);
+  assert.match(source, /Agent 回复完成/);
+  assert.match(source, /飞书/);
+  assert.doesNotMatch(source, /title=\{event\.type\}/);
 });

@@ -236,3 +236,24 @@ CLI Agents 已经从 OpenClaw/Persona/通用终端混杂状态中初步收敛：
 - Model Gateway：本轮未改主链路，只保留回归，避免 CLI 页面重复 Gateway 管理。
 - IM Channels：本轮未改主链路，只保留回归；CLI 页面只链接 IM evidence，不重复 IM 账号/路由配置。
 - CLI Agents：P0 完成；P1 中“真实 CLI config path/context/compaction 自动检测”仍保留为后续增强，因为需要各 CLI 官方稳定配置合约和本机真实登录状态。
+
+## 9. 2026-06-25 十轮继续优化记录
+
+目标：在不扩大 Gateway / IM / CLI 三域职责、不引入重复配置页的前提下，继续把 CLI Agents 做成可实际管理的运行工作台。
+
+1. **运行台可检索**：Agent Runs 增加搜索框，支持按 run 标题、模型、目录、错误、session、metadata 搜索。
+2. **操作边界后端化**：`AgentRuntimeRunSummary` 增加 `actionLabel` 与 `actionReason`，由后端明确告诉前端能否在 CLI Agents 操作以及原因。
+3. **终端控制更安全**：只有后端识别为 Codex / Claude Code / OpenCode 的 Agent terminal session 才展示 stop/delete；普通终端只跳 IDE。
+4. **运行台说明更清晰**：每行显示 action reason，用户能看到“为什么要去 IM / Chat / IDE”。
+5. **启动台刷新更完整**：刷新 CLI 状态时同步刷新 Gateway 依赖，避免 CLI readiness 和路由状态不同步。
+6. **启动命令复制更稳**：Clipboard API 不可用时回退到隐藏 textarea + `execCommand('copy')`，失败时给出手动复制提示。
+7. **启动按钮状态更明确**：未安装 CLI 时按钮 title 说明无法解析启动命令，避免误以为网关问题。
+8. **证据索引事件可读化**：IM session driver 原始事件类型映射为“开始处理消息 / Agent 回复完成 / 新会话已创建”等中文动作。
+9. **证据索引来源统一**：平台 + 私聊/群聊标签通过统一 helper 生成，避免不同区域文案不一致。
+10. **回归测试补强**：`web-cli-agents.test.mjs` 和 `agents-runtime-runs.test.mjs` 增加搜索、action reason、复制降级、Gateway refresh、事件翻译断言。
+
+当前已验证：
+
+- `npm run typecheck:api`：通过。
+- `npm run typecheck:web`：通过。
+- `node --test tests/system/web-cli-agents.test.mjs`：通过。

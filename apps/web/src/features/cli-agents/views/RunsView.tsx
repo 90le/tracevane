@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
+import { Input } from "@/design/ui/input";
 import {
   Dialog,
   DialogBody,
@@ -79,11 +80,38 @@ function targetHref(run: AgentRuntimeRunSummary): string {
   return "#/chat";
 }
 
-function visibleRows(rows: AgentRuntimeRunSummary[], filter: RunFilter): AgentRuntimeRunSummary[] {
-  if (filter === "all") return rows;
-  if (filter === "running") return rows.filter((run) => run.status === "running");
-  if (filter === "failed") return rows.filter((run) => run.status === "failed" || run.status === "lost" || run.status === "aborted");
-  return rows.filter((run) => run.source === filter);
+function rowMatchesFilter(run: AgentRuntimeRunSummary, filter: RunFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "running") return run.status === "running";
+  if (filter === "failed") return run.status === "failed" || run.status === "lost" || run.status === "aborted";
+  return run.source === filter;
+}
+
+function rowMatchesSearch(run: AgentRuntimeRunSummary, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    run.title,
+    run.sourceLabel,
+    run.originId,
+    run.agentId,
+    run.cli,
+    run.model,
+    run.providerId,
+    run.routeScope,
+    run.workspace,
+    run.statusLabel,
+    run.lastErrorSummary,
+    run.actionLabel,
+    run.actionReason,
+    ...run.evidenceRefs.map((ref) => `${ref.kind} ${ref.label}`),
+    ...Object.values(run.metadata).map((value) => String(value ?? "")),
+  ].join(" ").toLowerCase();
+  return haystack.includes(q);
+}
+
+function visibleRows(rows: AgentRuntimeRunSummary[], filter: RunFilter, query: string): AgentRuntimeRunSummary[] {
+  return rows.filter((run) => rowMatchesFilter(run, filter) && rowMatchesSearch(run, query));
 }
 
 function metadataText(run: AgentRuntimeRunSummary): string {
@@ -101,10 +129,11 @@ export function RunsView(_props: CliAgentsViewProps) {
   const runs = useAgentRuntimeRunsQuery();
   const queryClient = useQueryClient();
   const [filter, setFilter] = React.useState<RunFilter>("all");
+  const [query, setQuery] = React.useState("");
   const [stopTarget, setStopTarget] = React.useState<AgentRuntimeRunSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<AgentRuntimeRunSummary | null>(null);
   const rows = runs.data?.runs ?? [];
-  const filteredRows = visibleRows(rows, filter);
+  const filteredRows = visibleRows(rows, filter, query);
   const totals = runs.data?.totals;
 
   const refreshRuns = React.useCallback(() => {
@@ -152,12 +181,19 @@ export function RunsView(_props: CliAgentsViewProps) {
           <StatTile icon={<RadioTower />} label="IM" value={totals?.imChannel ?? "—"} />
           <StatTile icon={<MessageSquare />} label="对话" value={totals?.chat ?? "—"} />
         </div>
-        <div className="flex flex-wrap gap-2 border-b border-line px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索 run / 模型 / 目录 / 错误 / session"
+            className="min-w-[240px] flex-1 sm:max-w-[420px]"
+          />
           {FILTERS.map((item) => (
             <Button
               key={item.id}
               variant={filter === item.id ? "primary" : "outline"}
               size="sm"
+              aria-pressed={filter === item.id}
               onClick={() => setFilter(item.id)}
             >
               {item.label}
@@ -187,7 +223,7 @@ export function RunsView(_props: CliAgentsViewProps) {
               description="启动 CLI 终端、触发 IM 任务或打开对话后会出现在这里。"
             />
           ) : filteredRows.length === 0 ? (
-            <EmptyState title="当前筛选无结果" description="切换筛选或刷新后再看。" />
+            <EmptyState title="当前筛选无结果" description="调整搜索关键词、切换筛选或刷新后再看。" />
           ) : (
             <Table>
               <TableHeader>
@@ -225,7 +261,8 @@ export function RunsView(_props: CliAgentsViewProps) {
                               </div>
                             ) : null}
                             <div className="mt-1 max-w-[42rem] truncate text-xs text-subtle">
-                              {metadataText(run)}
+                              {run.actionLabel} · {run.actionReason}
+                              {metadataText(run) ? ` · ${metadataText(run)}` : ""}
                             </div>
                           </div>
                         </div>

@@ -165,9 +165,13 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
   assert.equal(im.sourceLabel, "飞书私聊");
   assert.equal(im.primaryHref, "#/im-channels?view=sessions");
   assert.equal(im.canStop, false);
+  assert.equal(im.actionLabel, "去 IM 渠道");
+  assert.match(im.actionReason, /IM Channels/);
   assert.equal(terminal.cli, "codex");
   assert.equal(terminal.canStop, true);
   assert.equal(terminal.canDelete, false);
+  assert.equal(terminal.actionLabel, "可在此停止");
+  assert.match(terminal.actionReason, /Agent 终端会话/);
   assert.equal(terminal.primaryHref, "#/ide");
   assert.equal(terminal.evidenceRefs[0].href, "#/ide");
 });
