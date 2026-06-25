@@ -131,7 +131,7 @@ function readJson(file, fallback) {
   }
 }
 
-async function createContextForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1') {
+async function createContextForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1', options = {}) {
   const config = createStandaloneTracevaneConfig({
     port: await getFreePort(),
     openclawRoot: root,
@@ -140,6 +140,7 @@ async function createContextForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1') {
   return createTracevaneContext({
     config,
     logger: createLogger(),
+    chatOptions: options.chatOptions,
   });
 }
 
@@ -355,6 +356,78 @@ test('created chat sessions persist runtime target metadata for future native CL
     const restored = await restoredContext.services.chat.listSessions('main', { localOnly: true });
     const restoredSession = restored.sessions.find((session) => session.key === created.session.key);
     assert.deepEqual(restoredSession?.runtimeTarget, created.session.runtimeTarget);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+
+test('native CLI chat sessions send through channel connector runner and persist native session ids', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-send-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'thread-native-1' })}\n${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'native reply' }] } })}\n`,
+            stderr: '',
+            durationMs: 12,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+            progressEvents: [{
+              checkedAt: new Date().toISOString(),
+              type: 'assistant',
+              rawType: 'message',
+              itemType: null,
+              text: 'native reply',
+              phase: 'final',
+            }],
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native Codex runnable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    const ack = await context.services.chat.send(created.session.key, {
+      text: 'hello native codex',
+      clientRequestId: 'native-run-1',
+    });
+
+    assert.equal(ack.status, 'started');
+    assert.equal(ack.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].agent, 'codex');
+    assert.equal(runnerCalls[0].sessionMode, 'new');
+    assert.equal(runnerCalls[0].permissionMode, 'yolo');
+    assert.match(runnerCalls[0].env.OPENAI_BASE_URL, /\/v1$/);
+
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(history.messages[1].text, 'native reply');
+
+    const registry = readJson(registryPath(root), {});
+    assert.ok(registry[created.session.key].runtimeSession?.agentNativeSessionId);
   } finally {
     await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });

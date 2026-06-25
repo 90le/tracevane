@@ -24,6 +24,10 @@ export interface TracevaneSessionRegistryEntry {
   /** Tracks gateway session IDs from prior resets so their .reset.* JSONL backup files can be found. */
   priorSessionIds?: string[];
   runtimeTarget?: Partial<ChatSessionRuntimeTarget>;
+  runtimeSession?: {
+    agentNativeSessionId?: string | null;
+    codexThreadId?: string | null;
+  };
 }
 
 export function buildDefaultRuntimeTarget(agentId: string): ChatSessionRuntimeTarget {

@@ -5,6 +5,7 @@ import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
+import { MODEL_GATEWAY_DEFAULT_HOST, MODEL_GATEWAY_DEFAULT_PORT } from '../../../../types/model-gateway.js';
 import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
 import type {
   ChatAbortResponse,
@@ -63,6 +64,12 @@ import type {
   ChatStreamEvent,
   ChatToolCard,
 } from '../../../../types/chat.js';
+import type {
+  ChannelConnectorAgentId,
+  ChannelConnectorOctoInboundMessage,
+  ChannelConnectorPermissionMode,
+  ChannelConnectorsDaemonRuntimeConfig,
+} from '../../../../types/channel-connectors.js';
 import type { SystemService } from '../system/service.js';
 import { readJsonFile, writeJsonFile } from '../../core/state.js';
 import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
@@ -150,6 +157,14 @@ import {
   type TracevaneAssistantRunShadow,
 } from './run-projection-store.js';
 import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
+import {
+  runChannelConnectorAgentTurn,
+  type ChannelConnectorAgentProcessRunner,
+  type ChannelConnectorAgentProgressEvent,
+  type ChannelConnectorRuntimeBinding,
+  type ChannelConnectorRuntimeProject,
+} from '../channel-connectors/agent-runner.js';
+import { resolveChannelConnectorGatewayClientKey } from '../channel-connectors/gateway-secret.js';
 import {
   LruMap,
   clipPreview,
@@ -861,6 +876,7 @@ export interface ChatService {
 export interface CreateChatServiceOptions {
   config: TracevaneServerConfig;
   system: SystemService;
+  agentProcessRunner?: ChannelConnectorAgentProcessRunner;
 }
 
 export function createChatService(options: CreateChatServiceOptions): ChatService {
@@ -939,6 +955,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
   function selectCanonicalSource(sessionKey: string): ChatCanonicalSourceSelection {
     const localSource = resolveLocalSessionSource(sessionKey);
+    const registryEntry = getRegistryEntry(sessionKey);
+    if (registryEntry?.runtimeTarget?.adapterKind === 'native-cli') {
+      return {
+        kind: 'official_canonical_stream',
+        agentId: localSource.agentId,
+        record: localSource.record,
+        sessionFile: null,
+        sourceMtimeMs: null,
+        priorSessionFiles: localSource.priorSessionFiles,
+      };
+    }
     if (localSource.sessionFile) {
       return {
         kind: 'local_transcript',
@@ -3276,7 +3303,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
     } else {
       try {
-        const payload = await createCurrentChatRuntimeAdapter().readHistory({
+        const payload = await createCurrentChatRuntimeAdapter(session).readHistory({
           sessionKey,
           limit: 200,
         });
@@ -6364,7 +6391,199 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
   }
 
-  function createCurrentChatRuntimeAdapter(): ChatRuntimeAdapter {
+
+  function safeRuntimePathSegment(value: string, fallback: string): string {
+    const normalized = normalizeString(value)
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 96);
+    return normalized || fallback;
+  }
+
+  function resolveChatGatewayEndpoint(): string {
+    return `http://${MODEL_GATEWAY_DEFAULT_HOST}:${MODEL_GATEWAY_DEFAULT_PORT}/v1`;
+  }
+
+  function buildChatChannelConnectorPaths(): Pick<ChannelConnectorsDaemonRuntimeConfig, 'paths'>['paths'] {
+    const root = path.join(options.config.openclawRoot, 'tracevane', 'chat-native-cli');
+    return {
+      root,
+      state: path.join(root, 'state'),
+      log: path.join(root, 'logs'),
+      runtime: path.join(root, 'runtime'),
+      octoEvents: path.join(root, 'octo-events'),
+      feishuEvents: path.join(root, 'feishu-events'),
+    };
+  }
+
+  function normalizeNativeChatAgent(agent: string | null | undefined): ChannelConnectorAgentId | null {
+    const normalized = normalizeString(agent);
+    if (normalized === 'codex' || normalized === 'claude-code' || normalized === 'opencode') {
+      return normalized;
+    }
+    return null;
+  }
+
+  function normalizeNativePermissionMode(value: string | null | undefined): ChannelConnectorPermissionMode {
+    const normalized = normalizeString(value);
+    if (
+      normalized === 'read-only'
+      || normalized === 'auto-edit'
+      || normalized === 'full-auto'
+      || normalized === 'plan'
+      || normalized === 'yolo'
+    ) {
+      return normalized;
+    }
+    return 'suggest';
+  }
+
+  function buildChatNativeBinding(agent: ChannelConnectorAgentId): ChannelConnectorRuntimeBinding {
+    return {
+      id: 'tracevane-chat-web',
+      platform: 'octo',
+      accountId: 'tracevane-chat',
+      botId: null,
+      displayName: 'Tracevane Chat',
+      agent,
+      enabled: true,
+      allowlist: [],
+      adminUsers: [],
+      disabledCommands: [],
+      metadata: {
+        source: 'tracevane-chat',
+        nativeCli: true,
+      },
+    };
+  }
+
+  function buildChatNativeProject(session: ChatSessionRow, agent: ChannelConnectorAgentId): ChannelConnectorRuntimeProject {
+    const target = session.runtimeTarget;
+    const gatewayEndpoint = resolveChatGatewayEndpoint();
+    return {
+      id: safeRuntimePathSegment(`chat-${session.key}`, 'chat-session'),
+      name: normalizeString(session.label, 'Tracevane Chat'),
+      workDir: normalizeString(target.workDir) || options.config.openclawRoot || options.config.projectRoot,
+      agent,
+      model: normalizeString(target.model) || null,
+      permissionMode: normalizeNativePermissionMode(target.permissionMode),
+      gatewayEndpoint,
+      gatewayKeyRef: 'tracevane-gateway-client-key',
+      appProfileRef: 'tracevane-chat',
+      platformBindings: [buildChatNativeBinding(agent)],
+    };
+  }
+
+  function buildChatNativeMessage(input: ChatRuntimeSendInput): ChannelConnectorOctoInboundMessage {
+    return {
+      messageId: input.idempotencyKey,
+      fromUid: 'tracevane-web-user',
+      channelId: input.sessionKey,
+      channelType: 1,
+      timestamp: Date.now(),
+      payload: {
+        type: 1,
+        content: input.message,
+        plain: input.message,
+      },
+    };
+  }
+
+  function appendRuntimeSessionToRegistry(
+    session: ChatSessionRow,
+    runtimeSession: { agentNativeSessionId?: string | null; codexThreadId?: string | null } | null | undefined,
+  ): void {
+    if (!runtimeSession) return;
+    const agentNativeSessionId = normalizeString(runtimeSession.agentNativeSessionId) || null;
+    const codexThreadId = normalizeString(runtimeSession.codexThreadId) || null;
+    if (!agentNativeSessionId && !codexThreadId) return;
+    const registry = readRegistryFromDisk();
+    const current = registry[session.key] || buildRegistryEntryFromRow(session);
+    registry[session.key] = {
+      ...current,
+      runtimeSession: {
+        agentNativeSessionId,
+        codexThreadId,
+      },
+      updatedAt: normalizeDate(session.updatedAt) || current.updatedAt || new Date().toISOString(),
+    };
+    writeTracevaneChatRegistry(options.config, registry);
+    registryCache = registry;
+  }
+
+  function createNativeCliChatRuntimeAdapter(session: ChatSessionRow): ChatRuntimeAdapter {
+    const agent = normalizeNativeChatAgent(session.runtimeTarget.agent);
+    return {
+      kind: 'native-cli',
+      async send(input: ChatRuntimeSendInput) {
+        if (!agent) {
+          return {
+            status: 'started',
+            runId: input.idempotencyKey,
+            raw: { ok: false, error: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.` },
+            terminalState: 'error',
+            assistantText: null,
+            errorMessage: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.`,
+          };
+        }
+        const paths = buildChatChannelConnectorPaths();
+        const project = buildChatNativeProject(session, agent);
+        const binding = project.platformBindings[0];
+        const registryEntry = getRegistryEntry(session.key);
+        const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
+        const result = await runChannelConnectorAgentTurn({
+          project,
+          binding,
+          message: buildChatNativeMessage(input),
+          sessionKey: input.sessionKey,
+          gatewayEndpoint: project.gatewayEndpoint,
+          gatewayClientKey: resolveChannelConnectorGatewayClientKey({ paths }),
+          agentRuntimeDir: path.join(
+            paths.runtime,
+            safeRuntimePathSegment(agent, 'agent'),
+            safeRuntimePathSegment(input.sessionKey, 'session'),
+          ),
+          session: registryEntry?.runtimeSession || null,
+          onProgress: (event) => progressEvents.push(event),
+          processRunner: options.agentProcessRunner,
+        });
+        const runId = input.idempotencyKey;
+        return {
+          status: 'started',
+          runId,
+          raw: {
+            ...result,
+            progressEvents,
+          } as unknown as Record<string, unknown>,
+          terminalState: result.status === 'completed' ? 'completed' : result.status === 'cancelled' ? 'cancelled' : 'error',
+          assistantText: result.replyText,
+          errorMessage: result.error,
+          durationMs: result.durationMs,
+          nativeSession: result.session,
+        };
+      },
+      async abort() {
+        return normalizeChatRuntimeAbortResult({ aborted: false, runIds: [] });
+      },
+      async reset() {
+        return normalizeChatRuntimeResetResult({ ok: true, native: true });
+      },
+      async deleteSession() {
+        return normalizeChatRuntimeDeleteResult({ ok: true, native: true });
+      },
+      async listSessions() {
+        return normalizeChatRuntimeListSessionsResult({ sessions: [] });
+      },
+      async readHistory() {
+        return normalizeChatRuntimeHistoryResult({ messages: [] });
+      },
+    };
+  }
+
+  function createCurrentChatRuntimeAdapter(session?: ChatSessionRow | null): ChatRuntimeAdapter {
+    if (session?.runtimeTarget.adapterKind === 'native-cli') {
+      return createNativeCliChatRuntimeAdapter(session);
+    }
     return {
       kind: 'openclaw-gateway',
       async send(input: ChatRuntimeSendInput) {
@@ -6460,7 +6679,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     optimisticProjection.lifecycle = pickProjectionLifecycle(optimisticProjection.lifecycle, 'queued');
     optimisticProjection.updatedAt = now;
     saveRunProjection(sessionKey, optimisticProjection);
-    const runtimeAdapter = createCurrentChatRuntimeAdapter();
+    const runtimeAdapter = createCurrentChatRuntimeAdapter(session);
     const sendResult = await runtimeAdapter.send({
       sessionKey,
       message: transportText,
@@ -6471,20 +6690,43 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
     const status = sendResult.status;
     const ackRunId = sendResult.runId;
+    const terminalState = sendResult.terminalState || null;
+    const terminalAt = terminalState ? new Date().toISOString() : now;
+    const runtimeState = terminalState === 'completed'
+      ? 'completed'
+      : terminalState === 'cancelled'
+        ? 'aborted'
+        : terminalState === 'error'
+          ? 'error'
+          : status === 'duplicate_completed'
+            ? 'completed'
+            : 'running';
+    const projectionLifecycle = runtimeState === 'completed'
+      ? 'completed'
+      : runtimeState === 'aborted'
+        ? 'aborted'
+        : runtimeState === 'error'
+          ? 'error'
+          : 'queued';
     unsuppressGatewayRunId(sessionKey, ackRunId);
     const runtime = buildGatewayRuntime(sessionKey, true, {
-      activeRunId: status === 'duplicate_completed' ? null : ackRunId,
-      state: status === 'duplicate_completed' ? 'completed' : 'running',
+      activeRunId: runtimeState === 'running' ? ackRunId : null,
+      state: runtimeState,
       lastAckAt: now,
-      lastEventAt: now,
-      lastErrorCode: null,
-      lastErrorMessage: null,
+      lastEventAt: terminalAt,
+      lastErrorCode: runtimeState === 'error' ? 'internal_error' : null,
+      lastErrorMessage: runtimeState === 'error' ? (normalizeString(sendResult.errorMessage) || 'Native Agent run failed') : null,
     });
     const projection = ensureRunProjection(sessionKey, ackRunId, now, {
-      lifecycle: status === 'duplicate_completed' ? 'completed' : 'queued',
+      lifecycle: projectionLifecycle,
     });
-    projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, status === 'duplicate_completed' ? 'completed' : 'queued');
-    projection.updatedAt = now;
+    projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, projectionLifecycle);
+    projection.updatedAt = terminalAt;
+    if (normalizeString(sendResult.assistantText)) {
+      projection.previewText = normalizeString(sendResult.assistantText);
+      projection.firstAssistantSeenAt = projection.firstAssistantSeenAt || terminalAt;
+      projection.finalCreatedAt = terminalAt;
+    }
     saveRunProjection(sessionKey, projection);
     persistProjectionIfTerminal(projection);
 
@@ -6501,7 +6743,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
 
     const previewText = extractComposerPlainText(composerDocument).trim() || normalizedText;
-    inMemory.messages = normalizeMessageLedger([...inMemory.messages, {
+    const nextMessages: ChatMessageItem[] = [{
       id: `msg-${crypto.randomUUID()}`,
       role: 'user',
       text: normalizedText,
@@ -6514,13 +6756,31 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       stopReason: null,
       blocks: composerBlocks.length ? composerBlocks : undefined,
       resources: sendResources.length ? sendResources : undefined,
-    }]);
-    const lastMessagePreview = previewText.slice(0, 160)
+    }];
+    const nativeAssistantText = normalizeString(sendResult.assistantText);
+    let nativeAssistantMessage: ChatMessageItem | null = null;
+    if (nativeAssistantText) {
+      nativeAssistantMessage = {
+        id: `assistant-${ackRunId}`,
+        role: 'assistant',
+        text: nativeAssistantText,
+        createdAt: terminalAt,
+        source: 'stream',
+        runId: ackRunId,
+        truncated: false,
+        omitted: false,
+        aborted: runtimeState === 'aborted',
+        stopReason: runtimeState === 'aborted' ? 'cancelled' : null,
+      };
+      nextMessages.push(nativeAssistantMessage);
+    }
+    inMemory.messages = normalizeMessageLedger([...inMemory.messages, ...nextMessages]);
+    const lastMessagePreview = (nativeAssistantText || previewText).slice(0, 160)
       || sendResources[0]?.fileName
       || null;
     inMemory.row = {
       ...inMemory.row,
-      updatedAt: now,
+      updatedAt: terminalAt,
       lastMessagePreview,
       runtime,
     };
@@ -6529,6 +6789,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     refreshTracevaneAutoLabel(inMemory);
     setTracevaneSession(inMemory);
     saveRegistryEntry(buildRegistryEntryFromRow(inMemory.row));
+    appendRuntimeSessionToRegistry(inMemory.row, sendResult.nativeSession);
     durableMirrorStore.replaceSnapshot({
       sessionKey,
       version: nextCanonicalVersion(sessionKey, 'tracevane_mirror'),
@@ -6555,7 +6816,18 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       runtime,
     };
     broadcastToSession(inMemory.row.key, ackEvent);
-    broadcastRuntimeUpdate(inMemory.row.key, ackEvent.runId, runtime, now);
+    if (nativeAssistantMessage && shouldEmitLegacyProtocol()) {
+      broadcastToSession(inMemory.row.key, {
+        kind: 'final',
+        sessionKey: inMemory.row.key,
+        runId: ackRunId,
+        emittedAt: terminalAt,
+        message: nativeAssistantMessage,
+        runtime,
+        usage: null,
+      });
+    }
+    broadcastRuntimeUpdate(inMemory.row.key, ackEvent.runId, runtime, terminalAt);
     if (selectCanonicalSource(sessionKey).kind === 'local_transcript') {
       setTimeout(() => {
         void syncLocalTranscriptCanonicalSource(sessionKey);

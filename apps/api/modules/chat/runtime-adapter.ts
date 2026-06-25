@@ -16,6 +16,14 @@ export interface ChatRuntimeSendResult {
   status: ChatSendStatus;
   runId: string;
   raw: Record<string, unknown>;
+  terminalState?: 'completed' | 'error' | 'cancelled' | null;
+  assistantText?: string | null;
+  errorMessage?: string | null;
+  durationMs?: number | null;
+  nativeSession?: {
+    agentNativeSessionId?: string | null;
+    codexThreadId?: string | null;
+  } | null;
 }
 
 export interface ChatRuntimeAbortInput {

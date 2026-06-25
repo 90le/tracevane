@@ -8,7 +8,7 @@ import {
   handleTracevaneRequest,
 } from './server.js';
 import { createAgentsService } from './modules/agents/service.js';
-import { createChatService } from './modules/chat/service.js';
+import { createChatService, type CreateChatServiceOptions } from './modules/chat/service.js';
 import { createChannelConnectorsService, type ChannelConnectorsServiceOptions } from './modules/channel-connectors/service.js';
 import { createChannelsService } from './modules/channels/service.js';
 import { createConfigService } from './modules/config/service.js';
@@ -29,6 +29,7 @@ export interface CreateTracevaneContextOptions {
   logger: LoggerLike;
   channelConnectorsOptions?: ChannelConnectorsServiceOptions;
   modelGatewayOptions?: ModelGatewayServiceOptions;
+  chatOptions?: Partial<Omit<CreateChatServiceOptions, 'config' | 'system'>>;
 }
 
 export function createTracevaneContext(options: CreateTracevaneContextOptions): TracevaneApiContext {
@@ -49,6 +50,7 @@ export function createTracevaneContext(options: CreateTracevaneContextOptions): 
   const chat = createChatService({
     config: options.config,
     system,
+    ...options.chatOptions,
   });
   const dashboard = createDashboardService({
     config: options.config,
