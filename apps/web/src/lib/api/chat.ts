@@ -1,4 +1,11 @@
 import { apiRequest } from "./client";
+import {
+  cancelFileUpload,
+  completeFileUpload,
+  getFilesSummary,
+  initFileUpload,
+  uploadFileChunk,
+} from "./files";
 import type {
   ChatAbortResponse,
   ChatBootstrapPayload,
@@ -28,9 +35,10 @@ import type {
  *
  * One function per browser-consumed route in `apps/api/modules/chat/routes.ts`.
  * Server-to-server / media-bridge routes (media bytes, resource resolve) are not
- * part of the control workbench surface. User-selected Chat file upload is bound
- * here as multipart transport so the Composer can attach workspace-backed refs
- * without base64 expansion. The SSE stream is consumed directly in the
+ * part of the control workbench surface. User-selected Chat file upload is
+ * intentionally backed by the Files API (`/api/files/uploads/*`) so Chat,
+ * Workspace, and File Manager share one directory/upload/preview contract. The
+ * SSE stream is consumed directly in the
  * query layer via `fetch` (see `lib/query/chat.ts`), not through `apiRequest`,
  * because it is a long-lived `text/event-stream` rather than a JSON response.
  *
@@ -186,19 +194,135 @@ export function assignChatSessionsToFolder(
 }
 
 
-/** POST /api/chat/sessions/:key/upload — upload a user file and receive a sendable fileRef/resource. */
-export function uploadChatFile(
+const CHAT_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024;
+const CHAT_UPLOAD_DIRECTORY = ".tracevane/chat-uploads";
+
+/**
+ * Upload a user-selected Composer file through the Files API and return the
+ * same fileRef/resource shape that `sendChatMessage` expects.
+ *
+ * Chat no longer posts bytes to `/api/chat/sessions/:key/upload`: that legacy
+ * endpoint is retained only for compatibility. New uploads go through
+ * `/api/files/uploads/*`, which keeps file browsing, preview links, resumable
+ * binary upload, and downstream `files:<rootId>:<path>` resource resolution on
+ * the same contract as File Manager and Workspace.
+ */
+export async function uploadChatFile(
   sessionKey: string,
   file: File,
 ): Promise<ChatFileUploadResponse> {
-  const form = new FormData();
-  form.append("file", file, file.name);
-  form.append("fileName", file.name);
-  if (file.type) form.append("mimeType", file.type);
-  return apiRequest<ChatFileUploadResponse>(
-    `${BASE}/sessions/${encodeSessionKey(sessionKey)}/upload`,
-    { method: "POST", body: form },
-  );
+  const summary = await getFilesSummary();
+  const root = summary.roots.find((item) => item.id === summary.defaultRootId) ?? summary.roots[0];
+  if (!root) {
+    throw new Error("没有可用的文件根目录，无法上传聊天附件");
+  }
+
+  const relativePath = `${CHAT_UPLOAD_DIRECTORY}/${safePathSegment(sessionKey)}/${safeFileName(file.name)}`;
+  const init = await initFileUpload({
+    rootId: root.id,
+    directoryPath: "",
+    fileName: file.name || "attachment",
+    relativePath,
+    size: file.size,
+    chunkSize: CHAT_UPLOAD_CHUNK_SIZE,
+    conflictPolicy: "rename",
+  });
+
+  const targetPath = init.targetPath || relativePath;
+  if (!init.skipped && !init.instant) {
+    try {
+      for (let index = 0; index < init.chunkCount; index += 1) {
+        if (init.uploadedChunks.includes(index)) continue;
+        const start = index * init.chunkSize;
+        const end = Math.min(file.size, start + init.chunkSize);
+        await uploadFileChunk(init.uploadId, index, file.slice(start, end));
+      }
+      await completeFileUpload({ uploadId: init.uploadId });
+    } catch (error) {
+      await cancelFileUpload({ uploadId: init.uploadId }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  const resourceRef = buildFilesResourceRef(root.id, targetPath);
+  const previewUrl = buildFilesDownloadUrl(root.id, targetPath, false);
+  const downloadUrl = buildFilesDownloadUrl(root.id, targetPath, true);
+  const kind = inferChatAttachmentKind(file);
+
+  return {
+    ok: true,
+    relativePath: targetPath,
+    resourceRef,
+    resource: {
+      id: `chat-upload:${root.id}:${targetPath}`,
+      kind,
+      url: previewUrl,
+      downloadUrl,
+      fileName: file.name || targetPath.split("/").pop() || "attachment",
+      mimeType: file.type || null,
+      relativePath: targetPath,
+      originalPath: resourceRef,
+      source: "user_upload",
+      status: "ready",
+      placement: "append",
+    },
+    absolutePath: joinDisplayPath(root.absolutePath, targetPath),
+    fileName: file.name || targetPath.split("/").pop() || "attachment",
+    mimeType: file.type || null,
+    kind,
+    size: file.size,
+  };
+}
+
+function buildFilesResourceRef(rootId: string, relativePath: string): string {
+  return `files:${rootId}:${normalizePortablePath(relativePath)}`;
+}
+
+function buildFilesDownloadUrl(rootId: string, relativePath: string, download: boolean): string {
+  const query = new URLSearchParams({
+    rootId,
+    path: normalizePortablePath(relativePath),
+  });
+  if (download) query.set("download", "true");
+  return `/api/files/download?${query.toString()}`;
+}
+
+function inferChatAttachmentKind(file: File): "file" | "image" | "video" {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return "file";
+}
+
+function normalizePortablePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.\/+/, "").split("/").filter(Boolean).join("/");
+}
+
+function safePathSegment(value: string): string {
+  const normalized = value
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96);
+  return normalized || "session";
+}
+
+function safeFileName(value: string): string {
+  const normalized = value
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.replace(/[\u0000-\u001f<>:"|?*]+/g, "-")
+    .replace(/^\.+$/, "")
+    .trim();
+  return normalized || "attachment";
+}
+
+function joinDisplayPath(rootPath: string, relativePath: string): string {
+  const root = rootPath.replace(/[\\/]+$/g, "");
+  return root ? `${root}/${normalizePortablePath(relativePath)}` : normalizePortablePath(relativePath);
 }
 
 /** POST /api/chat/sessions/:key/send — start a run with a user turn. */
