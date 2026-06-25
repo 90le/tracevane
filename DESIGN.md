@@ -3,7 +3,7 @@
 > Updated: 2026-06-25
 > Current direction: Workspace-first Industrial Studio.
 
-Tracevane is a local-first AI Agent Workspace and connectivity control layer. The primary product experience is now Workspace: files, editor, preview, terminal, Git, evidence and Agent handoff in one responsive work surface.
+Tracevane is a local-first AI Agent Workspace and connectivity control layer. The primary product experience is now Workspace plus a unified Agent Session layer: files, editor, preview, terminal, Git, evidence and Agent handoff in one responsive work surface, while all human↔Agent conversation is routed through one Agent 会话 surface instead of platform-specific chat pages.
 
 ## Design direction
 
@@ -33,6 +33,7 @@ Do not mix these concepts:
 | Files/editor/preview/terminal/Git/evidence | Workspace |
 | shell session / PTY | Workspace Terminal |
 | Codex/Claude/OpenCode runtime readiness and Agent Runs | CLI Agents |
+| Human↔Agent conversation across Codex/Claude/OpenCode/OpenClaw/custom agents | Agent 会话 |
 | Provider/model/protocol routing | Model Gateway |
 | IM account/bot/binding/delivery | IM Channels |
 | third-party platform-native management | Platform |
@@ -59,6 +60,7 @@ Action Sheet / Fullscreen panels
 
 - `/files` must not pretend to be file management if it is read-only.
 - Terminal is not CLI Agents.
+- Fixed three-column admin shells are not the product baseline; use one Primary Stage plus contextual Drawer/Sheet/Bottom Sheet.
 - Unimplemented tabs should not appear as visible placeholders.
 - Fixed preview pane should become contextual Inspector.
 - Every right-click or hover action needs a mobile/touch alternative.
