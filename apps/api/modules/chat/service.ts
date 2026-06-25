@@ -209,14 +209,14 @@ import { buildTracevaneResourceRefFromRelativePath } from '../../../../lib/trace
 import {
   buildGatewayConnectRequest,
   loadGatewayAuthContext,
-} from './gateway-auth.js';
-import { requestGateway } from './gateway-request.js';
+} from './openclaw-runtime/gateway-auth.js';
+import { requestGateway } from './openclaw-runtime/gateway-request.js';
 import {
   createSessionGatewayBridge,
   rejectBridgePending,
   requestViaBridge,
   type SessionGatewayBridge,
-} from './session-bridge-manager.js';
+} from './openclaw-runtime/session-bridge-manager.js';
 import {
   ChatServiceError,
   buildChatError,

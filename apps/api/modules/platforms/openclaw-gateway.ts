@@ -1,6 +1,6 @@
 import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { ChatServiceError, buildChatError } from '../chat/errors.js';
-import { requestGateway } from '../chat/gateway-request.js';
+import { requestGateway } from '../chat/openclaw-runtime/gateway-request.js';
 import { normalizeString } from '../chat/shared.js';
 
 export interface OpenClawGatewayRequest {

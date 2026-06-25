@@ -1,14 +1,14 @@
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
-import type { TracevaneServerConfig } from '../../../../types/api.js';
-import { CHAT_GATEWAY_CLOSE_CODE_MAP } from './error-mapping.js';
-import { buildChatError, ChatServiceError, mapGatewayContractError } from './errors.js';
+import type { TracevaneServerConfig } from '../../../../../types/api.js';
+import { CHAT_GATEWAY_CLOSE_CODE_MAP } from '../error-mapping.js';
+import { buildChatError, ChatServiceError, mapGatewayContractError } from '../errors.js';
 import {
   buildGatewayConnectRequest,
   loadGatewayAuthContext,
   type GatewaySignatureVersion,
 } from './gateway-auth.js';
-import { normalizeString } from './shared.js';
+import { normalizeString } from '../shared.js';
 
 export interface GatewayConnectOptions {
   role?: string;

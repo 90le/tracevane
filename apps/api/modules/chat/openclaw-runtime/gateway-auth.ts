@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import type { TracevaneServerConfig } from '../../../../types/api.js';
-import { readJsonFile, readOpenClawConfig } from '../../core/state.js';
-import { resolveSecretInputString } from '../../core/secret-ref.js';
-import { ChatServiceError, buildChatError } from './errors.js';
-import { normalizeString } from './shared.js';
+import type { TracevaneServerConfig } from '../../../../../types/api.js';
+import { readJsonFile, readOpenClawConfig } from '../../../core/state.js';
+import { resolveSecretInputString } from '../../../core/secret-ref.js';
+import { ChatServiceError, buildChatError } from '../errors.js';
+import { normalizeString } from '../shared.js';
 
 export interface GatewayAuthContext {
   gatewayToken: string;

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { createStandaloneTracevaneConfig } from '../../dist/apps/api/config.js';
-import { loadGatewayAuthContext } from '../../dist/apps/api/modules/chat/gateway-auth.js';
+import { loadGatewayAuthContext } from '../../dist/apps/api/modules/chat/openclaw-runtime/gateway-auth.js';
 
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });

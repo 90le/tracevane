@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
-import { ChatServiceError, buildChatError } from './errors.js';
+import { ChatServiceError, buildChatError } from '../errors.js';
 import type { GatewaySignatureVersion } from './gateway-auth.js';
 
 export interface BridgePendingRequest {
