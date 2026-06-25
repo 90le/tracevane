@@ -31,3 +31,15 @@ test('ConversationView keeps composer file refs structured and removable across 
   assert.match(source, /cancelledUploadIdsRef/);
   assert.match(source, /结构化 fileRef/);
 });
+
+
+test('ConversationView uses Files roots explicitly and only sends workspace-root refs', () => {
+  assert.match(source, /const filesRoots = filesSummary\.data\?\.roots \?\? \[\]/);
+  assert.match(source, /workspacePickerRootId/);
+  assert.match(source, /effectiveWorkspacePickerRootId/);
+  assert.match(source, /selectedRootCanAttach/);
+  assert.match(source, /aria-label="选择文件根"/);
+  assert.match(source, /disabled=\{!selectedRootCanAttach\}/);
+  assert.match(source, /当前 Agent 只能直接附加项目工作区文件/);
+  assert.match(source, /只有项目工作区文件会转换为 workspace: 引用/);
+});

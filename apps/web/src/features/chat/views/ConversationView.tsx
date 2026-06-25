@@ -288,19 +288,24 @@ export function ConversationView({
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false);
   const [workspacePickerDir, setWorkspacePickerDir] = React.useState("");
+  const [workspacePickerRootId, setWorkspacePickerRootId] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const filesSummary = useFilesSummaryQuery({ enabled: workspacePickerOpen });
+  const filesRoots = filesSummary.data?.roots ?? [];
   const workspaceRootId = React.useMemo(() => {
     const roots = filesSummary.data?.roots ?? [];
     return roots.find((root) => root.id === "project-root")?.id ?? filesSummary.data?.defaultRootId ?? null;
   }, [filesSummary.data]);
+  const effectiveWorkspacePickerRootId = workspacePickerRootId || workspaceRootId;
+  const selectedFilesRoot = filesRoots.find((root) => root.id === effectiveWorkspacePickerRootId) ?? null;
+  const selectedRootCanAttach = Boolean(effectiveWorkspacePickerRootId && effectiveWorkspacePickerRootId === workspaceRootId);
   const workspaceBrowse = useFilesBrowseQuery(
-    workspacePickerOpen && workspaceRootId
+    workspacePickerOpen && effectiveWorkspacePickerRootId
       ? {
-        rootId: workspaceRootId,
+        rootId: effectiveWorkspacePickerRootId,
         path: workspacePickerDir,
         hidden: false,
         page: 1,
@@ -317,8 +322,14 @@ export function ConversationView({
     setUploadError(null);
     setWorkspacePickerOpen(false);
     setWorkspacePickerDir("");
+    setWorkspacePickerRootId(null);
     cancelledUploadIdsRef.current.clear();
   }, [sessionKey]);
+
+  React.useEffect(() => {
+    if (!workspacePickerOpen || !workspaceRootId) return;
+    setWorkspacePickerRootId((current) => current || workspaceRootId);
+  }, [workspacePickerOpen, workspaceRootId]);
 
   // Keep the transcript pinned to the bottom as content / stream grows.
   React.useEffect(() => {
@@ -344,6 +355,7 @@ export function ConversationView({
     setUploadError(null);
     setWorkspacePickerOpen(false);
     setWorkspacePickerDir("");
+    setWorkspacePickerRootId(null);
   };
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -401,6 +413,7 @@ export function ConversationView({
   };
 
   const attachWorkspaceFile = (filePath: string, fileName: string) => {
+    if (!selectedRootCanAttach) return;
     const resourceRef = `workspace:${filePath}`;
     setFileRefs((prev) => {
       if (prev.some((item) => item.resourceRef === resourceRef)) return prev;
@@ -525,6 +538,23 @@ export function ConversationView({
             <div className="flex items-center gap-1 border-b border-line px-2.5 py-2 text-xs text-muted">
               <Folder className="size-3.5" />
               <button type="button" className="font-medium text-ink hover:text-primary" onClick={() => setWorkspacePickerDir("")}>项目文件</button>
+              {filesRoots.length > 1 && (
+                <select
+                  value={effectiveWorkspacePickerRootId ?? ""}
+                  onChange={(event) => {
+                    setWorkspacePickerRootId(event.target.value || null);
+                    setWorkspacePickerDir("");
+                  }}
+                  className="ml-1 h-7 max-w-[190px] rounded-xs border border-line bg-panel px-1.5 text-xs text-ink outline-none focus:border-primary-line"
+                  aria-label="选择文件根"
+                >
+                  {filesRoots.map((root) => (
+                    <option key={root.id} value={root.id}>
+                      {root.labelZh || root.labelEn || root.id}
+                    </option>
+                  ))}
+                </select>
+              )}
               {workspacePickerDir && (
                 <>
                   <ChevronRight className="size-3" />
@@ -536,6 +566,11 @@ export function ConversationView({
                 <Button variant="ghost" size="sm" onClick={() => setWorkspacePickerDir(parentPortablePath(workspacePickerDir))}>上一级</Button>
               )}
             </div>
+            {!selectedRootCanAttach && selectedFilesRoot && (
+              <div className="border-b border-line bg-amber-soft px-2.5 py-1.5 text-xs text-amber">
+                “{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}” 可用于查找文件；当前 Agent 只能直接附加项目工作区文件。
+              </div>
+            )}
             <div className="max-h-56 overflow-auto p-1.5">
               {filesSummary.isLoading || workspaceBrowse.isLoading ? (
                 <div className="grid gap-2 p-2"><SkeletonRow /><SkeletonRow /></div>
@@ -564,7 +599,14 @@ export function ConversationView({
                       <button
                         key={`file:${nextPath}`}
                         type="button"
-                        className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink hover:bg-primary-soft"
+                        disabled={!selectedRootCanAttach}
+                        title={selectedRootCanAttach ? "附加到当前 Agent 消息" : "该文件根暂不能作为 Agent 工作区附件发送"}
+                        className={cn(
+                          "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink",
+                          selectedRootCanAttach
+                            ? "hover:bg-primary-soft"
+                            : "cursor-not-allowed opacity-55",
+                        )}
                         onClick={() => attachWorkspaceFile(nextPath, entry.name)}
                       >
                         <FileText className="size-4 shrink-0 text-muted" />
@@ -577,7 +619,7 @@ export function ConversationView({
               )}
             </div>
             <div className="border-t border-line px-2.5 py-1.5 text-xs text-subtle">
-              附加文件会作为结构化 fileRef 传给当前 Agent；同时保留 @path 文本提示兼容，默认面向项目工作目录。
+              附加文件会作为结构化 fileRef 传给当前 Agent；文件浏览复用文件管理域 API，只有项目工作区文件会转换为 workspace: 引用。
             </div>
           </div>
         )}
