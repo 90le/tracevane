@@ -513,6 +513,8 @@ test('native CLI chat sessions send through channel connector runner and persist
     assert.equal(runnerCalls[0].sessionMode, 'new');
     assert.equal(runnerCalls[0].permissionMode, 'yolo');
     assert.match(runnerCalls[0].env.OPENAI_BASE_URL, /\/v1$/);
+    assert.match(runnerCalls[0].stdin, /hello native codex/);
+    assert.doesNotMatch(runnerCalls[0].stdin, /@notes\.md/);
     assert.match(runnerCalls[0].stdin, new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
     assert.match(runnerCalls[0].stdin, /file: notes\.md/);
 
@@ -600,6 +602,7 @@ test('Claude Code chat sessions send through the native runner with model, permi
     assert.ok(runnerCalls[0].args.includes('claude-sonnet-4-6'));
     assert.equal(runnerCalls[0].env.ANTHROPIC_BASE_URL.endsWith('/v1'), false);
     assert.match(runnerCalls[0].stdin, /read this file through claude/);
+    assert.doesNotMatch(runnerCalls[0].stdin, /@brief\.txt/);
     assert.match(runnerCalls[0].stdin, new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
 
     const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
@@ -712,6 +715,7 @@ test('OpenCode chat sessions send through the native runner with gateway model a
     assert.ok(runnerCalls[0].args.includes('--dir'));
     assert.ok(runnerCalls[0].args.includes(path.join(root, 'workspace')));
     assert.match(runnerCalls[0].args.join('\n'), /read this file through opencode/);
+    assert.doesNotMatch(runnerCalls[0].args.join('\n'), /@opencode\.md/);
     assert.match(runnerCalls[0].args.join('\n'), new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
     assert.equal(runnerCalls[0].env.TRACEVANE_GATEWAY_ENDPOINT.endsWith('/v1'), true);
     assert.ok(runnerCalls[0].env.XDG_CONFIG_HOME);

@@ -51,6 +51,7 @@ import type {
   ChatRunProjection,
   ChatRunOverlay,
   ChatResetResponse,
+  ChatRuntimeAdapterKind,
   ChatRuntimeState,
   ChatSendAck,
   ChatSendFileRef,
@@ -331,7 +332,7 @@ const CHAT_CANONICAL_STATE_ENTRY_LIMIT = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT * 
 const CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT = 800;
 const CHAT_STREAM_REPLAY_EVENT_LIMIT = 240;
 
-function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
+function compileOpenClawGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
   const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
   if (!refs.length) {
     return text;
@@ -340,6 +341,17 @@ function compileGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): s
     return refs.join(' ');
   }
   return `${refs.join(' ')}\n---\n${text}`;
+}
+
+function compileRuntimeMessageText(
+  adapterKind: ChatRuntimeAdapterKind | null | undefined,
+  text: string,
+  fileRefs: ChatSendFileRef[],
+): string {
+  if (adapterKind === 'native-cli') {
+    return text;
+  }
+  return compileOpenClawGatewayMessageText(text, fileRefs);
 }
 
 function mergeResources(
@@ -6807,7 +6819,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!normalizedText && fileRefs.length === 0 && attachments.length === 0) {
       throw new ChatServiceError(400, buildChatError('invalid_request', 'Message text or attachment is required'));
     }
-    const transportText = compileGatewayMessageText(normalizedText, fileRefs);
+    const transportText = compileRuntimeMessageText(session.runtimeTarget.adapterKind, normalizedText, fileRefs);
     const sendResources = mediaBridge.buildSendResources(sessionKey, fileRefs, attachments);
     const inMemory = ensureTracevaneSessionState(session, {
       row: session,
