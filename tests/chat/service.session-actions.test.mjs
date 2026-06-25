@@ -585,6 +585,68 @@ ${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text:
   }
 });
 
+test('native CLI reset and delete stay inside native adapter without OpenClaw gateway RPCs', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-lifecycle-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ type: 'thread.started', thread_id: 'thread-native-lifecycle' })}\n${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: 'native lifecycle reply' }] } })}\n`,
+            stderr: '',
+            durationMs: 5,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native lifecycle',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    await context.services.chat.send(created.session.key, {
+      text: 'hello native lifecycle',
+      clientRequestId: 'native-lifecycle-1',
+    });
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(readJson(registryPath(root), {})[created.session.key].runtimeSession?.codexThreadId, 'thread-native-lifecycle');
+
+    const reset = await context.services.chat.reset(created.session.key);
+    assert.equal(reset.ok, true);
+    assert.equal(readJson(registryPath(root), {})[created.session.key].runtimeSession, undefined);
+
+    const deleted = await context.services.chat.deleteSession(created.session.key);
+    assert.equal(deleted.ok, true);
+
+    assert.deepEqual(
+      gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.abort' || method === 'sessions.reset' || method === 'sessions.delete'),
+      [],
+    );
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
 test('native CLI chat sessions default to the Tracevane project root when no workDir is set', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-default-workdir-'));
   let gateway = null;

@@ -7852,7 +7852,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       const materialized = await isTracevaneSessionMaterialized(session);
       if (materialized) {
-        await createCurrentChatRuntimeAdapter().deleteSession({
+        await createCurrentChatRuntimeAdapter(session).deleteSession({
           sessionKey: session.key,
           deleteTranscript: true,
         });
@@ -7876,7 +7876,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only tracevane-managed sessions can be aborted in the current backend gate'));
       }
 
-      const abortResult = await createCurrentChatRuntimeAdapter().abort({ sessionKey });
+      const abortResult = await createCurrentChatRuntimeAdapter(session).abort({ sessionKey });
       const runIds = abortResult.runIds;
       const localActiveRunId = inMemory.row.runtime.activeRunId || session.runtime.activeRunId || null;
       const hadActiveRun = abortResult.aborted || Boolean(localActiveRunId);
@@ -7953,6 +7953,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         ...buildRegistryEntryFromRow(inMemory.row),
         createdAt: getRegistryEntry(inMemory.row.key)?.createdAt || inMemory.row.updatedAt || new Date().toISOString(),
       });
+      if (session.runtimeTarget.adapterKind === 'native-cli') {
+        clearRuntimeSessionFromRegistry(sessionKey);
+      }
       broadcastRuntimeUpdate(sessionKey, null, inMemory.row.runtime);
 
       const shouldAttemptAbort = Boolean(
@@ -7964,7 +7967,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       );
       if (shouldAttemptAbort) {
         try {
-          await createCurrentChatRuntimeAdapter().abort({ sessionKey });
+          await createCurrentChatRuntimeAdapter(session).abort({ sessionKey });
         } catch (error) {
           const code = mapGatewayContractError(error, 'chat.abort failed before sessions.reset').code;
           if (code !== 'no_active_run' && code !== 'session_not_found' && code !== 'gateway_down') {
@@ -7976,7 +7979,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
 
       try {
-        await createCurrentChatRuntimeAdapter().reset({
+        await createCurrentChatRuntimeAdapter(session).reset({
           sessionKey,
           reason: 'reset',
         });
