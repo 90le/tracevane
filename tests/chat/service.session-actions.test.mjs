@@ -531,6 +531,93 @@ test('native CLI chat sessions send through channel connector runner and persist
   }
 });
 
+test('Claude Code chat sessions send through the native runner with model, permission, and file refs', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-claude-send-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: [
+              JSON.stringify({ type: 'system', session_id: 'claude-session-1' }),
+              JSON.stringify({ type: 'result', session_id: 'claude-session-1', result: 'claude native reply' }),
+            ].join('\n') + '\n',
+            stderr: '',
+            durationMs: 9,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const workspaceFile = path.join(root, 'workspace', 'brief.txt');
+    fs.writeFileSync(workspaceFile, 'Claude native file context\n');
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Claude Code runnable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'claude-code',
+        model: 'claude-sonnet-4-6',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'plan',
+      },
+    });
+
+    const ack = await context.services.chat.send(created.session.key, {
+      text: 'read this file through claude',
+      clientRequestId: 'claude-native-run-1',
+      fileRefs: [{
+        id: 'workspace-brief',
+        relativePath: 'brief.txt',
+        resourceRef: 'workspace:brief.txt',
+        fileName: 'brief.txt',
+        kind: 'file',
+        mimeType: 'text/plain',
+      }],
+    });
+
+    assert.equal(ack.status, 'started');
+    assert.equal(ack.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].agent, 'claude-code');
+    assert.equal(runnerCalls[0].command, 'claude');
+    assert.equal(runnerCalls[0].cwd, path.join(root, 'workspace'));
+    assert.equal(runnerCalls[0].permissionMode, 'plan');
+    assert.ok(runnerCalls[0].args.includes('--permission-mode'));
+    assert.ok(runnerCalls[0].args.includes('plan'));
+    assert.ok(runnerCalls[0].args.includes('--model'));
+    assert.ok(runnerCalls[0].args.includes('claude-sonnet-4-6'));
+    assert.equal(runnerCalls[0].env.ANTHROPIC_BASE_URL.endsWith('/v1'), false);
+    assert.match(runnerCalls[0].stdin, /read this file through claude/);
+    assert.match(runnerCalls[0].stdin, new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
+
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(history.messages[1].text, 'claude native reply');
+
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].runtimeSession?.agentNativeSessionId, 'claude-session-1');
+    assert.deepEqual(
+      gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.send'),
+      [],
+    );
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 
 test('patching runtime target clears native CLI resume session state', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-reset-'));
