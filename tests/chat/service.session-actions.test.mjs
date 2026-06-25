@@ -37,7 +37,7 @@ async function getFreePort() {
   return port;
 }
 
-function writeOpenClawConfig(root, options = {}) {
+function writeOpenClawConfig(root) {
   const workspace = path.join(root, 'workspace');
   fs.mkdirSync(workspace, { recursive: true });
   fs.mkdirSync(path.join(root, 'agents', 'main', 'sessions'), { recursive: true });
@@ -55,11 +55,6 @@ function writeOpenClawConfig(root, options = {}) {
       entries: {
         tracevane: {
           enabled: true,
-          config: {
-            chat: {
-              allowHostManagementExecInTracevaneChat: options.allowHostManagementExecInTracevaneChat === true,
-            },
-          },
         },
       },
     },

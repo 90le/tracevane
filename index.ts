@@ -33,9 +33,6 @@ import {
   buildTracevaneBeforePromptBuildResult,
   buildTracevaneBeforeToolCallResult,
 } from './lib/tracevane-delivery-hooks.js';
-import {
-  setTracevaneChatGlobalHostManagementExecEnabled,
-} from './lib/tracevane-chat-management-policy.js';
 import { maybeHandleTracevaneReplyDispatch } from './lib/tracevane-reply-dispatch.js';
 import { resolveTracevaneDeliveryTool } from './lib/tracevane-delivery-tool.js';
 import { resolvePluginHostContext } from './lib/plugin-host-compat.js';
@@ -107,28 +104,9 @@ const tracevanePlugin = {
           },
         },
       },
-      chat: {
-        type: 'object',
-        properties: {
-          allowHostManagementExecInTracevaneChat: {
-            type: 'boolean',
-            default: false,
-          },
-        },
-      },
     },
   },
   register(api: OpenClawPluginApi) {
-    const tracevaneChatConfig = (
-      api.pluginConfig
-      && typeof api.pluginConfig.chat === 'object'
-      && api.pluginConfig.chat
-    )
-      ? api.pluginConfig.chat as { allowHostManagementExecInTracevaneChat?: unknown }
-      : null;
-    setTracevaneChatGlobalHostManagementExecEnabled(
-      tracevaneChatConfig?.allowHostManagementExecInTracevaneChat === true,
-    );
     const ensureTracevaneRuntime = () => {
       const config = createTracevaneConfig(api, api.pluginConfig || {});
       if (!tracevaneContext) {

@@ -166,19 +166,6 @@ def queue_payload(session: dict[str, object]) -> dict[str, object]:
     }
 
 
-def controls_payload(session: dict[str, object]) -> dict[str, object]:
-    now = now_iso()
-    return {
-        "checkedAt": now,
-        "session": session,
-        "globalHostManagementExecEnabled": False,
-        "controls": {
-            "allowHostManagementExec": False,
-            "updatedAt": now,
-        },
-    }
-
-
 def bootstrap_payload(session: dict[str, object]) -> dict[str, object]:
     return {
         "checkedAt": now_iso(),
@@ -194,7 +181,6 @@ def bootstrap_payload(session: dict[str, object]) -> dict[str, object]:
         "selectedSessionKey": SESSION_KEY,
         "history": history_payload(session),
         "queue": queue_payload(session),
-        "controls": controls_payload(session),
         "diagnostics": diagnostics(),
     }
 
@@ -227,19 +213,12 @@ def install_routes(page) -> dict[str, object]:
             return
         fulfill_json(route, queue_payload(session))
 
-    def handle_controls(route) -> None:
-        if route.request.method != "GET" or route_session_key(route.request.url, "/controls") != SESSION_KEY:
-            route.continue_()
-            return
-        fulfill_json(route, controls_payload(session))
-
     def handle_favicon(route) -> None:
         route.fulfill(status=204, body="")
 
     page.route(re.compile(r".*/api/chat/bootstrap(?:\?.*)?$"), handle_bootstrap)
     page.route(re.compile(r".*/api/chat/sessions/.*/history(?:\?.*)?$"), handle_history)
     page.route(re.compile(r".*/api/chat/sessions/.*/queue(?:\?.*)?$"), handle_queue)
-    page.route(re.compile(r".*/api/chat/sessions/.*/controls(?:\?.*)?$"), handle_controls)
     page.route(re.compile(r".*/favicon\.ico(?:\?.*)?$"), handle_favicon)
     return session
 

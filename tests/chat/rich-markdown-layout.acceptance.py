@@ -229,15 +229,6 @@ def bootstrap_payload(session: dict[str, object]) -> dict[str, object]:
             "session": session,
             "items": [],
         },
-        "controls": {
-            "checkedAt": checked_at,
-            "session": session,
-            "globalHostManagementExecEnabled": False,
-            "controls": {
-                "allowHostManagementExec": False,
-                "updatedAt": checked_at,
-            },
-        },
         "diagnostics": diagnostics(),
     }
 

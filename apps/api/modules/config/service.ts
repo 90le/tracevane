@@ -13,7 +13,6 @@ import type {
   ConfigUpdatePayload,
 } from "../../../../types/config.js";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
-import { setTracevaneChatGlobalHostManagementExecEnabled } from "../../../../lib/tracevane-chat-management-policy.js";
 import {
   readJsonFile,
   readOpenClawConfig,
@@ -1719,23 +1718,6 @@ function buildBrowserSummary(
   };
 }
 
-function resolveTracevaneHostManagementExecEnabled(
-  openclawConfig: Record<string, any>,
-): boolean {
-  return (
-    openclawConfig.plugins?.entries?.tracevane?.config?.chat
-      ?.allowHostManagementExecInTracevaneChat === true
-  );
-}
-
-function syncTracevaneManagementPolicyFromConfig(
-  openclawConfig: Record<string, any>,
-): boolean {
-  const enabled = resolveTracevaneHostManagementExecEnabled(openclawConfig);
-  setTracevaneChatGlobalHostManagementExecEnabled(enabled);
-  return enabled;
-}
-
 function buildLoggingSummary(
   openclawConfig: Record<string, any>,
 ): ConfigSummaryPayload["logging"] {
@@ -3384,7 +3366,6 @@ function normalizeApprovalAllowlistEntry(
 }
 
 export function createConfigService(config: TracevaneServerConfig): ConfigService {
-  syncTracevaneManagementPolicyFromConfig(readOpenClawConfig(config));
   const systemEventWriter = createSystemEventWriter({
     stateDir: path.join(config.openclawRoot, "system"),
     maxRecords: 500,
@@ -3401,8 +3382,6 @@ export function createConfigService(config: TracevaneServerConfig): ConfigServic
     );
     const openclawConfig = applyConfigUpdate(beforeConfig, payload);
     writeJsonFile(config.openclawConfigFile, openclawConfig);
-    syncTracevaneManagementPolicyFromConfig(openclawConfig);
-
     const approvalsFile = `${config.openclawRoot}/exec-approvals.json`;
     const approvals = readJsonFile<Record<string, any>>(approvalsFile, {
       socket: {},
@@ -3497,7 +3476,6 @@ export function createConfigService(config: TracevaneServerConfig): ConfigServic
   return {
     getSummary(): ConfigSummaryPayload {
       const openclawConfig = readOpenClawConfig(config);
-      syncTracevaneManagementPolicyFromConfig(openclawConfig);
       return buildSummary(config, openclawConfig);
     },
 

@@ -5,11 +5,6 @@ import {
   TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
   buildTracevaneBeforeToolCallResult,
 } from '../../dist/lib/tracevane-delivery-hooks.js';
-import {
-  resetTracevaneChatManagementPolicyState,
-  setTracevaneChatGlobalHostManagementExecEnabled,
-  setTracevaneChatSessionHostManagementExecEnabled,
-} from '../../dist/lib/tracevane-chat-management-policy.js';
 
 const TRACEVANE_WEBCHAT_CONTEXT = {
   sessionKey: 'agent:main:webchat:direct:tracevane-test',
@@ -29,7 +24,7 @@ test('buildTracevaneBeforeToolCallResult blocks management tools in Tracevane pr
   });
 });
 
-test('buildTracevaneBeforeToolCallResult blocks openclaw host commands in Tracevane private chat', () => {
+test('buildTracevaneBeforeToolCallResult does not treat shell commands as Chat-level controls', () => {
   const result = buildTracevaneBeforeToolCallResult({
     toolName: 'exec',
     toolParams: {
@@ -38,26 +33,9 @@ test('buildTracevaneBeforeToolCallResult blocks openclaw host commands in Tracev
     ...TRACEVANE_WEBCHAT_CONTEXT,
   });
 
-  assert.deepEqual(result, {
-    block: true,
-    blockReason: TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
-  });
+  assert.equal(result, undefined);
 });
 
-test('buildTracevaneBeforeToolCallResult blocks kill-based host lifecycle commands in Tracevane private chat', () => {
-  const result = buildTracevaneBeforeToolCallResult({
-    toolName: 'exec',
-    toolParams: {
-      command: 'kill -USR1 70552',
-    },
-    ...TRACEVANE_WEBCHAT_CONTEXT,
-  });
-
-  assert.deepEqual(result, {
-    block: true,
-    blockReason: TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
-  });
-});
 
 test('buildTracevaneBeforeToolCallResult allows workspace-local exec commands in Tracevane private chat', () => {
   const result = buildTracevaneBeforeToolCallResult({
@@ -69,38 +47,4 @@ test('buildTracevaneBeforeToolCallResult allows workspace-local exec commands in
   });
 
   assert.equal(result, undefined);
-});
-
-test('buildTracevaneBeforeToolCallResult only allows host-management exec when global and session switches are both enabled', () => {
-  resetTracevaneChatManagementPolicyState();
-
-  const command = 'openclaw gateway status 2>&1 | head -20';
-  const readResult = () => buildTracevaneBeforeToolCallResult({
-    toolName: 'exec',
-    toolParams: { command },
-    ...TRACEVANE_WEBCHAT_CONTEXT,
-  });
-
-  assert.deepEqual(readResult(), {
-    block: true,
-    blockReason: TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
-  });
-
-  setTracevaneChatGlobalHostManagementExecEnabled(true);
-  assert.deepEqual(readResult(), {
-    block: true,
-    blockReason: TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
-  });
-
-  resetTracevaneChatManagementPolicyState();
-  setTracevaneChatSessionHostManagementExecEnabled(TRACEVANE_WEBCHAT_CONTEXT.sessionKey, true);
-  assert.deepEqual(readResult(), {
-    block: true,
-    blockReason: TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON,
-  });
-
-  setTracevaneChatGlobalHostManagementExecEnabled(true);
-  assert.equal(readResult(), undefined);
-
-  resetTracevaneChatManagementPolicyState();
 });

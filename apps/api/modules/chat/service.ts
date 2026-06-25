@@ -229,7 +229,6 @@ import { createTracevaneChatSessionCatalogStore } from './session-catalog-store.
 import { createTracevaneChatSessionStateStore } from './session-state-store.js';
 import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-auto-title.js';
 import { maybeAutoApproveTracevaneHelperPairing } from '../system/device-trust.js';
-import { clearTracevaneChatSessionHostManagementExecEnabled } from '../../../../lib/tracevane-chat-management-policy.js';
 import {
   buildChatDiagnosticsSummary,
   buildChatSessionRuntimeSummary,
@@ -1640,7 +1639,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     deleteRegistryEntry(sessionKey);
     sessionStateStore.clear(sessionKey);
     tracevaneSessions.delete(sessionKey);
-    clearTracevaneChatSessionHostManagementExecEnabled(sessionKey);
     canonicalStates.delete(sessionKey);
     suppressedGatewayRunIds.delete(sessionKey);
     clearChatStreamReplaySession(streamReplayState, sessionKey, { resetSequence: true });

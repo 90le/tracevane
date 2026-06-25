@@ -5,10 +5,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { createConfigService } from "../../dist/apps/api/modules/config/service.js";
-import {
-  getTracevaneChatGlobalHostManagementExecEnabled,
-  resetTracevaneChatManagementPolicyState,
-} from "../../dist/lib/tracevane-chat-management-policy.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-config-service-"));
@@ -1656,56 +1652,6 @@ test("config save preserves third-party provider and model extension fields", ()
   });
 });
 
-test("config save persists and applies the global Tracevane host-management exec switch", () => {
-  const root = makeTempRoot();
-  const config = createTracevaneConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      entries: {
-        tracevane: {
-          enabled: true,
-          config: {
-            chat: {
-              allowHostManagementExecInTracevaneChat: false,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  resetTracevaneChatManagementPolicyState();
-  const service = createConfigService(config);
-  const summary = service.getSummary();
-  const payload = {
-    ...buildPayload(summary),
-    plugins: {
-      entries: {
-        tracevane: {
-          enabled: true,
-          config: {
-            chat: {
-              allowHostManagementExecInTracevaneChat: true,
-            },
-          },
-        },
-      },
-    },
-  };
-
-  service.saveConfig(payload);
-
-  const nextConfig = JSON.parse(
-    fs.readFileSync(config.openclawConfigFile, "utf8"),
-  );
-  assert.equal(
-    nextConfig.plugins.entries.tracevane.config.chat
-      .allowHostManagementExecInTracevaneChat,
-    true,
-  );
-  assert.equal(getTracevaneChatGlobalHostManagementExecEnabled(), true);
-});
-
 test("config patch accepts sparse plugin payloads without dropping unrelated plugin config", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -1731,9 +1677,6 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
         tracevane: {
           enabled: true,
           config: {
-            chat: {
-              allowHostManagementExecInTracevaneChat: false,
-            },
             existingFlag: "keep-me",
           },
         },
@@ -1749,16 +1692,13 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
     },
   });
 
-  resetTracevaneChatManagementPolicyState();
   const service = createConfigService(config);
   const response = service.patchConfig({
     plugins: {
       entries: {
         tracevane: {
           config: {
-            chat: {
-              allowHostManagementExecInTracevaneChat: true,
-            },
+            nestedTracevaneFlag: true,
           },
         },
       },
@@ -1769,11 +1709,7 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
     fs.readFileSync(config.openclawConfigFile, "utf8"),
   );
   assert.equal(response.success, true);
-  assert.equal(
-    nextConfig.plugins.entries.tracevane.config.chat
-      .allowHostManagementExecInTracevaneChat,
-    true,
-  );
+  assert.equal(nextConfig.plugins.entries.tracevane.config.nestedTracevaneFlag, true);
   assert.equal(nextConfig.plugins.entries.tracevane.config.existingFlag, "keep-me");
   assert.deepEqual(nextConfig.plugins.entries.alpha.config.nested, {
     value: 42,
@@ -1781,7 +1717,6 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
   assert.deepEqual(nextConfig.plugins.allow, ["tracevane", "alpha"]);
   assert.deepEqual(nextConfig.plugins.load.paths, ["/opt/openclaw/extensions"]);
   assert.equal(nextConfig.models.providers.demo.apiKey, "secret-demo");
-  assert.equal(getTracevaneChatGlobalHostManagementExecEnabled(), true);
 });
 
 test("config save preserves gateway auth SecretRefs", () => {
