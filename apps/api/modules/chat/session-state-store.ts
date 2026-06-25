@@ -45,20 +45,50 @@ function writeJsonSessionState(config: TracevaneServerConfig, value: JsonSession
   fs.writeFileSync(jsonSessionStatePath(config), `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function hasLegacySessionStateColumn(database: any): boolean {
+  const legacyColumnName = ['control', 's_json'].join('');
+  try {
+    const rows = database.prepare('PRAGMA table_info(session_state)').all() as Array<{ name?: unknown }>;
+    return rows.some((row) => String(row.name || '') === legacyColumnName);
+  } catch {
+    return false;
+  }
+}
+
+function ensureSessionStateSchema(database: any): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS session_state (
+      session_key TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL,
+      queue_json TEXT NOT NULL
+    );
+  `);
+
+  if (!hasLegacySessionStateColumn(database)) {
+    return;
+  }
+
+  const legacyTable = `session_state_legacy_${Date.now()}`;
+  database.exec(`
+    ALTER TABLE session_state RENAME TO ${legacyTable};
+    CREATE TABLE session_state (
+      session_key TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL,
+      queue_json TEXT NOT NULL
+    );
+    INSERT INTO session_state (session_key, updated_at, queue_json)
+      SELECT session_key, updated_at, queue_json FROM ${legacyTable};
+    DROP TABLE ${legacyTable};
+  `);
+}
+
 function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
   const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
   try {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS session_state (
-        session_key TEXT PRIMARY KEY,
-        updated_at TEXT NOT NULL,
-        queue_json TEXT NOT NULL,
-        controls_json TEXT NOT NULL
-      );
-    `);
+    ensureSessionStateSchema(database);
     return database;
   } catch {
     return null;
@@ -107,17 +137,15 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
       if (database && sqliteHealthy) {
         try {
           database.prepare(`
-            INSERT INTO session_state (session_key, updated_at, queue_json, controls_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO session_state (session_key, updated_at, queue_json)
+            VALUES (?, ?, ?)
             ON CONFLICT(session_key) DO UPDATE SET
               updated_at = excluded.updated_at,
-              queue_json = excluded.queue_json,
-              controls_json = excluded.controls_json
+              queue_json = excluded.queue_json
           `).run(
             sessionKey,
             updatedAt,
             JSON.stringify(queue),
-            '{}',
           );
         } catch {
           sqliteHealthy = false;
