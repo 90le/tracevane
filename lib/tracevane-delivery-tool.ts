@@ -1,6 +1,6 @@
 import type { OpenClawPluginToolContext } from 'openclaw/plugin-sdk';
 import {
-  isTracevaneManagedWebchatSession,
+  isTracevaneManagedAgentChatSession,
   normalizeTracevaneDeliveryInputDetailed,
   type TracevaneDeliveryResult,
 } from './tracevane-delivery.js';
@@ -14,7 +14,7 @@ export function createTracevaneDeliveryTool() {
   return {
     name: 'tracevane_delivery',
     description: [
-      'Fallback Tracevane-only final delivery tool for the current Tracevane WebChat session.',
+      'Fallback Tracevane-only final delivery tool for the current Tracevane Agent Chat session.',
       'Prefer assistant Markdown rich replies first for ordinary Tracevane returns, using explicit refs like workspace:, uploads:, or tracevane-file: plus tracevane: display hints.',
       'Prefer portable workspace: or uploads: refs for newly created workspace/upload files; use tracevane-file: mainly for explicit local-file compatibility when no workspace/upload ref can express the file.',
       'These refs describe user-facing rendering. Files that the user uploads for model reading are delivered by Tracevane as structured fileRefs/attachments and should not be flattened into bare path text.',
@@ -44,7 +44,7 @@ export function createTracevaneDeliveryTool() {
         },
         blocks: {
           type: 'array',
-          description: 'Ordered Tracevane message blocks for the current Tracevane chat. Version 1 accepts legacy text/resource cards. Version 2 accepts paragraph blocks with ordered text/resource segments plus card resources. Default rich replies should prefer break-image/break-video/break-chip; use inline-* only for true sentence-level inline references.',
+          description: 'Ordered Tracevane message blocks for the current Tracevane Agent Chat. Version 1 accepts legacy text/resource cards. Version 2 accepts paragraph blocks with ordered text/resource segments plus card resources. Default rich replies should prefer break-image/break-video/break-chip; use inline-* only for true sentence-level inline references.',
           items: {
             oneOf: [
               {
@@ -118,7 +118,7 @@ export function createTracevaneDeliveryTool() {
         },
         resources: {
           type: 'array',
-          description: 'Resources referenced by blocks[].resourceId and paragraph.segments[].resourceId. Use these structured resource fields instead of message text or raw file paths when returning files/media into the current Tracevane chat.',
+          description: 'Resources referenced by blocks[].resourceId and paragraph.segments[].resourceId. Use these structured resource fields instead of message text or raw file paths when returning files/media into the current Tracevane Agent Chat.',
           items: {
             type: 'object',
             additionalProperties: false,
@@ -162,7 +162,7 @@ export function createTracevaneDeliveryTool() {
 export function resolveTracevaneDeliveryTool(
   ctx: Pick<OpenClawPluginToolContext, 'sessionKey' | 'messageChannel'>,
 ) {
-  if (!isTracevaneManagedWebchatSession(ctx)) {
+  if (!isTracevaneManagedAgentChatSession(ctx)) {
     return null;
   }
   return createTracevaneDeliveryTool();

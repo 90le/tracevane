@@ -19,6 +19,12 @@ test('resolvePluginHostContext prefers explicit official host fields', () => {
 });
 
 test('resolvePluginHostContext accepts messageProvider/messageChannel but keeps sessionKey fallback controlled', () => {
+  const fromAgentChatSessionKey = resolvePluginHostContext({
+    sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+  });
+  assert.equal(fromAgentChatSessionKey.channelId, 'agent-chat');
+  assert.equal(fromAgentChatSessionKey.source, 'sessionKey');
+
   const fromProvider = resolvePluginHostContext({
     sessionKey: 'agent:main:webchat:direct:tracevane-test',
     messageProvider: 'WebChat',
@@ -39,7 +45,10 @@ test('resolvePluginHostContext accepts messageProvider/messageChannel but keeps 
   assert.equal(externalSession.source, 'none');
 });
 
-test('isTracevaneManagedWebchatHostContext only turns true for explicit or controlled Tracevane webchat contexts', () => {
+test('isTracevaneManagedWebchatHostContext only turns true for explicit or controlled Tracevane Agent Chat contexts', () => {
+  assert.equal(isTracevaneManagedWebchatHostContext({
+    sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+  }), true);
   assert.equal(isTracevaneManagedWebchatHostContext({
     sessionKey: 'agent:main:webchat:direct:tracevane-test',
   }), true);

@@ -45,7 +45,12 @@ test('tracevane plugin registers tracevane_delivery tool', () => {
   assert.equal(registeredHooks[2]?.opts?.priority, 100);
 });
 
-test('tracevane_delivery only appears in Tracevane-managed webchat sessions', () => {
+test('tracevane_delivery appears in Tracevane-managed Agent Chat sessions', () => {
+  assert.ok(resolveTracevaneDeliveryTool({
+    sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+    messageChannel: 'agent-chat',
+  }));
+
   assert.ok(resolveTracevaneDeliveryTool({
     sessionKey: 'agent:main:webchat:direct:tracevane-test',
     messageChannel: 'webchat',
@@ -417,8 +422,8 @@ test('tracevane plugin injects Tracevane delivery guidance and blocks current-se
       },
       { sessionKey: 'agent:main:webchat:direct:tracevane-test', channelId: 'webchat' },
     );
-    assert.equal(blockedManagementTool?.block, true, `${toolName} should be blocked in Tracevane webchat`);
-    assert.match(blockedManagementTool?.blockReason || '', /tracevane webchat private chat/i);
+    assert.equal(blockedManagementTool?.block, true, `${toolName} should be blocked in Tracevane Agent Chat`);
+    assert.match(blockedManagementTool?.blockReason || '', /tracevane agent chat/i);
   }
 
   const allowedExternalTarget = beforeToolCall.handler(

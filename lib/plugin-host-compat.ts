@@ -1,4 +1,7 @@
-import { isTracevaneManagedWebchatSession } from './tracevane-delivery.js';
+import {
+  deriveTracevaneManagedAgentChatChannel,
+  isTracevaneManagedAgentChatSession,
+} from './tracevane-delivery.js';
 
 export interface ResolvedPluginHostContext {
   sessionKey: string | null;
@@ -44,10 +47,11 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
     };
   }
 
-  if (isTracevaneManagedWebchatSession({ sessionKey, messageChannel: undefined })) {
+  const inferredChannelId = deriveTracevaneManagedAgentChatChannel(sessionKey);
+  if (inferredChannelId) {
     return {
       sessionKey,
-      channelId: 'webchat',
+      channelId: inferredChannelId,
       source: 'sessionKey',
     };
   }
@@ -61,7 +65,7 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
 
 export function isTracevaneManagedWebchatHostContext(ctx: unknown): boolean {
   const resolved = resolvePluginHostContext(ctx);
-  return isTracevaneManagedWebchatSession({
+  return isTracevaneManagedAgentChatSession({
     sessionKey: resolved.sessionKey,
     messageChannel: resolved.channelId,
   });

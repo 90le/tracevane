@@ -82,7 +82,8 @@ function titleFromRawAgentKey(value: string): string | null {
   if (parts[0] !== "agent") return null;
   const agent = parts[1] || "Agent";
   const surface = parts[2] || "会话";
-  if (surface === "webchat") return `${agent} · Web 会话`;
+  if (surface === "agent-chat") return `${agent} · Agent 会话`;
+  if (surface === "webchat") return `${agent} · 旧 Web 会话`;
   if (surface === "dashboard") return `${agent} · 总览触发`;
   if (surface === "main") return `${agent} · 默认会话`;
   return `${agent} · ${surface}`;

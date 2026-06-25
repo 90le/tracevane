@@ -1,4 +1,4 @@
-import { isTracevaneManagedWebchatSession } from './tracevane-delivery.js';
+import { isTracevaneManagedAgentChatSession } from './tracevane-delivery.js';
 
 const CURRENT_SESSION_MESSAGE_ACTIONS = new Set([
   'send',
@@ -14,6 +14,7 @@ const CURRENT_SESSION_TARGET_ALIASES = new Set([
   'current-session',
   'session',
   'tracevane',
+  'agent-chat',
   'webchat',
   'local',
   'self',
@@ -31,11 +32,11 @@ export const TRACEVANE_PRIVATE_CHAT_BLOCKED_TOOL_NAMES = [
 
 const TRACEVANE_PRIVATE_CHAT_BLOCKED_TOOLS = new Set<string>(TRACEVANE_PRIVATE_CHAT_BLOCKED_TOOL_NAMES);
 export const TRACEVANE_DELIVERY_PROMPT_GUIDANCE = [
-  'In the current Tracevane WebChat session, assistant Markdown rich replies are the primary path for ordinary rich messages.',
-  'Raw HTML rich replies are also supported in the current Tracevane WebChat session when you need mixed layout, direct HTML blocks, inline SVG, details/summary, or HTML-based resource composition.',
+  'In the current Tracevane Agent Chat session, assistant Markdown rich replies are the primary path for ordinary rich messages.',
+  'Raw HTML rich replies are also supported in the current Tracevane Agent Chat session when you need mixed layout, direct HTML blocks, inline SVG, details/summary, or HTML-based resource composition.',
   'For ordinary Tracevane rich replies, prefer assistant Markdown with explicit Tracevane resource refs plus a tracevane: title hint instead of calling a tool.',
   'If Markdown rich replies are awkward for the desired layout, you may answer directly with raw HTML that uses explicit Tracevane refs in tags such as <img>, <video>, <source>, <a>, or <details>, together with title="tracevane:break-image" or data-tracevane-display="break-image" style hints so Tracevane upgrades them into rich resource cards/chips/media blocks.',
-  'When you want HTML to render inline in Tracevane WebChat, output raw HTML directly in the assistant message and do not wrap it in ```html fences or ordinary code blocks.',
+  'When you want HTML to render inline in Tracevane Agent Chat, output raw HTML directly in the assistant message and do not wrap it in ```html fences or ordinary code blocks.',
   'Use ```html fences only when you intentionally want a code/preview block rather than inline HTML rendering.',
   'Prefer explicit Tracevane resource refs: workspace: for files relative to the current agent workspace, uploads: for files under workspace/uploads, and tracevane-file: for explicit local file refs that Tracevane will validate.',
   'For newly created workspace or upload files, prefer portable workspace: or uploads: refs; use tracevane-file: mainly for compatibility with explicit local files that cannot be expressed relative to the workspace.',
@@ -49,7 +50,7 @@ export const TRACEVANE_DELIVERY_PROMPT_GUIDANCE = [
   'Use tracevane_delivery only as a fallback when assistant Markdown cannot represent the desired reply reliably.',
   'Fallback tracevane_delivery cases include complex multi-resource replies that still need strict structured ordering, strongly typed paragraph/resource composition, or resources that only exist as buffer/data/blob content.',
   'Do not use message for current-session delivery in Tracevane.',
-  'Do not call gateway, cron, sessions_list, sessions_history, sessions_send, sessions_spawn, or session_status in Tracevane WebChat private chat; these management tools belong to dedicated Tracevane pages and can interrupt the Gateway or depend on paired device scopes.',
+  'Do not call gateway, cron, sessions_list, sessions_history, sessions_send, sessions_spawn, or session_status in Tracevane Agent Chat private chat; these management tools belong to dedicated Tracevane pages and can interrupt the Gateway or depend on paired device scopes.',
   'Fallback tracevane_delivery example: version=2, blocks=[{type:"paragraph",segments:[{type:"text",text:"Summary"},{type:"resource",resourceId:"img-1",display:"break-image"},{type:"text",text:"Download below"},{type:"resource",resourceId:"file-1",display:"break-chip"}]},{type:"resource",resourceId:"video-1",display:"card"}], resources=[{id:"img-1",kind:"image",fileName:"diagram.png",filePath:"./diagram.png"},{id:"file-1",kind:"file",fileName:"report.pdf",filePath:"./report.pdf"},{id:"video-1",kind:"video",fileName:"demo.mp4",filePath:"./demo.mp4"}].',
   'Prefer tracevane_delivery version 2 when you do need the fallback path.',
   'Use inline-image, inline-video, and inline-chip only when you explicitly need sentence-level inline references.',
@@ -58,13 +59,13 @@ export const TRACEVANE_DELIVERY_PROMPT_GUIDANCE = [
 ].join(' ');
 
 export const TRACEVANE_DELIVERY_MESSAGE_BLOCK_REASON = [
-  'Current Tracevane WebChat session delivery must not use message for current-session sends.',
+  'Current Tracevane Agent Chat session delivery must not use message for current-session sends.',
   'For text-only replies, answer directly as the assistant.',
   'For files, images, videos, or mixed rich replies, prefer direct assistant Markdown rich replies or raw HTML rich replies first; use tracevane_delivery only when those reply formats cannot represent the result reliably.',
 ].join(' ');
 
 export const TRACEVANE_PRIVATE_CHAT_MANAGEMENT_BLOCK_REASON = [
-  'Current Tracevane WebChat private chat must not call gateway, cron, sessions_list, sessions_history, sessions_send, sessions_spawn, or session_status.',
+  'Current Tracevane Agent Chat private chat must not call gateway, cron, sessions_list, sessions_history, sessions_send, sessions_spawn, or session_status.',
   'These management tools belong to dedicated Tracevane pages and may interrupt the Gateway or fail behind paired-device scope checks.',
   'Answer directly as the assistant unless the operator is intentionally using the relevant Tracevane management page.',
 ].join(' ');
@@ -111,7 +112,7 @@ function hasExplicitActionTarget(params: Record<string, unknown>): boolean {
 }
 
 function isTracevaneWebchatContext(sessionKey?: string | null, channelId?: string | null): boolean {
-  return isTracevaneManagedWebchatSession({
+  return isTracevaneManagedAgentChatSession({
     sessionKey: sessionKey || undefined,
     messageChannel: channelId || undefined,
   });
@@ -136,7 +137,7 @@ export function shouldBlockTracevaneCurrentSessionMessageTool(params: {
   }
 
   const explicitChannel = normalizeString(params.toolParams.channel).toLowerCase();
-  if (explicitChannel && explicitChannel !== 'webchat') {
+  if (explicitChannel && explicitChannel !== 'agent-chat' && explicitChannel !== 'webchat') {
     return false;
   }
 

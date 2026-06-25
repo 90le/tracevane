@@ -344,6 +344,10 @@ test('created chat sessions persist runtime target metadata for future native CL
       permissionMode: 'yolo',
     });
 
+    assert.match(created.session.key, /^agent:main:agent-chat:direct:tracevane-/);
+    assert.equal(created.session.source.channel, 'agent-chat');
+    assert.equal(created.session.deliveryContext.channel, 'agent-chat');
+
     const registry = readJson(registryPath(root), {});
     assert.deepEqual(registry[created.session.key].runtimeTarget, created.session.runtimeTarget);
 
@@ -351,6 +355,7 @@ test('created chat sessions persist runtime target metadata for future native CL
     const restored = await restoredContext.services.chat.listSessions('main', { localOnly: true });
     const restoredSession = restored.sessions.find((session) => session.key === created.session.key);
     assert.deepEqual(restoredSession?.runtimeTarget, created.session.runtimeTarget);
+    assert.equal(restoredSession?.source.channel, 'agent-chat');
   } finally {
     await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });

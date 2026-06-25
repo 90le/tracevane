@@ -16,7 +16,7 @@ export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> =
   tracevane_managed: {
     kind: 'tracevane_managed',
     source: 'tracevane',
-    description: 'Tracevane-created webchat sessions intended for text-first chat.',
+    description: 'Tracevane-created unified Agent Chat sessions.',
     defaultWritable: true,
     allow: {
       send: true,
@@ -62,7 +62,7 @@ export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> =
 
 export const CHAT_POLICY_DEFAULTS = {
   defaultTransport: 'tracevane_bff',
-  defaultChannel: 'webchat',
+  defaultChannel: 'agent-chat',
   defaultSurface: 'tracevane-chat',
   defaultDeliver: false,
   defaultSameOriginRequired: true,
@@ -79,7 +79,7 @@ export function classifyChatSessionKind(params: {
   const lastChannel = String(params.lastChannel || '').trim().toLowerCase();
   const lastTo = String(params.lastTo || '').trim().toLowerCase();
 
-  if (key.includes(':webchat:direct:tracevane-')) return 'tracevane_managed';
+  if (key.includes(':agent-chat:direct:tracevane-') || key.includes(':webchat:direct:tracevane-')) return 'tracevane_managed';
   if (key.includes(':cron:')) return 'system_internal';
   if (originProvider === 'heartbeat' || lastTo === 'heartbeat') return 'system_internal';
   if (originProvider === 'cron' || lastChannel === 'cron') return 'system_internal';

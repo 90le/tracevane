@@ -1,5 +1,5 @@
 import type { ReplyPayload } from 'openclaw/plugin-sdk/reply-runtime';
-import { isTracevaneManagedWebchatSession } from './tracevane-delivery.js';
+import { isTracevaneManagedAgentChatSession } from './tracevane-delivery.js';
 import { TRACEVANE_PRIVATE_CHAT_BLOCKED_TOOL_NAMES } from './tracevane-delivery-hooks.js';
 
 export { TRACEVANE_PRIVATE_CHAT_BLOCKED_TOOL_NAMES };
@@ -119,7 +119,7 @@ function shouldHandleTracevaneReplyDispatch(event: TracevaneReplyDispatchEvent):
 
   const sessionKey = normalizeString(event.sessionKey) || normalizeString(event.ctx.SessionKey);
   const messageChannel = normalizeString(event.ctx.Surface) || normalizeString(event.ctx.Provider);
-  return isTracevaneManagedWebchatSession({
+  return isTracevaneManagedAgentChatSession({
     sessionKey,
     messageChannel,
   });
@@ -174,7 +174,7 @@ export async function maybeHandleTracevaneReplyDispatch(
     : [];
   let queuedFinal = false;
   for (const payload of finalReplies) {
-    // Tracevane-managed webchat already receives the canonical assistant message
+    // Tracevane-managed Agent Chat already receives the canonical assistant message
     // through transcript/canonical-stream projection. Re-queueing plain-text
     // final replies here produces gateway-injected duplicate assistant rows in
     // both host chat and Tracevane history, so only delivery-only payloads keep

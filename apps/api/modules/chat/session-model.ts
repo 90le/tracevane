@@ -126,8 +126,17 @@ export function buildSessionPresentation(
   };
 }
 
+
+function deriveTracevaneManagedChannelFromKey(sessionKey: string): string {
+  const normalized = normalizeString(sessionKey).toLowerCase();
+  if (normalized.includes(':webchat:direct:tracevane-')) return 'webchat';
+  if (normalized.includes(':agent-chat:direct:tracevane-')) return 'agent-chat';
+  return CHAT_POLICY_DEFAULTS.defaultChannel;
+}
+
 export function buildTracevaneManagedSessionRow(agentId: string, label: string, gatewayConnected: boolean, runtimeTarget?: Partial<ChatSessionRuntimeTarget> | null): ChatSessionRow {
-  const key = `agent:${agentId}:${CHAT_POLICY_DEFAULTS.defaultChannel}:direct:tracevane-${crypto.randomUUID()}`;
+  const channel = CHAT_POLICY_DEFAULTS.defaultChannel;
+  const key = `agent:${agentId}:${channel}:direct:tracevane-${crypto.randomUUID()}`;
   const sessionId = crypto.randomUUID();
   return {
     key,
@@ -141,12 +150,12 @@ export function buildTracevaneManagedSessionRow(agentId: string, label: string, 
     presentation: buildSessionPresentation(),
     source: {
       source: 'tracevane',
-      channel: CHAT_POLICY_DEFAULTS.defaultChannel,
+      channel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
       originLabel: 'Tracevane managed',
     },
     deliveryContext: {
-      channel: CHAT_POLICY_DEFAULTS.defaultChannel,
+      channel,
       accountId: null,
       to: null,
       threadId: null,
@@ -162,6 +171,7 @@ export function buildTracevaneManagedRowFromRegistry(
   entry: TracevaneSessionRegistryEntry,
   gatewayConnected: boolean
 ): ChatSessionRow {
+  const channel = deriveTracevaneManagedChannelFromKey(entry.key);
   return {
     key: entry.key,
     agentId: entry.agentId,
@@ -174,12 +184,12 @@ export function buildTracevaneManagedRowFromRegistry(
     presentation: buildSessionPresentation(entry),
     source: {
       source: 'tracevane',
-      channel: CHAT_POLICY_DEFAULTS.defaultChannel,
+      channel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
       originLabel: 'Tracevane managed',
     },
     deliveryContext: {
-      channel: CHAT_POLICY_DEFAULTS.defaultChannel,
+      channel,
       accountId: null,
       to: null,
       threadId: null,

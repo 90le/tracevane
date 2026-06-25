@@ -536,14 +536,40 @@ export function summarizeTracevaneDeliveryText(payload: Pick<TracevaneDeliveryRe
   return lines.join('\n');
 }
 
+export const TRACEVANE_AGENT_CHAT_CHANNEL = 'agent-chat';
+export const TRACEVANE_LEGACY_WEBCHAT_CHANNEL = 'webchat';
+
+function isTracevaneManagedAgentChatKey(sessionKey: string): boolean {
+  return (
+    sessionKey.includes(':agent-chat:direct:tracevane-')
+    || sessionKey.includes(':webchat:direct:tracevane-')
+  );
+}
+
+export function deriveTracevaneManagedAgentChatChannel(sessionKey?: string | null): string | null {
+  const normalizedSessionKey = normalizeString(sessionKey);
+  const normalized = normalizedSessionKey ? normalizedSessionKey.toLowerCase() : '';
+  if (!isTracevaneManagedAgentChatKey(normalized)) return null;
+  if (normalized.includes(':webchat:direct:tracevane-')) return TRACEVANE_LEGACY_WEBCHAT_CHANNEL;
+  return TRACEVANE_AGENT_CHAT_CHANNEL;
+}
+
+export function isTracevaneManagedAgentChatSession(params: {
+  sessionKey?: string | null;
+  messageChannel?: string | null;
+}): boolean {
+  const expectedChannel = deriveTracevaneManagedAgentChatChannel(params.sessionKey);
+  if (!expectedChannel) return false;
+  const normalizedMessageChannel = normalizeString(params.messageChannel);
+  const channel = normalizedMessageChannel ? normalizedMessageChannel.toLowerCase() : '';
+  if (!channel) return true;
+  return channel === expectedChannel || (expectedChannel === TRACEVANE_LEGACY_WEBCHAT_CHANNEL && channel === 'webchat');
+}
+
+/** @deprecated Use isTracevaneManagedAgentChatSession. Kept for legacy plugin/test callers. */
 export function isTracevaneManagedWebchatSession(params: {
   sessionKey?: string | null;
   messageChannel?: string | null;
 }): boolean {
-  const sessionKey = normalizeString(params.sessionKey);
-  if (!sessionKey || !sessionKey.includes(':webchat:') || !sessionKey.includes(':tracevane-')) {
-    return false;
-  }
-  const channel = normalizeString(params.messageChannel);
-  return !channel || channel.toLowerCase() === 'webchat';
+  return isTracevaneManagedAgentChatSession(params);
 }

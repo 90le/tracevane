@@ -6,16 +6,16 @@ import {
   buildTracevaneBeforeToolCallResult,
 } from '../../dist/lib/tracevane-delivery-hooks.js';
 
-const TRACEVANE_WEBCHAT_CONTEXT = {
-  sessionKey: 'agent:main:webchat:direct:tracevane-test',
-  channelId: 'webchat',
+const TRACEVANE_AGENT_CHAT_CONTEXT = {
+  sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+  channelId: 'agent-chat',
 };
 
-test('buildTracevaneBeforeToolCallResult blocks management tools in Tracevane private chat', () => {
+test('buildTracevaneBeforeToolCallResult blocks management tools in Tracevane Agent Chat', () => {
   const result = buildTracevaneBeforeToolCallResult({
     toolName: 'gateway',
     toolParams: { action: 'config.get' },
-    ...TRACEVANE_WEBCHAT_CONTEXT,
+    ...TRACEVANE_AGENT_CHAT_CONTEXT,
   });
 
   assert.deepEqual(result, {
@@ -30,20 +30,20 @@ test('buildTracevaneBeforeToolCallResult does not treat shell commands as Chat-l
     toolParams: {
       command: 'openclaw gateway status 2>&1 | head -20',
     },
-    ...TRACEVANE_WEBCHAT_CONTEXT,
+    ...TRACEVANE_AGENT_CHAT_CONTEXT,
   });
 
   assert.equal(result, undefined);
 });
 
 
-test('buildTracevaneBeforeToolCallResult allows workspace-local exec commands in Tracevane private chat', () => {
+test('buildTracevaneBeforeToolCallResult allows workspace-local exec commands in Tracevane Agent Chat', () => {
   const result = buildTracevaneBeforeToolCallResult({
     toolName: 'exec',
     toolParams: {
       command: 'pwd && ls src | head -20',
     },
-    ...TRACEVANE_WEBCHAT_CONTEXT,
+    ...TRACEVANE_AGENT_CHAT_CONTEXT,
   });
 
   assert.equal(result, undefined);
