@@ -1,71 +1,55 @@
 # Tracevane Docs
 
-> Updated: 2026-06-25
-> Rule: active docs describe the current product target and architecture. Historical plans, progress logs and superseded experiments belong in git history, not in the live docs index.
+> 更新：2026-06-25
+> 当前权威方向：Workspace-first。本目录只保留当前产品目标、架构、设计合同和仍有效领域文档；阶段性旧计划应删除或降级为参考。
 
-## Current authoritative docs
+## 1. 必读入口
 
-Read these first:
+按顺序阅读：
 
-1. `产品需求.md` — current product goal, scope and domain priorities.
-2. `系统架构.md` — current backend/frontend/runtime architecture.
-3. `前端功能架构.md` — current frontend information architecture and page ownership.
-4. `Tracevane三域重构规格说明.md` — Model Gateway / IM Channels / CLI Agents boundary spec.
-5. `Tracevane三域重构任务目标.md` — current staged goals and known next tasks.
-6. `平台域目标与设计.md` — Platform domain target, OpenClaw multi-level IA, boundaries and implementation phases.
+1. `整体目标.md` — Tracevane 当前最高目标和领域边界。
+2. `产品需求.md` — 产品需求、核心域与近期优先级。
+3. `Workspace目标.md` — Workspace 的产品目标与分期。
+4. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
+5. `Workspace架构.md` — Workspace 总体系统架构和边界。
+6. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
+7. `Workspace后端设计.md` — 文件/终端/Git/预览/证据/Agent handoff 后端设计。
+8. `文件管理设计.md` — Workspace 文件管理目标。
+9. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
+10. `Workspace前端IDE文件管理重构阶段目标.md` — 前端 IDE + 文件管理重构的阶段性执行合同。
+11. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁。
 
-> 2026-06-25 IA correction: the live product is no longer planned as many equal admin pages. Model Gateway / IM Channels / CLI Agents are the three core operating domains. `External`, `Long Tasks`, and legacy `/recovery` remain compatibility deep-links only: external capability evidence and OpenClaw substrate guard live under Platform/support, and supervised work is a CLI Agents/owner-domain projection rather than a primary domain.
-7. `IM渠道目标与设计.md` — IM Channels product target and backend/frontend capability boundary.
-8. `IM渠道前端设计契约.md` — IM Channels Aurora UI contract, page/view split, Drawer/Sheet/Dialog rules, and field templates.
-9. `CLI代理目标与设计.md` — CLI Agents target design and de-OpenClaw boundary.
-10. `网关IM收尾与CLIAgents完成目标.md` — final closure plan for Gateway/IM and full CLI Agents completion.
-11. `研究先行开发清单.md` — required research-first implementation gate.
+## 2. 仍有效领域文档
 
-## Supporting reference docs
+这些文档描述 Workspace 外的 owner domain，仍有效，但不能覆盖 Workspace-first 总目标：
 
-Keep these as scoped references. They must not redefine the product away from the current authoritative docs above.
+- `CLI代理目标与设计.md` — Codex / Claude Code / OpenCode runtime readiness 与 Agent Run 生命周期；不管理普通终端。
+- `IM渠道目标与设计.md` / `IM渠道前端设计契约.md` — IM 平台账号、bot、绑定路由、投递会话。
+- `平台域目标与设计.md` — 第三方平台域，OpenClaw 为第一个平台。
+- `自愈守护进程目标.md` / `自愈守护进程进度.md` — OpenClaw 平台 guard 参考。
+- Chat 相关：`聊天契约.md`、`聊天会话策略.md`、`聊天开放门槛.md`、`聊天设计方案.md`、`聊天官方对齐.md`。
+- 渲染相关：`混合渲染方案.md`、`富消息使用说明.md`。
+- UI 总规则：`界面设计守则.md`。
 
-- `工作区IDE目标.md` — Workspace IDE target.
-- `自愈守护进程目标.md` / `自愈守护进程进度.md` — OpenClaw platform guard notes; surfaced under Platform, not as an independent core domain.
-- `聊天契约.md` / `聊天会话策略.md` / `聊天开放门槛.md` / `聊天设计方案.md` / `聊天官方对齐.md` — Chat contracts.
-- `混合渲染方案.md` / `富消息使用说明.md` — rendering and rich message references.
-- `界面设计守则.md` — UI design rules.
-- `prototypes/` — visual reference only, not product truth.
-
-## Product summary
-
-Tracevane is a local-first AI Agent connectivity and runtime control layer.
-
-It connects:
-
-```text
-Model providers / Codex accounts / API keys
-        ↓
-Model Gateway: protocol adaptation, routing, account pool, app connection config
-        ↓
-Codex / Claude Code / OpenCode / local Chat / IM-triggered tasks
-        ↓
-CLI Agent runtime and Agent Runs
-        ↓
-Evidence, delivery logs, usage, recovery and diagnostics
-```
-
-## Domain ownership
+## 3. 当前产品边界
 
 | Domain | Owns | Must not own |
 | --- | --- | --- |
-| Model Gateway | Provider, model catalog, endpoint profile, protocol adapter, routing, usage/cache evidence, account pool, Codex/Claude/OpenCode/OpenClaw client config, gateway daemon. | IM platform credentials, CLI process lifecycle, persona/OpenClaw CRUD. |
-| IM Channels | IM platform account, bot credentials, webhook/long connection, binding, inbound message, outbound delivery, IM session, channel daemon. | Provider/model routing internals, terminal PTY lifecycle, generic OpenClaw config. |
-| CLI Agents | Codex/Claude Code/OpenCode runtime status, launch/resume/stop boundary, terminal sessions, Agent Runs, runtime evidence. | IM account setup, provider secret management, OpenClaw generic admin. |
-| Chat / Workspace | Local chat, IDE/files/terminal/Git evidence. | Replacing Model Gateway / IM Channels / CLI Agents. |
-| Platform | Third-party platform directory and platform-specific management, starting with OpenClaw: guard, config, agents, skills, channels, bindings, services, logs, diagnostics and integration evidence. | Owning Model Gateway providers, IM delivery/session routing, CLI Agent Runs or workspace PTY. |
-| External / Task Supervision compatibility links | Read-only integration evidence and cross-domain supervised-work projections reachable from owner/support pages. | Owning writes, becoming top-level product domains, or duplicating CLI Agents / IM / Gateway controls. |
+| Workspace | 文件管理、编辑器、预览、终端、Git、证据篮、Agent handoff。 | CLI Agent runtime 配置、Provider secret、IM bot token、OpenClaw 平台原生 CRUD。 |
+| Terminal | shell session、命令输入输出、tasks、logs、ports、terminal evidence。 | Codex/Claude/OpenCode runtime readiness 或 Agent Run 生命周期。 |
+| CLI Agents | CLI Agent 安装/版本/配置/readiness、Gateway 连接状态、Agent Run 生命周期、Agent 结果证据。 | 普通 PTY、terminal tabs、shell 输入、terminal split/delete/rename。 |
+| Model Gateway | Provider、模型、协议、账号池、客户端接入、用量与路由证据。 | IM 账号、terminal、Agent Run UI。 |
+| IM Channels | IM 账号、bot 凭据、绑定路由、投递会话、守护诊断。 | Provider 路由、terminal、Workspace 文件写入。 |
+| Platform | 第三方平台目录与平台原生管理。 | Workspace 文件/终端、Gateway provider 写入、IM 投递路由。 |
 
-## Cleanup policy
+## 4. 旧文档政策
 
-- Prefer one current design doc over several stale progress logs.
-- Delete superseded docs instead of keeping contradictory versions.
-- Do not claim a page is complete when it is only read-only.
-- Do not promote redirect-only compatibility routes (`/external`, `/long-tasks`, `/recovery`) to core navigation domains; implement future capability in the owning domain.
-- Do not describe OpenClaw generic CRUD as CLI Agents core scope; OpenClaw-native management belongs under Platform / OpenClaw when backed by verified contracts.
-- Do not add new provider/CLI/IM behavior without research-first evidence.
+- 旧“三域重构”阶段文档不再作为最高叙事。
+- 文件管理不再以“只读证据页”为目标；Workspace 文件管理必须是真操作。
+- `/files` 如保留，应命名为 Evidence/Artifacts，而不是完整文件管理器。
+- 未实现功能不得以“P1 占位/规划中”形式出现在用户首屏。
+- 文档发生冲突时，以本 README 的“必读入口”顺序为准。
+
+## 5. 变更记录
+
+见 `文档整理记录.md`。

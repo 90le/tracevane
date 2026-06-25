@@ -1,44 +1,32 @@
 # Tracevane
 
 > Compatibility repository path: `tracevane`
-> Current product direction: local-first AI Agent control workbench
+> Current product direction: local-first AI Agent Workspace and connectivity control layer
 
-This project is no longer framed as a generic OpenClaw management console. It is evolving into a local-first workbench for running, connecting, observing and recovering AI Agent workflows across OpenClaw, Codex, Claude Code, OpenCode, IM channels and model providers.
+Tracevane is evolving into a local-first Workspace for running, connecting, observing, recovering and verifying AI Agent workflows across local projects, Model Gateway, IM channels, CLI Agent runtimes and platform substrates.
 
-OpenClaw remains a supported runtime. It is not the full product boundary.
+OpenClaw remains a supported runtime/platform. It is not the full product boundary.
 
 ## Current Core
 
+- Workspace: files, editor, preview, terminal, Git, evidence and Agent handoff.
 - Model Gateway: provider routing, protocol adapters, endpoint profiles, App Connections and usage.
-- Channel Connectors: Feishu/Octo private chat to CLI Agent workflows, files, progress, permissions and busy guard.
-- CLI Agent Workbench: Codex, Claude Code, OpenCode and OpenClaw runtime profiles.
-- System Guard / Recovery: OpenClaw config compatibility, service repair, daemon health and secret audit support.
-- Chat / Files / Dashboard: kept as Tracevane-specific workbench surfaces, not generic clones of official Web UIs.
-
-## Retired Scope
-
-- Dreaming / memory management page and BFF.
-- Legacy plugin management page and BFF.
-- Old broad Gateway usage surface with provider/account/key archives, pagination, CSV and cost estimation.
-- Third-party migration-first plans as implementation authority.
+- IM Channels: Feishu/Octo private chat to Agent workflows, files, progress, permissions and delivery evidence.
+- CLI Agents: Codex, Claude Code and OpenCode runtime readiness and Agent Runs. CLI Agents are not terminal management.
+- Platform / System Guard: OpenClaw config compatibility, service repair, daemon health and secret audit support.
 
 ## Documentation Entry
 
 Start here:
 
-1. [docs/产品战略重置方案.md](docs/产品战略重置方案.md)
+1. [docs/整体目标.md](docs/整体目标.md)
 2. [docs/产品需求.md](docs/产品需求.md)
-3. [docs/系统架构.md](docs/系统架构.md)
-4. [docs/当前进展.md](docs/当前进展.md)
-5. [docs/研究先行开发清单.md](docs/研究先行开发清单.md)
-
-Active track docs:
-
-- [docs/网关目标方案.md](docs/网关目标方案.md)
-- [docs/网关进度.md](docs/网关进度.md)
-- [docs/渠道连接器原生方案.md](docs/渠道连接器原生方案.md)
-- [docs/自愈守护进程目标.md](docs/自愈守护进程目标.md)
-- [docs/自愈守护进程进度.md](docs/自愈守护进程进度.md)
+3. [docs/Workspace目标.md](docs/Workspace目标.md)
+4. [docs/Workspace设计文档.md](docs/Workspace设计文档.md)
+5. [docs/Workspace架构.md](docs/Workspace架构.md)
+6. [docs/Workspace前端架构.md](docs/Workspace前端架构.md)
+7. [docs/Workspace后端设计.md](docs/Workspace后端设计.md)
+8. [docs/研究先行开发清单.md](docs/研究先行开发清单.md)
 
 ## Development
 
@@ -58,4 +46,4 @@ Dev defaults:
 
 ## Working Rule
 
-Gateway, Channel Connectors, CLI Agent, provider, SDK/API, protocol and user-visible behavior changes must begin with current official/API/SDK/GitHub/community research. If a contract cannot be verified, the feature must remain explicitly unsupported instead of silently half-working.
+Gateway, Channel Connectors, CLI Agent, provider, SDK/API, protocol, Workspace, terminal, file-management and user-visible behavior changes must begin with current official/API/SDK/GitHub/community research. If a contract cannot be verified, the feature must remain explicitly unsupported instead of silently half-working.
