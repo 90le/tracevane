@@ -286,3 +286,10 @@ OpenClaw Config 页面第一阶段只开放低风险、可由现有 `PATCH /api/
 - 高风险对象保持证据只读：Provider secret、MCP server、Commands、raw JSON、IM/CLI owner 数据。后续如开放写入，必须先增加 validate → diff → backup → apply → verify 的专门流程。
 - OpenClaw 所有 workbench 子页必须遵守 React Hooks 顺序：`useSelectedKey` 等 Hook 必须在 loading/error early return 前调用，避免数据加载后 hook order 改变导致页面白屏。
 - Agents/Skills/Channels/Bindings/Services/Logs/Diagnostics 的空白页根因与 Config 相同，均已纳入 system test 回归。
+
+## 11. Config 性能与中文化约束
+
+- Config 首屏只等待 `/api/config`，不再等待较慢的 diagnostics；诊断证据作为右侧 rail 的可选补充，未返回时显示 `—`。
+- 子页面只渲染当前分组字段；高级证据只在进入高级分组时渲染 Provider / MCP / Commands 摘要，避免首屏创建大量 JSON DOM。
+- 用户可见字段必须中文化；内部保存值仍保持 OpenClaw 原始枚举，例如 `read-only`、`workspace-write`、`rw`、`ro`，不能为了中文显示改写配置值。
+- 设置项来源以 `ConfigSummaryPayload` 和 `applyConfigUpdate` 已支持的写入契约为准；旧 Vue 版本若后续找到，只作为字段覆盖参考，不作为直接迁移依据。

@@ -96,7 +96,8 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(page, /title: "模型"/);
   assert.match(page, /title: "安全"/);
   assert.match(page, /title: "网关"/);
-  assert.match(page, /Providers.*MCP servers.*Commands/s);
+  assert.match(page, /服务商.*MCP 服务.*命令/s);
+  assert.doesNotMatch(page, /config\.isLoading \|\| diagnostics\.isLoading/);
 });
 
 test("OpenClaw workbench pages support refreshable selectable detail workflows", () => {
@@ -123,7 +124,7 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
   const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
   assert.match(config, /配置页拆分为基础、模型、策略、安全、网关、会话消息和高级证据子页面/);
-  assert.match(config, /MCP、Commands、密钥和 Provider 仍保留只读证据/);
+  assert.match(config, /MCP、Commands、密钥和 服务商仍保留只读证据/);
   assert.match(agents, /CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 \/ IDE/);
   assert.match(channels, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
   assert.match(bindings, /IM 会话级动态路由与投递队列仍在 IM 渠道域/);
