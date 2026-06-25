@@ -6,10 +6,8 @@ import { NAV_ITEMS } from "@/app/navigation";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { ModelGatewayPage } from "@/features/model-gateway/ModelGatewayPage";
 import { ChannelConnectorsPage } from "@/features/channel-connectors/ChannelConnectorsPage";
-import { ExternalConnectionsPage } from "@/features/external/ExternalConnectionsPage";
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
-import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { IdeShell } from "@/features/ide/IdeShell";
 import { FilesPage } from "@/features/files/FilesPage";
@@ -35,9 +33,9 @@ export function AppRouter() {
           <Route path="/files" element={<FilesPage />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
-          <Route path="/external" element={<ExternalConnectionsPage />} />
+          <Route path="/external" element={<Navigate to="/platforms" replace />} />
           <Route path="/cli-agents" element={<CliAgentsPage />} />
-          <Route path="/long-tasks" element={<LongTasksPage />} />
+          <Route path="/long-tasks" element={<Navigate to="/cli-agents" replace />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/recovery" element={<Navigate to="/platforms/openclaw/guard" replace />} />
           <Route path="/platforms" element={<PlatformsPage />} />

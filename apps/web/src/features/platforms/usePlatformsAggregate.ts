@@ -3,7 +3,7 @@ import * as React from "react";
 import { useSystemHealthQuery, useOpenClawRecoveryStatusQuery } from "@/lib/query/dashboard";
 import { useModelGatewayStatusQuery } from "@/lib/query/model-gateway";
 import { useChannelConnectorsStatusQuery } from "@/lib/query/channel-connectors";
-import { useSystemDiagnosticsQuery } from "@/lib/query/external";
+import { useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
 
 import type {
   OpenClawRecoveryStatusPayload,

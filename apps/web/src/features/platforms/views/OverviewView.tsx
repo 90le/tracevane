@@ -195,8 +195,8 @@ export function OverviewView() {
       <Panel>
         <PanelHead title="兼容入口" sub="旧聚合页保留为深链，不再作为平台主对象。" />
         <div className="py-1.5">
-          <EvidenceRow label="集成证据（legacy /external）" value={<Link className="text-accent hover:underline" to="/external">打开兼容页</Link>} />
-          <EvidenceRow label="任务监督（legacy /long-tasks）" value={<Link className="text-accent hover:underline" to="/long-tasks">打开兼容页</Link>} />
+          <EvidenceRow label="集成证据（legacy /external）" value={<Link className="text-accent hover:underline" to="/platforms">进入平台目录</Link>} />
+          <EvidenceRow label="任务监督（legacy /long-tasks）" value={<Link className="text-accent hover:underline" to="/cli-agents">进入 CLI 代理</Link>} />
         </div>
       </Panel>
     </div>

@@ -26,18 +26,14 @@ test("legacy external, long-tasks and recovery routes remain compatible deep-lin
   const router = read("apps/web/src/app/router.tsx");
   const platforms = read("apps/web/src/features/platforms/PlatformsPage.tsx");
   const sections = read("apps/web/src/features/platforms/sections.ts");
-  const external = read("apps/web/src/features/external/ExternalConnectionsPage.tsx");
-  const longTasks = read("apps/web/src/features/long-tasks/LongTasksPage.tsx");
 
-  assert.match(router, /path="\/external"/);
-  assert.match(router, /path="\/long-tasks"/);
+  assert.match(router, /path="\/external" element=\{<Navigate to="\/platforms" replace \/>\}/);
+  assert.match(router, /path="\/long-tasks" element=\{<Navigate to="\/cli-agents" replace \/>\}/);
+  assert.doesNotMatch(router, /ExternalConnectionsPage/);
+  assert.doesNotMatch(router, /LongTasksPage/);
   assert.match(router, /path="\/recovery" element=\{<Navigate to="\/platforms\/openclaw\/guard" replace \/>\}/);
   assert.match(platforms, /<OpenClawWorkspace section=\{section\} \/>/);
   assert.match(sections, /if \(section === "recovery"\) return "guard"/);
-  assert.match(external, /compatibility deep-link/);
-  assert.match(external, /read-only AGGREGATION/);
-  assert.match(longTasks, /compatibility deep-link for supervised work/);
-  assert.match(longTasks, /CLI Agents owns Agent Runs/);
 });
 
 test("dashboard and platform wording route integration evidence through support surfaces", () => {
@@ -62,9 +58,10 @@ test("authoritative docs record the IA correction and non-core status", () => {
 
   assert.match(product, /External \/ Long Tasks legacy pages/);
   assert.match(product, /Do not expose as primary domains/);
-  assert.match(frontend, /`\/external`, `\/long-tasks`, and legacy `\/recovery` are no longer first-class sidebar entries/);
+  assert.match(frontend, /redirect-only compatibility\/deep-links/);
   assert.match(frontend, /Preferred route: `\/platforms\/openclaw\/guard`/);
-  assert.match(architecture, /not a primary owner domain/);
+  assert.match(architecture, /Redirect-only compatibility link to `\/platforms`/);
+  assert.match(architecture, /Redirect-only compatibility link to `\/cli-agents`/);
   assert.match(architecture, /Not Tracevane business-data recovery/);
   assert.match(research, /Tracevane 信息架构收敛与一级导航减法/);
   assert.match(research, /Recovery 合并进 Platform \/ OpenClaw 平台守护/);

@@ -9,7 +9,7 @@ import { Skeleton } from "@/shared/states/Skeleton";
 import { useAgentsSummaryQuery, useAgentRuntimeRunsQuery } from "@/lib/query/agents";
 import { useChannelsSummaryQuery } from "@/lib/query/channels";
 import { useSystemHealthQuery } from "@/lib/query/dashboard";
-import { useOpenClawConfigSummaryQuery, useSkillsSummaryQuery, useSystemDiagnosticsQuery } from "@/lib/query/external";
+import { useOpenClawConfigSummaryQuery, useSkillsSummaryQuery, useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
 import { useRecoveryDaemonServiceQuery, useRecoveryEventsQuery, useRecoveryStatusQuery } from "@/lib/query/recovery";
 
 import { EvidenceRow, Panel, PanelHead, SectionNotice, StatTile, ToneBadge } from "../_shared";

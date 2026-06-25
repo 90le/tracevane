@@ -4,30 +4,28 @@ import {
   getOpenClawConfigSummary,
   getSkillsSummary,
   getSystemDiagnostics,
-} from "../api/external";
+} from "../api/platform-read";
 import type { ApiError } from "../api/errors";
-import type {
-  ConfigSummaryPayload,
-  SkillsSummaryPayload,
-  SystemDiagnosticsPayload,
-} from "../../features/external/types";
+import type { ConfigSummaryPayload } from "../../../../../types/config";
+import type { SkillsSummaryPayload } from "../../../../../types/skills";
+import type { SystemDiagnosticsPayload } from "../../../../../types/system";
 
 /**
- * TanStack Query hooks for the External Connections aggregation sources that
+ * TanStack Query hooks for the Platform/OpenClaw shared read sources that
  * are NOT already covered by another feature's data layer.
  *
  * Reused from their owning modules (NOT re-bound here):
  *  - `useModelGatewayAppConnectionsQuery` (`@/lib/query/model-gateway`)
  *  - `useChannelConnectorsStatusQuery`    (`@/lib/query/channel-connectors`)
  *
- * Query keys are namespaced under `["external", ...]`.
+ * Query keys are namespaced under `["platform-read", ...]` because `/external` no longer owns a feature surface.
  */
 
-export const externalKeys = {
-  all: ["external"] as const,
-  config: () => ["external", "config"] as const,
-  skills: () => ["external", "skills"] as const,
-  diagnostics: () => ["external", "diagnostics"] as const,
+export const platformReadKeys = {
+  all: ["platform-read"] as const,
+  config: () => ["platform-read", "config"] as const,
+  skills: () => ["platform-read", "skills"] as const,
+  diagnostics: () => ["platform-read", "diagnostics"] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -40,7 +38,7 @@ export function useOpenClawConfigSummaryQuery(
   options?: QueryOpts<ConfigSummaryPayload>,
 ) {
   return useQuery<ConfigSummaryPayload, ApiError>({
-    queryKey: externalKeys.config(),
+    queryKey: platformReadKeys.config(),
     queryFn: ({ signal }) => getOpenClawConfigSummary(signal),
     ...options,
   });
@@ -49,7 +47,7 @@ export function useOpenClawConfigSummaryQuery(
 /** Managed skills + local tool capability summary. */
 export function useSkillsSummaryQuery(options?: QueryOpts<SkillsSummaryPayload>) {
   return useQuery<SkillsSummaryPayload, ApiError>({
-    queryKey: externalKeys.skills(),
+    queryKey: platformReadKeys.skills(),
     queryFn: ({ signal }) => getSkillsSummary(signal),
     ...options,
   });
@@ -60,7 +58,7 @@ export function useSystemDiagnosticsQuery(
   options?: QueryOpts<SystemDiagnosticsPayload>,
 ) {
   return useQuery<SystemDiagnosticsPayload, ApiError>({
-    queryKey: externalKeys.diagnostics(),
+    queryKey: platformReadKeys.diagnostics(),
     queryFn: ({ signal }) => getSystemDiagnostics(signal),
     ...options,
   });

@@ -66,6 +66,6 @@ Evidence, delivery logs, usage, recovery and diagnostics
 - Prefer one current design doc over several stale progress logs.
 - Delete superseded docs instead of keeping contradictory versions.
 - Do not claim a page is complete when it is only read-only.
-- Do not promote read-only aggregation pages (`/external`), cross-domain projections (`/long-tasks`) or substrate guard pages (`/recovery`) to core navigation domains.
+- Do not promote redirect-only compatibility routes (`/external`, `/long-tasks`, `/recovery`) to core navigation domains; implement future capability in the owning domain.
 - Do not describe OpenClaw generic CRUD as CLI Agents core scope; OpenClaw-native management belongs under Platform / OpenClaw when backed by verified contracts.
 - Do not add new provider/CLI/IM behavior without research-first evidence.

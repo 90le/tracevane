@@ -56,7 +56,19 @@ test("Platform overview is a directory plus owner handoffs, not a platform card 
   assert.match(overview, /只有真实第三方平台进入主列表/);
   assert.match(overview, /关联域不伪装成平台/);
   assert.match(overview, /集成证据（legacy \/external）/);
+  assert.match(overview, /to="\/platforms"/);
+  assert.match(overview, /to="\/cli-agents"/);
   assert.doesNotMatch(aggregate, /id: "external-mcp"/);
   assert.doesNotMatch(aggregate, /title: "模型网关"/);
   assert.doesNotMatch(aggregate, /title: "IM 渠道连接器"/);
+});
+
+
+test("legacy aggregation feature folders are deleted after redirect migration", () => {
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/features/external")), false);
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/features/long-tasks")), false);
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/lib/api/external.ts")), false);
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/lib/query/external.ts")), false);
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/lib/api/platform-read.ts")), true);
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/lib/query/platform-read.ts")), true);
 });

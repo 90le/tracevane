@@ -4,9 +4,9 @@ import type { SkillsSummaryPayload } from "../../../../../types/skills";
 import type { SystemDiagnosticsPayload } from "../../../../../types/system";
 
 /**
- * Typed transport bindings for the read-only source APIs the External
- * Connections console AGGREGATES. These are the sources the old page consumed
- * that are NOT already wrapped by another feature's data layer
+ * Typed transport bindings for shared Platform/OpenClaw read sources. These
+ * routes were originally consumed by the deleted `/external` aggregation page
+ * and are now reused directly by Platform/OpenClaw sections
  * (model-gateway app-connections + channel-connectors status are reused from
  * their own modules — they are intentionally NOT re-bound here).
  *
@@ -15,7 +15,7 @@ import type { SystemDiagnosticsPayload } from "../../../../../types/system";
  *  - GET /api/skills            → managed skills / local tool capability summary
  *  - GET /api/system/diagnostics → Tracevane local HTTP bridge facts
  *
- * All three are read-only GETs. The console never writes through these.
+ * All three are read-only GETs. Platform sections never write through these.
  */
 
 /** GET /api/config — OpenClaw config summary (MCP servers, command toggles). */
