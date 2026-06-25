@@ -28,7 +28,8 @@ export function registerSkillsRoutes(router: TracevaneRouter, ctx: TracevaneApiC
   router.get('/api/skills', async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const refresh = url.searchParams.get('refresh') === '1';
-    sendJson(res, 200, await ctx.services.skills.getSummary({ refresh }));
+    const fast = url.searchParams.get('fast') === '1';
+    sendJson(res, 200, await ctx.services.skills.getSummary({ refresh, fast }));
   });
 
   router.get('/api/skills/targets', async (_req, res, routeCtx) => {

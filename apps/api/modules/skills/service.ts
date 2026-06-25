@@ -1478,7 +1478,7 @@ async function downloadAndInstallSkill(params: {
 }
 
 export interface SkillsService {
-  getSummary(options?: { refresh?: boolean }): Promise<SkillsSummaryPayload>;
+  getSummary(options?: { refresh?: boolean; fast?: boolean }): Promise<SkillsSummaryPayload>;
   getTargets(): Promise<SkillsTargetsPayload>;
   toggleSkill(payload: SkillTogglePayload): Promise<SkillTogglePayload>;
   getSkillConfig(slug: string): Promise<SkillConfigPayload>;
@@ -1547,7 +1547,7 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
     return value;
   }
 
-  async function loadSummary(refresh = false): Promise<SkillsSummaryPayload> {
+  async function loadSummary(refresh = false, fast = false): Promise<SkillsSummaryPayload> {
     if (!refresh && summaryCache && summaryCache.expiresAt > Date.now()) {
       return summaryCache.value.payload;
     }
@@ -1581,7 +1581,55 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
       writeJsonFile(config.openclawConfigFile, openclawConfig);
     }
 
-    const toolState = await getToolState();
+    const toolState = fast && !toolStateCache
+      ? { clawhubInstalled: false, skillhubInstalled: false }
+      : await getToolState();
+
+    const buildFastSummary = (): SkillsSummaryPayload => {
+      const workspaceDir = path.join(
+        config.openclawRoot,
+        DEFAULT_WORKSPACE_DIRNAME,
+      );
+      const managedSkillsDir = path.join(config.openclawRoot, "skills");
+      const entries = isPlainObject(openclawConfig.skills?.entries)
+        ? (openclawConfig.skills.entries as Record<string, SkillEntryRecord>)
+        : {};
+      const agentTargets = readConfiguredAgentTargets(config, openclawConfig);
+      const slugs = new Set<string>(Object.keys(entries));
+      for (const slug of listSubdirectories(path.join(workspaceDir, "skills")))
+        slugs.add(slug);
+      for (const slug of listSubdirectories(managedSkillsDir)) slugs.add(slug);
+      for (const agent of agentTargets) {
+        for (const slug of listSubdirectories(path.join(agent.workspace, "skills"))) {
+          slugs.add(slug);
+        }
+      }
+      const skills = Array.from(slugs)
+        .map((slug) => buildConfigOnlySummary(
+          slug,
+          entries[slug],
+          workspaceDir,
+          managedSkillsDir,
+          agentTargets,
+          openclawConfig,
+        ))
+        .sort((left, right) => left.name.localeCompare(right.name));
+      return {
+        checkedAt: new Date().toISOString(),
+        stale: true,
+        workspaceDir,
+        managedSkillsDir,
+        counts: buildSkillsCounts(skills),
+        tools: toolState,
+        skills,
+      };
+    };
+
+    if (fast) {
+      const payload = buildFastSummary();
+      summaryCache = { value: { payload }, expiresAt: Date.now() + 10_000 };
+      return payload;
+    }
 
     try {
       const result = await runJsonCommand(
@@ -1716,52 +1764,7 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
         return payload;
       }
 
-      const workspaceDir = path.join(
-        config.openclawRoot,
-        DEFAULT_WORKSPACE_DIRNAME,
-      );
-      const managedSkillsDir = path.join(config.openclawRoot, "skills");
-      const entries = isPlainObject(openclawConfig.skills?.entries)
-        ? (openclawConfig.skills.entries as Record<string, SkillEntryRecord>)
-        : {};
-      const agentTargets = readConfiguredAgentTargets(config, openclawConfig);
-
-      const slugs = new Set<string>(Object.keys(entries));
-      for (const slug of listSubdirectories(path.join(workspaceDir, "skills")))
-        slugs.add(slug);
-      for (const slug of listSubdirectories(managedSkillsDir)) slugs.add(slug);
-      for (const agent of agentTargets) {
-        for (const slug of listSubdirectories(path.join(agent.workspace, "skills"))) {
-          slugs.add(slug);
-        }
-      }
-
-      const summaries = new Map<string, SkillSummary>();
-      for (const slug of slugs) {
-        summaries.set(
-          slug,
-          buildConfigOnlySummary(
-            slug,
-            entries[slug],
-            workspaceDir,
-            managedSkillsDir,
-            agentTargets,
-            openclawConfig,
-          ),
-        );
-      }
-      const skills = Array.from(summaries.values()).sort((left, right) =>
-        left.name.localeCompare(right.name),
-      );
-      const payload: SkillsSummaryPayload = {
-        checkedAt: new Date().toISOString(),
-        stale: true,
-        workspaceDir,
-        managedSkillsDir,
-        counts: buildSkillsCounts(skills),
-        tools: toolState,
-        skills,
-      };
+      const payload = buildFastSummary();
 
       summaryCache = {
         value: { payload },

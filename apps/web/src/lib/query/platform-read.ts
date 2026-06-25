@@ -25,8 +25,8 @@ import type { SystemDiagnosticsPayload } from "../../../../../types/system";
 export const platformReadKeys = {
   all: ["platform-read"] as const,
   config: () => ["platform-read", "config"] as const,
-  skills: () => ["platform-read", "skills"] as const,
-  diagnostics: () => ["platform-read", "diagnostics"] as const,
+  skills: (mode: "fast" | "full" = "full") => ["platform-read", "skills", mode] as const,
+  diagnostics: (mode: "fast" | "full" = "full") => ["platform-read", "diagnostics", mode] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -51,10 +51,14 @@ export function useOpenClawConfigSummaryQuery(
 }
 
 /** Managed skills + local tool capability summary. */
-export function useSkillsSummaryQuery(options?: QueryOpts<SkillsSummaryPayload>) {
+export function useSkillsSummaryQuery(
+  options?: QueryOpts<SkillsSummaryPayload>,
+  request: { fast?: boolean; refresh?: boolean } = {},
+) {
+  const mode = request.fast ? "fast" : "full";
   return useQuery<SkillsSummaryPayload, ApiError>({
-    queryKey: platformReadKeys.skills(),
-    queryFn: ({ signal }) => getSkillsSummary(signal),
+    queryKey: platformReadKeys.skills(mode),
+    queryFn: ({ signal }) => getSkillsSummary(signal, request),
     ...options,
   });
 }
@@ -62,10 +66,12 @@ export function useSkillsSummaryQuery(options?: QueryOpts<SkillsSummaryPayload>)
 /** Tracevane local HTTP bridge diagnostics. */
 export function useSystemDiagnosticsQuery(
   options?: QueryOpts<SystemDiagnosticsPayload>,
+  request: { includeCommands?: boolean } = {},
 ) {
+  const mode = request.includeCommands === false ? "fast" : "full";
   return useQuery<SystemDiagnosticsPayload, ApiError>({
-    queryKey: platformReadKeys.diagnostics(),
-    queryFn: ({ signal }) => getSystemDiagnostics(signal),
+    queryKey: platformReadKeys.diagnostics(mode),
+    queryFn: ({ signal }) => getSystemDiagnostics(signal, request),
     ...options,
   });
 }

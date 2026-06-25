@@ -26,15 +26,21 @@ export function getOpenClawConfigSummary(
 }
 
 /** GET /api/skills — managed skills + local tool capability summary. */
-export function getSkillsSummary(signal?: AbortSignal): Promise<SkillsSummaryPayload> {
-  return apiRequest<SkillsSummaryPayload>("/api/skills", { signal });
+export function getSkillsSummary(signal?: AbortSignal, options: { fast?: boolean; refresh?: boolean } = {}): Promise<SkillsSummaryPayload> {
+  const params = new URLSearchParams();
+  if (options.fast) params.set("fast", "1");
+  if (options.refresh) params.set("refresh", "1");
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<SkillsSummaryPayload>(`/api/skills${suffix}`, { signal });
 }
 
 /** GET /api/system/diagnostics — Tracevane local HTTP bridge diagnostics. */
 export function getSystemDiagnostics(
   signal?: AbortSignal,
+  options: { includeCommands?: boolean } = {},
 ): Promise<SystemDiagnosticsPayload> {
-  return apiRequest<SystemDiagnosticsPayload>("/api/system/diagnostics", { signal });
+  const suffix = options.includeCommands === false ? "?commands=0" : "";
+  return apiRequest<SystemDiagnosticsPayload>(`/api/system/diagnostics${suffix}`, { signal });
 }
 
 

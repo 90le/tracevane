@@ -34,8 +34,10 @@ export function registerSystemRoutes(
     sendJson(res, 200, await routeCtx.services.system.getHealth());
   });
 
-  router.get("/api/system/diagnostics", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.getDiagnostics());
+  router.get("/api/system/diagnostics", async (req, res, routeCtx) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+    const includeCommands = url.searchParams.get("commands") !== "0";
+    sendJson(res, 200, await routeCtx.services.system.getDiagnostics({ includeCommands }));
   });
 
   router.get("/api/system/bootstrap", async (_req, res, routeCtx) => {

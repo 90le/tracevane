@@ -127,6 +127,49 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.doesNotMatch(page, /config\.isLoading \|\| diagnostics\.isLoading/);
 });
 
+test("OpenClaw service log diagnostic pages stay light and defensive", () => {
+  const overview = read("apps/web/src/features/platforms/openclaw/OpenClawView.tsx");
+  const services = read("apps/web/src/features/platforms/openclaw/sections/ServicesPage.tsx");
+  const logs = read("apps/web/src/features/platforms/openclaw/sections/LogsPage.tsx");
+  const diagnostics = read("apps/web/src/features/platforms/openclaw/sections/DiagnosticsPage.tsx");
+  const skills = read("apps/web/src/features/platforms/openclaw/sections/SkillsPage.tsx");
+  const platformApi = read("apps/web/src/lib/api/platform-read.ts");
+  const platformQuery = read("apps/web/src/lib/query/platform-read.ts");
+  const systemRoutes = read("apps/api/modules/system/routes.ts");
+  const systemService = read("apps/api/modules/system/service.ts");
+  const skillRoutes = read("apps/api/modules/skills/routes.ts");
+  const skillService = read("apps/api/modules/skills/service.ts");
+  assert.match(overview, /includeDiagnostics: false/);
+  assert.match(overview, /不触发 doctor、命令探测或完整诊断/);
+  assert.match(overview, /primarySections/);
+  assert.doesNotMatch(overview, /deriveControlUiUrl/);
+  assert.match(services, /服务状态/);
+  assert.match(services, /状态详情/);
+  assert.match(services, /进入“守护”页执行诊断\/修复/);
+  assert.match(logs, /useRecoveryEventsQuery\(1, 40\)/);
+  assert.doesNotMatch(logs, /useAgentRuntimeRunsQuery/);
+  assert.match(logs, /severityLabel/);
+  assert.match(diagnostics, /data\?\.bootstrap\?\.checks \?\? \[\]/);
+  assert.match(diagnostics, /data\?\.deviceTrust\?\.helper\?\.paired/);
+  assert.match(diagnostics, /!data && \(diagnostics\.isLoading \|\| diagnostics\.isPending \|\| diagnostics\.isFetching\)/);
+  assert.match(diagnostics, /includeCommands/);
+  assert.match(diagnostics, /加载命令证据/);
+  assert.match(diagnostics, /慢命令证据不会阻塞首屏/);
+  assert.match(diagnostics, /无法加载诊断摘要/);
+  assert.match(diagnostics, /页面无内容，刷新会重新拉取诊断数据/);
+  assert.match(skills, /fast: !fullScan/);
+  assert.match(skills, /完整扫描/);
+  assert.match(skills, /正在加载快速 Skills 摘要/);
+  assert.match(platformApi, /commands=0/);
+  assert.match(platformApi, /fast.*1/);
+  assert.match(platformQuery, /diagnostics\(mode/);
+  assert.match(platformQuery, /skills\(mode/);
+  assert.match(systemRoutes, /searchParams\.get\("commands"\) !== "0"/);
+  assert.match(systemService, /skipped for fast diagnostics/);
+  assert.match(skillRoutes, /searchParams\.get\('fast'\) === '1'/);
+  assert.match(skillService, /buildFastSummary/);
+});
+
 test("OpenClaw workbench pages support refreshable selectable detail workflows", () => {
   const components = read("apps/web/src/features/platforms/openclaw/components.tsx");
   assert.match(components, /export function SelectableRow/);

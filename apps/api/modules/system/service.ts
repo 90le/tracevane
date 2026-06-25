@@ -680,7 +680,7 @@ async function queryTracevaneRelease(
 
 export interface SystemService {
   getHealth(): Promise<SystemHealthPayload>;
-  getDiagnostics(): Promise<SystemDiagnosticsPayload>;
+  getDiagnostics(options?: { includeCommands?: boolean }): Promise<SystemDiagnosticsPayload>;
   getBootstrap(): Promise<SystemBootstrapPayload>;
   repairBootstrap(): Promise<SystemBootstrapRepairResponse>;
   getTracevaneRelease(): Promise<SystemTracevaneReleasePayload>;
@@ -1017,7 +1017,7 @@ export function createSystemService(
       };
     },
 
-    async getDiagnostics(): Promise<SystemDiagnosticsPayload> {
+    async getDiagnostics(options = {}): Promise<SystemDiagnosticsPayload> {
       const openclawConfig = readOpenClawConfig(config);
       const host = buildHostSnapshot();
       const service = readServiceSnapshot();
@@ -1026,21 +1026,36 @@ export function createSystemService(
         config,
         bootstrapAutoApplied,
       );
-      const [gatewayStatus, status, doctor] = await Promise.all([
-        runCachedCommand(
-          "gateway-status",
-          "openclaw",
-          ["gateway", "status", "--json"],
-          12_000,
-        ),
-        runCachedCommand(
-          "status-all",
-          "openclaw",
-          ["status", "--json"],
-          12_000,
-        ),
-        runCachedCommand("doctor", "openclaw", ["doctor"], 18_000),
-      ]);
+      const includeCommands = options.includeCommands !== false;
+      const skippedCommand = (label: string): SystemCommandSnapshot => ({
+        ok: false,
+        durationMs: 0,
+        error: `${label} skipped for fast diagnostics`,
+        stdout: "",
+        stderr: "",
+        parsedJson: null,
+      });
+      const [gatewayStatus, status, doctor] = includeCommands
+        ? await Promise.all([
+            runCachedCommand(
+              "gateway-status",
+              "openclaw",
+              ["gateway", "status", "--json"],
+              12_000,
+            ),
+            runCachedCommand(
+              "status-all",
+              "openclaw",
+              ["status", "--json"],
+              12_000,
+            ),
+            runCachedCommand("doctor", "openclaw", ["doctor"], 18_000),
+          ])
+        : [
+            skippedCommand("gateway-status"),
+            skippedCommand("status-all"),
+            skippedCommand("doctor"),
+          ];
       const channels = Object.keys(openclawConfig.channels || {}).length;
       const bindings = Array.isArray(openclawConfig.bindings)
         ? openclawConfig.bindings.length
