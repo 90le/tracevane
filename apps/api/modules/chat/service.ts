@@ -6571,9 +6571,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
   function normalizeNativeChatAgent(agent: string | null | undefined): ChannelConnectorAgentId | null {
     const normalized = normalizeString(agent);
-    if (normalized === 'codex' || normalized === 'claude-code' || normalized === 'opencode') {
-      return normalized;
-    }
+    if (normalized === 'codex' || normalized === 'openai-codex' || normalized === 'codex-cli') return 'codex';
+    if (normalized === 'claude-code' || normalized === 'claude' || normalized === 'claude-code-cli') return 'claude-code';
+    if (normalized === 'opencode' || normalized === 'open-code' || normalized === 'open_code') return 'opencode';
     return null;
   }
 

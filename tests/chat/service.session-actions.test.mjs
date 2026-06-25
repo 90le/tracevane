@@ -379,6 +379,37 @@ test('native CLI chat sessions can be created without OpenClaw agent catalog', a
   }
 });
 
+test('native CLI runtime target aliases canonicalize to supported CLI agents', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-agent-alias-'));
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    const context = await createContextForRoot(root);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Claude alias session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'claude',
+      },
+    });
+
+    assert.equal(created.session.runtimeTarget.agent, 'claude-code');
+
+    const patched = await context.services.chat.patchSession(created.session.key, {
+      runtimeTarget: {
+        agent: 'open-code',
+      },
+    });
+
+    assert.equal(patched.session.runtimeTarget.agent, 'opencode');
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].runtimeTarget.agent, 'opencode');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('native CLI runtime targets reject unsupported agents at create and patch boundaries', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-agent-guard-'));
   try {

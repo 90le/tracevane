@@ -50,18 +50,35 @@ export function buildDefaultTracevaneManagedRuntimeTarget(): ChatSessionRuntimeT
   };
 }
 
+
+export function normalizeChatRuntimeAgentId(
+  adapterKind: ChatRuntimeAdapterKind,
+  agent: string | null | undefined,
+  fallbackAgent: ChatRuntimeAgentId,
+): ChatRuntimeAgentId {
+  const normalized = normalizeString(agent) || normalizeString(fallbackAgent);
+  if (adapterKind !== 'native-cli') {
+    return (normalized || fallbackAgent) as ChatRuntimeAgentId;
+  }
+  if (normalized === 'claude' || normalized === 'claude-code-cli') return 'claude-code';
+  if (normalized === 'open-code' || normalized === 'open_code') return 'opencode';
+  if (normalized === 'openai-codex' || normalized === 'codex-cli') return 'codex';
+  return (normalized || fallbackAgent) as ChatRuntimeAgentId;
+}
+
 export function normalizeChatSessionRuntimeTarget(
   target: Partial<ChatSessionRuntimeTarget> | undefined | null,
   fallbackAgentId: string,
   fallbackTarget: ChatSessionRuntimeTarget = buildDefaultRuntimeTarget(fallbackAgentId),
 ): ChatSessionRuntimeTarget {
   const fallback = fallbackTarget;
-  const adapterKind = normalizeString(target?.adapterKind) as ChatRuntimeAdapterKind;
+  const requestedAdapterKind = normalizeString(target?.adapterKind) as ChatRuntimeAdapterKind;
+  const adapterKind = requestedAdapterKind === 'native-cli' || requestedAdapterKind === 'openclaw-gateway'
+    ? requestedAdapterKind
+    : fallback.adapterKind;
   return {
-    adapterKind: adapterKind === 'native-cli' || adapterKind === 'openclaw-gateway'
-      ? adapterKind
-      : fallback.adapterKind,
-    agent: (normalizeString(target?.agent) || fallback.agent) as ChatRuntimeAgentId,
+    adapterKind,
+    agent: normalizeChatRuntimeAgentId(adapterKind, target?.agent, fallback.agent),
     model: normalizeString(target?.model) || null,
     workDir: normalizeString(target?.workDir) || null,
     permissionMode: (normalizeString(target?.permissionMode) || null) as ChatRuntimePermissionMode | null,
