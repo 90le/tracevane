@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { ConfigSummaryPayload } from "../../../../../types/config";
+import type { ConfigPatchPayload, ConfigSaveResponse, ConfigSummaryPayload } from "../../../../../types/config";
 import type { SkillsSummaryPayload } from "../../../../../types/skills";
 import type { SystemDiagnosticsPayload } from "../../../../../types/system";
 
@@ -35,4 +35,17 @@ export function getSystemDiagnostics(
   signal?: AbortSignal,
 ): Promise<SystemDiagnosticsPayload> {
   return apiRequest<SystemDiagnosticsPayload>("/api/system/diagnostics", { signal });
+}
+
+
+/** PATCH /api/config — guarded OpenClaw config partial update through the existing config service merge path. */
+export function patchOpenClawConfig(
+  payload: ConfigPatchPayload,
+  signal?: AbortSignal,
+): Promise<ConfigSaveResponse> {
+  return apiRequest<ConfigSaveResponse>("/api/config", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    signal,
+  });
 }

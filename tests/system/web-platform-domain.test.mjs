@@ -56,6 +56,33 @@ test("OpenClaw read surfaces are split into workbench pages instead of one aggre
 
 
 
+
+
+test("OpenClaw guard service status probes live manager state instead of preserving unknown", () => {
+  const service = read("apps/api/modules/openclaw-recovery/service.ts");
+  assert.match(service, /function preferKnownState/);
+  assert.match(service, /live && live !== "unknown"/);
+  assert.match(service, /probe: true/);
+  assert.doesNotMatch(service, /activeState: stored\.activeState \|\| snapshot\.activeState/);
+});
+
+test("OpenClaw config page saves first-stage safe fields through typed PATCH", () => {
+  const api = read("apps/web/src/lib/api/platform-read.ts");
+  const query = read("apps/web/src/lib/query/platform-read.ts");
+  const page = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
+  assert.match(api, /patchOpenClawConfig/);
+  assert.match(api, /method: "PATCH"/);
+  assert.match(query, /usePatchOpenClawConfigMutation/);
+  assert.match(page, /ConfigDraft/);
+  assert.match(page, /dirty/);
+  assert.match(page, /保存配置/);
+  assert.match(page, /重置/);
+  assert.match(page, /draftToPatch/);
+  assert.match(page, /contextTokens/);
+  assert.match(page, /reserveTokensFloor/);
+  assert.match(page, /MCP servers.*本轮不开放写入/s);
+});
+
 test("OpenClaw workbench pages support refreshable selectable detail workflows", () => {
   const components = read("apps/web/src/features/platforms/openclaw/components.tsx");
   assert.match(components, /export function SelectableRow/);
@@ -79,11 +106,12 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
   const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
-  assert.match(config, /不提供无契约保存按钮/);
+  assert.match(config, /第一批低风险字段 PATCH 保存/);
+  assert.match(config, /MCP、Commands、raw JSON、密钥和 Provider 写入仍保持只读/);
   assert.match(agents, /CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 \/ IDE/);
   assert.match(channels, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
   assert.match(bindings, /IM 会话级动态路由与投递队列仍在 IM 渠道域/);
-  for (const source of [config, agents, channels, bindings]) {
+  for (const source of [agents, channels, bindings]) {
     assert.doesNotMatch(source, /新增|删除|安装|保存密钥/);
   }
 });

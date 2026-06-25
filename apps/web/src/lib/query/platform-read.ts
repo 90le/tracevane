@@ -1,12 +1,13 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseMutationOptions, type UseQueryOptions } from "@tanstack/react-query";
 
 import {
   getOpenClawConfigSummary,
   getSkillsSummary,
+  patchOpenClawConfig,
   getSystemDiagnostics,
 } from "../api/platform-read";
 import type { ApiError } from "../api/errors";
-import type { ConfigSummaryPayload } from "../../../../../types/config";
+import type { ConfigPatchPayload, ConfigSaveResponse, ConfigSummaryPayload } from "../../../../../types/config";
 import type { SkillsSummaryPayload } from "../../../../../types/skills";
 import type { SystemDiagnosticsPayload } from "../../../../../types/system";
 
@@ -31,6 +32,11 @@ export const platformReadKeys = {
 type QueryOpts<TData> = Omit<
   UseQueryOptions<TData, ApiError, TData>,
   "queryKey" | "queryFn"
+>;
+
+type MutationOpts<TData, TVariables> = Omit<
+  UseMutationOptions<TData, ApiError, TVariables>,
+  "mutationFn"
 >;
 
 /** OpenClaw config summary (MCP servers + command toggles). */
@@ -61,5 +67,22 @@ export function useSystemDiagnosticsQuery(
     queryKey: platformReadKeys.diagnostics(),
     queryFn: ({ signal }) => getSystemDiagnostics(signal),
     ...options,
+  });
+}
+
+
+/** PATCH OpenClaw config and refresh the shared Platform/OpenClaw read surface. */
+export function usePatchOpenClawConfigMutation(
+  options?: MutationOpts<ConfigSaveResponse, ConfigPatchPayload>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ConfigSaveResponse, ApiError, ConfigPatchPayload>({
+    mutationFn: (payload) => patchOpenClawConfig(payload),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: platformReadKeys.config() });
+      void queryClient.invalidateQueries({ queryKey: platformReadKeys.diagnostics() });
+      options?.onSuccess?.(...args);
+    },
   });
 }

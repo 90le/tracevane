@@ -85,6 +85,14 @@ function msSince(value: string | null): number {
   return Number.isNaN(parsed) ? 0 : Math.max(0, Date.now() - parsed);
 }
 
+function preferKnownState(liveValue: string, storedValue: string): string {
+  const live = String(liveValue || "").trim();
+  const storedText = String(storedValue || "").trim();
+  if (live && live !== "unknown") return live;
+  if (storedText && storedText !== "unknown") return storedText;
+  return live || storedText || "unknown";
+}
+
 function mergeStoredServiceSnapshot(
   snapshot: OpenClawRecoveryDaemonServiceSnapshot,
   stored: OpenClawRecoveryDaemonServiceSnapshot,
@@ -100,9 +108,9 @@ function mergeStoredServiceSnapshot(
 
   return {
     ...snapshot,
-    activeState: stored.activeState || snapshot.activeState,
-    enabledState: stored.enabledState || snapshot.enabledState,
-    lastCheckedAt: stored.lastCheckedAt || snapshot.lastCheckedAt,
+    activeState: preferKnownState(snapshot.activeState, stored.activeState),
+    enabledState: preferKnownState(snapshot.enabledState, stored.enabledState),
+    lastCheckedAt: snapshot.lastCheckedAt || stored.lastCheckedAt,
   };
 }
 
@@ -169,7 +177,7 @@ export function createOpenClawRecoveryService(
       const state = readRecoveryState(config);
       const service = await getRecoveryDaemonServiceSnapshot(config, {
         includeTemplate: true,
-        probe: false,
+        probe: true,
       });
       return {
         ...state,
@@ -278,7 +286,7 @@ export function createOpenClawRecoveryService(
     async getDaemonService() {
       return getRecoveryDaemonServiceSnapshot(config, {
         includeTemplate: true,
-        probe: false,
+        probe: true,
       });
     },
 
