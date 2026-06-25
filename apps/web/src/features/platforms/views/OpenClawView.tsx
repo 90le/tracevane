@@ -38,7 +38,7 @@ function fmtTime(value: string | null | undefined): string {
  * summary derived from existing source APIs. Generic OpenClaw management
  * (config / agents / channels / skills / service) is delegated to the official
  * OpenClaw Control / Web UI and surfaced as a prominent link-out; substrate
- * guard / recovery actions live under `/platforms/openclaw/recovery`.
+ * guard / recovery actions live under `/platforms/openclaw/guard`.
  * Read-only for generic OpenClaw CRUD — NO duplicated management forms.
  */
 export function OpenClawView() {
@@ -124,7 +124,7 @@ export function OpenClawView() {
             </Badge>
           )}
           <Button variant="outline" asChild>
-            <Link to="/platforms/openclaw/recovery">
+            <Link to="/platforms/openclaw/guard">
               <LifeBuoy />
               平台守护与恢复
             </Link>
@@ -173,7 +173,7 @@ export function OpenClawView() {
             sub="守护进程 / 探针 / 修复来自平台守护状态。"
             action={
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/platforms/openclaw/recovery">查看平台守护</Link>
+                <Link to="/platforms/openclaw/guard">查看平台守护</Link>
               </Button>
             }
           />

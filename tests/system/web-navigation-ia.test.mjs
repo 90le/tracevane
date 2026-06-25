@@ -25,14 +25,15 @@ test("primary navigation exposes core operating domains, not legacy aggregation 
 test("legacy external, long-tasks and recovery routes remain compatible deep-links", () => {
   const router = read("apps/web/src/app/router.tsx");
   const platforms = read("apps/web/src/features/platforms/PlatformsPage.tsx");
+  const sections = read("apps/web/src/features/platforms/sections.ts");
   const external = read("apps/web/src/features/external/ExternalConnectionsPage.tsx");
   const longTasks = read("apps/web/src/features/long-tasks/LongTasksPage.tsx");
 
   assert.match(router, /path="\/external"/);
   assert.match(router, /path="\/long-tasks"/);
-  assert.match(router, /path="\/recovery" element=\{<Navigate to="\/platforms\/openclaw\/recovery" replace \/>\}/);
-  assert.match(platforms, /section === "recovery"/);
-  assert.match(platforms, /<RecoveryPage \/>/);
+  assert.match(router, /path="\/recovery" element=\{<Navigate to="\/platforms\/openclaw\/guard" replace \/>\}/);
+  assert.match(platforms, /<OpenClawWorkspace section=\{section\} \/>/);
+  assert.match(sections, /if \(section === "recovery"\) return "guard"/);
   assert.match(external, /compatibility deep-link/);
   assert.match(external, /read-only AGGREGATION/);
   assert.match(longTasks, /compatibility deep-link for supervised work/);
@@ -49,7 +50,7 @@ test("dashboard and platform wording route integration evidence through support 
   assert.match(dashboard, /任务监督/);
   assert.match(dashboard, /平台守护日志/);
   assert.match(platformAggregate, /title: "集成证据"/);
-  assert.match(platformAggregate, /to: "\/platforms\/openclaw\/recovery"/);
+  assert.match(platformAggregate, /to: "\/platforms\/openclaw\/guard"/);
   assert.match(platformAggregate, /查看集成证据/);
   assert.doesNotMatch(platformAggregate, /查看外部接入/);
 });

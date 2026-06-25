@@ -39,19 +39,24 @@ export function AppRouter() {
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<LongTasksPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
-          <Route path="/recovery" element={<Navigate to="/platforms/openclaw/recovery" replace />} />
+          <Route path="/recovery" element={<Navigate to="/platforms/openclaw/guard" replace />} />
           <Route path="/platforms" element={<PlatformsPage />} />
           {/* `:platform` selects the platform child (currently `openclaw`); the
               optional `:section` is reserved for future deep sections and is
               read inside the page. */}
           <Route path="/platforms/:platform" element={<PlatformsPage />} />
           <Route path="/platforms/:platform/:section" element={<PlatformsPage />} />
+          <Route path="/platforms/:platform/:section/:entityId" element={<PlatformsPage />} />
+          <Route
+            path="/platforms/:platform/:section/:entityId/:subsection"
+            element={<PlatformsPage />}
+          />
           {/* Legacy alias: the old app exposed /runtime-admin which routed to
               the recovery / system-guard surface. Redirect for old links. The
               old per-section deep link (/runtime-admin/:section) was the
               OpenClaw runtime admin surface — send it to the platform child. */}
-          <Route path="/runtime-admin" element={<Navigate to="/platforms/openclaw/recovery" replace />} />
-          <Route path="/runtime-admin/:section" element={<Navigate to="/platforms/openclaw" replace />} />
+          <Route path="/runtime-admin" element={<Navigate to="/platforms/openclaw/guard" replace />} />
+          <Route path="/runtime-admin/:section" element={<Navigate to="/platforms/openclaw/guard" replace />} />
           {NAV_ITEMS.filter((item) => item.status === "coming-soon").map((item) => (
             <Route key={item.path} path={item.path} element={<ComingSoonPage />} />
           ))}

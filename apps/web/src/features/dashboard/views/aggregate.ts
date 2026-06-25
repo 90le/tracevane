@@ -23,7 +23,7 @@ import type {
 export const ROUTES = {
   modelGateway: "/model-gateway",
   imChannels: "/im-channels",
-  recovery: "/platforms/openclaw/recovery",
+  recovery: "/platforms/openclaw/guard",
   platforms: "/platforms",
   chat: "/chat",
   cliAgents: "/cli-agents",

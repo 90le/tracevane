@@ -13,7 +13,7 @@ export const ROUTES = {
   chat: "/chat",
   imChannels: "/im-channels",
   cliAgents: "/cli-agents",
-  recovery: "/platforms/openclaw/recovery",
+  recovery: "/platforms/openclaw/guard",
 } as const;
 
 const STATUS_TONE: Record<LongTaskStatus, LongTaskTone> = {

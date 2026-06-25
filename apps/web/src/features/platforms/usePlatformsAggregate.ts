@@ -127,7 +127,7 @@ export function usePlatformsAggregate() {
         boundary:
           "OpenClaw 是底层平台支撑：配置 / agents / channels / skills / service 的通用管理留在官方 OpenClaw UI；宿主恢复并入平台守护。",
         primary: { label: "查看 OpenClaw 平台", to: "/platforms/openclaw" },
-        secondary: { label: "平台守护", to: "/platforms/openclaw/recovery" },
+        secondary: { label: "平台守护", to: "/platforms/openclaw/guard" },
       },
       {
         id: "model-gateway",
