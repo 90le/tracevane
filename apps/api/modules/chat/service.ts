@@ -6577,6 +6577,19 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return null;
   }
 
+  function assertSupportedNativeRuntimeTarget(target: ChatSessionRuntimeTarget): void {
+    if (target.adapterKind !== 'native-cli') {
+      return;
+    }
+    if (normalizeNativeChatAgent(target.agent)) {
+      return;
+    }
+    throw new ChatServiceError(400, buildChatError(
+      'invalid_request',
+      `Native CLI agent '${target.agent || 'unknown'}' is not supported. Supported agents: codex, claude-code, opencode`,
+    ));
+  }
+
   function normalizeNativePermissionMode(value: string | null | undefined): ChannelConnectorPermissionMode {
     const normalized = normalizeString(value);
     if (
@@ -7624,6 +7637,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         await isGatewayConnected(),
         payload.runtimeTarget,
       );
+      assertSupportedNativeRuntimeTarget(row.runtimeTarget);
 
       setTracevaneSession({
         row,
@@ -7684,6 +7698,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           ...(payload.runtimeTarget || {}),
         }, session.agentId)
         : session.runtimeTarget;
+      assertSupportedNativeRuntimeTarget(nextRuntimeTarget);
       const runtimeTargetChanged = hasRuntimeTarget
         ? didRuntimeTargetIdentityChange(session.runtimeTarget, nextRuntimeTarget)
         : false;

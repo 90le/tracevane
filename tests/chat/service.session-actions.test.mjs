@@ -379,6 +379,50 @@ test('native CLI chat sessions can be created without OpenClaw agent catalog', a
   }
 });
 
+test('native CLI runtime targets reject unsupported agents at create and patch boundaries', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-agent-guard-'));
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    const context = await createContextForRoot(root);
+
+    await assert.rejects(
+      () => context.services.chat.createSession('main', {
+        label: 'Unsupported native agent',
+        runtimeTarget: {
+          adapterKind: 'native-cli',
+          agent: 'terminal-agent',
+        },
+      }),
+      /Native CLI agent 'terminal-agent' is not supported/,
+    );
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Supported native session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+      },
+    });
+
+    await assert.rejects(
+      () => context.services.chat.patchSession(created.session.key, {
+        runtimeTarget: {
+          agent: 'terminal-agent',
+        },
+      }),
+      /Native CLI agent 'terminal-agent' is not supported/,
+    );
+
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].runtimeTarget.agent, 'codex');
+    assert.equal(registry[created.session.key].runtimeTarget.model, 'gpt-5.5');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('created chat sessions persist runtime target metadata for future native CLI adapters', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-target-'));
   let gateway = null;
