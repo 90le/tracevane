@@ -74,7 +74,6 @@
     "smoke:chat:session-rail": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/session-rail.acceptance.py",
     "smoke:chat:session-delete-cache-cleanup": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/session-delete-cache-cleanup.acceptance.py",
     "smoke:chat:fresh-tool": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/fresh-tool.acceptance.py",
-    "smoke:chat:host-exec": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/host-exec.acceptance.py",
     "smoke:chat:im": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/chat-im.acceptance.py",
     "smoke:chat:matrix": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/smoke-matrix.py --profile core",
     "smoke:chat:matrix:full": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/smoke-matrix.py --profile full",
