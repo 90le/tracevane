@@ -10,13 +10,16 @@ import {
 import {
   abortChatSession,
   chatStreamUrl,
+  createChatSession,
   deleteChatQueueEntry,
+  deleteChatSession,
   enqueueChatMessage,
   getChatBootstrap,
   getChatControls,
   getChatHistory,
   getChatQueue,
   patchChatControls,
+  patchChatSession,
   resetChatSession,
   sendChatMessage,
 } from "../api/chat";
@@ -24,7 +27,12 @@ import type { ApiError } from "../api/errors";
 import type {
   ChatAbortResponse,
   ChatBootstrapPayload,
+  ChatCreateSessionRequest,
+  ChatCreateSessionResponse,
+  ChatDeleteSessionResponse,
   ChatHistoryPayload,
+  ChatPatchSessionRequest,
+  ChatPatchSessionResponse,
   ChatPatchSessionControlsRequest,
   ChatQueuePayload,
   ChatQueuedMessageItem,
@@ -48,13 +56,17 @@ import type {
 
 export const chatKeys = {
   all: ["chat"] as const,
-  bootstrap: (sessionKey: string | null) => ["chat", "bootstrap", sessionKey] as const,
+  bootstrap: (sessionKey: string | null) =>
+    ["chat", "bootstrap", sessionKey] as const,
   history: (sessionKey: string) => ["chat", "history", sessionKey] as const,
   queue: (sessionKey: string) => ["chat", "queue", sessionKey] as const,
   controls: (sessionKey: string) => ["chat", "controls", sessionKey] as const,
 };
 
-type QueryOpts<TData> = Omit<UseQueryOptions<TData, ApiError, TData>, "queryKey" | "queryFn">;
+type QueryOpts<TData> = Omit<
+  UseQueryOptions<TData, ApiError, TData>,
+  "queryKey" | "queryFn"
+>;
 type MutationOpts<TData, TVariables> = Omit<
   UseMutationOptions<TData, ApiError, TVariables>,
   "mutationFn"
@@ -70,7 +82,11 @@ type MutationOpts<TData, TVariables> = Omit<
  * cockpit reads, but with a full recent window and a selected session key.
  */
 export function useChatBootstrapQuery(
-  params: { sessionKey?: string | null; recentLimit?: number; historyLimit?: number } = {},
+  params: {
+    sessionKey?: string | null;
+    recentLimit?: number;
+    historyLimit?: number;
+  } = {},
   options?: QueryOpts<ChatBootstrapPayload>,
 ) {
   return useQuery<ChatBootstrapPayload, ApiError>({
@@ -88,7 +104,8 @@ export function useChatHistoryQuery(
 ) {
   return useQuery<ChatHistoryPayload, ApiError>({
     queryKey: chatKeys.history(sessionKey ?? ""),
-    queryFn: ({ signal }) => getChatHistory(sessionKey as string, params, signal),
+    queryFn: ({ signal }) =>
+      getChatHistory(sessionKey as string, params, signal),
     enabled: Boolean(sessionKey),
     ...options,
   });
@@ -124,12 +141,80 @@ export function useChatControlsQuery(
 // Mutations
 // ---------------------------------------------------------------------------
 
+/** Create a Tracevane-managed chat session. */
+export function useCreateChatSessionMutation(
+  options?: MutationOpts<
+    ChatCreateSessionResponse,
+    { agentId: string; payload: ChatCreateSessionRequest }
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatCreateSessionResponse,
+    ApiError,
+    { agentId: string; payload: ChatCreateSessionRequest }
+  >({
+    mutationFn: ({ agentId, payload }) => createChatSession(agentId, payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+/** Rename/archive/unarchive a Tracevane-managed session. */
+export function usePatchChatSessionMutation(
+  options?: MutationOpts<
+    ChatPatchSessionResponse,
+    { sessionKey: string; payload: ChatPatchSessionRequest }
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatPatchSessionResponse,
+    ApiError,
+    { sessionKey: string; payload: ChatPatchSessionRequest }
+  >({
+    mutationFn: ({ sessionKey, payload }) =>
+      patchChatSession(sessionKey, payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+/** Delete a Tracevane-managed session. Destructive — confirm at the call site. */
+export function useDeleteChatSessionMutation(
+  options?: MutationOpts<ChatDeleteSessionResponse, string>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ChatDeleteSessionResponse, ApiError, string>({
+    mutationFn: (sessionKey) => deleteChatSession(sessionKey),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
 /** Send a user turn (starts a run). The caller drives the live stream + refetch. */
 export function useSendChatMessageMutation(
-  options?: MutationOpts<ChatSendAck, { sessionKey: string; payload: ChatSendRequest }>,
+  options?: MutationOpts<
+    ChatSendAck,
+    { sessionKey: string; payload: ChatSendRequest }
+  >,
 ) {
-  return useMutation<ChatSendAck, ApiError, { sessionKey: string; payload: ChatSendRequest }>({
-    mutationFn: ({ sessionKey, payload }) => sendChatMessage(sessionKey, payload),
+  return useMutation<
+    ChatSendAck,
+    ApiError,
+    { sessionKey: string; payload: ChatSendRequest }
+  >({
+    mutationFn: ({ sessionKey, payload }) =>
+      sendChatMessage(sessionKey, payload),
     ...options,
   });
 }
@@ -166,14 +251,24 @@ export function useResetChatSessionMutation(
 
 /** Enqueue a message for later delivery. Invalidates the queue slice. */
 export function useEnqueueChatMessageMutation(
-  options?: MutationOpts<ChatQueuedMessageItem, { sessionKey: string; payload: ChatSendRequest }>,
+  options?: MutationOpts<
+    ChatQueuedMessageItem,
+    { sessionKey: string; payload: ChatSendRequest }
+  >,
 ) {
   const queryClient = useQueryClient();
-  return useMutation<ChatQueuedMessageItem, ApiError, { sessionKey: string; payload: ChatSendRequest }>({
-    mutationFn: ({ sessionKey, payload }) => enqueueChatMessage(sessionKey, payload),
+  return useMutation<
+    ChatQueuedMessageItem,
+    ApiError,
+    { sessionKey: string; payload: ChatSendRequest }
+  >({
+    mutationFn: ({ sessionKey, payload }) =>
+      enqueueChatMessage(sessionKey, payload),
     ...options,
     onSuccess: (data, variables, ...rest) => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.queue(variables.sessionKey) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.queue(variables.sessionKey),
+      });
       options?.onSuccess?.(data, variables, ...rest);
     },
   });
@@ -181,14 +276,24 @@ export function useEnqueueChatMessageMutation(
 
 /** Delete a queued message. Destructive — confirm at the call site. */
 export function useDeleteChatQueueEntryMutation(
-  options?: MutationOpts<{ ok: boolean }, { sessionKey: string; entryId: string }>,
+  options?: MutationOpts<
+    { ok: boolean },
+    { sessionKey: string; entryId: string }
+  >,
 ) {
   const queryClient = useQueryClient();
-  return useMutation<{ ok: boolean }, ApiError, { sessionKey: string; entryId: string }>({
-    mutationFn: ({ sessionKey, entryId }) => deleteChatQueueEntry(sessionKey, entryId),
+  return useMutation<
+    { ok: boolean },
+    ApiError,
+    { sessionKey: string; entryId: string }
+  >({
+    mutationFn: ({ sessionKey, entryId }) =>
+      deleteChatQueueEntry(sessionKey, entryId),
     ...options,
     onSuccess: (data, variables, ...rest) => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.queue(variables.sessionKey) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.queue(variables.sessionKey),
+      });
       options?.onSuccess?.(data, variables, ...rest);
     },
   });
@@ -207,10 +312,13 @@ export function usePatchChatControlsMutation(
     ApiError,
     { sessionKey: string; payload: ChatPatchSessionControlsRequest }
   >({
-    mutationFn: ({ sessionKey, payload }) => patchChatControls(sessionKey, payload),
+    mutationFn: ({ sessionKey, payload }) =>
+      patchChatControls(sessionKey, payload),
     ...options,
     onSuccess: (data, variables, ...rest) => {
-      void queryClient.invalidateQueries({ queryKey: chatKeys.controls(variables.sessionKey) });
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.controls(variables.sessionKey),
+      });
       options?.onSuccess?.(data, variables, ...rest);
     },
   });
@@ -220,7 +328,12 @@ export function usePatchChatControlsMutation(
 // SSE streaming
 // ---------------------------------------------------------------------------
 
-export type ChatStreamStatus = "idle" | "connecting" | "open" | "closed" | "error";
+export type ChatStreamStatus =
+  | "idle"
+  | "connecting"
+  | "open"
+  | "closed"
+  | "error";
 
 export interface ChatStreamState {
   status: ChatStreamStatus;
@@ -254,7 +367,10 @@ export function useChatStream(
   enabled: boolean,
   options: UseChatStreamOptions = {},
 ): ChatStreamState {
-  const [state, setState] = React.useState<ChatStreamState>({ status: "idle", error: null });
+  const [state, setState] = React.useState<ChatStreamState>({
+    status: "idle",
+    error: null,
+  });
 
   // Keep the latest callbacks in refs so toggling them doesn't reopen the stream.
   const onEventRef = React.useRef(options.onEvent);
@@ -280,7 +396,10 @@ export function useChatStream(
         });
         if (!response.ok || !response.body) {
           if (!cancelled) {
-            setState({ status: "error", error: `stream HTTP ${response.status}` });
+            setState({
+              status: "error",
+              error: `stream HTTP ${response.status}`,
+            });
           }
           return;
         }

@@ -2,8 +2,13 @@ import { apiRequest } from "./client";
 import type {
   ChatAbortResponse,
   ChatBootstrapPayload,
+  ChatCreateSessionRequest,
+  ChatCreateSessionResponse,
+  ChatDeleteSessionResponse,
   ChatHistoryPayload,
   ChatPatchSessionControlsRequest,
+  ChatPatchSessionRequest,
+  ChatPatchSessionResponse,
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
@@ -45,7 +50,11 @@ export function encodeSessionKey(sessionKey: string): string {
  * history / queue / controls / diagnostics in one shot.
  */
 export function getChatBootstrap(
-  params: { sessionKey?: string | null; recentLimit?: number; historyLimit?: number } = {},
+  params: {
+    sessionKey?: string | null;
+    recentLimit?: number;
+    historyLimit?: number;
+  } = {},
   signal?: AbortSignal,
 ): Promise<ChatBootstrapPayload> {
   const query = new URLSearchParams({
@@ -53,13 +62,20 @@ export function getChatBootstrap(
     historyLimit: String(params.historyLimit ?? 30),
   });
   if (params.sessionKey) query.set("sessionKey", params.sessionKey);
-  return apiRequest<ChatBootstrapPayload>(`${BASE}/bootstrap?${query}`, { signal });
+  return apiRequest<ChatBootstrapPayload>(`${BASE}/bootstrap?${query}`, {
+    signal,
+  });
 }
 
 /** GET /api/chat/sessions/:key/history — paged transcript + runtime + overlays. */
 export function getChatHistory(
   sessionKey: string,
-  params: { limit?: number; before?: string; after?: string; day?: string } = {},
+  params: {
+    limit?: number;
+    before?: string;
+    after?: string;
+    day?: string;
+  } = {},
   signal?: AbortSignal,
 ): Promise<ChatHistoryPayload> {
   const query = new URLSearchParams({ limit: String(params.limit ?? 50) });
@@ -98,6 +114,38 @@ export function getChatControls(
 // Write
 // ---------------------------------------------------------------------------
 
+/** POST /api/chat/agents/:agentId/sessions — create a Tracevane-managed session. */
+export function createChatSession(
+  agentId: string,
+  payload: ChatCreateSessionRequest,
+): Promise<ChatCreateSessionResponse> {
+  return apiRequest<ChatCreateSessionResponse>(
+    `${BASE}/agents/${encodeURIComponent(agentId)}/sessions`,
+    { method: "POST", body: jsonBody(payload) },
+  );
+}
+
+/** PATCH /api/chat/sessions/:key — rename/archive a Tracevane-managed session. */
+export function patchChatSession(
+  sessionKey: string,
+  payload: ChatPatchSessionRequest,
+): Promise<ChatPatchSessionResponse> {
+  return apiRequest<ChatPatchSessionResponse>(
+    `${BASE}/sessions/${encodeSessionKey(sessionKey)}`,
+    { method: "PATCH", body: jsonBody(payload) },
+  );
+}
+
+/** DELETE /api/chat/sessions/:key — delete a Tracevane-managed session. */
+export function deleteChatSession(
+  sessionKey: string,
+): Promise<ChatDeleteSessionResponse> {
+  return apiRequest<ChatDeleteSessionResponse>(
+    `${BASE}/sessions/${encodeSessionKey(sessionKey)}`,
+    { method: "DELETE" },
+  );
+}
+
 /** POST /api/chat/sessions/:key/send — start a run with a user turn. */
 export function sendChatMessage(
   sessionKey: string,
@@ -110,7 +158,9 @@ export function sendChatMessage(
 }
 
 /** POST /api/chat/sessions/:key/abort — stop the active run. */
-export function abortChatSession(sessionKey: string): Promise<ChatAbortResponse> {
+export function abortChatSession(
+  sessionKey: string,
+): Promise<ChatAbortResponse> {
   return apiRequest<ChatAbortResponse>(
     `${BASE}/sessions/${encodeSessionKey(sessionKey)}/abort`,
     { method: "POST", body: jsonBody({}) },
@@ -118,7 +168,9 @@ export function abortChatSession(sessionKey: string): Promise<ChatAbortResponse>
 }
 
 /** POST /api/chat/sessions/:key/reset — clear/reset the session transcript. */
-export function resetChatSession(sessionKey: string): Promise<ChatResetResponse> {
+export function resetChatSession(
+  sessionKey: string,
+): Promise<ChatResetResponse> {
   return apiRequest<ChatResetResponse>(
     `${BASE}/sessions/${encodeSessionKey(sessionKey)}/reset`,
     { method: "POST", body: jsonBody({}) },

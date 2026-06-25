@@ -11,6 +11,9 @@ export type {
   ChatAbortResponse,
   ChatBootstrapPayload,
   ChatContractError,
+  ChatCreateSessionRequest,
+  ChatCreateSessionResponse,
+  ChatDeleteSessionResponse,
   ChatDiagnostics,
   ChatHistoryPayload,
   ChatMessageItem,
@@ -36,10 +39,7 @@ export type {
   ChatUsageSummary,
 } from "../../../../../types/chat";
 
-import type {
-  ChatMessageItem,
-  ChatToolCard,
-} from "../../../../../types/chat";
+import type { ChatMessageItem, ChatToolCard } from "../../../../../types/chat";
 
 // ---------------------------------------------------------------------------
 // Derived view-model tones (mirrors the established feature tone vocabulary)
@@ -74,5 +74,10 @@ export interface LiveAssistantTurn {
 }
 
 /** Center-pane view selector for the conversation column. */
-export const CHAT_INSPECTOR_TABS = ["evidence", "queue", "controls", "diagnostics"] as const;
+export const CHAT_INSPECTOR_TABS = [
+  "evidence",
+  "queue",
+  "controls",
+  "diagnostics",
+] as const;
 export type ChatInspectorTab = (typeof CHAT_INSPECTOR_TABS)[number];

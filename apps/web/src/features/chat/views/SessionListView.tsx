@@ -1,9 +1,27 @@
 import * as React from "react";
-import { MessageSquare, RefreshCw, Search } from "lucide-react";
+import {
+  Archive,
+  MessageSquare,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
+import { toast } from "@/design/ui/sonner";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
@@ -14,17 +32,31 @@ import {
   toneIconClass,
 } from "@/features/cli-agents/views/_shared";
 
+import {
+  useCreateChatSessionMutation,
+  useDeleteChatSessionMutation,
+  usePatchChatSessionMutation,
+} from "@/lib/query/chat";
 import type { ApiError } from "@/lib/api/errors";
 import type { ChatSessionRow } from "../types";
 import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
 
-/**
- * Left column: the session roster. Organizer folders exist in the bootstrap
- * payload but the workbench presents a flat, searchable list ordered by the
- * organizer's root/folder ordering would require write-organizer support; we
- * keep this read-only and filter client-side. Selecting a session drives the
- * `?session=` deep-link.
- */
+type SessionDialogState =
+  | { kind: "create" }
+  | { kind: "rename"; session: ChatSessionRow }
+  | { kind: "archive"; session: ChatSessionRow }
+  | { kind: "restore"; session: ChatSessionRow }
+  | { kind: "delete"; session: ChatSessionRow }
+  | null;
+
+function canManage(session: ChatSessionRow): boolean {
+  return (
+    session.kind === "tracevane_managed" &&
+    session.permissions?.writable === true
+  );
+}
+
+/** Compact conversation switcher and session management surface. */
 export function SessionListView({
   sessions,
   selectedKey,
@@ -43,14 +75,25 @@ export function SessionListView({
   onRefresh: () => void;
 }) {
   const [filter, setFilter] = React.useState("");
+  const [dialog, setDialog] = React.useState<SessionDialogState>(null);
+  const [labelDraft, setLabelDraft] = React.useState("");
+
+  const createSession = useCreateChatSessionMutation();
+  const patchSession = usePatchChatSessionMutation();
+  const deleteSession = useDeleteChatSessionMutation();
+
+  React.useEffect(() => {
+    if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
+    if (dialog?.kind === "create") setLabelDraft("");
+  }, [dialog]);
 
   const visible = React.useMemo(() => {
     const q = filter.trim().toLowerCase();
     const ordered = [...sessions].sort((a, b) => {
-      const aUnknown = a.runtime?.state === "unknown" ? 1 : 0;
-      const bUnknown = b.runtime?.state === "unknown" ? 1 : 0;
       const aArchived = a.presentation?.archived ? 1 : 0;
       const bArchived = b.presentation?.archived ? 1 : 0;
+      const aUnknown = a.runtime?.state === "unknown" ? 1 : 0;
+      const bUnknown = b.runtime?.state === "unknown" ? 1 : 0;
       const aWritable = a.permissions?.canSend ? 0 : 1;
       const bWritable = b.permissions?.canSend ? 0 : 1;
       return (
@@ -73,6 +116,53 @@ export function SessionListView({
     });
   }, [sessions, filter]);
 
+  const runCreate = () => {
+    createSession.mutate(
+      { agentId: "main", payload: { label: labelDraft.trim() || undefined } },
+      {
+        onSuccess: (res) => {
+          toast.success("已新建 Agent 会话");
+          setDialog(null);
+          onSelect(res.session.key);
+        },
+        onError: (e) => toast.error("新建会话失败", { description: e.message }),
+      },
+    );
+  };
+
+  const runPatch = (
+    session: ChatSessionRow,
+    payload: { label?: string; archived?: boolean },
+  ) => {
+    patchSession.mutate(
+      { sessionKey: session.key, payload },
+      {
+        onSuccess: (res) => {
+          toast.success("会话已更新");
+          setDialog(null);
+          onSelect(res.session.key);
+        },
+        onError: (e) => toast.error("更新会话失败", { description: e.message }),
+      },
+    );
+  };
+
+  const runDelete = (session: ChatSessionRow) => {
+    deleteSession.mutate(session.key, {
+      onSuccess: () => {
+        toast.success("会话已删除");
+        setDialog(null);
+        if (selectedKey === session.key) onRefresh();
+      },
+      onError: (e) => toast.error("删除会话失败", { description: e.message }),
+    });
+  };
+
+  const busy =
+    createSession.isPending ||
+    patchSession.isPending ||
+    deleteSession.isPending;
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-panel">
       <div className="grid gap-2 border-b border-line p-3">
@@ -85,6 +175,14 @@ export function SessionListView({
               {sessions.length} 个会话
             </span>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDialog({ kind: "create" })}
+          >
+            <Plus />
+            新建
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -128,7 +226,7 @@ export function SessionListView({
             title={sessions.length === 0 ? "暂无会话" : "无匹配会话"}
             description={
               sessions.length === 0
-                ? "Tracevane Agent 会话会在出现后显示在这里。"
+                ? "点击新建创建一个 Tracevane 自管 Agent 会话。"
                 : "调整筛选条件以查看更多会话。"
             }
           />
@@ -147,49 +245,259 @@ export function SessionListView({
                   ? "外部观察会话"
                   : "暂无最近消息");
               const showState = shouldShowRunState(s.runtime?.state);
+              const manageable = canManage(s);
               return (
-                <button
+                <div
                   key={s.key}
-                  type="button"
-                  onClick={() => onSelect(s.key)}
                   className={cn(
-                    "flex min-w-0 items-center gap-3 rounded-sm px-3 py-2.5 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
+                    "group grid rounded-sm transition-colors hover:bg-panel-2",
                     s.key === selectedKey && "bg-primary-soft",
                   )}
                 >
-                  <span
-                    className={cn(
-                      "grid size-10 shrink-0 place-items-center rounded-md [&_svg]:size-4",
-                      toneIconClass(st.tone),
-                    )}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(s.key)}
+                    className="flex min-w-0 items-center gap-3 px-3 py-2.5 text-left outline-none focus-visible:shadow-[var(--ring)]"
                   >
-                    <MessageSquare />
-                  </span>
-                  <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <strong className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-strong">
-                        {sessionTitle(s)}
-                      </strong>
-                      <span className="shrink-0 text-xs text-subtle">
-                        {formatTime(s.updatedAt)}
+                    <span
+                      className={cn(
+                        "grid size-10 shrink-0 place-items-center rounded-md [&_svg]:size-4",
+                        toneIconClass(showState ? st.tone : "info"),
+                      )}
+                    >
+                      <MessageSquare />
+                    </span>
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <strong className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-strong">
+                          {sessionTitle(s)}
+                        </strong>
+                        <span className="shrink-0 text-xs text-subtle">
+                          {formatTime(s.updatedAt)}
+                        </span>
+                      </span>
+                      <span className="truncate text-xs text-muted">
+                        {preview}
+                      </span>
+                      <span className="truncate text-2xs text-subtle">
+                        {s.agentId} · {source}
+                        {s.presentation?.archived ? " · 已归档" : ""}
                       </span>
                     </span>
-                    <span className="truncate text-xs text-muted">
-                      {preview}
-                    </span>
-                    <span className="truncate text-2xs text-subtle">
-                      {s.agentId} · {source}
-                    </span>
-                  </span>
-                  {showState && (
-                    <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
-                  )}
-                </button>
+                    {showState && (
+                      <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
+                    )}
+                  </button>
+                  <div className="flex items-center gap-1 px-3 pb-2 pl-[4.25rem] text-xs">
+                    {manageable ? (
+                      <>
+                        <button
+                          className="text-subtle hover:text-ink"
+                          onClick={() =>
+                            setDialog({ kind: "rename", session: s })
+                          }
+                        >
+                          重命名
+                        </button>
+                        <span className="text-line-2">/</span>
+                        <button
+                          className="text-subtle hover:text-ink"
+                          onClick={() =>
+                            setDialog({
+                              kind: s.presentation?.archived
+                                ? "restore"
+                                : "archive",
+                              session: s,
+                            })
+                          }
+                        >
+                          {s.presentation?.archived ? "恢复" : "归档"}
+                        </button>
+                        <span className="text-line-2">/</span>
+                        <button
+                          className="text-red hover:underline"
+                          onClick={() =>
+                            setDialog({ kind: "delete", session: s })
+                          }
+                        >
+                          删除
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-subtle">只读观察会话</span>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(dialog)}
+        onOpenChange={(open) => !open && setDialog(null)}
+      >
+        <DialogContent>
+          {dialog?.kind === "create" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <Plus />
+                </span>
+                <DialogTitle>新建 Agent 会话</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <label className="grid gap-2 text-sm text-muted">
+                  会话名称
+                  <Input
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    placeholder="例如：修复网关路由"
+                    autoFocus
+                  />
+                </label>
+                <p className="mt-2 text-xs text-subtle">
+                  当前使用 main Agent；后续可接入 Agent/模型/目录选择器。
+                </p>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={runCreate}
+                  disabled={busy}
+                >
+                  {busy ? "创建中…" : "创建"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "rename" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <Pencil />
+                </span>
+                <DialogTitle>重命名会话</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <label className="grid gap-2 text-sm text-muted">
+                  新名称
+                  <Input
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    autoFocus
+                  />
+                </label>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    runPatch(dialog.session, { label: labelDraft.trim() })
+                  }
+                  disabled={busy || !labelDraft.trim()}
+                >
+                  {busy ? "保存中…" : "保存"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {(dialog?.kind === "archive" || dialog?.kind === "restore") && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+                  {dialog.kind === "archive" ? <Archive /> : <Undo2 />}
+                </span>
+                <DialogTitle>
+                  {dialog.kind === "archive" ? "归档会话" : "恢复会话"}
+                </DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                {dialog.kind === "archive"
+                  ? "归档后会话仍保留，可搜索和恢复，但不会优先显示。"
+                  : "恢复后会话会重新进入常规列表。"}
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    runPatch(dialog.session, {
+                      archived: dialog.kind === "archive",
+                    })
+                  }
+                  disabled={busy}
+                >
+                  {busy ? "处理中…" : "确认"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "delete" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+                  <Trash2 />
+                </span>
+                <DialogTitle>删除会话</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                删除会移除该 Tracevane
+                自管会话及其本地记录，无法恢复。确认删除「
+                {sessionTitle(dialog.session)}」？
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => runDelete(dialog.session)}
+                  disabled={busy}
+                >
+                  {busy ? "删除中…" : "确认删除"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
