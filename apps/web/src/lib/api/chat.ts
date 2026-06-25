@@ -221,7 +221,7 @@ export async function uploadChatFile(
   file: File,
   signal?: AbortSignal,
 ): Promise<ChatFileUploadResponse> {
-  const summary = await getFilesSummary();
+  const summary = await getFilesSummary(signal);
   const root = selectChatUploadRoot(summary);
   if (!root) {
     throw new Error("没有可用的文件根目录，无法上传聊天附件");

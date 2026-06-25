@@ -13,7 +13,7 @@ const chatAcceptanceSources = fs.readdirSync(new URL(".", import.meta.url), { wi
 
 test("chat composer uploads use the shared Files API contract", () => {
   assert.match(chatApi, /export async function uploadChatFile\b/);
-  assert.match(chatApi, /getFilesSummary\(\)/);
+  assert.match(chatApi, /getFilesSummary\(signal\)/);
   assert.match(chatApi, /function selectChatUploadRoot/);
   assert.match(chatApi, /item\.id === "project-root"/);
   assert.match(chatApi, /initFileUpload\(/);
@@ -57,8 +57,9 @@ test("chat acceptance upload smokes do not mock the removed Chat upload route", 
 });
 
 
-test("chat upload transport passes abort signals to Files chunk uploads", () => {
+test("chat upload transport passes abort signals through Files preflight and chunk uploads", () => {
   assert.match(chatApi, /uploadChatFile\(\s*sessionKey: string,\s*file: File,\s*signal\?: AbortSignal/s);
+  assert.match(chatApi, /const summary = await getFilesSummary\(signal\)/);
   assert.match(chatApi, /uploadFileChunk\(init\.uploadId, index, file\.slice\(start, end\), undefined, signal\)/);
 });
 
