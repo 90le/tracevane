@@ -66,9 +66,14 @@ test("OpenClaw guard service status probes live manager state instead of preserv
   assert.doesNotMatch(service, /activeState: stored\.activeState \|\| snapshot\.activeState/);
 });
 
-test("OpenClaw config page keeps hooks before loading returns to avoid blank screens", () => {
-  const page = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
-  assert.ok(page.indexOf("useSelectedKey") < page.indexOf("if (config.isLoading"), "selection hook must run before loading/error early returns");
+test("OpenClaw workbench pages keep selection hooks before loading returns to avoid blank screens", () => {
+  for (const pageName of ["ConfigPage", "AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+    const page = read(`apps/web/src/features/platforms/openclaw/sections/${pageName}.tsx`);
+    const loadingIndex = page.indexOf("isLoading");
+    if (loadingIndex < 0) continue;
+    assert.ok(page.indexOf("useSelectedKey") > -1, `${pageName} should use selectable detail state`);
+    assert.ok(page.indexOf("useSelectedKey") < loadingIndex, `${pageName} selection hook must run before loading/error early returns`);
+  }
 });
 
 test("OpenClaw config page saves first-stage safe fields through typed PATCH", () => {
@@ -80,12 +85,16 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(query, /usePatchOpenClawConfigMutation/);
   assert.match(page, /ConfigDraft/);
   assert.match(page, /dirty/);
-  assert.match(page, /保存配置/);
+  assert.match(page, /保存当前配置/);
   assert.match(page, /重置/);
   assert.match(page, /draftToPatch/);
   assert.match(page, /contextTokens/);
   assert.match(page, /reserveTokensFloor/);
-  assert.match(page, /MCP servers.*本轮不开放写入/s);
+  assert.match(page, /CONFIG_SECTIONS/);
+  assert.match(page, /title: "模型"/);
+  assert.match(page, /title: "安全"/);
+  assert.match(page, /title: "网关"/);
+  assert.match(page, /Providers.*MCP servers.*Commands/s);
 });
 
 test("OpenClaw workbench pages support refreshable selectable detail workflows", () => {
@@ -111,8 +120,8 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
   const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
-  assert.match(config, /第一批低风险字段 PATCH 保存/);
-  assert.match(config, /MCP、Commands、raw JSON、密钥和 Provider 写入仍保持只读/);
+  assert.match(config, /配置页拆分为基础、模型、策略、安全、网关、会话消息和高级证据子页面/);
+  assert.match(config, /MCP、Commands、密钥和 Provider 仍保留只读证据/);
   assert.match(agents, /CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 \/ IDE/);
   assert.match(channels, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
   assert.match(bindings, /IM 会话级动态路由与投递队列仍在 IM 渠道域/);

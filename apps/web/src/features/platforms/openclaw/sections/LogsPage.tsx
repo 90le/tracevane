@@ -10,12 +10,12 @@ export function LogsPage() {
   const events = useRecoveryEventsQuery(1, 20);
   const runs = useAgentRuntimeRunsQuery();
   const [severity, setSeverity] = React.useState("all");
-  if (events.isLoading || runs.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
-  if (events.error) return <ErrorState title="无法加载平台日志" description={events.error.message} />;
   const list = events.data?.events ?? [];
   const filtered = list.filter((event) => severity === "all" || event.severity === severity);
   const [selectedKey, setSelectedKey] = useSelectedKey(filtered.map((event) => event.id));
   const selected = filtered.find((event) => event.id === selectedKey) ?? filtered[0] ?? list[0];
+  if (events.isLoading || runs.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
+  if (events.error) return <ErrorState title="无法加载平台日志" description={events.error.message} />;
   const severities = Array.from(new Set(list.map((event) => event.severity)));
   return <div className="grid gap-[18px]">
     <ReadOnlyStrip>日志页展示人可读事件摘要；原始日志文件/终端输出仍由对应 owner 页面打开。</ReadOnlyStrip>

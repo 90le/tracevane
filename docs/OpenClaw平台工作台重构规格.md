@@ -278,3 +278,11 @@ OpenClaw Config 页面第一阶段只开放低风险、可由现有 `PATCH /api/
 - MCP servers、Commands、raw JSON、Provider、密钥、IM/CLI owner 域配置继续只读，直到有更细的 typed backend contract、备份和 diff/validate 流。
 
 守护服务状态要求：`GET /api/openclaw-recovery/daemon-service` 和 `/status` 必须执行安全只读 service-manager probe；存储快照里的 `unknown` 不能覆盖实时探测出的 `active/enabled/inactive/disabled`。
+
+## 10. 配置工作台分组与空白页修复
+
+- Config 不再作为单一巨型表单，也不回退到只读摘要；当前拆为 `基础 / 模型 / 策略 / 安全 / 网关 / 会话消息 / 高级证据` 七个子页面式分组。
+- 可写范围统一走 `PATCH /api/config`：defaults、compaction、sandbox、tools、execApprovals defaults、gateway、session、messages 这些已有后端 merge/save/audit 契约的字段。
+- 高风险对象保持证据只读：Provider secret、MCP server、Commands、raw JSON、IM/CLI owner 数据。后续如开放写入，必须先增加 validate → diff → backup → apply → verify 的专门流程。
+- OpenClaw 所有 workbench 子页必须遵守 React Hooks 顺序：`useSelectedKey` 等 Hook 必须在 loading/error early return 前调用，避免数据加载后 hook order 改变导致页面白屏。
+- Agents/Skills/Channels/Bindings/Services/Logs/Diagnostics 的空白页根因与 Config 相同，均已纳入 system test 回归。

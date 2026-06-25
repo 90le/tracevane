@@ -12,12 +12,12 @@ export function AgentsPage() {
   const agents = useAgentsSummaryQuery();
   const runs = useAgentRuntimeRunsQuery();
   const [query, setQuery] = React.useState("");
-  if (agents.isLoading || runs.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
-  if (agents.error) return <ErrorState title="无法加载 Agents 摘要" description={agents.error.message} />;
   const list = agents.data?.agents ?? [];
   const filtered = list.filter((agent) => `${agent.name} ${agent.id} ${agent.model ?? ""}`.toLowerCase().includes(query.toLowerCase()));
   const [selectedKey, setSelectedKey] = useSelectedKey(filtered.map((agent) => agent.id));
   const selected = filtered.find((agent) => agent.id === selectedKey) ?? filtered[0] ?? list[0];
+  if (agents.isLoading || runs.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
+  if (agents.error) return <ErrorState title="无法加载 Agents 摘要" description={agents.error.message} />;
   return <div className="grid gap-[18px]">
     <ReadOnlyStrip>这里管理 OpenClaw Agent 定义证据；CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 / IDE。</ReadOnlyStrip>
     <PanelShell title="Agent roster" description="搜索 Agent，查看 persona/model/source 证据。" toolbar={<><SearchBox value={query} onChange={setQuery} placeholder="搜索 agent / model" /><RefreshButton loading={agents.isFetching || runs.isFetching} onClick={() => { void agents.refetch(); void runs.refetch(); }} /><BoundaryBadge /></>}>
