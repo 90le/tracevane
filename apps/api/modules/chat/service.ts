@@ -1818,6 +1818,128 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
   }
 
+
+  function upsertProjectionToolCall(
+    projection: ChatRunProjection,
+    toolCall: ChatMessageToolCallItem,
+  ): void {
+    const next = new Map(projection.toolCalls.map((item) => [item.toolCallId, cloneChatMessageToolCallItem(item)]));
+    next.set(toolCall.toolCallId, {
+      ...(next.get(toolCall.toolCallId) || {}),
+      ...cloneChatMessageToolCallItem(toolCall),
+    });
+    projection.toolCalls = [...next.values()]
+      .sort((left, right) => (left.startedAt || '').localeCompare(right.startedAt || ''));
+  }
+
+  function applyNativeCliProgressEvent(
+    sessionKey: string,
+    runId: string,
+    event: ChannelConnectorAgentProgressEvent,
+  ): void {
+    const emittedAt = normalizeDate(event.checkedAt) || new Date().toISOString();
+    const projection = ensureRunProjection(sessionKey, runId, emittedAt, { lifecycle: 'running' });
+    projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+    const text = normalizeString(event.text);
+
+    if (event.type === 'tool') {
+      const toolCallId = normalizeString(event.toolCallId)
+        || `native-tool-${crypto.randomUUID()}`;
+      const status: ChatMessageToolCallItem['status'] = event.phase === 'final' ? 'completed' : 'running';
+      const toolName = normalizeString(event.toolName) || normalizeString(event.itemType) || 'tool';
+      const existingToolCall = projection.toolCalls.find((item) => item.toolCallId === toolCallId) || null;
+      const toolCall: ChatMessageToolCallItem = {
+        toolCallId,
+        runId,
+        name: toolName,
+        status,
+        startedAt: existingToolCall?.startedAt || emittedAt,
+        updatedAt: emittedAt,
+        argsPreview: status === 'running'
+          ? (text || normalizeString(event.rawType) || existingToolCall?.argsPreview || null)
+          : (existingToolCall?.argsPreview || null),
+        resultPreview: status === 'completed' ? (text || existingToolCall?.resultPreview || null) : existingToolCall?.resultPreview || null,
+        isError: false,
+      };
+      projection.firstToolStartedAt = projection.firstToolStartedAt || emittedAt;
+      upsertProjectionToolCall(projection, toolCall);
+      updateObservabilityCache(sessionKey, (current) => {
+        const card: ChatToolCard = { ...toolCall };
+        return appendTimelineItem(
+          upsertToolCard(current, card),
+          {
+            id: `native-tool-${toolCallId}-${emittedAt}`,
+            kind: status === 'completed' ? 'tool_result' : 'tool_call',
+            runId,
+            toolCallId,
+            emittedAt,
+            title: `${status === 'completed' ? 'Tool complete' : 'Tool start'} · ${toolName}`,
+            detail: text || normalizeString(event.rawType) || null,
+            level: 'info',
+          },
+          `native-tool-${toolCallId}-${status}`,
+        );
+      });
+      saveRunProjection(sessionKey, projection);
+      broadcastToSession(sessionKey, {
+        kind: 'temporary.tool',
+        sessionKey,
+        runId,
+        emittedAt,
+        partial: status !== 'completed',
+        tool: { ...toolCall },
+        source: 'tracevane_bff',
+      });
+    } else if (text) {
+      if (event.type === 'failed' || event.type === 'error') {
+        projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'error');
+        projection.previewText = text;
+        updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+          id: `native-error-${runId}-${emittedAt}`,
+          kind: 'lifecycle',
+          runId,
+          toolCallId: null,
+          emittedAt,
+          title: 'Native runner error',
+          detail: text,
+          level: 'error',
+        }));
+      } else if (event.type === 'assistant') {
+        projection.previewText = text;
+        projection.firstAssistantSeenAt = projection.firstAssistantSeenAt || emittedAt;
+        settleProjectionRunningToolsBeforeAssistant(projection, emittedAt);
+        updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+          id: `native-assistant-${runId}-${emittedAt}`,
+          kind: 'assistant',
+          runId,
+          toolCallId: null,
+          emittedAt,
+          title: 'Assistant progress',
+          detail: text,
+          level: 'info',
+        }));
+        broadcastToSession(sessionKey, {
+          kind: 'temporary.assistant',
+          sessionKey,
+          runId,
+          emittedAt,
+          textDelta: text,
+          accumulatedText: text,
+        });
+      } else if (!projection.previewText) {
+        projection.previewText = text;
+      }
+      saveRunProjection(sessionKey, projection);
+    } else {
+      saveRunProjection(sessionKey, projection);
+    }
+
+    const overlayEvent = buildRunOverlayEvent(sessionKey, projection, emittedAt, false);
+    if (overlayEvent) {
+      broadcastToSession(sessionKey, overlayEvent);
+    }
+  }
+
   function clearRunProjections(sessionKey: string): void {
     runProjections.delete(sessionKey);
   }
@@ -6544,7 +6666,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             safeRuntimePathSegment(input.sessionKey, 'session'),
           ),
           session: registryEntry?.runtimeSession || null,
-          onProgress: (event) => progressEvents.push(event),
+          onProgress: (event) => {
+            progressEvents.push(event);
+            applyNativeCliProgressEvent(input.sessionKey, input.idempotencyKey, event);
+          },
           processRunner: options.agentProcessRunner,
         });
         const runId = input.idempotencyKey;
@@ -6786,6 +6911,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
     inMemory.materialized = true;
     inMemory.clearedAt = null;
+    inMemory.observability = cloneObservabilityState(getTracevaneSession(sessionKey)?.observability || inMemory.observability);
     refreshTracevaneAutoLabel(inMemory);
     setTracevaneSession(inMemory);
     saveRegistryEntry(buildRegistryEntryFromRow(inMemory.row));

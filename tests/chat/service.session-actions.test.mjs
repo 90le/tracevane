@@ -376,6 +376,24 @@ test('native CLI chat sessions send through channel connector runner and persist
       chatOptions: {
         agentProcessRunner: async (request) => {
           runnerCalls.push(request);
+          request.onProgress?.({
+            checkedAt: new Date().toISOString(),
+            type: 'tool',
+            rawType: 'tool_call',
+            itemType: 'exec',
+            text: 'cat package.json',
+            phase: 'intermediate',
+            toolName: 'exec',
+            toolCallId: 'native-tool-1',
+          });
+          request.onProgress?.({
+            checkedAt: new Date().toISOString(),
+            type: 'assistant',
+            rawType: 'message',
+            itemType: null,
+            text: 'native progress',
+            phase: 'intermediate',
+          });
           return {
             exitCode: 0,
             signal: null,
@@ -425,6 +443,9 @@ test('native CLI chat sessions send through channel connector runner and persist
     const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
     assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);
     assert.equal(history.messages[1].text, 'native reply');
+    assert.ok(history.overlays.some((overlay) => overlay.toolCalls.some((tool) => tool.toolCallId === 'native-tool-1')));
+    assert.ok(history.observability.toolCards.some((tool) => tool.toolCallId === 'native-tool-1'));
+    assert.ok(history.observability.timeline.some((item) => item.kind === 'assistant' && /native progress/.test(item.detail || '')));
 
     const registry = readJson(registryPath(root), {});
     assert.ok(registry[created.session.key].runtimeSession?.agentNativeSessionId);
