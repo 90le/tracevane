@@ -2,16 +2,14 @@ import type { ComponentType } from "react";
 import {
   Bot,
   Boxes,
-  FolderOpen,
   LayoutDashboard,
   MessageSquare,
   Network,
   Plug,
-  ShieldCheck,
   Terminal,
 } from "lucide-react";
 
-export type NavGroup = "总览" | "工作" | "连接" | "平台" | "证据";
+export type NavGroup = "总览" | "工作" | "连接" | "平台";
 export type NavStatus = "ready" | "coming-soon";
 
 export interface NavItem {
@@ -34,7 +32,7 @@ export interface PageMeta {
   breadcrumbs: Array<{ label: string; path?: string }>;
 }
 
-export const NAV_GROUP_ORDER: NavGroup[] = ["总览", "工作", "连接", "平台", "证据"];
+export const NAV_GROUP_ORDER: NavGroup[] = ["总览", "工作", "连接", "平台"];
 
 export const NAV_ITEMS: NavItem[] = [
   { path: "/dashboard", label: "总览", title: "总览", subtitle: "全局状态、关键入口与下一步动作。", group: "总览", icon: LayoutDashboard, status: "ready" },
@@ -46,10 +44,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: "/model-gateway", label: "模型网关", title: "模型网关", subtitle: "Provider、模型、协议、路由和客户端接入。", group: "连接", icon: Plug, status: "ready" },
   { path: "/im-channels", label: "IM 渠道", title: "IM 渠道", subtitle: "连接飞书、企微、Telegram 等第三方 IM，让消息进入 Agent。", group: "连接", icon: Network, status: "ready" },
 
-  { path: "/platforms", label: "OpenClaw", title: "平台 / OpenClaw", subtitle: "OpenClaw 原生配置、Agent、Channel、Binding、Skills、服务与诊断。", group: "平台", icon: Bot, status: "ready", aliases: ["/recovery", "/runtime-admin"] },
-
-  { path: "/workspace?mode=files", label: "工作区文件", title: "工作区文件", subtitle: "Workspace 文件与产物入口；完整编辑在工作区完成。", group: "证据", icon: FolderOpen, status: "ready" },
-  { path: "/approvals", label: "审批", title: "审批", subtitle: "命令、文件、凭据和修复动作的确认与证据。", group: "证据", icon: ShieldCheck, status: "ready" },
+  { path: "/platforms", label: "平台", title: "平台", subtitle: "第三方平台管理入口；当前平台为 OpenClaw。", group: "平台", icon: Bot, status: "ready", aliases: ["/recovery", "/runtime-admin"] },
 ];
 
 const OPENCLAW_SECTION_LABELS: Record<string, string> = {
@@ -99,7 +94,7 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
     const section = pathname.split("/")[3] || "overview";
     const sectionLabel = OPENCLAW_SECTION_LABELS[section] ?? "总览";
     label = section === "overview" ? "OpenClaw" : sectionLabel;
-    title = section === "overview" ? "平台 / OpenClaw" : `OpenClaw / ${sectionLabel}`;
+    title = section === "overview" ? "OpenClaw" : `OpenClaw / ${sectionLabel}`;
     subtitle = section === "overview"
       ? item.subtitle
       : `OpenClaw 平台子页面：${sectionLabel}。模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。`;
@@ -109,7 +104,7 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
   } else if (pathname === "/platforms") {
     breadcrumbs[0] = { label: "平台" };
     label = "平台目录";
-    title = "平台目录";
+    title = "平台";
   } else if (item.group !== "总览") {
     breadcrumbs.push({ label: item.label });
   } else {

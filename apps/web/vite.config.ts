@@ -127,9 +127,10 @@ function createKatexOptimizedDepFallbackPlugin(): Plugin {
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@': path.resolve(webConfigDir, 'src'),
-    },
+    alias: [
+      { find: /^@xterm\/xterm$/, replacement: path.resolve(tracevaneRootDir, 'node_modules', '@xterm', 'xterm', 'lib', 'xterm.js') },
+      { find: '@', replacement: path.resolve(webConfigDir, 'src') },
+    ],
   },
   optimizeDeps: {
     exclude: ['katex'],

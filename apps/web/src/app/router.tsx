@@ -8,7 +8,6 @@ import { ModelGatewayPage } from "@/features/model-gateway/ModelGatewayPage";
 import { ChannelConnectorsPage } from "@/features/channel-connectors/ChannelConnectorsPage";
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
-import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { WorkspacePage } from "@/features/workspace/WorkspacePage";
 import { PlatformsPage } from "@/features/platforms/PlatformsPage";
 
@@ -25,18 +24,15 @@ export function AppRouter() {
         {/* Full-bleed Workspace shell — renders OUTSIDE AppShell so the local
             project workbench can use the whole viewport. */}
         <Route path="/workspace" element={<WorkspacePage />} />
-        <Route path="/ide" element={<Navigate to="/workspace" replace />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatWorkbenchPage />} />
-          <Route path="/files" element={<Navigate to="/workspace?mode=files" replace />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
           <Route path="/external" element={<Navigate to="/platforms" replace />} />
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<Navigate to="/cli-agents" replace />} />
-          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/recovery" element={<Navigate to="/platforms/openclaw/guard" replace />} />
           <Route path="/platforms" element={<PlatformsPage />} />
           {/* `:platform` selects the platform child (currently `openclaw`); the
