@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Archive,
   ArrowDown,
@@ -90,6 +91,25 @@ type SessionDialogState =
 type SessionFilter = "all" | "managed" | "readonly" | "archived";
 type FolderFilter = "all" | "unfiled" | `folder:${string}`;
 
+const SESSION_FILTERS = new Set<SessionFilter>(["all", "managed", "readonly", "archived"]);
+
+function parseSessionFilterParam(value: string | null): SessionFilter {
+  return SESSION_FILTERS.has(value as SessionFilter)
+    ? (value as SessionFilter)
+    : "managed";
+}
+
+function parseFolderFilterParam(value: string | null): FolderFilter {
+  if (value === "all" || value === "unfiled") return value;
+  if (value?.startsWith("folder:")) return value as FolderFilter;
+  if (value) return `folder:${value}`;
+  return "all";
+}
+
+function folderFilterToParam(value: FolderFilter): string {
+  return value.startsWith("folder:") ? value.slice("folder:".length) : value;
+}
+
 type ContextMenuState =
   | { kind: "session"; session: ChatSessionRow; x: number; y: number }
   | { kind: "folder"; folder: ChatSessionFolder; x: number; y: number }
@@ -170,10 +190,13 @@ export function SessionListView({
   onSelect: (key: string) => void;
   onRefresh: () => void;
 }) {
-  const [filter, setFilter] = React.useState("");
-  const [sessionFilter, setSessionFilter] =
-    React.useState<SessionFilter>("managed");
-  const [folderFilter, setFolderFilter] = React.useState<FolderFilter>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filter, setFilterState] = React.useState(() => searchParams.get("chatQ") ?? "");
+  const [sessionFilter, setSessionFilterState] =
+    React.useState<SessionFilter>(() => parseSessionFilterParam(searchParams.get("chatView")));
+  const [folderFilter, setFolderFilterState] = React.useState<FolderFilter>(() =>
+    parseFolderFilterParam(searchParams.get("chatFolder")),
+  );
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
   const [runtimeAgent, setRuntimeAgent] = React.useState<ChatRuntimeAgentId>(DEFAULT_RUNTIME_AGENT);
@@ -244,6 +267,65 @@ export function SessionListView({
     };
   }, [contextMenu]);
 
+  const updateSessionListParams = React.useCallback(
+    (updates: { q?: string; view?: SessionFilter; folder?: FolderFilter }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (Object.prototype.hasOwnProperty.call(updates, "q")) {
+            const q = updates.q ?? "";
+            if (q.trim()) next.set("chatQ", q);
+            else next.delete("chatQ");
+          }
+          if (updates.view) {
+            if (updates.view === "managed") next.delete("chatView");
+            else next.set("chatView", updates.view);
+          }
+          if (updates.folder) {
+            if (updates.folder === "all") next.delete("chatFolder");
+            else next.set("chatFolder", folderFilterToParam(updates.folder));
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const setFilter = React.useCallback(
+    (value: string) => {
+      setFilterState(value);
+      updateSessionListParams({ q: value });
+    },
+    [updateSessionListParams],
+  );
+
+  const setSessionFilter = React.useCallback(
+    (value: SessionFilter) => {
+      setSessionFilterState(value);
+      updateSessionListParams({ view: value });
+    },
+    [updateSessionListParams],
+  );
+
+  const setFolderFilter = React.useCallback(
+    (value: FolderFilter) => {
+      setFolderFilterState(value);
+      updateSessionListParams({ folder: value });
+    },
+    [updateSessionListParams],
+  );
+
+  React.useEffect(() => {
+    const nextQ = searchParams.get("chatQ") ?? "";
+    const nextView = parseSessionFilterParam(searchParams.get("chatView"));
+    const nextFolder = parseFolderFilterParam(searchParams.get("chatFolder"));
+    setFilterState((current) => (current === nextQ ? current : nextQ));
+    setSessionFilterState((current) => (current === nextView ? current : nextView));
+    setFolderFilterState((current) => (current === nextFolder ? current : nextFolder));
+  }, [searchParams]);
+
   const folderOptions = React.useMemo<FolderOption[]>(() => {
     if (!organizer?.folders?.length) return [];
     const byId = new Map(organizer.folders.map((folder) => [folder.id, folder]));
@@ -311,6 +393,18 @@ export function SessionListView({
     () => folderOptions.filter((folder) => !folder.folder.parentId),
     [folderOptions],
   );
+
+  React.useEffect(() => {
+    if (!folderFilter.startsWith("folder:")) return;
+    const folderId = folderFilter.slice("folder:".length);
+    if (!folderId) {
+      setFolderFilter("all");
+      return;
+    }
+    if (organizer && !folderOptions.some((folder) => folder.id === folderId)) {
+      setFolderFilter("all");
+    }
+  }, [folderFilter, folderOptions, organizer, setFolderFilter]);
 
   React.useEffect(() => {
     if (!folderOptions.length) return;

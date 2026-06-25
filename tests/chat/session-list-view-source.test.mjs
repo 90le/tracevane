@@ -40,3 +40,20 @@ test('SessionListView surfaces CLI binary readiness in runtime target choices', 
   assert.match(source, /binaryId: "opencode"/);
   assert.match(source, /模型列表加载失败，将使用模型网关默认路由/);
 });
+
+
+test('SessionListView persists chat list filters and folder scope in URL params', () => {
+  assert.match(source, /useSearchParams\(\)/);
+  assert.match(source, /chatView/);
+  assert.match(source, /chatFolder/);
+  assert.match(source, /chatQ/);
+  assert.match(source, /folderFilterToParam/);
+  assert.match(source, /parseFolderFilterParam/);
+  assert.match(source, /setSearchParams\(/);
+});
+
+test('SessionListView recovers stale folder URL params instead of stranding the rail', () => {
+  assert.match(source, /folderFilter\.startsWith\("folder:"\)/);
+  assert.match(source, /!folderOptions\.some\(\(folder\) => folder\.id === folderId\)/);
+  assert.match(source, /setFolderFilter\("all"\)/);
+});
