@@ -119,10 +119,21 @@ const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode 
 ];
 
 function canManage(session: ChatSessionRow): boolean {
+  const permissions = session.permissions;
   return (
     session.kind === "tracevane_managed" &&
-    session.permissions?.writable === true
+    permissions?.visibleInFrontend !== false &&
+    (permissions?.writable === true ||
+      permissions?.canSend === true ||
+      permissions?.canDelete === true ||
+      permissions?.canReset === true)
   );
+}
+
+function sessionScopeLabel(filter: FolderFilter, folderName: string): string {
+  if (filter === "all") return "全部可管理会话";
+  if (filter === "unfiled") return "未分组";
+  return folderName;
 }
 
 /** Compact conversation switcher and session management surface. */
@@ -337,7 +348,8 @@ export function SessionListView({
     });
     const folderScoped = scoped.filter((s) => {
       const assigned = organizer?.sessionFolderMap?.[s.key] ?? null;
-      if (folderFilter === "all" || folderFilter === "unfiled") return !assigned;
+      if (folderFilter === "all") return true;
+      if (folderFilter === "unfiled") return !assigned;
       return assigned === folderFilter.slice("folder:".length);
     });
     const ordered = [...folderScoped].sort((a, b) => {
@@ -762,11 +774,14 @@ export function SessionListView({
         </div>
         <div className="flex items-center justify-between gap-2 text-2xs text-subtle">
           <span>
-            当前：{folderFilter === "all" || folderFilter === "unfiled"
-              ? "未分组"
-              : folderLabel(folderFilter.slice("folder:".length))}
+            当前：{sessionScopeLabel(
+              folderFilter,
+              folderFilter.startsWith("folder:")
+                ? folderLabel(folderFilter.slice("folder:".length))
+                : "",
+            )}
           </span>
-          <span>右键空白处可新建文件夹</span>
+          <span>右键空白处可新建会话或文件夹</span>
         </div>
       </div>
       <div
@@ -812,14 +827,27 @@ export function SessionListView({
                   onClick={() => setFolderFilter("all")}
                   className={cn(
                     "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
-                    (folderFilter === "all" || folderFilter === "unfiled") &&
-                      "bg-primary-soft text-primary",
+                    folderFilter === "all" && "bg-primary-soft text-primary",
+                  )}
+                >
+                  <MessageSquare className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">全部会话</span>
+                  <span className="rounded-full bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">
+                    {sessions.filter((s) => canManage(s) && !s.presentation?.archived).length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFolderFilter("unfiled")}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
+                    folderFilter === "unfiled" && "bg-primary-soft text-primary",
                   )}
                 >
                   <Folder className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">未分组</span>
                   <span className="rounded-full bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">
-                    {sessions.filter((s) => canManage(s) && !organizer?.sessionFolderMap?.[s.key]).length}
+                    {sessions.filter((s) => canManage(s) && !s.presentation?.archived && !organizer?.sessionFolderMap?.[s.key]).length}
                   </span>
                 </button>
                 {folderTree.map((folder) => renderFolderNode(folder))}
