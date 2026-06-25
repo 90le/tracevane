@@ -109,6 +109,7 @@ import {
   buildTracevaneManagedSessionRow,
   deriveAgentIdFromSessionKey,
   mapLocalSessionRow,
+  normalizeChatSessionRuntimeTarget,
   readTracevaneChatRegistry,
   resolveTracevaneChatRegistryPath,
   resolveAgentSessionsStorePath,
@@ -1530,6 +1531,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       createdAt: current?.createdAt || now,
       updatedAt: now,
       priorSessionIds: priorSessionIds.length > 0 ? priorSessionIds : undefined,
+      runtimeTarget: row.runtimeTarget,
     };
   }
 
@@ -2242,6 +2244,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       runtime: cachedRuntime || buildRuntimeState(gatewayConnected, permissions.writable, {
         state: 'unknown',
       }),
+      runtimeTarget: normalizeChatSessionRuntimeTarget(registryEntry?.runtimeTarget, agentId),
     };
   }
 
@@ -7197,7 +7200,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const row = buildTracevaneManagedSessionRow(
         agentId,
         normalizeString(payload.label, buildDefaultSessionLabel(agentId)),
-        await isGatewayConnected()
+        await isGatewayConnected(),
+        payload.runtimeTarget,
       );
 
       setTracevaneSession({

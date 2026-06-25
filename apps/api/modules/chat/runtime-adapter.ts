@@ -1,8 +1,7 @@
-import type { ChatSendAttachment, ChatSendStatus } from '../../../../types/chat.js';
+import type { ChatRuntimeAdapterKind, ChatSendAttachment, ChatSendStatus } from '../../../../types/chat.js';
 import { CHAT_SEND_STATUS_MAP } from './contract.js';
 import { normalizeString } from './shared.js';
 
-export type ChatRuntimeAdapterKind = 'openclaw-gateway' | 'native-cli';
 
 export interface ChatRuntimeSendInput {
   sessionKey: string;

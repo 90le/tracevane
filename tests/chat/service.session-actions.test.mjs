@@ -319,6 +319,48 @@ test('chat health treats an online gateway as usable even when the system servic
   }
 });
 
+
+test('created chat sessions persist runtime target metadata for future native CLI adapters', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-target-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native Codex session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: '/tmp/tracevane-native-codex',
+        permissionMode: 'yolo',
+      },
+    });
+
+    assert.deepEqual(created.session.runtimeTarget, {
+      adapterKind: 'native-cli',
+      agent: 'codex',
+      model: 'gpt-5.5',
+      workDir: '/tmp/tracevane-native-codex',
+      permissionMode: 'yolo',
+    });
+
+    const registry = readJson(registryPath(root), {});
+    assert.deepEqual(registry[created.session.key].runtimeTarget, created.session.runtimeTarget);
+
+    const restoredContext = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    const restored = await restoredContext.services.chat.listSessions('main', { localOnly: true });
+    const restoredSession = restored.sessions.find((session) => session.key === created.session.key);
+    assert.deepEqual(restoredSession?.runtimeTarget, created.session.runtimeTarget);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ui queued message flushes when the active run settles before enqueue reaches the backend', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-idle-flush-'));
   let gateway = null;

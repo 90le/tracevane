@@ -4,6 +4,9 @@ export type ChatProtocolMode = 'legacy' | 'dual_write' | 'canonical_v1';
 export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'unknown';
 
 export type ChatRunState = 'idle' | 'running' | 'streaming' | 'completed' | 'aborted' | 'error' | 'unknown';
+export type ChatRuntimeAdapterKind = 'openclaw-gateway' | 'native-cli';
+export type ChatRuntimeAgentId = 'codex' | 'claude-code' | 'opencode' | 'openclaw' | string;
+export type ChatRuntimePermissionMode = 'suggest' | 'read-only' | 'auto-edit' | 'full-auto' | 'plan' | 'yolo' | string;
 
 export type ChatAgentLifecyclePhase = 'start' | 'end' | 'error';
 
@@ -154,6 +157,14 @@ export interface ChatSessionPermissions {
   visibleInMvpRail: boolean;
 }
 
+export interface ChatSessionRuntimeTarget {
+  adapterKind: ChatRuntimeAdapterKind;
+  agent: ChatRuntimeAgentId;
+  model: string | null;
+  workDir: string | null;
+  permissionMode: ChatRuntimePermissionMode | null;
+}
+
 export interface ChatSessionSource {
   source: 'tracevane' | 'external' | 'system';
   channel: string | null;
@@ -189,6 +200,7 @@ export interface ChatSessionRow {
   deliveryContext: ChatDeliveryContext;
   permissions: ChatSessionPermissions;
   runtime: ChatRuntimeState;
+  runtimeTarget: ChatSessionRuntimeTarget;
 }
 
 export type ChatSessionFolderMove = 'up' | 'down' | 'top';
@@ -447,6 +459,7 @@ export interface ChatOrganizerPayload {
 
 export interface ChatCreateSessionRequest {
   label?: string;
+  runtimeTarget?: Partial<ChatSessionRuntimeTarget>;
 }
 
 export interface ChatCreateSessionResponse {

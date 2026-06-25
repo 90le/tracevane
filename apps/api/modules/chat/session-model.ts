@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
-import type { ChatRuntimeState, ChatSessionPresentation, ChatSessionRow } from '../../../../types/chat.js';
+import type { ChatRuntimeAdapterKind, ChatRuntimeAgentId, ChatRuntimePermissionMode, ChatRuntimeState, ChatSessionPresentation, ChatSessionRow, ChatSessionRuntimeTarget } from '../../../../types/chat.js';
 import { ensureDir, readJsonFile, readOpenClawConfig, writeJsonFile } from '../../core/state.js';
 import {
   CHAT_POLICY_DEFAULTS,
@@ -23,6 +23,32 @@ export interface TracevaneSessionRegistryEntry {
   updatedAt: string;
   /** Tracks gateway session IDs from prior resets so their .reset.* JSONL backup files can be found. */
   priorSessionIds?: string[];
+  runtimeTarget?: Partial<ChatSessionRuntimeTarget>;
+}
+
+export function buildDefaultRuntimeTarget(agentId: string): ChatSessionRuntimeTarget {
+  return {
+    adapterKind: 'openclaw-gateway',
+    agent: agentId || 'openclaw',
+    model: null,
+    workDir: null,
+    permissionMode: null,
+  };
+}
+
+export function normalizeChatSessionRuntimeTarget(
+  target: Partial<ChatSessionRuntimeTarget> | undefined | null,
+  fallbackAgentId: string,
+): ChatSessionRuntimeTarget {
+  const fallback = buildDefaultRuntimeTarget(fallbackAgentId);
+  const adapterKind = normalizeString(target?.adapterKind) as ChatRuntimeAdapterKind;
+  return {
+    adapterKind: adapterKind === 'native-cli' ? 'native-cli' : 'openclaw-gateway',
+    agent: (normalizeString(target?.agent) || fallback.agent) as ChatRuntimeAgentId,
+    model: normalizeString(target?.model) || null,
+    workDir: normalizeString(target?.workDir) || null,
+    permissionMode: (normalizeString(target?.permissionMode) || null) as ChatRuntimePermissionMode | null,
+  };
 }
 
 export interface LocalSessionRecord {
@@ -96,7 +122,7 @@ export function buildSessionPresentation(
   };
 }
 
-export function buildTracevaneManagedSessionRow(agentId: string, label: string, gatewayConnected: boolean): ChatSessionRow {
+export function buildTracevaneManagedSessionRow(agentId: string, label: string, gatewayConnected: boolean, runtimeTarget?: Partial<ChatSessionRuntimeTarget> | null): ChatSessionRow {
   const key = `agent:${agentId}:${CHAT_POLICY_DEFAULTS.defaultChannel}:direct:tracevane-${crypto.randomUUID()}`;
   const sessionId = crypto.randomUUID();
   return {
@@ -123,8 +149,10 @@ export function buildTracevaneManagedSessionRow(agentId: string, label: string, 
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
+    runtimeTarget: normalizeChatSessionRuntimeTarget(runtimeTarget, agentId),
   };
 }
+
 
 export function buildTracevaneManagedRowFromRegistry(
   entry: TracevaneSessionRegistryEntry,
@@ -154,6 +182,7 @@ export function buildTracevaneManagedRowFromRegistry(
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
+    runtimeTarget: normalizeChatSessionRuntimeTarget(entry.runtimeTarget, entry.agentId),
   };
 }
 
@@ -209,6 +238,7 @@ export function mapLocalSessionRow(
     runtime: buildRuntimeState(gatewayConnected, policy.defaultWritable, {
       state: 'unknown',
     }),
+    runtimeTarget: normalizeChatSessionRuntimeTarget(registryEntry?.runtimeTarget, agentId),
   };
 }
 
