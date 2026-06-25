@@ -122,6 +122,12 @@ export function runtimeAgentLabel(session: Pick<ChatSessionRow, "agentId" | "run
 /** Human-facing source label for Chat rows; never leak empty/unknown/raw debug terms. */
 export function sessionSourceLabel(session: Pick<ChatSessionRow, "source" | "runtimeTarget" | "kind"> | null | undefined): string {
   if (!session) return "Tracevane";
+  if (session.kind === "tracevane_managed") {
+    return session.source?.channel === "webchat"
+      ? "Tracevane Agent 会话（历史兼容）"
+      : "Tracevane Agent 会话";
+  }
+
   const origin = session.source?.originLabel?.trim();
   if (origin && origin !== "unknown") return origin;
 

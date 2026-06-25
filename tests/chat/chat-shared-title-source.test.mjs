@@ -20,3 +20,14 @@ test('Chat shared labels do not expose raw unknown state or raw source fields', 
   assert.match(source, /adapter === "native-cli"/);
   assert.match(source, /adapter === "openclaw-gateway"/);
 });
+
+test('Tracevane managed source label hides raw origin and legacy webchat channel', () => {
+  assert.match(source, /session\.kind === "tracevane_managed"/);
+  assert.match(source, /Tracevane Agent 会话/);
+  assert.match(source, /Tracevane Agent 会话（历史兼容）/);
+  assert.match(source, /const origin = session\.source\?\.originLabel\?\.trim\(\)/);
+  assert.ok(
+    source.indexOf('session.kind === "tracevane_managed"') < source.indexOf('const origin = session.source?.originLabel?.trim()'),
+    'Tracevane-managed source labels should be resolved before raw originLabel is considered',
+  );
+});
