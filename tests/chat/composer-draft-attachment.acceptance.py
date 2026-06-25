@@ -69,11 +69,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -133,11 +135,11 @@ def runtime(active_run_id: str | None):
 def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, object]:
     file_name = str(payload.get("fileName") or "draft-attachment.txt")
     mime_type = str(payload.get("mimeType") or "text/plain")
-    relative_path = f"uploads/draft-{int(time.time() * 1000)}-{file_name}"
+    relative_path = f".tracevane/chat-uploads/draft-{int(time.time() * 1000)}-{file_name}"
     return {
         "ok": True,
         "relativePath": relative_path,
-        "resourceRef": f"uploads:{relative_path.removeprefix('uploads/')}",
+        "resourceRef": f"files:project-root:{relative_path}",
         "absolutePath": f"/tmp/{relative_path}",
         "fileName": file_name,
         "mimeType": mime_type,
@@ -241,13 +243,13 @@ def assert_file_ref_payload(payload: dict[str, object], file_name: str, token: s
     file_ref = file_refs[0]
     if file_ref.get("fileName") != file_name:
         raise AssertionError(f"send fileRef did not preserve filename: {payload}")
-    if not str(file_ref.get("resourceRef") or "").startswith("uploads:"):
-        raise AssertionError(f"send fileRef must expose uploads: resourceRef: {payload}")
+    if not str(file_ref.get("resourceRef") or "").startswith("files:project-root:"):
+        raise AssertionError(f"send fileRef must expose Files API resourceRef: {payload}")
     if payload.get("attachments"):
         raise AssertionError(f"send must not duplicate persisted uploads as inline attachments: {payload}")
     text = str(payload.get("text") or "")
-    if token not in text or file_name not in text or "uploads:" not in text:
-        raise AssertionError(f"send text must preserve draft text and portable upload ref: {payload}")
+    if token not in text or file_name not in text:
+        raise AssertionError(f"send text must preserve draft text and inserted attachment label: {payload}")
     document = payload.get("composerDocument")
     if not isinstance(document, list) or not any(
         isinstance(node, dict) and node.get("type") == "resource-ref" for node in document

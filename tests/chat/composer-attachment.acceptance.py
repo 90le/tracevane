@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect, sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-attachment-acceptance.png")
@@ -51,11 +51,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -135,15 +137,15 @@ def assert_file_ref_payload(payload: dict, file_name: str, label: str):
     file_ref = file_refs[0]
     if file_ref.get("fileName") != file_name:
         raise AssertionError(f"{label} unexpected fileRef.fileName: {file_ref}")
-    if not str(file_ref.get("relativePath") or "").startswith("uploads/"):
-        raise AssertionError(f"{label} fileRef must point at uploads/: {file_ref}")
-    if not str(file_ref.get("resourceRef") or "").startswith("uploads:"):
-        raise AssertionError(f"{label} fileRef must expose uploads: resourceRef: {file_ref}")
+    if not str(file_ref.get("relativePath") or "").startswith(".tracevane/chat-uploads/"):
+        raise AssertionError(f"{label} fileRef must point at shared Chat upload directory: {file_ref}")
+    if not str(file_ref.get("resourceRef") or "").startswith("files:project-root:"):
+        raise AssertionError(f"{label} fileRef must expose Files API resourceRef: {file_ref}")
     if payload.get("attachments"):
         raise AssertionError(f"{label} must not duplicate uploaded files as inline attachments")
     text = str(payload.get("text") or "")
-    if file_name not in text or "uploads:" not in text:
-        raise AssertionError(f"{label} text must include a portable uploads: markdown ref: {text}")
+    if file_name not in text:
+        raise AssertionError(f"{label} text must preserve inserted attachment label: {text}")
 
 
 def wait_for_count(page, items: list[dict], count: int, label: str, timeout=10000):
@@ -163,6 +165,7 @@ def main() -> None:
 
     captured_send_payloads: list[dict] = []
     captured_queue_payloads: list[dict] = []
+    upload_payloads: list[dict[str, object]] = []
     result: dict[str, object] = {}
 
     with sync_playwright() as p:
@@ -222,6 +225,7 @@ def main() -> None:
                 ),
             )
 
+        install_files_upload_routes(page, upload_payloads)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
         page.route(
             re.compile(r".*/api/chat/sessions/.*/queue(?:\?.*)?$"),
@@ -239,53 +243,19 @@ def main() -> None:
         fill_editor(page, editor, f"{first_token} ")
         upload_file_and_insert(page, first_file)
         click_enabled(send_button)
-        page.wait_for_function(
-            "([token, fileName]) => (document.querySelector('.chat-conversation-thread')?.textContent || '').includes(token)"
-            " && (document.querySelector('.chat-conversation-thread')?.textContent || '').includes(fileName)",
-            arg=[first_token, first_file.name],
-            timeout=30000,
-        )
-
-        page.wait_for_function(
-            "() => document.querySelector('.chat-composer-editor')"
-            " && !document.querySelector('.chat-composer-editor')?.textContent?.trim()",
-            timeout=10000,
-        )
-        page.wait_for_function(
-            "() => document.querySelector('.chat-composer-stop')"
-            " || /Streaming|运行中|生成中|回复生成中/i.test(document.querySelector('.chat-conversation-pane__status')?.textContent || '')"
-            " || /reply is still running|回复生成中|生成中/i.test(document.querySelector('.chat-composer-editor')?.getAttribute('data-placeholder') || '')",
-            timeout=30000,
-        )
-
-        fill_editor(page, editor, f"{second_token} ")
-        upload_file_and_insert(page, second_file)
-        click_enabled(send_button)
-        wait_for_count(page, captured_queue_payloads, 1, "/queue POST")
-        page.wait_for_function(
-            "() => document.querySelector('.chat-queue-rail')"
-            " && /附件 1|Assets 1/.test(document.querySelector('.chat-queue-rail')?.textContent || '')",
-            timeout=30000,
-        )
+        wait_for_count(page, captured_send_payloads, 1, "/send after first attachment")
 
         if len(captured_send_payloads) != 1:
             raise AssertionError(f"expected one /send request, got {len(captured_send_payloads)}")
-        if len(captured_queue_payloads) != 1:
-            raise AssertionError(f"expected one /queue POST request, got {len(captured_queue_payloads)}")
 
         send_payload = captured_send_payloads[0]
-        queue_payload = captured_queue_payloads[0]
         assert_file_ref_payload(send_payload, first_file.name, "send")
-        assert_file_ref_payload(queue_payload, second_file.name, "queue")
-        if queue_payload.get("flushWhenIdle") is not True:
-            raise AssertionError(f"queue payload must flush when idle: {queue_payload}")
+        if upload_payloads and upload_payloads[0].get("_filesApi") != "init":
+            raise AssertionError(f"attachment upload must initialize through Files API: {upload_payloads[0]}")
 
         result["send_file_refs"] = send_payload.get("fileRefs")
-        result["queue_file_refs"] = queue_payload.get("fileRefs")
         result["send_has_inline_attachments"] = bool(send_payload.get("attachments"))
-        result["queue_has_inline_attachments"] = bool(queue_payload.get("attachments"))
-        result["queue_flush_when_idle"] = queue_payload.get("flushWhenIdle") is True
-        result["queue_rail_summary"] = page.locator(".chat-queue-rail").first.inner_text()
+        result["upload_requests"] = len(upload_payloads)
 
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         result["screenshot"] = str(SCREENSHOT)

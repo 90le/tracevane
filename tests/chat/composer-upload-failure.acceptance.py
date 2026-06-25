@@ -75,11 +75,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -114,8 +116,8 @@ def runtime(active_run_id: str | None):
 def upload_response(session_key: str, payload: dict[str, object], suffix: str) -> dict[str, object]:
     file_name = str(payload.get("fileName") or "retry-file.txt")
     mime_type = str(payload.get("mimeType") or "text/plain")
-    relative_path = f"uploads/{int(time.time() * 1000)}-{suffix}-{file_name}"
-    resource_ref = f"uploads:{relative_path.removeprefix('uploads/')}"
+    relative_path = f".tracevane/chat-uploads/mock-{int(time.time() * 1000)}-{suffix}-{file_name}"
+    resource_ref = f"files:project-root:{relative_path}"
     return {
         "ok": True,
         "relativePath": relative_path,

@@ -52,11 +52,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -91,8 +93,8 @@ def route_session_key(url: str, suffix: str) -> str:
 
 def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, object]:
     file_name = str(payload.get("fileName") or "upload.txt")
-    relative_path = f"uploads/{int(time.time() * 1000)}-{file_name}"
-    resource_ref = f"uploads:{relative_path.removeprefix('uploads/')}"
+    relative_path = f".tracevane/chat-uploads/mock-{int(time.time() * 1000)}-{file_name}"
+    resource_ref = f"files:project-root:{relative_path}"
     mime_type = str(payload.get("mimeType") or "text/plain")
     preview_url = "data:image/png;base64,iVBORw0KGgo=" if mime_type.startswith("image/") else None
     return {
@@ -111,8 +113,8 @@ def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, o
             "relativePath": relative_path,
             "resourceRef": resource_ref,
             "source": "user_upload",
-            "url": preview_url or f"/api/chat/sessions/{session_key}/resources/{resource_ref}",
-            "downloadUrl": preview_url or f"/api/chat/sessions/{session_key}/resources/{resource_ref}?download=1",
+            "url": preview_url or f"/api/files/download?rootId=project-root&path={relative_path}",
+            "downloadUrl": preview_url or f"/api/files/download?rootId=project-root&path={relative_path}&download=true",
         },
     }
 

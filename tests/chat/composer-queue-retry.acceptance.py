@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-queue-retry-acceptance.png")
@@ -102,11 +102,13 @@ def open_new_chat(page) -> str:
     picker = page.locator(".chat-agent-picker")
     picker.wait_for(state="visible", timeout=15000)
     option = picker.locator(".chat-agent-picker-option").first
+    click_enabled(option)
+    create_button = picker.get_by_role("button", name=re.compile("^创建$|^Create$"))
     with page.expect_response(
         lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST",
         timeout=30000,
     ) as response_info:
-        click_enabled(option)
+        click_enabled(create_button)
     payload = response_info.value.json()
     session_key = ((payload.get("session") or {}).get("key") or "").strip()
     if not session_key:
@@ -162,8 +164,8 @@ def assert_file_ref_payload(payload: dict[str, object], file_name: str, label: s
     file_ref = file_refs[0]
     if file_ref.get("fileName") != file_name:
         raise AssertionError(f"{label} unexpected fileRef.fileName: {file_ref}")
-    if not str(file_ref.get("resourceRef") or "").startswith("uploads:"):
-        raise AssertionError(f"{label} fileRef must expose uploads: resourceRef: {file_ref}")
+    if not str(file_ref.get("resourceRef") or "").startswith("files:project-root:"):
+        raise AssertionError(f"{label} fileRef must expose Files API resourceRef: {file_ref}")
     if payload.get("attachments"):
         raise AssertionError(f"{label} must not duplicate uploaded files as inline attachments")
 
@@ -177,6 +179,7 @@ def main() -> None:
     captured_queue_payloads: list[dict[str, object]] = []
     captured_patch_payloads: list[dict[str, object]] = []
     console_errors: list[str] = []
+    upload_payloads: list[dict[str, object]] = []
     result: dict[str, object] = {}
 
     with sync_playwright() as p:
@@ -285,6 +288,7 @@ def main() -> None:
                 return
             route.continue_()
 
+        install_files_upload_routes(page, upload_payloads)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
         page.route(re.compile(r".*/api/chat/sessions/.*/queue(?:/[^/?]+)?(?:\\?.*)?$"), handle_queue_route)
 

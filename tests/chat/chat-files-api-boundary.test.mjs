@@ -44,7 +44,10 @@ test("chat backend no longer exposes a legacy upload owner", () => {
 test("chat acceptance upload smokes do not mock the removed Chat upload route", () => {
   assert.doesNotMatch(chatAcceptanceSources, /api\/chat\/sessions\/\.\*\/upload/);
   assert.doesNotMatch(chatAcceptanceSources, /sessions\/.*\/upload/);
+  assert.doesNotMatch(chatAcceptanceSources, /uploads:/);
+  assert.doesNotMatch(chatAcceptanceSources, /api\/chat\/sessions\/.*\/resources/);
   assert.match(chatAcceptanceSources, /install_files_upload_routes/);
+  assert.match(chatAcceptanceSources, /files:project-root:/);
 });
 
 
