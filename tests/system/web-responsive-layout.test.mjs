@@ -72,6 +72,8 @@ test("overview surfaces use metric rails and route tables instead of card walls"
   assert.match(channelOverview, /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">/);
   assert.doesNotMatch(channelOverview, /mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4/);
   assert.match(cliRuns, /flex flex-wrap overflow-hidden border-b border-line bg-panel-2\/40/);
+  assert.match(cliRuns, /role="table" aria-label="Agent Runs"/);
+  assert.match(cliRuns, /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(84px,\.45fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)_minmax\(0,\.8fr\)_minmax\(150px,\.8fr\)\]/);
   assert.match(cliShared, /min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm/);
   assert.match(cliShared, /flex min-w-0 flex-wrap items-center/);
   assert.match(cliShared, /basis-\[128px\] border-b border-line px-3 py-2\.5/);

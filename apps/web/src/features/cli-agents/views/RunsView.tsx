@@ -21,14 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/design/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/design/ui/table";
 import { toast } from "@/design/ui/sonner";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
@@ -228,84 +220,87 @@ export function RunsView(_props: CliAgentsViewProps) {
           ) : filteredRows.length === 0 ? (
             <EmptyState title="当前筛选无结果" description="调整搜索关键词、切换筛选或刷新后再看。" />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[260px]">Run</TableHead>
-                  <TableHead className="min-w-[120px]">状态</TableHead>
-                  <TableHead className="hidden min-w-[150px] md:table-cell">模型 / Agent</TableHead>
-                  <TableHead className="hidden min-w-[220px] lg:table-cell">工作目录</TableHead>
-                  <TableHead className="hidden min-w-[150px] xl:table-cell">更新时间</TableHead>
-                  <TableHead className="min-w-[190px] text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div className="overflow-hidden rounded-md border border-line bg-panel shadow-sm" role="table" aria-label="Agent Runs">
+              <div
+                className="hidden border-b border-line bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-[.06em] text-subtle lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(84px,.45fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,.8fr)_minmax(150px,.8fr)] lg:gap-3"
+                role="row"
+              >
+                <span role="columnheader">Run</span>
+                <span role="columnheader">状态</span>
+                <span role="columnheader">模型 / Agent</span>
+                <span role="columnheader">工作目录</span>
+                <span role="columnheader">更新时间</span>
+                <span className="text-right" role="columnheader">操作</span>
+              </div>
+              <div className="divide-y divide-line" role="rowgroup">
                 {filteredRows.map((run) => {
                   const tone = runTone(run);
                   const href = targetHref(run);
                   return (
-                    <TableRow key={run.id}>
-                      <TableCell>
-                        <div className="flex min-w-0 items-start gap-3">
-                          <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}>
-                            {sourceIcon(run.source)}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="truncate font-semibold text-ink-strong">{run.title}</div>
-                            <div className="mt-1 flex flex-wrap gap-1.5 text-sm text-muted">
-                              <span>{run.sourceLabel || SOURCE_LABEL[run.source]}</span>
-                              {run.cli ? <span>· {run.cli}</span> : null}
-                              {run.model ? <span>· {run.model}</span> : null}
-                              <span className="md:hidden">· {formatTime(run.updatedAt)}</span>
+                    <div
+                      key={run.id}
+                      className="grid min-w-0 gap-3 px-4 py-3 transition-colors hover:bg-panel-2 lg:grid-cols-[minmax(0,2fr)_minmax(84px,.45fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,.8fr)_minmax(150px,.8fr)] lg:items-center"
+                      role="row"
+                    >
+                      <div className="flex min-w-0 items-start gap-3" role="cell">
+                        <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}>
+                          {sourceIcon(run.source)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-ink-strong">{run.title}</div>
+                          <div className="mt-1 flex flex-wrap gap-1.5 text-sm text-muted">
+                            <span>{run.sourceLabel || SOURCE_LABEL[run.source]}</span>
+                            {run.cli ? <span>· {run.cli}</span> : null}
+                            {run.model ? <span>· {run.model}</span> : null}
+                            <span className="lg:hidden">· {formatTime(run.updatedAt)}</span>
+                          </div>
+                          {run.lastErrorSummary ? (
+                            <div className="mt-1 truncate text-sm text-red">
+                              {run.lastErrorSummary}
                             </div>
-                            {run.lastErrorSummary ? (
-                              <div className="mt-1 max-w-[42rem] truncate text-sm text-red">
-                                {run.lastErrorSummary}
-                              </div>
-                            ) : null}
-                            <div className="mt-1 max-w-[42rem] truncate text-xs text-subtle">
-                              {run.actionLabel} · {run.actionReason}
-                              {metadataText(run) ? ` · ${metadataText(run)}` : ""}
-                            </div>
+                          ) : null}
+                          <div className="mt-1 truncate text-xs text-subtle">
+                            {run.actionLabel} · {run.actionReason}
+                            {metadataText(run) ? ` · ${metadataText(run)}` : ""}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
+                      </div>
+                      <div role="cell">
                         <ToneBadge tone={tone}>{run.statusLabel}</ToneBadge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="text-sm text-ink">{run.model || run.cli || run.agentId || "—"}</div>
-                        <div className="text-xs text-subtle">{run.routeScope || "默认路由"}</div>
-                      </TableCell>
-                      <TableCell className="hidden max-w-[280px] truncate lg:table-cell">
+                      </div>
+                      <div className="hidden min-w-0 lg:block" role="cell">
+                        <div className="truncate text-sm text-ink">{run.model || run.cli || run.agentId || "—"}</div>
+                        <div className="truncate text-xs text-subtle">{run.routeScope || "默认路由"}</div>
+                      </div>
+                      <div className="hidden min-w-0 truncate text-sm text-muted lg:block" title={run.workspace || undefined} role="cell">
                         {run.workspace || "—"}
-                      </TableCell>
-                      <TableCell className="hidden xl:table-cell">{formatTime(run.updatedAt)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => (window.location.hash = href)}>
-                            打开
-                            <ExternalLink />
+                      </div>
+                      <div className="hidden min-w-0 truncate text-sm text-muted lg:block" role="cell">
+                        {formatTime(run.updatedAt)}
+                      </div>
+                      <div className="flex min-w-0 flex-wrap gap-2 lg:justify-end" role="cell">
+                        <Button variant="outline" size="sm" onClick={() => (window.location.hash = href)}>
+                          打开
+                          <ExternalLink />
+                        </Button>
+                        {run.canStop ? (
+                          <Button variant="outline" size="sm" onClick={() => setStopTarget(run)}>
+                            <Square />
+                            停止
                           </Button>
-                          {run.canStop ? (
-                            <Button variant="outline" size="sm" onClick={() => setStopTarget(run)}>
-                              <Square />
-                              停止
-                            </Button>
-                          ) : null}
-                          {run.canDelete ? (
-                            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(run)}>
-                              <Trash2 />
-                              删除
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                        ) : null}
+                        {run.canDelete ? (
+                          <Button variant="outline" size="sm" onClick={() => setDeleteTarget(run)}>
+                            <Trash2 />
+                            删除
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </div>
           )}
         </div>
       </Panel>

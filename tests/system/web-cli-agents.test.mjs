@@ -20,10 +20,12 @@ test("CLI Agents page keeps only the two useful workbench entries", () => {
   assert.doesNotMatch(page, /Persona|OpenClaw generic|通用频道 CRUD/);
 });
 
-test("Runs view is table-first and only exposes proven terminal controls", () => {
+test("Runs view uses a no-scroll operational run list and only exposes proven terminal controls", () => {
   const source = read("apps/web/src/features/cli-agents/views/RunsView.tsx");
 
-  assert.match(source, /TableHeader/);
+  assert.match(source, /role="table" aria-label="Agent Runs"/);
+  assert.match(source, /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(84px,\.45fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)_minmax\(0,\.8fr\)_minmax\(150px,\.8fr\)\]/);
+  assert.doesNotMatch(source, /TableHeader|TableCell|TableRow/);
   assert.match(source, /FILTERS/);
   assert.match(source, /placeholder="搜索 run \/ 模型 \/ 目录 \/ 错误 \/ session"/);
   assert.match(source, /rowMatchesSearch/);
