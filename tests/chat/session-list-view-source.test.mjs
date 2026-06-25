@@ -79,3 +79,13 @@ test('SessionListView keeps stable Chat list selectors for browser acceptance he
   assert.match(source, /chat-agent-picker/);
   assert.match(source, /chat-agent-picker-option/);
 });
+
+
+test('SessionListView honors organizer folder and session ordering in the rail', () => {
+  assert.match(source, /function orderSessionRowsByOrganizer/);
+  assert.match(source, /function orderFolderOptionsByIds/);
+  assert.match(source, /organizer\.folderOrder\?\.length/);
+  assert.match(source, /organizer\.childFolderOrder\?\.\[folderId\]/);
+  assert.match(source, /organizer\?\.rootSessionOrder/);
+  assert.match(source, /organizer\?\.folderSessionOrder\?\.\[folderFilter\.slice\("folder:"\.length\)\]/);
+});

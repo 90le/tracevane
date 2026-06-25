@@ -159,6 +159,42 @@ const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode 
   { value: "plan", label: "计划模式" },
 ];
 
+
+function parseTimeValue(value: string | null | undefined): number {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function orderSessionRowsByOrganizer(
+  sessions: ChatSessionRow[],
+  order: string[] | null | undefined,
+): ChatSessionRow[] {
+  const index = new Map((order ?? []).map((key, orderIndex) => [key, orderIndex] as const));
+  return sessions.slice().sort((left, right) => {
+    const leftIndex = index.get(left.key);
+    const rightIndex = index.get(right.key);
+    if (leftIndex != null && rightIndex != null) return leftIndex - rightIndex;
+    if (leftIndex != null) return -1;
+    if (rightIndex != null) return 1;
+    return parseTimeValue(right.updatedAt) - parseTimeValue(left.updatedAt);
+  });
+}
+
+function orderFolderOptionsByIds(
+  folders: FolderOption[],
+  order: string[] | null | undefined,
+): FolderOption[] {
+  const index = new Map((order ?? []).map((id, orderIndex) => [id, orderIndex] as const));
+  return folders.slice().sort((left, right) => {
+    const leftIndex = index.get(left.id);
+    const rightIndex = index.get(right.id);
+    if (leftIndex != null && rightIndex != null) return leftIndex - rightIndex;
+    if (leftIndex != null) return -1;
+    if (rightIndex != null) return 1;
+    return parseTimeValue(right.folder.updatedAt) - parseTimeValue(left.folder.updatedAt);
+  });
+}
+
 function canManage(session: ChatSessionRow): boolean {
   const permissions = session.permissions;
   return (
@@ -377,19 +413,26 @@ export function SessionListView({
       const option = optionById.get(folderId);
       if (!option) return 0;
       const childIds = childIdsByParent.get(folderId) ?? [];
-      option.children = childIds
-        .map((id) => optionById.get(id))
-        .filter((child): child is FolderOption => Boolean(child))
-        .sort((a, b) => a.folder.title.localeCompare(b.folder.title, "zh-Hans-CN"));
+      option.children = orderFolderOptionsByIds(
+        childIds
+          .map((id) => optionById.get(id))
+          .filter((child): child is FolderOption => Boolean(child)),
+        organizer.childFolderOrder?.[folderId] ?? childIds,
+      );
       option.totalSessionCount =
         option.sessionCount +
         option.children.reduce((sum, child) => sum + computeTotal(child.id), 0);
       return option.totalSessionCount;
     };
-    const roots = (childIdsByParent.get(null) ?? [])
-      .map((id) => optionById.get(id))
-      .filter((option): option is FolderOption => Boolean(option))
-      .sort((a, b) => a.folder.title.localeCompare(b.folder.title, "zh-Hans-CN"));
+    const rootIds = organizer.folderOrder?.length
+      ? organizer.folderOrder
+      : (childIdsByParent.get(null) ?? []);
+    const roots = orderFolderOptionsByIds(
+      (childIdsByParent.get(null) ?? [])
+        .map((id) => optionById.get(id))
+        .filter((option): option is FolderOption => Boolean(option)),
+      rootIds,
+    );
     roots.forEach((root) => computeTotal(root.id));
     const flatten = (nodes: FolderOption[]): FolderOption[] =>
       nodes.flatMap((node) => [node, ...flatten(node.children)]);
@@ -474,16 +517,19 @@ export function SessionListView({
       if (folderFilter === "unfiled") return !assigned;
       return assigned === folderFilter.slice("folder:".length);
     });
-    const ordered = [...folderScoped].sort((a, b) => {
+    const manualOrder = folderFilter === "unfiled"
+      ? organizer?.rootSessionOrder
+      : folderFilter.startsWith("folder:")
+        ? organizer?.folderSessionOrder?.[folderFilter.slice("folder:".length)]
+        : null;
+    const ordered = orderSessionRowsByOrganizer(folderScoped, manualOrder).sort((a, b) => {
       const aArchived = a.presentation?.archived ? 1 : 0;
       const bArchived = b.presentation?.archived ? 1 : 0;
       const aUnknown = a.runtime?.state === "unknown" ? 1 : 0;
       const bUnknown = b.runtime?.state === "unknown" ? 1 : 0;
       const aWritable = a.permissions?.canSend ? 0 : 1;
       const bWritable = b.permissions?.canSend ? 0 : 1;
-      return (
-        aArchived - bArchived || aUnknown - bUnknown || aWritable - bWritable
-      );
+      return aArchived - bArchived || aUnknown - bUnknown || aWritable - bWritable;
     });
     if (!q) return ordered;
     return ordered.filter((s) => {
