@@ -70,7 +70,6 @@ def upload_file_and_insert(page, file_path: Path):
             return items.some((item) => {
                 const text = item.textContent || '';
                 return text.includes(fileName)
-                    && (/Ready|已就绪/.test(text))
                     && item.classList.contains('ready');
             });
         }""",

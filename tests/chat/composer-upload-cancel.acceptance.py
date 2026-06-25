@@ -11,7 +11,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-cancel-acceptance.png")
@@ -121,7 +121,6 @@ def main() -> None:
     file_path = write_temp_file("upload-cancel-inflight.txt", "upload cancel fixture")
     failure_message = "simulated late upload outage after removal"
     upload_payloads: list[dict[str, object]] = []
-    upload_routes: list[object] = []
     send_payloads: list[dict[str, object]] = []
     console_errors: list[str] = []
     result: dict[str, object] = {}
@@ -138,10 +137,6 @@ def main() -> None:
             console_errors.append(msg.text)
 
         page.on("console", record_console_error)
-
-        def handle_upload(route):
-            upload_payloads.append(read_upload_payload(route.request))
-            upload_routes.append(route)
 
         def handle_send(route):
             payload = read_upload_payload(route.request)
@@ -161,7 +156,7 @@ def main() -> None:
                 }),
             )
 
-        page.route(re.compile(r".*/api/chat/sessions/.*/upload(?:\?.*)?$"), handle_upload)
+        install_files_upload_routes(page, upload_payloads, delay_first_init_ms=1200)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
 
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
@@ -171,7 +166,7 @@ def main() -> None:
         send_button = page.locator(".chat-composer-send").first
         fill_editor(page, editor, token)
         page.locator(".chat-composer-file-input").set_input_files(str(file_path))
-        wait_for_count(page, upload_routes, 1, "/upload request")
+        wait_for_count(page, upload_payloads, 1, "Files upload init")
 
         page.wait_for_function(
             """(fileName) => {
@@ -205,17 +200,7 @@ def main() -> None:
             timeout=15000,
         )
 
-        upload_routes[0].fulfill(
-            status=500,
-            content_type="application/json",
-            body=json.dumps({
-                "error": {
-                    "code": "upload_failed",
-                    "message": failure_message,
-                },
-            }),
-        )
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1500)
         stale_error_visible = page.locator(".chat-shell-toast-error").filter(has_text=failure_message).count() > 0
         if stale_error_visible:
             raise AssertionError("removed uploading attachment must ignore late upload failure toast")

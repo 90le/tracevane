@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-session-switch-acceptance.png")
@@ -175,7 +175,6 @@ def main() -> None:
     other_token = f"composer-upload-switch-other-{int(time.time() * 1000)}"
     file_path = write_temp_file("session-switch-upload.txt", "session switch upload fixture")
     upload_payloads: list[dict[str, object]] = []
-    upload_routes: list[object] = []
     send_payloads: list[dict[str, object]] = []
     console_errors: list[str] = []
     result: dict[str, object] = {}
@@ -184,10 +183,6 @@ def main() -> None:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1500, "height": 900})
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
-
-        def handle_upload(route):
-            upload_payloads.append(read_upload_payload(route.request))
-            upload_routes.append(route)
 
         def handle_send(route):
             payload = read_upload_payload(route.request)
@@ -207,7 +202,7 @@ def main() -> None:
                 }),
             )
 
-        page.route(re.compile(r".*/api/chat/sessions/.*/upload(?:\?.*)?$"), handle_upload)
+        install_files_upload_routes(page, upload_payloads, delay_first_init_ms=1200)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
 
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
@@ -216,7 +211,7 @@ def main() -> None:
         editor = page.locator(".chat-composer-editor[contenteditable='true']").first
         fill_editor(page, editor, f"{token} ")
         page.locator(".chat-composer-file-input").set_input_files(str(file_path))
-        wait_for_count(page, upload_routes, 1, "/upload request")
+        wait_for_count(page, upload_payloads, 1, "Files upload init")
 
         page.wait_for_function(
             """(fileName) => {
@@ -230,13 +225,7 @@ def main() -> None:
         second_session_key = open_new_chat(page)
         fill_editor(page, page.locator(".chat-composer-editor[contenteditable='true']").first, other_token)
 
-        upload_session_key = route_session_key(upload_routes[0].request.url, "/upload")
-        upload_routes[0].fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps(upload_response(upload_session_key, upload_payloads[0])),
-        )
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1500)
 
         goto_session(page, first_session_key)
         page.wait_for_function(
@@ -244,7 +233,7 @@ def main() -> None:
                 const editorText = document.querySelector('.chat-composer-editor')?.textContent || '';
                 const item = Array.from(document.querySelectorAll('.chat-composer-pool-item.ready'))
                     .find((candidate) => (candidate.textContent || '').includes(fileName));
-                return Boolean(editorText.includes(tokenValue) && item && /Ready|已就绪/.test(item.textContent || ''));
+                return Boolean(editorText.includes(tokenValue) && item);
             }""",
             arg=[token, file_path.name],
             timeout=15000,

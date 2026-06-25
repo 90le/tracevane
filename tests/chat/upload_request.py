@@ -85,3 +85,102 @@ def read_upload_payload(request) -> dict[str, Any]:
     if not payload.get("_fileFieldSeen"):
         raise AssertionError(f"multipart request missing file field: {payload}")
     return payload
+
+
+def files_summary_response(root_id: str = "project-root", absolute_path: str = "/tmp/tracevane-project") -> dict[str, Any]:
+    return {
+        "checkedAt": "2026-06-26T00:00:00.000Z",
+        "defaultRootId": root_id,
+        "roots": [
+            {
+                "id": root_id,
+                "labelZh": "项目文件",
+                "labelEn": "Project files",
+                "descriptionZh": "测试文件根",
+                "descriptionEn": "Test file root",
+                "absolutePath": absolute_path,
+                "preferred": True,
+            }
+        ],
+    }
+
+
+def files_upload_init_response(payload: dict[str, Any], upload_id: str = "upload-test-1") -> dict[str, Any]:
+    chunk_size = int(payload.get("chunkSize") or 2 * 1024 * 1024)
+    size = int(payload.get("size") or 0)
+    chunk_count = max(1, (size + chunk_size - 1) // chunk_size) if size else 1
+    target_path = str(payload.get("relativePath") or payload.get("fileName") or "attachment")
+    return {
+        "uploadId": upload_id,
+        "chunkSize": chunk_size,
+        "chunkCount": chunk_count,
+        "uploadedChunks": [],
+        "targetPath": target_path,
+        "conflictPolicy": payload.get("conflictPolicy") or "rename",
+    }
+
+
+def files_mutation_response(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    return {
+        "ok": True,
+        "checkedAt": "2026-06-26T00:00:00.000Z",
+        "rootId": payload.get("rootId") or "project-root",
+        "entries": [],
+    }
+
+
+def install_files_upload_routes(
+    page,
+    upload_payloads: list[dict[str, Any]],
+    *,
+    fail_first_init_message: str | None = None,
+    delay_first_init_ms: int = 0,
+    root_id: str = "project-root",
+):
+    state: dict[str, Any] = {"init_count": 0, "uploads": {}}
+
+    def handle_summary(route):
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(files_summary_response(root_id=root_id)),
+        )
+
+    def handle_init(route):
+        payload = read_upload_payload(route.request)
+        state["init_count"] += 1
+        upload_id = f"upload-test-{state['init_count']}"
+        payload["uploadId"] = upload_id
+        payload["_filesApi"] = "init"
+        upload_payloads.append(payload)
+        if delay_first_init_ms and state["init_count"] == 1:
+            page.wait_for_timeout(delay_first_init_ms)
+        if fail_first_init_message and state["init_count"] == 1:
+            route.fulfill(
+                status=500,
+                content_type="application/json",
+                body=json.dumps({"error": {"code": "upload_failed", "message": fail_first_init_message}}),
+            )
+            return
+        response = files_upload_init_response(payload, upload_id=upload_id)
+        state["uploads"][upload_id] = {"payload": payload, "response": response}
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(response))
+
+    def handle_chunk(route):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"ok": True}))
+
+    def handle_complete(route):
+        payload = read_upload_payload(route.request)
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(files_mutation_response(payload)))
+
+    def handle_cancel(route):
+        payload = read_upload_payload(route.request)
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(files_mutation_response(payload)))
+
+    page.route(re.compile(r".*/api/files/summary(?:\?.*)?$"), handle_summary)
+    page.route(re.compile(r".*/api/files/uploads/init(?:\?.*)?$"), handle_init)
+    page.route(re.compile(r".*/api/files/uploads/[^/]+/chunks/\d+(?:\?.*)?$"), handle_chunk)
+    page.route(re.compile(r".*/api/files/uploads/complete(?:\?.*)?$"), handle_complete)
+    page.route(re.compile(r".*/api/files/uploads(?:\?.*)?$"), handle_cancel)
+    return state

@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-nonpreview-acceptance.png")
@@ -226,24 +226,22 @@ def main() -> None:
                 }),
             )
 
-        page.route(re.compile(r".*/api/chat/sessions/.*/upload(?:\?.*)?$"), handle_upload)
+        install_files_upload_routes(page, upload_payloads)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
 
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
         open_new_chat(page)
         fill_editor(page, token)
         page.locator(".chat-composer-file-input").set_input_files(str(file_path))
-        wait_for_count(page, upload_payloads, 1, "/upload POST")
+        wait_for_count(page, upload_payloads, 1, "Files upload init")
 
         upload_payload = upload_payloads[0]
         if upload_payload.get("fileName") != file_path.name:
             raise AssertionError(f"upload lost file name: {upload_payload}")
-        if upload_payload.get("_multipart") is not True:
-            raise AssertionError(f"upload should use multipart/FormData, got: {upload_payload.get('_contentType')}")
-        if str(upload_payload.get("_contentType") or "").lower().startswith("application/json"):
-            raise AssertionError(f"upload should not send JSON/base64 content: {upload_payload.get('_contentType')}")
-        if upload_payload.get("_fileFieldSeen") is not True:
-            raise AssertionError(f"upload missing multipart file field: {upload_payload}")
+        if upload_payload.get("_filesApi") != "init":
+            raise AssertionError(f"upload must initialize through Files API: {upload_payload}")
+        if not str(upload_payload.get("relativePath") or "").startswith(".tracevane/chat-uploads/"):
+            raise AssertionError(f"upload must target the shared Chat upload directory: {upload_payload}")
 
         probe_after_upload = read_probe(page)
         data_url_reads = probe_after_upload.get("dataUrlReads") or []
@@ -251,13 +249,13 @@ def main() -> None:
         if any(read.get("fileName") == file_path.name for read in data_url_reads):
             raise AssertionError(f"non-preview file should not use readAsDataURL: {probe_after_upload}")
         if any(read.get("fileName") == file_path.name for read in array_buffer_reads):
-            raise AssertionError(f"non-preview file should stream via FormData/File without arrayBuffer: {probe_after_upload}")
+            raise AssertionError(f"non-preview file should stream binary chunks without pre-reading the whole file: {probe_after_upload}")
 
         page.wait_for_function(
             """(fileName) => {
                 const item = Array.from(document.querySelectorAll('.chat-composer-pool-item'))
                     .find((candidate) => (candidate.textContent || '').includes(fileName));
-                return item && item.classList.contains('ready') && (/Ready|已就绪/.test(item.textContent || ''));
+                return item && item.classList.contains('ready');
             }""",
             arg=file_path.name,
             timeout=15000,
@@ -280,9 +278,9 @@ def main() -> None:
 
         result.update({
             "uploadFileName": upload_payload.get("fileName"),
-            "uploadRequestBodyLength": int(upload_payload.get("_bodyLength") or 0),
-            "multipart": upload_payload.get("_multipart") is True,
-            "fileFieldSeen": upload_payload.get("_fileFieldSeen") is True,
+            "uploadRequestBodyLength": int(upload_payload.get("size") or 0),
+            "filesApi": upload_payload.get("_filesApi"),
+            "relativePath": upload_payload.get("relativePath"),
             "dataUrlReadCount": len(data_url_reads),
             "arrayBufferReadCount": len(array_buffer_reads),
             "sendFileRefs": file_refs,

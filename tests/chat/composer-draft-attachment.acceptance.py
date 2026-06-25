@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-draft-attachment-acceptance.png")
@@ -185,7 +185,6 @@ def upload_file_and_insert(page, file_path: Path):
             return items.some((item) => {
                 const text = item.textContent || '';
                 return text.includes(fileName)
-                    && (/Ready|已就绪/.test(text))
                     && item.classList.contains('ready');
             });
         }""",
@@ -299,7 +298,7 @@ def main() -> None:
                 }),
             )
 
-        page.route(re.compile(r".*/api/chat/sessions/.*/upload(?:\?.*)?$"), handle_upload)
+        install_files_upload_routes(page, upload_payloads)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
 
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")

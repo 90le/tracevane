@@ -11,7 +11,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from browser_surface import wait_for_active_session, wait_for_chat_surface
-from upload_request import read_upload_payload
+from upload_request import install_files_upload_routes, read_upload_payload
 
 
 SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-failure-acceptance.png")
@@ -171,7 +171,7 @@ def main() -> None:
         def handle_upload(route):
             payload = read_upload_payload(route.request)
             upload_payloads.append(payload)
-            session_key = route.request.url.split("/api/chat/sessions/", 1)[1].split("/upload", 1)[0]
+            session_key = "project-root"
             if len(upload_payloads) == 1:
                 route.fulfill(
                     status=500,
@@ -208,7 +208,7 @@ def main() -> None:
                 }),
             )
 
-        page.route(re.compile(r".*/api/chat/sessions/.*/upload(?:\?.*)?$"), handle_upload)
+        install_files_upload_routes(page, upload_payloads, fail_first_init_message=failure_message)
         page.route(re.compile(r".*/api/chat/sessions/.*/send$"), handle_send)
 
         wait_for_chat_surface(page, "http://127.0.0.1:5176/chat/workbench")
