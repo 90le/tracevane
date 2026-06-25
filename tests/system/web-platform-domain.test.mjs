@@ -128,6 +128,9 @@ test("OpenClaw workbench pages support refreshable selectable detail workflows",
     assert.match(source, /refetch\(\)/);
     assert.match(source, /useSelectedKey/);
     assert.match(source, /SelectableRow/);
+  }
+  for (const page of ["SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+    const source = read(`apps/web/src/features/platforms/openclaw/sections/${page}.tsx`);
     assert.match(source, /DetailRail/);
   }
   const configPage = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
@@ -137,7 +140,7 @@ test("OpenClaw workbench pages support refreshable selectable detail workflows",
   assert.doesNotMatch(configPage, /DetailRail/);
 });
 
-test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () => {
+test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff", () => {
   const config = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
   const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
@@ -145,12 +148,24 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   assert.match(config, /配置页按 Settings 子页面分层/);
   assert.match(config, /常用项使用下拉、开关和数字控件/);
   assert.doesNotMatch(config, /高级证据/);
-  assert.match(agents, /不是 Tracevane CLI Agents/);
+  assert.match(agents, /useCreateAgentMutation/);
+  assert.match(agents, /useUpdateAgentMutation/);
+  assert.match(agents, /useDeleteAgentMutation/);
+  assert.match(agents, /新增 Agent/);
+  assert.match(agents, /保存/);
+  assert.match(agents, /删除/);
   assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
-  assert.match(channels, /不是 Tracevane IM 渠道/);
-  assert.match(bindings, /不是 Tracevane IM 路由绑定/);
+  assert.match(channels, /useCreateChannelMutation/);
+  assert.match(channels, /useUpdateChannelMutation/);
+  assert.match(channels, /useDeleteChannelMutation/);
+  assert.match(channels, /新增 Channel/);
+  assert.match(bindings, /useCreateChannelBindingMutation/);
+  assert.match(bindings, /useUpdateChannelBindingMutation/);
+  assert.match(bindings, /useDeleteChannelBindingMutation/);
+  assert.match(bindings, /新增绑定/);
   for (const source of [agents, channels, bindings]) {
-    assert.doesNotMatch(source, /新增|删除|安装|保存密钥/);
+    assert.doesNotMatch(source, /OwnerHandoff/);
+    assert.doesNotMatch(source, /打开绑定路由|打开 CLI Agents|打开 IM 渠道/);
   }
 });
 

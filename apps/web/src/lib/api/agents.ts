@@ -4,15 +4,15 @@ import type {
   AgentRuntimeRunsResponse,
   AgentsSummaryPayload,
 } from "../../features/cli-agents/types";
+import type { AgentCreatePayload, AgentDeletePayload, AgentUpdatePayload, AgentsMutationResponse } from "../../../../../types/agents";
 
 /**
  * Typed transport bindings for the read surfaces of the Agents HTTP API
  * (`apps/api/modules/agents/routes.ts`) that the CLI Agent Workbench consumes.
  *
- * The workbench is a RUNTIME/EVIDENCE console: it surfaces persona profiles,
- * their bindings and recent sessions read-only. Persona authoring (create /
- * update / delete / doc editing / binding mutations) is the owning domain's job
- * and is intentionally NOT bound here — those edits deep-link out.
+ * The CLI Agent domain consumes runtime/evidence reads from this module. The
+ * OpenClaw platform domain also uses the native create/update/delete endpoints
+ * for upstream OpenClaw agent definitions. Runtime sessions stay separate.
  *
  * Response shapes come from the shared contract (`types/agents.ts`).
  */
@@ -45,4 +45,17 @@ export async function getAgentDetail(
   return apiRequest<AgentDetailPayload>(`${BASE}/${encodeURIComponent(id)}`, {
     signal,
   });
+}
+
+
+export function createAgent(payload: AgentCreatePayload): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(BASE, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateAgent(id: string, payload: AgentUpdatePayload): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export function deleteAgent(id: string, payload: AgentDeletePayload = {}): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(`${BASE}/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify(payload) });
 }

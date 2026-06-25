@@ -1,20 +1,21 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 
-import { getAgentDetail, getAgentRuntimeRuns, getAgentsSummary } from "../api/agents";
+import { createAgent, deleteAgent, getAgentDetail, getAgentRuntimeRuns, getAgentsSummary, updateAgent } from "../api/agents";
 import type { ApiError } from "../api/errors";
 import type {
   AgentDetailPayload,
   AgentRuntimeRunsResponse,
   AgentsSummaryPayload,
 } from "../../features/cli-agents/types";
+import type { AgentCreatePayload, AgentDeletePayload, AgentUpdatePayload } from "../../../../../types/agents";
 
 /**
  * TanStack Query hooks for the read surfaces of the Agents API consumed by the
  * CLI Agent Workbench (`/cli-agents`).
  *
- * Query keys are namespaced under `["cli-agents", "agents", ...]`. Only the
- * read endpoints the workbench needs are bound — persona authoring stays in the
- * owning domain.
+ * Query keys are namespaced under `["cli-agents", "agents", ...]` for legacy
+ * cache compatibility. OpenClaw platform pages use these typed mutations for
+ * native agent CRUD; CLI runtime/session management stays separate.
  */
 
 export const agentsKeys = {
@@ -60,5 +61,33 @@ export function useAgentRuntimeRunsQuery(options?: QueryOpts<AgentRuntimeRunsRes
     queryKey: agentsKeys.runtimeRuns(),
     queryFn: ({ signal }) => getAgentRuntimeRuns(signal),
     ...options,
+  });
+}
+
+
+export function useCreateAgentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AgentCreatePayload) => createAgent(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: agentsKeys.summary() }),
+  });
+}
+
+export function useUpdateAgentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: AgentUpdatePayload }) => updateAgent(id, payload),
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({ queryKey: agentsKeys.summary() });
+      void queryClient.invalidateQueries({ queryKey: agentsKeys.detail(vars.id) });
+    },
+  });
+}
+
+export function useDeleteAgentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload?: AgentDeletePayload }) => deleteAgent(id, payload ?? {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: agentsKeys.summary() }),
   });
 }
