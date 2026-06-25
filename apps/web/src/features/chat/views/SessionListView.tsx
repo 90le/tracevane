@@ -53,7 +53,9 @@ import {
   usePatchChatSessionMutation,
 } from "@/lib/query/chat";
 import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
+import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import type { ApiError } from "@/lib/api/errors";
+import type { TerminalBinaryStatus } from "../../cli-agents/types";
 import type {
   ChatSessionFolder,
   ChatSessionFolderMove,
@@ -88,6 +90,14 @@ type ContextMenuState =
   | { kind: "blank"; x: number; y: number }
   | null;
 
+type ChatRuntimeAgentOption = {
+  adapterKind: ChatRuntimeAdapterKind;
+  agent: ChatRuntimeAgentId;
+  binaryId: TerminalBinaryStatus["id"] | null;
+  label: string;
+  description: string;
+};
+
 type FolderOption = {
   id: string;
   folder: ChatSessionFolder;
@@ -101,16 +111,11 @@ type FolderOption = {
 
 const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
 
-const CHAT_RUNTIME_AGENT_OPTIONS: Array<{
-  adapterKind: ChatRuntimeAdapterKind;
-  agent: ChatRuntimeAgentId;
-  label: string;
-  description: string;
-}> = [
-  { adapterKind: "native-cli", agent: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
-  { adapterKind: "native-cli", agent: "claude-code", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
-  { adapterKind: "native-cli", agent: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
-  { adapterKind: "openclaw-gateway", agent: "openclaw", label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
+const CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] = [
+  { adapterKind: "native-cli", agent: "codex", binaryId: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
+  { adapterKind: "native-cli", agent: "claude-code", binaryId: "claude", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
+  { adapterKind: "native-cli", agent: "opencode", binaryId: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
+  { adapterKind: "openclaw-gateway", agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
 ];
 
 const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode | ""; label: string }> = [
@@ -184,6 +189,7 @@ export function SessionListView({
   const deleteFolder = useDeleteChatOrganizerFolderMutation();
   const assignSessionToFolder = useAssignChatSessionsToFolderMutation();
   const modelCatalog = useModelGatewayModelsQuery({ staleTime: 30_000 });
+  const terminalStatus = useTerminalStatusQuery({ staleTime: 30_000, retry: false });
 
   React.useEffect(() => {
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
@@ -388,6 +394,32 @@ export function SessionListView({
       return hay.includes(q);
     });
   }, [sessions, filter, sessionFilter, folderFilter, organizer, folderLabel]);
+
+
+  const binaryStatusById = React.useMemo(
+    () => new Map((terminalStatus.data?.binaries ?? []).map((binary) => [binary.id, binary] as const)),
+    [terminalStatus.data?.binaries],
+  );
+
+  const runtimeOptionReadiness = React.useCallback(
+    (option: ChatRuntimeAgentOption): { label: string; tone: "ok" | "warn" | "info"; detail: string } => {
+      if (option.adapterKind !== "native-cli" || !option.binaryId) {
+        return { label: "平台", tone: "info", detail: "由 OpenClaw 平台管理可用性" };
+      }
+      const binary = binaryStatusById.get(option.binaryId);
+      if (terminalStatus.isLoading) {
+        return { label: "检测中", tone: "info", detail: "正在检测本地 CLI 是否可用" };
+      }
+      if (!binary) {
+        return { label: "未知", tone: "warn", detail: "未返回该 CLI 的安装状态" };
+      }
+      if (binary.installed) {
+        return { label: "可用", tone: "ok", detail: binary.version || binary.path || "已检测到本地 CLI" };
+      }
+      return { label: "未安装", tone: "warn", detail: binary.packageName ? `需要安装 ${binary.packageName}` : "请在 CLI 代理页面安装或配置" };
+    },
+    [binaryStatusById, terminalStatus.isLoading],
+  );
 
   const selectedRuntimeOption = React.useMemo(
     () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
@@ -1175,6 +1207,7 @@ export function SessionListView({
                     <div className="grid gap-2 sm:grid-cols-2">
                       {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
                         const active = option.agent === runtimeAgent;
+                        const readiness = runtimeOptionReadiness(option);
                         return (
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
@@ -1185,11 +1218,13 @@ export function SessionListView({
                               active && "border-primary-line bg-primary-soft",
                             )}
                           >
-                            <span className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
-                              <MonitorCog className="size-4 text-primary" />
-                              {option.label}
+                            <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink-strong">
+                              <MonitorCog className="size-4 shrink-0 text-primary" />
+                              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                              <ToneBadge tone={readiness.tone}>{readiness.label}</ToneBadge>
                             </span>
                             <span className="text-xs text-subtle">{option.description}</span>
+                            <span className="truncate text-2xs text-muted">{readiness.detail}</span>
                           </button>
                         );
                       })}
@@ -1211,6 +1246,9 @@ export function SessionListView({
                           </option>
                         ))}
                       </select>
+                      {modelCatalog.isError ? (
+                        <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
+                      ) : null}
                     </label>
                     <label className="grid gap-2 text-sm text-muted">
                       权限模式
@@ -1285,6 +1323,7 @@ export function SessionListView({
                     <div className="grid gap-2 sm:grid-cols-2">
                       {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
                         const active = option.agent === runtimeAgent;
+                        const readiness = runtimeOptionReadiness(option);
                         return (
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
@@ -1295,11 +1334,13 @@ export function SessionListView({
                               active && "border-primary-line bg-primary-soft",
                             )}
                           >
-                            <span className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
-                              <MonitorCog className="size-4 text-primary" />
-                              {option.label}
+                            <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink-strong">
+                              <MonitorCog className="size-4 shrink-0 text-primary" />
+                              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                              <ToneBadge tone={readiness.tone}>{readiness.label}</ToneBadge>
                             </span>
                             <span className="text-xs text-subtle">{option.description}</span>
+                            <span className="truncate text-2xs text-muted">{readiness.detail}</span>
                           </button>
                         );
                       })}
@@ -1321,6 +1362,9 @@ export function SessionListView({
                           </option>
                         ))}
                       </select>
+                      {modelCatalog.isError ? (
+                        <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
+                      ) : null}
                     </label>
                     <label className="grid gap-2 text-sm text-muted">
                       权限模式
