@@ -6,11 +6,11 @@ import { toast } from "@/design/ui/sonner";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
 import { useOpenClawConfigSummaryQuery, usePatchOpenClawConfigMutation, useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, DetailRail, EvidenceRow, JsonSnippet, Panel, PanelHead, ReadOnlyStrip, RefreshButton, ResponsiveTable, SelectableRow, WorkbenchToolbar, fmtDate, useSelectedKey } from "../components";
+import { BoundaryBadge, JsonSnippet, Panel, PanelHead, ReadOnlyStrip, RefreshButton, ResponsiveTable, SelectableRow, WorkbenchToolbar, fmtDate } from "../components";
 import { StatTile } from "../../_shared";
 import type { ConfigPatchPayload, ConfigSummaryPayload } from "../../../../../../../types/config";
 
-type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "advanced";
+type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "extensions" | "browserLogging" | "advanced";
 
 interface ConfigDraft {
   model: string;
@@ -77,9 +77,18 @@ interface ConfigDraft {
   queueDebounceMs: string;
   queueCap: string;
   queueDrop: string;
+  sessionResetJson: string;
+  commandsJson: string;
+  hooksJson: string;
+  mcpJson: string;
+  skillsJson: string;
+  acpJson: string;
+  pluginsJson: string;
+  browserJson: string;
+  loggingJson: string;
 }
 
-const CONFIG_SECTION_IDS = new Set<ConfigSection>(["defaults", "models", "runtime", "security", "gateway", "messages", "advanced"]);
+const CONFIG_SECTION_IDS = new Set<ConfigSection>(["defaults", "models", "runtime", "security", "gateway", "messages", "extensions", "browserLogging", "advanced"]);
 
 const CONFIG_SECTIONS: Array<{ id: ConfigSection; title: string; desc: string }> = [
   { id: "defaults", title: "基础", desc: "目录、并发、超时" },
@@ -88,11 +97,14 @@ const CONFIG_SECTIONS: Array<{ id: ConfigSection; title: string; desc: string }>
   { id: "security", title: "安全", desc: "沙箱、工具、审批" },
   { id: "gateway", title: "网关", desc: "端口、认证、控制台" },
   { id: "messages", title: "会话消息", desc: "队列、ack、DM" },
-  { id: "advanced", title: "高级证据", desc: "MCP / 命令 / 服务商" },
+  { id: "extensions", title: "扩展", desc: "命令 / MCP / 技能 / 插件 / ACP" },
+  { id: "browserLogging", title: "浏览日志", desc: "Browser / Logging" },
+  { id: "advanced", title: "高级证据", desc: "服务商只读证据" },
 ];
 
 const joinList = (values: string[] | undefined) => (values ?? []).join("\n");
 const splitList = (value: string) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+const jsonText = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
 const text = (value: unknown) => value == null ? "" : String(value);
 const numberText = (value: unknown) => Number.isFinite(Number(value)) ? String(Number(value)) : "";
 
@@ -179,7 +191,24 @@ function draftFromConfig(data: ConfigSummaryPayload | undefined): ConfigDraft {
     queueDebounceMs: numberText(data?.messages.queue.debounceMs),
     queueCap: numberText(data?.messages.queue.cap),
     queueDrop: data?.messages.queue.drop ?? "summarize",
+    sessionResetJson: jsonText(data?.sessionReset ?? {}),
+    commandsJson: jsonText(data?.commands ?? {}),
+    hooksJson: jsonText(data?.hooks ?? {}),
+    mcpJson: jsonText(data?.mcp ?? {}),
+    skillsJson: jsonText(data?.skills ?? {}),
+    acpJson: jsonText(data?.acp ?? {}),
+    pluginsJson: jsonText(data?.plugins ?? {}),
+    browserJson: jsonText(data?.browser ?? {}),
+    loggingJson: jsonText(data?.logging ?? {}),
   };
+}
+
+function parseJsonField<T extends Record<string, unknown>>(value: string, label: string): T {
+  const trimmed = value.trim();
+  if (!trimmed) return {} as T;
+  const parsed = JSON.parse(trimmed) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${label} 必须是 JSON 对象`);
+  return parsed as T;
 }
 
 function draftToPatch(draft: ConfigDraft, current: ConfigSummaryPayload): ConfigPatchPayload {
@@ -298,6 +327,15 @@ function draftToPatch(draft: ConfigDraft, current: ConfigSummaryPayload): Config
       models: provider.models.map((model) => ({ ...model })),
       extra: provider.extra,
     })),
+    sessionReset: parseJsonField(draft.sessionResetJson, "会话重置 JSON"),
+    commands: parseJsonField(draft.commandsJson, "命令 JSON"),
+    hooks: parseJsonField(draft.hooksJson, "钩子 JSON"),
+    mcp: parseJsonField(draft.mcpJson, "MCP JSON"),
+    skills: parseJsonField(draft.skillsJson, "技能 JSON"),
+    acp: parseJsonField(draft.acpJson, "ACP JSON"),
+    plugins: parseJsonField(draft.pluginsJson, "插件 JSON"),
+    browser: parseJsonField(draft.browserJson, "浏览器 JSON"),
+    logging: parseJsonField(draft.loggingJson, "日志 JSON"),
   } as ConfigPatchPayload;
 }
 
@@ -306,8 +344,15 @@ function TextField({ label, value, onChange, helper, type = "text", multiline = 
   return <label className="grid gap-1.5 border-b border-line px-4 py-3 last:border-b-0"><span className="text-sm font-medium text-ink-strong">{label}</span>{multiline ? <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={4} className={`${inputClass} resize-y`} /> : <input type={type} value={value} onChange={(event) => onChange(event.target.value)} className={inputClass} />}{helper ? <span className="text-xs text-muted">{helper}</span> : null}</label>;
 }
 
-function SelectField({ label, value, onChange, options, helper }: { label: string; value: string; onChange: (value: string) => void; options: string[]; helper?: string }) {
-  return <label className="grid gap-1.5 border-b border-line px-4 py-3 last:border-b-0"><span className="text-sm font-medium text-ink-strong">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-ink-strong outline-none focus:shadow-[var(--ring)]">{options.map((option) => <option key={option} value={option}>{option || "继承默认"}</option>)}</select>{helper ? <span className="text-xs text-muted">{helper}</span> : null}</label>;
+type SelectOption = string | { value: string; label: string; hint?: string };
+const opt = (value: string, label: string, hint?: string): SelectOption => ({ value, label, hint });
+const optionValue = (option: SelectOption) => typeof option === "string" ? option : option.value;
+const optionLabel = (option: SelectOption) => typeof option === "string" ? (option || "继承默认") : option.label;
+
+function SelectField({ label, value, onChange, options, helper }: { label: string; value: string; onChange: (value: string) => void; options: SelectOption[]; helper?: string }) {
+  const selected = options.find((option) => optionValue(option) === value);
+  const selectedHint = selected && typeof selected !== "string" ? selected.hint : undefined;
+  return <label className="grid gap-1.5 border-b border-line px-4 py-3 last:border-b-0"><span className="text-sm font-medium text-ink-strong">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-ink-strong outline-none focus:shadow-[var(--ring)]">{options.map((option) => <option key={optionValue(option)} value={optionValue(option)}>{optionLabel(option)}</option>)}</select>{helper || selectedHint ? <span className="text-xs text-muted">{helper ?? selectedHint}</span> : null}</label>;
 }
 
 function ToggleField({ label, checked, onChange, helper }: { label: string; checked: boolean; onChange: (value: boolean) => void; helper?: string }) {
@@ -315,7 +360,7 @@ function ToggleField({ label, checked, onChange, helper }: { label: string; chec
 }
 
 function SectionNav({ active, onChange }: { active: ConfigSection; onChange: (section: ConfigSection) => void }) {
-  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 md:grid-cols-7">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
+  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
 }
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
@@ -326,14 +371,31 @@ function ConfigEmptyHint({ children }: { children: React.ReactNode }) {
   return <div className="border-t border-line px-4 py-3 text-xs text-muted">{children}</div>;
 }
 
+const COMPACTION_OPTIONS = [opt("safeguard", "保护模式：接近上限时压缩", "推荐默认，避免上下文溢出。"), opt("auto", "自动压缩", "更积极地自动整理上下文。"), opt("off", "关闭压缩", "不建议长会话使用。")];
+const SANDBOX_MODE_OPTIONS = [opt("off", "关闭沙箱", "最高兼容，最低隔离。"), opt("workspace-write", "仅允许工作区写入", "推荐：限制写入范围。"), opt("read-only", "只读沙箱", "适合审计或只读任务。")];
+const WORKSPACE_ACCESS_OPTIONS = [opt("rw", "可读写工作区"), opt("ro", "只读工作区")];
+const EXEC_ASK_OPTIONS = [opt("off", "不询问"), opt("on-miss", "未命中规则时询问"), opt("always", "每次都询问")];
+const SECURITY_OPTIONS = [opt("full", "完整权限"), opt("workspace", "工作区权限"), opt("deny", "默认拒绝")];
+const APPROVAL_FALLBACK_OPTIONS = [opt("deny", "失败时拒绝"), opt("ask", "失败时询问"), opt("allow", "失败时允许")];
+const GATEWAY_MODE_OPTIONS = [opt("local", "本机模式"), opt("tailscale", "Tailscale 模式"), opt("public", "公网模式")];
+const GATEWAY_BIND_OPTIONS = [opt("loopback", "仅本机 127.0.0.1"), opt("tailscale", "Tailscale 地址"), opt("custom", "自定义地址"), opt("all", "所有网卡")];
+const AUTH_MODE_OPTIONS = [opt("token", "Token 认证"), opt("password", "密码认证"), opt("trusted-proxy", "可信反代"), opt("none", "无认证（仅本机/调试）")];
+const DM_SCOPE_OPTIONS = [opt("per-channel-peer", "按渠道 + 私聊对象隔离"), opt("per-peer", "按私聊对象隔离"), opt("global", "全局共享私聊会话")];
+const ACK_SCOPE_OPTIONS = [opt("group-mentions", "仅群聊 @ 场景"), opt("all", "全部消息"), opt("none", "不发送确认")];
+const QUEUE_MODE_OPTIONS = [opt("collect", "合并收集"), opt("parallel", "并行处理"), opt("serial", "串行排队")];
+const QUEUE_DROP_OPTIONS = [opt("summarize", "超限后总结压缩"), opt("drop-oldest", "丢弃最早消息"), opt("reject-new", "拒绝新消息")];
+
+
 function renderSection(section: ConfigSection, draft: ConfigDraft, setField: (key: keyof ConfigDraft) => (value: string) => void, setBool: (key: keyof ConfigDraft) => (value: boolean) => void, data: ConfigSummaryPayload | undefined) {
   if (section === "defaults") return <Panel><PanelHead title="基础设置" sub="OpenClaw 默认工作目录、并发和运行超时。" /><FieldGrid><TextField label="默认工作目录" value={draft.workspace} onChange={setField("workspace")} helper="默认启动目录" /><TextField label="仓库根目录" value={draft.repoRoot} onChange={setField("repoRoot")} helper="默认仓库根目录" /><TextField label="最大并发" type="number" value={draft.maxConcurrent} onChange={setField("maxConcurrent")} /><TextField label="运行超时秒" type="number" value={draft.timeoutSeconds} onChange={setField("timeoutSeconds")} /><TextField label="子代理并发" type="number" value={draft.subagentMaxConcurrent} onChange={setField("subagentMaxConcurrent")} /><TextField label="上下文上限" type="number" value={draft.contextTokens} onChange={setField("contextTokens")} helper="留空交给 OpenClaw 默认处理" /></FieldGrid></Panel>;
   if (section === "models") return <Panel><PanelHead title="模型设置" sub="主模型、备用模型和特殊任务模型。" /><FieldGrid><TextField label="默认模型" value={draft.model} onChange={setField("model")} /><TextField label="子代理模型" value={draft.subagentModel} onChange={setField("subagentModel")} /><TextField label="图片模型" value={draft.imageModel} onChange={setField("imageModel")} /><TextField label="PDF 模型" value={draft.pdfModel} onChange={setField("pdfModel")} /><TextField label="备用模型" value={draft.modelFallback} onChange={setField("modelFallback")} multiline helper="每行一个，或用逗号分隔" /></FieldGrid><div className="border-t border-line px-4 py-3 text-xs text-muted">服务商和密钥仍由模型网关管理；这里只设置 OpenClaw 默认使用哪个模型。</div></Panel>;
-  if (section === "runtime") return <Panel><PanelHead title="运行策略" sub="思考等级、压缩、流式和输入策略。" /><FieldGrid><TextField label="思考等级" value={draft.thinking} onChange={setField("thinking")} /><TextField label="详细程度" value={draft.verbose} onChange={setField("verbose")} /><TextField label="输入模式" value={draft.typingMode} onChange={setField("typingMode")} /><TextField label="流式输出策略" value={draft.blockStreaming} onChange={setField("blockStreaming")} /><SelectField label="上下文压缩模式" value={draft.compactionMode} onChange={setField("compactionMode")} options={["safeguard", "auto", "off"]} /><TextField label="压缩模型" value={draft.compactionModel} onChange={setField("compactionModel")} /><TextField label="保留 token 下限" type="number" value={draft.reserveTokensFloor} onChange={setField("reserveTokensFloor")} /><TextField label="记忆刷新阈值" type="number" value={draft.memoryFlushSoftThresholdTokens} onChange={setField("memoryFlushSoftThresholdTokens")} /><ToggleField label="启用记忆刷新" checked={draft.memoryFlushEnabled} onChange={setBool("memoryFlushEnabled")} /></FieldGrid></Panel>;
-  if (section === "security") return <Panel><PanelHead title="安全与工具" sub="沙箱、工具执行和审批默认策略。" /><FieldGrid><SelectField label="沙箱模式" value={draft.sandboxMode} onChange={setField("sandboxMode")} options={["off", "workspace-write", "read-only"]} /><SelectField label="工作区权限" value={draft.sandboxWorkspaceAccess} onChange={setField("sandboxWorkspaceAccess")} options={["rw", "ro"]} /><TextField label="沙箱作用域" value={draft.sandboxScope} onChange={setField("sandboxScope")} /><TextField label="会话工具可见性" value={draft.sandboxSessionToolsVisibility} onChange={setField("sandboxSessionToolsVisibility")} /><TextField label="沙箱空闲清理小时" type="number" value={draft.sandboxPruneIdleHours} onChange={setField("sandboxPruneIdleHours")} /><TextField label="沙箱最大保留天数" type="number" value={draft.sandboxPruneMaxAgeDays} onChange={setField("sandboxPruneMaxAgeDays")} /><TextField label="工具配置档" value={draft.toolsProfile} onChange={setField("toolsProfile")} /><TextField label="执行主机" value={draft.execHost} onChange={setField("execHost")} /><TextField label="执行模式" value={draft.execMode} onChange={setField("execMode")} helper="设置后会覆盖 ask/security" /><TextField label="执行询问策略" value={draft.execAsk} onChange={setField("execAsk")} /><TextField label="执行安全级别" value={draft.execSecurity} onChange={setField("execSecurity")} /><TextField label="执行超时秒" type="number" value={draft.execTimeoutSec} onChange={setField("execTimeoutSec")} /><TextField label="审批安全级别" value={draft.approvalSecurity} onChange={setField("approvalSecurity")} /><TextField label="审批询问策略" value={draft.approvalAsk} onChange={setField("approvalAsk")} /><TextField label="审批失败策略" value={draft.approvalAskFallback} onChange={setField("approvalAskFallback")} /><ToggleField label="允许提权工具" checked={draft.toolsElevatedEnabled} onChange={setBool("toolsElevatedEnabled")} /><ToggleField label="文件系统仅限工作区" checked={draft.fsWorkspaceOnly} onChange={setBool("fsWorkspaceOnly")} /><ToggleField label="技能自动审批" checked={draft.approvalAutoAllowSkills} onChange={setBool("approvalAutoAllowSkills")} /></FieldGrid></Panel>;
-  if (section === "gateway") return <Panel><PanelHead title="网关与控制台" sub="OpenClaw 网关监听、认证、限流和控制台。" /><FieldGrid><TextField label="端口" type="number" value={draft.gatewayPort} onChange={setField("gatewayPort")} /><TextField label="运行模式" value={draft.gatewayMode} onChange={setField("gatewayMode")} /><TextField label="监听范围" value={draft.gatewayBind} onChange={setField("gatewayBind")} /><TextField label="自定义监听主机" value={draft.gatewayCustomBindHost} onChange={setField("gatewayCustomBindHost")} /><TextField label="认证模式" value={draft.gatewayAuthMode} onChange={setField("gatewayAuthMode")} /><TextField label="限流最大尝试" type="number" value={draft.gatewayRateLimitMaxAttempts} onChange={setField("gatewayRateLimitMaxAttempts")} /><TextField label="限流窗口毫秒" type="number" value={draft.gatewayRateLimitWindowMs} onChange={setField("gatewayRateLimitWindowMs")} /><TextField label="锁定时长毫秒" type="number" value={draft.gatewayRateLimitLockoutMs} onChange={setField("gatewayRateLimitLockoutMs")} /><TextField label="控制台路径" value={draft.controlUiBasePath} onChange={setField("controlUiBasePath")} /><TextField label="允许来源" value={draft.controlUiAllowedOrigins} onChange={setField("controlUiAllowedOrigins")} multiline helper="每行一个 origin" /><ToggleField label="允许 Tailscale" checked={draft.gatewayAllowTailscale} onChange={setBool("gatewayAllowTailscale")} /><ToggleField label="本机免限流" checked={draft.gatewayRateLimitExemptLoopback} onChange={setBool("gatewayRateLimitExemptLoopback")} /><ToggleField label="启用控制台" checked={draft.controlUiEnabled} onChange={setBool("controlUiEnabled")} /><ToggleField label="允许不安全认证" checked={draft.controlUiAllowInsecureAuth} onChange={setBool("controlUiAllowInsecureAuth")} /></FieldGrid></Panel>;
-  if (section === "messages") return <Panel><PanelHead title="会话与消息" sub="私聊范围、线程绑定、确认反馈和队列策略。" /><FieldGrid><TextField label="私聊会话范围" value={draft.sessionDmScope} onChange={setField("sessionDmScope")} /><TextField label="线程空闲小时" type="number" value={draft.threadBindingsIdleHours} onChange={setField("threadBindingsIdleHours")} /><TextField label="线程最大保留小时" type="number" value={draft.threadBindingsMaxAgeHours} onChange={setField("threadBindingsMaxAgeHours")} /><TextField label="回复前缀" value={draft.responsePrefix} onChange={setField("responsePrefix")} /><TextField label="确认表情" value={draft.ackReaction} onChange={setField("ackReaction")} /><TextField label="确认表情范围" value={draft.ackReactionScope} onChange={setField("ackReactionScope")} /><TextField label="队列模式" value={draft.queueMode} onChange={setField("queueMode")} /><TextField label="队列合并延迟毫秒" type="number" value={draft.queueDebounceMs} onChange={setField("queueDebounceMs")} /><TextField label="队列容量" type="number" value={draft.queueCap} onChange={setField("queueCap")} /><TextField label="超限策略" value={draft.queueDrop} onChange={setField("queueDrop")} /><ToggleField label="启用线程绑定" checked={draft.threadBindingsEnabled} onChange={setBool("threadBindingsEnabled")} /><ToggleField label="回复后移除确认" checked={draft.removeAckAfterReply} onChange={setBool("removeAckAfterReply")} /></FieldGrid></Panel>;
-  return <Panel><PanelHead title="高级证据" sub="这些区域目前展示证据，不直接提供无保护编辑。" /><ResponsiveTable columns={["区域", "证据"]} rows={[<SelectableRow key="providers" id="providers" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">服务商</td><td className="px-4 py-3"><JsonSnippet value={data?.providers ?? []} /></td></SelectableRow>, <SelectableRow key="mcp" id="mcp" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">MCP 服务</td><td className="px-4 py-3"><JsonSnippet value={data?.mcp?.servers ?? {}} /></td></SelectableRow>, <SelectableRow key="commands" id="commands" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">命令</td><td className="px-4 py-3"><JsonSnippet value={data?.commands ?? {}} /></td></SelectableRow>]} empty="无高级证据" /></Panel>;
+  if (section === "runtime") return <Panel><PanelHead title="运行策略" sub="思考等级、压缩、流式和输入策略。" /><FieldGrid><TextField label="思考等级" value={draft.thinking} onChange={setField("thinking")} /><TextField label="详细程度" value={draft.verbose} onChange={setField("verbose")} /><TextField label="输入模式" value={draft.typingMode} onChange={setField("typingMode")} /><TextField label="流式输出策略" value={draft.blockStreaming} onChange={setField("blockStreaming")} /><SelectField label="上下文压缩模式" value={draft.compactionMode} onChange={setField("compactionMode")} options={COMPACTION_OPTIONS} /><TextField label="压缩模型" value={draft.compactionModel} onChange={setField("compactionModel")} /><TextField label="保留 token 下限" type="number" value={draft.reserveTokensFloor} onChange={setField("reserveTokensFloor")} /><TextField label="记忆刷新阈值" type="number" value={draft.memoryFlushSoftThresholdTokens} onChange={setField("memoryFlushSoftThresholdTokens")} /><ToggleField label="启用记忆刷新" checked={draft.memoryFlushEnabled} onChange={setBool("memoryFlushEnabled")} /></FieldGrid></Panel>;
+  if (section === "security") return <Panel><PanelHead title="安全与工具" sub="沙箱、工具执行和审批默认策略。" /><FieldGrid><SelectField label="沙箱模式" value={draft.sandboxMode} onChange={setField("sandboxMode")} options={SANDBOX_MODE_OPTIONS} /><SelectField label="工作区权限" value={draft.sandboxWorkspaceAccess} onChange={setField("sandboxWorkspaceAccess")} options={WORKSPACE_ACCESS_OPTIONS} /><TextField label="沙箱作用域" value={draft.sandboxScope} onChange={setField("sandboxScope")} /><TextField label="会话工具可见性" value={draft.sandboxSessionToolsVisibility} onChange={setField("sandboxSessionToolsVisibility")} /><TextField label="沙箱空闲清理小时" type="number" value={draft.sandboxPruneIdleHours} onChange={setField("sandboxPruneIdleHours")} /><TextField label="沙箱最大保留天数" type="number" value={draft.sandboxPruneMaxAgeDays} onChange={setField("sandboxPruneMaxAgeDays")} /><TextField label="工具配置档" value={draft.toolsProfile} onChange={setField("toolsProfile")} /><TextField label="执行主机" value={draft.execHost} onChange={setField("execHost")} /><TextField label="执行模式" value={draft.execMode} onChange={setField("execMode")} helper="设置后会覆盖 ask/security" /><SelectField label="执行询问策略" value={draft.execAsk} onChange={setField("execAsk")} options={EXEC_ASK_OPTIONS} /><SelectField label="执行安全级别" value={draft.execSecurity} onChange={setField("execSecurity")} options={SECURITY_OPTIONS} /><TextField label="执行超时秒" type="number" value={draft.execTimeoutSec} onChange={setField("execTimeoutSec")} /><SelectField label="审批安全级别" value={draft.approvalSecurity} onChange={setField("approvalSecurity")} options={SECURITY_OPTIONS} /><SelectField label="审批询问策略" value={draft.approvalAsk} onChange={setField("approvalAsk")} options={EXEC_ASK_OPTIONS} /><SelectField label="审批失败策略" value={draft.approvalAskFallback} onChange={setField("approvalAskFallback")} options={APPROVAL_FALLBACK_OPTIONS} /><ToggleField label="允许提权工具" checked={draft.toolsElevatedEnabled} onChange={setBool("toolsElevatedEnabled")} /><ToggleField label="文件系统仅限工作区" checked={draft.fsWorkspaceOnly} onChange={setBool("fsWorkspaceOnly")} /><ToggleField label="技能自动审批" checked={draft.approvalAutoAllowSkills} onChange={setBool("approvalAutoAllowSkills")} /></FieldGrid></Panel>;
+  if (section === "gateway") return <Panel><PanelHead title="网关与控制台" sub="OpenClaw 网关监听、认证、限流和控制台。" /><FieldGrid><TextField label="端口" type="number" value={draft.gatewayPort} onChange={setField("gatewayPort")} /><SelectField label="运行模式" value={draft.gatewayMode} onChange={setField("gatewayMode")} options={GATEWAY_MODE_OPTIONS} /><SelectField label="监听范围" value={draft.gatewayBind} onChange={setField("gatewayBind")} options={GATEWAY_BIND_OPTIONS} /><TextField label="自定义监听主机" value={draft.gatewayCustomBindHost} onChange={setField("gatewayCustomBindHost")} /><SelectField label="认证模式" value={draft.gatewayAuthMode} onChange={setField("gatewayAuthMode")} options={AUTH_MODE_OPTIONS} /><TextField label="限流最大尝试" type="number" value={draft.gatewayRateLimitMaxAttempts} onChange={setField("gatewayRateLimitMaxAttempts")} /><TextField label="限流窗口毫秒" type="number" value={draft.gatewayRateLimitWindowMs} onChange={setField("gatewayRateLimitWindowMs")} /><TextField label="锁定时长毫秒" type="number" value={draft.gatewayRateLimitLockoutMs} onChange={setField("gatewayRateLimitLockoutMs")} /><TextField label="控制台路径" value={draft.controlUiBasePath} onChange={setField("controlUiBasePath")} /><TextField label="允许来源" value={draft.controlUiAllowedOrigins} onChange={setField("controlUiAllowedOrigins")} multiline helper="每行一个 origin" /><ToggleField label="允许 Tailscale" checked={draft.gatewayAllowTailscale} onChange={setBool("gatewayAllowTailscale")} /><ToggleField label="本机免限流" checked={draft.gatewayRateLimitExemptLoopback} onChange={setBool("gatewayRateLimitExemptLoopback")} /><ToggleField label="启用控制台" checked={draft.controlUiEnabled} onChange={setBool("controlUiEnabled")} /><ToggleField label="允许不安全认证" checked={draft.controlUiAllowInsecureAuth} onChange={setBool("controlUiAllowInsecureAuth")} /></FieldGrid></Panel>;
+  if (section === "messages") return <Panel><PanelHead title="会话与消息" sub="私聊范围、线程绑定、确认反馈和队列策略。" /><FieldGrid><SelectField label="私聊会话范围" value={draft.sessionDmScope} onChange={setField("sessionDmScope")} options={DM_SCOPE_OPTIONS} /><TextField label="线程空闲小时" type="number" value={draft.threadBindingsIdleHours} onChange={setField("threadBindingsIdleHours")} /><TextField label="线程最大保留小时" type="number" value={draft.threadBindingsMaxAgeHours} onChange={setField("threadBindingsMaxAgeHours")} /><TextField label="回复前缀" value={draft.responsePrefix} onChange={setField("responsePrefix")} /><TextField label="确认表情" value={draft.ackReaction} onChange={setField("ackReaction")} /><SelectField label="确认表情范围" value={draft.ackReactionScope} onChange={setField("ackReactionScope")} options={ACK_SCOPE_OPTIONS} /><SelectField label="队列模式" value={draft.queueMode} onChange={setField("queueMode")} options={QUEUE_MODE_OPTIONS} /><TextField label="队列合并延迟毫秒" type="number" value={draft.queueDebounceMs} onChange={setField("queueDebounceMs")} /><TextField label="队列容量" type="number" value={draft.queueCap} onChange={setField("queueCap")} /><SelectField label="超限策略" value={draft.queueDrop} onChange={setField("queueDrop")} options={QUEUE_DROP_OPTIONS} /><ToggleField label="启用线程绑定" checked={draft.threadBindingsEnabled} onChange={setBool("threadBindingsEnabled")} /><ToggleField label="回复后移除确认" checked={draft.removeAckAfterReply} onChange={setBool("removeAckAfterReply")} /></FieldGrid></Panel>;
+  if (section === "extensions") return <Panel><PanelHead title="扩展与命令" sub="低频扩展对象以受保护 JSON 编辑：保存前会校验必须是对象，并走后端 schema 归一化。" /><FieldGrid><TextField label="命令配置 JSON" value={draft.commandsJson} onChange={setField("commandsJson")} multiline helper="commands：原生命令、/bash、/config、owner 显示等。" /><TextField label="内部钩子 JSON" value={draft.hooksJson} onChange={setField("hooksJson")} multiline helper="hooks.internal：总开关与各 hook 配置。" /><TextField label="MCP 配置 JSON" value={draft.mcpJson} onChange={setField("mcpJson")} multiline helper="mcp：会话 TTL 与 servers；复杂 server 字段需保持合法 JSON。" /><TextField label="技能配置 JSON" value={draft.skillsJson} onChange={setField("skillsJson")} multiline helper="skills：加载路径、watch、安装器、提示词限制等。" /><TextField label="ACP 配置 JSON" value={draft.acpJson} onChange={setField("acpJson")} multiline helper="acp：协议开关、调度、后端、允许 Agent、并发会话。" /><TextField label="插件配置 JSON" value={draft.pluginsJson} onChange={setField("pluginsJson")} multiline helper="plugins：全局开关、白名单、黑名单、加载路径、插槽和 entries。" /><TextField label="会话重置 JSON" value={draft.sessionResetJson} onChange={setField("sessionResetJson")} multiline helper="session.reset：daily/idle、按类型/渠道覆盖。" /></FieldGrid></Panel>;
+  if (section === "browserLogging") return <Panel><PanelHead title="浏览器与日志" sub="浏览器自动化和日志策略；复杂 profile / SSRF / 清理策略走受保护 JSON。" /><FieldGrid><TextField label="浏览器配置 JSON" value={draft.browserJson} onChange={setField("browserJson")} multiline helper="browser：CDP、profiles、超时、headless、tabCleanup、ssrfPolicy。" /><TextField label="日志配置 JSON" value={draft.loggingJson} onChange={setField("loggingJson")} multiline helper="logging：level、consoleLevel、file、maxFileBytes、redactSensitive。" /></FieldGrid></Panel>;
+  return <Panel><PanelHead title="高级证据" sub="服务商和密钥归模型网关管理；这里仅显示运行证据，避免无保护覆盖。" /><ResponsiveTable columns={["区域", "证据"]} rows={[<SelectableRow key="providers" id="providers" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">服务商</td><td className="px-4 py-3"><JsonSnippet value={data?.providers ?? []} /></td></SelectableRow>, <SelectableRow key="mcp" id="mcp" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">MCP 服务</td><td className="px-4 py-3"><JsonSnippet value={data?.mcp?.servers ?? {}} /></td></SelectableRow>, <SelectableRow key="commands" id="commands" selected={false} onSelect={() => undefined}><td className="px-4 py-3 font-medium text-ink-strong">命令</td><td className="px-4 py-3"><JsonSnippet value={data?.commands ?? {}} /></td></SelectableRow>]} empty="无高级证据" /></Panel>;
 }
 
 export function ConfigPage() {
@@ -351,16 +413,6 @@ export function ConfigPage() {
   }, [config.data?.checkedAt, patchConfig.isPending]);
 
   const data = config.data;
-  const diag = diagnostics.data;
-  const mcpServers = Object.entries(data?.mcp?.servers ?? {});
-  const commands = Object.entries(data?.commands ?? {});
-  const configRows = [
-    ...mcpServers.map(([name, value]) => ({ id: `mcp:${name}`, kind: "MCP server", name, value })),
-    ...commands.map(([name, value]) => ({ id: `command:${name}`, kind: "Command", name, value })),
-  ];
-  const [selectedConfigKey, setSelectedConfigKey] = useSelectedKey(configRows.map((item) => item.id));
-  const selectedConfig = configRows.find((item) => item.id === selectedConfigKey) ?? configRows[0];
-
   if (config.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[420px] w-full" /></div>;
   if (config.error) return <ErrorState title="无法加载 OpenClaw 配置摘要" description={config.error.message} />;
   const currentDraft = draftFromConfig(data);
@@ -374,7 +426,14 @@ export function ConfigPage() {
   };
   const save = () => {
     if (!data) return;
-    patchConfig.mutate(draftToPatch(draft, data), {
+    let patch: ConfigPatchPayload;
+    try {
+      patch = draftToPatch(draft, data);
+    } catch (error) {
+      toast.error("配置格式错误", { description: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    patchConfig.mutate(patch, {
       onSuccess: (result) => {
         setDraft(draftFromConfig(result.config));
         setSavedAt(new Date().toISOString());
@@ -387,19 +446,16 @@ export function ConfigPage() {
   };
   const activeMeta = CONFIG_SECTIONS.find((section) => section.id === activeSection) ?? CONFIG_SECTIONS[0];
   return <div className="grid gap-[18px]">
-    <ReadOnlyStrip>配置页拆分为基础、模型、策略、安全、网关、会话消息和高级证据子页面；可编辑字段统一走 保存接口，MCP、Commands、密钥和 服务商仍保留只读证据。</ReadOnlyStrip>
+    <ReadOnlyStrip>配置页按 Settings 子页面分层：基础、模型、策略、安全、网关、会话消息、扩展、浏览日志和高级证据；不使用左右常驻详情栏，低频 JSON 默认只在对应子页出现。</ReadOnlyStrip>
     <Panel>
       <WorkbenchToolbar title="OpenClaw 配置" description="分组设置工作台，避免一个巨型表单和无保护覆盖。"><RefreshButton loading={config.isFetching} onClick={() => { void config.refetch(); void diagnostics.refetch(); }} /><BoundaryBadge /><Badge variant={dirty ? "warn" : "mute"}>{dirty ? "有未保存修改" : `已检查 ${fmtDate(data?.checkedAt)}`}</Badge></WorkbenchToolbar>
       <SectionNav active={activeSection} onChange={setActiveSection} />
       <div className="grid gap-3 p-3 md:grid-cols-4"><StatTile label="当前子页" value={activeMeta.title} sub={activeMeta.desc} /><StatTile label="默认模型" value={data?.defaults.model ?? "—"} sub="OpenClaw 默认" /><StatTile label="网关端口" value={data?.gateway.port ?? "—"} sub={`${data?.gateway.mode ?? "—"} / ${data?.gateway.bind ?? "—"}`} /><StatTile label="安全" value={data?.sandbox.mode ?? "—"} sub={data?.tools.execSecurity ?? "—"} /></div>
     </Panel>
-    <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="grid gap-[18px]">
-        {renderSection(activeSection, draft, setField, setBool, data)}
-        {activeSection === "advanced" ? <ConfigEmptyHint>高级证据页当前只展示 服务商 / MCP / 命令 摘要；如需编辑这些对象，后续需要专门的校验、差异、备份和恢复流程。</ConfigEmptyHint> : null}
-        <Panel><div className="flex flex-wrap items-center gap-2 px-4 py-3"><Button size="sm" onClick={save} disabled={!dirty || patchConfig.isPending}>{patchConfig.isPending ? "保存中…" : "保存当前配置"}</Button><Button variant="ghost" size="sm" onClick={() => setDraft(currentDraft)} disabled={!dirty || patchConfig.isPending}>重置</Button>{savedAt ? <span className="text-xs text-muted">最近保存：{fmtDate(savedAt)}</span> : null}</div></Panel>
-      </div>
-      <DetailRail title={selectedConfig?.name ?? "运行边界"} subtitle={selectedConfig ? selectedConfig.kind : "来自 system diagnostics"}>{selectedConfig ? <><EvidenceRow label="类型" value={selectedConfig.kind} /><EvidenceRow label="名称" value={selectedConfig.name} /><div className="px-4 py-2"><JsonSnippet value={selectedConfig.value} /></div></> : null}<EvidenceRow label="OpenClaw 根目录" value={diag?.config.openclawRoot ?? "—"} /><EvidenceRow label="配置文件" value={diag?.config.openclawConfigFile ?? "—"} /><EvidenceRow label="网关 WebSocket" value={diag?.config.gatewayWsUrl ?? "—"} /><EvidenceRow label="控制台" value={diag?.config.gatewayControlUiBasePath ?? "—"} /><EvidenceRow label="运行目录" value={diag?.runtime.cwd ?? "—"} /></DetailRail>
+    <div className="grid gap-[18px]">
+      {renderSection(activeSection, draft, setField, setBool, data)}
+      {activeSection === "advanced" ? <ConfigEmptyHint>高级证据页当前只展示 服务商 / MCP / 命令 摘要；服务商、密钥和模型路由编辑请回到模型网关，避免平台配置页重复职责。</ConfigEmptyHint> : null}
+      <Panel><div className="flex flex-wrap items-center gap-2 px-4 py-3"><Button size="sm" onClick={save} disabled={!dirty || patchConfig.isPending}>{patchConfig.isPending ? "保存中…" : "保存当前配置"}</Button><Button variant="ghost" size="sm" onClick={() => setDraft(currentDraft)} disabled={!dirty || patchConfig.isPending}>重置</Button>{savedAt ? <span className="text-xs text-muted">最近保存：{fmtDate(savedAt)}</span> : null}</div></Panel>
     </div>
   </div>;
 }

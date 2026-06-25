@@ -15,6 +15,12 @@ test("OpenClaw platform workspace has one registry for all target sections", () 
     assert.match(workspace, new RegExp(`case "${id}"`));
   }
   assert.match(sections, /path: "\/platforms\/openclaw\/guard"/);
+  assert.match(sections, /label: "原生 Agent"/);
+  assert.match(sections, /label: "原生渠道"/);
+  assert.match(sections, /label: "原生绑定"/);
+  assert.match(sections, /不是 Tracevane CLI Agents/);
+  assert.match(sections, /不是 Tracevane IM 渠道/);
+  assert.match(sections, /不是 Tracevane IM 路由绑定/);
   assert.match(workspace, /OPENCLAW_SECTIONS\.map/);
   assert.match(workspace, /aria-label="OpenClaw 平台导航"/);
   assert.match(workspace, /id="openclaw-section-select"/);
@@ -67,7 +73,7 @@ test("OpenClaw guard service status probes live manager state instead of preserv
 });
 
 test("OpenClaw workbench pages keep selection hooks before loading returns to avoid blank screens", () => {
-  for (const pageName of ["ConfigPage", "AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+  for (const pageName of ["AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
     const page = read(`apps/web/src/features/platforms/openclaw/sections/${pageName}.tsx`);
     const loadingIndex = page.indexOf("isLoading");
     if (loadingIndex < 0) continue;
@@ -96,7 +102,13 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(page, /title: "模型"/);
   assert.match(page, /title: "安全"/);
   assert.match(page, /title: "网关"/);
+  assert.match(page, /title: "扩展"/);
+  assert.match(page, /title: "浏览日志"/);
   assert.match(page, /服务商.*MCP 服务.*命令/s);
+  assert.match(page, /parseJsonField/);
+  assert.match(page, /配置页按 Settings 子页面分层/);
+  assert.doesNotMatch(page, /DetailRail/);
+  assert.doesNotMatch(page, /xl:grid-cols-\[minmax\(0,1fr\)_380px\]/);
   assert.doesNotMatch(page, /config\.isLoading \|\| diagnostics\.isLoading/);
 });
 
@@ -108,7 +120,7 @@ test("OpenClaw workbench pages support refreshable selectable detail workflows",
   assert.match(components, /export function RefreshButton/);
   assert.match(components, /export function useSelectedKey/);
 
-  for (const page of ["ConfigPage", "AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
+  for (const page of ["AgentsPage", "SkillsPage", "ChannelsPage", "BindingsPage", "ServicesPage", "LogsPage", "DiagnosticsPage"]) {
     const source = read(`apps/web/src/features/platforms/openclaw/sections/${page}.tsx`);
     assert.match(source, /RefreshButton/);
     assert.match(source, /refetch\(\)/);
@@ -116,6 +128,11 @@ test("OpenClaw workbench pages support refreshable selectable detail workflows",
     assert.match(source, /SelectableRow/);
     assert.match(source, /DetailRail/);
   }
+  const configPage = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
+  assert.match(configPage, /RefreshButton/);
+  assert.match(configPage, /refetch\(\)/);
+  assert.match(configPage, /SectionNav/);
+  assert.doesNotMatch(configPage, /DetailRail/);
 });
 
 test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () => {
@@ -123,11 +140,12 @@ test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () =>
   const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");
   const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
   const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
-  assert.match(config, /配置页拆分为基础、模型、策略、安全、网关、会话消息和高级证据子页面/);
-  assert.match(config, /MCP、Commands、密钥和 服务商仍保留只读证据/);
-  assert.match(agents, /CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 \/ IDE/);
-  assert.match(channels, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
-  assert.match(bindings, /IM 会话级动态路由与投递队列仍在 IM 渠道域/);
+  assert.match(config, /配置页按 Settings 子页面分层/);
+  assert.match(config, /不使用左右常驻详情栏/);
+  assert.match(agents, /不是 Tracevane CLI Agents/);
+  assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
+  assert.match(channels, /不是 Tracevane IM 渠道/);
+  assert.match(bindings, /不是 Tracevane IM 路由绑定/);
   for (const source of [agents, channels, bindings]) {
     assert.doesNotMatch(source, /新增|删除|安装|保存密钥/);
   }
