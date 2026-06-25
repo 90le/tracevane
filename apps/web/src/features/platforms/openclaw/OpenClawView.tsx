@@ -43,7 +43,7 @@ function fmtTime(value: string | null | undefined): string {
  */
 export function OpenClawView() {
   const { isLoading, allFailed, error, refetchAll, sources, recoveryTone } =
-    usePlatformsAggregate();
+    usePlatformsAggregate({ includeDiagnostics: false });
 
   if (isLoading) {
     return (
@@ -106,8 +106,7 @@ export function OpenClawView() {
           OpenClaw 是 Tracevane 依赖的底层运行时平台。
         </p>
         <p className="mt-1 text-sm text-muted">
-          OpenClaw 配置、agents、channels、skills、service 与 doctor 的通用管理在官方 OpenClaw Web /
-          Control UI 中完成；本页只展示身份 / 健康 / 版本 / 诊断摘要。
+          OpenClaw 配置、Agent、Channel、绑定、Skills、服务与诊断已拆成上方子页面；本页只加载轻量身份 / 健康 / 版本摘要，避免总览首屏被重诊断拖慢。
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {controlUiUrl ? (
@@ -118,9 +117,9 @@ export function OpenClawView() {
               </a>
             </Button>
           ) : (
-            <Badge variant="warn" className="gap-1.5">
+            <Badge variant="mute" className="gap-1.5">
               <ExternalLink className="size-3.5" />
-              Control UI 地址未在诊断中暴露（检查 gateway controlUi 配置）
+              诊断未在总览首屏加载；需要外部 Control UI 时进入“诊断”页。
             </Badge>
           )}
           <Button variant="outline" asChild>
@@ -208,13 +207,13 @@ export function OpenClawView() {
 
       {/* Permissions / diagnostics summary */}
       <Panel>
-        <PanelHead title="权限与诊断摘要" sub="计数与诊断证据，写入留在官方 OpenClaw UI。" action={<Badge variant="mute">read-only</Badge>} />
+        <PanelHead title="权限与诊断摘要" sub="总览不主动触发重诊断；计数为空时进入诊断页刷新。" action={<Badge variant="mute">lite</Badge>} />
         <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <StatTile label="agents" value={counts?.agents ?? "—"} sub="官方 UI 管理" />
-          <StatTile label="channels" value={counts?.channels ?? "—"} sub="官方 UI 管理" />
-          <StatTile label="skills" value={counts?.skills ?? "—"} sub="官方 UI 管理" />
-          <StatTile label="bindings" value={counts?.bindings ?? "—"} sub="官方 UI 管理" />
-          <StatTile label="cron jobs" value={counts?.cronJobs ?? "—"} sub="官方 UI 管理" />
+          <StatTile label="agents" value={counts?.agents ?? "—"} sub="原生 Agent 页管理" />
+          <StatTile label="channels" value={counts?.channels ?? "—"} sub="原生渠道页管理" />
+          <StatTile label="skills" value={counts?.skills ?? "—"} sub="Skills 页查看" />
+          <StatTile label="bindings" value={counts?.bindings ?? "—"} sub="原生绑定页管理" />
+          <StatTile label="cron jobs" value={counts?.cronJobs ?? "—"} sub="诊断页查看" />
           <StatTile
             label="安全告警"
             value={diagnostics ? `${diagnostics.status.securityCritical}严重 / ${diagnostics.status.securityWarn}警告` : "—"}
@@ -229,7 +228,7 @@ export function OpenClawView() {
             <span className="min-w-0 flex-1">
               <strong className="block truncate text-base text-ink-strong">凭据与权限</strong>
               <span className="block truncate text-sm text-muted">
-                掩码摘要：本页不展示明文；token / OAuth / secret 写入留在官方 OpenClaw UI。
+                掩码摘要：本页不展示明文；token / OAuth / secret 写入留在对应子页面或后端确认流。
               </span>
             </span>
             <Badge variant="mute">masked</Badge>
@@ -250,8 +249,7 @@ export function OpenClawView() {
       </Panel>
 
       <p className="rounded-sm border border-line bg-panel-2 p-3 text-sm text-muted">
-        OpenClaw 的 config / agents / channels / skills / service / doctor 等通用管理由官方 OpenClaw UI
-        负责；本页只读，仅做平台身份 / 健康 / 版本 / 诊断摘要与链接出口。宿主恢复相关动作进入平台守护确认流。
+        OpenClaw 总览只做轻量健康和入口汇总；配置 / Agent / Channel / 绑定 / Skills / 服务 / 日志 / 诊断请进入对应子页面，宿主恢复相关动作进入平台守护确认流。
       </p>
     </div>
   );

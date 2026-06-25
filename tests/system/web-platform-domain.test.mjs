@@ -18,6 +18,11 @@ test("OpenClaw platform workspace has one registry for all target sections", () 
   assert.match(sections, /label: "原生 Agent"/);
   assert.match(sections, /label: "原生渠道"/);
   assert.match(sections, /label: "原生绑定"/);
+  assert.ok(
+    sections.indexOf('id: "channels"') < sections.indexOf('id: "bindings"') &&
+      sections.indexOf('id: "bindings"') < sections.indexOf('id: "skills"'),
+    "OpenClaw navigation keeps Channel / Binding together before Skills",
+  );
   assert.match(sections, /不是 Tracevane CLI Agents/);
   assert.match(sections, /不是 Tracevane IM 渠道/);
   assert.match(sections, /不是 Tracevane IM 路由绑定/);
@@ -107,6 +112,14 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(page, /原生命令/);
   assert.match(page, /启用 Browser/);
   assert.match(page, /常用项使用下拉、开关和数字控件/);
+  assert.match(page, /modelOptionsFromConfig/);
+  assert.match(page, /ModelListField/);
+  assert.match(page, /<SelectField label="默认模型"/);
+  assert.match(page, /<SelectField label="子代理模型"/);
+  assert.match(page, /<SelectField label="图片模型"/);
+  assert.match(page, /<SelectField label="PDF 模型"/);
+  assert.match(page, /<SelectField label="压缩模型"/);
+  assert.doesNotMatch(page, /<TextField label="默认模型"/);
   assert.doesNotMatch(page, /DetailRail/);
   assert.doesNotMatch(page, /高级证据/);
   assert.doesNotMatch(page, /parseJsonField/);
@@ -155,8 +168,9 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(agents, /保存/);
   assert.match(agents, /删除/);
   assert.match(agents, /modelOptions/);
-  assert.match(agents, /必须从可用模型列表选择模型/);
-  assert.match(agents, /模型不在可用模型列表中/);
+  assert.match(agents, /继承默认模型（不单独配置）/);
+  assert.match(agents, /留空可继承默认模型/);
+  assert.doesNotMatch(agents, /必须从可用模型列表选择模型/);
   assert.match(agents, /<SelectInput label="模型"/);
   assert.doesNotMatch(agents, /<TextInput label="模型"/);
   assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
@@ -197,6 +211,9 @@ test("Platform overview is a pure platform directory without owner handoff or le
   assert.match(overview, /Platform directory\. This page is a pure platform index/);
   assert.match(overview, /title="平台目录"/);
   assert.match(overview, /只列出真实第三方平台/);
+  assert.match(overview, /usePlatformsAggregate\(\{ includeDiagnostics: false \}\)/);
+  assert.match(aggregate, /includeDiagnostics \?\? false/);
+  assert.match(aggregate, /enabled: includeDiagnostics/);
   assert.doesNotMatch(overview, /title="关联 Tracevane 域"/);
   assert.doesNotMatch(overview, /title="兼容入口"/);
   assert.doesNotMatch(overview, /RelatedDomainRow/);

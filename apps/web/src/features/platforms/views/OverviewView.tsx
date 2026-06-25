@@ -61,7 +61,7 @@ function PlatformDirectoryRow({ card }: { card: PlatformCard }) {
  * links stay out of this page to keep the architecture unambiguous.
  */
 export function OverviewView() {
-  const { cards, isLoading, allFailed, error, refetchAll, sources } = usePlatformsAggregate();
+  const { cards, isLoading, allFailed, error, refetchAll, sources } = usePlatformsAggregate({ includeDiagnostics: false });
 
   if (isLoading) {
     return (
@@ -104,7 +104,7 @@ export function OverviewView() {
             </div>
             <h1 className="mt-3 text-2xl font-bold text-ink-strong">第三方平台与宿主运行时</h1>
             <p className="mt-1 max-w-4xl text-sm text-muted">
-              这里仅呈现真实平台身份、健康、原生能力和低频诊断。模型、IM、CLI、IDE 等工作流入口保持在各自主导航中。
+              这里仅呈现真实平台身份、健康、原生能力和低频诊断。模型、IM、CLI、Workspace 等工作流入口保持在各自主导航中。
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={refetchAll}>刷新状态</Button>

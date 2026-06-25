@@ -69,11 +69,13 @@ export function deriveControlUiUrl(
  * Loads only the evidence needed by the Platform directory and OpenClaw
  * summary. The platform homepage is intentionally a pure platform index; it no
  * longer queries Gateway or IM owner-domain status just to render handoff rows.
+ * Heavy diagnostics are opt-in so overview pages stay responsive.
  */
-export function usePlatformsAggregate() {
-  const healthQuery = useSystemHealthQuery({ retry: false });
-  const recoveryQuery = useOpenClawRecoveryStatusQuery({ retry: false });
-  const diagnosticsQuery = useSystemDiagnosticsQuery({ retry: false });
+export function usePlatformsAggregate(options: { includeDiagnostics?: boolean } = {}) {
+  const includeDiagnostics = options.includeDiagnostics ?? false;
+  const healthQuery = useSystemHealthQuery({ retry: false, staleTime: 15_000 });
+  const recoveryQuery = useOpenClawRecoveryStatusQuery({ retry: false, staleTime: 15_000 });
+  const diagnosticsQuery = useSystemDiagnosticsQuery({ retry: false, staleTime: 30_000, enabled: includeDiagnostics });
 
   const queries = [
     healthQuery,
@@ -109,14 +111,16 @@ export function usePlatformsAggregate() {
   }, [healthQuery.data, recoveryQuery.data]);
 
   const isLoading = queries.every((q) => q.isLoading);
-  const allFailed = queries.every((q) => q.isError);
+  const allFailed = includeDiagnostics
+    ? queries.every((q) => q.isError)
+    : healthQuery.isError && recoveryQuery.isError;
   const firstError = queries.find((q) => q.isError)?.error ?? null;
 
   const refetchAll = React.useCallback(() => {
     void healthQuery.refetch();
     void recoveryQuery.refetch();
-    void diagnosticsQuery.refetch();
-  }, [healthQuery, recoveryQuery, diagnosticsQuery]);
+    if (includeDiagnostics) void diagnosticsQuery.refetch();
+  }, [healthQuery, recoveryQuery, diagnosticsQuery, includeDiagnostics]);
 
   return {
     cards,

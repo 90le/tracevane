@@ -36,7 +36,7 @@ export function OpenClawWorkspace({ section: rawSection }: { section?: string })
   return <div className="grid min-w-0 gap-[18px]">
     <PlatformBreadcrumb items={[{ label: "平台", to: "/platforms" }, { label: "OpenClaw", to: "/platforms/openclaw" }, { label: active.label }]} />
     <header className="grid gap-3 border-b border-line pb-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-      <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold text-ink-strong">OpenClaw 平台工作台</h1><Badge variant="info">第三方平台</Badge><Badge variant="mute">{active.label}</Badge></div><p className="mt-1 max-w-4xl text-sm text-muted">{active.description} Platform 只承接 OpenClaw 原生平台能力；模型网关、IM、CLI、IDE 的写入口仍留在各自 owner 域。</p></div>
+      <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold text-ink-strong">OpenClaw 平台工作台</h1><Badge variant="info">第三方平台</Badge><Badge variant="mute">{active.label}</Badge></div><p className="mt-1 max-w-4xl text-sm text-muted">{active.description} Platform 只承接 OpenClaw 原生平台能力；模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。</p></div>
       <Button variant="outline" asChild><Link to="/platforms">返回平台目录</Link></Button>
     </header>
     <section className="rounded-md border border-line bg-panel shadow-sm">

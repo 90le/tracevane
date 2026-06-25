@@ -3,7 +3,7 @@
  *
  * `/platforms` is the third-party platform domain. It owns platform identity,
  * platform health, platform-native capabilities and cross-domain evidence. It
- * may show links into Gateway / IM / CLI / IDE, but those domains keep their
+ * may show links into Gateway / IM / CLI / Workspace, but those domains keep their
  * own write responsibility.
  */
 
