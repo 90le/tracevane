@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const serviceSource = readFileSync(new URL('../../apps/api/modules/chat/service.ts', import.meta.url), 'utf8');
+const openClawAdapterSource = readFileSync(new URL('../../apps/api/modules/chat/openclaw-runtime/adapter.ts', import.meta.url), 'utf8');
 
 function sliceFunctionBody(source, functionName) {
   const marker = `function ${functionName}`;
@@ -22,25 +23,23 @@ function sliceFunctionBody(source, functionName) {
   throw new Error(`${functionName} body was not closed`);
 }
 
-test('ChatService keeps raw OpenClaw gateway calls inside the runtime adapter boundary', () => {
+test('ChatService keeps raw OpenClaw gateway calls inside the OpenClaw runtime adapter boundary', () => {
   const adapterBody = sliceFunctionBody(serviceSource, 'createCurrentChatRuntimeAdapter');
-  assert.match(adapterBody, /requestGateway\(/, 'adapter should own gateway RPC calls');
-  assert.match(adapterBody, /requestViaSessionBridge</, 'adapter should own session bridge RPC calls');
+  assert.match(adapterBody, /createOpenClawGatewayChatRuntimeAdapter/, 'ChatService should delegate OpenClaw adapter creation');
+  assert.doesNotMatch(adapterBody, /requestGateway\(/, 'ChatService adapter selector must not own gateway RPC calls');
+  assert.doesNotMatch(adapterBody, /requestViaSessionBridge</, 'ChatService adapter selector must not own bridge RPC calls');
 
-  const withoutAdapter = serviceSource.replace(adapterBody, '');
   const bridgeDefinitionPattern = /async function requestViaSessionBridge<T>[\s\S]*?return await requestViaBridge<T>\(bridge, method, params\);\n  }/;
-  const serviceMain = withoutAdapter.replace(bridgeDefinitionPattern, '');
+  const serviceMain = serviceSource.replace(bridgeDefinitionPattern, '');
 
   assert.doesNotMatch(
     serviceMain,
     /requestGateway(?:<[^>]+>)?\(/,
     'ChatService main logic must not call requestGateway directly; add a ChatRuntimeAdapter method instead',
   );
-  assert.doesNotMatch(
-    serviceMain,
-    /requestViaSessionBridge(?:<[^>]+>)?\(/,
-    'ChatService main logic must not call requestViaSessionBridge directly; add a ChatRuntimeAdapter method instead',
-  );
+
+  assert.match(openClawAdapterSource, /requestGateway(?:<[^>]+>)?\(/, 'OpenClaw adapter owns gateway RPC calls');
+  assert.match(openClawAdapterSource, /requestViaSessionBridge/, 'OpenClaw adapter receives the bridge requester explicitly');
 });
 
 
