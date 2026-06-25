@@ -102,7 +102,7 @@ export interface QuickLaunchEntry {
   id: string;
   label: string;
   detail: string;
-  icon: AttentionIconKey | "chat" | "ide" | "external";
+  icon: AttentionIconKey | "chat" | "ide";
   to: string;
 }
 

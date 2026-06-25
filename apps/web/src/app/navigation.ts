@@ -3,7 +3,6 @@ import {
   Bot,
   Boxes,
   FolderOpen,
-  Globe,
   LayoutDashboard,
   LifeBuoy,
   MessageSquare,
@@ -11,7 +10,6 @@ import {
   Plug,
   ShieldCheck,
   Terminal,
-  Workflow,
 } from "lucide-react";
 
 export type NavGroup = "总览" | "运行" | "连接" | "证据" | "系统";
@@ -34,13 +32,11 @@ export const NAV_ITEMS: NavItem[] = [
   // 运行
   { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "ready" },
   { path: "/ide", label: "IDE", group: "运行", icon: Boxes, status: "ready" },
-  { path: "/long-tasks", label: "长任务", group: "运行", icon: Workflow, status: "ready" },
   { path: "/cli-agents", label: "CLI 代理", group: "运行", icon: Terminal, status: "ready" },
 
   // 连接
   { path: "/model-gateway", label: "模型网关", group: "连接", icon: Plug, status: "ready" },
   { path: "/im-channels", label: "IM 渠道", group: "连接", icon: Network, status: "ready" },
-  { path: "/external", label: "外部接入", group: "连接", icon: Globe, status: "ready" },
 
   // 证据
   { path: "/files", label: "文件", group: "证据", icon: FolderOpen, status: "ready" },

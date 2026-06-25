@@ -5,7 +5,6 @@ import {
   Boxes,
   CheckCircle2,
   CircleDot,
-  Globe,
   LifeBuoy,
   MessageSquare,
   Network,
@@ -58,7 +57,6 @@ const QUICK_LAUNCH_ICON: Record<
   bootstrap: Wrench,
   chat: MessageSquare,
   ide: Boxes,
-  external: Globe,
 };
 
 const SEVERITY_BADGE: Record<AttentionSeverity, { variant: "bad" | "warn" | "mute"; label: string }> = {
@@ -71,7 +69,6 @@ const QUICK_LAUNCH: QuickLaunchEntry[] = [
   { id: "chat", label: "对话", detail: "继续或开始 Agent 会话", icon: "chat", to: ROUTES.chat },
   { id: "model-gateway", label: "模型网关", detail: "Provider / 路由 / 用量", icon: "gateway", to: ROUTES.modelGateway },
   { id: "im-channels", label: "IM 渠道", detail: "绑定 / 会话 / 守护进程", icon: "channel", to: ROUTES.imChannels },
-  { id: "external", label: "外部接入", detail: "MCP / 工具 / 连接证据", icon: "external", to: ROUTES.external },
   { id: "recovery", label: "恢复", detail: "自愈守护与修复记录", icon: "recovery", to: ROUTES.recovery },
   { id: "cli-agents", label: "CLI 代理", detail: "本地 Agent CLI 运行", icon: "system", to: ROUTES.cliAgents },
 ];
@@ -263,7 +260,7 @@ export function DashboardPage() {
         <Panel>
           <PanelHead
             title="正在进行"
-            sub="活跃 Agent 会话与长任务（只读）"
+            sub="活跃 Agent 会话与任务监督（只读）"
             action={<Badge variant="mute">{activeWork.length}</Badge>}
           />
           {activeWork.length === 0 ? (

@@ -155,13 +155,13 @@ export function usePlatformsAggregate() {
       },
       {
         id: "external-mcp",
-        title: "外部 MCP / 工具",
-        category: "外部工具协议 · 能力证据",
-        summary: "MCP server 身份 / 能力 / 健康在外部接入聚合证据中展示。",
+        title: "集成证据",
+        category: "MCP / Skills / 工具能力 · 只读证据",
+        summary: "MCP server、Skills 与工具能力保留为平台下的只读集成证据。",
         status: "证据",
         tone: "info",
-        boundary: "MCP 工具调用与任务编排留在外部接入 / 任务工作台；平台只做归属链接。",
-        primary: { label: "查看外部接入", to: "/external" },
+        boundary: "外部能力只聚合证据；写入仍回到 Gateway、IM、Platform 或具体工具 owner。",
+        primary: { label: "查看集成证据", to: "/external" },
       },
     ];
   }, [healthQuery.data, recoveryQuery.data, gatewayQuery.data, channelQuery.data]);

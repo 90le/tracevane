@@ -38,8 +38,8 @@ function isExternalView(value: string | null): value is ExternalView {
 }
 
 /**
- * External Connections page. `/external` has NO dedicated backend — it is a
- * read-only AGGREGATION / evidence console that synthesizes third-party
+ * Integration Evidence page. `/external` has NO dedicated backend and is kept
+ * as a compatibility deep-link — it is a read-only AGGREGATION / evidence console that synthesizes third-party
  * connection state from existing source APIs (OpenClaw config/MCP, Skills,
  * Gateway app-connections, Channel Connector runtime, system diagnostics) and
  * links OUT to the owning domain for any write.
@@ -83,7 +83,7 @@ export function ExternalConnectionsPage() {
   return (
     <div className="grid gap-4">
       {/* Primary viewbar */}
-      <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="外部接入视图">
+      <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="集成证据视图">
         {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
           const active = resolvedView === view;
           return (

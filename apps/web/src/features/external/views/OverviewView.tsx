@@ -50,7 +50,7 @@ export function OverviewView({ goToView }: ExternalViewProps) {
   if (allFailed) {
     return (
       <ErrorState
-        title="无法加载外部连接证据"
+        title="无法加载集成证据"
         description={error?.message ?? "所有聚合来源均不可用。"}
         action={
           <Button variant="outline" size="sm" onClick={refetchAll}>
@@ -72,7 +72,7 @@ export function OverviewView({ goToView }: ExternalViewProps) {
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={attention ? "warn" : "ok"} className="gap-1.5">
             <PlugZap className="size-3.5" />
-            外部连接 · {connections.length}
+            集成证据 · {connections.length}
           </Badge>
           <span className="text-sm text-muted">
             MCP / tools / app connections / IM transports / HTTP bridge
@@ -83,7 +83,7 @@ export function OverviewView({ goToView }: ExternalViewProps) {
           </Badge>
         </div>
         <p className="mt-3 text-base text-ink-strong">
-          外部连接只暴露能力与健康证据，不把上游凭据带进浏览器。
+          集成证据只暴露能力与健康证据，不把上游凭据带进浏览器。
         </p>
         <p className="mt-1 text-sm text-muted">
           新增 / 测试 / 删除连接、OAuth 刷新与 App Connection apply / rollback 都回到对应主域确认流。
@@ -118,8 +118,8 @@ export function OverviewView({ goToView }: ExternalViewProps) {
           />
           {connections.length === 0 ? (
             <EmptyState
-              title="暂无外部连接"
-              description="当前来源 API 没有返回任何外部连接证据。"
+              title="暂无集成证据"
+              description="当前来源 API 没有返回任何集成证据。"
             />
           ) : (
             <div className="py-1.5">

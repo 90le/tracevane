@@ -79,7 +79,8 @@ type Confirm =
   | { kind: "terminal-end"; row: LongTaskRow; control: Extract<LongTaskControl, { kind: "terminal-end" }> };
 
 /**
- * `/long-tasks` — supervised long-running work console.
+ * `/long-tasks` — compatibility deep-link for supervised work. It is no longer
+ * a primary navigation domain; CLI Agents owns Agent Runs.
  *
  * Synthesizes four existing read sources (chat bootstrap, channel agent
  * sessions + events, terminal sessions, recovery status) into one honest
@@ -225,7 +226,7 @@ export function LongTasksPage() {
     <div className="grid gap-4">
       <Panel>
         <PanelHead
-          title="长任务监督台"
+          title="任务监督"
           sub="跨 Chat / IM 渠道 / 终端 / 恢复合成的受监督长任务；只展示真实状态，不把静默或子代理 fan-out 当作失败。"
           action={
             <Button variant="outline" size="sm" onClick={refetchAll} disabled={isFetching}>
@@ -245,7 +246,7 @@ export function LongTasksPage() {
         <div
           className="flex flex-wrap gap-1 border-t border-line px-3 py-2"
           role="tablist"
-          aria-label="长任务过滤"
+          aria-label="任务监督过滤"
         >
           {FILTERS.map((f) => {
             const active = filter === f.id;
@@ -279,7 +280,7 @@ export function LongTasksPage() {
             </div>
           ) : allError ? (
             <ErrorState
-              title="无法加载长任务证据"
+              title="无法加载任务监督证据"
               description="四个证据源都不可用，请确认后端在线后重试。"
               action={
                 <Button variant="outline" size="sm" onClick={refetchAll}>
@@ -289,10 +290,10 @@ export function LongTasksPage() {
             />
           ) : visible.length === 0 ? (
             <EmptyState
-              title="没有匹配的长任务"
+              title="没有匹配的任务"
               description={
                 filter === "all"
-                  ? "当前没有受监督的长任务证据。切换过滤或刷新。"
+                  ? "当前没有受监督任务证据。切换过滤或刷新。"
                   : "切换过滤查看其它状态的长任务。"
               }
               icon={<Timer />}
@@ -343,7 +344,7 @@ export function LongTasksPage() {
     />
   ) : (
     <div className="p-4">
-      <EmptyState title="未选择长任务" description="从左侧列表选择一个长任务查看证据。" icon={<Workflow />} />
+      <EmptyState title="未选择任务" description="从左侧列表选择一个任务查看证据。" icon={<Workflow />} />
     </div>
   );
 
@@ -501,7 +502,7 @@ function DetailInspector({
 
         {/* Supervision boundary note */}
         <div className="rounded-sm border border-line bg-panel-2 p-3 text-xs text-muted">
-          受监督长任务以结构化状态和最近证据为准。TUI 静默或子代理 fan-out 不代表失败。本页唯一的权威写操作是
+          受监督任务以结构化状态和最近证据为准。TUI 静默或子代理 fan-out 不代表失败。本页唯一的权威写操作是
           停止 / 回收渠道会话与结束终端会话；暂停 / 重试 / 重启请前往所属域处理。
         </div>
 
