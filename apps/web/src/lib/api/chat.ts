@@ -18,6 +18,7 @@ import type {
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
+  ChatFileUploadResponse,
   ChatSendAck,
   ChatSendRequest,
 } from "../../../../../types/chat";
@@ -26,9 +27,10 @@ import type {
  * Typed transport bindings for the Chat (Agent operations) HTTP API.
  *
  * One function per browser-consumed route in `apps/api/modules/chat/routes.ts`.
- * Server-to-server / media-bridge routes (media bytes, resource resolve,
- * multipart upload internals) are not part of the control workbench surface and
- * are intentionally not bound here. The SSE stream is consumed directly in the
+ * Server-to-server / media-bridge routes (media bytes, resource resolve) are not
+ * part of the control workbench surface. User-selected Chat file upload is bound
+ * here as multipart transport so the Composer can attach workspace-backed refs
+ * without base64 expansion. The SSE stream is consumed directly in the
  * query layer via `fetch` (see `lib/query/chat.ts`), not through `apiRequest`,
  * because it is a long-lived `text/event-stream` rather than a JSON response.
  *
@@ -180,6 +182,22 @@ export function assignChatSessionsToFolder(
   return apiRequest<ChatAssignSessionsToFolderResponse>(
     `${BASE}/organizer/sessions`,
     { method: "PATCH", body: jsonBody(payload) },
+  );
+}
+
+
+/** POST /api/chat/sessions/:key/upload — upload a user file and receive a sendable fileRef/resource. */
+export function uploadChatFile(
+  sessionKey: string,
+  file: File,
+): Promise<ChatFileUploadResponse> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("fileName", file.name);
+  if (file.type) form.append("mimeType", file.type);
+  return apiRequest<ChatFileUploadResponse>(
+    `${BASE}/sessions/${encodeSessionKey(sessionKey)}/upload`,
+    { method: "POST", body: form },
   );
 }
 

@@ -24,6 +24,7 @@ import {
   patchChatSession,
   resetChatSession,
   sendChatMessage,
+  uploadChatFile,
 } from "../api/chat";
 import type { ApiError } from "../api/errors";
 import type {
@@ -45,6 +46,7 @@ import type {
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
+  ChatFileUploadResponse,
   ChatSendAck,
   ChatSendRequest,
   ChatStreamEvent,
@@ -275,6 +277,24 @@ export function useAssignChatSessionsToFolderMutation(
       void queryClient.invalidateQueries({ queryKey: chatKeys.all });
       options?.onSuccess?.(data, variables, ...rest);
     },
+  });
+}
+
+
+/** Upload a user-selected file for a Chat session and return a sendable fileRef/resource. */
+export function useUploadChatFileMutation(
+  options?: MutationOpts<
+    ChatFileUploadResponse,
+    { sessionKey: string; file: File }
+  >,
+) {
+  return useMutation<
+    ChatFileUploadResponse,
+    ApiError,
+    { sessionKey: string; file: File }
+  >({
+    mutationFn: ({ sessionKey, file }) => uploadChatFile(sessionKey, file),
+    ...options,
   });
 }
 

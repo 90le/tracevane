@@ -21,6 +21,7 @@ import {
   useChatBootstrapQuery,
   useChatStream,
   useSendChatMessageMutation,
+  useUploadChatFileMutation,
 } from "@/lib/query/chat";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatKeys } from "@/lib/query/chat";
@@ -32,6 +33,7 @@ import {
 } from "./views";
 import type {
   ChatMessageItem,
+  ChatSendRequest,
   ChatStreamEvent,
   ChatToolCard,
   LiveAssistantTurn,
@@ -117,6 +119,7 @@ export function ChatWorkbenchPage() {
   const activeRunIdRef = React.useRef<string | null>(null);
 
   const sendMutation = useSendChatMessageMutation();
+  const uploadMutation = useUploadChatFileMutation();
   const abortMutation = useAbortChatSessionMutation();
 
   const refetchSelected = React.useCallback(() => {
@@ -249,12 +252,12 @@ export function ChatWorkbenchPage() {
     setListOpen(false);
   };
 
-  const handleSend = (text: string) => {
+  const handleSend = (payload: ChatSendRequest) => {
     if (!selectedKey) return;
     setLiveTurn({ ...EMPTY_TURN });
     setStreamEnabled(true);
     sendMutation.mutate(
-      { sessionKey: selectedKey, payload: { text } },
+      { sessionKey: selectedKey, payload },
       {
         onSuccess: (ack) => {
           activeRunIdRef.current = ack.runId;
@@ -276,6 +279,14 @@ export function ChatWorkbenchPage() {
       },
     );
   };
+
+  const handleUploadFile = React.useCallback(
+    async (file: File) => {
+      if (!selectedKey) throw new Error("请先选择一个会话");
+      return await uploadMutation.mutateAsync({ sessionKey: selectedKey, file });
+    },
+    [selectedKey, uploadMutation],
+  );
 
   const handleAbort = () => {
     if (!selectedKey) return;
@@ -438,6 +449,8 @@ export function ChatWorkbenchPage() {
             sending={sendMutation.isPending}
             sendDisabledReason={sendDisabledReason}
             onSend={handleSend}
+            onUploadFile={handleUploadFile}
+            uploading={uploadMutation.isPending}
             onAbort={handleAbort}
             onRetry={() => void bootstrap.refetch()}
           />

@@ -8,6 +8,7 @@ import {
   Send,
   Square,
   User,
+  X,
   Wrench,
 } from "lucide-react";
 
@@ -24,6 +25,10 @@ import type { ApiError } from "@/lib/api/errors";
 import type {
   ChatMessageItem,
   ChatMessageToolCallItem,
+  ChatFileUploadResponse,
+  ChatResourceItem,
+  ChatSendFileRef,
+  ChatSendRequest,
   ChatSessionPermissions,
   ChatToolCard,
   LiveAssistantTurn,
@@ -66,10 +71,44 @@ function ToolCallBlock({
   );
 }
 
+function ResourceChip({ resource }: { resource: ChatResourceItem }) {
+  const isImage = resource.kind === "image" && resource.status === "ready";
+  const href = resource.downloadUrl || resource.url;
+  if (isImage) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="group block w-fit max-w-[min(420px,80%)] overflow-hidden rounded-md border border-line bg-panel-2"
+      >
+        <img src={resource.url} alt={resource.fileName} className="max-h-64 w-auto object-contain" />
+        <span className="block truncate border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
+          {resource.fileName}
+        </span>
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex max-w-[80%] items-center gap-2 rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted hover:border-primary-line hover:text-ink"
+    >
+      <Paperclip className="size-3.5" />
+      <span className="truncate">{resource.fileName}</span>
+      {resource.status !== "ready" && <Badge variant="warn">缺失</Badge>}
+    </a>
+  );
+}
+
 function MessageBubble({ message }: { message: ChatMessageItem }) {
   const isUser = message.role === "user";
   const toolCalls = message.toolCalls ?? [];
   const processBlocks = message.processBlocks ?? [];
+  const resources = message.resources ?? [];
   return (
     <article className={cn("grid gap-1.5", isUser && "justify-items-end")}>
       <div className="flex items-center gap-1.5 text-xs text-subtle">
@@ -115,6 +154,14 @@ function MessageBubble({ message }: { message: ChatMessageItem }) {
           <span className="italic text-subtle">无文本内容。</span>
         )}
       </div>
+
+      {resources.length > 0 && (
+        <div className={cn("grid w-full gap-1.5", isUser && "justify-items-end")}>
+          {resources.map((resource) => (
+            <ResourceChip key={resource.id} resource={resource} />
+          ))}
+        </div>
+      )}
 
       {toolCalls.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1.5">
@@ -184,8 +231,10 @@ export function ConversationView({
   streaming,
   streamError,
   sending,
+  uploading,
   sendDisabledReason,
   onSend,
+  onUploadFile,
   onAbort,
   onRetry,
 }: {
@@ -198,14 +247,25 @@ export function ConversationView({
   streaming: boolean;
   streamError: string | null;
   sending: boolean;
+  uploading: boolean;
   /** Non-null when send is unavailable — shown as a disabled hint. */
   sendDisabledReason: string | null;
-  onSend: (text: string) => void;
+  onSend: (payload: ChatSendRequest) => void;
+  onUploadFile: (file: File) => Promise<ChatFileUploadResponse>;
   onAbort: () => void;
   onRetry: () => void;
 }) {
   const [draft, setDraft] = React.useState("");
+  const [fileRefs, setFileRefs] = React.useState<ChatSendFileRef[]>([]);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setDraft("");
+    setFileRefs([]);
+    setUploadError(null);
+  }, [sessionKey]);
 
   // Keep the transcript pinned to the bottom as content / stream grows.
   React.useEffect(() => {
@@ -214,12 +274,40 @@ export function ConversationView({
   }, [messages, liveTurn?.text, liveTurn?.toolCards.length, sessionKey]);
 
   const canSend = !sendDisabledReason;
+  const hasPayload = Boolean(draft.trim() || fileRefs.length);
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || !canSend || sending) return;
-    onSend(text);
+    if (!hasPayload || !canSend || sending || uploading) return;
+    onSend({ text, fileRefs: fileRefs.length ? fileRefs : undefined });
     setDraft("");
+    setFileRefs([]);
+    setUploadError(null);
+  };
+
+  const uploadFiles = async (files: FileList | File[]) => {
+    if (!sessionKey || !canSend) return;
+    const selected = Array.from(files).filter((file) => file.size >= 0);
+    if (!selected.length) return;
+    setUploadError(null);
+    try {
+      const uploaded = await Promise.all(selected.map((file) => onUploadFile(file)));
+      setFileRefs((prev) => [
+        ...prev,
+        ...uploaded.map((item) => ({
+          id: item.resource.id,
+          relativePath: item.relativePath,
+          resourceRef: item.resourceRef,
+          fileName: item.fileName,
+          kind: item.kind,
+          mimeType: item.mimeType,
+        } satisfies ChatSendFileRef)),
+      ]);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   return (
@@ -271,6 +359,37 @@ export function ConversationView({
             事件流连接出错：{streamError}
           </div>
         )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(event) => void uploadFiles(event.target.files ?? [])}
+        />
+        {fileRefs.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {fileRefs.map((file) => (
+              <span key={file.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-xs text-muted">
+                <Paperclip className="size-3" />
+                <span className="max-w-56 truncate">{file.fileName}</span>
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-subtle hover:bg-panel-3 hover:text-ink"
+                  aria-label={`移除 ${file.fileName}`}
+                  onClick={() => setFileRefs((prev) => prev.filter((item) => item.id !== file.id))}
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {uploadError && (
+          <div className="mb-2 flex items-center gap-2 rounded-sm border border-red bg-red-soft px-2.5 py-1.5 text-sm text-red">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            文件上传失败：{uploadError}
+          </div>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -292,12 +411,17 @@ export function ConversationView({
           )}
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" disabled={!sessionKey}>
-            <Paperclip />
-            附加上下文
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!sessionKey || !canSend || uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="animate-spin" /> : <Paperclip />}
+            {uploading ? "上传中…" : "上传文件"}
           </Button>
           <Button variant="ghost" size="sm" disabled={!sessionKey}>
-            @ 文件
+            @ 工作区文件
           </Button>
           <span className="flex-1" />
           {streaming && !liveTurn?.done && (
@@ -314,7 +438,7 @@ export function ConversationView({
           <Button
             variant="primary"
             size="sm"
-            disabled={!sessionKey || !canSend || sending || !draft.trim()}
+            disabled={!sessionKey || !canSend || sending || uploading || !hasPayload}
             onClick={submit}
           >
             {sending ? <Loader2 className="animate-spin" /> : <Send />}
