@@ -7624,14 +7624,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     },
 
     async createSession(agentId: string, payload: ChatCreateSessionRequest): Promise<ChatCreateSessionResponse> {
+      const normalizedAgentId = normalizeString(agentId, 'main');
       const availableAgents = resolveAvailableAgentIds(options.config);
-      if (!availableAgents.includes(agentId)) {
-        throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${agentId}' not found`));
+      const requestedAdapterKind = normalizeString(payload.runtimeTarget?.adapterKind);
+      const isNativeRuntime = !payload.runtimeTarget || requestedAdapterKind === 'native-cli';
+      if (!availableAgents.includes(normalizedAgentId) && !isNativeRuntime) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${normalizedAgentId}' not found`));
       }
 
       const row = buildTracevaneManagedSessionRow(
-        agentId,
-        normalizeString(payload.label, buildDefaultSessionLabel(agentId)),
+        normalizedAgentId,
+        normalizeString(payload.label, buildDefaultSessionLabel(normalizedAgentId)),
         await isGatewayConnected(),
         payload.runtimeTarget,
       );

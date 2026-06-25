@@ -357,6 +357,28 @@ test('created chat sessions default to native Codex when no runtime target is su
   }
 });
 
+test('native CLI chat sessions can be created without OpenClaw agent catalog', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-no-openclaw-agent-'));
+  try {
+    const context = await createContextForRoot(root);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native without OpenClaw',
+    });
+
+    assert.match(created.session.key, /^agent:main:agent-chat:direct:tracevane-/);
+    assert.equal(created.session.runtimeTarget.adapterKind, 'native-cli');
+    assert.equal(created.session.runtimeTarget.agent, 'codex');
+
+    await assert.rejects(
+      () => context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() }),
+      /Agent 'main' not found/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('created chat sessions persist runtime target metadata for future native CLI adapters', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-target-'));
   let gateway = null;
