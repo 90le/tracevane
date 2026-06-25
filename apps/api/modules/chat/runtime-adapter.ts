@@ -49,12 +49,36 @@ export interface ChatRuntimeDeleteResult {
   raw: Record<string, unknown>;
 }
 
+export interface ChatRuntimeListSessionsInput {
+  agentId: string;
+  limit: number;
+  includeDerivedTitles: boolean;
+  includeLastMessage: boolean;
+}
+
+export interface ChatRuntimeListSessionsResult {
+  sessions: Record<string, unknown>[];
+  raw: Record<string, unknown>;
+}
+
+export interface ChatRuntimeHistoryInput {
+  sessionKey: string;
+  limit: number;
+}
+
+export interface ChatRuntimeHistoryResult {
+  messages: Record<string, unknown>[];
+  raw: Record<string, unknown>;
+}
+
 export interface ChatRuntimeAdapter {
   kind: ChatRuntimeAdapterKind;
   send(input: ChatRuntimeSendInput): Promise<ChatRuntimeSendResult>;
   abort(input: ChatRuntimeAbortInput): Promise<ChatRuntimeAbortResult>;
   reset(input: ChatRuntimeResetInput): Promise<ChatRuntimeResetResult>;
   deleteSession(input: ChatRuntimeDeleteInput): Promise<ChatRuntimeDeleteResult>;
+  listSessions(input: ChatRuntimeListSessionsInput): Promise<ChatRuntimeListSessionsResult>;
+  readHistory(input: ChatRuntimeHistoryInput): Promise<ChatRuntimeHistoryResult>;
 }
 
 export function normalizeChatRuntimeSendResult(
@@ -90,6 +114,26 @@ export function normalizeChatRuntimeResetResult(raw: Record<string, unknown>): C
 export function normalizeChatRuntimeDeleteResult(raw: Record<string, unknown>): ChatRuntimeDeleteResult {
   return {
     ok: raw.ok !== false,
+    raw,
+  };
+}
+
+export function normalizeChatRuntimeListSessionsResult(raw: Record<string, unknown>): ChatRuntimeListSessionsResult {
+  const sessions = Array.isArray(raw.sessions)
+    ? raw.sessions.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
+  return {
+    sessions,
+    raw,
+  };
+}
+
+export function normalizeChatRuntimeHistoryResult(raw: Record<string, unknown>): ChatRuntimeHistoryResult {
+  const messages = Array.isArray(raw.messages)
+    ? raw.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : [];
+  return {
+    messages,
     raw,
   };
 }

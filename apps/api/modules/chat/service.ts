@@ -69,11 +69,15 @@ import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
 import {
   normalizeChatRuntimeAbortResult,
   normalizeChatRuntimeDeleteResult,
+  normalizeChatRuntimeHistoryResult,
+  normalizeChatRuntimeListSessionsResult,
   normalizeChatRuntimeResetResult,
   normalizeChatRuntimeSendResult,
   type ChatRuntimeAdapter,
   type ChatRuntimeAbortInput,
   type ChatRuntimeDeleteInput,
+  type ChatRuntimeHistoryInput,
+  type ChatRuntimeListSessionsInput,
   type ChatRuntimeResetInput,
   type ChatRuntimeSendInput,
 } from './runtime-adapter.js';
@@ -1624,13 +1628,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return inMemory.materialized;
     }
     try {
-      const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+      const payload = await createCurrentChatRuntimeAdapter().listSessions({
         agentId: session.agentId,
         limit: 200,
         includeDerivedTitles: false,
         includeLastMessage: false,
       });
-      const rows = Array.isArray(payload.sessions) ? payload.sessions : [];
+      const rows = payload.sessions;
       return rows.some((row) => normalizeString((row as Record<string, unknown>)?.key) === session.key);
     } catch {
       return false;
@@ -3269,13 +3273,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
     } else {
       try {
-        const payload = await requestGateway<Record<string, unknown>>(options.config, 'chat.history', {
+        const payload = await createCurrentChatRuntimeAdapter().readHistory({
           sessionKey,
           limit: 200,
         });
-        const gatewayRawMessages = Array.isArray(payload.messages)
-          ? payload.messages.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') as Record<string, unknown>[]
-          : [];
+        const gatewayRawMessages = payload.messages;
         const gatewayCanonicalEntries = gatewayRawMessages.length
           ? gatewayRawMessages.flatMap((item, index) => {
             const mapped = buildCanonicalEntryFromRaw(item, index, {
@@ -6397,6 +6399,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         });
         return normalizeChatRuntimeDeleteResult(raw as Record<string, unknown>);
       },
+      async listSessions(input: ChatRuntimeListSessionsInput) {
+        const raw = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+          agentId: input.agentId,
+          limit: input.limit,
+          includeDerivedTitles: input.includeDerivedTitles,
+          includeLastMessage: input.includeLastMessage,
+        });
+        return normalizeChatRuntimeListSessionsResult(raw);
+      },
+      async readHistory(input: ChatRuntimeHistoryInput) {
+        const raw = await requestGateway<Record<string, unknown>>(options.config, 'chat.history', {
+          sessionKey: input.sessionKey,
+          limit: input.limit,
+        });
+        return normalizeChatRuntimeHistoryResult(raw);
+      },
     };
   }
 
@@ -6851,13 +6869,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       if (!localOnly) {
         try {
-          const payload = await requestGateway<Record<string, unknown>>(options.config, 'sessions.list', {
+          const payload = await createCurrentChatRuntimeAdapter().listSessions({
             agentId,
             limit: sessionListLimit,
             includeDerivedTitles,
             includeLastMessage,
           });
-          const gatewayRows = Array.isArray(payload.sessions) ? payload.sessions : [];
+          const gatewayRows = payload.sessions;
           for (const row of gatewayRows) {
             if (!row || typeof row !== 'object') continue;
             const mapped = mapGatewaySessionRow(agentId, row as Record<string, unknown>, gatewayConnected);
