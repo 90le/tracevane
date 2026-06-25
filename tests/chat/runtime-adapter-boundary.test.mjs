@@ -45,8 +45,23 @@ test('ChatService keeps raw OpenClaw gateway calls inside the OpenClaw runtime a
 
 test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw runtime targets', () => {
   assert.ok(
-    serviceSource.includes("function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {\n    return Boolean(session && session.runtimeTarget?.adapterKind !== 'native-cli');\n  }"),
-    'OpenClaw bridge eligibility should be explicit and exclude native CLI sessions',
+    serviceSource.includes("function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {\n    return session?.runtimeTarget?.adapterKind === 'openclaw-gateway';\n  }"),
+    'OpenClaw bridge eligibility must be explicit and allow only OpenClaw runtime sessions',
+  );
+
+
+  const keepAliveBody = sliceFunctionBody(serviceSource, 'shouldKeepBridgeAlive');
+  assert.match(
+    keepAliveBody,
+    /if \(!shouldUseOpenClawGatewayBridge\(session\)\) return false;/,
+    'bridge keepalive must dispose if a session is migrated away from OpenClaw runtime',
+  );
+
+  const ensureBridgeBody = sliceFunctionBody(serviceSource, 'ensureSessionBridge');
+  assert.match(
+    ensureBridgeBody,
+    /if \(!shouldUseOpenClawGatewayBridge\(session\)\) \{/,
+    'bridge creation must reject native-cli and future non-OpenClaw sessions',
   );
 
   const attachStart = serviceSource.indexOf('async attachGatewayClient(');

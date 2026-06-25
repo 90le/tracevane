@@ -6053,8 +6053,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function shouldKeepBridgeAlive(sessionKey: string): boolean {
     const bridge = sessionBridges.get(sessionKey);
     if (!bridge) return false;
+    const session = getTracevaneSession(sessionKey)?.row || null;
+    if (!shouldUseOpenClawGatewayBridge(session)) return false;
     if (bridge.subscribers > 0) return true;
-    return Boolean(getTracevaneSession(sessionKey)?.row.runtime.activeRunId);
+    return Boolean(session?.runtime.activeRunId);
   }
 
   function bridgeSessionOwnsRunId(sessionKey: string, runId: unknown): boolean {
@@ -6115,6 +6117,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   async function connectSessionBridge(bridge: SessionGatewayBridge): Promise<void> {
+    const session = getTracevaneSession(bridge.sessionKey)?.row || null;
+    if (!shouldUseOpenClawGatewayBridge(session)) {
+      disposeSessionBridge(bridge.sessionKey);
+      throw new ChatServiceError(400, buildChatError(
+        'invalid_request',
+        'OpenClaw Gateway bridge is only available for OpenClaw runtime sessions.',
+        'gateway',
+        false
+      ));
+    }
     if (bridge.readyPromise) return await bridge.readyPromise;
 
     const auth = loadGatewayAuthContext(options.config);
@@ -6391,6 +6403,15 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   async function ensureSessionBridge(sessionKey: string): Promise<SessionGatewayBridge> {
+    const session = getTracevaneSession(sessionKey)?.row || null;
+    if (!shouldUseOpenClawGatewayBridge(session)) {
+      throw new ChatServiceError(400, buildChatError(
+        'invalid_request',
+        'OpenClaw Gateway bridge is only available for OpenClaw runtime sessions.',
+        'gateway',
+        false
+      ));
+    }
     const existing = sessionBridges.get(sessionKey);
     if (existing) {
       await connectSessionBridge(existing);
@@ -6781,7 +6802,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {
-    return Boolean(session && session.runtimeTarget?.adapterKind !== 'native-cli');
+    return session?.runtimeTarget?.adapterKind === 'openclaw-gateway';
   }
 
   function createCurrentChatRuntimeAdapter(session?: ChatSessionRow | null): ChatRuntimeAdapter {
