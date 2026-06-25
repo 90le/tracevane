@@ -65,7 +65,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
   if (statusQuery.error) {
     return (
       <ErrorState
-        title="无法加载恢复状态"
+        title="无法加载平台守护状态"
         description={statusQuery.error.message}
         action={
           <Button variant="outline" size="sm" onClick={() => void statusQuery.refetch()}>
@@ -92,7 +92,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={stateBadge.variant} className="gap-1.5">
             <HeartPulse className="size-3.5" />
-            System Guard · {stateBadge.label}
+            OpenClaw 平台守护 · {stateBadge.label}
           </Badge>
           <span className="text-sm text-muted">
             守护进程 v{status.daemon.version}
@@ -113,9 +113,9 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
         </div>
         <p className="mt-3 text-base text-ink-strong">
           {probe.gatewayReachable === true
-            ? "网关可达，自愈守护处于待命状态。"
+            ? "网关可达，OpenClaw 平台守护处于待命状态。"
             : probe.gatewayReachable === false
-              ? "网关探测失败，自愈守护正在跟踪故障窗口。"
+              ? "网关探测失败，OpenClaw 平台守护正在跟踪故障窗口。"
               : "网关探测状态未知。"}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -145,7 +145,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
             </span>
           </div>
           <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">恢复服务</span>
+            <span className="text-xs text-subtle">平台守护服务</span>
             <div className="mt-1 text-xl font-semibold text-ink-strong">
               {service.installed ? service.activeState || "已安装" : "未安装"}
             </div>
@@ -244,11 +244,11 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
 
         {/* Policy boundaries — read-only live policy. */}
         <Panel>
-          <PanelHead title="策略边界" sub="自愈守护的当前配置（只读）" />
+          <PanelHead title="策略边界" sub="OpenClaw 平台守护的当前配置（只读）" />
           <div className="py-1.5">
             <Row
               icon={<ShieldCheck />}
-              title="自愈守护"
+              title="平台守护"
               subtitle={`探测间隔 ${formatDuration(policy.checkIntervalMs)} · 超时 ${formatDuration(policy.probeTimeoutMs)}`}
               trailing={
                 <Badge variant={flag(policy.enabled).variant}>{flag(policy.enabled).label}</Badge>
@@ -291,7 +291,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
       {/* Notes surfaced by the recovery daemon — live, not fabricated. */}
       {status.notes.length > 0 && (
         <Panel>
-          <PanelHead title="守护说明" sub="恢复守护给出的最新说明" />
+          <PanelHead title="守护说明" sub="OpenClaw 平台守护给出的最新说明" />
           <div className="grid gap-1.5 p-4">
             {status.notes.map((note, index) => (
               <p key={`${index}-${note}`} className="text-sm text-muted">

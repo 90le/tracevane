@@ -13,7 +13,7 @@ export const ROUTES = {
   chat: "/chat",
   imChannels: "/im-channels",
   cliAgents: "/cli-agents",
-  recovery: "/recovery",
+  recovery: "/platforms/openclaw/recovery",
 } as const;
 
 const STATUS_TONE: Record<LongTaskStatus, LongTaskTone> = {
@@ -337,8 +337,8 @@ export function buildLongTasks(sources: LongTaskSources): LongTaskRow[] {
     const status = classifyStatus(recovery.status);
     rows.push({
       id: "recovery:monitor",
-      title: "自愈守护监控",
-      sourceLabel: "Recovery 守护",
+      title: "平台守护监控",
+      sourceLabel: "OpenClaw 平台守护",
       source: "recovery",
       rawStatus: recovery.status,
       status,
@@ -350,7 +350,7 @@ export function buildLongTasks(sources: LongTaskSources): LongTaskRow[] {
           : `守护状态 ${recovery.status}`,
       updatedAt: newest(recovery.checkedAt, recovery.probe.checkedAt),
       to: ROUTES.recovery,
-      toLabel: "在恢复页查看",
+      toLabel: "在平台守护查看",
       evidence: [
         { label: "状态", value: recovery.status },
         {

@@ -23,7 +23,7 @@ import type {
 export const ROUTES = {
   modelGateway: "/model-gateway",
   imChannels: "/im-channels",
-  recovery: "/recovery",
+  recovery: "/platforms/openclaw/recovery",
   platforms: "/platforms",
   chat: "/chat",
   cliAgents: "/cli-agents",
@@ -124,7 +124,7 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
     });
   }
 
-  // 4. Recovery daemon unhealthy / repairing / failed → /recovery.
+  // 4. OpenClaw substrate guard unhealthy / repairing / failed → Platform guard.
   const recovery = sources.recovery;
   if (recovery && recovery.status !== "healthy") {
     const note = recovery.notes?.[0];
@@ -132,8 +132,8 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
       recovery.probe.gatewayReachable === false ? "网关探测失败" : note;
     items.push({
       id: "recovery-unhealthy",
-      title: `自愈守护：${recovery.status}`,
-      detail: probeNote ?? `恢复状态为 ${recovery.status}，建议检查。`,
+      title: `平台守护：${recovery.status}`,
+      detail: probeNote ?? `平台守护状态为 ${recovery.status}，建议检查。`,
       severity:
         recovery.status === "failed"
           ? "high"
@@ -142,17 +142,17 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
             : "low",
       icon: "recovery",
       to: ROUTES.recovery,
-      actionLabel: "查看恢复",
+      actionLabel: "查看平台守护",
     });
   } else if (recovery && recovery.lastRepair && recovery.lastRepair.ok === false) {
     items.push({
       id: "recovery-last-repair-failed",
-      title: "上次自愈修复失败",
+      title: "上次平台守护修复失败",
       detail: recovery.lastRepair.error || "最近一次修复未成功，建议复核。",
       severity: "medium",
       icon: "recovery",
       to: ROUTES.recovery,
-      actionLabel: "查看恢复",
+      actionLabel: "查看平台守护",
     });
   }
 
@@ -309,7 +309,7 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
             : "warn";
     pillars.push({
       id: "recovery",
-      label: "自愈守护",
+      label: "平台守护",
       tone,
       value: recovery.status,
       detail:
@@ -323,10 +323,10 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   } else {
     pillars.push({
       id: "recovery",
-      label: "自愈守护",
+      label: "平台守护",
       tone: "mute",
       value: "未知",
-      detail: "恢复状态不可用",
+      detail: "平台守护状态不可用",
       to: ROUTES.recovery,
     });
   }

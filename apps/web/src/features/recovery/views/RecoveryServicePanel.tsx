@@ -37,10 +37,10 @@ function serviceStateBadge(activeState: string): {
 }
 
 /**
- * Recovery daemon service status + guarded lifecycle controls for the Overview
+ * OpenClaw platform guard service status + guarded lifecycle controls for the Overview
  * console. Collapsible secondary placement. The safe `status` refresh sits up
  * front; `restart` and `stop` REWRITE service state and are gated behind a
- * strong confirmation (restart briefly drops the self-heal guard; stop disables
+ * strong confirmation (restart briefly drops the platform guard; stop disables
  * it entirely) — never one-click. Each action surfaces the real command log as
  * evidence.
  *
@@ -96,9 +96,9 @@ export function RecoveryServicePanel() {
           <Server />
         </span>
         <div className="min-w-0">
-          <h3 className="text-md font-semibold text-ink-strong">恢复守护服务</h3>
+          <h3 className="text-md font-semibold text-ink-strong">平台守护服务</h3>
           <span className="truncate text-sm text-subtle">
-            {data?.serviceName ?? "tracevane-recovery.service"}
+            {data?.serviceName ?? "openclaw-recovery.service"}
           </span>
         </div>
         <Badge variant={badge.variant} className="ml-auto">
@@ -185,7 +185,7 @@ export function RecoveryServicePanel() {
                   危险操作
                 </div>
                 <p className="text-xs text-muted">
-                  停止恢复守护服务会关闭自愈监控：网关失联时将不再自动探测与修复，直到你重新启动服务。
+                  停止平台守护服务会关闭 OpenClaw 底座监控：网关失联时将不再自动探测与修复，直到你重新启动服务。
                 </p>
                 <Button
                   variant="ghost"
@@ -209,10 +209,10 @@ export function RecoveryServicePanel() {
             <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
               <RotateCw />
             </span>
-            <DialogTitle>重启恢复守护服务</DialogTitle>
+            <DialogTitle>重启平台守护服务</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            重启会通过 supervisor 执行命令重写服务运行状态，期间自愈监控会短暂中断（通常数秒）。完成后会展示实际执行的命令证据。确认重启？
+            重启会通过 supervisor 执行命令重写服务运行状态，期间平台守护监控会短暂中断（通常数秒）。完成后会展示实际执行的命令证据。确认重启？
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
@@ -221,7 +221,7 @@ export function RecoveryServicePanel() {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => run("restart", "已重启恢复守护服务")}
+              onClick={() => run("restart", "已重启平台守护服务")}
               disabled={pending}
             >
               {pending ? "重启中…" : "确认重启"}
@@ -237,10 +237,10 @@ export function RecoveryServicePanel() {
             <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
               <AlertTriangle />
             </span>
-            <DialogTitle>停止恢复守护服务</DialogTitle>
+            <DialogTitle>停止平台守护服务</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            停止后自愈守护将下线：网关探测与自动修复都不再运行，直到你手动重新启动服务。这会重写服务运行状态。确认停止？
+            停止后 OpenClaw 平台守护将下线：网关探测与自动修复都不再运行，直到你手动重新启动服务。这会重写服务运行状态。确认停止？
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
@@ -249,7 +249,7 @@ export function RecoveryServicePanel() {
             <Button
               variant="danger"
               size="sm"
-              onClick={() => run("stop", "已停止恢复守护服务")}
+              onClick={() => run("stop", "已停止平台守护服务")}
               disabled={pending}
             >
               {pending ? "停止中…" : "确认停止"}

@@ -23,7 +23,7 @@ function isRecoveryView(value: string | null): value is RecoveryView {
 }
 
 /**
- * Recovery (System Guard) page. Owns the primary `viewbar` tabs over the
+ * Platform Guard page for OpenClaw substrate recovery. Owns the primary `viewbar` tabs over the
  * `overview | issues | events | backups` view set. The active view is driven
  * from the URL search param (`?view=`) so views are deep-linkable and the
  * browser back/forward buttons work. Content lives in `./views`.
@@ -70,7 +70,7 @@ export function RecoveryPage() {
     <div className="grid gap-4">
       <nav
         className="flex flex-wrap gap-1 border-b border-line pb-2"
-        aria-label="恢复视图"
+        aria-label="平台守护视图"
       >
         {TABS.map(({ view, label, icon: Icon }) => {
           const active = resolvedView === view;

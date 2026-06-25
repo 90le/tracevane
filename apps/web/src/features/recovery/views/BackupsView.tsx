@@ -162,7 +162,7 @@ export function BackupsView() {
               <code className="break-all font-mono text-xs text-ink-strong">{evidence.restoredId}</code>
             </p>
             <p className="text-muted">
-              <span className="text-subtle">恢复后恢复状态：</span>
+              <span className="text-subtle">恢复后平台守护状态：</span>
               {evidence.statusAfter}
             </p>
           </div>

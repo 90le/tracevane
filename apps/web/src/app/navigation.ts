@@ -4,7 +4,6 @@ import {
   Boxes,
   FolderOpen,
   LayoutDashboard,
-  LifeBuoy,
   MessageSquare,
   Network,
   Plug,
@@ -43,7 +42,6 @@ export const NAV_ITEMS: NavItem[] = [
   { path: "/approvals", label: "审批", group: "证据", icon: ShieldCheck, status: "ready" },
 
   // 系统
-  { path: "/recovery", label: "恢复", group: "系统", icon: LifeBuoy, status: "ready" },
   { path: "/platforms", label: "平台", group: "系统", icon: Bot, status: "ready" },
 ];
 

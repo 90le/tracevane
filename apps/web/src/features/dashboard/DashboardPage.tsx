@@ -69,7 +69,6 @@ const QUICK_LAUNCH: QuickLaunchEntry[] = [
   { id: "chat", label: "对话", detail: "继续或开始 Agent 会话", icon: "chat", to: ROUTES.chat },
   { id: "model-gateway", label: "模型网关", detail: "Provider / 路由 / 用量", icon: "gateway", to: ROUTES.modelGateway },
   { id: "im-channels", label: "IM 渠道", detail: "绑定 / 会话 / 守护进程", icon: "channel", to: ROUTES.imChannels },
-  { id: "recovery", label: "恢复", detail: "自愈守护与修复记录", icon: "recovery", to: ROUTES.recovery },
   { id: "cli-agents", label: "CLI 代理", detail: "本地 Agent CLI 运行", icon: "system", to: ROUTES.cliAgents },
 ];
 
@@ -319,11 +318,11 @@ export function DashboardPage() {
       <Panel>
         <PanelHead
           title="近期动态"
-          sub="来自恢复事件、运行摘要与渠道驱动"
+          sub="来自平台守护事件、运行摘要与渠道驱动"
           action={
             <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.recovery)}>
               <LifeBuoy className="size-3.5" />
-              恢复日志
+              平台守护日志
             </Button>
           }
         />

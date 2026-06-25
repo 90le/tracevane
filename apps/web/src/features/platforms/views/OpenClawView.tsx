@@ -37,8 +37,9 @@ function fmtTime(value: string | null | undefined): string {
  * version, service & self-heal health, and a permissions / diagnostics
  * summary derived from existing source APIs. Generic OpenClaw management
  * (config / agents / channels / skills / service) is delegated to the official
- * OpenClaw Control / Web UI and surfaced as a prominent link-out; recovery
- * actions deep-link to `/recovery`. Read-only — NO CRUD forms.
+ * OpenClaw Control / Web UI and surfaced as a prominent link-out; substrate
+ * guard / recovery actions live under `/platforms/openclaw/recovery`.
+ * Read-only for generic OpenClaw CRUD — NO duplicated management forms.
  */
 export function OpenClawView() {
   const { isLoading, allFailed, error, refetchAll, sources, recoveryTone } =
@@ -123,9 +124,9 @@ export function OpenClawView() {
             </Badge>
           )}
           <Button variant="outline" asChild>
-            <Link to="/recovery">
+            <Link to="/platforms/openclaw/recovery">
               <LifeBuoy />
-              自愈守护与恢复
+              平台守护与恢复
             </Link>
           </Button>
         </div>
@@ -169,16 +170,16 @@ export function OpenClawView() {
         <Panel>
           <PanelHead
             title="服务与自愈健康"
-            sub="守护进程 / 探针 / 修复来自恢复状态。"
+            sub="守护进程 / 探针 / 修复来自平台守护状态。"
             action={
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/recovery">查看恢复</Link>
+                <Link to="/platforms/openclaw/recovery">查看平台守护</Link>
               </Button>
             }
           />
           <div className="py-1.5">
             <EvidenceRow
-              label="自愈状态"
+              label="平台守护状态"
               value={recState ? <ToneBadge tone={recoveryTone(recState)}>{recState}</ToneBadge> : "—"}
             />
             <EvidenceRow label="守护版本" value={recovery?.daemon.version || "—"} />
@@ -250,7 +251,7 @@ export function OpenClawView() {
 
       <p className="rounded-sm border border-line bg-panel-2 p-3 text-sm text-muted">
         OpenClaw 的 config / agents / channels / skills / service / doctor 等通用管理由官方 OpenClaw UI
-        负责；本页只读，仅做平台身份 / 健康 / 版本 / 诊断摘要与链接出口。恢复相关动作回到恢复域确认流。
+        负责；本页只读，仅做平台身份 / 健康 / 版本 / 诊断摘要与链接出口。宿主恢复相关动作进入平台守护确认流。
       </p>
     </div>
   );

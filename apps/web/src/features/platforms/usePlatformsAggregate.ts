@@ -125,9 +125,9 @@ export function usePlatformsAggregate() {
         status: ocTone === "ok" ? "已连接" : ocTone === "bad" ? "异常" : "需关注",
         tone: ocTone,
         boundary:
-          "OpenClaw 是底层平台支撑：配置 / agents / channels / skills / service 的管理留在官方 OpenClaw UI；恢复留在恢复域。",
+          "OpenClaw 是底层平台支撑：配置 / agents / channels / skills / service 的通用管理留在官方 OpenClaw UI；宿主恢复并入平台守护。",
         primary: { label: "查看 OpenClaw 平台", to: "/platforms/openclaw" },
-        secondary: { label: "自愈守护", to: "/recovery" },
+        secondary: { label: "平台守护", to: "/platforms/openclaw/recovery" },
       },
       {
         id: "model-gateway",

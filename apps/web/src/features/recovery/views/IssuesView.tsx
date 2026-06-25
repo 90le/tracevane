@@ -59,8 +59,8 @@ function detectIssues(status: OpenClawRecoveryState): DetectedIssue[] {
   if (status.status === "failed" || status.status === "degraded") {
     issues.push({
       id: `state-${status.status}`,
-      title: status.status === "failed" ? "恢复状态：失败" : "恢复状态：降级",
-      detail: status.notes[0] ?? "恢复守护标记了非健康状态。",
+      title: status.status === "failed" ? "平台守护状态：失败" : "平台守护状态：降级",
+      detail: status.notes[0] ?? "OpenClaw 平台守护标记了非健康状态。",
       severity: status.status === "failed" ? "high" : "medium",
     });
   }
@@ -216,7 +216,7 @@ export function IssuesView() {
       <Panel>
         <PanelHead
           title="检测到的问题"
-          sub="依据网关探测、恢复状态与服务状态推导"
+          sub="依据网关探测、平台守护状态与服务状态推导"
           action={
             <Badge variant={issues.length === 0 ? "ok" : "warn"}>
               {issues.length === 0 ? "无异常" : `${issues.length} 项`}
@@ -227,7 +227,7 @@ export function IssuesView() {
           <EmptyState
             icon={<CheckCircle2 />}
             title="未检测到问题"
-            description="网关可达、恢复状态健康。仍可运行探测以刷新诊断证据。"
+            description="网关可达、平台守护状态健康。仍可运行探测以刷新诊断证据。"
           />
         ) : (
           <div className="py-1.5">

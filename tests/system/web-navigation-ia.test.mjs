@@ -17,15 +17,22 @@ test("primary navigation exposes core operating domains, not legacy aggregation 
   assert.doesNotMatch(navigation, /label: "外部接入"/);
   assert.doesNotMatch(navigation, /path: "\/long-tasks"/);
   assert.doesNotMatch(navigation, /label: "长任务"/);
+  assert.match(navigation, /path: "\/platforms"/);
+  assert.doesNotMatch(navigation, /path: "\/recovery"/);
+  assert.doesNotMatch(navigation, /label: "恢复"/);
 });
 
-test("legacy external and long-tasks routes remain compatible deep-links", () => {
+test("legacy external, long-tasks and recovery routes remain compatible deep-links", () => {
   const router = read("apps/web/src/app/router.tsx");
+  const platforms = read("apps/web/src/features/platforms/PlatformsPage.tsx");
   const external = read("apps/web/src/features/external/ExternalConnectionsPage.tsx");
   const longTasks = read("apps/web/src/features/long-tasks/LongTasksPage.tsx");
 
   assert.match(router, /path="\/external"/);
   assert.match(router, /path="\/long-tasks"/);
+  assert.match(router, /path="\/recovery" element=\{<Navigate to="\/platforms\/openclaw\/recovery" replace \/>\}/);
+  assert.match(platforms, /section === "recovery"/);
+  assert.match(platforms, /<RecoveryPage \/>/);
   assert.match(external, /compatibility deep-link/);
   assert.match(external, /read-only AGGREGATION/);
   assert.match(longTasks, /compatibility deep-link for supervised work/);
@@ -37,9 +44,12 @@ test("dashboard and platform wording route integration evidence through support 
   const platformAggregate = read("apps/web/src/features/platforms/usePlatformsAggregate.ts");
 
   assert.doesNotMatch(dashboard, /label: "外部接入"/);
+  assert.doesNotMatch(dashboard, /label: "恢复"/);
   assert.doesNotMatch(dashboard, /ROUTES\.external/);
   assert.match(dashboard, /任务监督/);
+  assert.match(dashboard, /平台守护日志/);
   assert.match(platformAggregate, /title: "集成证据"/);
+  assert.match(platformAggregate, /to: "\/platforms\/openclaw\/recovery"/);
   assert.match(platformAggregate, /查看集成证据/);
   assert.doesNotMatch(platformAggregate, /查看外部接入/);
 });
@@ -52,7 +62,10 @@ test("authoritative docs record the IA correction and non-core status", () => {
 
   assert.match(product, /External \/ Long Tasks legacy pages/);
   assert.match(product, /Do not expose as primary domains/);
-  assert.match(frontend, /\/external` and `\/long-tasks` are no longer first-class sidebar entries/);
+  assert.match(frontend, /`\/external`, `\/long-tasks`, and legacy `\/recovery` are no longer first-class sidebar entries/);
+  assert.match(frontend, /Platform Guard \(`\/platforms\/openclaw\/recovery`\)/);
   assert.match(architecture, /not a primary owner domain/);
+  assert.match(architecture, /Not Tracevane business-data recovery/);
   assert.match(research, /Tracevane 信息架构收敛与一级导航减法/);
+  assert.match(research, /Recovery 合并进 Platform \/ OpenClaw 平台守护/);
 });

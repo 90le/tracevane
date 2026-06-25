@@ -44,7 +44,7 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
         <SidebarGroup key={group} label={group}>
           {items.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.path;
+            const active = pathname === item.path || (item.path === "/platforms" && pathname.startsWith("/platforms/"));
             return (
               <SidebarItem
                 key={item.path}

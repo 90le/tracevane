@@ -13,7 +13,6 @@ import { LongTasksPage } from "@/features/long-tasks/LongTasksPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { IdeShell } from "@/features/ide/IdeShell";
 import { FilesPage } from "@/features/files/FilesPage";
-import { RecoveryPage } from "@/features/recovery/RecoveryPage";
 import { PlatformsPage } from "@/features/platforms/PlatformsPage";
 
 /**
@@ -40,7 +39,7 @@ export function AppRouter() {
           <Route path="/cli-agents" element={<CliAgentsPage />} />
           <Route path="/long-tasks" element={<LongTasksPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
-          <Route path="/recovery" element={<RecoveryPage />} />
+          <Route path="/recovery" element={<Navigate to="/platforms/openclaw/recovery" replace />} />
           <Route path="/platforms" element={<PlatformsPage />} />
           {/* `:platform` selects the platform child (currently `openclaw`); the
               optional `:section` is reserved for future deep sections and is
@@ -51,7 +50,7 @@ export function AppRouter() {
               the recovery / system-guard surface. Redirect for old links. The
               old per-section deep link (/runtime-admin/:section) was the
               OpenClaw runtime admin surface — send it to the platform child. */}
-          <Route path="/runtime-admin" element={<Navigate to="/recovery" replace />} />
+          <Route path="/runtime-admin" element={<Navigate to="/platforms/openclaw/recovery" replace />} />
           <Route path="/runtime-admin/:section" element={<Navigate to="/platforms/openclaw" replace />} />
           {NAV_ITEMS.filter((item) => item.status === "coming-soon").map((item) => (
             <Route key={item.path} path={item.path} element={<ComingSoonPage />} />
