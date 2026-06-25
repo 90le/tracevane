@@ -1795,7 +1795,7 @@ test('draft session patch/delete persists presentation metadata without gateway 
   }
 });
 
-test('local-only session listing serves local catalog rows without gateway sessions.list', async () => {
+test('default and local-only session listing serve local catalog rows without gateway sessions.list', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-local-list-'));
   let gateway = null;
   try {
@@ -1814,6 +1814,16 @@ test('local-only session listing serves local catalog rows without gateway sessi
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
 
     const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
+    const defaultList = await context.services.chat.listSessions('main', {
+      includeDerivedTitles: false,
+      includeLastMessage: false,
+    });
+    assert.equal(defaultList.sessions.some((entry) => entry.key === created.session.key), true);
+    assert.match(
+      defaultList.diagnostics.notes.join('\n'),
+      /Gateway sessions\.list is opt-in via includeGateway=true/i,
+    );
+
     const localOnly = await context.services.chat.listSessions('main', {
       localOnly: true,
       includeDerivedTitles: false,
@@ -1866,7 +1876,7 @@ test('session listing compacts oversized gateway labels and previews for rail tr
     });
 
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const listed = await context.services.chat.listSessions('main');
+    const listed = await context.services.chat.listSessions('main', { includeGateway: true });
     const row = listed.sessions.find((entry) => entry.key === 'agent:main:main');
 
     assert.ok(row);
@@ -1916,7 +1926,7 @@ test('gateway-discovered tracevane sessions without registry are adopted so queu
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
 
-    const listed = await context.services.chat.listSessions('main');
+    const listed = await context.services.chat.listSessions('main', { includeGateway: true });
     const recovered = listed.sessions.find((entry) => entry.key === recoveredSessionKey);
     assert.ok(recovered);
     assert.equal(recovered.kind, 'tracevane_managed');

@@ -830,6 +830,7 @@ export interface ChatService {
     includeDerivedTitles?: boolean;
     includeLastMessage?: boolean;
     localOnly?: boolean;
+    includeGateway?: boolean;
   }): Promise<ChatSessionsPayload>;
   getHistory(
     sessionKey: string,
@@ -7308,6 +7309,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       includeDerivedTitles?: boolean;
       includeLastMessage?: boolean;
       localOnly?: boolean;
+      includeGateway?: boolean;
     } = {}): Promise<ChatSessionsPayload> {
       const gatewayConnected = await isGatewayConnected();
       const diagnostics = createBaseDiagnostics(options.config, gatewayConnected, []);
@@ -7315,11 +7317,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const includeDerivedTitles = queryOptions.includeDerivedTitles !== false;
       const includeLastMessage = queryOptions.includeLastMessage !== false;
       const localOnly = queryOptions.localOnly === true;
+      const includeGateway = queryOptions.includeGateway === true && !localOnly;
 
       const rows: ChatSessionRow[] = [];
       const seenKeys = new Set<string>();
 
-      if (!localOnly) {
+      if (includeGateway) {
         try {
           const payload = await createCurrentChatRuntimeAdapter().listSessions({
             agentId,
@@ -7354,7 +7357,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           diagnostics.notes.push(`Gateway sessions.list unavailable; falling back to local session store (${error instanceof Error ? error.message : String(error)}).`);
         }
       } else {
-        diagnostics.notes.push('Session list is sourced from Tracevane local session catalog without waiting for Gateway sessions.list.');
+        diagnostics.notes.push(localOnly
+          ? 'Session list is sourced from Tracevane local session catalog without waiting for Gateway sessions.list.'
+          : 'Session list defaults to Tracevane local Agent Chat catalog; Gateway sessions.list is opt-in via includeGateway=true.');
       }
 
       {
@@ -7382,7 +7387,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           rows.push(row);
           seenKeys.add(row.key);
         }
-        if (!localOnly) {
+        if (includeGateway) {
           diagnostics.notes.push('Session list is merged with Tracevane local session catalog so locally registered chats are not dropped by partial Gateway enumeration.');
         }
       }

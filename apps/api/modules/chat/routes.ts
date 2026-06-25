@@ -330,6 +330,7 @@ export function registerChatRoutes(
             includeDerivedTitles: readBooleanQuery(req, "includeDerivedTitles", true),
             includeLastMessage: readBooleanQuery(req, "includeLastMessage", true),
             localOnly: readBooleanQuery(req, "localOnly", false),
+            includeGateway: readBooleanQuery(req, "includeGateway", false),
           }),
         );
       } catch (error) {
