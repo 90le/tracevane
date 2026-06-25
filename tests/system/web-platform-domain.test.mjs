@@ -154,6 +154,11 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(agents, /新增 Agent/);
   assert.match(agents, /保存/);
   assert.match(agents, /删除/);
+  assert.match(agents, /modelOptions/);
+  assert.match(agents, /必须从可用模型列表选择模型/);
+  assert.match(agents, /模型不在可用模型列表中/);
+  assert.match(agents, /<SelectInput label="模型"/);
+  assert.doesNotMatch(agents, /<TextInput label="模型"/);
   assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
   assert.match(channels, /useCreateChannelMutation/);
   assert.match(channels, /useUpdateChannelMutation/);
@@ -170,6 +175,10 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(bindings, /useDeleteChannelBindingMutation/);
   assert.match(bindings, /新增绑定/);
   assert.match(bindings, /Bot \/ Account 到 Agent 或 ACP/);
+  assert.ok(
+    bindings.indexOf("const [draft, setDraft]") < bindings.indexOf("accountOptionsForDraft"),
+    "binding account options must be derived after draft state is initialized",
+  );
   for (const source of [agents, channels, bindings]) {
     assert.doesNotMatch(source, /OwnerHandoff/);
     assert.doesNotMatch(source, /打开绑定路由|打开 CLI Agents|打开 IM 渠道/);

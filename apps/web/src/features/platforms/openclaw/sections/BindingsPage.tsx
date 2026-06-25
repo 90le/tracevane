@@ -165,11 +165,11 @@ export function BindingsPage() {
   const bindings = channels.data?.bindings ?? [];
   const channelOptions = (channels.data?.channels ?? []).map((channel) => channel.type);
   const agentOptions = (channels.data?.agents ?? []).map((agent) => agent.id);
-  const accountOptionsForDraft = (channels.data?.channels.find((channel) => channel.type === draft.channel)?.accounts ?? []).map((account) => account.id);
   const filtered = bindings.filter((binding) => `${binding.id} ${binding.channel} ${binding.accountId ?? ""} ${binding.agentId}`.toLowerCase().includes(query.toLowerCase()));
   const [selectedKey, setSelectedKey] = useSelectedKey(filtered.map((binding) => binding.id));
   const selected = filtered.find((binding) => binding.id === selectedKey) ?? filtered[0] ?? bindings[0];
   const [draft, setDraft] = React.useState<BindingDraft>(emptyDraft);
+  const accountOptionsForDraft = (channels.data?.channels.find((channel) => channel.type === draft.channel)?.accounts ?? []).map((account) => account.id);
 
   if (channels.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
   if (channels.error) return <ErrorState title="无法加载 OpenClaw 原生绑定" description={channels.error.message} />;
