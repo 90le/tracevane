@@ -38,7 +38,12 @@ import type {
   ChatToolCard,
   LiveAssistantTurn,
 } from "./types";
-import { runStateTone, sessionTitle, shouldShowRunState } from "./_shared";
+import {
+  runStateTone,
+  sessionSourceLabel,
+  sessionTitle,
+  shouldShowRunState,
+} from "./_shared";
 
 const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
@@ -312,11 +317,9 @@ export function ChatWorkbenchPage() {
         : null;
 
   const selectedState = runStateTone(runtime?.state);
-  const selectedSource =
-    selectedSession?.source?.originLabel ||
-    selectedSession?.source?.surface ||
-    selectedSession?.source?.channel ||
-    "网页 / 本地";
+  const selectedSource = selectedSession
+    ? sessionSourceLabel(selectedSession)
+    : "Tracevane";
   const runtimeTarget = selectedSession?.runtimeTarget ?? null;
   const selectedAgent = runtimeTarget?.agent || selectedSession?.agentId || "选择 Agent";
   const selectedModel = runtimeTarget?.model || "使用默认模型路由";

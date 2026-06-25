@@ -65,7 +65,7 @@ import type {
   ChatRuntimePermissionMode,
   ChatSessionRow,
 } from "../types";
-import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
+import { runStateTone, sessionSourceLabel, sessionTitle, shouldShowRunState } from "../_shared";
 
 type SessionDialogState =
   | { kind: "create" }
@@ -383,9 +383,7 @@ export function SessionListView({
       const hay = [
         sessionTitle(s),
         s.agentId,
-        s.source?.originLabel ?? "",
-        s.source?.surface ?? "",
-        s.source?.channel ?? "",
+        sessionSourceLabel(s),
         folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null),
         s.lastMessagePreview ?? "",
       ]
@@ -896,11 +894,7 @@ export function SessionListView({
             )}
             {visible.map((s) => {
               const st = runStateTone(s.runtime?.state);
-              const source =
-                s.source?.originLabel ||
-                s.source?.surface ||
-                s.source?.channel ||
-                "本地";
+              const source = sessionSourceLabel(s);
               const preview =
                 s.lastMessagePreview?.trim() ||
                 (s.kind === "observed_external"

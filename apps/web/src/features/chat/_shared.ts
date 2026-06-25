@@ -1,6 +1,7 @@
 import type {
   ChatMessageRole,
   ChatRunState,
+  ChatSessionRow,
   ChatToolStatus,
   ChatTone,
 } from "./types";
@@ -24,7 +25,7 @@ export function runStateTone(state: ChatRunState | string | null | undefined): {
     case "error":
       return { tone: "bad", label: "错误" };
     default:
-      return { tone: "info", label: state || "未知" };
+      return { tone: "mute", label: "状态未同步" };
   }
 }
 
@@ -63,6 +64,58 @@ export function roleLabel(
     default:
       return String(role || "未知");
   }
+}
+
+function readableRawToken(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  switch (normalized) {
+    case "agent-chat":
+      return "网页";
+    case "webchat":
+      return "兼容会话";
+    case "dashboard":
+      return "总览";
+    case "tracevane":
+      return "Tracevane";
+    case "external":
+      return "外部";
+    case "system":
+      return "系统";
+    case "octo":
+      return "Octo";
+    case "feishu":
+    case "feishu-live":
+      return "飞书";
+    case "wecom":
+    case "wechat-work":
+      return "企业微信";
+    default:
+      return normalized;
+  }
+}
+
+/** Human-facing source label for Chat rows; never leak empty/unknown/raw debug terms. */
+export function sessionSourceLabel(session: Pick<ChatSessionRow, "source" | "runtimeTarget" | "kind"> | null | undefined): string {
+  if (!session) return "Tracevane";
+  const origin = session.source?.originLabel?.trim();
+  if (origin && origin !== "unknown") return origin;
+
+  const adapter = session.runtimeTarget?.adapterKind;
+  if (adapter === "native-cli") {
+    const agent = readableRawToken(session.runtimeTarget?.agent);
+    return agent ? `${agent} CLI` : "本地 CLI";
+  }
+  if (adapter === "openclaw-gateway") return "OpenClaw 平台";
+
+  const channel = readableRawToken(session.source?.channel);
+  const surface = readableRawToken(session.source?.surface);
+  if (channel && surface && channel !== surface) return `${channel} / ${surface}`;
+  if (channel) return channel;
+  if (surface) return surface;
+  if (session.kind === "observed_external") return "外部观察";
+  if (session.kind === "system_internal") return "系统";
+  return "Tracevane";
 }
 
 /** Boolean → tone + label for permission / connectivity flags. */
