@@ -9,8 +9,11 @@ import {
 
 import {
   abortChatSession,
+  assignChatSessionsToFolder,
   chatStreamUrl,
+  createChatOrganizerFolder,
   createChatSession,
+  deleteChatOrganizerFolder,
   deleteChatQueueEntry,
   deleteChatSession,
   enqueueChatMessage,
@@ -19,6 +22,7 @@ import {
   getChatHistory,
   getChatQueue,
   patchChatControls,
+  patchChatOrganizerFolder,
   patchChatSession,
   resetChatSession,
   sendChatMessage,
@@ -26,11 +30,18 @@ import {
 import type { ApiError } from "../api/errors";
 import type {
   ChatAbortResponse,
+  ChatAssignSessionsToFolderRequest,
+  ChatAssignSessionsToFolderResponse,
   ChatBootstrapPayload,
+  ChatCreateOrganizerFolderRequest,
+  ChatCreateOrganizerFolderResponse,
   ChatCreateSessionRequest,
   ChatCreateSessionResponse,
+  ChatDeleteOrganizerFolderResponse,
   ChatDeleteSessionResponse,
   ChatHistoryPayload,
+  ChatPatchOrganizerFolderRequest,
+  ChatPatchOrganizerFolderResponse,
   ChatPatchSessionRequest,
   ChatPatchSessionResponse,
   ChatPatchSessionControlsRequest,
@@ -197,6 +208,89 @@ export function useDeleteChatSessionMutation(
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: chatKeys.all });
       options?.onSuccess?.(...args);
+    },
+  });
+}
+
+
+/** Create an organizer folder/subfolder. */
+export function useCreateChatOrganizerFolderMutation(
+  options?: MutationOpts<
+    ChatCreateOrganizerFolderResponse,
+    ChatCreateOrganizerFolderRequest
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatCreateOrganizerFolderResponse,
+    ApiError,
+    ChatCreateOrganizerFolderRequest
+  >({
+    mutationFn: (payload) => createChatOrganizerFolder(payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+/** Rename, sort, collapse, or move an organizer folder. */
+export function usePatchChatOrganizerFolderMutation(
+  options?: MutationOpts<
+    ChatPatchOrganizerFolderResponse,
+    { folderId: string; payload: ChatPatchOrganizerFolderRequest }
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatPatchOrganizerFolderResponse,
+    ApiError,
+    { folderId: string; payload: ChatPatchOrganizerFolderRequest }
+  >({
+    mutationFn: ({ folderId, payload }) =>
+      patchChatOrganizerFolder(folderId, payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(data, variables, ...rest);
+    },
+  });
+}
+
+/** Delete a folder. Sessions are returned to root by the backend. */
+export function useDeleteChatOrganizerFolderMutation(
+  options?: MutationOpts<ChatDeleteOrganizerFolderResponse, string>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ChatDeleteOrganizerFolderResponse, ApiError, string>({
+    mutationFn: (folderId) => deleteChatOrganizerFolder(folderId),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+/** Move sessions into a folder or back to the unfiled/root scope. */
+export function useAssignChatSessionsToFolderMutation(
+  options?: MutationOpts<
+    ChatAssignSessionsToFolderResponse,
+    ChatAssignSessionsToFolderRequest
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatAssignSessionsToFolderResponse,
+    ApiError,
+    ChatAssignSessionsToFolderRequest
+  >({
+    mutationFn: (payload) => assignChatSessionsToFolder(payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.all });
+      options?.onSuccess?.(data, variables, ...rest);
     },
   });
 }

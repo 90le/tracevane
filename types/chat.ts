@@ -484,6 +484,7 @@ export interface ChatPatchOrganizerFolderRequest {
   title?: string | null;
   collapsed?: boolean;
   move?: ChatSessionFolderMove;
+  parentId?: string | null;
 }
 
 export interface ChatPatchOrganizerFolderResponse extends ChatOrganizerPayload {

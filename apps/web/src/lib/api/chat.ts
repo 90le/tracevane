@@ -2,10 +2,17 @@ import { apiRequest } from "./client";
 import type {
   ChatAbortResponse,
   ChatBootstrapPayload,
+  ChatAssignSessionsToFolderRequest,
+  ChatAssignSessionsToFolderResponse,
+  ChatCreateOrganizerFolderRequest,
+  ChatCreateOrganizerFolderResponse,
   ChatCreateSessionRequest,
   ChatCreateSessionResponse,
+  ChatDeleteOrganizerFolderResponse,
   ChatDeleteSessionResponse,
   ChatHistoryPayload,
+  ChatPatchOrganizerFolderRequest,
+  ChatPatchOrganizerFolderResponse,
   ChatPatchSessionControlsRequest,
   ChatPatchSessionRequest,
   ChatPatchSessionResponse,
@@ -143,6 +150,48 @@ export function deleteChatSession(
   return apiRequest<ChatDeleteSessionResponse>(
     `${BASE}/sessions/${encodeSessionKey(sessionKey)}`,
     { method: "DELETE" },
+  );
+}
+
+
+/** POST /api/chat/organizer/folders — create an organizer folder/subfolder. */
+export function createChatOrganizerFolder(
+  payload: ChatCreateOrganizerFolderRequest,
+): Promise<ChatCreateOrganizerFolderResponse> {
+  return apiRequest<ChatCreateOrganizerFolderResponse>(
+    `${BASE}/organizer/folders`,
+    { method: "POST", body: jsonBody(payload) },
+  );
+}
+
+/** PATCH /api/chat/organizer/folders/:id — rename, sort, collapse, or move a folder. */
+export function patchChatOrganizerFolder(
+  folderId: string,
+  payload: ChatPatchOrganizerFolderRequest,
+): Promise<ChatPatchOrganizerFolderResponse> {
+  return apiRequest<ChatPatchOrganizerFolderResponse>(
+    `${BASE}/organizer/folders/${encodeURIComponent(folderId)}`,
+    { method: "PATCH", body: jsonBody(payload) },
+  );
+}
+
+/** DELETE /api/chat/organizer/folders/:id — delete a folder and return sessions to root. */
+export function deleteChatOrganizerFolder(
+  folderId: string,
+): Promise<ChatDeleteOrganizerFolderResponse> {
+  return apiRequest<ChatDeleteOrganizerFolderResponse>(
+    `${BASE}/organizer/folders/${encodeURIComponent(folderId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** PATCH /api/chat/organizer/sessions — move sessions into a folder or back to root. */
+export function assignChatSessionsToFolder(
+  payload: ChatAssignSessionsToFolderRequest,
+): Promise<ChatAssignSessionsToFolderResponse> {
+  return apiRequest<ChatAssignSessionsToFolderResponse>(
+    `${BASE}/organizer/sessions`,
+    { method: "PATCH", body: jsonBody(payload) },
   );
 }
 

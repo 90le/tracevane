@@ -1,6 +1,15 @@
 import * as React from "react";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUp,
+  CornerUpLeft,
+  Folder,
+  FolderInput,
+  FolderPlus,
   MessageSquare,
   MoreHorizontal,
   Pencil,
@@ -34,12 +43,21 @@ import {
 } from "@/features/cli-agents/views/_shared";
 
 import {
+  useAssignChatSessionsToFolderMutation,
+  useCreateChatOrganizerFolderMutation,
   useCreateChatSessionMutation,
+  useDeleteChatOrganizerFolderMutation,
   useDeleteChatSessionMutation,
+  usePatchChatOrganizerFolderMutation,
   usePatchChatSessionMutation,
 } from "@/lib/query/chat";
 import type { ApiError } from "@/lib/api/errors";
-import type { ChatSessionOrganizerState, ChatSessionRow } from "../types";
+import type {
+  ChatSessionFolder,
+  ChatSessionFolderMove,
+  ChatSessionOrganizerState,
+  ChatSessionRow,
+} from "../types";
 import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
 
 type SessionDialogState =
@@ -48,16 +66,31 @@ type SessionDialogState =
   | { kind: "archive"; session: ChatSessionRow }
   | { kind: "restore"; session: ChatSessionRow }
   | { kind: "delete"; session: ChatSessionRow }
+  | { kind: "move-session"; session: ChatSessionRow }
+  | { kind: "create-folder"; parentId: string | null }
+  | { kind: "rename-folder"; folder: ChatSessionFolder }
+  | { kind: "delete-folder"; folder: ChatSessionFolder }
+  | { kind: "move-folder"; folder: ChatSessionFolder }
   | null;
 
-type SessionFilter = "active" | "all" | "managed" | "readonly" | "archived";
+type SessionFilter = "all" | "managed" | "readonly" | "archived";
 type FolderFilter = "all" | "unfiled" | `folder:${string}`;
 
-type ContextMenuState = {
-  session: ChatSessionRow;
-  x: number;
-  y: number;
-} | null;
+type ContextMenuState =
+  | { kind: "session"; session: ChatSessionRow; x: number; y: number }
+  | { kind: "folder"; folder: ChatSessionFolder; x: number; y: number }
+  | { kind: "blank"; x: number; y: number }
+  | null;
+
+type FolderOption = {
+  id: string;
+  folder: ChatSessionFolder;
+  label: string;
+  depth: number;
+  sessionCount: number;
+  totalSessionCount: number;
+  children: FolderOption[];
+};
 
 function canManage(session: ChatSessionRow): boolean {
   return (
@@ -88,20 +121,43 @@ export function SessionListView({
 }) {
   const [filter, setFilter] = React.useState("");
   const [sessionFilter, setSessionFilter] =
-    React.useState<SessionFilter>("active");
+    React.useState<SessionFilter>("managed");
   const [folderFilter, setFolderFilter] = React.useState<FolderFilter>("all");
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
+  const [folderDraft, setFolderDraft] = React.useState("");
+  const [folderTargetId, setFolderTargetId] = React.useState<string | null>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = React.useState<Set<string>>(
+    () => new Set(),
+  );
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState>(null);
 
   const createSession = useCreateChatSessionMutation();
   const patchSession = usePatchChatSessionMutation();
   const deleteSession = useDeleteChatSessionMutation();
+  const createFolder = useCreateChatOrganizerFolderMutation();
+  const patchFolder = usePatchChatOrganizerFolderMutation();
+  const deleteFolder = useDeleteChatOrganizerFolderMutation();
+  const assignSessionToFolder = useAssignChatSessionsToFolderMutation();
 
   React.useEffect(() => {
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
     if (dialog?.kind === "create") setLabelDraft("");
-  }, [dialog]);
+    if (dialog?.kind === "create-folder") {
+      setFolderDraft("");
+      setFolderTargetId(dialog.parentId);
+    }
+    if (dialog?.kind === "rename-folder") {
+      setFolderDraft(dialog.folder.title);
+      setFolderTargetId(dialog.folder.parentId);
+    }
+    if (dialog?.kind === "move-session") {
+      setFolderTargetId(organizer?.sessionFolderMap?.[dialog.session.key] ?? null);
+    }
+    if (dialog?.kind === "move-folder") {
+      setFolderTargetId(dialog.folder.parentId);
+    }
+  }, [dialog, organizer]);
 
   React.useEffect(() => {
     if (!contextMenu) return;
@@ -119,10 +175,23 @@ export function SessionListView({
     };
   }, [contextMenu]);
 
-  const folderOptions = React.useMemo(() => {
+  const folderOptions = React.useMemo<FolderOption[]>(() => {
     if (!organizer?.folders?.length) return [];
     const byId = new Map(organizer.folders.map((folder) => [folder.id, folder]));
-    const pathFor = (folderId: string): string => {
+    const directCounts = new Map<string, number>();
+    for (const folderId of Object.values(organizer.sessionFolderMap || {})) {
+      if (!folderId) continue;
+      directCounts.set(folderId, (directCounts.get(folderId) ?? 0) + 1);
+    }
+    const childIdsByParent = new Map<string | null, string[]>();
+    for (const folder of organizer.folders) {
+      const parent = folder.parentId ?? null;
+      childIdsByParent.set(parent, [
+        ...(childIdsByParent.get(parent) ?? []),
+        folder.id,
+      ]);
+    }
+    const pathFor = (folderId: string): { label: string; depth: number } => {
       const parts: string[] = [];
       const seen = new Set<string>();
       let current = byId.get(folderId) ?? null;
@@ -131,20 +200,96 @@ export function SessionListView({
         parts.unshift(current.title);
         current = current.parentId ? byId.get(current.parentId) ?? null : null;
       }
-      return parts.join(" / ");
+      return { label: parts.join(" / "), depth: Math.max(0, parts.length - 1) };
     };
-    return organizer.folders
-      .map((folder) => ({
+    const optionById = new Map<string, FolderOption>();
+    for (const folder of organizer.folders) {
+      const path = pathFor(folder.id);
+      optionById.set(folder.id, {
         id: folder.id,
-        label: pathFor(folder.id) || folder.title,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, "zh-Hans-CN"));
+        folder,
+        label: path.label || folder.title,
+        depth: path.depth,
+        sessionCount: directCounts.get(folder.id) ?? 0,
+        totalSessionCount: directCounts.get(folder.id) ?? 0,
+        children: [],
+      });
+    }
+    const computeTotal = (folderId: string): number => {
+      const option = optionById.get(folderId);
+      if (!option) return 0;
+      const childIds = childIdsByParent.get(folderId) ?? [];
+      option.children = childIds
+        .map((id) => optionById.get(id))
+        .filter((child): child is FolderOption => Boolean(child))
+        .sort((a, b) => a.folder.title.localeCompare(b.folder.title, "zh-Hans-CN"));
+      option.totalSessionCount =
+        option.sessionCount +
+        option.children.reduce((sum, child) => sum + computeTotal(child.id), 0);
+      return option.totalSessionCount;
+    };
+    const roots = (childIdsByParent.get(null) ?? [])
+      .map((id) => optionById.get(id))
+      .filter((option): option is FolderOption => Boolean(option))
+      .sort((a, b) => a.folder.title.localeCompare(b.folder.title, "zh-Hans-CN"));
+    roots.forEach((root) => computeTotal(root.id));
+    const flatten = (nodes: FolderOption[]): FolderOption[] =>
+      nodes.flatMap((node) => [node, ...flatten(node.children)]);
+    return flatten(roots);
   }, [organizer]);
+
+  const folderTree = React.useMemo(
+    () => folderOptions.filter((folder) => !folder.folder.parentId),
+    [folderOptions],
+  );
+
+  React.useEffect(() => {
+    if (!folderOptions.length) return;
+    setExpandedFolderIds((current) => {
+      const next = new Set(current);
+      for (const folder of folderOptions) {
+        if (!folder.folder.parentId) next.add(folder.id);
+      }
+      return next;
+    });
+  }, [folderOptions]);
+
+  const folderLabel = React.useCallback(
+    (folderId: string | null | undefined) => {
+      if (!folderId) return "未分组";
+      return folderOptions.find((folder) => folder.id === folderId)?.label ?? "未知文件夹";
+    },
+    [folderOptions],
+  );
+
+
+  const folderMoveTargets = React.useCallback(
+    (movingFolder: ChatSessionFolder | null) => {
+      if (!movingFolder) return folderOptions;
+      const parentById = new Map(
+        (organizer?.folders ?? []).map((folder) => [folder.id, folder.parentId]),
+      );
+      const isDescendant = (folderId: string) => {
+        let cursor = parentById.get(folderId) || null;
+        const seen = new Set<string>();
+        while (cursor) {
+          if (cursor === movingFolder.id) return true;
+          if (seen.has(cursor)) return false;
+          seen.add(cursor);
+          cursor = parentById.get(cursor) || null;
+        }
+        return false;
+      };
+      return folderOptions.filter(
+        (folder) => folder.id !== movingFolder.id && !isDescendant(folder.id),
+      );
+    },
+    [folderOptions, organizer],
+  );
 
   const visible = React.useMemo(() => {
     const q = filter.trim().toLowerCase();
     const scoped = sessions.filter((s) => {
-      if (sessionFilter === "active") return !s.presentation?.archived;
       if (sessionFilter === "managed")
         return canManage(s) && !s.presentation?.archived;
       if (sessionFilter === "readonly")
@@ -154,9 +299,8 @@ export function SessionListView({
       return true;
     });
     const folderScoped = scoped.filter((s) => {
-      if (folderFilter === "all") return true;
       const assigned = organizer?.sessionFolderMap?.[s.key] ?? null;
-      if (folderFilter === "unfiled") return !assigned;
+      if (folderFilter === "all" || folderFilter === "unfiled") return !assigned;
       return assigned === folderFilter.slice("folder:".length);
     });
     const ordered = [...folderScoped].sort((a, b) => {
@@ -178,13 +322,14 @@ export function SessionListView({
         s.source?.originLabel ?? "",
         s.source?.surface ?? "",
         s.source?.channel ?? "",
+        folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null),
         s.lastMessagePreview ?? "",
       ]
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [sessions, filter, sessionFilter, folderFilter, organizer]);
+  }, [sessions, filter, sessionFilter, folderFilter, organizer, folderLabel]);
 
   const runCreate = () => {
     createSession.mutate(
@@ -228,39 +373,141 @@ export function SessionListView({
     });
   };
 
-  const busy =
-    createSession.isPending ||
-    patchSession.isPending ||
-    deleteSession.isPending;
+  const runCreateFolder = (parentId: string | null) => {
+    createFolder.mutate(
+      { title: folderDraft.trim(), parentId },
+      {
+        onSuccess: (res) => {
+          toast.success("文件夹已创建");
+          setDialog(null);
+          setFolderFilter(`folder:${res.folder.id}`);
+        },
+        onError: (e) =>
+          toast.error("创建文件夹失败", { description: e.message }),
+      },
+    );
+  };
 
-  const closeContextMenu = () => setContextMenu(null);
+  const runPatchFolder = (
+    folder: ChatSessionFolder,
+    payload: {
+      title?: string | null;
+      parentId?: string | null;
+      move?: ChatSessionFolderMove;
+    },
+  ) => {
+    patchFolder.mutate(
+      { folderId: folder.id, payload },
+      {
+        onSuccess: (res) => {
+          toast.success("文件夹已更新");
+          setDialog(null);
+          setFolderFilter(`folder:${res.folder.id}`);
+        },
+        onError: (e) =>
+          toast.error("更新文件夹失败", { description: e.message }),
+      },
+    );
+  };
 
-  const openMenuAt = (session: ChatSessionRow, x: number, y: number) => {
-    const viewportWidth =
-      typeof window === "undefined" ? x + 188 : window.innerWidth;
-    const viewportHeight =
-      typeof window === "undefined" ? y + 220 : window.innerHeight;
-    setContextMenu({
-      session,
-      x: Math.max(8, Math.min(x, viewportWidth - 188)),
-      y: Math.max(8, Math.min(y, viewportHeight - 220)),
+  const runDeleteFolder = (folder: ChatSessionFolder) => {
+    deleteFolder.mutate(folder.id, {
+      onSuccess: () => {
+        toast.success("文件夹已删除，会话已回到未分组");
+        setDialog(null);
+        if (folderFilter === `folder:${folder.id}`) setFolderFilter("all");
+      },
+      onError: (e) =>
+        toast.error("删除文件夹失败", { description: e.message }),
     });
   };
 
-  const openMenuFromButton = (
+  const runMoveSession = (session: ChatSessionRow, folderId: string | null) => {
+    assignSessionToFolder.mutate(
+      { sessionKeys: [session.key], folderId },
+      {
+        onSuccess: () => {
+          toast.success(`会话已移动到${folderLabel(folderId)}`);
+          setDialog(null);
+        },
+        onError: (e) =>
+          toast.error("移动会话失败", { description: e.message }),
+      },
+    );
+  };
+
+  const busy =
+    createSession.isPending ||
+    patchSession.isPending ||
+    deleteSession.isPending ||
+    createFolder.isPending ||
+    patchFolder.isPending ||
+    deleteFolder.isPending ||
+    assignSessionToFolder.isPending;
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const clampMenuPoint = (x: number, y: number) => {
+    const viewportWidth =
+      typeof window === "undefined" ? x + 240 : window.innerWidth;
+    const viewportHeight =
+      typeof window === "undefined" ? y + 320 : window.innerHeight;
+    return {
+      x: Math.max(8, Math.min(x, viewportWidth - 240)),
+      y: Math.max(8, Math.min(y, viewportHeight - 320)),
+    };
+  };
+
+  const openSessionMenuAt = (session: ChatSessionRow, x: number, y: number) => {
+    const point = clampMenuPoint(x, y);
+    setContextMenu({ kind: "session", session, ...point });
+  };
+
+  const openFolderMenuAt = (folder: ChatSessionFolder, x: number, y: number) => {
+    const point = clampMenuPoint(x, y);
+    setContextMenu({ kind: "folder", folder, ...point });
+  };
+
+  const openBlankMenuAt = (x: number, y: number) => {
+    const point = clampMenuPoint(x, y);
+    setContextMenu({ kind: "blank", ...point });
+  };
+
+  const openSessionMenuFromButton = (
     element: HTMLElement,
     session: ChatSessionRow,
   ) => {
     const rect = element.getBoundingClientRect();
-    openMenuAt(session, rect.right - 176, rect.bottom + 6);
+    openSessionMenuAt(session, rect.right - 216, rect.bottom + 6);
+  };
+
+  const openFolderMenuFromButton = (
+    element: HTMLElement,
+    folder: ChatSessionFolder,
+  ) => {
+    const rect = element.getBoundingClientRect();
+    openFolderMenuAt(folder, rect.right - 216, rect.bottom + 6);
   };
 
   const triggerSessionAction = (
-    action: "rename" | "archive" | "restore" | "delete",
+    action: "rename" | "archive" | "restore" | "delete" | "move-session",
     session: ChatSessionRow,
   ) => {
     closeContextMenu();
     setDialog({ kind: action, session });
+  };
+
+  const triggerFolderAction = (
+    action: "create-folder" | "rename-folder" | "delete-folder" | "move-folder",
+    folder: ChatSessionFolder | null,
+  ) => {
+    closeContextMenu();
+    if (action === "create-folder") {
+      setDialog({ kind: "create-folder", parentId: folder?.id ?? null });
+      return;
+    }
+    if (!folder) return;
+    setDialog({ kind: action, folder });
   };
 
   const renderMenuItem = ({
@@ -298,6 +545,89 @@ export function SessionListView({
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </button>
   );
+
+  const renderFolderNode = (folder: FolderOption): React.ReactNode => {
+    const isExpanded = expandedFolderIds.has(folder.id);
+    const isSelected = folderFilter === `folder:${folder.id}`;
+    const hasChildren = folder.children.length > 0;
+    return (
+      <React.Fragment key={folder.id}>
+        <div
+          className={cn(
+            "group/folder-row grid grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-sm transition-colors hover:bg-panel-2",
+            isSelected && "bg-primary-soft",
+          )}
+          style={{ paddingLeft: `${Math.min(folder.depth, 5) * 14}px` }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openFolderMenuAt(folder.folder, event.clientX, event.clientY);
+          }}
+        >
+          <button
+            type="button"
+            disabled={!hasChildren}
+            aria-label={isExpanded ? "折叠文件夹" : "展开文件夹"}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!hasChildren) return;
+              setExpandedFolderIds((current) => {
+                const next = new Set(current);
+                if (next.has(folder.id)) next.delete(folder.id);
+                else next.add(folder.id);
+                return next;
+              });
+            }}
+            className="ml-1 grid size-7 place-items-center rounded-xs text-subtle outline-none hover:bg-panel focus-visible:shadow-[var(--ring)] disabled:pointer-events-none disabled:opacity-40"
+          >
+            {hasChildren ? (
+              isExpanded ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronRight className="size-3.5" />
+              )
+            ) : (
+              <span className="size-3.5" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFolderFilter(`folder:${folder.id}`)}
+            className="flex min-w-0 items-center gap-2 px-1 py-1.5 text-left outline-none focus-visible:shadow-[var(--ring)]"
+          >
+            <Folder className="size-4 shrink-0 text-subtle" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">
+              {folder.folder.title}
+            </span>
+            <span className="shrink-0 rounded-full bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">
+              {folder.totalSessionCount}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`管理文件夹 ${folder.label}`}
+            aria-haspopup="menu"
+            aria-expanded={
+              contextMenu?.kind === "folder" &&
+              contextMenu.folder.id === folder.id
+                ? true
+                : undefined
+            }
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openFolderMenuFromButton(event.currentTarget, folder.folder);
+            }}
+            className="mr-1 grid size-7 place-items-center rounded-sm text-subtle opacity-0 outline-none transition hover:bg-panel hover:text-ink group-hover/folder-row:opacity-100 focus-visible:opacity-100"
+          >
+            <MoreHorizontal className="size-3.5" />
+          </button>
+        </div>
+        {isExpanded && folder.children.map((child) => renderFolderNode(child))}
+      </React.Fragment>
+    );
+  };
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-panel">
@@ -341,8 +671,7 @@ export function SessionListView({
         <div className="flex flex-wrap gap-1">
           {(
             [
-              ["active", "活跃"],
-              ["managed", "自管"],
+              ["managed", "可管理"],
               ["readonly", "只读"],
               ["archived", "归档"],
               ["all", "全部"],
@@ -363,28 +692,22 @@ export function SessionListView({
             </button>
           ))}
         </div>
-        {folderOptions.length > 0 && (
-          <label className="grid gap-1 text-2xs text-subtle">
-            文件夹筛选
-            <select
-              value={folderFilter}
-              onChange={(event) =>
-                setFolderFilter(event.target.value as FolderFilter)
-              }
-              className="h-8 rounded-sm border border-line bg-panel-2 px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus:border-primary-line focus:shadow-[var(--ring)]"
-            >
-              <option value="all">全部文件夹</option>
-              <option value="unfiled">未分组</option>
-              {folderOptions.map((folder) => (
-                <option key={folder.id} value={`folder:${folder.id}`}>
-                  {folder.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <div className="flex items-center justify-between gap-2 text-2xs text-subtle">
+          <span>
+            当前：{folderFilter === "all" || folderFilter === "unfiled"
+              ? "未分组"
+              : folderLabel(folderFilter.slice("folder:".length))}
+          </span>
+          <span>右键空白处可新建文件夹</span>
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openBlankMenuAt(event.clientX, event.clientY);
+        }}
+      >
         {isLoading ? (
           <div className="p-2">
             <SkeletonRow />
@@ -401,7 +724,8 @@ export function SessionListView({
               </Button>
             }
           />
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 &&
+          (sessionFilter === "readonly" || folderTree.length === 0) ? (
           <EmptyState
             icon={<MessageSquare />}
             title={sessions.length === 0 ? "暂无会话" : "无匹配会话"}
@@ -413,6 +737,26 @@ export function SessionListView({
           />
         ) : (
           <div className="grid gap-px p-1">
+            {sessionFilter !== "readonly" && folderTree.length > 0 && (
+              <div className="mb-1 grid gap-px border-b border-line pb-1">
+                <button
+                  type="button"
+                  onClick={() => setFolderFilter("all")}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
+                    (folderFilter === "all" || folderFilter === "unfiled") &&
+                      "bg-primary-soft text-primary",
+                  )}
+                >
+                  <Folder className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">未分组</span>
+                  <span className="rounded-full bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">
+                    {sessions.filter((s) => canManage(s) && !organizer?.sessionFolderMap?.[s.key]).length}
+                  </span>
+                </button>
+                {folderTree.map((folder) => renderFolderNode(folder))}
+              </div>
+            )}
             {visible.map((s) => {
               const st = runStateTone(s.runtime?.state);
               const source =
@@ -436,7 +780,8 @@ export function SessionListView({
                   )}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    openMenuAt(s, event.clientX, event.clientY);
+                    event.stopPropagation();
+                    openSessionMenuAt(s, event.clientX, event.clientY);
                   }}
                 >
                   <button
@@ -465,7 +810,7 @@ export function SessionListView({
                         {preview}
                       </span>
                       <span className="truncate text-2xs text-subtle">
-                        {s.agentId} · {source}
+                        {s.agentId} · {source} · {folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null)}
                         {s.presentation?.archived ? " · 已归档" : ""}
                         {!manageable ? " · 只读" : ""}
                       </span>
@@ -478,14 +823,16 @@ export function SessionListView({
                     type="button"
                     aria-haspopup="menu"
                     aria-expanded={
-                      contextMenu?.session.key === s.key ? true : undefined
+                      contextMenu?.kind === "session" && contextMenu.session.key === s.key
+                        ? true
+                        : undefined
                     }
                     aria-label={`管理会话 ${sessionTitle(s)}`}
                     title="更多操作"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      openMenuFromButton(event.currentTarget, s);
+                      openSessionMenuFromButton(event.currentTarget, s);
                     }}
                     onKeyDown={(event) => {
                       if (
@@ -495,7 +842,7 @@ export function SessionListView({
                       ) {
                         event.preventDefault();
                         event.stopPropagation();
-                        openMenuFromButton(event.currentTarget, s);
+                        openSessionMenuFromButton(event.currentTarget, s);
                       }
                     }}
                     className="mr-1 grid w-9 place-items-center self-center rounded-sm text-subtle opacity-0 outline-none transition hover:bg-panel hover:text-ink group-hover:opacity-100 focus-visible:opacity-100 focus-visible:shadow-[var(--ring)]"
@@ -512,63 +859,176 @@ export function SessionListView({
       {contextMenu && (
         <div
           role="menu"
-          aria-label={`会话操作：${sessionTitle(contextMenu.session)}`}
-          className="fixed z-50 grid w-44 gap-0.5 rounded-md border border-line-2 bg-panel p-1 shadow-lg"
+          aria-label={
+            contextMenu.kind === "session"
+              ? `会话操作：${sessionTitle(contextMenu.session)}`
+              : contextMenu.kind === "folder"
+                ? `文件夹操作：${contextMenu.folder.title}`
+                : "会话列表操作"
+          }
+          className="fixed z-50 grid max-h-[min(70vh,34rem)] w-56 gap-0.5 overflow-auto rounded-md border border-line-2 bg-panel p-1 shadow-lg"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          {renderMenuItem({
-            icon: <MessageSquare />,
-            onSelect: () => {
-              onSelect(contextMenu.session.key);
-              closeContextMenu();
-            },
-            children: "打开会话",
-          })}
-          <div className="my-1 h-px bg-line" role="separator" />
-          {canManage(contextMenu.session) ? (
+          {contextMenu.kind === "blank" && (
             <>
+              {renderMenuItem({
+                icon: <Plus />,
+                onSelect: () => {
+                  closeContextMenu();
+                  setDialog({ kind: "create" });
+                },
+                children: "新建会话…",
+              })}
+              {renderMenuItem({
+                icon: <FolderPlus />,
+                onSelect: () => triggerFolderAction("create-folder", null),
+                children: "新建文件夹…",
+              })}
+              <div className="my-1 h-px bg-line" role="separator" />
+              {renderMenuItem({
+                icon: <RefreshCw />,
+                onSelect: () => {
+                  closeContextMenu();
+                  onRefresh();
+                },
+                children: "刷新列表",
+              })}
+            </>
+          )}
+
+          {contextMenu.kind === "folder" && (
+            <>
+              {renderMenuItem({
+                icon: <Folder />,
+                onSelect: () => {
+                  setFolderFilter(`folder:${contextMenu.folder.id}`);
+                  closeContextMenu();
+                },
+                children: "筛选此文件夹",
+              })}
+              {renderMenuItem({
+                icon: <FolderPlus />,
+                onSelect: () =>
+                  triggerFolderAction("create-folder", contextMenu.folder),
+                children: "新建子文件夹…",
+              })}
+              <div className="my-1 h-px bg-line" role="separator" />
               {renderMenuItem({
                 icon: <Pencil />,
                 onSelect: () =>
-                  triggerSessionAction("rename", contextMenu.session),
-                children: "重命名…",
+                  triggerFolderAction("rename-folder", contextMenu.folder),
+                children: "重命名文件夹…",
               })}
               {renderMenuItem({
-                icon: contextMenu.session.presentation?.archived ? (
-                  <Undo2 />
-                ) : (
-                  <Archive />
-                ),
+                icon: <FolderInput />,
                 onSelect: () =>
-                  triggerSessionAction(
-                    contextMenu.session.presentation?.archived
-                      ? "restore"
-                      : "archive",
-                    contextMenu.session,
-                  ),
-                children: contextMenu.session.presentation?.archived
-                  ? "恢复到活跃"
-                  : "归档会话",
+                  triggerFolderAction("move-folder", contextMenu.folder),
+                children: "移动到文件夹…",
               })}
+              {renderMenuItem({
+                icon: <CornerUpLeft />,
+                disabled: !contextMenu.folder.parentId,
+                onSelect: () =>
+                  runPatchFolder(contextMenu.folder, { parentId: null }),
+                children: "移到顶层",
+              })}
+              <div className="my-1 h-px bg-line" role="separator" />
+              {renderMenuItem({
+                icon: <ChevronsUp />,
+                onSelect: () =>
+                  runPatchFolder(contextMenu.folder, { move: "top" }),
+                children: "置顶",
+              })}
+              {renderMenuItem({
+                icon: <ArrowUp />,
+                onSelect: () =>
+                  runPatchFolder(contextMenu.folder, { move: "up" }),
+                children: "上移",
+              })}
+              {renderMenuItem({
+                icon: <ArrowDown />,
+                onSelect: () =>
+                  runPatchFolder(contextMenu.folder, { move: "down" }),
+                children: "下移",
+              })}
+              <div className="my-1 h-px bg-line" role="separator" />
               {renderMenuItem({
                 icon: <Trash2 />,
                 danger: true,
                 onSelect: () =>
-                  triggerSessionAction("delete", contextMenu.session),
-                children: "删除会话…",
+                  triggerFolderAction("delete-folder", contextMenu.folder),
+                children: "删除文件夹…",
               })}
             </>
-          ) : (
+          )}
+
+          {contextMenu.kind === "session" && (
             <>
               {renderMenuItem({
-                disabled: true,
-                icon: <Archive />,
-                children: "外部观察会话只读",
+                icon: <MessageSquare />,
+                onSelect: () => {
+                  onSelect(contextMenu.session.key);
+                  closeContextMenu();
+                },
+                children: "打开会话",
               })}
+              <div className="my-1 h-px bg-line" role="separator" />
+              {canManage(contextMenu.session) ? (
+                <>
+                  {renderMenuItem({
+                    icon: <Pencil />,
+                    onSelect: () =>
+                      triggerSessionAction("rename", contextMenu.session),
+                    children: "重命名…",
+                  })}
+                  {renderMenuItem({
+                    icon: <FolderInput />,
+                    onSelect: () =>
+                      triggerSessionAction("move-session", contextMenu.session),
+                    children: "移动到文件夹…",
+                  })}
+                  {organizer?.sessionFolderMap?.[contextMenu.session.key] &&
+                    renderMenuItem({
+                      icon: <CornerUpLeft />,
+                      onSelect: () => runMoveSession(contextMenu.session, null),
+                      children: "移出文件夹",
+                    })}
+                  {renderMenuItem({
+                    icon: contextMenu.session.presentation?.archived ? (
+                      <Undo2 />
+                    ) : (
+                      <Archive />
+                    ),
+                    onSelect: () =>
+                      triggerSessionAction(
+                        contextMenu.session.presentation?.archived
+                          ? "restore"
+                          : "archive",
+                        contextMenu.session,
+                      ),
+                    children: contextMenu.session.presentation?.archived
+                      ? "恢复到活跃"
+                      : "归档会话",
+                  })}
+                  {renderMenuItem({
+                    icon: <Trash2 />,
+                    danger: true,
+                    onSelect: () =>
+                      triggerSessionAction("delete", contextMenu.session),
+                    children: "删除会话…",
+                  })}
+                </>
+              ) : (
+                renderMenuItem({
+                  disabled: true,
+                  icon: <Archive />,
+                  children: "外部观察会话只读",
+                })
+              )}
             </>
           )}
         </div>
@@ -729,6 +1189,240 @@ export function SessionListView({
                   variant="danger"
                   size="sm"
                   onClick={() => runDelete(dialog.session)}
+                  disabled={busy}
+                >
+                  {busy ? "删除中…" : "确认删除"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "create-folder" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <FolderPlus />
+                </span>
+                <DialogTitle>新建文件夹</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <label className="grid gap-2 text-sm text-muted">
+                  文件夹名称
+                  <Input
+                    value={folderDraft}
+                    onChange={(e) => setFolderDraft(e.target.value)}
+                    placeholder="例如：客户项目"
+                    autoFocus
+                  />
+                </label>
+                <label className="mt-3 grid gap-2 text-sm text-muted">
+                  上级文件夹
+                  <select
+                    value={folderTargetId ?? ""}
+                    onChange={(event) =>
+                      setFolderTargetId(event.target.value || null)
+                    }
+                    className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                  >
+                    <option value="">顶层</option>
+                    {folderOptions.map((folder) => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => runCreateFolder(folderTargetId)}
+                  disabled={busy || !folderDraft.trim()}
+                >
+                  {busy ? "创建中…" : "创建"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "rename-folder" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <Pencil />
+                </span>
+                <DialogTitle>重命名文件夹</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <label className="grid gap-2 text-sm text-muted">
+                  新名称
+                  <Input
+                    value={folderDraft}
+                    onChange={(e) => setFolderDraft(e.target.value)}
+                    autoFocus
+                  />
+                </label>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    runPatchFolder(dialog.folder, { title: folderDraft.trim() })
+                  }
+                  disabled={busy || !folderDraft.trim()}
+                >
+                  {busy ? "保存中…" : "保存"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "move-session" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <FolderInput />
+                </span>
+                <DialogTitle>移动会话到文件夹</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <p className="mb-3 text-sm text-muted">
+                  会话：{sessionTitle(dialog.session)}
+                </p>
+                <label className="grid gap-2 text-sm text-muted">
+                  目标文件夹
+                  <select
+                    value={folderTargetId ?? ""}
+                    onChange={(event) =>
+                      setFolderTargetId(event.target.value || null)
+                    }
+                    className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                  >
+                    <option value="">未分组</option>
+                    {folderOptions.map((folder) => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => runMoveSession(dialog.session, folderTargetId)}
+                  disabled={busy}
+                >
+                  {busy ? "移动中…" : "移动"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "move-folder" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <FolderInput />
+                </span>
+                <DialogTitle>移动文件夹</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <p className="mb-3 text-sm text-muted">
+                  文件夹：{folderLabel(dialog.folder.id)}
+                </p>
+                <label className="grid gap-2 text-sm text-muted">
+                  新上级文件夹
+                  <select
+                    value={folderTargetId ?? ""}
+                    onChange={(event) =>
+                      setFolderTargetId(event.target.value || null)
+                    }
+                    className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                  >
+                    <option value="">顶层</option>
+                    {folderMoveTargets(dialog.folder).map((folder) => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    runPatchFolder(dialog.folder, { parentId: folderTargetId })
+                  }
+                  disabled={busy}
+                >
+                  {busy ? "移动中…" : "移动"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "delete-folder" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+                  <Trash2 />
+                </span>
+                <DialogTitle>删除文件夹</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                删除「{folderLabel(dialog.folder.id)}」不会删除会话；该文件夹里的会话会回到未分组。确认删除？
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => runDeleteFolder(dialog.folder)}
                   disabled={busy}
                 >
                   {busy ? "删除中…" : "确认删除"}

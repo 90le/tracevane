@@ -6820,8 +6820,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         !Object.prototype.hasOwnProperty.call(payload, 'title')
         && !Object.prototype.hasOwnProperty.call(payload, 'collapsed')
         && !Object.prototype.hasOwnProperty.call(payload, 'move')
+        && !Object.prototype.hasOwnProperty.call(payload, 'parentId')
       ) {
-        throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder patch requires title, collapsed, or move'));
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder patch requires title, collapsed, move, or parentId'));
       }
       if (Object.prototype.hasOwnProperty.call(payload, 'title') && !normalizeString(payload.title)) {
         throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder title must be a non-empty string'));
@@ -6830,6 +6831,30 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         const move = normalizeString(payload.move);
         if (move && !['up', 'down', 'top'].includes(move)) {
           throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder move must be up, down, or top'));
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'parentId')) {
+        const parentId = normalizeString(payload.parentId) || null;
+        if (parentId) {
+          const parentFolder = findOrganizerFolder(organizer, parentId);
+          if (!parentFolder) {
+            throw new ChatServiceError(404, buildChatError('session_not_found', `Folder '${parentId}' not found`));
+          }
+          if (parentId === folderId) {
+            throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder cannot be moved into itself'));
+          }
+          let cursor: string | null = parentFolder.parentId;
+          const seen = new Set<string>();
+          while (cursor) {
+            if (cursor === folderId) {
+              throw new ChatServiceError(400, buildChatError('invalid_request', 'Folder cannot be moved into its descendant'));
+            }
+            if (seen.has(cursor)) {
+              break;
+            }
+            seen.add(cursor);
+            cursor = findOrganizerFolder(organizer, cursor)?.parentId || null;
+          }
         }
       }
       const patched = patchFolderInOrganizer(organizer, folderId, payload);

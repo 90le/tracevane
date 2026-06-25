@@ -62,6 +62,29 @@ test('create child folder and sibling sort keeps parent-scoped order', () => {
   assert.deepEqual(orderedChildren.map((folder) => folder.id), [childA.folder.id, childB.folder.id]);
 });
 
+test('patch folder can move between parents without allowing descendant cycles', () => {
+  const rootA = createFolderInOrganizer(createEmptyChatSessionOrganizerState(), 'Root A', null, '2026-03-24T10:00:00.000Z');
+  const rootB = createFolderInOrganizer(rootA.organizer, 'Root B', null, '2026-03-24T10:01:00.000Z');
+  const child = createFolderInOrganizer(rootB.organizer, 'Child', rootA.folder.id, '2026-03-24T10:02:00.000Z');
+  const grandchild = createFolderInOrganizer(child.organizer, 'Grandchild', child.folder.id, '2026-03-24T10:03:00.000Z');
+
+  const movedToRootB = patchFolderInOrganizer(grandchild.organizer, child.folder.id, {
+    parentId: rootB.folder.id,
+  });
+  assert.equal(movedToRootB.folder?.parentId, rootB.folder.id);
+  assert.deepEqual(movedToRootB.organizer.childFolderOrder[rootA.folder.id] || [], []);
+  assert.deepEqual(movedToRootB.organizer.childFolderOrder[rootB.folder.id], [child.folder.id]);
+
+  const invalidCycle = patchFolderInOrganizer(movedToRootB.organizer, child.folder.id, {
+    parentId: grandchild.folder.id,
+  });
+  assert.equal(invalidCycle.folder?.parentId, rootB.folder.id);
+  assert.equal(
+    Boolean(invalidCycle.organizer.childFolderOrder[grandchild.folder.id]?.includes(child.folder.id)),
+    false,
+  );
+});
+
 test('assignSessionsToFolderInOrganizer supports child folders as valid targets', () => {
   const root = createFolderInOrganizer(createEmptyChatSessionOrganizerState(), 'Root', null, '2026-03-24T10:00:00.000Z');
   const child = createFolderInOrganizer(root.organizer, 'Child', root.folder.id, '2026-03-24T10:01:00.000Z');

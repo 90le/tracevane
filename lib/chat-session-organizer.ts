@@ -273,6 +273,27 @@ export function createFolderInOrganizer(
   };
 }
 
+function isFolderDescendant(
+  folders: ChatSessionFolder[],
+  folderId: string,
+  maybeDescendantId: string,
+): boolean {
+  const parentById = new Map(folders.map((folder) => [folder.id, folder.parentId]));
+  const seen = new Set<string>();
+  let cursor = parentById.get(maybeDescendantId) || null;
+  while (cursor) {
+    if (cursor === folderId) {
+      return true;
+    }
+    if (seen.has(cursor)) {
+      return false;
+    }
+    seen.add(cursor);
+    cursor = parentById.get(cursor) || null;
+  }
+  return false;
+}
+
 export function patchFolderInOrganizer(
   organizer: ChatSessionOrganizerState,
   folderId: string,
@@ -280,6 +301,7 @@ export function patchFolderInOrganizer(
     title?: string | null;
     collapsed?: boolean;
     move?: ChatSessionFolderMove;
+    parentId?: string | null;
   },
   now = new Date().toISOString(),
 ): {
@@ -292,22 +314,54 @@ export function patchFolderInOrganizer(
     return { organizer: current, folder: null };
   }
   const currentFolder = current.folders[folderIndex]!;
+  const patchHasParent = Object.prototype.hasOwnProperty.call(patch, 'parentId');
+  const requestedParentId = patchHasParent ? normalizeString(patch.parentId) || null : currentFolder.parentId;
+  const folderIds = new Set(current.folders.map((folder) => folder.id));
+  const nextParentId =
+    !requestedParentId
+      ? null
+      : requestedParentId !== folderId &&
+          folderIds.has(requestedParentId) &&
+          !isFolderDescendant(current.folders, folderId, requestedParentId)
+        ? requestedParentId
+        : currentFolder.parentId;
+  const effectiveParentId = patchHasParent ? nextParentId : currentFolder.parentId;
+
   const nextFolder: ChatSessionFolder = {
     ...currentFolder,
     title: patch.title == null ? currentFolder.title : normalizeString(patch.title) || currentFolder.title,
+    parentId: effectiveParentId,
     collapsed: typeof patch.collapsed === 'boolean' ? patch.collapsed : currentFolder.collapsed,
     updatedAt: now,
   };
   const folders = current.folders.slice();
   folders[folderIndex] = nextFolder;
-  const nextFolderOrder = patch.move
-    ? (!currentFolder.parentId
-      ? moveIdInList(current.folderOrder, folderId, patch.move)
-      : current.folderOrder)
-    : current.folderOrder;
-  const nextChildFolderOrder = { ...current.childFolderOrder };
-  if (patch.move && currentFolder.parentId) {
-    nextChildFolderOrder[currentFolder.parentId] = moveIdInList(nextChildFolderOrder[currentFolder.parentId] || [], folderId, patch.move);
+  let nextFolderOrder = current.folderOrder;
+  const nextChildFolderOrder: Record<string, string[]> = { ...current.childFolderOrder };
+  if (patchHasParent) {
+    nextFolderOrder = current.folderOrder.filter((id) => id !== folderId);
+    for (const [parentId, order] of Object.entries(current.childFolderOrder)) {
+      nextChildFolderOrder[parentId] = order.filter((id) => id !== folderId);
+    }
+    if (effectiveParentId) {
+      nextChildFolderOrder[effectiveParentId] = uniqueStrings([
+        folderId,
+        ...(nextChildFolderOrder[effectiveParentId] || []),
+      ]);
+    } else {
+      nextFolderOrder = uniqueStrings([folderId, ...nextFolderOrder]);
+    }
+  }
+  if (patch.move) {
+    if (effectiveParentId) {
+      nextChildFolderOrder[effectiveParentId] = moveIdInList(
+        nextChildFolderOrder[effectiveParentId] || [],
+        folderId,
+        patch.move,
+      );
+    } else {
+      nextFolderOrder = moveIdInList(nextFolderOrder, folderId, patch.move);
+    }
   }
   return {
     folder: nextFolder,
