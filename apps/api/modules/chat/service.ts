@@ -6596,6 +6596,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function buildChatNativeMessage(input: ChatRuntimeSendInput): ChannelConnectorOctoInboundMessage {
+    const nativeAttachments = mediaBridge.buildNativeInboundAttachments(
+      input.sessionKey,
+      input.fileRefs,
+      input.attachments,
+    );
     return {
       messageId: input.idempotencyKey,
       fromUid: 'tracevane-web-user',
@@ -6607,6 +6612,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         content: input.message,
         plain: input.message,
       },
+      attachments: nativeAttachments.length ? nativeAttachments : undefined,
     };
   }
 
@@ -6839,6 +6845,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       deliver: CHAT_POLICY_DEFAULTS.defaultDeliver,
       idempotencyKey: requestId,
       attachments,
+      fileRefs,
     });
     const status = sendResult.status;
     const ackRunId = sendResult.runId;

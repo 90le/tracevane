@@ -15,6 +15,7 @@ import type {
   ChatSendFileRef,
   ChatToolArtifactItem,
 } from '../../../../types/chat.js';
+import type { ChannelConnectorInboundAttachment } from '../../../../types/channel-connectors.js';
 import { buildContentDisposition } from '../../core/http.js';
 import { readOpenClawConfig } from '../../core/state.js';
 import { extractTracevaneDeliveryPayload, summarizeTracevaneDeliveryText, type TracevaneDeliveryResult, type TracevaneDeliveryResource } from '../../../../lib/tracevane-delivery.js';
@@ -1539,6 +1540,54 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
             mimeType,
           },
         );
+      }
+
+      return items;
+    },
+
+    buildNativeInboundAttachments(
+      sessionKey: string,
+      fileRefs: ChatSendFileRef[] | undefined,
+      attachments: ChatSendAttachment[] | undefined,
+    ): ChannelConnectorInboundAttachment[] {
+      const items: ChannelConnectorInboundAttachment[] = [];
+      const seenLocalPaths = new Set<string>();
+      const normalizedFileRefs = this.normalizeSendFileRefs(fileRefs);
+
+      for (const fileRef of normalizedFileRefs) {
+        const localPath = resolveLocalFilePath(config, sessionKey, fileRef.relativePath);
+        if (!localPath || seenLocalPaths.has(localPath)) {
+          continue;
+        }
+        seenLocalPaths.add(localPath);
+        const stat = safeStatSync(localPath);
+        items.push({
+          kind: fileRef.kind === 'image' || fileRef.kind === 'video' ? fileRef.kind : 'file',
+          platform: 'octo',
+          key: fileRef.id,
+          fileName: fileRef.fileName || path.basename(localPath),
+          mimeType: fileRef.mimeType || mimeTypeFromPath(localPath),
+          size: stat?.size ?? null,
+          localPath,
+          stagedAt: new Date().toISOString(),
+        });
+      }
+
+      for (let index = 0; index < (attachments || []).length; index += 1) {
+        const attachment = (attachments || [])[index];
+        const mimeType = normalizeMimeType(attachment.mimeType) || 'application/octet-stream';
+        const fileName = attachment.fileName?.trim() || `inline-${index + 1}`;
+        const kind = inferMediaKind(fileName, mimeType);
+        items.push({
+          kind: kind === 'image' || kind === 'video' ? kind : 'file',
+          platform: 'octo',
+          key: `inline-${index + 1}`,
+          fileName,
+          mimeType,
+          size: attachment.content ? Buffer.byteLength(attachment.content, 'base64') : null,
+          localPath: null,
+          stagingError: 'Inline base64 Chat attachments are shown as message resources; attach uploaded/workspace files to provide a local path to native CLI agents.',
+        });
       }
 
       return items;

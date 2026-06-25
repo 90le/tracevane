@@ -457,6 +457,9 @@ test('native CLI chat sessions send through channel connector runner and persist
       },
     });
 
+    const workspaceFile = path.join(root, 'workspace', 'notes.md');
+    fs.writeFileSync(workspaceFile, '# Native attachment\n');
+
     const created = await context.services.chat.createSession('main', {
       label: 'Native Codex runnable',
       runtimeTarget: {
@@ -471,6 +474,14 @@ test('native CLI chat sessions send through channel connector runner and persist
     const ack = await context.services.chat.send(created.session.key, {
       text: 'hello native codex',
       clientRequestId: 'native-run-1',
+      fileRefs: [{
+        id: 'workspace-note',
+        relativePath: 'notes.md',
+        resourceRef: 'workspace:notes.md',
+        fileName: 'notes.md',
+        kind: 'file',
+        mimeType: 'text/markdown',
+      }],
     });
 
     assert.equal(ack.status, 'started');
@@ -480,6 +491,8 @@ test('native CLI chat sessions send through channel connector runner and persist
     assert.equal(runnerCalls[0].sessionMode, 'new');
     assert.equal(runnerCalls[0].permissionMode, 'yolo');
     assert.match(runnerCalls[0].env.OPENAI_BASE_URL, /\/v1$/);
+    assert.match(runnerCalls[0].stdin, new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
+    assert.match(runnerCalls[0].stdin, /file: notes\.md/);
 
     const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
     assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);

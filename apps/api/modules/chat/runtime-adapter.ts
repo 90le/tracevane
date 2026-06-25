@@ -1,4 +1,4 @@
-import type { ChatRuntimeAdapterKind, ChatSendAttachment, ChatSendStatus } from '../../../../types/chat.js';
+import type { ChatRuntimeAdapterKind, ChatSendAttachment, ChatSendFileRef, ChatSendStatus } from '../../../../types/chat.js';
 import { CHAT_SEND_STATUS_MAP } from './contract.js';
 import { normalizeString } from './shared.js';
 
@@ -10,6 +10,7 @@ export interface ChatRuntimeSendInput {
   deliver: boolean;
   idempotencyKey: string;
   attachments: ChatSendAttachment[];
+  fileRefs?: ChatSendFileRef[];
 }
 
 export interface ChatRuntimeSendResult {
