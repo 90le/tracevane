@@ -21,13 +21,15 @@ test("shared data tables stack on phones and keep desktop table scrolling only f
   const theme = read("apps/web/src/design/theme.css");
 
   assert.match(table, /tv-table-wrap/);
-  assert.match(table, /overflow-hidden/);
+  assert.match(table, /w-full min-w-0 max-w-full overflow-hidden/);
   assert.match(table, /sm:overflow-x-auto/);
   assert.match(table, /tv-table w-full/);
   assert.match(theme, /@media \(max-width: 640px\)/);
   assert.match(theme, /\.tv-table thead \{ display: none; \}/);
   assert.match(theme, /\.tv-table td/);
   assert.match(theme, /white-space: normal/);
+  assert.match(theme, /overflow-wrap: anywhere/);
+  assert.match(theme, /\.tv-table td > \*/);
   assert.match(theme, /justify-content: flex-start/);
 });
 
@@ -70,6 +72,8 @@ test("overview surfaces use metric rails and route tables instead of card walls"
   assert.match(channelOverview, /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">/);
   assert.doesNotMatch(channelOverview, /mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4/);
   assert.match(cliRuns, /flex flex-wrap overflow-hidden border-b border-line bg-panel-2\/40/);
+  assert.match(cliShared, /min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm/);
+  assert.match(cliShared, /flex min-w-0 flex-wrap items-center/);
   assert.match(cliShared, /basis-\[128px\] border-b border-line px-3 py-2\.5/);
   assert.doesNotMatch(cliShared, /grid gap-1 rounded-md border border-line bg-panel-2 p-3/);
 });

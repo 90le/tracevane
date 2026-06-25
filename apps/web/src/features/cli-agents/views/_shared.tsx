@@ -15,7 +15,7 @@ export function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className={cn("rounded-md border border-line bg-panel shadow-sm", className)}>
+    <section className={cn("min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm", className)}>
       {children}
     </section>
   );
@@ -31,12 +31,12 @@ export function PanelHead({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+    <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0">
         <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
         {sub && <span className="block truncate text-sm text-subtle">{sub}</span>}
       </div>
-      {action && <div className="ml-auto shrink-0">{action}</div>}
+      {action && <div className="ml-auto shrink-0 max-sm:ml-0">{action}</div>}
     </div>
   );
 }

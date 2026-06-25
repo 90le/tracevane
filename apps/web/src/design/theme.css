@@ -243,7 +243,7 @@
 
   /* Responsive dense tables: desktop stays a real table; phone uses stacked rows so the page never relies on horizontal dragging. */
   @media (max-width: 640px) {
-    .tv-table-wrap { overflow-x: hidden; }
+    .tv-table-wrap { min-width: 0; overflow-x: hidden; }
     .tv-table,
     .tv-table thead,
     .tv-table tbody,
@@ -252,6 +252,8 @@
     .tv-table td {
       display: block;
       width: 100%;
+      max-width: 100%;
+      min-width: 0 !important;
     }
     .tv-table thead { display: none; }
     .tv-table tr {
@@ -263,6 +265,11 @@
       padding: 7px 12px;
       text-align: left !important;
       white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .tv-table td > * {
+      min-width: 0;
+      max-width: 100%;
     }
     .tv-table td:empty { display: none; }
     .tv-table td > .justify-end { justify-content: flex-start; }

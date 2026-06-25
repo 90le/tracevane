@@ -67,7 +67,7 @@ export function CliAgentsPage() {
   const ActiveView = VIEW_COMPONENTS[resolvedView];
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
       <div className="border-b border-line pb-2 sm:hidden">
         <label className="sr-only" htmlFor="cli-agents-mobile-view">
           CLI 代理视图
