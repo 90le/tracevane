@@ -124,6 +124,13 @@ type ChatRuntimeAgentOption = {
   description: string;
 };
 
+type ChatRuntimeOptionReadiness = {
+  label: string;
+  tone: "ok" | "warn" | "info";
+  detail: string;
+  selectable: boolean;
+};
+
 type FolderOption = {
   id: string;
   folder: ChatSessionFolder;
@@ -500,21 +507,21 @@ export function SessionListView({
   );
 
   const runtimeOptionReadiness = React.useCallback(
-    (option: ChatRuntimeAgentOption): { label: string; tone: "ok" | "warn" | "info"; detail: string } => {
+    (option: ChatRuntimeAgentOption): ChatRuntimeOptionReadiness => {
       if (option.adapterKind !== "native-cli" || !option.binaryId) {
-        return { label: "平台", tone: "info", detail: "由 OpenClaw 平台管理可用性" };
+        return { label: "平台", tone: "info", detail: "由 OpenClaw 平台管理可用性", selectable: true };
       }
       const binary = binaryStatusById.get(option.binaryId);
       if (terminalStatus.isLoading) {
-        return { label: "检测中", tone: "info", detail: "正在检测本地 CLI 是否可用" };
+        return { label: "检测中", tone: "info", detail: "正在检测本地 CLI 是否可用", selectable: false };
       }
       if (!binary) {
-        return { label: "未知", tone: "warn", detail: "未返回该 CLI 的安装状态" };
+        return { label: "未知", tone: "warn", detail: "未返回该 CLI 的安装状态，请在 CLI 代理页刷新检测", selectable: false };
       }
       if (binary.installed) {
-        return { label: "可用", tone: "ok", detail: binary.version || binary.path || "已检测到本地 CLI" };
+        return { label: "可用", tone: "ok", detail: binary.version || binary.path || "已检测到本地 CLI", selectable: true };
       }
-      return { label: "未安装", tone: "warn", detail: binary.packageName ? `需要安装 ${binary.packageName}` : "请在 CLI 代理页面安装或配置" };
+      return { label: "未安装", tone: "warn", detail: binary.packageName ? `需要安装 ${binary.packageName}` : "请在 CLI 代理页面安装或配置", selectable: false };
     },
     [binaryStatusById, terminalStatus.isLoading],
   );
@@ -523,6 +530,16 @@ export function SessionListView({
     () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
     [runtimeAgent],
   );
+  const selectedRuntimeReadiness = runtimeOptionReadiness(selectedRuntimeOption);
+
+  const ensureRuntimeSelectable = React.useCallback(() => {
+    const readiness = runtimeOptionReadiness(selectedRuntimeOption);
+    if (readiness.selectable) return true;
+    toast.error("当前 Agent 运行器不可用", {
+      description: `${selectedRuntimeOption.label}：${readiness.detail}`,
+    });
+    return false;
+  }, [runtimeOptionReadiness, selectedRuntimeOption]);
   const selectableModels = React.useMemo(
     () => (modelCatalog.data?.models ?? modelCatalog.data?.data ?? [])
       .filter((model) => model.agentSelectable !== false && !model.endpointOnly)
@@ -538,6 +555,7 @@ export function SessionListView({
   );
 
   const runCreate = () => {
+    if (!ensureRuntimeSelectable()) return;
     const option = selectedRuntimeOption;
     createSession.mutate(
       {
@@ -1307,10 +1325,12 @@ export function SessionListView({
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
                             type="button"
-                            onClick={() => setRuntimeAgent(option.agent)}
+                            disabled={!readiness.selectable}
+                            onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
                             className={cn(
                               "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",
+                              !readiness.selectable && "cursor-not-allowed opacity-60 hover:border-line",
                             )}
                           >
                             <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink-strong">
@@ -1375,6 +1395,7 @@ export function SessionListView({
                     {runtimeModel.trim() ? ` / ${runtimeModel.trim()}` : " / 默认模型"}
                     {runtimeWorkDir.trim() ? ` / ${runtimeWorkDir.trim()}` : " / 默认目录"}。
                     发送时会按这里的 Agent、模型、目录和权限启动或恢复对应运行时会话。
+                    {!selectedRuntimeReadiness.selectable ? ` 当前运行器不可用：${selectedRuntimeReadiness.detail}` : ""}
                   </p>
                 </div>
               </DialogBody>
@@ -1391,7 +1412,7 @@ export function SessionListView({
                   variant="primary"
                   size="sm"
                   onClick={runCreate}
-                  disabled={busy}
+                  disabled={busy || !selectedRuntimeReadiness.selectable}
                 >
                   {busy ? "创建中…" : "创建"}
                 </Button>
@@ -1423,10 +1444,12 @@ export function SessionListView({
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
                             type="button"
-                            onClick={() => setRuntimeAgent(option.agent)}
+                            disabled={!readiness.selectable}
+                            onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
                             className={cn(
                               "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",
+                              !readiness.selectable && "cursor-not-allowed opacity-60 hover:border-line",
                             )}
                           >
                             <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink-strong">
@@ -1500,6 +1523,7 @@ export function SessionListView({
                   variant="primary"
                   size="sm"
                   onClick={() => {
+                    if (!ensureRuntimeSelectable()) return;
                     const option = selectedRuntimeOption;
                     runPatch(dialog.session, {
                       runtimeTarget: {
@@ -1511,7 +1535,7 @@ export function SessionListView({
                       },
                     });
                   }}
-                  disabled={busy}
+                  disabled={busy || !selectedRuntimeReadiness.selectable}
                 >
                   {busy ? "保存中…" : "保存运行目标"}
                 </Button>

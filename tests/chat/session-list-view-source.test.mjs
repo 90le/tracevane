@@ -57,3 +57,14 @@ test('SessionListView recovers stale folder URL params instead of stranding the 
   assert.match(source, /!folderOptions\.some\(\(folder\) => folder\.id === folderId\)/);
   assert.match(source, /setFolderFilter\("all"\)/);
 });
+
+
+test('SessionListView gates new and edited sessions on CLI runtime readiness', () => {
+  assert.match(source, /type ChatRuntimeOptionReadiness = \{/);
+  assert.match(source, /selectable: boolean/);
+  assert.match(source, /disabled=\{!readiness\.selectable\}/);
+  assert.match(source, /readiness\.selectable && setRuntimeAgent\(option\.agent\)/);
+  assert.match(source, /const ensureRuntimeSelectable = React\.useCallback/);
+  assert.match(source, /当前 Agent 运行器不可用/);
+  assert.match(source, /disabled=\{busy \|\| !selectedRuntimeReadiness\.selectable\}/);
+});
