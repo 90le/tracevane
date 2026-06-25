@@ -59,6 +59,37 @@ test('collectMessageResources ignores plain text MEDIA and path examples', () =>
   }
 });
 
+
+test('resolves send file refs from the Tracevane project root for Chat workspace picker files', () => {
+  const tracevane = createTempTracevaneConfig();
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-media-project-'));
+  try {
+    tracevane.config.projectRoot = projectRoot;
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"tracevane-test"}');
+
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const resources = bridge.buildSendResources(
+      'agent:main:webchat:direct:tracevane-test',
+      [{
+        id: 'workspace:package.json',
+        relativePath: 'package.json',
+        resourceRef: 'workspace:package.json',
+        fileName: 'package.json',
+        kind: 'file',
+        mimeType: 'application/json',
+      }],
+      undefined,
+    );
+
+    assert.equal(resources.length, 1);
+    assert.equal(resources[0].status, 'ready');
+    assert.equal(resources[0].relativePath, 'package.json');
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
+  }
+});
+
 test('buildAssistantMessageFromTracevaneDelivery preserves block order', () => {
   const tracevane = createTempTracevaneConfig();
 

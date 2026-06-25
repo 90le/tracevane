@@ -274,6 +274,7 @@ function resolveAgentWorkspaceDir(config: TracevaneServerConfig, agentId: string
 function allowedMediaRoots(config: TracevaneServerConfig, sessionKey: string): string[] {
   const agentId = deriveAgentIdFromSessionKey(sessionKey);
   return [
+    config.projectRoot,
     config.openclawRoot,
     path.join(os.tmpdir(), 'openclaw'),
     resolveAgentWorkspaceDir(config, agentId),
@@ -289,6 +290,7 @@ function resolveRelativeCandidates(config: TracevaneServerConfig, sessionKey: st
   const agentWorkspace = resolveAgentWorkspaceDir(config, deriveAgentIdFromSessionKey(sessionKey));
   return [
     path.resolve(agentWorkspace, ref),
+    path.resolve(config.projectRoot, ref),
     path.resolve(config.openclawRoot, ref),
   ];
 }
