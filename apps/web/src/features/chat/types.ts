@@ -31,6 +31,7 @@ export type {
   ChatSendRequest,
   ChatSessionControlState,
   ChatSessionControlsPayload,
+  ChatSessionOrganizerState,
   ChatSessionPermissions,
   ChatSessionRow,
   ChatStreamEvent,

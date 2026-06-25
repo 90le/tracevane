@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   Archive,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -38,7 +39,7 @@ import {
   usePatchChatSessionMutation,
 } from "@/lib/query/chat";
 import type { ApiError } from "@/lib/api/errors";
-import type { ChatSessionRow } from "../types";
+import type { ChatSessionOrganizerState, ChatSessionRow } from "../types";
 import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
 
 type SessionDialogState =
@@ -48,6 +49,15 @@ type SessionDialogState =
   | { kind: "restore"; session: ChatSessionRow }
   | { kind: "delete"; session: ChatSessionRow }
   | null;
+
+type SessionFilter = "active" | "all" | "managed" | "readonly" | "archived";
+type FolderFilter = "all" | "unfiled" | `folder:${string}`;
+
+type ContextMenuState = {
+  session: ChatSessionRow;
+  x: number;
+  y: number;
+} | null;
 
 function canManage(session: ChatSessionRow): boolean {
   return (
@@ -63,6 +73,7 @@ export function SessionListView({
   isLoading,
   isFetching,
   error,
+  organizer,
   onSelect,
   onRefresh,
 }: {
@@ -71,12 +82,17 @@ export function SessionListView({
   isLoading: boolean;
   isFetching: boolean;
   error: ApiError | null;
+  organizer?: ChatSessionOrganizerState | null;
   onSelect: (key: string) => void;
   onRefresh: () => void;
 }) {
   const [filter, setFilter] = React.useState("");
+  const [sessionFilter, setSessionFilter] =
+    React.useState<SessionFilter>("active");
+  const [folderFilter, setFolderFilter] = React.useState<FolderFilter>("all");
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
+  const [contextMenu, setContextMenu] = React.useState<ContextMenuState>(null);
 
   const createSession = useCreateChatSessionMutation();
   const patchSession = usePatchChatSessionMutation();
@@ -87,9 +103,63 @@ export function SessionListView({
     if (dialog?.kind === "create") setLabelDraft("");
   }, [dialog]);
 
+  React.useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
+
+  const folderOptions = React.useMemo(() => {
+    if (!organizer?.folders?.length) return [];
+    const byId = new Map(organizer.folders.map((folder) => [folder.id, folder]));
+    const pathFor = (folderId: string): string => {
+      const parts: string[] = [];
+      const seen = new Set<string>();
+      let current = byId.get(folderId) ?? null;
+      while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        parts.unshift(current.title);
+        current = current.parentId ? byId.get(current.parentId) ?? null : null;
+      }
+      return parts.join(" / ");
+    };
+    return organizer.folders
+      .map((folder) => ({
+        id: folder.id,
+        label: pathFor(folder.id) || folder.title,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "zh-Hans-CN"));
+  }, [organizer]);
+
   const visible = React.useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const ordered = [...sessions].sort((a, b) => {
+    const scoped = sessions.filter((s) => {
+      if (sessionFilter === "active") return !s.presentation?.archived;
+      if (sessionFilter === "managed")
+        return canManage(s) && !s.presentation?.archived;
+      if (sessionFilter === "readonly")
+        return !canManage(s) && !s.presentation?.archived;
+      if (sessionFilter === "archived")
+        return Boolean(s.presentation?.archived);
+      return true;
+    });
+    const folderScoped = scoped.filter((s) => {
+      if (folderFilter === "all") return true;
+      const assigned = organizer?.sessionFolderMap?.[s.key] ?? null;
+      if (folderFilter === "unfiled") return !assigned;
+      return assigned === folderFilter.slice("folder:".length);
+    });
+    const ordered = [...folderScoped].sort((a, b) => {
       const aArchived = a.presentation?.archived ? 1 : 0;
       const bArchived = b.presentation?.archived ? 1 : 0;
       const aUnknown = a.runtime?.state === "unknown" ? 1 : 0;
@@ -114,7 +184,7 @@ export function SessionListView({
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [sessions, filter]);
+  }, [sessions, filter, sessionFilter, folderFilter, organizer]);
 
   const runCreate = () => {
     createSession.mutate(
@@ -163,6 +233,72 @@ export function SessionListView({
     patchSession.isPending ||
     deleteSession.isPending;
 
+  const closeContextMenu = () => setContextMenu(null);
+
+  const openMenuAt = (session: ChatSessionRow, x: number, y: number) => {
+    const viewportWidth =
+      typeof window === "undefined" ? x + 188 : window.innerWidth;
+    const viewportHeight =
+      typeof window === "undefined" ? y + 220 : window.innerHeight;
+    setContextMenu({
+      session,
+      x: Math.max(8, Math.min(x, viewportWidth - 188)),
+      y: Math.max(8, Math.min(y, viewportHeight - 220)),
+    });
+  };
+
+  const openMenuFromButton = (
+    element: HTMLElement,
+    session: ChatSessionRow,
+  ) => {
+    const rect = element.getBoundingClientRect();
+    openMenuAt(session, rect.right - 176, rect.bottom + 6);
+  };
+
+  const triggerSessionAction = (
+    action: "rename" | "archive" | "restore" | "delete",
+    session: ChatSessionRow,
+  ) => {
+    closeContextMenu();
+    setDialog({ kind: action, session });
+  };
+
+  const renderMenuItem = ({
+    children,
+    danger,
+    disabled,
+    icon,
+    onSelect: onItemSelect,
+  }: {
+    children: React.ReactNode;
+    danger?: boolean;
+    disabled?: boolean;
+    icon?: React.ReactNode;
+    onSelect?: () => void;
+  }) => (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onItemSelect?.();
+      }}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-xs px-2.5 py-2 text-left text-sm outline-none transition-colors focus-visible:shadow-[var(--ring)]",
+        danger
+          ? "text-red hover:bg-red-soft"
+          : "text-ink hover:bg-panel-2 hover:text-ink-strong",
+        disabled && "cursor-not-allowed text-subtle hover:bg-transparent",
+      )}
+    >
+      <span className="grid size-4 place-items-center text-current [&_svg]:size-3.5">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  );
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-panel">
       <div className="grid gap-2 border-b border-line p-3">
@@ -202,6 +338,51 @@ export function SessionListView({
             aria-label="筛选会话"
           />
         </div>
+        <div className="flex flex-wrap gap-1">
+          {(
+            [
+              ["active", "活跃"],
+              ["managed", "自管"],
+              ["readonly", "只读"],
+              ["archived", "归档"],
+              ["all", "全部"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSessionFilter(id)}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs outline-none transition-colors focus-visible:shadow-[var(--ring)]",
+                sessionFilter === id
+                  ? "bg-primary-soft text-primary"
+                  : "bg-panel-2 text-muted hover:text-ink",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {folderOptions.length > 0 && (
+          <label className="grid gap-1 text-2xs text-subtle">
+            文件夹筛选
+            <select
+              value={folderFilter}
+              onChange={(event) =>
+                setFolderFilter(event.target.value as FolderFilter)
+              }
+              className="h-8 rounded-sm border border-line bg-panel-2 px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus:border-primary-line focus:shadow-[var(--ring)]"
+            >
+              <option value="all">全部文件夹</option>
+              <option value="unfiled">未分组</option>
+              {folderOptions.map((folder) => (
+                <option key={folder.id} value={`folder:${folder.id}`}>
+                  {folder.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
@@ -250,9 +431,13 @@ export function SessionListView({
                 <div
                   key={s.key}
                   className={cn(
-                    "group grid rounded-sm transition-colors hover:bg-panel-2",
+                    "group grid grid-cols-[minmax(0,1fr)_auto] items-stretch rounded-sm transition-colors hover:bg-panel-2",
                     s.key === selectedKey && "bg-primary-soft",
                   )}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    openMenuAt(s, event.clientX, event.clientY);
+                  }}
                 >
                   <button
                     type="button"
@@ -282,57 +467,112 @@ export function SessionListView({
                       <span className="truncate text-2xs text-subtle">
                         {s.agentId} · {source}
                         {s.presentation?.archived ? " · 已归档" : ""}
+                        {!manageable ? " · 只读" : ""}
                       </span>
                     </span>
                     {showState && (
                       <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
                     )}
                   </button>
-                  <div className="flex items-center gap-1 px-3 pb-2 pl-[4.25rem] text-xs">
-                    {manageable ? (
-                      <>
-                        <button
-                          className="text-subtle hover:text-ink"
-                          onClick={() =>
-                            setDialog({ kind: "rename", session: s })
-                          }
-                        >
-                          重命名
-                        </button>
-                        <span className="text-line-2">/</span>
-                        <button
-                          className="text-subtle hover:text-ink"
-                          onClick={() =>
-                            setDialog({
-                              kind: s.presentation?.archived
-                                ? "restore"
-                                : "archive",
-                              session: s,
-                            })
-                          }
-                        >
-                          {s.presentation?.archived ? "恢复" : "归档"}
-                        </button>
-                        <span className="text-line-2">/</span>
-                        <button
-                          className="text-red hover:underline"
-                          onClick={() =>
-                            setDialog({ kind: "delete", session: s })
-                          }
-                        >
-                          删除
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-subtle">只读观察会话</span>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={
+                      contextMenu?.session.key === s.key ? true : undefined
+                    }
+                    aria-label={`管理会话 ${sessionTitle(s)}`}
+                    title="更多操作"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openMenuFromButton(event.currentTarget, s);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" ||
+                        event.key === " " ||
+                        event.key === "ArrowDown"
+                      ) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openMenuFromButton(event.currentTarget, s);
+                      }
+                    }}
+                    className="mr-1 grid w-9 place-items-center self-center rounded-sm text-subtle opacity-0 outline-none transition hover:bg-panel hover:text-ink group-hover:opacity-100 focus-visible:opacity-100 focus-visible:shadow-[var(--ring)]"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <div
+          role="menu"
+          aria-label={`会话操作：${sessionTitle(contextMenu.session)}`}
+          className="fixed z-50 grid w-44 gap-0.5 rounded-md border border-line-2 bg-panel p-1 shadow-lg"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {renderMenuItem({
+            icon: <MessageSquare />,
+            onSelect: () => {
+              onSelect(contextMenu.session.key);
+              closeContextMenu();
+            },
+            children: "打开会话",
+          })}
+          <div className="my-1 h-px bg-line" role="separator" />
+          {canManage(contextMenu.session) ? (
+            <>
+              {renderMenuItem({
+                icon: <Pencil />,
+                onSelect: () =>
+                  triggerSessionAction("rename", contextMenu.session),
+                children: "重命名…",
+              })}
+              {renderMenuItem({
+                icon: contextMenu.session.presentation?.archived ? (
+                  <Undo2 />
+                ) : (
+                  <Archive />
+                ),
+                onSelect: () =>
+                  triggerSessionAction(
+                    contextMenu.session.presentation?.archived
+                      ? "restore"
+                      : "archive",
+                    contextMenu.session,
+                  ),
+                children: contextMenu.session.presentation?.archived
+                  ? "恢复到活跃"
+                  : "归档会话",
+              })}
+              {renderMenuItem({
+                icon: <Trash2 />,
+                danger: true,
+                onSelect: () =>
+                  triggerSessionAction("delete", contextMenu.session),
+                children: "删除会话…",
+              })}
+            </>
+          ) : (
+            <>
+              {renderMenuItem({
+                disabled: true,
+                icon: <Archive />,
+                children: "外部观察会话只读",
+              })}
+            </>
+          )}
+        </div>
+      )}
 
       <Dialog
         open={Boolean(dialog)}

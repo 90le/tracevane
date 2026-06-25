@@ -319,6 +319,8 @@ P0：文档与导航语言统一。
 P1：Agent 会话重构。
 
 - 会话列表人话化标题。
+- 会话管理使用右键菜单 / 更多菜单，不在列表行常驻重命名、归档、删除等按钮。
+- 会话筛选覆盖活跃、自管、只读、归档、全部和 organizer 文件夹；完整文件夹/子文件夹管理进入独立 Organizer 面板或 Drawer。
 - Context Strip 支持 Agent / 模型 / 目录 / 权限。
 - 统一来源：web / im / cli / platform。
 - Evidence Drawer 承载 raw event、diff、tool、IM 投递。
