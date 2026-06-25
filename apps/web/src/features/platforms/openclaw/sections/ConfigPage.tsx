@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
@@ -77,6 +78,8 @@ interface ConfigDraft {
   queueCap: string;
   queueDrop: string;
 }
+
+const CONFIG_SECTION_IDS = new Set<ConfigSection>(["defaults", "models", "runtime", "security", "gateway", "messages", "advanced"]);
 
 const CONFIG_SECTIONS: Array<{ id: ConfigSection; title: string; desc: string }> = [
   { id: "defaults", title: "基础", desc: "目录、并发、超时" },
@@ -312,11 +315,15 @@ function ToggleField({ label, checked, onChange, helper }: { label: string; chec
 }
 
 function SectionNav({ active, onChange }: { active: ConfigSection; onChange: (section: ConfigSection) => void }) {
-  return <nav aria-label="OpenClaw 配置分组" className="grid gap-1 border-b border-line p-2 md:grid-cols-7">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
+  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 md:grid-cols-7">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
 }
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-0 overflow-hidden rounded-sm border border-line md:grid-cols-2">{children}</div>;
+}
+
+function ConfigEmptyHint({ children }: { children: React.ReactNode }) {
+  return <div className="border-t border-line px-4 py-3 text-xs text-muted">{children}</div>;
 }
 
 function renderSection(section: ConfigSection, draft: ConfigDraft, setField: (key: keyof ConfigDraft) => (value: string) => void, setBool: (key: keyof ConfigDraft) => (value: boolean) => void, data: ConfigSummaryPayload | undefined) {
@@ -333,7 +340,9 @@ export function ConfigPage() {
   const config = useOpenClawConfigSummaryQuery();
   const diagnostics = useSystemDiagnosticsQuery();
   const patchConfig = usePatchOpenClawConfigMutation();
-  const [activeSection, setActiveSection] = React.useState<ConfigSection>("defaults");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionFromUrl = searchParams.get("section") as ConfigSection | null;
+  const activeSection = sectionFromUrl && CONFIG_SECTION_IDS.has(sectionFromUrl) ? sectionFromUrl : "defaults";
   const [draft, setDraft] = React.useState<ConfigDraft>(() => draftFromConfig(undefined));
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
 
@@ -358,6 +367,11 @@ export function ConfigPage() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(currentDraft);
   const setField = (key: keyof ConfigDraft) => (value: string) => setDraft((prev) => ({ ...prev, [key]: value }));
   const setBool = (key: keyof ConfigDraft) => (value: boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
+  const setActiveSection = (section: ConfigSection) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("section", section);
+    setSearchParams(next, { replace: true });
+  };
   const save = () => {
     if (!data) return;
     patchConfig.mutate(draftToPatch(draft, data), {
@@ -382,6 +396,7 @@ export function ConfigPage() {
     <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="grid gap-[18px]">
         {renderSection(activeSection, draft, setField, setBool, data)}
+        {activeSection === "advanced" ? <ConfigEmptyHint>高级证据页当前只展示 Provider / MCP / Commands 摘要；如需编辑这些对象，后续需要专门的校验、差异、备份和恢复流程。</ConfigEmptyHint> : null}
         <Panel><div className="flex flex-wrap items-center gap-2 px-4 py-3"><Button size="sm" onClick={save} disabled={!dirty || patchConfig.isPending}>{patchConfig.isPending ? "保存中…" : "保存当前配置"}</Button><Button variant="ghost" size="sm" onClick={() => setDraft(currentDraft)} disabled={!dirty || patchConfig.isPending}>重置</Button>{savedAt ? <span className="text-xs text-muted">最近保存：{fmtDate(savedAt)}</span> : null}</div></Panel>
       </div>
       <DetailRail title={selectedConfig?.name ?? "运行边界"} subtitle={selectedConfig ? selectedConfig.kind : "来自 system diagnostics"}>{selectedConfig ? <><EvidenceRow label="kind" value={selectedConfig.kind} /><EvidenceRow label="name" value={selectedConfig.name} /><div className="px-4 py-2"><JsonSnippet value={selectedConfig.value} /></div></> : null}<EvidenceRow label="openclaw root" value={diag?.config.openclawRoot ?? "—"} /><EvidenceRow label="config file" value={diag?.config.openclawConfigFile ?? "—"} /><EvidenceRow label="gateway ws" value={diag?.config.gatewayWsUrl ?? "—"} /><EvidenceRow label="control UI" value={diag?.config.gatewayControlUiBasePath ?? "—"} /><EvidenceRow label="runtime cwd" value={diag?.runtime.cwd ?? "—"} /></DetailRail>

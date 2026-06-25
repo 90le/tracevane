@@ -91,6 +91,8 @@ test("OpenClaw config page saves first-stage safe fields through typed PATCH", (
   assert.match(page, /contextTokens/);
   assert.match(page, /reserveTokensFloor/);
   assert.match(page, /CONFIG_SECTIONS/);
+  assert.match(page, /useSearchParams/);
+  assert.match(page, /OpenClaw 配置子页面/);
   assert.match(page, /title: "模型"/);
   assert.match(page, /title: "安全"/);
   assert.match(page, /title: "网关"/);
