@@ -79,21 +79,16 @@ test('sqlite: session state store uses sqlite when available', () => {
   }
 });
 
-test('sqlite: write/read roundtrip persists queue and controls', () => {
+test('sqlite: write/read roundtrip persists queue', () => {
   const root = makeTempRoot();
   try {
     const store = createTracevaneChatSessionStateStore(makeConfig(root));
     store.write('agent:main:webchat:direct:test', {
       pendingQueue: [makeQueueItem('q1')],
-      controls: {
-        allowHostManagementExec: true,
-        updatedAt: '2026-04-22T10:00:01.000Z',
-      },
     });
     const result = store.read('agent:main:webchat:direct:test');
     assert.ok(result);
     assert.equal(result.pendingQueue.length, 1);
-    assert.equal(result.controls.allowHostManagementExec, true);
   } finally {
     cleanupTempRoot(root);
   }
@@ -105,10 +100,6 @@ test('sqlite: clear removes persisted state', () => {
     const store = createTracevaneChatSessionStateStore(makeConfig(root));
     store.write('agent:main:webchat:direct:test', {
       pendingQueue: [makeQueueItem('q1')],
-      controls: {
-        allowHostManagementExec: false,
-        updatedAt: null,
-      },
     });
     store.clear('agent:main:webchat:direct:test');
     assert.equal(store.read('agent:main:webchat:direct:test'), null);
@@ -124,14 +115,12 @@ test('json fallback: session state store still works without node:sqlite', () =>
       console.log(store.backend);
       store.write('agent:main:webchat:direct:test', {
         pendingQueue: [${JSON.stringify(makeQueueItem('q1'))}],
-        controls: { allowHostManagementExec: true, updatedAt: '2026-04-22T10:00:01.000Z' },
       });
       console.log(JSON.stringify(store.read('agent:main:webchat:direct:test')));
     `).split('\n');
     assert.equal(output[0], 'json');
     const result = JSON.parse(output[1]);
     assert.equal(result.pendingQueue.length, 1);
-    assert.equal(result.controls.allowHostManagementExec, true);
   } finally {
     cleanupTempRoot(root);
   }

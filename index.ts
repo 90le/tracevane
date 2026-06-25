@@ -17,7 +17,6 @@ import {
   type ChatGatewayAbortPayload,
   type ChatGatewayDetachPayload,
   type ChatGatewayHeartbeatPayload,
-  type ChatGatewayPolicySyncPayload,
   type ChatGatewaySendPayload,
 } from './types/chat.js';
 import {
@@ -35,10 +34,7 @@ import {
   buildTracevaneBeforeToolCallResult,
 } from './lib/tracevane-delivery-hooks.js';
 import {
-  getTracevaneChatGlobalHostManagementExecEnabled,
-  getTracevaneChatSessionHostManagementExecEnabled,
   setTracevaneChatGlobalHostManagementExecEnabled,
-  setTracevaneChatSessionHostManagementExecEnabled,
 } from './lib/tracevane-chat-management-policy.js';
 import { maybeHandleTracevaneReplyDispatch } from './lib/tracevane-reply-dispatch.js';
 import { resolveTracevaneDeliveryTool } from './lib/tracevane-delivery-tool.js';
@@ -322,35 +318,6 @@ const tracevanePlugin = {
             opts.respond(false, undefined, buildGatewayMethodError(
               error instanceof Error ? error.message : 'chat_abort_failed',
               'CHAT_ABORT_FAILED',
-            ));
-          }
-        }, { scope: 'operator.read' });
-
-        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.policySync, (opts) => {
-          try {
-            const payload = opts.params as unknown as ChatGatewayPolicySyncPayload;
-            const sessionKey = String(payload?.sessionKey || '').trim();
-            if (typeof payload?.globalHostManagementExecEnabled === 'boolean') {
-              setTracevaneChatGlobalHostManagementExecEnabled(payload.globalHostManagementExecEnabled);
-            }
-            if (sessionKey) {
-              setTracevaneChatSessionHostManagementExecEnabled(
-                sessionKey,
-                payload?.allowHostManagementExec === true,
-              );
-            }
-            opts.respond(true, {
-              ok: true,
-              sessionKey: sessionKey || null,
-              globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
-              allowHostManagementExec: sessionKey
-                ? getTracevaneChatSessionHostManagementExecEnabled(sessionKey)
-                : null,
-            });
-          } catch (error) {
-            opts.respond(false, undefined, buildGatewayMethodError(
-              error instanceof Error ? error.message : 'chat_policy_sync_failed',
-              'CHAT_POLICY_SYNC_FAILED',
             ));
           }
         }, { scope: 'operator.read' });

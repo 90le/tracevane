@@ -15,7 +15,6 @@ export const CHAT_API_PATHS = {
   datesBySession: '/api/chat/sessions/:sessionKey/dates',
   queueBySession: '/api/chat/sessions/:sessionKey/queue',
   queueEntryBySession: '/api/chat/sessions/:sessionKey/queue/:entryId',
-  controlsBySession: '/api/chat/sessions/:sessionKey/controls',
   sendBySession: '/api/chat/sessions/:sessionKey/send',
   resourcesResolveBySession: '/api/chat/sessions/:sessionKey/resources/resolve',
   mediaBySession: '/api/chat/sessions/:sessionKey/media/:mediaId',
@@ -40,7 +39,6 @@ export const CHAT_PROTOCOL_MODE_DEFAULT: ChatProtocolMode = 'canonical_v1';
 
 export const CHAT_MVP_STREAM_EVENT_KINDS: ReadonlyArray<ChatStreamEvent['kind']> = [
   'queue.state',
-  'session.controls',
   'side_result',
   'ack',
   'run_overlay',
@@ -55,7 +53,6 @@ export const CHAT_PHASE2_STREAM_EVENT_KINDS: ReadonlyArray<ChatStreamEvent['kind
   'canonical.snapshot',
   'canonical.message',
   'queue.state',
-  'session.controls',
   'side_result',
   'temporary.assistant',
   'temporary.tool',

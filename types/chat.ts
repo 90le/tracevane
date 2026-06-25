@@ -65,10 +65,6 @@ export interface ChatRuntimeState {
   lastErrorMessage: string | null;
 }
 
-export interface ChatSessionControlState {
-  allowHostManagementExec: boolean;
-  updatedAt: string | null;
-}
 
 export interface ChatUsageSummary {
   inputTokens: number;
@@ -441,7 +437,6 @@ export interface ChatBootstrapPayload {
   selectedSessionKey: string | null;
   history: ChatHistoryPayload | null;
   queue: ChatQueuePayload | null;
-  controls: ChatSessionControlsPayload | null;
   diagnostics: ChatDiagnostics;
 }
 
@@ -549,16 +544,6 @@ export interface ChatQueuePayload {
 
 export interface ChatPatchQueueEntryRequest extends ChatSendRequest {}
 
-export interface ChatSessionControlsPayload {
-  checkedAt: string;
-  session: ChatSessionRow;
-  globalHostManagementExecEnabled: boolean;
-  controls: ChatSessionControlState;
-}
-
-export interface ChatPatchSessionControlsRequest {
-  allowHostManagementExec: boolean;
-}
 
 export type ChatSendStatus = 'started' | 'duplicate_in_flight' | 'duplicate_completed';
 
@@ -645,13 +630,6 @@ export type ChatStreamEvent = (
     sessionKey: string;
     emittedAt: string;
     items: ChatQueuedMessageItem[];
-  }
-  | {
-    kind: 'session.controls';
-    sessionKey: string;
-    emittedAt: string;
-    globalHostManagementExecEnabled?: boolean;
-    controls: ChatSessionControlState;
   }
   | {
     kind: 'side_result';
@@ -828,11 +806,6 @@ export interface ChatGatewayAbortPayload {
   sessionKey: string;
 }
 
-export interface ChatGatewayPolicySyncPayload {
-  globalHostManagementExecEnabled?: boolean;
-  sessionKey?: string | null;
-  allowHostManagementExec?: boolean;
-}
 
 export interface ChatGatewayAttachResponse {
   sessionKey: string;
@@ -853,5 +826,4 @@ export const TRACEVANE_CHAT_GATEWAY_METHODS = {
   detach: 'tracevane.chat.detach',
   send: 'tracevane.chat.send',
   abort: 'tracevane.chat.abort',
-  policySync: 'tracevane.chat.policy.sync',
 } as const;

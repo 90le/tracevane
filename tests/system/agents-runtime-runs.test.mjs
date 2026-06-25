@@ -145,7 +145,6 @@ test("agent runtime runs aggregates terminal, IM, and chat sessions", () => {
       selectedSessionKey: null,
       history: null,
       queue: null,
-      controls: null,
       diagnostics: { ok: true, notes: [], warnings: [], errors: [] },
     },
   });

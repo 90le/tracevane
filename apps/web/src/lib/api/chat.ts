@@ -13,7 +13,6 @@ import type {
   ChatHistoryPayload,
   ChatPatchOrganizerFolderRequest,
   ChatPatchOrganizerFolderResponse,
-  ChatPatchSessionControlsRequest,
   ChatPatchSessionRequest,
   ChatPatchSessionResponse,
   ChatQueuePayload,
@@ -21,7 +20,6 @@ import type {
   ChatResetResponse,
   ChatSendAck,
   ChatSendRequest,
-  ChatSessionControlsPayload,
 } from "../../../../../types/chat";
 
 /**
@@ -54,7 +52,7 @@ export function encodeSessionKey(sessionKey: string): string {
 
 /**
  * GET /api/chat/bootstrap — session roster + organizer + selected session
- * history / queue / controls / diagnostics in one shot.
+ * history / queue / diagnostics in one shot.
  */
 export function getChatBootstrap(
   params: {
@@ -106,16 +104,6 @@ export function getChatQueue(
   );
 }
 
-/** GET /api/chat/sessions/:key/controls — per-session policy (host exec). */
-export function getChatControls(
-  sessionKey: string,
-  signal?: AbortSignal,
-): Promise<ChatSessionControlsPayload> {
-  return apiRequest<ChatSessionControlsPayload>(
-    `${BASE}/sessions/${encodeSessionKey(sessionKey)}/controls`,
-    { signal },
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Write
@@ -248,16 +236,6 @@ export function deleteChatQueueEntry(
   );
 }
 
-/** PATCH /api/chat/sessions/:key/controls — update the session policy. */
-export function patchChatControls(
-  sessionKey: string,
-  payload: ChatPatchSessionControlsRequest,
-): Promise<ChatSessionControlsPayload> {
-  return apiRequest<ChatSessionControlsPayload>(
-    `${BASE}/sessions/${encodeSessionKey(sessionKey)}/controls`,
-    { method: "PATCH", body: jsonBody(payload) },
-  );
-}
 
 /** Resolve the same-origin URL for the SSE stream endpoint. */
 export function chatStreamUrl(sessionKey: string): string {

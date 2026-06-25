@@ -57,7 +57,7 @@ const EMPTY_TURN: LiveAssistantTurn = {
  * left-list / center-chat / right-inspector three-column admin shell.
  *
  * Data: the bootstrap query owns the roster + the selected session's read
- * snapshot (history, queue, controls, diagnostics). Sending a message POSTs
+ * snapshot (history, queue, diagnostics). Sending a message POSTs
  * `/send`; a live SSE subscription (`useChatStream`) renders the streaming
  * assistant turn (text + tool calls) as events arrive. On a terminal stream
  * event (`final` / `aborted` / `error`) we refetch the authoritative bootstrap

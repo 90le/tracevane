@@ -11,7 +11,6 @@ import type {
   ChatPatchQueueEntryRequest,
   ChatPatchOrganizerFolderRequest,
   ChatPatchSessionRequest,
-  ChatPatchSessionControlsRequest,
   ChatHistorySearchContentFilter,
   ChatHistorySearchRoleFilter,
   ChatResourceResolveRequest,
@@ -574,41 +573,6 @@ export function registerChatRoutes(
           await routeCtx.services.chat.deleteQueueEntry(
             params.sessionKey,
             params.entryId,
-          ),
-        );
-      } catch (error) {
-        sendChatError(res, error);
-      }
-    },
-  );
-
-  router.get(
-    "/api/chat/sessions/:sessionKey/controls",
-    async (_req, res, routeCtx, params) => {
-      try {
-        sendJson(
-          res,
-          200,
-          await routeCtx.services.chat.getControls(params.sessionKey),
-        );
-      } catch (error) {
-        sendChatError(res, error);
-      }
-    },
-  );
-
-  router.patch(
-    "/api/chat/sessions/:sessionKey/controls",
-    async (req, res, routeCtx, params) => {
-      try {
-        const payload =
-          await parseJsonBody<ChatPatchSessionControlsRequest>(req);
-        sendJson(
-          res,
-          200,
-          await routeCtx.services.chat.patchControls(
-            params.sessionKey,
-            payload,
           ),
         );
       } catch (error) {

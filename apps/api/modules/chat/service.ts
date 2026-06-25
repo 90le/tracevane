@@ -42,7 +42,6 @@ import type {
   ChatPatchOrganizerFolderResponse,
   ChatPatchSessionRequest,
   ChatPatchSessionResponse,
-  ChatPatchSessionControlsRequest,
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResourceResolveRequest,
@@ -56,8 +55,6 @@ import type {
   ChatSendFileRef,
   ChatSendStatus,
   ChatSendRequest,
-  ChatSessionControlState,
-  ChatSessionControlsPayload,
   ChatSessionFolder,
   ChatSessionKind,
   ChatSessionOrganizerState,
@@ -201,11 +198,7 @@ import { createTracevaneChatSessionCatalogStore } from './session-catalog-store.
 import { createTracevaneChatSessionStateStore } from './session-state-store.js';
 import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-auto-title.js';
 import { maybeAutoApproveTracevaneHelperPairing } from '../system/device-trust.js';
-import {
-  clearTracevaneChatSessionHostManagementExecEnabled,
-  getTracevaneChatGlobalHostManagementExecEnabled,
-  setTracevaneChatSessionHostManagementExecEnabled,
-} from '../../../../lib/tracevane-chat-management-policy.js';
+import { clearTracevaneChatSessionHostManagementExecEnabled } from '../../../../lib/tracevane-chat-management-policy.js';
 import {
   buildChatDiagnosticsSummary,
   buildChatSessionRuntimeSummary,
@@ -218,7 +211,6 @@ interface TracevaneManagedSessionState {
   diagnosticsNotes: string[];
   observability: ChatObservabilityState;
   pendingQueue: ChatQueuedMessageItem[];
-  controls: ChatSessionControlState;
   materialized?: boolean;
   resetPending?: boolean;
   clearedAt?: string | null;
@@ -371,13 +363,6 @@ function cloneCanonicalEntries(entries: ChatCanonicalEntry[]): ChatCanonicalEntr
   }));
 }
 
-function createDefaultSessionControls(): ChatSessionControlState {
-  return {
-    allowHostManagementExec: false,
-    updatedAt: null,
-  };
-}
-
 function cloneChatQueuedMessageItem<T extends ChatQueuedMessageItem | null | undefined>(value: T): T {
   if (!value) {
     return value;
@@ -392,13 +377,6 @@ function cloneChatQueuedMessageItem<T extends ChatQueuedMessageItem | null | und
 
 function cloneChatQueuedMessageList(items: ChatQueuedMessageItem[] | undefined): ChatQueuedMessageItem[] {
   return (items || []).map((item) => cloneChatQueuedMessageItem(item)!);
-}
-
-function cloneSessionControls(value: ChatSessionControlState | null | undefined): ChatSessionControlState {
-  return {
-    allowHostManagementExec: value?.allowHostManagementExec === true,
-    updatedAt: normalizeDate(value?.updatedAt) || null,
-  };
 }
 
 function cloneToolCalls(toolCalls: ChatMessageToolCallItem[] | undefined): ChatMessageToolCallItem[] | undefined {
@@ -844,8 +822,6 @@ export interface ChatService {
   enqueue(sessionKey: string, payload: ChatSendRequest): Promise<ChatQueuePayload>;
   patchQueueEntry(sessionKey: string, entryId: string, payload: ChatPatchQueueEntryRequest): Promise<ChatQueuePayload>;
   deleteQueueEntry(sessionKey: string, entryId: string): Promise<ChatQueuePayload>;
-  getControls(sessionKey: string): Promise<ChatSessionControlsPayload>;
-  patchControls(sessionKey: string, payload: ChatPatchSessionControlsRequest): Promise<ChatSessionControlsPayload>;
   requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown>;
   send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck>;
   resolveResourceRefs(sessionKey: string, payload: ChatResourceResolveRequest): Promise<ChatResourceResolveResponse>;
@@ -1288,62 +1264,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
-  async function buildSessionControlsPayload(sessionKey: string): Promise<ChatSessionControlsPayload> {
-    const session = await requireSession(sessionKey);
-    requireFrontendVisible(session);
-    const state = ensureTracevaneSessionState(session);
-    return {
-      checkedAt: new Date().toISOString(),
-      session: state.row,
-      globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
-      controls: cloneSessionControls(state.controls),
-    };
-  }
-
-  async function syncSessionControlsToGatewayPolicy(
-    sessionKey: string,
-    controls: ChatSessionControlState,
-  ): Promise<void> {
-    try {
-      await requestGateway(options.config, TRACEVANE_CHAT_GATEWAY_METHODS.policySync, {
-        sessionKey,
-        allowHostManagementExec: controls.allowHostManagementExec === true,
-        globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
-      }, { timeoutMs: 2_000 });
-    } catch {
-      // The standalone API remains the source of truth. Older gateways or
-      // temporarily disconnected gateways will resync on the next toggle.
-    }
-  }
-
-  function buildSessionControlsEvent(
-    sessionKey: string,
-    controls: ChatSessionControlState,
-    emittedAt = new Date().toISOString(),
-  ): ChatStreamEvent {
-    return {
-      kind: 'session.controls',
-      sessionKey,
-      emittedAt,
-      globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
-      controls: cloneSessionControls(controls),
-    };
-  }
-
-  async function resolveSessionStateForAttachEvents(sessionKey: string): Promise<TracevaneManagedSessionState | null> {
-    const existing = getTracevaneSession(sessionKey);
-    if (existing) {
-      return existing;
-    }
-    try {
-      const session = await requireSession(sessionKey);
-      requireFrontendVisible(session);
-      return ensureTracevaneSessionState(session);
-    } catch {
-      return null;
-    }
-  }
-
   function broadcastQueueState(sessionKey: string, emittedAt = new Date().toISOString()): void {
     const current = getTracevaneSession(sessionKey);
     if (!current) {
@@ -1357,12 +1277,19 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
   }
 
-  function broadcastSessionControls(sessionKey: string, emittedAt = new Date().toISOString()): void {
-    const current = getTracevaneSession(sessionKey);
-    if (!current) {
-      return;
+
+  async function resolveSessionStateForAttachEvents(sessionKey: string): Promise<TracevaneManagedSessionState | null> {
+    const existing = getTracevaneSession(sessionKey);
+    if (existing) {
+      return existing;
     }
-    broadcastToSession(sessionKey, buildSessionControlsEvent(sessionKey, current.controls, emittedAt));
+    try {
+      const session = await requireSession(sessionKey);
+      requireFrontendVisible(session);
+      return ensureTracevaneSessionState(session);
+    } catch {
+      return null;
+    }
   }
 
   function readOrganizerState(): ChatSessionOrganizerState {
@@ -1709,22 +1636,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return tracevaneSessions.get(sessionKey) || null;
   }
 
-  function syncSessionControlState(state: TracevaneManagedSessionState): void {
-    setTracevaneChatSessionHostManagementExecEnabled(
-      state.row.key,
-      state.controls.allowHostManagementExec === true,
-    );
-  }
-
   function setTracevaneSession(state: TracevaneManagedSessionState): void {
     state.pendingQueue = cloneChatQueuedMessageList(state.pendingQueue);
-    state.controls = cloneSessionControls(state.controls);
-    syncSessionControlState(state);
     tracevaneSessions.set(state.row.key, state);
     sessionCatalogStore.writeSession(state.row);
     sessionStateStore.write(state.row.key, {
       pendingQueue: state.pendingQueue,
-      controls: state.controls,
     });
   }
 
@@ -1743,7 +1660,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       diagnosticsNotes: [],
       observability: createEmptyObservabilityState(),
       pendingQueue: persistedState?.pendingQueue || [],
-      controls: persistedState?.controls || createDefaultSessionControls(),
       materialized: false,
       resetPending: false,
       clearedAt: null,
@@ -3504,7 +3420,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         diagnosticsNotes: inMemory?.diagnosticsNotes || [],
         observability,
         pendingQueue: inMemory?.pendingQueue || [],
-        controls: inMemory?.controls || createDefaultSessionControls(),
         materialized: inMemory?.materialized,
         resetPending: inMemory?.resetPending,
         clearedAt: inMemory?.clearedAt || null,
@@ -4593,8 +4508,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       emittedAt: new Date().toISOString(),
       items: cloneChatQueuedMessageList(queueState),
     } satisfies ChatStreamEvent);
-    const controls = state?.controls || createDefaultSessionControls();
-    sendSequencedSseEvent(res, sessionKey, buildSessionControlsEvent(sessionKey, controls));
     for (const overlay of listRunOverlaysForSession(sessionKey)) {
       sendSequencedSseEvent(res, sessionKey, {
         kind: 'run_overlay',
@@ -4634,7 +4547,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       sessionKey,
       emittedAt,
       items: cloneChatQueuedMessageList(state?.pendingQueue || []),
-    }, buildSessionControlsEvent(sessionKey, state?.controls || createDefaultSessionControls(), emittedAt)];
+    }];
 
     if (shouldEmitCanonicalProtocol()) {
       events.push({
@@ -6388,14 +6301,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           emittedAt: runtimeEvent.emittedAt,
           items: cloneChatQueuedMessageList(state?.pendingQueue || []),
         };
-        const controlsEvent = buildSessionControlsEvent(
-          sessionKey,
-          state?.controls || createDefaultSessionControls(),
-          runtimeEvent.emittedAt,
-        );
         sendSequencedWebSocketEvent(ws, sessionKey, runtimeEvent);
         sendSequencedWebSocketEvent(ws, sessionKey, queueEvent);
-        sendSequencedWebSocketEvent(ws, sessionKey, controlsEvent);
         if (shouldEmitCanonicalProtocol()) {
           const runtimeStateEvent: ChatStreamEvent = {
             kind: 'runtime.state',
@@ -6704,8 +6611,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       let history: ChatHistoryPayload | null = null;
       let queue: ChatQueuePayload | null = null;
-      let controls: ChatSessionControlsPayload | null = null;
-
       if (selectedSessionKey) {
         try {
           history = await loadLocalTranscriptBootstrapHistoryWindow(selectedSessionKey, {
@@ -6758,12 +6663,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             session: sessionState.row,
             items: cloneChatQueuedMessageList(sessionState.pendingQueue),
           };
-          controls = {
-            checkedAt: new Date().toISOString(),
-            session: sessionState.row,
-            globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
-            controls: cloneSessionControls(sessionState.controls),
-          };
         } catch (error) {
           diagnostics.notes.push(
             `Local bootstrap could not preload session '${selectedSessionKey}' (${error instanceof Error ? error.message : String(error)}).`,
@@ -6778,7 +6677,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         selectedSessionKey,
         history,
         queue,
-        controls,
         diagnostics,
       };
     },
@@ -7264,7 +7162,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         diagnosticsNotes: ['Session created by Tracevane shell registry. Gateway session is materialized on first send.'],
         observability: createEmptyObservabilityState(),
         pendingQueue: [],
-        controls: createDefaultSessionControls(),
         materialized: false,
         resetPending: false,
         clearedAt: null,
@@ -7410,27 +7307,6 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       setTracevaneSession(state);
       broadcastQueueState(sessionKey);
       return await buildQueuePayload(sessionKey);
-    },
-
-    async getControls(sessionKey: string): Promise<ChatSessionControlsPayload> {
-      return await buildSessionControlsPayload(sessionKey);
-    },
-
-    async patchControls(
-      sessionKey: string,
-      payload: ChatPatchSessionControlsRequest,
-    ): Promise<ChatSessionControlsPayload> {
-      const session = await requireSession(sessionKey);
-      requireFrontendVisible(session);
-      const state = ensureTracevaneSessionState(session);
-      state.controls = {
-        allowHostManagementExec: payload.allowHostManagementExec === true,
-        updatedAt: new Date().toISOString(),
-      };
-      setTracevaneSession(state);
-      await syncSessionControlsToGatewayPolicy(sessionKey, state.controls);
-      broadcastSessionControls(sessionKey);
-      return await buildSessionControlsPayload(sessionKey);
     },
 
     async requestSlashGateway(sessionKey: string, payload: ChatSlashGatewayRequest): Promise<unknown> {

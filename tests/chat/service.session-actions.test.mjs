@@ -274,40 +274,6 @@ async function waitFor(assertion, timeoutMs = 2000) {
   throw lastError || new Error('waitFor timed out');
 }
 
-test('session queue and controls round-trip from in-memory service state', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-controls-'));
-  try {
-    writeOpenClawConfig(root);
-    const context = await createContextForRoot(root);
-    const created = await context.services.chat.createSession('main', {});
-
-    const initialControls = await context.services.chat.getControls(created.session.key);
-    assert.equal(initialControls.globalHostManagementExecEnabled, false);
-    assert.equal(initialControls.controls.allowHostManagementExec, false);
-
-    const queued = await context.services.chat.enqueue(created.session.key, {
-      text: 'queued follow-up',
-      clientRequestId: 'queued-follow-up-1',
-    });
-    assert.equal(queued.items.length, 1);
-    assert.equal(queued.items[0]?.text, 'queued follow-up');
-
-    const patchedControls = await context.services.chat.patchControls(created.session.key, {
-      allowHostManagementExec: true,
-    });
-    assert.equal(patchedControls.controls.allowHostManagementExec, true);
-
-    const roundTripQueue = await context.services.chat.getQueue(created.session.key);
-    assert.equal(roundTripQueue.items.length, 1);
-    assert.equal(roundTripQueue.items[0]?.text, 'queued follow-up');
-
-    const roundTripControls = await context.services.chat.getControls(created.session.key);
-    assert.equal(roundTripControls.controls.allowHostManagementExec, true);
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
 test('chat health treats an online gateway as usable even when the system service unit is failed', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-systemd-failed-'));
   let gateway = null;
@@ -346,39 +312,6 @@ test('chat health treats an online gateway as usable even when the system servic
     assert.equal(created.session.runtime.gatewayConnected, true);
     assert.equal(created.session.permissions.canSend, true);
     assert.equal(systemHealthCalls, 0);
-  } finally {
-    await gateway?.close?.();
-    fs.rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('session controls payload carries global host-management exec and survives rematerialization', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-controls-global-'));
-  let gateway = null;
-  try {
-    writeOpenClawConfig(root, { allowHostManagementExecInTracevaneChat: true });
-    writeGatewayIdentity(root);
-    gateway = await startFakeGateway();
-    const gatewayWsUrl = `ws://127.0.0.1:${gateway.port}`;
-    const context = await createContextForRoot(root, gatewayWsUrl);
-    const created = await context.services.chat.createSession('main', {});
-
-    const patchedControls = await context.services.chat.patchControls(created.session.key, {
-      allowHostManagementExec: true,
-    });
-    assert.equal(patchedControls.globalHostManagementExecEnabled, true);
-    assert.equal(patchedControls.controls.allowHostManagementExec, true);
-    const syncRequest = gateway.requests.find((request) => request.method === TRACEVANE_CHAT_GATEWAY_METHODS.policySync);
-    assert.deepEqual(syncRequest?.params, {
-      sessionKey: created.session.key,
-      allowHostManagementExec: true,
-      globalHostManagementExecEnabled: true,
-    });
-
-    const rematerializedContext = await createContextForRoot(root, gatewayWsUrl);
-    const roundTripControls = await rematerializedContext.services.chat.getControls(created.session.key);
-    assert.equal(roundTripControls.globalHostManagementExecEnabled, true);
-    assert.equal(roundTripControls.controls.allowHostManagementExec, true);
   } finally {
     await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });
@@ -1225,7 +1158,7 @@ test('session listing compacts oversized gateway labels and previews for rail tr
   }
 });
 
-test('gateway-discovered tracevane sessions without registry are adopted so queue and controls endpoints stay available', async () => {
+test('gateway-discovered tracevane sessions without registry are adopted so queue endpoints stay available', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-adopt-'));
   let gateway = null;
   try {
@@ -1268,14 +1201,6 @@ test('gateway-discovered tracevane sessions without registry are adopted so queu
 
     const queue = await context.services.chat.getQueue(recoveredSessionKey);
     assert.deepEqual(queue.items, []);
-
-    const controls = await context.services.chat.getControls(recoveredSessionKey);
-    assert.equal(controls.controls.allowHostManagementExec, false);
-
-    const patchedControls = await context.services.chat.patchControls(recoveredSessionKey, {
-      allowHostManagementExec: true,
-    });
-    assert.equal(patchedControls.controls.allowHostManagementExec, true);
   } finally {
     await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });

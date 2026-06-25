@@ -647,7 +647,6 @@ test('websocket chat stream replays buffered events after the last seen stream s
       const attachEvents = primaryEvents.filter((entry) => (
         entry.kind === 'runtime'
         || entry.kind === 'queue.state'
-        || entry.kind === 'session.controls'
       ));
       assert.equal(attachEvents.length >= 3, true);
       assert.ok(

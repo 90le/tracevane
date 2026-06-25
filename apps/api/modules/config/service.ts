@@ -13,7 +13,6 @@ import type {
   ConfigUpdatePayload,
 } from "../../../../types/config.js";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
-import { TRACEVANE_CHAT_GATEWAY_METHODS } from "../../../../types/chat.js";
 import { setTracevaneChatGlobalHostManagementExecEnabled } from "../../../../lib/tracevane-chat-management-policy.js";
 import {
   readJsonFile,
@@ -27,7 +26,6 @@ import {
 import { diffConfigAuditChanges } from "./config-audit-diff.js";
 import { buildConfigAuditEvents } from "./config-audit-events.js";
 import { createSystemEventWriter } from "../system/event-writer.js";
-import { requestGateway } from "../chat/gateway-request.js";
 
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(["ssh", "openshell"]);
 const SKILL_NODE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
@@ -1738,18 +1736,6 @@ function syncTracevaneManagementPolicyFromConfig(
   return enabled;
 }
 
-function syncTracevaneManagementPolicyToGateway(
-  config: TracevaneServerConfig,
-  globalHostManagementExecEnabled: boolean,
-): void {
-  void requestGateway(config, TRACEVANE_CHAT_GATEWAY_METHODS.policySync, {
-    globalHostManagementExecEnabled,
-  }, { timeoutMs: 1_000 }).catch(() => {
-    // Gateway sync is best-effort here; the local API state and config file are
-    // authoritative, and the next session toggle will retry.
-  });
-}
-
 function buildLoggingSummary(
   openclawConfig: Record<string, any>,
 ): ConfigSummaryPayload["logging"] {
@@ -3413,21 +3399,9 @@ export function createConfigService(config: TracevaneServerConfig): ConfigServic
       config,
       beforeConfig,
     );
-    const previousGlobalHostManagementExecEnabled =
-      resolveTracevaneHostManagementExecEnabled(beforeConfig);
     const openclawConfig = applyConfigUpdate(beforeConfig, payload);
     writeJsonFile(config.openclawConfigFile, openclawConfig);
-    const globalHostManagementExecEnabled =
-      syncTracevaneManagementPolicyFromConfig(openclawConfig);
-    if (
-      previousGlobalHostManagementExecEnabled !==
-      globalHostManagementExecEnabled
-    ) {
-      syncTracevaneManagementPolicyToGateway(
-        config,
-        globalHostManagementExecEnabled,
-      );
-    }
+    syncTracevaneManagementPolicyFromConfig(openclawConfig);
 
     const approvalsFile = `${config.openclawRoot}/exec-approvals.json`;
     const approvals = readJsonFile<Record<string, any>>(approvalsFile, {

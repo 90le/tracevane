@@ -345,7 +345,6 @@ test("history page API windows messages and exposes search/date helpers", async 
       ["m3", "m4"],
     );
     assert.equal(bootstrap.queue?.items.length, 0);
-    assert.equal(bootstrap.controls?.controls.allowHostManagementExec, false);
     assert.match(
       bootstrap.diagnostics.notes.join("\n"),
       /local-first/i,

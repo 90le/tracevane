@@ -1,14 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
-import type { ChatQueuedMessageItem, ChatSessionControlState } from '../../../../types/chat.js';
+import type { ChatQueuedMessageItem } from '../../../../types/chat.js';
 import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 
 type SessionStateBackend = 'sqlite' | 'json';
 
 type JsonSessionStateRecord = Record<string, {
   pendingQueue: ChatQueuedMessageItem[];
-  controls: ChatSessionControlState;
 }>;
 
 function ensureSessionStateDir(config: TracevaneServerConfig): string {
@@ -19,13 +18,6 @@ function ensureSessionStateDir(config: TracevaneServerConfig): string {
 
 function jsonSessionStatePath(config: TracevaneServerConfig): string {
   return path.join(ensureSessionStateDir(config), 'state.json');
-}
-
-function cloneSessionControls(value: ChatSessionControlState): ChatSessionControlState {
-  return {
-    allowHostManagementExec: value.allowHostManagementExec === true,
-    updatedAt: value.updatedAt || null,
-  };
 }
 
 function cloneQueueItem<T extends ChatQueuedMessageItem>(item: T): T {
@@ -82,11 +74,11 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
   return {
     backend,
 
-    read(sessionKey: string): { pendingQueue: ChatQueuedMessageItem[]; controls: ChatSessionControlState } | null {
+    read(sessionKey: string): { pendingQueue: ChatQueuedMessageItem[] } | null {
       if (database && sqliteHealthy) {
         try {
           const row = database.prepare(`
-            SELECT queue_json, controls_json
+            SELECT queue_json
             FROM session_state
             WHERE session_key = ?
           `).get(sessionKey);
@@ -95,7 +87,6 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
           }
           return {
             pendingQueue: cloneQueue(JSON.parse(String(row.queue_json || '[]')) as ChatQueuedMessageItem[]),
-            controls: cloneSessionControls(JSON.parse(String(row.controls_json || '{}')) as ChatSessionControlState),
           };
         } catch {
           sqliteHealthy = false;
@@ -107,19 +98,11 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
       const current = readJsonSessionState(config)[sessionKey];
       return current ? {
         pendingQueue: cloneQueue(current.pendingQueue || []),
-        controls: cloneSessionControls(current.controls || {
-          allowHostManagementExec: false,
-          updatedAt: null,
-        }),
       } : null;
     },
 
-    write(sessionKey: string, value: { pendingQueue: ChatQueuedMessageItem[]; controls: ChatSessionControlState }): void {
+    write(sessionKey: string, value: { pendingQueue: ChatQueuedMessageItem[] }): void {
       const queue = cloneQueue(value.pendingQueue || []);
-      const controls = cloneSessionControls(value.controls || {
-        allowHostManagementExec: false,
-        updatedAt: null,
-      });
       const updatedAt = new Date().toISOString();
       if (database && sqliteHealthy) {
         try {
@@ -134,7 +117,7 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
             sessionKey,
             updatedAt,
             JSON.stringify(queue),
-            JSON.stringify(controls),
+            '{}',
           );
         } catch {
           sqliteHealthy = false;
@@ -143,7 +126,6 @@ export function createTracevaneChatSessionStateStore(config: TracevaneServerConf
       const current = readJsonSessionState(config);
       current[sessionKey] = {
         pendingQueue: queue,
-        controls,
       };
       try {
         writeJsonSessionState(config, current);

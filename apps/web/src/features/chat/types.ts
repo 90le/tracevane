@@ -34,8 +34,6 @@ export type {
   ChatRuntimeState,
   ChatSendAck,
   ChatSendRequest,
-  ChatSessionControlState,
-  ChatSessionControlsPayload,
   ChatSessionFolder,
   ChatSessionFolderMove,
   ChatSessionOrganizerState,

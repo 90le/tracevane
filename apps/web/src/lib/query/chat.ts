@@ -18,10 +18,8 @@ import {
   deleteChatSession,
   enqueueChatMessage,
   getChatBootstrap,
-  getChatControls,
   getChatHistory,
   getChatQueue,
-  patchChatControls,
   patchChatOrganizerFolder,
   patchChatSession,
   resetChatSession,
@@ -44,13 +42,11 @@ import type {
   ChatPatchOrganizerFolderResponse,
   ChatPatchSessionRequest,
   ChatPatchSessionResponse,
-  ChatPatchSessionControlsRequest,
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
   ChatSendAck,
   ChatSendRequest,
-  ChatSessionControlsPayload,
   ChatStreamEvent,
 } from "../../../../../types/chat";
 
@@ -71,7 +67,6 @@ export const chatKeys = {
     ["chat", "bootstrap", sessionKey] as const,
   history: (sessionKey: string) => ["chat", "history", sessionKey] as const,
   queue: (sessionKey: string) => ["chat", "queue", sessionKey] as const,
-  controls: (sessionKey: string) => ["chat", "controls", sessionKey] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -89,7 +84,7 @@ type MutationOpts<TData, TVariables> = Omit<
 
 /**
  * Bootstrap query — session roster + organizer + the selected session's
- * history/queue/controls snapshot. Reuses the same backend route the dashboard
+ * history/queue snapshot. Reuses the same backend route the dashboard
  * cockpit reads, but with a full recent window and a selected session key.
  */
 export function useChatBootstrapQuery(
@@ -135,18 +130,6 @@ export function useChatQueueQuery(
   });
 }
 
-/** Controls query — per-session policy state. */
-export function useChatControlsQuery(
-  sessionKey: string | null,
-  options?: QueryOpts<ChatSessionControlsPayload>,
-) {
-  return useQuery<ChatSessionControlsPayload, ApiError>({
-    queryKey: chatKeys.controls(sessionKey ?? ""),
-    queryFn: ({ signal }) => getChatControls(sessionKey as string, signal),
-    enabled: Boolean(sessionKey),
-    ...options,
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Mutations
@@ -387,31 +370,6 @@ export function useDeleteChatQueueEntryMutation(
     onSuccess: (data, variables, ...rest) => {
       void queryClient.invalidateQueries({
         queryKey: chatKeys.queue(variables.sessionKey),
-      });
-      options?.onSuccess?.(data, variables, ...rest);
-    },
-  });
-}
-
-/** Update the per-session policy. Invalidates the controls slice. */
-export function usePatchChatControlsMutation(
-  options?: MutationOpts<
-    ChatSessionControlsPayload,
-    { sessionKey: string; payload: ChatPatchSessionControlsRequest }
-  >,
-) {
-  const queryClient = useQueryClient();
-  return useMutation<
-    ChatSessionControlsPayload,
-    ApiError,
-    { sessionKey: string; payload: ChatPatchSessionControlsRequest }
-  >({
-    mutationFn: ({ sessionKey, payload }) =>
-      patchChatControls(sessionKey, payload),
-    ...options,
-    onSuccess: (data, variables, ...rest) => {
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.controls(variables.sessionKey),
       });
       options?.onSuccess?.(data, variables, ...rest);
     },
