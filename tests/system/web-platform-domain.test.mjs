@@ -158,14 +158,21 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(channels, /useCreateChannelMutation/);
   assert.match(channels, /useUpdateChannelMutation/);
   assert.match(channels, /useDeleteChannelMutation/);
+  assert.match(channels, /useCreateChannelAccountMutation/);
+  assert.match(channels, /useUpdateChannelAccountMutation/);
+  assert.match(channels, /useDeleteChannelAccountMutation/);
   assert.match(channels, /新增 Channel/);
+  assert.match(channels, /新增 Bot/);
+  assert.match(channels, /Channel 是平台类型/);
   assert.match(bindings, /useCreateChannelBindingMutation/);
   assert.match(bindings, /useUpdateChannelBindingMutation/);
   assert.match(bindings, /useDeleteChannelBindingMutation/);
   assert.match(bindings, /新增绑定/);
+  assert.match(bindings, /Bot 到 Agent\/ACP/);
   for (const source of [agents, channels, bindings]) {
     assert.doesNotMatch(source, /OwnerHandoff/);
     assert.doesNotMatch(source, /打开绑定路由|打开 CLI Agents|打开 IM 渠道/);
+    assert.match(source, /SheetContent/);
   }
 });
 

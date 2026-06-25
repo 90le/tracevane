@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { ChannelBindingInput, ChannelSettingsInput, ChannelsMutationResponse, ChannelsSummaryPayload } from "../../../../../types/channels";
+import type { ChannelAccountInput, ChannelBindingInput, ChannelSettingsInput, ChannelsMutationResponse, ChannelsSummaryPayload } from "../../../../../types/channels";
 
 /** GET /api/channels — OpenClaw native channel catalog/accounts/bindings summary. */
 export function getChannelsSummary(signal?: AbortSignal): Promise<ChannelsSummaryPayload> {
@@ -17,6 +17,18 @@ export function updateChannel(type: string, payload: ChannelSettingsInput): Prom
 
 export function deleteChannel(type: string): Promise<ChannelsMutationResponse> {
   return apiRequest<ChannelsMutationResponse>(`/api/channels/${encodeURIComponent(type)}`, { method: "DELETE" });
+}
+
+export function createChannelAccount(type: string, payload: ChannelAccountInput): Promise<ChannelsMutationResponse> {
+  return apiRequest<ChannelsMutationResponse>(`/api/channels/${encodeURIComponent(type)}/accounts`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateChannelAccount(type: string, accountId: string, payload: ChannelAccountInput): Promise<ChannelsMutationResponse> {
+  return apiRequest<ChannelsMutationResponse>(`/api/channels/${encodeURIComponent(type)}/accounts/${encodeURIComponent(accountId)}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export function deleteChannelAccount(type: string, accountId: string): Promise<ChannelsMutationResponse> {
+  return apiRequest<ChannelsMutationResponse>(`/api/channels/${encodeURIComponent(type)}/accounts/${encodeURIComponent(accountId)}`, { method: "DELETE" });
 }
 
 export function createChannelBinding(payload: ChannelBindingInput): Promise<ChannelsMutationResponse> {

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 
-import { createChannel, createChannelBinding, deleteChannel, deleteChannelBinding, getChannelsSummary, updateChannel, updateChannelBinding } from "../api/channels";
+import { createChannel, createChannelAccount, createChannelBinding, deleteChannel, deleteChannelAccount, deleteChannelBinding, getChannelsSummary, updateChannel, updateChannelAccount, updateChannelBinding } from "../api/channels";
 import type { ApiError } from "../api/errors";
-import type { ChannelBindingInput, ChannelSettingsInput, ChannelsSummaryPayload } from "../../../../../types/channels";
+import type { ChannelAccountInput, ChannelBindingInput, ChannelSettingsInput, ChannelsSummaryPayload } from "../../../../../types/channels";
 
 export const channelsKeys = {
   all: ["channels"] as const,
@@ -41,6 +41,30 @@ export function useDeleteChannelMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (type: string) => deleteChannel(type),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsKeys.summary() }),
+  });
+}
+
+export function useCreateChannelAccountMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, payload }: { type: string; payload: ChannelAccountInput }) => createChannelAccount(type, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsKeys.summary() }),
+  });
+}
+
+export function useUpdateChannelAccountMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, accountId, payload }: { type: string; accountId: string; payload: ChannelAccountInput }) => updateChannelAccount(type, accountId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsKeys.summary() }),
+  });
+}
+
+export function useDeleteChannelAccountMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, accountId }: { type: string; accountId: string }) => deleteChannelAccount(type, accountId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsKeys.summary() }),
   });
 }
