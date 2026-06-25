@@ -9,7 +9,7 @@ import { ChannelConnectorsPage } from "@/features/channel-connectors/ChannelConn
 import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
-import { IdeShell } from "@/features/ide/IdeShell";
+import { WorkspacePage } from "@/features/workspace/WorkspacePage";
 import { FilesPage } from "@/features/files/FilesPage";
 import { PlatformsPage } from "@/features/platforms/PlatformsPage";
 
@@ -23,9 +23,10 @@ export function AppRouter() {
   return (
     <HashRouter>
       <Routes>
-        {/* Full-bleed IDE shell — renders OUTSIDE the AppShell layout so the
-            workspace IDE occupies the whole viewport (no app sidebar/topbar). */}
-        <Route path="/ide" element={<IdeShell />} />
+        {/* Full-bleed Workspace shell — renders OUTSIDE AppShell so the local
+            project workbench can use the whole viewport. */}
+        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/ide" element={<Navigate to="/workspace" replace />} />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />

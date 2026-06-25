@@ -30,7 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // 运行
   { path: "/chat", label: "对话", group: "运行", icon: MessageSquare, status: "ready" },
-  { path: "/ide", label: "IDE", group: "运行", icon: Boxes, status: "ready" },
+  { path: "/workspace", label: "工作区", group: "运行", icon: Boxes, status: "ready" },
   { path: "/cli-agents", label: "CLI 代理", group: "运行", icon: Terminal, status: "ready" },
 
   // 连接

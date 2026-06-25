@@ -34,6 +34,15 @@
 
 ### 1.3 设计约束
 
+实现前必须参考并遵守：
+
+- `DESIGN.md`
+- `docs/界面设计守则.md`
+- `docs/prototypes/Aurora设计体系.md`
+- `docs/prototypes/app.html`
+
+设计基线是轻量工作台 / Industrial Studio，不允许出现夸张、营销式、失控玻璃、巨大圆角、卡片墙或与现有 Aurora 体系割裂的视觉。
+
 - PC：多栏、高密度、可折叠/可扩展；不做卡片墙。
 - Tablet：抽屉/双栏混合；保留完整能力。
 - Mobile：底部模式导航 + 全屏文件/编辑/终端/diff/preview + action sheet。
@@ -219,3 +228,14 @@ Not-tested: <缺口>
 
 - 创建 Workspace 前端 IDE 与文件管理重构执行合同。
 - 目标：先提交文档目标，再进入 Phase 1 Workspace Shell 实现。
+
+### 2026-06-25 Phase 1 slice A completed
+
+- 新增 `features/workspace` 与 `/workspace` 全屏路由。
+- 旧 `/ide` 兼容跳转到 `/workspace`。
+- 导航入口从 “IDE” 改为 “工作区”。
+- 新 Workspace shell 区分 PC 多栏与 mobile 单栏模式导航。
+- Phase 1 只暴露真实可用的 Files / Git / Editor / Preview / Terminal，不再展示 Search / Agent / Problems / Output 的用户可见占位。
+- Inspector 替代固定 Preview；未选择文件时只显示轻量说明。
+- 明确实现必须参考 `DESIGN.md`、`docs/界面设计守则.md` 和 Aurora 原型体系，避免夸张割裂设计。
+- 验证：`npm run typecheck:web`；Playwright smoke `/workspace` desktop 1440×900 与 mobile 390×844，无横向溢出。
