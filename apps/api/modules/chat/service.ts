@@ -6413,17 +6413,19 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     subscribers.add(ws);
     frontendSubscribers.set(sessionKey, subscribers);
     replayBufferedEventsToWebSocket(ws, sessionKey, lastStreamSeq);
-    const existingBridge = sessionBridges.get(sessionKey) || createSessionGatewayBridge(sessionKey);
-    sessionBridges.set(sessionKey, existingBridge);
-    syncBridgeSubscriberCount(sessionKey);
-    void ensureSessionBridge(sessionKey).catch(() => {
-      // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
-    });
     ensureOfficialCanonicalStream(sessionKey);
 
     void (async () => {
       const state = sessionKey ? await resolveSessionStateForAttachEvents(sessionKey) : null;
       const session = state?.row || null;
+      if (shouldUseOpenClawGatewayBridge(session)) {
+        const existingBridge = sessionBridges.get(sessionKey) || createSessionGatewayBridge(sessionKey);
+        sessionBridges.set(sessionKey, existingBridge);
+        syncBridgeSubscriberCount(sessionKey);
+        void ensureSessionBridge(sessionKey).catch(() => {
+          // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+        });
+      }
       const runtime = session?.runtime || buildRuntimeState(await isGatewayConnected(), Boolean(session?.permissions.writable));
       const runtimeEvent: ChatStreamEvent = {
         kind: 'runtime',
@@ -6736,6 +6738,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         return normalizeChatRuntimeHistoryResult({ messages: [] });
       },
     };
+  }
+
+  function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {
+    return Boolean(session && session.runtimeTarget?.adapterKind !== 'native-cli');
   }
 
   function createCurrentChatRuntimeAdapter(session?: ChatSessionRow | null): ChatRuntimeAdapter {
@@ -8028,9 +8034,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       requireFrontendVisible(session);
       registerGatewaySubscriber(sessionKey, runtime);
       ensureOfficialCanonicalStream(sessionKey);
-      void ensureSessionBridge(sessionKey).catch(() => {
-        // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
-      });
+      if (shouldUseOpenClawGatewayBridge(session)) {
+        void ensureSessionBridge(sessionKey).catch(() => {
+          // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+        });
+      }
       return {
         sessionKey,
         leaseTtlMs: CHAT_GATEWAY_LEASE_MS,
@@ -8091,9 +8099,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       startSse(res);
       registerFrontendSseSubscriber(normalizedSessionKey, res);
       ensureOfficialCanonicalStream(normalizedSessionKey);
-      void ensureSessionBridge(normalizedSessionKey).catch(() => {
-        // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
-      });
+      if (shouldUseOpenClawGatewayBridge(session)) {
+        void ensureSessionBridge(normalizedSessionKey).catch(() => {
+          // Runtime downgrade will be broadcast by the bridge connect/disconnect handlers.
+        });
+      }
       sendSseEvent(res, 'ready', {
         ok: true,
         sessionKey: normalizedSessionKey,

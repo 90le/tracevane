@@ -42,3 +42,28 @@ test('ChatService keeps raw OpenClaw gateway calls inside the runtime adapter bo
     'ChatService main logic must not call requestViaSessionBridge directly; add a ChatRuntimeAdapter method instead',
   );
 });
+
+
+test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw runtime targets', () => {
+  assert.ok(
+    serviceSource.includes("function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {\n    return Boolean(session && session.runtimeTarget?.adapterKind !== 'native-cli');\n  }"),
+    'OpenClaw bridge eligibility should be explicit and exclude native CLI sessions',
+  );
+
+  const attachStart = serviceSource.indexOf('async attachGatewayClient(');
+  const openStreamStart = serviceSource.indexOf('async openEventStream(');
+  const handleUpgradeStart = serviceSource.indexOf('handleUpgrade(req: http.IncomingMessage', openStreamStart);
+  assert.notEqual(attachStart, -1, 'attachGatewayClient should exist');
+  assert.notEqual(openStreamStart, -1, 'openEventStream should exist');
+  assert.notEqual(handleUpgradeStart, -1, 'handleUpgrade should exist');
+
+  const attachBody = serviceSource.slice(attachStart, openStreamStart);
+  const streamBody = serviceSource.slice(openStreamStart, handleUpgradeStart);
+  assert.match(attachBody, /if \(shouldUseOpenClawGatewayBridge\(session\)\) \{\n\s*void ensureSessionBridge\(sessionKey\)/);
+  assert.match(streamBody, /if \(shouldUseOpenClawGatewayBridge\(session\)\) \{\n\s*void ensureSessionBridge\(normalizedSessionKey\)/);
+
+  const wsStart = serviceSource.indexOf("wss.on('connection'");
+  assert.notEqual(wsStart, -1, 'websocket frontend stream handler should exist');
+  const wsBody = serviceSource.slice(wsStart, serviceSource.indexOf('function broadcastImmediateCanonicalUserMessage', wsStart));
+  assert.match(wsBody, /const session = state\?\.row \|\| null;\n\s*if \(shouldUseOpenClawGatewayBridge\(session\)\) \{/);
+});
