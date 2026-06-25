@@ -1,3 +1,4 @@
+import * as React from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/app/AppShell";
@@ -18,6 +19,8 @@ import { PlatformsPage } from "@/features/platforms/PlatformsPage";
  * coming-soon placeholder.
  */
 export function AppRouter() {
+  useLegacyPathRedirect();
+
   return (
     <HashRouter>
       <Routes>
@@ -59,4 +62,28 @@ export function AppRouter() {
       </Routes>
     </HashRouter>
   );
+}
+
+
+function useLegacyPathRedirect() {
+  React.useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash) return;
+
+    const { pathname, search } = window.location;
+    const normalizedPath = pathname.replace(/\/+$/g, "") || "/";
+    let nextHash: string | null = null;
+
+    if (normalizedPath === "/chat" || normalizedPath === "/chat/workbench") {
+      nextHash = `/chat${search || ""}`;
+    } else if (normalizedPath.startsWith("/chat/s/")) {
+      const sessionRef = normalizedPath.split("/").filter(Boolean).pop() || "";
+      const query = new URLSearchParams(search);
+      if (sessionRef) query.set("sessionRef", sessionRef);
+      nextHash = `/chat${query.toString() ? `?${query.toString()}` : ""}`;
+    }
+
+    if (!nextHash) return;
+    window.history.replaceState(null, document.title, `/#${nextHash}`);
+  }, []);
 }

@@ -46,6 +46,23 @@ import {
   shouldShowRunState,
 } from "./_shared";
 
+
+function decodeSessionRef(value: string | null): string | null {
+  const raw = value?.trim();
+  if (!raw?.startsWith("r1_")) return null;
+  try {
+    const base64Url = raw.slice(3);
+    const padded = `${base64Url}${"=".repeat((4 - (base64Url.length % 4)) % 4)}`
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const binary = window.atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes) || null;
+  } catch {
+    return null;
+  }
+}
+
 const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
   text: "",
@@ -75,7 +92,7 @@ export function ChatWorkbenchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const sessionParam = searchParams.get("session");
+  const sessionParam = searchParams.get("session") ?? decodeSessionRef(searchParams.get("sessionRef"));
   const [listOpen, setListOpen] = React.useState(false);
   const [inspectorOpen, setInspectorOpen] = React.useState(false);
 

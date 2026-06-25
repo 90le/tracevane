@@ -14,3 +14,12 @@ test('ChatWorkbenchPage reports send success so the composer can preserve failed
   assert.match(source, /toast\.error\("发送失败"/);
   assert.match(source, /return false/);
 });
+
+
+test('ChatWorkbenchPage accepts legacy sessionRef deep links without exposing raw encoded keys', () => {
+  assert.match(source, /function decodeSessionRef\(value: string \| null\): string \| null/);
+  assert.match(source, /raw\?\.startsWith\("r1_"\)/);
+  assert.match(source, /window\.atob\(padded\)/);
+  assert.match(source, /new TextDecoder\(\)\.decode\(bytes\)/);
+  assert.match(source, /searchParams\.get\("session"\) \?\? decodeSessionRef\(searchParams\.get\("sessionRef"\)\)/);
+});

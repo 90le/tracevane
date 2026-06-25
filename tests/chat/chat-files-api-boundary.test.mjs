@@ -52,3 +52,17 @@ test("chat upload transport passes abort signals to Files chunk uploads", () => 
   assert.match(chatApi, /uploadChatFile\(\s*sessionKey: string,\s*file: File,\s*signal\?: AbortSignal/s);
   assert.match(chatApi, /uploadFileChunk\(init\.uploadId, index, file\.slice\(start, end\), undefined, signal\)/);
 });
+
+
+test("chat docs describe Files API attachment boundary", () => {
+  const chatContract = fs.readFileSync(new URL("../../docs/聊天契约.md", import.meta.url), "utf-8");
+  assert.match(chatContract, /Files API `\/api\/files\/summary`/);
+  assert.match(chatContract, /`\/api\/files\/browse`/);
+  assert.match(chatContract, /`\/api\/files\/read`/);
+  assert.match(chatContract, /`\/api\/files\/uploads\/\*`/);
+  assert.match(chatContract, /`\/api\/files\/download`/);
+  assert.match(chatContract, /files:<rootId>:<path>/);
+  assert.match(chatContract, /Chat 不再拥有独立上传 API/);
+  assert.doesNotMatch(chatContract, /POST \/api\/chat\/sessions\/:sessionKey\/upload` \| 上传用户文件/);
+  assert.doesNotMatch(chatContract, /multipart `\/upload`/);
+});
