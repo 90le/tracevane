@@ -175,6 +175,9 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.match(bindings, /useDeleteChannelBindingMutation/);
   assert.match(bindings, /新增绑定/);
   assert.match(bindings, /Bot \/ Account 到 Agent 或 ACP/);
+  assert.match(bindings, /formatAgentOptionLabel/);
+  assert.match(bindings, /\$\{name\}（\$\{agent\.id\}）/);
+  assert.match(bindings, /agentSelectOptions/);
   assert.ok(
     bindings.indexOf("const [draft, setDraft]") < bindings.indexOf("accountOptionsForDraft"),
     "binding account options must be derived after draft state is initialized",
