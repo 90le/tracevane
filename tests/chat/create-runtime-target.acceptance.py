@@ -1,3 +1,5 @@
+import re
+
 from playwright.sync_api import expect, sync_playwright
 
 
@@ -16,12 +18,13 @@ def test_chat_create_runtime_target_picker():
         page.wait_for_load_state("networkidle")
 
         page.get_by_text("新建", exact=True).click()
-        expect(page.get_by_text("运行器 / Agent")).to_be_visible(timeout=8000)
-        expect(page.get_by_text("OpenClaw 平台 Agent")).to_be_visible()
-        page.get_by_text("Codex CLI").click()
-        expect(page.get_by_text("native-cli / codex")).to_be_visible(timeout=5000)
-        expect(page.get_by_label("默认工作目录")).to_be_visible(timeout=5000)
-        expect(page.get_by_label("权限模式")).to_be_visible(timeout=5000)
+        picker = page.locator(".chat-agent-picker").first
+        expect(picker.get_by_text("运行器 / Agent")).to_be_visible(timeout=8000)
+        expect(picker.get_by_role("button", name=re.compile("OpenClaw 平台 Agent"))).to_be_visible()
+        picker.get_by_role("button", name=re.compile("Codex CLI")).click()
+        expect(picker.get_by_text("native-cli / codex")).to_be_visible(timeout=5000)
+        expect(picker.get_by_label("默认工作目录")).to_be_visible(timeout=5000)
+        expect(picker.get_by_label("权限模式")).to_be_visible(timeout=5000)
         page.screenshot(path="/tmp/tracevane-chat-create-runtime-target.png", full_page=True)
         browser.close()
 

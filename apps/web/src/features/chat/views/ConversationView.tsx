@@ -816,7 +816,7 @@ export function ConversationView({
               )}
             </div>
             <div className="border-t border-line px-2.5 py-1.5 text-xs text-subtle">
-              附加文件会作为结构化 fileRef 传给当前 Agent；项目工作区使用 workspace: 引用，其它文件根使用 files: 引用并由后端安全解析。
+              附加文件会作为结构化 fileRef 传给当前 Agent；工作区与其它文件根都会使用 files: 引用并由后端按 Files API 安全解析。
             </div>
           </div>
         )}
