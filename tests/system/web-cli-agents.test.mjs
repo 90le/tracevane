@@ -34,15 +34,19 @@ test("Runs view is table-first and only exposes proven terminal controls", () =>
   assert.match(source, /DialogTitle>删除终端会话记录/);
   assert.match(source, /useEndTerminalSessionMutation/);
   assert.match(source, /useDeleteTerminalSessionMutation/);
+  assert.match(source, /待处理操作/);
+  assert.doesNotMatch(source, /边界说明|为什么不是把三个域硬合并/);
   assert.doesNotMatch(source, /grid-cols-3.*card/i);
 });
 
 test("CLI Runtime view owns launch and install repair without provider or IM editing", () => {
   const source = read("apps/web/src/features/cli-agents/views/CliRuntimeView.tsx");
 
-  assert.match(source, /Agent CLI 启动台/);
+  assert.match(source, /Agent CLI 启动 \/ 修复/);
   assert.match(source, /useLaunchTerminalMutation/);
   assert.match(source, /useInstallTerminalCliMutation/);
+  assert.match(source, /Agent CLI 启动 \/ 修复/);
+  assert.match(source, /修复队列/);
   assert.match(source, /确认安装/);
   assert.match(source, /安装结果/);
   assert.match(source, /复制提示/);
@@ -53,6 +57,7 @@ test("CLI Runtime view owns launch and install repair without provider or IM edi
   assert.match(source, /window\.location\.hash = "#\/model-gateway"/);
   assert.match(source, /不会登录你的 OpenAI \/ Anthropic \/ OpenCode 账号/);
   assert.match(source, /不自动写 shell/);
+  assert.doesNotMatch(source, /title="依赖引用"|这里只显示 CLI 运行必须知道的最小依赖/);
   assert.doesNotMatch(source, /apiKey|secret|botId|绑定路由/);
 });
 

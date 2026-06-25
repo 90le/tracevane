@@ -99,6 +99,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
   const config = terminalStatus.data?.config;
   const health = gateway.data?.healthSummary;
   const gatewayReady = Boolean(health && health.okProviders > 0 && health.openCircuits === 0);
+  const missingAgentBinaries = AGENT_CLI_ORDER.filter(({ id }) => !(byId.get(id)?.installed ?? false));
 
   const selectedInstallTarget = installTarget ? installTargetById.get(installTarget) : null;
   const selectedInstallBinary = installTarget ? byId.get(installTarget) : null;
@@ -140,8 +141,8 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
     <div className="grid gap-4">
       <Panel>
         <PanelHead
-          title="Agent CLI 启动台"
-          sub="只管理 Codex / Claude Code / OpenCode 的 readiness、启动命令和 IDE 交接。Provider 与 IM 配置在各自页面。"
+          title="Agent CLI 启动 / 修复"
+          sub="缺失就安装，已安装就生成启动命令；其它配置回所属页面。"
           action={
             <Button
               variant="outline"
@@ -186,7 +187,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                 <TableRow>
                   <TableHead className="min-w-[220px]">CLI</TableHead>
                   <TableHead className="min-w-[160px]">状态</TableHead>
-                  <TableHead className="hidden min-w-[260px] lg:table-cell">安装 / 修复提示</TableHead>
+                  <TableHead className="hidden min-w-[260px] lg:table-cell">下一步</TableHead>
                   <TableHead className="min-w-[210px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -204,7 +205,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                           </span>
                           <div className="min-w-0">
                             <div className="truncate font-semibold text-ink-strong">{label}</div>
-                            <div className="truncate text-sm text-muted">{purpose}</div>
+                            <div className="truncate text-sm text-muted">{installed ? binary?.path || purpose : "缺少二进制，需先修复"}</div>
                             <div className="mt-1 truncate text-xs text-subtle lg:hidden">
                               {installed ? binary?.path || binary?.version || "已安装" : installTarget?.installHint || "未安装"}
                             </div>
@@ -224,10 +225,10 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="max-w-[36rem] truncate text-sm text-ink">
-                          {installed ? binary?.path || "已安装" : installTarget?.packageName || "未安装"}
+                          {installed ? "生成启动命令 → 复制 → IDE 终端运行" : "安装 CLI → 刷新检测 → 完成登录"}
                         </div>
                         <div className="max-w-[36rem] truncate text-xs text-subtle">
-                          {installed ? "可解析启动命令；实际运行请交给 IDE 终端。" : installTarget?.installHint || "请按项目文档安装后刷新。"}
+                          {installed ? binary?.version || binary?.path || "已安装" : installTarget?.installHint || "请按项目文档安装后刷新。"}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -355,32 +356,53 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
 
       <Panel>
         <PanelHead
-          title="依赖引用"
-          sub="这里只显示 CLI 运行必须知道的最小依赖，不重复 Gateway / IM 的配置页面。"
+          title="修复队列"
+          sub="只列出会阻断 CLI 启动的事项；全部正常时保持安静。"
+          action={<ToneBadge tone={missingAgentBinaries.length > 0 || !gatewayReady || !ptyAvailable ? "warn" : "ok"}>
+            {missingAgentBinaries.length + (gatewayReady ? 0 : 1) + (ptyAvailable ? 0 : 1)} 项
+          </ToneBadge>}
         />
-        <div className="grid gap-0.5 p-1">
-          <div className="flex items-center gap-3 px-4 py-2.5">
-            <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass(gatewayReady ? "ok" : "warn")}`}>
-              <Plug className="size-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <strong className="block truncate text-base text-ink-strong">模型网关路由</strong>
-              <span className="block truncate text-sm text-muted">
-                {health ? `${health.okProviders} Provider 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断` : "状态未加载"}
+        <div className="divide-y divide-line">
+          {missingAgentBinaries.map(({ id, label }) => {
+            const binary = byId.get(id);
+            const target = installTargetById.get(id);
+            return (
+              <div key={id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Download className="size-4" /></span>
+                <span className="min-w-[220px] flex-1">
+                  <strong className="block truncate text-sm text-ink-strong">安装 {label}</strong>
+                  <span className="block truncate text-xs text-muted">{target?.installHint || target?.packageName || "缺少安装提示"}</span>
+                </span>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  {binary?.installSupported ? <Button variant="primary" size="sm" onClick={() => setInstallTarget(id)}>安装</Button> : null}
+                  {target?.installHint ? <Button variant="outline" size="sm" onClick={() => copyText(target.installHint)}>复制提示</Button> : null}
+                </div>
+              </div>
+            );
+          })}
+          {!gatewayReady ? (
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Plug className="size-4" /></span>
+              <span className="min-w-[220px] flex-1">
+                <strong className="block truncate text-sm text-ink-strong">检查模型网关路由</strong>
+                <span className="block truncate text-xs text-muted">{health ? `${health.okProviders} 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断` : "状态未加载"}</span>
               </span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => (window.location.hash = "#/model-gateway")}>网关<ExternalLink /></Button>
-          </div>
-          <div className="flex items-center gap-3 px-4 py-2.5">
-            <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("info")}`}>
-              <Terminal className="size-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <strong className="block truncate text-base text-ink-strong">运行入口</strong>
-              <span className="block truncate text-sm text-muted">真正的 PTY 输入、resize、shell 输出仍在 IDE 终端。</span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => (window.location.hash = "#/ide")}>IDE<ExternalLink /></Button>
-          </div>
+              <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/model-gateway")}>打开网关<ExternalLink /></Button>
+            </div>
+          ) : null}
+          {!ptyAvailable ? (
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Terminal className="size-4" /></span>
+              <span className="min-w-[220px] flex-1">
+                <strong className="block truncate text-sm text-ink-strong">PTY 不可用</strong>
+                <span className="block truncate text-xs text-muted">无法在 IDE 终端完成登录、启动或修复。</span>
+              </span>
+              <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/ide")}>打开 IDE<ExternalLink /></Button>
+            </div>
+          ) : null}
+          {missingAgentBinaries.length === 0 && gatewayReady && ptyAvailable ? (
+            <div className="px-4 py-3 text-sm text-muted">没有阻断项。选择上方 CLI 解析启动命令即可运行。</div>
+          ) : null}
         </div>
       </Panel>
     </div>

@@ -38,7 +38,7 @@ import { agentsKeys, useAgentRuntimeRunsQuery } from "@/lib/query/agents";
 import { useDeleteTerminalSessionMutation, useEndTerminalSessionMutation } from "@/lib/query/terminal";
 
 import type { AgentRuntimeRunSource, AgentRuntimeRunSummary, CliAgentsViewProps, WorkbenchTone } from "../types";
-import { Fact, Panel, PanelHead, StatTile, ToneBadge, formatTime, toneIconClass } from "./_shared";
+import { Panel, PanelHead, StatTile, ToneBadge, formatTime, toneIconClass } from "./_shared";
 
 const SOURCE_LABEL: Record<AgentRuntimeRunSource, string> = {
   terminal: "终端",
@@ -134,6 +134,9 @@ export function RunsView(_props: CliAgentsViewProps) {
   const [deleteTarget, setDeleteTarget] = React.useState<AgentRuntimeRunSummary | null>(null);
   const rows = runs.data?.runs ?? [];
   const filteredRows = visibleRows(rows, filter, query);
+  const actionRows = rows.filter((run) =>
+    run.status === "failed" || run.status === "lost" || run.status === "aborted" || run.canStop || run.canDelete,
+  ).slice(0, 5);
   const totals = runs.data?.totals;
 
   const refreshRuns = React.useCallback(() => {
@@ -308,12 +311,41 @@ export function RunsView(_props: CliAgentsViewProps) {
       </Panel>
 
       <Panel>
-        <PanelHead title="边界说明" sub="为什么不是把三个域硬合并成一个页面。" />
-        <dl className="grid gap-2.5 p-4 sm:grid-cols-3">
-          <Fact label="Model Gateway">只管理模型、Provider、协议、路由和客户端配置。</Fact>
-          <Fact label="IM Channels">只管理平台账号、绑定、IM 会话和消息投递。</Fact>
-          <Fact label="CLI Agents">聚合 Agent 运行态、CLI 状态和证据；不管理通用终端。</Fact>
-        </dl>
+        <PanelHead
+          title="待处理操作"
+          sub="失败、可停止、可删除的 Run 会出现在这里；正常历史不占首屏。"
+          action={<ToneBadge tone={actionRows.length > 0 ? "warn" : "ok"}>{actionRows.length} 项</ToneBadge>}
+        />
+        {runs.isLoading ? (
+          <div className="p-3"><SkeletonRow /></div>
+        ) : actionRows.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-muted">当前没有需要处理的 Agent Run。</div>
+        ) : (
+          <div className="divide-y divide-line">
+            {actionRows.map((run) => {
+              const href = targetHref(run);
+              const tone = runTone(run);
+              return (
+                <div key={run.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className={`grid size-8 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}>{sourceIcon(run.source)}</span>
+                  <span className="min-w-[220px] flex-1">
+                    <strong className="block truncate text-sm text-ink-strong">{run.title}</strong>
+                    <span className="block truncate text-xs text-muted">{run.actionLabel} · {run.lastErrorSummary || run.actionReason}</span>
+                  </span>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    {run.canStop ? (
+                      <Button variant="outline" size="sm" onClick={() => setStopTarget(run)}><Square />停止</Button>
+                    ) : null}
+                    {run.canDelete ? (
+                      <Button variant="outline" size="sm" onClick={() => setDeleteTarget(run)}><Trash2 />删除</Button>
+                    ) : null}
+                    <Button variant="outline" size="sm" onClick={() => (window.location.hash = href)}>打开<ExternalLink /></Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Panel>
 
       <Dialog open={Boolean(stopTarget)} onOpenChange={(open) => !open && setStopTarget(null)}>
