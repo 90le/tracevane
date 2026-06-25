@@ -46,10 +46,8 @@ import type {
   ChatRunProjection,
   ChatRunOverlay,
   ChatResetResponse,
-  ChatRuntimeAdapterKind,
   ChatRuntimeState,
   ChatSendAck,
-  ChatSendFileRef,
   ChatSendRequest,
   ChatSessionFolder,
   ChatSessionKind,
@@ -224,6 +222,7 @@ import {
   buildChatSessionRuntimeSummary,
 } from './runtime-summary.js';
 import { buildHistorySearchSummary } from './history-search-summary.js';
+import { compileGatewayMessageText } from '../../../../lib/chat-gateway-transport.js';
 
 interface TracevaneManagedSessionState {
   row: ChatSessionRow;
@@ -308,10 +307,6 @@ interface OfficialCanonicalStreamState {
   active: boolean;
 }
 
-function formatGatewayFileRef(relativePath: string): string {
-  return /\s/.test(relativePath) ? `@"${relativePath}"` : `@${relativePath}`;
-}
-
 const CHAT_GATEWAY_LEASE_MS = 35_000;
 const CHAT_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const CHAT_GATEWAY_HEALTH_CACHE_MS = 1_500;
@@ -321,26 +316,15 @@ const CHAT_CANONICAL_STATE_ENTRY_LIMIT = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT * 
 const CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT = 800;
 const CHAT_STREAM_REPLAY_EVENT_LIMIT = 240;
 
-function compileOpenClawGatewayMessageText(text: string, fileRefs: ChatSendFileRef[]): string {
-  const refs = fileRefs.map((item) => formatGatewayFileRef(item.relativePath));
-  if (!refs.length) {
-    return text;
-  }
-  if (!text) {
-    return refs.join(' ');
-  }
-  return `${refs.join(' ')}\n---\n${text}`;
-}
-
-function compileRuntimeMessageText(
-  adapterKind: ChatRuntimeAdapterKind | null | undefined,
+function compileRuntimeTransportMessage(
+  adapterKind: ChatSessionRuntimeTarget['adapterKind'] | null | undefined,
   text: string,
-  fileRefs: ChatSendFileRef[],
+  fileRefs: ChatSendRequest['fileRefs'],
 ): string {
   if (adapterKind === 'native-cli') {
     return text;
   }
-  return compileOpenClawGatewayMessageText(text, fileRefs);
+  return compileGatewayMessageText(text, fileRefs || []);
 }
 
 function mergeResources(
@@ -6632,7 +6616,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!normalizedText && fileRefs.length === 0 && attachments.length === 0) {
       throw new ChatServiceError(400, buildChatError('invalid_request', 'Message text or attachment is required'));
     }
-    const transportText = compileRuntimeMessageText(session.runtimeTarget.adapterKind, normalizedText, fileRefs);
+    const transportText = compileRuntimeTransportMessage(session.runtimeTarget.adapterKind, normalizedText, fileRefs);
     const sendResources = mediaBridge.buildSendResources(sessionKey, fileRefs, attachments);
     const inMemory = ensureTracevaneSessionState(session, {
       row: session,

@@ -103,3 +103,11 @@ test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw
   const wsBody = serviceSource.slice(wsStart, serviceSource.indexOf('function broadcastImmediateCanonicalUserMessage', wsStart));
   assert.match(wsBody, /const session = state\?\.row \|\| null;\n\s*if \(shouldUseOpenClawGatewayBridge\(session\)\) \{/);
 });
+
+
+test('ChatService delegates gateway file-reference text formatting to shared transport helper', () => {
+  assert.match(serviceSource, /compileGatewayMessageText/, 'service should import the shared gateway transport compiler');
+  assert.doesNotMatch(serviceSource, /function formatGatewayFileRef/, 'service must not own gateway @file formatting');
+  assert.doesNotMatch(serviceSource, /function compileOpenClawGatewayMessageText/, 'service must not own OpenClaw-specific message compilation');
+  assert.match(serviceSource, /function compileRuntimeTransportMessage/, 'service may only select runtime transport behavior');
+});
