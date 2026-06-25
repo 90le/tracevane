@@ -29,10 +29,21 @@ export interface ChatRuntimeAbortResult {
   raw: Record<string, unknown>;
 }
 
+export interface ChatRuntimeResetInput {
+  sessionKey: string;
+  reason: string;
+}
+
+export interface ChatRuntimeResetResult {
+  ok: boolean;
+  raw: Record<string, unknown>;
+}
+
 export interface ChatRuntimeAdapter {
   kind: ChatRuntimeAdapterKind;
   send(input: ChatRuntimeSendInput): Promise<ChatRuntimeSendResult>;
   abort(input: ChatRuntimeAbortInput): Promise<ChatRuntimeAbortResult>;
+  reset(input: ChatRuntimeResetInput): Promise<ChatRuntimeResetResult>;
 }
 
 export function normalizeChatRuntimeSendResult(
@@ -54,6 +65,13 @@ export function normalizeChatRuntimeAbortResult(raw: Record<string, unknown>): C
   return {
     aborted: raw.aborted === true || runIds.length > 0,
     runIds,
+    raw,
+  };
+}
+
+export function normalizeChatRuntimeResetResult(raw: Record<string, unknown>): ChatRuntimeResetResult {
+  return {
+    ok: raw.ok !== false,
     raw,
   };
 }

@@ -68,9 +68,11 @@ import { readJsonFile, writeJsonFile } from '../../core/state.js';
 import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
 import {
   normalizeChatRuntimeAbortResult,
+  normalizeChatRuntimeResetResult,
   normalizeChatRuntimeSendResult,
   type ChatRuntimeAdapter,
   type ChatRuntimeAbortInput,
+  type ChatRuntimeResetInput,
   type ChatRuntimeSendInput,
 } from './runtime-adapter.js';
 import {
@@ -6375,6 +6377,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         });
         return normalizeChatRuntimeAbortResult(raw);
       },
+      async reset(input: ChatRuntimeResetInput) {
+        const raw = await requestGateway(options.config, 'sessions.reset', {
+          key: input.sessionKey,
+          reason: input.reason,
+        }, {
+          // Gateway reset can spend up to 15s waiting for run cleanup before responding.
+          timeoutMs: 30_000,
+        });
+        return normalizeChatRuntimeResetResult(raw as Record<string, unknown>);
+      },
     };
   }
 
@@ -7486,12 +7498,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
 
       try {
-        await requestGateway(options.config, 'sessions.reset', {
-          key: sessionKey,
+        await createCurrentChatRuntimeAdapter().reset({
+          sessionKey,
           reason: 'reset',
-        }, {
-          // Gateway reset can spend up to 15s waiting for run cleanup before responding.
-          timeoutMs: 30_000,
         });
       } catch (error) {
         if (mapGatewayContractError(error, 'sessions.reset failed').code !== 'session_not_found') {
