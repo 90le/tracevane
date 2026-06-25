@@ -1,8 +1,6 @@
 import * as React from "react";
 
 import { useSystemHealthQuery, useOpenClawRecoveryStatusQuery } from "@/lib/query/dashboard";
-import { useModelGatewayStatusQuery } from "@/lib/query/model-gateway";
-import { useChannelConnectorsStatusQuery } from "@/lib/query/channel-connectors";
 import { useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
 
 import type {
@@ -68,25 +66,18 @@ export function deriveControlUiUrl(
 }
 
 /**
- * Loads every source the platform overview synthesizes and builds the derived
- * platform-card view-model. All hooks are REUSED from their owning data layers
- * (dashboard / model-gateway / channel-connectors / external) — nothing is
- * re-bound here. Exposes aggregate loading/error + the raw source queries so
- * views can render three-states + refetch and the OpenClaw summary can read
- * fields directly.
+ * Loads only the evidence needed by the Platform directory and OpenClaw
+ * summary. The platform homepage is intentionally a pure platform index; it no
+ * longer queries Gateway or IM owner-domain status just to render handoff rows.
  */
 export function usePlatformsAggregate() {
   const healthQuery = useSystemHealthQuery({ retry: false });
   const recoveryQuery = useOpenClawRecoveryStatusQuery({ retry: false });
-  const gatewayQuery = useModelGatewayStatusQuery({ retry: false });
-  const channelQuery = useChannelConnectorsStatusQuery({ retry: false });
   const diagnosticsQuery = useSystemDiagnosticsQuery({ retry: false });
 
   const queries = [
     healthQuery,
     recoveryQuery,
-    gatewayQuery,
-    channelQuery,
     diagnosticsQuery,
   ] as const;
 
@@ -124,10 +115,8 @@ export function usePlatformsAggregate() {
   const refetchAll = React.useCallback(() => {
     void healthQuery.refetch();
     void recoveryQuery.refetch();
-    void gatewayQuery.refetch();
-    void channelQuery.refetch();
     void diagnosticsQuery.refetch();
-  }, [healthQuery, recoveryQuery, gatewayQuery, channelQuery, diagnosticsQuery]);
+  }, [healthQuery, recoveryQuery, diagnosticsQuery]);
 
   return {
     cards,
@@ -138,8 +127,6 @@ export function usePlatformsAggregate() {
     sources: {
       health: healthQuery,
       recovery: recoveryQuery,
-      gateway: gatewayQuery,
-      channel: channelQuery,
       diagnostics: diagnosticsQuery,
     },
     recoveryTone,

@@ -45,22 +45,23 @@ test("OpenClaw read surfaces bind to real backend APIs instead of fake CRUD", ()
 });
 
 
-test("Platform overview is a directory plus owner handoffs, not a platform card wall", () => {
+test("Platform overview is a pure platform directory without owner handoff or legacy panels", () => {
   const overview = read("apps/web/src/features/platforms/views/OverviewView.tsx");
   const aggregate = read("apps/web/src/features/platforms/usePlatformsAggregate.ts");
 
-  assert.match(overview, /Platform directory\. This page is NOT a card wall/);
+  assert.match(overview, /Platform directory\. This page is a pure platform index/);
   assert.match(overview, /title="平台目录"/);
-  assert.match(overview, /title="关联 Tracevane 域"/);
-  assert.match(overview, /title="兼容入口"/);
-  assert.match(overview, /只有真实第三方平台进入主列表/);
-  assert.match(overview, /关联域不伪装成平台/);
-  assert.match(overview, /集成证据（legacy \/external）/);
-  assert.match(overview, /to="\/platforms"/);
-  assert.match(overview, /to="\/cli-agents"/);
+  assert.match(overview, /只列出真实第三方平台/);
+  assert.doesNotMatch(overview, /title="关联 Tracevane 域"/);
+  assert.doesNotMatch(overview, /title="兼容入口"/);
+  assert.doesNotMatch(overview, /RelatedDomainRow/);
+  assert.doesNotMatch(overview, /legacy \/external/);
+  assert.doesNotMatch(overview, /legacy \/long-tasks/);
   assert.doesNotMatch(aggregate, /id: "external-mcp"/);
   assert.doesNotMatch(aggregate, /title: "模型网关"/);
   assert.doesNotMatch(aggregate, /title: "IM 渠道连接器"/);
+  assert.doesNotMatch(aggregate, /useModelGatewayStatusQuery/);
+  assert.doesNotMatch(aggregate, /useChannelConnectorsStatusQuery/);
 });
 
 
