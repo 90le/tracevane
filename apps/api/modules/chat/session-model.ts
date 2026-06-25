@@ -40,6 +40,16 @@ export function buildDefaultRuntimeTarget(agentId: string): ChatSessionRuntimeTa
   };
 }
 
+export function buildDefaultTracevaneManagedRuntimeTarget(): ChatSessionRuntimeTarget {
+  return {
+    adapterKind: 'native-cli',
+    agent: 'codex',
+    model: null,
+    workDir: null,
+    permissionMode: null,
+  };
+}
+
 export function normalizeChatSessionRuntimeTarget(
   target: Partial<ChatSessionRuntimeTarget> | undefined | null,
   fallbackAgentId: string,
@@ -162,7 +172,10 @@ export function buildTracevaneManagedSessionRow(agentId: string, label: string, 
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
-    runtimeTarget: normalizeChatSessionRuntimeTarget(runtimeTarget, agentId),
+    runtimeTarget: normalizeChatSessionRuntimeTarget(
+      runtimeTarget || buildDefaultTracevaneManagedRuntimeTarget(),
+      agentId,
+    ),
   };
 }
 

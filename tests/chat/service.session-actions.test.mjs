@@ -84,6 +84,17 @@ function writeGatewayIdentity(root) {
   }, null, 2));
 }
 
+
+function openClawGatewayRuntimeTarget() {
+  return {
+    adapterKind: 'openclaw-gateway',
+    agent: 'main',
+    model: null,
+    workDir: null,
+    permissionMode: null,
+  };
+}
+
 function registryPath(root) {
   return path.join(root, 'tracevane', 'chat-sessions.json');
 }
@@ -315,6 +326,36 @@ test('chat health treats an online gateway as usable even when the system servic
   }
 });
 
+
+test('created chat sessions default to native Codex when no runtime target is supplied', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-default-runtime-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Default native session',
+    });
+
+    assert.match(created.session.key, /^agent:main:agent-chat:direct:tracevane-/);
+    assert.deepEqual(created.session.runtimeTarget, {
+      adapterKind: 'native-cli',
+      agent: 'codex',
+      model: null,
+      workDir: null,
+      permissionMode: null,
+    });
+
+    const registry = readJson(registryPath(root), {});
+    assert.deepEqual(registry[created.session.key].runtimeTarget, created.session.runtimeTarget);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('created chat sessions persist runtime target metadata for future native CLI adapters', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-target-'));
@@ -645,7 +686,7 @@ test('ui queued message flushes when the active run settles before enqueue reach
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
 
     await context.services.chat.enqueue(created.session.key, {
       text: 'late queued message',
@@ -693,7 +734,7 @@ test('blocked queued message can be retried without sending a separate nudge', a
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.enqueue(sessionKey, {
@@ -789,7 +830,7 @@ test('OpenClaw platform gateway proxy forwards local management rpc through the 
     writeOpenClawConfig(root);
     writeGatewayIdentity(root);
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
 
     const models = await requestOpenClawGateway(context.config, {
       method: 'models.list',
@@ -863,7 +904,7 @@ test('queued entries flush in FIFO order after the active run settles', async ()
     writeGatewayIdentity(root);
     gateway = await startFakeGateway();
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.send(sessionKey, {
@@ -934,7 +975,7 @@ test('queued retry reuses the same idempotency key after a transient send failur
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.send(sessionKey, {
@@ -1031,7 +1072,7 @@ test('duplicate terminal chat events only flush one queued entry while the next 
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.send(sessionKey, {
@@ -1115,7 +1156,7 @@ test('queued auto-send emits the queued user message before the follow-up reply 
       },
     });
     tracevane = await createServerForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await tracevane.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
@@ -1206,7 +1247,7 @@ test('reset ignores stale terminal events from the pre-reset run', async () => {
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.send(sessionKey, {
@@ -1280,7 +1321,7 @@ test('abort ignores stale terminal events from the aborted run while a queued fo
       },
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
 
     await context.services.chat.send(sessionKey, {
@@ -1339,7 +1380,7 @@ test('draft session patch/delete persists presentation metadata without gateway 
   try {
     writeOpenClawConfig(root);
     const context = await createContextForRoot(root);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
 
     const patched = await context.services.chat.patchSession(created.session.key, {
       label: 'Renamed draft',
@@ -1395,7 +1436,7 @@ test('local-only session listing serves local catalog rows without gateway sessi
     });
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
 
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const localOnly = await context.services.chat.listSessions('main', {
       localOnly: true,
       includeDerivedTitles: false,
@@ -1523,7 +1564,7 @@ test('materialized tracevane session delete clears local artifacts only after ga
     writeGatewayIdentity(root);
     gateway = await startFakeGateway();
     const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await context.services.chat.createSession('main', {});
+    const created = await context.services.chat.createSession('main', { runtimeTarget: openClawGatewayRuntimeTarget() });
     const sessionKey = created.session.key;
     const sessionsPath = path.join(root, 'agents', 'main', 'sessions', 'sessions.json');
     const transcriptFile = path.join(root, 'agents', 'main', 'sessions', 'materialized.jsonl');
