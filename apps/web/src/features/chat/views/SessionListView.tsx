@@ -131,6 +131,12 @@ type ChatRuntimeOptionReadiness = {
   selectable: boolean;
 };
 
+type ChatRuntimeModelOption = {
+  id: string;
+  display_name?: string | null;
+  healthyProviderIds?: string[] | null;
+};
+
 type FolderOption = {
   id: string;
   folder: ChatSessionFolder;
@@ -586,7 +592,7 @@ export function SessionListView({
     });
     return false;
   }, [runtimeOptionReadiness, selectedRuntimeOption]);
-  const selectableModels = React.useMemo(
+  const selectableModels = React.useMemo<ChatRuntimeModelOption[]>(
     () => (modelCatalog.data?.models ?? modelCatalog.data?.data ?? [])
       .filter((model) => model.agentSelectable !== false && !model.endpointOnly)
       .slice()
@@ -599,6 +605,20 @@ export function SessionListView({
       .slice(0, 120),
     [modelCatalog.data],
   );
+  const runtimeModelOptions = React.useMemo<ChatRuntimeModelOption[]>(() => {
+    const currentModel = runtimeModel.trim();
+    if (!currentModel || selectableModels.some((model) => model.id === currentModel)) {
+      return selectableModels;
+    }
+    return [
+      {
+        id: currentModel,
+        display_name: `${currentModel}（当前模型，未在列表中）`,
+        healthyProviderIds: [],
+      },
+      ...selectableModels,
+    ];
+  }, [runtimeModel, selectableModels]);
 
   const runCreate = () => {
     if (!ensureRuntimeSelectable()) return;
@@ -1403,7 +1423,7 @@ export function SessionListView({
                         className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
                       >
                         <option value="">使用模型网关默认路由</option>
-                        {selectableModels.map((model) => (
+                        {runtimeModelOptions.map((model) => (
                           <option key={model.id} value={model.id}>
                             {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
                           </option>
@@ -1522,7 +1542,7 @@ export function SessionListView({
                         className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
                       >
                         <option value="">使用模型网关默认路由</option>
-                        {selectableModels.map((model) => (
+                        {runtimeModelOptions.map((model) => (
                           <option key={model.id} value={model.id}>
                             {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
                           </option>

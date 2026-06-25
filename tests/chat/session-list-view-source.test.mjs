@@ -41,6 +41,14 @@ test('SessionListView surfaces CLI binary readiness in runtime target choices', 
   assert.match(source, /模型列表加载失败，将使用模型网关默认路由/);
 });
 
+test('SessionListView keeps the current runtime model visible when gateway catalog changes', () => {
+  assert.match(source, /type ChatRuntimeModelOption = \{/);
+  assert.match(source, /const runtimeModelOptions = React\.useMemo<ChatRuntimeModelOption\[\]>/);
+  assert.match(source, /selectableModels\.some\(\(model\) => model\.id === currentModel\)/);
+  assert.match(source, /当前模型，未在列表中/);
+  assert.match(source, /runtimeModelOptions\.map\(\(model\) => \(/);
+});
+
 
 test('SessionListView persists chat list filters and folder scope in URL params', () => {
   assert.match(source, /useSearchParams\(\)/);

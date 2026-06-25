@@ -197,6 +197,15 @@ export function assignChatSessionsToFolder(
 const CHAT_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024;
 const CHAT_UPLOAD_DIRECTORY = ".tracevane/chat-uploads";
 
+function selectChatUploadRoot(summary: Awaited<ReturnType<typeof getFilesSummary>>) {
+  return (
+    summary.roots.find((item) => item.id === "project-root") ||
+    summary.roots.find((item) => item.id === summary.defaultRootId) ||
+    summary.roots.find((item) => item.preferred) ||
+    summary.roots[0]
+  );
+}
+
 /**
  * Upload a user-selected Composer file through the Files API and return the
  * same fileRef/resource shape that `sendChatMessage` expects.
@@ -213,7 +222,7 @@ export async function uploadChatFile(
   signal?: AbortSignal,
 ): Promise<ChatFileUploadResponse> {
   const summary = await getFilesSummary();
-  const root = summary.roots.find((item) => item.id === summary.defaultRootId) ?? summary.roots[0];
+  const root = selectChatUploadRoot(summary);
   if (!root) {
     throw new Error("没有可用的文件根目录，无法上传聊天附件");
   }
