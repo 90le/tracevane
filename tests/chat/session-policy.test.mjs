@@ -55,7 +55,7 @@ test('tracevane registry restore defaults missing runtime target to native Codex
   assert.equal(restored.source.channel, 'agent-chat');
 });
 
-test('legacy webchat tracevane registry restore remains legacy channel but native runtime', () => {
+test('legacy webchat tracevane registry restore keeps the OpenClaw compatibility runtime', () => {
   const restored = buildTracevaneManagedRowFromRegistry({
     key: 'agent:main:webchat:direct:tracevane-legacy-webchat',
     agentId: 'main',
@@ -67,6 +67,6 @@ test('legacy webchat tracevane registry restore remains legacy channel but nativ
 
   assert.equal(restored.source.channel, 'webchat');
   assert.equal(restored.deliveryContext.channel, 'webchat');
-  assert.equal(restored.runtimeTarget.adapterKind, 'native-cli');
-  assert.equal(restored.runtimeTarget.agent, 'codex');
+  assert.equal(restored.runtimeTarget.adapterKind, 'openclaw-gateway');
+  assert.equal(restored.runtimeTarget.agent, 'main');
 });

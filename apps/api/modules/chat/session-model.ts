@@ -92,6 +92,24 @@ export function normalizeTracevaneManagedRuntimeTarget(
   return normalizeChatSessionRuntimeTarget(target, fallbackAgentId, buildDefaultTracevaneManagedRuntimeTarget());
 }
 
+function isLegacyTracevaneWebchatKey(sessionKey: string): boolean {
+  return normalizeString(sessionKey).toLowerCase().includes(':webchat:direct:tracevane-');
+}
+
+function normalizeTracevaneManagedRuntimeTargetForSession(
+  sessionKey: string,
+  target: Partial<ChatSessionRuntimeTarget> | undefined | null,
+  fallbackAgentId: string,
+): ChatSessionRuntimeTarget {
+  if (target?.adapterKind) {
+    return normalizeTracevaneManagedRuntimeTarget(target, fallbackAgentId);
+  }
+  if (isLegacyTracevaneWebchatKey(sessionKey)) {
+    return normalizeChatSessionRuntimeTarget(target, fallbackAgentId, buildDefaultRuntimeTarget(fallbackAgentId));
+  }
+  return normalizeTracevaneManagedRuntimeTarget(target, fallbackAgentId);
+}
+
 export interface LocalSessionRecord {
   sessionId?: string;
   sessionFile?: string;
@@ -236,7 +254,7 @@ export function buildTracevaneManagedRowFromRegistry(
     },
     permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
-    runtimeTarget: normalizeTracevaneManagedRuntimeTarget(entry.runtimeTarget, entry.agentId),
+    runtimeTarget: normalizeTracevaneManagedRuntimeTargetForSession(entry.key, entry.runtimeTarget, entry.agentId),
   };
 }
 
@@ -293,7 +311,7 @@ export function mapLocalSessionRow(
       state: 'unknown',
     }),
     runtimeTarget: kind === 'tracevane_managed'
-      ? normalizeTracevaneManagedRuntimeTarget(registryEntry?.runtimeTarget, agentId)
+      ? normalizeTracevaneManagedRuntimeTargetForSession(key, registryEntry?.runtimeTarget, agentId)
       : normalizeChatSessionRuntimeTarget(registryEntry?.runtimeTarget, agentId),
   };
 }
