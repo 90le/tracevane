@@ -68,10 +68,12 @@ import { readJsonFile, writeJsonFile } from '../../core/state.js';
 import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
 import {
   normalizeChatRuntimeAbortResult,
+  normalizeChatRuntimeDeleteResult,
   normalizeChatRuntimeResetResult,
   normalizeChatRuntimeSendResult,
   type ChatRuntimeAdapter,
   type ChatRuntimeAbortInput,
+  type ChatRuntimeDeleteInput,
   type ChatRuntimeResetInput,
   type ChatRuntimeSendInput,
 } from './runtime-adapter.js';
@@ -6387,6 +6389,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         });
         return normalizeChatRuntimeResetResult(raw as Record<string, unknown>);
       },
+      async deleteSession(input: ChatRuntimeDeleteInput) {
+        const raw = await requestGateway(options.config, 'sessions.delete', {
+          key: input.sessionKey,
+          deleteTranscript: input.deleteTranscript,
+          emitLifecycleHooks: false,
+        });
+        return normalizeChatRuntimeDeleteResult(raw as Record<string, unknown>);
+      },
     };
   }
 
@@ -7373,10 +7383,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       const materialized = await isTracevaneSessionMaterialized(session);
       if (materialized) {
-        await requestGateway(options.config, 'sessions.delete', {
-          key: session.key,
+        await createCurrentChatRuntimeAdapter().deleteSession({
+          sessionKey: session.key,
           deleteTranscript: true,
-          emitLifecycleHooks: false,
         });
       }
 

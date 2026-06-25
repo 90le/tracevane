@@ -39,11 +39,22 @@ export interface ChatRuntimeResetResult {
   raw: Record<string, unknown>;
 }
 
+export interface ChatRuntimeDeleteInput {
+  sessionKey: string;
+  deleteTranscript: boolean;
+}
+
+export interface ChatRuntimeDeleteResult {
+  ok: boolean;
+  raw: Record<string, unknown>;
+}
+
 export interface ChatRuntimeAdapter {
   kind: ChatRuntimeAdapterKind;
   send(input: ChatRuntimeSendInput): Promise<ChatRuntimeSendResult>;
   abort(input: ChatRuntimeAbortInput): Promise<ChatRuntimeAbortResult>;
   reset(input: ChatRuntimeResetInput): Promise<ChatRuntimeResetResult>;
+  deleteSession(input: ChatRuntimeDeleteInput): Promise<ChatRuntimeDeleteResult>;
 }
 
 export function normalizeChatRuntimeSendResult(
@@ -70,6 +81,13 @@ export function normalizeChatRuntimeAbortResult(raw: Record<string, unknown>): C
 }
 
 export function normalizeChatRuntimeResetResult(raw: Record<string, unknown>): ChatRuntimeResetResult {
+  return {
+    ok: raw.ok !== false,
+    raw,
+  };
+}
+
+export function normalizeChatRuntimeDeleteResult(raw: Record<string, unknown>): ChatRuntimeDeleteResult {
   return {
     ok: raw.ok !== false,
     raw,
