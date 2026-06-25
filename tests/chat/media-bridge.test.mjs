@@ -90,6 +90,47 @@ test('resolves send file refs from the Tracevane project root for Chat workspace
   }
 });
 
+test('resolves send file refs from Files API roots without workspace coupling', () => {
+  const tracevane = createTempTracevaneConfig();
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-files-root-'));
+  try {
+    tracevane.config.projectRoot = projectRoot;
+    fs.mkdirSync(path.join(projectRoot, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'docs', 'brief.md'), '# brief');
+
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const normalized = bridge.normalizeSendFileRefs([{
+      id: 'files:project-root:docs/brief.md',
+      rootId: 'project-root',
+      relativePath: 'docs/brief.md',
+      resourceRef: 'files:project-root:docs/brief.md',
+      fileName: 'brief.md',
+      kind: 'file',
+      mimeType: 'text/markdown',
+    }]);
+    const resources = bridge.buildSendResources(
+      'agent:main:webchat:direct:tracevane-test',
+      normalized,
+      undefined,
+    );
+    const nativeAttachments = bridge.buildNativeInboundAttachments(
+      'agent:main:webchat:direct:tracevane-test',
+      normalized,
+      undefined,
+    );
+
+    assert.equal(normalized[0]?.resourceRef, 'files:project-root:docs/brief.md');
+    assert.equal(resources.length, 1);
+    assert.equal(resources[0].status, 'ready');
+    assert.equal(resources[0].relativePath, 'docs/brief.md');
+    assert.equal(nativeAttachments.length, 1);
+    assert.equal(nativeAttachments[0].localPath, path.join(projectRoot, 'docs', 'brief.md'));
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
+  }
+});
+
 test('buildAssistantMessageFromTracevaneDelivery preserves block order', () => {
   const tracevane = createTempTracevaneConfig();
 

@@ -25,9 +25,14 @@ import {
   parseTracevaneMarkdownMediaRef,
   type TracevaneMarkdownMediaRef,
 } from '../../../../lib/tracevane-markdown-media.js';
-import { buildTracevaneResourceRefFromRelativePath } from '../../../../lib/tracevane-resource-refs.js';
+import {
+  buildTracevaneFilesResourceRef,
+  buildTracevaneResourceRefFromRelativePath,
+  parseTracevaneFilesResourceRef,
+} from '../../../../lib/tracevane-resource-refs.js';
 import { compileAssistantMarkdownMedia, type CompileAssistantMarkdownMediaResult } from './assistant-markdown-media.js';
 import { deriveAgentIdFromSessionKey } from './session-model.js';
+import { resolveFilesServiceExistingFilePath } from '../files/service.js';
 
 type MediaTokenPayload = {
   v: 1;
@@ -356,6 +361,23 @@ function resolveScopedWorkspaceFilePath(
   return candidate;
 }
 
+function resolveFilesResourceFilePath(
+  config: TracevaneServerConfig,
+  rootId: string | null | undefined,
+  ref: string | null | undefined,
+): string | null {
+  const normalizedRootId = typeof rootId === 'string' ? rootId.trim() : '';
+  const normalizedRef = typeof ref === 'string' ? toPortableRelativePath(ref.trim()) : '';
+  if (!normalizedRootId || !normalizedRef || !isSafeScopedResourceRefPath(normalizedRef)) {
+    return null;
+  }
+  try {
+    return resolveFilesServiceExistingFilePath(config, normalizedRootId, normalizedRef).absolutePath;
+  } catch {
+    return null;
+  }
+}
+
 function isSafeScopedResourceRefPath(value: string): boolean {
   const normalized = toPortableRelativePath(value);
   return Boolean(normalized)
@@ -375,6 +397,10 @@ function resolveTracevaneMarkdownMediaFilePath(
 
   if (parsedRef.kind === 'workspace' || parsedRef.kind === 'uploads') {
     return resolveScopedWorkspaceFilePath(config, sessionKey, parsedRef.path, parsedRef.kind);
+  }
+
+  if (parsedRef.kind === 'files') {
+    return resolveFilesResourceFilePath(config, parsedRef.rootId, parsedRef.path);
   }
 
   return resolveLocalFilePath(config, sessionKey, parsedRef.path);
@@ -888,6 +914,34 @@ function buildUserUploadResourceFromRef(
   return resourceId ? { ...missing, id: resourceId } : missing;
 }
 
+function buildUserUploadResourceFromSendFileRef(
+  ctx: CollectResourceContext,
+  fileRef: ChatSendFileRef,
+  index: number,
+): ChatResourceItem {
+  const parsedFilesRef = parseTracevaneFilesResourceRef(fileRef.resourceRef);
+  if (parsedFilesRef) {
+    const filePath = resolveFilesResourceFilePath(ctx.config, parsedFilesRef.rootId, parsedFilesRef.path);
+    const fileName = fileRef.fileName || path.basename(parsedFilesRef.path) || `file-${index + 1}`;
+    if (filePath) {
+      const item = buildLocalResourceItem(ctx, filePath, {
+        source: 'user_upload',
+        relativePath: parsedFilesRef.path,
+        originalPath: fileRef.resourceRef || parsedFilesRef.path,
+      });
+      return fileRef.id ? { ...item, id: fileRef.id, fileName: fileRef.fileName || item.fileName } : item;
+    }
+    const missing = buildMissingResourceItem(ctx, fileName, {
+      source: 'user_upload',
+      relativePath: parsedFilesRef.path,
+      originalPath: fileRef.resourceRef || parsedFilesRef.path,
+      toolCallId: null,
+    });
+    return fileRef.id ? { ...missing, id: fileRef.id } : missing;
+  }
+  return buildUserUploadResourceFromRef(ctx, fileRef.relativePath, index, fileRef.id);
+}
+
 function buildTracevaneDeliveryResourceItem(
   ctx: CollectResourceContext,
   resource: TracevaneDeliveryResource,
@@ -1227,6 +1281,7 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
       const normalized = typeof markdown === 'string' ? markdown : '';
       const hasLocalRef = normalized.includes('workspace:')
         || normalized.includes('uploads:')
+        || normalized.includes('files:')
         || normalized.includes('tracevane-file:');
       if (!hasLocalRef) {
         return false;
@@ -1404,17 +1459,26 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
             if (!relativePath) {
               return null;
             }
+            const incomingResourceRef = typeof fileRef.resourceRef === 'string' ? fileRef.resourceRef.trim() : '';
+            const parsedFilesRef = parseTracevaneFilesResourceRef(incomingResourceRef);
+            const rootId = parsedFilesRef?.rootId || (typeof fileRef.rootId === 'string' ? fileRef.rootId.trim() : null);
+            const normalizedRelativePath = parsedFilesRef?.path || relativePath;
             const fileName = typeof fileRef.fileName === 'string' && fileRef.fileName.trim()
               ? fileRef.fileName.trim()
-              : path.basename(relativePath);
+              : path.basename(normalizedRelativePath);
             const mimeType = normalizeMimeType(fileRef.mimeType) || mimeTypeFromPath(fileName);
             const kind = inferMediaKind(fileName, mimeType);
-            const resourceRef = buildTracevaneResourceRefFromRelativePath(relativePath);
+            const resourceRef = parsedFilesRef
+              ? incomingResourceRef
+              : rootId
+                ? buildTracevaneFilesResourceRef(rootId, normalizedRelativePath)
+                : buildTracevaneResourceRefFromRelativePath(normalizedRelativePath);
             const item: ChatSendFileRef = {
               id: typeof fileRef.id === 'string' && fileRef.id.trim()
                 ? fileRef.id.trim()
                 : `file-ref-${index + 1}`,
-              relativePath,
+              rootId,
+              relativePath: normalizedRelativePath,
               fileName,
               mimeType,
               kind,
@@ -1451,7 +1515,7 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
       const isLegacyRelativeRef = !parsedRef && isTracevaneMarkdownExplicitLocalRef(normalizedRef);
       const unsafeScopedRef = Boolean(
         parsedRef
-        && (parsedRef.kind === 'workspace' || parsedRef.kind === 'uploads')
+        && (parsedRef.kind === 'workspace' || parsedRef.kind === 'uploads' || parsedRef.kind === 'files')
         && !isSafeScopedResourceRefPath(parsedRef.path),
       );
       if (unsafeScopedRef) {
@@ -1473,12 +1537,16 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
       const refPath = parsedRef?.path || normalizedRef;
       const localFilePath = resolveTracevaneMarkdownMediaFilePath(config, sessionKey, normalizedRef, parsedRef);
       const resourceRef = parsedRef
-        ? `${parsedRef.kind}:${parsedRef.path}`
+        ? parsedRef.kind === 'files'
+          ? buildTracevaneFilesResourceRef(parsedRef.rootId, parsedRef.path)
+          : `${parsedRef.kind}:${parsedRef.path}`
         : buildTracevaneResourceRefFromRelativePath(normalizedRef);
       const relativePath = parsedRef?.kind === 'workspace'
         ? parsedRef.path
         : parsedRef?.kind === 'uploads'
           ? `uploads/${parsedRef.path}`
+          : parsedRef?.kind === 'files'
+            ? parsedRef.path
           : undefined;
 
       const resource = localFilePath
@@ -1512,7 +1580,7 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
 
       for (let index = 0; index < normalizedFileRefs.length; index += 1) {
         const fileRef = normalizedFileRefs[index];
-        pushResourceItem(items, seenKeys, buildUserUploadResourceFromRef(ctx, fileRef.relativePath, index, fileRef.id));
+        pushResourceItem(items, seenKeys, buildUserUploadResourceFromSendFileRef(ctx, fileRef, index));
       }
 
       const fileRefPaths = new Set(normalizedFileRefs.map((item) => item.relativePath));
@@ -1555,7 +1623,10 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
       const normalizedFileRefs = this.normalizeSendFileRefs(fileRefs);
 
       for (const fileRef of normalizedFileRefs) {
-        const localPath = resolveLocalFilePath(config, sessionKey, fileRef.relativePath);
+        const parsedFilesRef = parseTracevaneFilesResourceRef(fileRef.resourceRef);
+        const localPath = parsedFilesRef
+          ? resolveFilesResourceFilePath(config, parsedFilesRef.rootId, parsedFilesRef.path)
+          : resolveLocalFilePath(config, sessionKey, fileRef.relativePath);
         if (!localPath || seenLocalPaths.has(localPath)) {
           continue;
         }

@@ -1,7 +1,13 @@
-export type TracevaneResourceRefScheme = 'workspace' | 'uploads' | 'tracevane-file';
+export type TracevaneResourceRefScheme = 'workspace' | 'uploads' | 'tracevane-file' | 'files';
 
 export interface TracevaneResourceRefParts {
   scheme: TracevaneResourceRefScheme;
+  path: string;
+}
+
+export interface TracevaneFilesResourceRefParts {
+  scheme: 'files';
+  rootId: string;
   path: string;
 }
 
@@ -33,8 +39,49 @@ export function buildTracevaneFileResourceRef(absolutePath: string | null | unde
   return trimmed ? `tracevane-file:${trimmed}` : null;
 }
 
+export function buildTracevaneFilesResourceRef(
+  rootId: string | null | undefined,
+  relativePath: string | null | undefined,
+): string | null {
+  const normalizedRootId = typeof rootId === 'string' ? rootId.trim() : '';
+  const normalizedPath = normalizePortablePath(relativePath);
+  if (!normalizedRootId || !normalizedPath) {
+    return null;
+  }
+  return `files:${normalizedRootId}:${normalizedPath}`;
+}
+
+export function parseTracevaneFilesResourceRef(value: string | null | undefined): TracevaneFilesResourceRefParts | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed.toLowerCase().startsWith('files:')) {
+    return null;
+  }
+  const body = trimmed.slice('files:'.length);
+  const delimiterIndex = body.indexOf(':');
+  if (delimiterIndex <= 0) {
+    return null;
+  }
+  const rootId = body.slice(0, delimiterIndex).trim();
+  const refPath = normalizePortablePath(body.slice(delimiterIndex + 1));
+  if (!rootId || !refPath) {
+    return null;
+  }
+  return {
+    scheme: 'files',
+    rootId,
+    path: refPath,
+  };
+}
+
 export function parseTracevaneResourceRef(value: string | null | undefined): TracevaneResourceRefParts | null {
   const trimmed = typeof value === 'string' ? value.trim() : '';
+  const filesRef = parseTracevaneFilesResourceRef(trimmed);
+  if (filesRef) {
+    return {
+      scheme: 'files',
+      path: `${filesRef.rootId}:${filesRef.path}`,
+    };
+  }
   const match = /^(workspace|uploads|tracevane-file):/i.exec(trimmed);
   if (!match) {
     return null;

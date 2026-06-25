@@ -53,14 +53,16 @@ function parentPortablePath(value: string): string {
 
 type ComposerFileRefItem = ChatSendFileRef & {
   status: "uploading" | "ready" | "failed";
-  source: "upload" | "workspace";
+  source: "upload" | "workspace" | "files";
   error?: string | null;
 };
 
 function composerFileSourceLabel(item: ComposerFileRefItem): string {
   if (item.status === "uploading") return "上传中";
   if (item.status === "failed") return "失败";
-  return item.source === "workspace" ? "工作区" : "上传";
+  if (item.source === "workspace") return "工作区";
+  if (item.source === "files") return "文件";
+  return "上传";
 }
 
 function ToolCallBlock({
@@ -301,7 +303,6 @@ export function ConversationView({
   }, [filesSummary.data]);
   const effectiveWorkspacePickerRootId = workspacePickerRootId || workspaceRootId;
   const selectedFilesRoot = filesRoots.find((root) => root.id === effectiveWorkspacePickerRootId) ?? null;
-  const selectedRootCanAttach = Boolean(effectiveWorkspacePickerRootId && effectiveWorkspacePickerRootId === workspaceRootId);
   const workspaceBrowse = useFilesBrowseQuery(
     workspacePickerOpen && effectiveWorkspacePickerRootId
       ? {
@@ -413,21 +414,25 @@ export function ConversationView({
   };
 
   const attachWorkspaceFile = (filePath: string, fileName: string) => {
-    if (!selectedRootCanAttach) return;
-    const resourceRef = `workspace:${filePath}`;
+    const rootId = effectiveWorkspacePickerRootId || "project-root";
+    const isProjectRoot = rootId === workspaceRootId || rootId === "project-root";
+    const resourceRef = isProjectRoot
+      ? `workspace:${filePath}`
+      : `files:${rootId}:${filePath}`;
     setFileRefs((prev) => {
       if (prev.some((item) => item.resourceRef === resourceRef)) return prev;
       return [
         ...prev,
         {
           id: resourceRef,
+          rootId: isProjectRoot ? null : rootId,
           relativePath: filePath,
           resourceRef,
           fileName,
           kind: "file",
           mimeType: null,
           status: "ready",
-          source: "workspace",
+          source: isProjectRoot ? "workspace" : "files",
         },
       ];
     });
@@ -566,9 +571,9 @@ export function ConversationView({
                 <Button variant="ghost" size="sm" onClick={() => setWorkspacePickerDir(parentPortablePath(workspacePickerDir))}>上一级</Button>
               )}
             </div>
-            {!selectedRootCanAttach && selectedFilesRoot && (
-              <div className="border-b border-line bg-amber-soft px-2.5 py-1.5 text-xs text-amber">
-                “{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}” 可用于查找文件；当前 Agent 只能直接附加项目工作区文件。
+            {selectedFilesRoot && effectiveWorkspacePickerRootId !== workspaceRootId && (
+              <div className="border-b border-line bg-panel-3 px-2.5 py-1.5 text-xs text-muted">
+                将以 Files 根引用附加“{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}”下的文件；后端会在发送时解析为本机安全路径。
               </div>
             )}
             <div className="max-h-56 overflow-auto p-1.5">
@@ -599,14 +604,8 @@ export function ConversationView({
                       <button
                         key={`file:${nextPath}`}
                         type="button"
-                        disabled={!selectedRootCanAttach}
-                        title={selectedRootCanAttach ? "附加到当前 Agent 消息" : "该文件根暂不能作为 Agent 工作区附件发送"}
-                        className={cn(
-                          "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink",
-                          selectedRootCanAttach
-                            ? "hover:bg-primary-soft"
-                            : "cursor-not-allowed opacity-55",
-                        )}
+                        title="附加到当前 Agent 消息"
+                        className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink hover:bg-primary-soft"
                         onClick={() => attachWorkspaceFile(nextPath, entry.name)}
                       >
                         <FileText className="size-4 shrink-0 text-muted" />
@@ -619,7 +618,7 @@ export function ConversationView({
               )}
             </div>
             <div className="border-t border-line px-2.5 py-1.5 text-xs text-subtle">
-              附加文件会作为结构化 fileRef 传给当前 Agent；文件浏览复用文件管理域 API，只有项目工作区文件会转换为 workspace: 引用。
+              附加文件会作为结构化 fileRef 传给当前 Agent；项目工作区使用 workspace: 引用，其它文件根使用 files: 引用并由后端安全解析。
             </div>
           </div>
         )}

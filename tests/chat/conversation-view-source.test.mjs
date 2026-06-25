@@ -12,7 +12,7 @@ test('ConversationView exposes a workspace file picker backed by the Files API',
   assert.match(source, /workspaceRootId/);
   assert.match(source, /@ 工作区文件/);
   assert.match(source, /attachWorkspaceFile/);
-  assert.match(source, /const resourceRef = `workspace:\$\{filePath\}`/);
+  assert.match(source, /const resourceRef = isProjectRoot/);
   assert.match(source, /resourceRef,/);
 });
 
@@ -20,7 +20,7 @@ test('ConversationView exposes a workspace file picker backed by the Files API',
 test('ConversationView keeps composer file refs structured and removable across upload states', () => {
   assert.match(source, /type ComposerFileRefItem = ChatSendFileRef &/);
   assert.match(source, /status: "uploading" \| "ready" \| "failed"/);
-  assert.match(source, /source: "upload" \| "workspace"/);
+  assert.match(source, /source: "upload" \| "workspace" \| "files"/);
   assert.match(source, /readyFileRefs/);
   assert.match(source, /hasPendingFileRefs/);
   assert.match(source, /hasFailedFileRefs/);
@@ -33,13 +33,12 @@ test('ConversationView keeps composer file refs structured and removable across 
 });
 
 
-test('ConversationView uses Files roots explicitly and only sends workspace-root refs', () => {
+test('ConversationView uses Files roots explicitly and sends Files-root refs safely', () => {
   assert.match(source, /const filesRoots = filesSummary\.data\?\.roots \?\? \[\]/);
   assert.match(source, /workspacePickerRootId/);
   assert.match(source, /effectiveWorkspacePickerRootId/);
-  assert.match(source, /selectedRootCanAttach/);
   assert.match(source, /aria-label="选择文件根"/);
-  assert.match(source, /disabled=\{!selectedRootCanAttach\}/);
-  assert.match(source, /当前 Agent 只能直接附加项目工作区文件/);
-  assert.match(source, /只有项目工作区文件会转换为 workspace: 引用/);
+  assert.match(source, /`files:\$\{rootId\}:\$\{filePath\}`/);
+  assert.match(source, /source: isProjectRoot \? "workspace" : "files"/);
+  assert.match(source, /Files 根引用/);
 });

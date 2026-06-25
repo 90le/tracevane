@@ -4,6 +4,7 @@ export type TracevaneMarkdownMediaDisplay = ChatInlineResourceDisplay | 'card';
 export type TracevaneMarkdownMediaRef =
   | { kind: 'workspace'; path: string }
   | { kind: 'uploads'; path: string }
+  | { kind: 'files'; rootId: string; path: string }
   | { kind: 'tracevane-file'; path: string };
 
 const TRACEVANE_MARKDOWN_DISPLAY_SET = new Set<TracevaneMarkdownMediaDisplay>([
@@ -59,7 +60,7 @@ export function parseTracevaneMarkdownMediaRef(value: string | null | undefined)
     return null;
   }
 
-  const match = /^(workspace|uploads|tracevane-file):/i.exec(trimmed);
+  const match = /^(workspace|uploads|files|tracevane-file):/i.exec(trimmed);
   if (!match) {
     return null;
   }
@@ -77,6 +78,23 @@ export function parseTracevaneMarkdownMediaRef(value: string | null | undefined)
     }
     return {
       kind: scheme,
+      path: normalizedPath,
+    };
+  }
+
+  if (scheme === 'files') {
+    const delimiterIndex = refPath.indexOf(':');
+    if (delimiterIndex <= 0) {
+      return null;
+    }
+    const rootId = refPath.slice(0, delimiterIndex).trim();
+    const normalizedPath = normalizeTracevaneMarkdownRelativeRefPath(refPath.slice(delimiterIndex + 1));
+    if (!rootId || !normalizedPath) {
+      return null;
+    }
+    return {
+      kind: 'files',
+      rootId,
       path: normalizedPath,
     };
   }

@@ -42,6 +42,8 @@ type ResolvedPath = {
   absolutePath: string;
 };
 
+export type FilesResolvedPath = ResolvedPath;
+
 type ArchiveFormat = "zip" | "tar" | "gztar" | "bztar" | "xztar";
 type DirectorySortKey = "name" | "size" | "modifiedAt";
 type DirectorySortDirection = "asc" | "desc";
@@ -480,6 +482,14 @@ function resolveExistingPath(
     relativePath,
     absolutePath,
   };
+}
+
+export function resolveFilesServiceExistingFilePath(
+  config: TracevaneServerConfig,
+  rootId: string | undefined,
+  targetPath: string | undefined,
+): FilesResolvedPath {
+  return resolveExistingPath(config, rootId, targetPath, { allowRoot: false, kind: "file" });
 }
 
 function resolveTargetPath(

@@ -293,6 +293,7 @@ export type ChatComposerDocument = ChatComposerNode[];
 
 export interface ChatSendFileRef {
   id: string;
+  rootId?: string | null;
   relativePath: string;
   resourceRef?: string;
   fileName: string;

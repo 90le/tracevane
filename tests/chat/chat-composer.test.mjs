@@ -23,8 +23,10 @@ import {
   serializeComposerDocumentToMarkdown,
 } from '../../dist/lib/composer-model.js';
 import {
+  buildTracevaneFilesResourceRef,
   buildTracevaneResourceRefFromRelativePath,
   formatMarkdownResourceDestination,
+  parseTracevaneFilesResourceRef,
 } from '../../dist/lib/tracevane-resource-refs.js';
 import {
   buildPersistableComposerDraft,
@@ -235,6 +237,12 @@ test('composer file refs carry canonical tracevane resource refs', () => {
 test('tracevane resource ref helpers keep display refs portable', () => {
   assert.equal(buildTracevaneResourceRefFromRelativePath('uploads/a.png'), 'uploads:a.png');
   assert.equal(buildTracevaneResourceRefFromRelativePath('docs/a.md'), 'workspace:docs/a.md');
+  assert.equal(buildTracevaneFilesResourceRef('home-root', 'Desktop/a.md'), 'files:home-root:Desktop/a.md');
+  assert.deepEqual(parseTracevaneFilesResourceRef('files:home-root:Desktop/a.md'), {
+    scheme: 'files',
+    rootId: 'home-root',
+    path: 'Desktop/a.md',
+  });
   assert.equal(formatMarkdownResourceDestination('uploads:a b.png'), '<uploads:a b.png>');
 });
 
