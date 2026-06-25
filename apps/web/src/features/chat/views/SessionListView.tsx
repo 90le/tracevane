@@ -72,6 +72,7 @@ type SessionDialogState =
   | { kind: "restore"; session: ChatSessionRow }
   | { kind: "delete"; session: ChatSessionRow }
   | { kind: "move-session"; session: ChatSessionRow }
+  | { kind: "edit-runtime"; session: ChatSessionRow }
   | { kind: "create-folder"; parentId: string | null }
   | { kind: "rename-folder"; folder: ChatSessionFolder }
   | { kind: "delete-folder"; folder: ChatSessionFolder }
@@ -190,6 +191,12 @@ export function SessionListView({
       setRuntimeModel("");
       setRuntimeWorkDir("");
       setRuntimePermissionMode("");
+    }
+    if (dialog?.kind === "edit-runtime") {
+      setRuntimeAgent(dialog.session.runtimeTarget?.agent || "openclaw");
+      setRuntimeModel(dialog.session.runtimeTarget?.model || "");
+      setRuntimeWorkDir(dialog.session.runtimeTarget?.workDir || "");
+      setRuntimePermissionMode(dialog.session.runtimeTarget?.permissionMode || "");
     }
     if (dialog?.kind === "create-folder") {
       setFolderDraft("");
@@ -427,7 +434,7 @@ export function SessionListView({
 
   const runPatch = (
     session: ChatSessionRow,
-    payload: { label?: string; archived?: boolean },
+    payload: { label?: string; archived?: boolean; runtimeTarget?: ChatSessionRow["runtimeTarget"] },
   ) => {
     patchSession.mutate(
       { sessionKey: session.key, payload },
@@ -570,7 +577,7 @@ export function SessionListView({
   };
 
   const triggerSessionAction = (
-    action: "rename" | "archive" | "restore" | "delete" | "move-session",
+    action: "rename" | "archive" | "restore" | "delete" | "move-session" | "edit-runtime",
     session: ChatSessionRow,
   ) => {
     closeContextMenu();
@@ -1082,6 +1089,12 @@ export function SessionListView({
                     children: "重命名…",
                   })}
                   {renderMenuItem({
+                    icon: <MonitorCog />,
+                    onSelect: () =>
+                      triggerSessionAction("edit-runtime", contextMenu.session),
+                    children: "编辑运行目标…",
+                  })}
+                  {renderMenuItem({
                     icon: <FolderInput />,
                     onSelect: () =>
                       triggerSessionAction("move-session", contextMenu.session),
@@ -1246,6 +1259,120 @@ export function SessionListView({
                   disabled={busy}
                 >
                   {busy ? "创建中…" : "创建"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {dialog?.kind === "edit-runtime" && (
+            <>
+              <DialogHeader>
+                <span className="grid size-8 place-items-center rounded-[9px] bg-primary-soft text-primary [&_svg]:size-4">
+                  <MonitorCog />
+                </span>
+                <DialogTitle>编辑运行目标</DialogTitle>
+              </DialogHeader>
+              <DialogBody>
+                <div className="grid gap-4">
+                  <p className="text-sm text-muted">
+                    会话：{sessionTitle(dialog.session)}。保存后从下一次发送开始使用新的 Agent、模型、目录和权限。
+                  </p>
+
+                  <div className="grid gap-2">
+                    <span className="text-sm text-muted">运行器 / Agent</span>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
+                        const active = option.agent === runtimeAgent;
+                        return (
+                          <button
+                            key={`${option.adapterKind}:${option.agent}`}
+                            type="button"
+                            onClick={() => setRuntimeAgent(option.agent)}
+                            className={cn(
+                              "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
+                              active && "border-primary-line bg-primary-soft",
+                            )}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
+                              <MonitorCog className="size-4 text-primary" />
+                              {option.label}
+                            </span>
+                            <span className="text-xs text-subtle">{option.description}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm text-muted">
+                      默认模型
+                      <select
+                        value={runtimeModel}
+                        onChange={(event) => setRuntimeModel(event.target.value)}
+                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                      >
+                        <option value="">使用模型网关默认路由</option>
+                        {selectableModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-2 text-sm text-muted">
+                      权限模式
+                      <select
+                        value={runtimePermissionMode}
+                        onChange={(event) => setRuntimePermissionMode(event.target.value as ChatRuntimePermissionMode | "")}
+                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                      >
+                        {CHAT_RUNTIME_PERMISSION_OPTIONS.map((item) => (
+                          <option key={item.value || "default"} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="grid gap-2 text-sm text-muted">
+                    默认工作目录
+                    <Input
+                      value={runtimeWorkDir}
+                      onChange={(e) => setRuntimeWorkDir(e.target.value)}
+                      placeholder="留空使用默认工作区，例如 /home/binbin/project"
+                    />
+                  </label>
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialog(null)}
+                  disabled={busy}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const option = selectedRuntimeOption;
+                    runPatch(dialog.session, {
+                      runtimeTarget: {
+                        adapterKind: option.adapterKind,
+                        agent: option.agent,
+                        model: runtimeModel.trim() || null,
+                        workDir: runtimeWorkDir.trim() || null,
+                        permissionMode: runtimePermissionMode || null,
+                      },
+                    });
+                  }}
+                  disabled={busy}
+                >
+                  {busy ? "保存中…" : "保存运行目标"}
                 </Button>
               </DialogFooter>
             </>

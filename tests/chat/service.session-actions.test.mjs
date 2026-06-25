@@ -434,6 +434,52 @@ test('native CLI chat sessions send through channel connector runner and persist
   }
 });
 
+
+test('patching a chat session can update runtime target metadata', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-patch-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Runtime editable session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: '/tmp/old-workdir',
+        permissionMode: 'yolo',
+      },
+    });
+
+    const patched = await context.services.chat.patchSession(created.session.key, {
+      runtimeTarget: {
+        agent: 'claude-code',
+        model: 'claude-sonnet-4-6',
+        workDir: '/tmp/new-workdir',
+        permissionMode: 'plan',
+      },
+    });
+
+    assert.deepEqual(patched.session.runtimeTarget, {
+      adapterKind: 'native-cli',
+      agent: 'claude-code',
+      model: 'claude-sonnet-4-6',
+      workDir: '/tmp/new-workdir',
+      permissionMode: 'plan',
+    });
+
+    const registry = readJson(registryPath(root), {});
+    assert.deepEqual(registry[created.session.key].runtimeTarget, patched.session.runtimeTarget);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('ui queued message flushes when the active run settles before enqueue reaches the backend', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-idle-flush-'));
   let gateway = null;

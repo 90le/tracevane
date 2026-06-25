@@ -18,3 +18,10 @@ test('SessionListView separates all sessions from the unfiled folder scope', () 
   assert.match(source, />全部会话</);
   assert.match(source, />未分组</);
 });
+
+test('SessionListView exposes runtime target editing for managed sessions', () => {
+  assert.match(source, /kind: "edit-runtime"; session: ChatSessionRow/);
+  assert.match(source, /编辑运行目标…/);
+  assert.match(source, /保存运行目标/);
+  assert.match(source, /runtimeTarget: \{/);
+});

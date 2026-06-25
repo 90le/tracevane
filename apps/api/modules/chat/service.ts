@@ -7504,8 +7504,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
       const hasLabel = Object.prototype.hasOwnProperty.call(payload, 'label');
       const hasArchived = Object.prototype.hasOwnProperty.call(payload, 'archived');
-      if (!hasLabel && !hasArchived) {
-        throw new ChatServiceError(400, buildChatError('invalid_request', 'Session metadata patch requires label or archived'));
+      const hasRuntimeTarget = Object.prototype.hasOwnProperty.call(payload, 'runtimeTarget');
+      if (!hasLabel && !hasArchived && !hasRuntimeTarget) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Session metadata patch requires label, archived, or runtimeTarget'));
       }
 
       const now = new Date().toISOString();
@@ -7528,10 +7529,18 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         nextArchivedAt = payload.archived ? now : null;
       }
 
+      const nextRuntimeTarget = hasRuntimeTarget
+        ? normalizeChatSessionRuntimeTarget({
+          ...session.runtimeTarget,
+          ...(payload.runtimeTarget || {}),
+        }, session.agentId)
+        : session.runtimeTarget;
+
       const nextSession: ChatSessionRow = {
         ...session,
         label: nextLabel,
         updatedAt: now,
+        runtimeTarget: nextRuntimeTarget,
         presentation: {
           archived: Boolean(nextArchivedAt),
           archivedAt: nextArchivedAt,

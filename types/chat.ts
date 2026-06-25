@@ -471,6 +471,7 @@ export interface ChatCreateSessionResponse {
 export interface ChatPatchSessionRequest {
   label?: string | null;
   archived?: boolean;
+  runtimeTarget?: Partial<ChatSessionRuntimeTarget>;
 }
 
 export interface ChatPatchSessionResponse {
