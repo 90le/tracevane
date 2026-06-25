@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isTracevaneManagedAgentChatHostContext,
   isTracevaneManagedWebchatHostContext,
   resolvePluginHostContext,
 } from '../../dist/lib/plugin-host-compat.js';
@@ -45,18 +46,25 @@ test('resolvePluginHostContext accepts messageProvider/messageChannel but keeps 
   assert.equal(externalSession.source, 'none');
 });
 
-test('isTracevaneManagedWebchatHostContext only turns true for explicit or controlled Tracevane Agent Chat contexts', () => {
-  assert.equal(isTracevaneManagedWebchatHostContext({
+test('Tracevane Agent Chat host context helper accepts new agent-chat and legacy webchat contexts', () => {
+  assert.equal(isTracevaneManagedAgentChatHostContext({
     sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
   }), true);
   assert.equal(isTracevaneManagedWebchatHostContext({
+    sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+  }), true);
+  assert.equal(isTracevaneManagedAgentChatHostContext({
     sessionKey: 'agent:main:webchat:direct:tracevane-test',
   }), true);
+  assert.equal(isTracevaneManagedAgentChatHostContext({
+    sessionKey: 'agent:main:agent-chat:direct:tracevane-test',
+    messageChannel: 'webchat',
+  }), false);
   assert.equal(isTracevaneManagedWebchatHostContext({
     sessionKey: 'agent:main:telegram:direct:tracevane-test',
     channelId: 'telegram',
   }), false);
-  assert.equal(isTracevaneManagedWebchatHostContext({
+  assert.equal(isTracevaneManagedAgentChatHostContext({
     sessionKey: 'agent:main:webchat:direct:external-1',
   }), false);
 });

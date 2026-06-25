@@ -63,10 +63,15 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
   };
 }
 
-export function isTracevaneManagedWebchatHostContext(ctx: unknown): boolean {
+export function isTracevaneManagedAgentChatHostContext(ctx: unknown): boolean {
   const resolved = resolvePluginHostContext(ctx);
   return isTracevaneManagedAgentChatSession({
     sessionKey: resolved.sessionKey,
     messageChannel: resolved.channelId,
   });
+}
+
+/** @deprecated Use isTracevaneManagedAgentChatHostContext. Kept for legacy plugin/test callers. */
+export function isTracevaneManagedWebchatHostContext(ctx: unknown): boolean {
+  return isTracevaneManagedAgentChatHostContext(ctx);
 }

@@ -148,7 +148,7 @@ const tracevanePlugin = {
         channelId: host.channelId,
       });
       if (result?.block) {
-        api.logger.warn(`tracevane: blocked tool call in Tracevane webchat (tool=${event.toolName}): ${result.blockReason}`);
+        api.logger.warn(`tracevane: blocked tool call in Tracevane Agent Chat (tool=${event.toolName}): ${result.blockReason}`);
       }
       return result;
     }, { priority: 100 });
