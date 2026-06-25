@@ -53,7 +53,6 @@ import type {
   ChatRuntimeState,
   ChatSendAck,
   ChatSendFileRef,
-  ChatSendStatus,
   ChatSendRequest,
   ChatSessionFolder,
   ChatSessionKind,
@@ -66,7 +65,12 @@ import type {
 } from '../../../../types/chat.js';
 import type { SystemService } from '../system/service.js';
 import { readJsonFile, writeJsonFile } from '../../core/state.js';
-import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT, CHAT_SEND_STATUS_MAP } from './contract.js';
+import { CHAT_API_PATHS, CHAT_PROTOCOL_MODE_DEFAULT } from './contract.js';
+import {
+  normalizeChatRuntimeSendResult,
+  type ChatRuntimeAdapter,
+  type ChatRuntimeSendInput,
+} from './runtime-adapter.js';
 import {
   CHAT_POLICY_DEFAULTS,
   buildChatSessionPermissions,
@@ -6349,6 +6353,23 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
   }
 
+  function createCurrentChatRuntimeAdapter(): ChatRuntimeAdapter {
+    return {
+      kind: 'openclaw-gateway',
+      async send(input: ChatRuntimeSendInput) {
+        const raw = await requestViaSessionBridge<Record<string, unknown>>(input.sessionKey, 'chat.send', {
+          sessionKey: input.sessionKey,
+          message: input.message,
+          thinking: input.thinking,
+          deliver: input.deliver,
+          idempotencyKey: input.idempotencyKey,
+          attachments: input.attachments,
+        });
+        return normalizeChatRuntimeSendResult(raw, input.idempotencyKey);
+      },
+    };
+  }
+
   async function performDirectSend(
     sessionKey: string,
     payload: ChatSendRequest,
@@ -6388,7 +6409,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     optimisticProjection.lifecycle = pickProjectionLifecycle(optimisticProjection.lifecycle, 'queued');
     optimisticProjection.updatedAt = now;
     saveRunProjection(sessionKey, optimisticProjection);
-    const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.send', {
+    const runtimeAdapter = createCurrentChatRuntimeAdapter();
+    const sendResult = await runtimeAdapter.send({
       sessionKey,
       message: transportText,
       thinking: normalizeString(payload.thinking || undefined),
@@ -6396,9 +6418,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       idempotencyKey: requestId,
       attachments,
     });
-    const rawStatus = normalizeString(raw.status, 'started');
-    const status = (CHAT_SEND_STATUS_MAP as Record<string, ChatSendStatus>)[rawStatus] || 'started';
-    const ackRunId = normalizeString(raw.runId, requestId);
+    const status = sendResult.status;
+    const ackRunId = sendResult.runId;
     unsuppressGatewayRunId(sessionKey, ackRunId);
     const runtime = buildGatewayRuntime(sessionKey, true, {
       activeRunId: status === 'duplicate_completed' ? null : ackRunId,
