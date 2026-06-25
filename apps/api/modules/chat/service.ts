@@ -59,6 +59,7 @@ import type {
   ChatSessionKind,
   ChatSessionOrganizerState,
   ChatSessionRow,
+  ChatSessionRuntimeTarget,
   ChatProtocolMode,
   ChatSessionsPayload,
   ChatStreamEvent,
@@ -6611,6 +6612,34 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
   }
 
+
+  function normalizedRuntimeTargetIdentity(target: ChatSessionRuntimeTarget): string {
+    return JSON.stringify({
+      adapterKind: normalizeString(target.adapterKind),
+      agent: normalizeString(target.agent),
+      model: normalizeString(target.model) || null,
+      workDir: normalizeString(target.workDir) || null,
+      permissionMode: normalizeString(target.permissionMode) || null,
+    });
+  }
+
+  function didRuntimeTargetIdentityChange(
+    previous: ChatSessionRuntimeTarget,
+    next: ChatSessionRuntimeTarget,
+  ): boolean {
+    return normalizedRuntimeTargetIdentity(previous) !== normalizedRuntimeTargetIdentity(next);
+  }
+
+  function clearRuntimeSessionFromRegistry(sessionKey: string): void {
+    const registry = readRegistryFromDisk();
+    const current = registry[sessionKey];
+    if (!current?.runtimeSession) return;
+    const { runtimeSession: _runtimeSession, ...next } = current;
+    registry[sessionKey] = next;
+    writeTracevaneChatRegistry(options.config, registry);
+    registryCache = registry;
+  }
+
   function appendRuntimeSessionToRegistry(
     session: ChatSessionRow,
     runtimeSession: { agentNativeSessionId?: string | null; codexThreadId?: string | null } | null | undefined,
@@ -7661,6 +7690,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           ...(payload.runtimeTarget || {}),
         }, session.agentId)
         : session.runtimeTarget;
+      const runtimeTargetChanged = hasRuntimeTarget
+        ? didRuntimeTargetIdentityChange(session.runtimeTarget, nextRuntimeTarget)
+        : false;
 
       const nextSession: ChatSessionRow = {
         ...session,
@@ -7681,6 +7713,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         setTracevaneSession(inMemory);
       }
       saveRegistryEntry(buildRegistryEntryFromRow(nextSession));
+      if (runtimeTargetChanged) {
+        clearRuntimeSessionFromRegistry(nextSession.key);
+      }
 
       return {
         ok: true,

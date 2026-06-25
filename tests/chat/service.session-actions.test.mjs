@@ -455,6 +455,82 @@ test('native CLI chat sessions send through channel connector runner and persist
   }
 });
 
+
+test('patching runtime target clears native CLI resume session state', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-reset-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    let runIndex = 0;
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          runIndex += 1;
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ type: 'thread.started', thread_id: `thread-native-${runIndex}` })}
+${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: `native reply ${runIndex}` }] } })}
+`,
+            stderr: '',
+            durationMs: 8,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native Codex retargetable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    await context.services.chat.send(created.session.key, {
+      text: 'first native turn',
+      clientRequestId: 'native-retarget-1',
+    });
+    assert.equal(runnerCalls[0]?.sessionMode, 'new');
+
+    const registryAfterFirstSend = readJson(registryPath(root), {});
+    assert.equal(registryAfterFirstSend[created.session.key].runtimeSession?.codexThreadId, 'thread-native-1');
+
+    await context.services.chat.patchSession(created.session.key, {
+      runtimeTarget: {
+        model: 'gpt-5.4',
+      },
+    });
+
+    const registryAfterPatch = readJson(registryPath(root), {});
+    assert.equal(registryAfterPatch[created.session.key].runtimeSession, undefined);
+    assert.equal(registryAfterPatch[created.session.key].runtimeTarget.model, 'gpt-5.4');
+
+    await context.services.chat.send(created.session.key, {
+      text: 'second native turn after model change',
+      clientRequestId: 'native-retarget-2',
+    });
+
+    assert.equal(runnerCalls.length, 2);
+    assert.equal(runnerCalls[1].sessionMode, 'new');
+    assert.equal(runnerCalls[1].codexThreadId, null);
+    assert.equal(runnerCalls[1].agentNativeSessionId, null);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('native CLI chat sessions default to the Tracevane project root when no workDir is set', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-default-workdir-'));
   let gateway = null;
