@@ -9,7 +9,7 @@ const read = (relativePath) => fs.readFileSync(path.join(rootDir, relativePath),
 
 test("OpenClaw platform workspace has one registry for all target sections", () => {
   const sections = read("apps/web/src/features/platforms/sections.ts");
-  const workspace = read("apps/web/src/features/platforms/views/OpenClawWorkspace.tsx");
+  const workspace = read("apps/web/src/features/platforms/openclaw/OpenClawWorkspace.tsx");
   for (const id of ["overview", "guard", "config", "agents", "skills", "channels", "bindings", "services", "logs", "diagnostics"]) {
     assert.match(sections, new RegExp(`id: "${id}"`));
     assert.match(workspace, new RegExp(`case "${id}"`));
@@ -22,7 +22,7 @@ test("OpenClaw platform workspace has one registry for all target sections", () 
 
 test("Platform breadcrumb is accessible and marks the current page", () => {
   const shared = read("apps/web/src/features/platforms/_shared.tsx");
-  const workspace = read("apps/web/src/features/platforms/views/OpenClawWorkspace.tsx");
+  const workspace = read("apps/web/src/features/platforms/openclaw/OpenClawWorkspace.tsx");
   assert.match(shared, /export function PlatformBreadcrumb/);
   assert.match(shared, /aria-label="面包屑"/);
   assert.match(shared, /aria-current=\{isLast \? "page" : undefined\}/);
@@ -30,18 +30,42 @@ test("Platform breadcrumb is accessible and marks the current page", () => {
   assert.match(workspace, /label: "平台", to: "\/platforms"/);
 });
 
-test("OpenClaw read surfaces bind to real backend APIs instead of fake CRUD", () => {
-  const views = read("apps/web/src/features/platforms/views/OpenClawSections.tsx");
-  const channelsApi = read("apps/web/src/lib/api/channels.ts");
-  const channelsQuery = read("apps/web/src/lib/query/channels.ts");
-  for (const hook of ["useOpenClawConfigSummaryQuery", "useAgentsSummaryQuery", "useSkillsSummaryQuery", "useChannelsSummaryQuery", "useRecoveryDaemonServiceQuery", "useRecoveryEventsQuery", "useRecoveryStatusQuery", "useSystemDiagnosticsQuery", "useSystemHealthQuery"]) {
-    assert.match(views, new RegExp(hook));
+test("OpenClaw read surfaces are split into workbench pages instead of one aggregate file", () => {
+  assert.equal(fs.existsSync(path.join(rootDir, "apps/web/src/features/platforms/views/OpenClawSections.tsx")), false);
+  const workspace = read("apps/web/src/features/platforms/openclaw/OpenClawWorkspace.tsx");
+  const components = read("apps/web/src/features/platforms/openclaw/components.tsx");
+  const pages = [
+    ["ConfigPage", "useOpenClawConfigSummaryQuery"],
+    ["AgentsPage", "useAgentsSummaryQuery"],
+    ["SkillsPage", "useSkillsSummaryQuery"],
+    ["ChannelsPage", "useChannelsSummaryQuery"],
+    ["BindingsPage", "useChannelsSummaryQuery"],
+    ["ServicesPage", "useRecoveryDaemonServiceQuery"],
+    ["LogsPage", "useRecoveryEventsQuery"],
+    ["DiagnosticsPage", "useSystemDiagnosticsQuery"],
+  ];
+  for (const [page, hook] of pages) {
+    const source = read(`apps/web/src/features/platforms/openclaw/sections/${page}.tsx`);
+    assert.match(source, new RegExp(hook));
+    assert.match(workspace, new RegExp(`<${page} />`));
   }
-  assert.match(channelsApi, /"\/api\/channels"/);
-  assert.match(channelsQuery, /useChannelsSummaryQuery/);
-  assert.match(views, /未接入前不提供假写入/);
-  assert.match(views, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
-  assert.match(views, /CLI 会话控制仍在 CLI 代理 \/ IDE 所属页面/);
+  assert.match(components, /ResponsiveTable/);
+  assert.match(components, /DetailRail/);
+  assert.match(components, /ReadOnlyStrip/);
+});
+
+test("OpenClaw workbench pages keep owner boundaries and avoid fake CRUD", () => {
+  const config = read("apps/web/src/features/platforms/openclaw/sections/ConfigPage.tsx");
+  const agents = read("apps/web/src/features/platforms/openclaw/sections/AgentsPage.tsx");
+  const channels = read("apps/web/src/features/platforms/openclaw/sections/ChannelsPage.tsx");
+  const bindings = read("apps/web/src/features/platforms/openclaw/sections/BindingsPage.tsx");
+  assert.match(config, /不提供无契约保存按钮/);
+  assert.match(agents, /CLI 会话、运行控制和 Agent Runs 仍在 CLI 代理 \/ IDE/);
+  assert.match(channels, /Tracevane IM 投递、队列、会话和 Bot 密钥仍在 IM 渠道域管理/);
+  assert.match(bindings, /IM 会话级动态路由与投递队列仍在 IM 渠道域/);
+  for (const source of [config, agents, channels, bindings]) {
+    assert.doesNotMatch(source, /新增|删除|安装|保存密钥/);
+  }
 });
 
 

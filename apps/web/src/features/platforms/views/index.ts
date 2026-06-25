@@ -1,3 +1,2 @@
 export { OverviewView } from "./OverviewView";
-export { OpenClawView } from "./OpenClawView";
-export { OpenClawWorkspace } from "./OpenClawWorkspace";
+export { OpenClawWorkspace } from "../openclaw/OpenClawWorkspace";

@@ -10,21 +10,21 @@ import { RecoveryPage } from "@/features/recovery/RecoveryPage";
 import { PlatformBreadcrumb } from "../_shared";
 import { getOpenClawSection, normalizeOpenClawSection, OPENCLAW_SECTIONS } from "../sections";
 import type { PlatformSectionId } from "../types";
-import { OpenClawAgentsView, OpenClawBindingsView, OpenClawChannelsView, OpenClawConfigView, OpenClawDiagnosticsView, OpenClawLogsView, OpenClawServicesView, OpenClawSkillsView } from "./OpenClawSections";
 import { OpenClawView } from "./OpenClawView";
+import { AgentsPage, BindingsPage, ChannelsPage, ConfigPage, DiagnosticsPage, LogsPage, ServicesPage, SkillsPage } from "./sections";
 
 function renderSection(section: PlatformSectionId) {
   switch (section) {
     case "overview": return <OpenClawView />;
     case "guard": return <RecoveryPage />;
-    case "config": return <OpenClawConfigView />;
-    case "agents": return <OpenClawAgentsView />;
-    case "skills": return <OpenClawSkillsView />;
-    case "channels": return <OpenClawChannelsView />;
-    case "bindings": return <OpenClawBindingsView />;
-    case "services": return <OpenClawServicesView />;
-    case "logs": return <OpenClawLogsView />;
-    case "diagnostics": return <OpenClawDiagnosticsView />;
+    case "config": return <ConfigPage />;
+    case "agents": return <AgentsPage />;
+    case "skills": return <SkillsPage />;
+    case "channels": return <ChannelsPage />;
+    case "bindings": return <BindingsPage />;
+    case "services": return <ServicesPage />;
+    case "logs": return <LogsPage />;
+    case "diagnostics": return <DiagnosticsPage />;
   }
 }
 
