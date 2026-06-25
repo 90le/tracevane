@@ -38,7 +38,7 @@ import type {
   ChatSessionRow,
 } from "../types";
 import { CHAT_INSPECTOR_TABS } from "../types";
-import { boolTone, runStateTone, toolStatusTone } from "../_shared";
+import { boolTone, runStateTone, runtimeAgentLabel, sessionSourceLabel, toolStatusTone } from "../_shared";
 
 const TAB_META: Record<
   ChatInspectorTab,
@@ -75,15 +75,20 @@ function RuntimeOverviewTab({
   const toolCards = observability?.toolCards ?? [];
   const timeline = observability?.timeline ?? [];
   const usage = observability?.usage ?? null;
+  const target = session?.runtimeTarget ?? null;
   return (
     <div className="grid gap-2 pb-3">
-      <SectionLabel>运行时</SectionLabel>
+      <SectionLabel>运行目标</SectionLabel>
       <dl className="grid grid-cols-2 gap-3 px-3">
-        <Fact label="代理">{session?.agentId ?? "—"}</Fact>
+        <Fact label="运行器">{session ? runtimeAgentLabel(session) : "—"}</Fact>
+        <Fact label="来源">{session ? sessionSourceLabel(session) : "—"}</Fact>
+        <Fact label="模型">{target?.model || "默认路由"}</Fact>
+        <Fact label="目录">{target?.workDir || "默认工作区"}</Fact>
+        <Fact label="权限">{target?.permissionMode || "默认"}</Fact>
         <Fact label="状态">{runStateTone(runtime?.state).label}</Fact>
         <Fact label="活跃运行">{runtime?.activeRunId ?? "无"}</Fact>
-        <Fact label="可写">{boolTone(runtime?.sessionWritable).label}</Fact>
-        <Fact label="网关">{boolTone(runtime?.gatewayConnected).label}</Fact>
+        <Fact label="可发送">{boolTone(runtime?.sessionWritable).label}</Fact>
+        <Fact label="事件连接">{boolTone(runtime?.gatewayConnected).label}</Fact>
         <Fact label="最后事件">{formatTime(runtime?.lastEventAt)}</Fact>
       </dl>
 
@@ -291,8 +296,8 @@ function DiagnosticsTab({ diagnostics }: { diagnostics: ChatDiagnostics | null }
 }
 
 /**
- * Temporary run details drawer. Tabs across run summary, the outbound
- * queue (delete is confirmed), and gateway diagnostics. Also owns the destructive
+ * Temporary run details drawer. Tabs across run target summary, the outbound
+ * queue (delete is confirmed), and transport diagnostics. Also owns the destructive
  * session reset (confirmed).
  */
 export function RuntimeInspectorView({
@@ -330,7 +335,7 @@ export function RuntimeInspectorView({
       <div className="border-b border-line px-3 py-3">
         <div className="pr-8">
           <h2 className="text-md font-semibold text-ink-strong">运行详情</h2>
-          <p className="mt-0.5 text-xs text-muted">只在需要排查执行、队列或网关问题时查看。</p>
+          <p className="mt-0.5 text-xs text-muted">只在需要排查执行、队列或连接问题时查看。</p>
         </div>
       </div>
       <div className="flex items-center gap-1 border-b border-line p-2">
