@@ -12,7 +12,7 @@
 - 目录加载：`GET /api/files/summary` + `GET /api/files/browse`。
 - 上传：`POST /api/files/uploads/init`、`PUT /api/files/uploads/:uploadId/chunks/:chunkIndex`、`POST /api/files/uploads/complete`。
 - 预览/下载：`GET /api/files/download?rootId=...&path=...`。
-- Chat 发送附件：新建/上传/目录选择统一发送 `files:<rootId>:<path>`；后端仅为历史消息和平台回放兼容已有 `workspace:` / legacy `uploads:` 引用解析。
+- Chat 发送附件：新建/上传/目录选择统一发送 `files:<rootId>:<path>`；后端发送链路仅为历史消息、富消息和平台回放兼容已有 `workspace:` / legacy `uploads:` 引用解析。
 
 ## 已删除的旧合同
 
@@ -20,10 +20,12 @@
 - 删除 Chat route 内 multipart/base64 文件解析器。
 - 删除 `ChatService.uploadFile*` 服务方法。
 - 删除 `ChatFileUploadRequest` 类型。
+- 删除 `/api/chat/sessions/:sessionKey/resources/resolve` HTTP route。
+- 删除 `ChatService.resolveResourceRefs()` 服务方法和 `ChatResourceResolve*` 类型。
 
 ## 决策
 
-拒绝保留 Chat 专用 upload 作为备用入口，因为备用入口会让前后端长期存在两套上传、存储、预览 URL 和权限边界，后续 CLI Agent / 平台 Agent 附件处理会再次混乱。
+拒绝保留 Chat 专用 upload / resource resolver 作为备用入口，因为备用入口会让前后端长期存在两套目录加载、上传、存储、预览 URL 和权限边界，后续 CLI Agent / 平台 Agent 附件处理会再次混乱。
 
 ## 验证
 

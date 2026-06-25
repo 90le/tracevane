@@ -604,23 +604,6 @@ export interface ChatFileUploadResponse {
   size: number;
 }
 
-export interface ChatResourceResolveRequest {
-  refs: string[];
-}
-
-export interface ChatResolvedResourceItem {
-  ref: string;
-  resourceRef: string | null;
-  aiReadable: boolean;
-  resource: ChatResourceItem | null;
-}
-
-export interface ChatResourceResolveResponse {
-  ok: boolean;
-  sessionKey: string;
-  resources: ChatResolvedResourceItem[];
-}
-
 export type ChatCanonicalSnapshotSource = 'local_transcript' | 'history_sse' | 'history_rpc' | 'tracevane_mirror';
 export type ChatCanonicalMessageSource = 'local_transcript' | 'history_sse' | 'session.message' | 'tracevane_bff';
 export type ChatTemporaryToolSource = 'session.tool' | 'agent.tool' | 'tracevane_bff';

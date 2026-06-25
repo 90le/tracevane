@@ -16,7 +16,6 @@ export const CHAT_API_PATHS = {
   queueBySession: '/api/chat/sessions/:sessionKey/queue',
   queueEntryBySession: '/api/chat/sessions/:sessionKey/queue/:entryId',
   sendBySession: '/api/chat/sessions/:sessionKey/send',
-  resourcesResolveBySession: '/api/chat/sessions/:sessionKey/resources/resolve',
   mediaBySession: '/api/chat/sessions/:sessionKey/media/:mediaId',
   abortBySession: '/api/chat/sessions/:sessionKey/abort',
   resetBySession: '/api/chat/sessions/:sessionKey/reset',

@@ -35,10 +35,12 @@ test("chat workspace picker keeps directory selection on Files browse roots", ()
 
 test("chat backend no longer exposes a legacy upload owner", () => {
   assert.doesNotMatch(chatRoutes, /\/api\/chat\/sessions\/:sessionKey\/upload/);
+  assert.doesNotMatch(chatRoutes, /\/api\/chat\/sessions\/:sessionKey\/resources\/resolve/);
   assert.doesNotMatch(chatRoutes, /parseMultipartChatFileUpload/);
   assert.doesNotMatch(chatService, /uploadFileBytesImpl/);
   assert.doesNotMatch(chatService, /uploadFileBytes\(/);
   assert.doesNotMatch(chatService, /uploadFile\(sessionKey/);
+  assert.doesNotMatch(chatService, /resolveResourceRefs\(/);
 });
 
 test("chat acceptance upload smokes do not mock the removed Chat upload route", () => {
