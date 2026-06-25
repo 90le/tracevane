@@ -10,7 +10,6 @@ import { CliAgentsPage } from "@/features/cli-agents/CliAgentsPage";
 import { ChatWorkbenchPage } from "@/features/chat/ChatWorkbenchPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { WorkspacePage } from "@/features/workspace/WorkspacePage";
-import { FilesPage } from "@/features/files/FilesPage";
 import { PlatformsPage } from "@/features/platforms/PlatformsPage";
 
 /**
@@ -31,7 +30,7 @@ export function AppRouter() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chat" element={<ChatWorkbenchPage />} />
-          <Route path="/files" element={<FilesPage />} />
+          <Route path="/files" element={<Navigate to="/workspace?mode=files" replace />} />
           <Route path="/model-gateway" element={<ModelGatewayPage />} />
           <Route path="/im-channels" element={<ChannelConnectorsPage />} />
           <Route path="/external" element={<Navigate to="/platforms" replace />} />

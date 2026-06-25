@@ -239,3 +239,10 @@ Not-tested: <缺口>
 - Inspector 替代固定 Preview；未选择文件时只显示轻量说明。
 - 明确实现必须参考 `DESIGN.md`、`docs/界面设计守则.md` 和 Aurora 原型体系，避免夸张割裂设计。
 - 验证：`npm run typecheck:web`；Playwright smoke `/workspace` desktop 1440×900 与 mobile 390×844，无横向溢出。
+
+### 2026-06-25 Phase 1 slice B completed
+
+- `/workspace` 支持 `mode` URL 参数：`files`、`git`、`edit`、`terminal`、`preview`。
+- 旧 `/files` 路由改为跳转到 `/workspace?mode=files`，避免继续呈现“只读文件管理器”作为产品入口。
+- 移动端模式导航与 URL mode 同步，为后续文件管理、终端和预览深链做准备。
+- 验证：`npm run typecheck:web`；Playwright smoke 覆盖 `/files` 跳转、`/workspace?mode=terminal` mobile、`/workspace?mode=preview` mobile、`/workspace?mode=git` desktop，均无横向溢出。

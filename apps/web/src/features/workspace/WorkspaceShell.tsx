@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   Columns3,
@@ -25,6 +26,7 @@ import { useWorkspaceLayout, type WorkspaceLayoutMode } from "./layout/useWorksp
 
 type WorkspaceActivity = "files" | "git";
 type MobileMode = "files" | "edit" | "terminal" | "preview";
+type WorkspaceModeParam = WorkspaceActivity | MobileMode;
 
 const ACTIVITIES: Array<{ id: WorkspaceActivity; label: string; icon: typeof Files }> = [
   { id: "files", label: "文件", icon: Files },
@@ -52,10 +54,44 @@ const MOBILE_MODES: Array<{ id: MobileMode; label: string; icon: typeof Files }>
  */
 export function WorkspaceShell() {
   const layoutMode = useWorkspaceLayout();
-  const [activity, setActivity] = React.useState<WorkspaceActivity>("files");
-  const [mobileMode, setMobileMode] = React.useState<MobileMode>("files");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialMode = normalizeWorkspaceMode(searchParams.get("mode"));
+  const [activity, setActivityState] = React.useState<WorkspaceActivity>(
+    initialMode === "git" ? "git" : "files",
+  );
+  const [mobileMode, setMobileModeState] = React.useState<MobileMode>(
+    toMobileMode(initialMode),
+  );
   const [inspectorOpen, setInspectorOpen] = React.useState(true);
   const [terminalOpen, setTerminalOpen] = React.useState(true);
+
+  const setModeParam = React.useCallback(
+    (mode: WorkspaceModeParam) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (mode === "files") next.delete("mode");
+        else next.set("mode", mode);
+        return next;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
+
+  const setActivity = React.useCallback((next: WorkspaceActivity) => {
+    setActivityState(next);
+    setModeParam(next);
+  }, [setModeParam]);
+
+  const setMobileMode = React.useCallback((next: MobileMode) => {
+    setMobileModeState(next);
+    setModeParam(next);
+  }, [setModeParam]);
+
+  React.useEffect(() => {
+    const mode = normalizeWorkspaceMode(searchParams.get("mode"));
+    setActivityState(mode === "git" ? "git" : "files");
+    setMobileModeState(toMobileMode(mode));
+  }, [searchParams]);
 
   const [openFile, setOpenFile] = React.useState<string | undefined>();
   const [activeContent, setActiveContent] = React.useState<string>("");
@@ -129,6 +165,19 @@ export function WorkspaceShell() {
       onActiveContentChange={setActiveContent}
     />
   );
+}
+
+
+function normalizeWorkspaceMode(value: string | null): WorkspaceModeParam {
+  if (value === "git" || value === "terminal" || value === "preview" || value === "edit") {
+    return value;
+  }
+  return "files";
+}
+
+function toMobileMode(mode: WorkspaceModeParam): MobileMode {
+  if (mode === "terminal" || mode === "preview" || mode === "edit") return mode;
+  return "files";
 }
 
 interface SharedWorkspaceProps {
