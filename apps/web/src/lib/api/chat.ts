@@ -202,7 +202,7 @@ const CHAT_UPLOAD_DIRECTORY = ".tracevane/chat-uploads";
  * same fileRef/resource shape that `sendChatMessage` expects.
  *
  * Chat no longer posts bytes to `/api/chat/sessions/:key/upload`: that legacy
- * endpoint is retained only for compatibility. New uploads go through
+ * endpoint has been removed. New uploads go through
  * `/api/files/uploads/*`, which keeps file browsing, preview links, resumable
  * binary upload, and downstream `files:<rootId>:<path>` resource resolution on
  * the same contract as File Manager and Workspace.

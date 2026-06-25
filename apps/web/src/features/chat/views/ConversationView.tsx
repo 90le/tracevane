@@ -5,6 +5,7 @@ import {
   ChevronRight,
   FileText,
   Folder,
+  Eye,
   Loader2,
   MessagesSquare,
   Paperclip,
@@ -18,6 +19,15 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
@@ -54,6 +64,8 @@ function parentPortablePath(value: string): string {
 type ComposerFileRefItem = ChatSendFileRef & {
   status: "uploading" | "ready" | "failed";
   source: "upload" | "workspace" | "files";
+  previewUrl?: string | null;
+  downloadUrl?: string | null;
   error?: string | null;
 };
 
@@ -63,6 +75,26 @@ function composerFileSourceLabel(item: ComposerFileRefItem): string {
   if (item.source === "workspace") return "工作区";
   if (item.source === "files") return "文件";
   return "上传";
+}
+
+function buildFilesDownloadUrl(rootId: string, filePath: string, attachment = false): string {
+  const query = new URLSearchParams({
+    rootId,
+    path: filePath,
+  });
+  if (attachment) query.set("download", "true");
+  return `/api/files/download?${query.toString()}`;
+}
+
+function inferComposerAttachmentKind(fileName: string, mimeType?: string | null): ChatResourceItem["kind"] {
+  const mime = mimeType || "";
+  if (mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(fileName)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(fileName)) return "video";
+  return "file";
+}
+
+function canInlinePreviewAttachment(item: ComposerFileRefItem): boolean {
+  return item.kind === "image" || item.kind === "video" || /^(application\/pdf|text\/|application\/json)/i.test(item.mimeType || "");
 }
 
 function ToolCallBlock({
@@ -291,6 +323,7 @@ export function ConversationView({
   const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false);
   const [workspacePickerDir, setWorkspacePickerDir] = React.useState("");
   const [workspacePickerRootId, setWorkspacePickerRootId] = React.useState<string | null>(null);
+  const [previewFile, setPreviewFile] = React.useState<ComposerFileRefItem | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -324,6 +357,7 @@ export function ConversationView({
     setWorkspacePickerOpen(false);
     setWorkspacePickerDir("");
     setWorkspacePickerRootId(null);
+    setPreviewFile(null);
     cancelledUploadIdsRef.current.clear();
   }, [sessionKey]);
 
@@ -340,7 +374,14 @@ export function ConversationView({
 
   const canSend = !sendDisabledReason;
   const readyFileRefs = React.useMemo(
-    () => fileRefs.filter((item) => item.status === "ready").map(({ status: _status, source: _source, error: _error, ...ref }) => ref),
+    () => fileRefs.filter((item) => item.status === "ready").map(({
+      status: _status,
+      source: _source,
+      error: _error,
+      previewUrl: _previewUrl,
+      downloadUrl: _downloadUrl,
+      ...ref
+    }) => ref),
     [fileRefs],
   );
   const hasPendingFileRefs = fileRefs.some((item) => item.status === "uploading");
@@ -391,6 +432,8 @@ export function ConversationView({
           fileName: item.fileName,
           kind: item.kind,
           mimeType: item.mimeType,
+          previewUrl: item.resource.url,
+          downloadUrl: item.resource.downloadUrl,
           status: "ready",
           source: "upload",
         };
@@ -416,21 +459,24 @@ export function ConversationView({
   const attachWorkspaceFile = (filePath: string, fileName: string) => {
     const rootId = effectiveWorkspacePickerRootId || "project-root";
     const isProjectRoot = rootId === workspaceRootId || rootId === "project-root";
-    const resourceRef = isProjectRoot
-      ? `workspace:${filePath}`
-      : `files:${rootId}:${filePath}`;
+    const resourceRef = `files:${rootId}:${filePath}`;
+    const previewUrl = buildFilesDownloadUrl(rootId, filePath, false);
+    const downloadUrl = buildFilesDownloadUrl(rootId, filePath, true);
+    const kind = inferComposerAttachmentKind(fileName);
     setFileRefs((prev) => {
       if (prev.some((item) => item.resourceRef === resourceRef)) return prev;
       return [
         ...prev,
         {
           id: resourceRef,
-          rootId: isProjectRoot ? null : rootId,
+          rootId,
           relativePath: filePath,
           resourceRef,
           fileName,
-          kind: "file",
+          kind,
           mimeType: null,
+          previewUrl,
+          downloadUrl,
           status: "ready",
           source: isProjectRoot ? "workspace" : "files",
         },
@@ -500,6 +546,7 @@ export function ConversationView({
             {fileRefs.map((file) => (
               <span
                 key={file.id}
+                data-composer-attachment-preview-key={file.status === "ready" ? file.id : undefined}
                 className={cn(
                   "chat-composer-pool-item chat-composer-attachment inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
                   file.status === "failed"
@@ -515,6 +562,17 @@ export function ConversationView({
                 <span className="max-w-56 truncate">{file.fileName}</span>
                 {file.status === "failed" && file.error && (
                   <span className="max-w-48 truncate text-[11px]">{file.error}</span>
+                )}
+                {file.status === "ready" && file.previewUrl && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full px-1 py-0.5 text-[11px] text-primary hover:bg-primary-soft"
+                    aria-label={`预览 ${file.fileName}`}
+                    onClick={() => setPreviewFile(file)}
+                  >
+                    <Eye className="size-3" />
+                    预览
+                  </button>
                 )}
                 <button
                   type="button"
@@ -532,6 +590,57 @@ export function ConversationView({
             ))}
           </div>
         )}
+        <Dialog open={Boolean(previewFile)} onOpenChange={(open) => { if (!open) setPreviewFile(null); }}>
+          <DialogContent className="chat-composer-preview-dialog w-[min(880px,94vw)]" onCloseAutoFocus={(event) => event.preventDefault()}>
+            <DialogHeader className="pr-12">
+              <div className="min-w-0">
+                <DialogTitle className="truncate text-base">{previewFile?.fileName || "文件预览"}</DialogTitle>
+                <DialogDescription className="truncate text-sm">
+                  {previewFile?.resourceRef || "通过 Files API 预览当前附件"}
+                </DialogDescription>
+              </div>
+            </DialogHeader>
+            <DialogBody className="max-h-[68vh] overflow-auto">
+              {previewFile?.previewUrl && canInlinePreviewAttachment(previewFile) ? (
+                previewFile.kind === "image" ? (
+                  <img
+                    src={previewFile.previewUrl}
+                    alt={previewFile.fileName}
+                    className="mx-auto max-h-[62vh] max-w-full rounded-md border border-line object-contain"
+                  />
+                ) : previewFile.kind === "video" ? (
+                  <video
+                    src={previewFile.previewUrl}
+                    controls
+                    className="mx-auto max-h-[62vh] max-w-full rounded-md border border-line"
+                  />
+                ) : (
+                  <iframe
+                    title={`预览 ${previewFile.fileName}`}
+                    src={previewFile.previewUrl}
+                    className="h-[62vh] w-full rounded-md border border-line bg-white"
+                  />
+                )
+              ) : (
+                <div className="rounded-md border border-line bg-panel-2 p-4 text-sm text-muted">
+                  该文件类型不适合内嵌预览，请使用下载或在浏览器新标签打开。
+                </div>
+              )}
+            </DialogBody>
+            <DialogFooter>
+              {previewFile?.previewUrl && (
+                <Button variant="outline" size="sm" onClick={() => window.open(previewFile.previewUrl || "", "_blank", "noopener,noreferrer")}>
+                  打开
+                </Button>
+              )}
+              {previewFile?.downloadUrl && (
+                <Button variant="primary" size="sm" onClick={() => window.open(previewFile.downloadUrl || "", "_blank", "noopener,noreferrer")}>
+                  下载
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {uploadError && (
           <div className="mb-2 flex items-center gap-2 rounded-sm border border-red bg-red-soft px-2.5 py-1.5 text-sm text-red">
             <AlertTriangle className="size-3.5 shrink-0" />

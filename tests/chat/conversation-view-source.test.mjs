@@ -12,7 +12,7 @@ test('ConversationView exposes a workspace file picker backed by the Files API',
   assert.match(source, /workspaceRootId/);
   assert.match(source, /@ 工作区文件/);
   assert.match(source, /attachWorkspaceFile/);
-  assert.match(source, /const resourceRef = isProjectRoot/);
+  assert.match(source, /const resourceRef = `files:\$\{rootId\}:\$\{filePath\}`/);
   assert.match(source, /resourceRef,/);
 });
 
@@ -21,10 +21,14 @@ test('ConversationView keeps composer file refs structured and removable across 
   assert.match(source, /type ComposerFileRefItem = ChatSendFileRef &/);
   assert.match(source, /status: "uploading" \| "ready" \| "failed"/);
   assert.match(source, /source: "upload" \| "workspace" \| "files"/);
+  assert.match(source, /previewUrl\?: string \| null/);
+  assert.match(source, /downloadUrl\?: string \| null/);
   assert.match(source, /readyFileRefs/);
   assert.match(source, /hasPendingFileRefs/);
   assert.match(source, /hasFailedFileRefs/);
   assert.match(source, /chat-composer-pool-item chat-composer-attachment/);
+  assert.match(source, /chat-composer-preview-dialog/);
+  assert.match(source, /data-composer-attachment-preview-key/);
   assert.match(source, /chat-composer-attachment-remove/);
   assert.match(source, /chat-composer-file-input/);
   assert.match(source, /chat-composer-send/);
@@ -39,6 +43,7 @@ test('ConversationView uses Files roots explicitly and sends Files-root refs saf
   assert.match(source, /effectiveWorkspacePickerRootId/);
   assert.match(source, /aria-label="选择文件根"/);
   assert.match(source, /`files:\$\{rootId\}:\$\{filePath\}`/);
+  assert.doesNotMatch(source, /`workspace:\$\{filePath\}`/);
   assert.match(source, /source: isProjectRoot \? "workspace" : "files"/);
   assert.match(source, /Files 根引用/);
 });

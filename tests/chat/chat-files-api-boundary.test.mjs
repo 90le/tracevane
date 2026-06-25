@@ -23,7 +23,9 @@ test("chat workspace picker keeps directory selection on Files browse roots", ()
   assert.match(chatView, /useFilesSummaryQuery\(/);
   assert.match(chatView, /useFilesBrowseQuery\(/);
   assert.match(chatView, /files:\$\{rootId\}:\$\{filePath\}/);
-  assert.match(chatView, /workspace:\$\{filePath\}/);
+  assert.doesNotMatch(chatView, /workspace:\$\{filePath\}/);
+  assert.match(chatView, /buildFilesDownloadUrl\(rootId, filePath, false\)/);
+  assert.match(chatView, /chat-composer-preview-dialog/);
 });
 
 

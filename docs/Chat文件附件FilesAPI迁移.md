@@ -12,7 +12,7 @@
 - 目录加载：`GET /api/files/summary` + `GET /api/files/browse`。
 - 上传：`POST /api/files/uploads/init`、`PUT /api/files/uploads/:uploadId/chunks/:chunkIndex`、`POST /api/files/uploads/complete`。
 - 预览/下载：`GET /api/files/download?rootId=...&path=...`。
-- Chat 发送附件：`files:<rootId>:<path>`，兼容已有 `workspace:` / legacy `uploads:` 引用解析。
+- Chat 发送附件：新建/上传/目录选择统一发送 `files:<rootId>:<path>`；后端仅为历史消息和平台回放兼容已有 `workspace:` / legacy `uploads:` 引用解析。
 
 ## 已删除的旧合同
 
@@ -28,6 +28,7 @@
 ## 验证
 
 - `tests/chat/chat-files-api-boundary.test.mjs`：锁定前端上传走 Files API，并锁定后端不再暴露旧 Chat upload owner。
+- `tests/chat/conversation-view-source.test.mjs`：锁定 Chat 目录选择、附件预览和发送 ref 都走 Files root。
 - `tests/chat/media-bridge.test.mjs`：锁定 `files:` refs 可解析为 native attachment。
 - `npm run build:api`
 - `npm run build:web`
