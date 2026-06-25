@@ -173,6 +173,17 @@ test("OpenClaw native pages expose owner CRUD without Tracevane runtime handoff"
   assert.doesNotMatch(agents, /必须从可用模型列表选择模型/);
   assert.match(agents, /<SelectInput label="模型"/);
   assert.doesNotMatch(agents, /<TextInput label="模型"/);
+  assert.match(agents, /BatchAgentDraft/);
+  assert.match(agents, /batchFields/);
+  assert.match(agents, /buildBatchPayload/);
+  assert.match(agents, /payload\.model = batchDraft\.model\.trim\(\)/);
+  assert.match(agents, /payload\.workspace = batchDraft\.workspace\.trim\(\)/);
+  assert.match(agents, /payload\.enabled = batchDraft\.enabled/);
+  assert.match(agents, /批量编辑/);
+  assert.match(agents, /只修改勾选字段/);
+  assert.match(agents, /未勾选字段保持每个 Agent 原有配置/);
+  assert.match(agents, /for \(const agent of batchTargets\) await updateAgent\.mutateAsync/);
+  assert.doesNotMatch(agents, /Promise\.all\(batchTargets/);
   assert.doesNotMatch(agents, /useAgentRuntimeRunsQuery/);
   assert.match(channels, /useCreateChannelMutation/);
   assert.match(channels, /useUpdateChannelMutation/);
