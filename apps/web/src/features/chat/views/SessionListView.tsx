@@ -11,6 +11,7 @@ import {
   FolderInput,
   FolderPlus,
   MessageSquare,
+  MonitorCog,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -51,11 +52,15 @@ import {
   usePatchChatOrganizerFolderMutation,
   usePatchChatSessionMutation,
 } from "@/lib/query/chat";
+import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import type { ApiError } from "@/lib/api/errors";
 import type {
   ChatSessionFolder,
   ChatSessionFolderMove,
   ChatSessionOrganizerState,
+  ChatRuntimeAdapterKind,
+  ChatRuntimeAgentId,
+  ChatRuntimePermissionMode,
   ChatSessionRow,
 } from "../types";
 import { runStateTone, sessionTitle, shouldShowRunState } from "../_shared";
@@ -92,6 +97,27 @@ type FolderOption = {
   children: FolderOption[];
 };
 
+
+const CHAT_RUNTIME_AGENT_OPTIONS: Array<{
+  adapterKind: ChatRuntimeAdapterKind;
+  agent: ChatRuntimeAgentId;
+  label: string;
+  description: string;
+}> = [
+  { adapterKind: "openclaw-gateway", agent: "openclaw", label: "OpenClaw 平台 Agent", description: "兼容当前 OpenClaw Gateway 会话" },
+  { adapterKind: "native-cli", agent: "codex", label: "Codex CLI", description: "本地 Codex 会话，后续走 native CLI adapter" },
+  { adapterKind: "native-cli", agent: "claude-code", label: "Claude Code", description: "本地 Claude Code 会话" },
+  { adapterKind: "native-cli", agent: "opencode", label: "OpenCode", description: "本地 OpenCode 会话" },
+];
+
+const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode | ""; label: string }> = [
+  { value: "", label: "使用运行器默认" },
+  { value: "read-only", label: "只读" },
+  { value: "auto-edit", label: "自动编辑" },
+  { value: "yolo", label: "Yolo / 全自动" },
+  { value: "plan", label: "计划模式" },
+];
+
 function canManage(session: ChatSessionRow): boolean {
   return (
     session.kind === "tracevane_managed" &&
@@ -125,6 +151,10 @@ export function SessionListView({
   const [folderFilter, setFolderFilter] = React.useState<FolderFilter>("all");
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
+  const [runtimeAgent, setRuntimeAgent] = React.useState<ChatRuntimeAgentId>("openclaw");
+  const [runtimeModel, setRuntimeModel] = React.useState("");
+  const [runtimeWorkDir, setRuntimeWorkDir] = React.useState("");
+  const [runtimePermissionMode, setRuntimePermissionMode] = React.useState<ChatRuntimePermissionMode | "">("");
   const [folderDraft, setFolderDraft] = React.useState("");
   const [folderTargetId, setFolderTargetId] = React.useState<string | null>(null);
   const [expandedFolderIds, setExpandedFolderIds] = React.useState<Set<string>>(
@@ -139,10 +169,17 @@ export function SessionListView({
   const patchFolder = usePatchChatOrganizerFolderMutation();
   const deleteFolder = useDeleteChatOrganizerFolderMutation();
   const assignSessionToFolder = useAssignChatSessionsToFolderMutation();
+  const modelCatalog = useModelGatewayModelsQuery({ staleTime: 30_000 });
 
   React.useEffect(() => {
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
-    if (dialog?.kind === "create") setLabelDraft("");
+    if (dialog?.kind === "create") {
+      setLabelDraft("");
+      setRuntimeAgent("openclaw");
+      setRuntimeModel("");
+      setRuntimeWorkDir("");
+      setRuntimePermissionMode("");
+    }
     if (dialog?.kind === "create-folder") {
       setFolderDraft("");
       setFolderTargetId(dialog.parentId);
@@ -331,9 +368,40 @@ export function SessionListView({
     });
   }, [sessions, filter, sessionFilter, folderFilter, organizer, folderLabel]);
 
+  const selectedRuntimeOption = React.useMemo(
+    () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
+    [runtimeAgent],
+  );
+  const selectableModels = React.useMemo(
+    () => (modelCatalog.data?.models ?? modelCatalog.data?.data ?? [])
+      .filter((model) => model.agentSelectable !== false && !model.endpointOnly)
+      .slice()
+      .sort((left, right) => {
+        const leftHealthy = (left.healthyProviderIds?.length ?? 0) > 0 ? 0 : 1;
+        const rightHealthy = (right.healthyProviderIds?.length ?? 0) > 0 ? 0 : 1;
+        if (leftHealthy !== rightHealthy) return leftHealthy - rightHealthy;
+        return (left.display_name || left.id).localeCompare(right.display_name || right.id);
+      })
+      .slice(0, 120),
+    [modelCatalog.data],
+  );
+
   const runCreate = () => {
+    const option = selectedRuntimeOption;
     createSession.mutate(
-      { agentId: "main", payload: { label: labelDraft.trim() || undefined } },
+      {
+        agentId: "main",
+        payload: {
+          label: labelDraft.trim() || undefined,
+          runtimeTarget: {
+            adapterKind: option.adapterKind,
+            agent: option.agent,
+            model: runtimeModel.trim() || null,
+            workDir: runtimeWorkDir.trim() || null,
+            permissionMode: runtimePermissionMode || null,
+          },
+        },
+      },
       {
         onSuccess: (res) => {
           toast.success("已新建 Agent 会话");
@@ -1038,7 +1106,7 @@ export function SessionListView({
         open={Boolean(dialog)}
         onOpenChange={(open) => !open && setDialog(null)}
       >
-        <DialogContent>
+        <DialogContent className={dialog?.kind === "create" ? "w-[min(760px,94vw)]" : undefined}>
           {dialog?.kind === "create" && (
             <>
               <DialogHeader>
@@ -1048,18 +1116,91 @@ export function SessionListView({
                 <DialogTitle>新建 Agent 会话</DialogTitle>
               </DialogHeader>
               <DialogBody>
-                <label className="grid gap-2 text-sm text-muted">
-                  会话名称
-                  <Input
-                    value={labelDraft}
-                    onChange={(e) => setLabelDraft(e.target.value)}
-                    placeholder="例如：修复网关路由"
-                    autoFocus
-                  />
-                </label>
-                <p className="mt-2 text-xs text-subtle">
-                  当前使用 main Agent；后续可接入 Agent/模型/目录选择器。
-                </p>
+                <div className="grid gap-4">
+                  <label className="grid gap-2 text-sm text-muted">
+                    会话名称
+                    <Input
+                      value={labelDraft}
+                      onChange={(e) => setLabelDraft(e.target.value)}
+                      placeholder="例如：修复网关路由"
+                      autoFocus
+                    />
+                  </label>
+
+                  <div className="grid gap-2">
+                    <span className="text-sm text-muted">运行器 / Agent</span>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
+                        const active = option.agent === runtimeAgent;
+                        return (
+                          <button
+                            key={`${option.adapterKind}:${option.agent}`}
+                            type="button"
+                            onClick={() => setRuntimeAgent(option.agent)}
+                            className={cn(
+                              "grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
+                              active && "border-primary-line bg-primary-soft",
+                            )}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
+                              <MonitorCog className="size-4 text-primary" />
+                              {option.label}
+                            </span>
+                            <span className="text-xs text-subtle">{option.description}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm text-muted">
+                      默认模型
+                      <select
+                        value={runtimeModel}
+                        onChange={(event) => setRuntimeModel(event.target.value)}
+                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                      >
+                        <option value="">使用模型网关默认路由</option>
+                        {selectableModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-2 text-sm text-muted">
+                      权限模式
+                      <select
+                        value={runtimePermissionMode}
+                        onChange={(event) => setRuntimePermissionMode(event.target.value as ChatRuntimePermissionMode | "")}
+                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                      >
+                        {CHAT_RUNTIME_PERMISSION_OPTIONS.map((item) => (
+                          <option key={item.value || "default"} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="grid gap-2 text-sm text-muted">
+                    默认工作目录
+                    <Input
+                      value={runtimeWorkDir}
+                      onChange={(e) => setRuntimeWorkDir(e.target.value)}
+                      placeholder="留空使用默认工作区，例如 /home/binbin/project"
+                    />
+                  </label>
+
+                  <p className="rounded-sm bg-panel-2 px-3 py-2 text-xs text-subtle">
+                    当前保存运行目标：{selectedRuntimeOption.adapterKind} / {selectedRuntimeOption.agent}
+                    {runtimeModel.trim() ? ` / ${runtimeModel.trim()}` : " / 默认模型"}
+                    {runtimeWorkDir.trim() ? ` / ${runtimeWorkDir.trim()}` : " / 默认目录"}。
+                    native CLI 执行器接入后会按这里的 Agent、模型、目录和权限启动会话。
+                  </p>
+                </div>
               </DialogBody>
               <DialogFooter>
                 <Button
