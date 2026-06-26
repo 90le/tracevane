@@ -135,3 +135,12 @@ test('SessionListView keys runtime picker selection by adapter and agent', () =>
   assert.match(source, /const active = option\.adapterKind === runtimeAdapterKind && option\.agent === runtimeAgent/);
   assert.doesNotMatch(source, /const active = option\.agent === runtimeAgent/);
 });
+
+test('SessionListView offers Files-root work directory presets for CLI runtime targets', () => {
+  assert.match(source, /useFilesSummaryQuery\(\{ staleTime: 30_000, retry: false \}\)/);
+  assert.match(source, /const runtimeWorkDirPresets = React\.useMemo/);
+  assert.match(source, /root\.absolutePath/);
+  assert.match(source, /root\.labelZh \|\| root\.labelEn \|\| root\.id/);
+  assert.match(source, /setRuntimeWorkDir\(root\.path\)/);
+  assert.match(source, /默认 ·/);
+});

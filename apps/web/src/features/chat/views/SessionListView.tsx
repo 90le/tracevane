@@ -56,6 +56,7 @@ import {
 import { useAgentsSummaryQuery } from "@/lib/query/agents";
 import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
+import { useFilesSummaryQuery } from "@/lib/query/files";
 import type { ApiError } from "@/lib/api/errors";
 import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from "../../../../../../types/channel-connectors";
 import type { TerminalBinaryStatus } from "../../cli-agents/types";
@@ -312,6 +313,7 @@ export function SessionListView({
   const agentsSummary = useAgentsSummaryQuery({ staleTime: 30_000, retry: false });
   const modelCatalog = useModelGatewayModelsQuery({ staleTime: 30_000 });
   const terminalStatus = useTerminalStatusQuery({ staleTime: 30_000, retry: false });
+  const filesSummary = useFilesSummaryQuery({ staleTime: 30_000, retry: false });
 
   React.useEffect(() => {
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
@@ -656,6 +658,17 @@ export function SessionListView({
     [chatRuntimeAgentOptions, runtimeAdapterKind, runtimeAgent],
   );
   const selectedRuntimeReadiness = runtimeOptionReadiness(selectedRuntimeOption);
+  const runtimeWorkDirPresets = React.useMemo(
+    () => (filesSummary.data?.roots ?? [])
+      .filter((root) => root.absolutePath)
+      .map((root) => ({
+        id: root.id,
+        label: root.labelZh || root.labelEn || root.id,
+        path: root.absolutePath,
+        preferred: root.preferred || root.id === filesSummary.data?.defaultRootId,
+      })),
+    [filesSummary.data],
+  );
 
   const ensureRuntimeSelectable = React.useCallback(() => {
     const readiness = runtimeOptionReadiness(selectedRuntimeOption);
@@ -1533,6 +1546,21 @@ export function SessionListView({
                       onChange={(e) => setRuntimeWorkDir(e.target.value)}
                       placeholder="留空使用默认工作区，例如 /home/binbin/project"
                     />
+                    {runtimeWorkDirPresets.length > 0 && (
+                      <span className="flex flex-wrap gap-1">
+                        {runtimeWorkDirPresets.slice(0, 5).map((root) => (
+                          <button
+                            key={root.id}
+                            type="button"
+                            className="rounded-full border border-line bg-panel-2 px-2 py-0.5 text-2xs text-muted hover:border-primary-line hover:text-ink"
+                            title={root.path}
+                            onClick={() => setRuntimeWorkDir(root.path)}
+                          >
+                            {root.preferred ? "默认 · " : ""}{root.label}
+                          </button>
+                        ))}
+                      </span>
+                    )}
                   </label>
 
                   <p className="rounded-sm bg-panel-2 px-3 py-2 text-xs text-subtle">
@@ -1656,6 +1684,21 @@ export function SessionListView({
                       onChange={(e) => setRuntimeWorkDir(e.target.value)}
                       placeholder="留空使用默认工作区，例如 /home/binbin/project"
                     />
+                    {runtimeWorkDirPresets.length > 0 && (
+                      <span className="flex flex-wrap gap-1">
+                        {runtimeWorkDirPresets.slice(0, 5).map((root) => (
+                          <button
+                            key={root.id}
+                            type="button"
+                            className="rounded-full border border-line bg-panel-2 px-2 py-0.5 text-2xs text-muted hover:border-primary-line hover:text-ink"
+                            title={root.path}
+                            onClick={() => setRuntimeWorkDir(root.path)}
+                          >
+                            {root.preferred ? "默认 · " : ""}{root.label}
+                          </button>
+                        ))}
+                      </span>
+                    )}
                   </label>
                 </div>
               </DialogBody>
