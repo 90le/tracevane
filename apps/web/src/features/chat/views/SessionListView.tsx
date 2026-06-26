@@ -148,6 +148,7 @@ type FolderOption = {
 };
 
 
+const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli";
 const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
 
 const CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] = [
@@ -248,6 +249,7 @@ export function SessionListView({
   );
   const [dialog, setDialog] = React.useState<SessionDialogState>(null);
   const [labelDraft, setLabelDraft] = React.useState("");
+  const [runtimeAdapterKind, setRuntimeAdapterKind] = React.useState<ChatRuntimeAdapterKind>(DEFAULT_RUNTIME_ADAPTER_KIND);
   const [runtimeAgent, setRuntimeAgent] = React.useState<ChatRuntimeAgentId>(DEFAULT_RUNTIME_AGENT);
   const [runtimeModel, setRuntimeModel] = React.useState("");
   const [runtimeWorkDir, setRuntimeWorkDir] = React.useState("");
@@ -273,12 +275,14 @@ export function SessionListView({
     if (dialog?.kind === "rename") setLabelDraft(sessionTitle(dialog.session));
     if (dialog?.kind === "create") {
       setLabelDraft("");
+      setRuntimeAdapterKind(DEFAULT_RUNTIME_ADAPTER_KIND);
       setRuntimeAgent(DEFAULT_RUNTIME_AGENT);
       setRuntimeModel("");
       setRuntimeWorkDir("");
       setRuntimePermissionMode("");
     }
     if (dialog?.kind === "edit-runtime") {
+      setRuntimeAdapterKind(dialog.session.runtimeTarget?.adapterKind || DEFAULT_RUNTIME_ADAPTER_KIND);
       setRuntimeAgent(dialog.session.runtimeTarget?.agent || DEFAULT_RUNTIME_AGENT);
       setRuntimeModel(dialog.session.runtimeTarget?.model || "");
       setRuntimeWorkDir(dialog.session.runtimeTarget?.workDir || "");
@@ -579,8 +583,8 @@ export function SessionListView({
   );
 
   const selectedRuntimeOption = React.useMemo(
-    () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
-    [runtimeAgent],
+    () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.adapterKind === runtimeAdapterKind && item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
+    [runtimeAdapterKind, runtimeAgent],
   );
   const selectedRuntimeReadiness = runtimeOptionReadiness(selectedRuntimeOption);
 
@@ -1387,14 +1391,18 @@ export function SessionListView({
                     <span className="text-sm text-muted">运行器 / Agent</span>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
-                        const active = option.agent === runtimeAgent;
+                        const active = option.adapterKind === runtimeAdapterKind && option.agent === runtimeAgent;
                         const readiness = runtimeOptionReadiness(option);
                         return (
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
                             type="button"
                             disabled={!readiness.selectable}
-                            onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
+                            onClick={() => {
+                              if (!readiness.selectable) return;
+                              setRuntimeAdapterKind(option.adapterKind);
+                              setRuntimeAgent(option.agent);
+                            }}
                             className={cn(
                               "chat-agent-picker-option grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",
@@ -1506,14 +1514,18 @@ export function SessionListView({
                     <span className="text-sm text-muted">运行器 / Agent</span>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
-                        const active = option.agent === runtimeAgent;
+                        const active = option.adapterKind === runtimeAdapterKind && option.agent === runtimeAgent;
                         const readiness = runtimeOptionReadiness(option);
                         return (
                           <button
                             key={`${option.adapterKind}:${option.agent}`}
                             type="button"
                             disabled={!readiness.selectable}
-                            onClick={() => readiness.selectable && setRuntimeAgent(option.agent)}
+                            onClick={() => {
+                              if (!readiness.selectable) return;
+                              setRuntimeAdapterKind(option.adapterKind);
+                              setRuntimeAgent(option.agent);
+                            }}
                             className={cn(
                               "chat-agent-picker-option grid gap-1 rounded-sm border border-line bg-panel-2 p-3 text-left outline-none transition hover:border-primary-line focus-visible:shadow-[var(--ring)]",
                               active && "border-primary-line bg-primary-soft",

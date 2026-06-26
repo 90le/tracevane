@@ -27,9 +27,11 @@ test('SessionListView exposes runtime target editing for managed sessions', () =
 });
 
 test('SessionListView defaults new sessions to native CLI Codex instead of OpenClaw webchat', () => {
+  assert.match(source, /const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli"/);
   assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
   assert.match(source, /agent: "codex", binaryId: "codex", label: "Codex CLI"/);
   assert.match(source, /agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent"/);
+  assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
   assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
 });
 
@@ -71,7 +73,9 @@ test('SessionListView gates new and edited sessions on CLI runtime readiness', (
   assert.match(source, /type ChatRuntimeOptionReadiness = \{/);
   assert.match(source, /selectable: boolean/);
   assert.match(source, /disabled=\{!readiness\.selectable\}/);
-  assert.match(source, /readiness\.selectable && setRuntimeAgent\(option\.agent\)/);
+  assert.match(source, /const active = option\.adapterKind === runtimeAdapterKind && option\.agent === runtimeAgent/);
+  assert.match(source, /setRuntimeAdapterKind\(option\.adapterKind\)/);
+  assert.match(source, /setRuntimeAgent\(option\.agent\)/);
   assert.match(source, /const ensureRuntimeSelectable = React\.useCallback/);
   assert.match(source, /当前 Agent 运行器不可用/);
   assert.match(source, /disabled=\{busy \|\| !selectedRuntimeReadiness\.selectable\}/);
@@ -96,4 +100,12 @@ test('SessionListView honors organizer folder and session ordering in the rail',
   assert.match(source, /organizer\.childFolderOrder\?\.\[folderId\]/);
   assert.match(source, /organizer\?\.rootSessionOrder/);
   assert.match(source, /organizer\?\.folderSessionOrder\?\.\[folderFilter\.slice\("folder:"\.length\)\]/);
+});
+
+
+test('SessionListView keys runtime picker selection by adapter and agent', () => {
+  assert.match(source, /useState<ChatRuntimeAdapterKind>\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
+  assert.match(source, /item\.adapterKind === runtimeAdapterKind && item\.agent === runtimeAgent/);
+  assert.match(source, /const active = option\.adapterKind === runtimeAdapterKind && option\.agent === runtimeAgent/);
+  assert.doesNotMatch(source, /const active = option\.agent === runtimeAgent/);
 });
