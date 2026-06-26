@@ -191,5 +191,6 @@ test('ConversationView renders process and side-result blocks as readable chat w
   assert.match(source, /function SideResultBlock/);
   assert.match(source, /旁路回复 · \{result\.question\}/);
   assert.match(source, /<ChatMarkdownContent source=\{result\.text\} \/>/);
+  assert.match(source, /turn\.processBlocks\.map/);
   assert.match(source, /turn\.sideResults\.map/);
 });

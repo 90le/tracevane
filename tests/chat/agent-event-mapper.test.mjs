@@ -197,3 +197,35 @@ test('tool status is monotonic and richer result preview is preserved', () => {
   assert.equal(lateUpdate?.tool.status, 'completed');
   assert.match(lateUpdate?.tool.resultPreview || '', /final page snapshot/i);
 });
+
+
+test('maps reasoning and thinking streams into live process blocks', () => {
+  const reasoning = mapGatewayAgentEventPayload({
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
+    payload: {
+      runId: 'run-reasoning-1',
+      stream: 'reasoning',
+      ts: Date.parse('2026-03-19T03:00:04.000Z'),
+      data: { id: 'reason-1', text: 'I will inspect the failing command.' },
+    },
+  });
+
+  assert.equal(reasoning?.kind, 'agent_process');
+  assert.equal(reasoning?.block.kind, 'reasoning');
+  assert.equal(reasoning?.block.id, 'reason-1');
+  assert.match(reasoning?.block.text || '', /inspect/);
+
+  const thinking = mapGatewayAgentEventPayload({
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
+    payload: {
+      runId: 'run-thinking-1',
+      stream: 'process',
+      ts: Date.parse('2026-03-19T03:00:05.000Z'),
+      data: { itemType: 'thinking', thinking: 'drafting next step' },
+    },
+  });
+
+  assert.equal(thinking?.kind, 'agent_process');
+  assert.equal(thinking?.block.kind, 'thinking');
+  assert.match(thinking?.block.text || '', /drafting/);
+});

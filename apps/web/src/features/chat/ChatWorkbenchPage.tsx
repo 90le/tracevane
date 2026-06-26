@@ -70,6 +70,7 @@ const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
   text: "",
   toolCards: [],
+  processBlocks: [],
   permissions: [],
   sideResults: [],
   done: false,
@@ -233,6 +234,18 @@ export function ChatWorkbenchPage() {
           break;
         }
 
+        case "agent_process": {
+          if (activeRun && runId && runId !== activeRun) return;
+          setLiveTurn((prev) => {
+            const base = prev ?? EMPTY_TURN;
+            const existing = base.processBlocks.findIndex((item) => item.id === event.block.id);
+            const processBlocks = existing >= 0
+              ? base.processBlocks.map((item, index) => (index === existing ? event.block : item))
+              : [...base.processBlocks, event.block].slice(-8);
+            return { ...base, runId: runId ?? base.runId, processBlocks };
+          });
+          break;
+        }
         case "side_result": {
           if (activeRun && runId && runId !== activeRun) return;
           setLiveTurn((prev) => {

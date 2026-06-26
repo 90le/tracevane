@@ -39,6 +39,7 @@ import type {
   ChatMessageItem,
   ChatMessageToolCallItem,
   ChatPermissionRequestCard,
+  ChatProcessBlock,
   ChatObservabilityState,
   ChatOrganizerPayload,
   ChatPatchQueueEntryRequest,
@@ -1946,7 +1947,30 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         source: 'tracevane_bff',
       });
     } else if (text) {
-      if (event.type === 'failed' || event.type === 'error') {
+      if (event.type === 'reasoning') {
+        const block: ChatProcessBlock = {
+          id: normalizeString(event.itemType || event.rawType, `reasoning-${runId}-${emittedAt}`),
+          kind: normalizeString(event.itemType || event.rawType).toLowerCase() === 'thinking' ? 'thinking' : 'reasoning',
+          text,
+        };
+        updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+          id: `native-process-${runId}-${block.id}`,
+          kind: 'assistant',
+          runId,
+          toolCallId: null,
+          emittedAt,
+          title: block.kind === 'reasoning' ? 'Native reasoning stream' : 'Native thinking stream',
+          detail: summarizeUnknown(text, 220),
+          level: 'info',
+        }, `native-process-${runId}-${block.id}`));
+        broadcastToSession(sessionKey, {
+          kind: 'agent_process',
+          sessionKey,
+          runId,
+          emittedAt,
+          block,
+        });
+      } else if (event.type === 'failed' || event.type === 'error') {
         projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'error');
         projection.previewText = text;
         updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
@@ -5740,6 +5764,25 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         events.push(overlayEvent);
       }
       return events;
+    }
+
+
+    if (mapped.kind === 'agent_process') {
+      updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+        id: `process-${mapped.runId}-${mapped.block.id}`,
+        kind: 'assistant',
+        runId: mapped.runId,
+        toolCallId: null,
+        emittedAt: mapped.emittedAt,
+        title: mapped.block.kind === 'reasoning' ? 'Reasoning stream' : 'Thinking stream',
+        detail: summarizeUnknown(mapped.block.text, 220),
+        level: 'info',
+      }, `process-${mapped.runId}-${mapped.block.id}`));
+      const projection = ensureRunProjection(sessionKey, mapped.runId, mapped.emittedAt, { lifecycle: 'running' });
+      projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'running');
+      saveRunProjection(sessionKey, projection);
+      const overlayEvent = buildRunOverlayEvent(sessionKey, projection, mapped.emittedAt, false);
+      return overlayEvent ? [mapped, overlayEvent] : [mapped];
     }
 
     if (mapped.kind === 'agent_tool_call' || mapped.kind === 'agent_tool_result') {

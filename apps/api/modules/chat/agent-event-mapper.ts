@@ -2,6 +2,7 @@ import type {
   ChatLifecycleSignal,
   ChatStreamEvent,
   ChatToolCard,
+  ChatProcessBlock,
   ChatToolArtifactItem,
 } from '../../../../types/chat.js';
 import { normalizeDate, normalizeString, summarizeUnknown } from './shared.js';
@@ -39,6 +40,33 @@ function resolveAgentAssistantText(data: Record<string, unknown>): { text: strin
     text,
     deltaText,
   };
+}
+
+
+function resolveAgentProcessBlock(input: {
+  stream: string;
+  runId: string | null;
+  emittedAt: string;
+  data: Record<string, unknown>;
+}): ChatProcessBlock | null {
+  const kindSource = normalizeString(input.data.kind || input.data.type || input.data.itemType || input.stream).toLowerCase();
+  const kind: ChatProcessBlock['kind'] = kindSource === 'reasoning' ? 'reasoning' : 'thinking';
+  const text = normalizeString(
+    input.data.text
+      ?? input.data.thinking
+      ?? input.data.reasoning
+      ?? input.data.summary
+      ?? input.data.delta
+      ?? input.data.message,
+  );
+  if (!input.runId || !text) return null;
+  const id = normalizeString(
+    input.data.id
+      ?? input.data.itemId
+      ?? input.data.blockId
+      ?? `${kind}-${input.runId}-${input.emittedAt}`,
+  );
+  return { id, kind, text };
 }
 
 function mapAgentToolLikeEvent(params: {
@@ -142,6 +170,19 @@ export function mapGatewayAgentEventPayload({
       text,
       textPreview,
       deltaText,
+    };
+  }
+
+
+  if (stream === 'reasoning' || stream === 'thinking' || stream === 'process') {
+    const block = resolveAgentProcessBlock({ stream, runId, emittedAt, data });
+    if (!block || !runId) return null;
+    return {
+      kind: 'agent_process',
+      sessionKey,
+      runId,
+      emittedAt,
+      block,
     };
   }
 

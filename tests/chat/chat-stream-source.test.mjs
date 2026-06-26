@@ -19,6 +19,9 @@ test('Chat stream resumes after disconnect using stream sequence replay', () => 
 test('Chat contract declares permission route and stream event kind', () => {
   assert.match(contractSource, /permissionByRun: '\/api\/chat\/sessions\/:sessionKey\/runs\/:runId\/permissions\/:requestId'/);
   assert.match(contractSource, /'agent_permission'/);
+  assert.match(contractSource, /'agent_process'/);
+  assert.match(contractSource, /'reasoning'/);
+  assert.match(contractSource, /'thinking'/);
 });
 
 

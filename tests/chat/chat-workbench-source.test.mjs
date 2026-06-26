@@ -75,3 +75,12 @@ test('ChatWorkbenchPage keeps side-result events in the live turn instead of los
   assert.match(source, /\.\.\.base\.sideResults, event\.result/);
   assert.match(source, /slice\(-5\)/);
 });
+
+
+test('ChatWorkbenchPage keeps live reasoning/process stream blocks in the transient turn', () => {
+  assert.match(source, /processBlocks: \[\]/);
+  assert.match(source, /case "agent_process"/);
+  assert.match(source, /base\.processBlocks\.findIndex/);
+  assert.match(source, /\.\.\.base\.processBlocks, event\.block/);
+  assert.match(source, /slice\(-8\)/);
+});

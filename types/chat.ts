@@ -814,6 +814,14 @@ export type ChatStreamEvent = (
     textPreview: string;
     deltaText: string | null;
   }
+
+  | {
+    kind: 'agent_process';
+    sessionKey: string;
+    runId: string;
+    emittedAt: string;
+    block: ChatProcessBlock;
+  }
   | {
     kind: 'agent_tool_call';
     sessionKey: string;

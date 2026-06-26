@@ -59,6 +59,7 @@ export const CHAT_PHASE2_STREAM_EVENT_KINDS: ReadonlyArray<ChatStreamEvent['kind
   'runtime.state',
   'agent_lifecycle',
   'agent_assistant',
+  'agent_process',
   'agent_tool_call',
   'agent_tool_result',
   'agent_permission',
@@ -70,6 +71,9 @@ export const CHAT_PHASE2_GATEWAY_STREAMS = [
   'tool',
   'item',
   'command_output',
+  'reasoning',
+  'thinking',
+  'process',
 ] as const;
 
 export const CHAT_SEND_STATUS_MAP = {

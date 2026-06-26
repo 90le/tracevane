@@ -811,6 +811,13 @@ function LiveTurn({
           <span className="ml-0.5 animate-pulse">▋</span>
         )}
       </div>
+      {turn.processBlocks.length > 0 && (
+        <div className="grid w-full max-w-[80%] gap-1">
+          {turn.processBlocks.map((block) => (
+            <ProcessBlockView key={block.id} block={block} />
+          ))}
+        </div>
+      )}
       {turn.sideResults.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1.5">
           {turn.sideResults.map((result, index) => (

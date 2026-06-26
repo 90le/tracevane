@@ -80,6 +80,8 @@ export interface LiveAssistantTurn {
   text: string;
   /** Tool cards keyed by toolCallId, in arrival order. */
   toolCards: ChatToolCard[];
+  /** Live thinking/reasoning process blocks emitted before final transcript persistence. */
+  processBlocks: ChatProcessBlock[];
   /** Pending/settled approval cards emitted by native CLI runners. */
   permissions: ChatPermissionRequestCard[];
   /** Side-channel answers such as BTW/background results that should not be persisted as assistant transcript messages. */
