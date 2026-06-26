@@ -379,6 +379,86 @@ test('native CLI chat sessions can be created without OpenClaw agent catalog', a
   }
 });
 
+test('OpenClaw runtime chat sessions are owned by the selected platform agent', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-openclaw-selected-agent-'));
+  try {
+    writeOpenClawConfig(root);
+    const openclawConfigPath = path.join(root, 'openclaw.json');
+    const config = readJson(openclawConfigPath, {});
+    const backendWorkspace = path.join(root, 'workspace-backend');
+    fs.mkdirSync(backendWorkspace, { recursive: true });
+    fs.mkdirSync(path.join(root, 'agents', 'backend', 'sessions'), { recursive: true });
+    config.agents.list.push({ id: 'backend', workspace: backendWorkspace });
+    fs.writeFileSync(openclawConfigPath, JSON.stringify(config, null, 2));
+    writeGatewayIdentity(root);
+    const context = await createContextForRoot(root);
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Backend platform session',
+      runtimeTarget: {
+        adapterKind: 'openclaw-gateway',
+        agent: 'backend',
+      },
+    });
+
+    assert.equal(created.session.agentId, 'backend');
+    assert.match(created.session.key, /^agent:backend:agent-chat:direct:tracevane-/);
+    assert.equal(created.session.runtimeTarget.adapterKind, 'openclaw-gateway');
+    assert.equal(created.session.runtimeTarget.agent, 'backend');
+
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].agentId, 'backend');
+    assert.equal(registry[created.session.key].runtimeTarget.agent, 'backend');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('OpenClaw runtime target validation rejects unknown or cross-owner platform agents', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-openclaw-agent-guard-'));
+  try {
+    writeOpenClawConfig(root);
+    const openclawConfigPath = path.join(root, 'openclaw.json');
+    const config = readJson(openclawConfigPath, {});
+    const backendWorkspace = path.join(root, 'workspace-backend');
+    fs.mkdirSync(backendWorkspace, { recursive: true });
+    config.agents.list.push({ id: 'backend', workspace: backendWorkspace });
+    fs.writeFileSync(openclawConfigPath, JSON.stringify(config, null, 2));
+    writeGatewayIdentity(root);
+    const context = await createContextForRoot(root);
+
+    await assert.rejects(
+      () => context.services.chat.createSession('main', {
+        runtimeTarget: {
+          adapterKind: 'openclaw-gateway',
+          agent: 'missing-platform-agent',
+        },
+      }),
+      /Agent 'missing-platform-agent' not found/,
+    );
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native owner',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+      },
+    });
+
+    await assert.rejects(
+      () => context.services.chat.patchSession(created.session.key, {
+        runtimeTarget: {
+          adapterKind: 'openclaw-gateway',
+          agent: 'backend',
+        },
+      }),
+      /does not match session agent 'main'/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('native CLI runtime target aliases canonicalize to supported CLI agents', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-agent-alias-'));
   try {

@@ -6537,6 +6537,42 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return normalizedRuntimeTargetIdentity(previous) !== normalizedRuntimeTargetIdentity(next);
   }
 
+  function assertSupportedChatRuntimeTarget(
+    target: ChatSessionRuntimeTarget,
+    availableAgentIds: string[],
+  ): void {
+    assertSupportedNativeRuntimeTarget(target);
+    if (target.adapterKind !== 'openclaw-gateway') {
+      return;
+    }
+    const agent = normalizeString(target.agent);
+    if (agent && availableAgentIds.includes(agent)) {
+      return;
+    }
+    throw new ChatServiceError(404, buildChatError(
+      'session_not_found',
+      `OpenClaw agent '${agent || 'unknown'}' not found`,
+    ));
+  }
+
+  function assertOpenClawRuntimeTargetMatchesSessionOwner(
+    session: ChatSessionRow,
+    target: ChatSessionRuntimeTarget,
+  ): void {
+    if (target.adapterKind !== 'openclaw-gateway') {
+      return;
+    }
+    const targetAgent = normalizeString(target.agent);
+    const sessionAgent = normalizeString(session.agentId);
+    if (!targetAgent || targetAgent === sessionAgent) {
+      return;
+    }
+    throw new ChatServiceError(400, buildChatError(
+      'invalid_request',
+      `OpenClaw runtime target agent '${targetAgent}' does not match session agent '${sessionAgent}'. Create a new platform session for that agent.`,
+    ));
+  }
+
   function clearRuntimeSessionFromRegistry(sessionKey: string): void {
     const registry = readRegistryFromDisk();
     const current = registry[sessionKey];
@@ -7393,18 +7429,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const normalizedAgentId = normalizeString(agentId, 'main');
       const availableAgents = resolveAvailableAgentIds(options.config);
       const requestedAdapterKind = normalizeString(payload.runtimeTarget?.adapterKind);
+      const requestedRuntimeAgent = normalizeString(payload.runtimeTarget?.agent);
+      const createAgentId = requestedAdapterKind === 'openclaw-gateway'
+        ? normalizeString(requestedRuntimeAgent, normalizedAgentId)
+        : normalizedAgentId;
       const isNativeRuntime = !payload.runtimeTarget || requestedAdapterKind === 'native-cli';
-      if (!availableAgents.includes(normalizedAgentId) && !isNativeRuntime) {
-        throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${normalizedAgentId}' not found`));
+      if (!availableAgents.includes(createAgentId) && !isNativeRuntime) {
+        throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${createAgentId}' not found`));
       }
 
       const row = buildTracevaneManagedSessionRow(
-        normalizedAgentId,
-        normalizeString(payload.label, buildDefaultSessionLabel(normalizedAgentId)),
+        createAgentId,
+        normalizeString(payload.label, buildDefaultSessionLabel(createAgentId)),
         await isGatewayConnected(),
         payload.runtimeTarget,
       );
-      assertSupportedNativeRuntimeTarget(row.runtimeTarget);
+      assertSupportedChatRuntimeTarget(row.runtimeTarget, availableAgents);
 
       setTracevaneSession({
         row,
@@ -7465,7 +7505,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           ...(payload.runtimeTarget || {}),
         }, session.agentId)
         : session.runtimeTarget;
-      assertSupportedNativeRuntimeTarget(nextRuntimeTarget);
+      assertSupportedChatRuntimeTarget(nextRuntimeTarget, resolveAvailableAgentIds(options.config));
+      assertOpenClawRuntimeTargetMatchesSessionOwner(session, nextRuntimeTarget);
       const runtimeTargetChanged = hasRuntimeTarget
         ? didRuntimeTargetIdentityChange(session.runtimeTarget, nextRuntimeTarget)
         : false;
