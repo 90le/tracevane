@@ -1504,23 +1504,23 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
       return (
         fileRefs
           ?.map((fileRef, index) => {
+            const incomingResourceRef = typeof fileRef.resourceRef === 'string' ? fileRef.resourceRef.trim() : '';
+            const parsedFilesRef = parseTracevaneFilesResourceRef(incomingResourceRef);
             const relativePath = typeof fileRef.relativePath === 'string'
               ? toPortableRelativePath(fileRef.relativePath.trim())
               : '';
-            if (!relativePath) {
+            const normalizedRelativePath = parsedFilesRef?.path || relativePath;
+            if (!normalizedRelativePath) {
               return null;
             }
-            const incomingResourceRef = typeof fileRef.resourceRef === 'string' ? fileRef.resourceRef.trim() : '';
-            const parsedFilesRef = parseTracevaneFilesResourceRef(incomingResourceRef);
             const rootId = parsedFilesRef?.rootId || (typeof fileRef.rootId === 'string' ? fileRef.rootId.trim() : null);
-            const normalizedRelativePath = parsedFilesRef?.path || relativePath;
             const fileName = typeof fileRef.fileName === 'string' && fileRef.fileName.trim()
               ? fileRef.fileName.trim()
               : path.basename(normalizedRelativePath);
             const mimeType = normalizeMimeType(fileRef.mimeType) || mimeTypeFromPath(fileName);
             const kind = inferMediaKind(fileName, mimeType);
             const resourceRef = parsedFilesRef
-              ? incomingResourceRef
+              ? buildTracevaneFilesResourceRef(parsedFilesRef.rootId, parsedFilesRef.path)
               : rootId
                 ? buildTracevaneFilesResourceRef(rootId, normalizedRelativePath)
                 : buildTracevaneResourceRefFromRelativePath(normalizedRelativePath);

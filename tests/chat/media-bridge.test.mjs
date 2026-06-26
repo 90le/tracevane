@@ -134,6 +134,45 @@ test('resolves send file refs from Files API roots without workspace coupling', 
   }
 });
 
+test('normalizes Files API send refs when resourceRef is the only path authority', () => {
+  const tracevane = createTempTracevaneConfig();
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-files-ref-only-'));
+  try {
+    tracevane.config.projectRoot = projectRoot;
+    fs.mkdirSync(path.join(projectRoot, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'assets', 'diagram.png'), 'png');
+
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const normalized = bridge.normalizeSendFileRefs([{
+      id: 'files-ref-only',
+      resourceRef: 'files:project-root:assets/diagram.png',
+      fileName: 'diagram.png',
+    }]);
+    const resources = bridge.buildSendResources(
+      'agent:main:agent-chat:direct:tracevane-test',
+      normalized,
+      undefined,
+    );
+    const nativeAttachments = bridge.buildNativeInboundAttachments(
+      'agent:main:agent-chat:direct:tracevane-test',
+      normalized,
+      undefined,
+    );
+
+    assert.equal(normalized.length, 1);
+    assert.equal(normalized[0]?.rootId, 'project-root');
+    assert.equal(normalized[0]?.relativePath, 'assets/diagram.png');
+    assert.equal(normalized[0]?.resourceRef, 'files:project-root:assets/diagram.png');
+    assert.equal(normalized[0]?.kind, 'image');
+    assert.equal(resources[0]?.status, 'ready');
+    assert.match(resources[0]?.url || '', /^\/api\/files\/download\?/);
+    assert.equal(nativeAttachments[0]?.localPath, path.join(projectRoot, 'assets', 'diagram.png'));
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
+  }
+});
+
 
 test('assistant markdown files refs compile to Files download urls instead of Chat media urls', () => {
   const tracevane = createTempTracevaneConfig();
