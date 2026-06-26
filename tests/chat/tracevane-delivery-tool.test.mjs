@@ -351,6 +351,8 @@ test('tracevane_delivery description explicitly forbids message and path output 
   assert.match(tool.description, /do not use message/i);
   assert.match(tool.description, /do not output file paths/i);
   assert.match(tool.description, /primary markdown examples/i);
+  assert.match(tool.description, /files:<rootId>:<path>/i);
+  assert.match(tool.description, /workspace:\/uploads: only as legacy/i);
   assert.match(tool.description, /fallback worked example/i);
   assert.match(tool.description, /worked example/i);
   assert.match(tool.description, /break-image/i);
@@ -393,8 +395,8 @@ test('tracevane plugin injects Tracevane delivery guidance and blocks current-se
   assert.match(guidance?.appendSystemContext || '', /use tracevane_delivery only as a fallback/i);
   assert.match(guidance?.appendSystemContext || '', /do not use message/i);
   assert.match(guidance?.appendSystemContext || '', /do not call gateway, cron, sessions_list, sessions_history, sessions_send, sessions_spawn, or session_status/i);
-  assert.match(guidance?.appendSystemContext || '', /workspace:/i);
-  assert.match(guidance?.appendSystemContext || '', /uploads:/i);
+  assert.match(guidance?.appendSystemContext || '', /files:<rootId>:<path>/i);
+  assert.match(guidance?.appendSystemContext || '', /legacy compatibility refs only/i);
   assert.match(guidance?.appendSystemContext || '', /tracevane-file:/i);
   assert.match(guidance?.appendSystemContext || '', /break-image/i);
   assert.match(guidance?.appendSystemContext || '', /inline-image/i);
