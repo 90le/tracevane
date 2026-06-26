@@ -81,6 +81,17 @@ test('Native CLI adapter keeps supported agent ids centralized', () => {
 });
 
 
+
+test('Native CLI adapter rejects unsupported sends instead of returning a fake started run', () => {
+  assert.match(nativeCliAdapterSource, /throw new ChatServiceError\(400, buildChatError\(/);
+  assert.match(nativeCliAdapterSource, /Native CLI agent '\$\{session\.runtimeTarget\.agent \|\| 'unknown'\}' is not supported/);
+  assert.doesNotMatch(
+    nativeCliAdapterSource,
+    /status: 'started',[\s\S]*not supported by the native Chat runner yet/,
+    'unsupported native agents must fail before run creation, not masquerade as started terminal runs',
+  );
+});
+
 test('Native Chat runner marks web Chat messages instead of leaking IM prompt semantics', () => {
   assert.match(
     nativeCliAdapterSource,

@@ -202,14 +202,10 @@ export function createNativeCliChatRuntimeAdapter(options: NativeCliChatRuntimeA
     kind: 'native-cli',
     async send(input) {
       if (!agent) {
-        return {
-          status: 'started',
-          runId: input.idempotencyKey,
-          raw: { ok: false, error: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.` },
-          terminalState: 'error',
-          assistantText: null,
-          errorMessage: `Agent ${session.runtimeTarget.agent} is not supported by the native Chat runner yet.`,
-        };
+        throw new ChatServiceError(400, buildChatError(
+          'invalid_request',
+          `Native CLI agent '${session.runtimeTarget.agent || 'unknown'}' is not supported. Supported agents: ${SUPPORTED_NATIVE_CHAT_AGENT_IDS.join(', ')}`,
+        ));
       }
       const paths = buildChatChannelConnectorPaths(config);
       const project = buildChatNativeProject(config, session, agent);
