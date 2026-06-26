@@ -16,6 +16,7 @@ export const CHAT_API_PATHS = {
   queueBySession: '/api/chat/sessions/:sessionKey/queue',
   queueEntryBySession: '/api/chat/sessions/:sessionKey/queue/:entryId',
   sendBySession: '/api/chat/sessions/:sessionKey/send',
+  permissionByRun: '/api/chat/sessions/:sessionKey/runs/:runId/permissions/:requestId',
   mediaBySession: '/api/chat/sessions/:sessionKey/media/:mediaId',
   abortBySession: '/api/chat/sessions/:sessionKey/abort',
   resetBySession: '/api/chat/sessions/:sessionKey/reset',
@@ -60,6 +61,7 @@ export const CHAT_PHASE2_STREAM_EVENT_KINDS: ReadonlyArray<ChatStreamEvent['kind
   'agent_assistant',
   'agent_tool_call',
   'agent_tool_result',
+  'agent_permission',
 ] as const;
 
 export const CHAT_PHASE2_GATEWAY_STREAMS = [

@@ -470,26 +470,46 @@ export function useChatStream(
     status: "idle",
     error: null,
   });
+  const [reconnectToken, setReconnectToken] = React.useState(0);
 
   // Keep the latest callbacks in refs so toggling them doesn't reopen the stream.
   const onEventRef = React.useRef(options.onEvent);
   const onReadyRef = React.useRef(options.onReady);
+  const lastStreamSeqRef = React.useRef<number | null>(null);
+  const streamSessionKeyRef = React.useRef<string | null>(null);
+  const retryAttemptRef = React.useRef(0);
   onEventRef.current = options.onEvent;
   onReadyRef.current = options.onReady;
 
   React.useEffect(() => {
     if (!sessionKey || !enabled) {
+      retryAttemptRef.current = 0;
       setState({ status: "idle", error: null });
       return;
     }
 
     const controller = new AbortController();
     let cancelled = false;
+    if (streamSessionKeyRef.current !== sessionKey) {
+      streamSessionKeyRef.current = sessionKey;
+      lastStreamSeqRef.current = null;
+    }
     setState({ status: "connecting", error: null });
+    const scheduleReconnect = () => {
+      if (cancelled || controller.signal.aborted) return;
+      const attempt = Math.min(retryAttemptRef.current + 1, 6);
+      retryAttemptRef.current = attempt;
+      const delayMs = Math.min(5000, 300 * attempt);
+      window.setTimeout(() => {
+        if (!cancelled && !controller.signal.aborted) {
+          setReconnectToken((value) => value + 1);
+        }
+      }, delayMs);
+    };
 
     void (async () => {
       try {
-        const response = await fetch(chatStreamUrl(sessionKey), {
+        const response = await fetch(chatStreamUrl(sessionKey, { lastStreamSeq: lastStreamSeqRef.current }), {
           headers: { Accept: "text/event-stream" },
           signal: controller.signal,
         });
@@ -500,9 +520,13 @@ export function useChatStream(
               error: `stream HTTP ${response.status}`,
             });
           }
+          scheduleReconnect();
           return;
         }
-        if (!cancelled) setState({ status: "open", error: null });
+        if (!cancelled) {
+          retryAttemptRef.current = 0;
+          setState({ status: "open", error: null });
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -529,7 +553,14 @@ export function useChatStream(
           }
           if (eventName !== "chat-stream") return;
           try {
-            onEventRef.current?.(JSON.parse(payload) as ChatStreamEvent);
+            const parsed = JSON.parse(payload) as ChatStreamEvent;
+            if (Number.isFinite(parsed.streamSeq ?? NaN)) {
+              lastStreamSeqRef.current = Math.max(
+                lastStreamSeqRef.current ?? 0,
+                Math.floor(parsed.streamSeq as number),
+              );
+            }
+            onEventRef.current?.(parsed);
           } catch {
             // Ignore malformed frames rather than tearing down the stream.
           }
@@ -547,13 +578,17 @@ export function useChatStream(
             sep = buffer.indexOf("\n\n");
           }
         }
-        if (!cancelled) setState({ status: "closed", error: null });
+        if (!cancelled) {
+          setState({ status: "closed", error: null });
+          scheduleReconnect();
+        }
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
         setState({
           status: "error",
           error: error instanceof Error ? error.message : "stream failed",
         });
+        scheduleReconnect();
       }
     })();
 
@@ -561,7 +596,7 @@ export function useChatStream(
       cancelled = true;
       controller.abort();
     };
-  }, [sessionKey, enabled]);
+  }, [sessionKey, enabled, reconnectToken]);
 
   return state;
 }

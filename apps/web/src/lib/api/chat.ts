@@ -434,6 +434,14 @@ export function deleteChatQueueEntry(
 
 
 /** Resolve the same-origin URL for the SSE stream endpoint. */
-export function chatStreamUrl(sessionKey: string): string {
-  return `${BASE}/sessions/${encodeSessionKey(sessionKey)}/stream`;
+export function chatStreamUrl(
+  sessionKey: string,
+  options: { lastStreamSeq?: number | null } = {},
+): string {
+  const query = new URLSearchParams();
+  if (Number.isFinite(options.lastStreamSeq ?? NaN)) {
+    query.set("lastStreamSeq", String(Math.floor(options.lastStreamSeq as number)));
+  }
+  const suffix = query.size ? `?${query}` : "";
+  return `${BASE}/sessions/${encodeSessionKey(sessionKey)}/stream${suffix}`;
 }
