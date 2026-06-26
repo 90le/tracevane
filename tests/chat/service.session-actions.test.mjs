@@ -317,6 +317,7 @@ test('chat health treats an online gateway as usable even when the system servic
         ['codex', 'codex', 'codex-app-server'],
         ['claude-code', 'claude', 'claude-code-stream-json'],
         ['opencode', 'opencode', 'opencode-run-session'],
+        ['gemini', 'gemini', 'gemini-prompt-stream-json'],
       ],
     );
     assert.deepEqual(health.fileCapability, {
@@ -945,6 +946,92 @@ test('OpenCode chat sessions send through the native runner with gateway model a
 
     const registry = readJson(registryPath(root), {});
     assert.equal(registry[created.session.key].runtimeSession?.agentNativeSessionId, 'opencode-session-1');
+    assert.deepEqual(
+      gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.send'),
+      [],
+    );
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+
+test('Gemini CLI chat sessions send through the native runner with model and workspace file refs', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-gemini-send-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: [
+              JSON.stringify({ type: 'content', text: 'gemini native reply' }),
+            ].join('\n') + '\n',
+            stderr: '',
+            durationMs: 11,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const workspaceFile = path.join(root, 'workspace', 'gemini.md');
+    fs.writeFileSync(workspaceFile, '# Gemini native file context\n');
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Gemini runnable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'gemini',
+        model: 'gemini-3-pro-preview',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'suggest',
+      },
+    });
+
+    const ack = await context.services.chat.send(created.session.key, {
+      text: 'read this file through gemini',
+      clientRequestId: 'gemini-native-run-1',
+      fileRefs: [{
+        id: 'workspace-gemini',
+        relativePath: 'gemini.md',
+        resourceRef: 'workspace:gemini.md',
+        fileName: 'gemini.md',
+        kind: 'file',
+        mimeType: 'text/markdown',
+      }],
+    });
+
+    assert.equal(ack.status, 'started');
+    assert.equal(ack.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].agent, 'gemini');
+    assert.equal(runnerCalls[0].command, 'gemini');
+    assert.equal(runnerCalls[0].cwd, path.join(root, 'workspace'));
+    assert.ok(runnerCalls[0].args.includes('-p'));
+    assert.ok(runnerCalls[0].args.includes('--output-format'));
+    assert.ok(runnerCalls[0].args.includes('stream-json'));
+    assert.ok(runnerCalls[0].args.includes('--model'));
+    assert.ok(runnerCalls[0].args.includes('gemini-3-pro-preview'));
+    assert.equal(runnerCalls[0].stdin, '');
+    assert.match(runnerCalls[0].args.join('\n'), /read this file through gemini/);
+    assert.doesNotMatch(runnerCalls[0].args.join('\n'), /@gemini\.md/);
+    assert.match(runnerCalls[0].args.join('\n'), new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));
+
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.deepEqual(history.messages.map((message) => message.role), ['user', 'assistant']);
+    assert.equal(history.messages[1].text, 'gemini native reply');
     assert.deepEqual(
       gateway.requests.map((entry) => entry.method).filter((method) => method === 'chat.send'),
       [],

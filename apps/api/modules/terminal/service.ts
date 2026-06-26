@@ -195,6 +195,14 @@ const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
     category: "agent",
     installMode: "package-manager",
   },
+  gemini: {
+    id: "gemini",
+    label: "Gemini CLI",
+    binary: "gemini",
+    packageName: "@google/gemini-cli",
+    category: "agent",
+    installMode: "package-manager",
+  },
   clawhub: {
     id: "clawhub",
     label: "ClawHub CLI",

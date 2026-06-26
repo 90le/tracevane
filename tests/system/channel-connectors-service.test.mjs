@@ -865,8 +865,8 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.lifecycle.channelDaemonOwner, "tracevane-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
-  assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode"]);
-  assert.equal(status.bindingPolicy.supportedAgents.includes("gemini"), false);
+  assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode", "gemini"]);
+  assert.equal(status.bindingPolicy.supportedAgents.includes("gemini"), true);
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("octo"));
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("discord"));
   assert.match(status.paths.root, /channel-connectors\/daemon/);
@@ -1414,7 +1414,7 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(initial.config.agentSessionPolicy.maxSessions, 8);
   assert.equal(initial.config.agentSessionPolicy.maxConcurrentTurns, 4);
   assert.equal(initial.config.agentSessionPolicy.busyStrategy, "reject");
-  assert.deepEqual(initial.supportedAgents, ["codex", "claude-code", "opencode"]);
+  assert.deepEqual(initial.supportedAgents, ["codex", "claude-code", "opencode", "gemini"]);
   assert.ok(initial.permissionModes.includes("full-auto"));
   assert.throws(() => service.saveNativeConfig({
     config: {
@@ -1422,13 +1422,13 @@ test("native Channel Connectors store persists agent profiles and derives daemon
       agentProfiles: [
         {
           ...initial.config.agentProfiles[0],
-          id: "gemini-main",
-          name: "Gemini main",
-          agent: "gemini",
+          id: "kimi-main",
+          name: "Kimi main",
+          agent: "kimi",
         },
       ],
     },
-  }), /Unsupported agent id for profile gemini-main/);
+  }), /Unsupported agent id for profile kimi-main/);
 
   const saved = service.saveNativeConfig({
     config: {
@@ -11002,7 +11002,7 @@ function localHeartbeatCompletionLines(agent, text) {
       JSON.stringify({ type: "turn.completed" }),
     ];
   }
-  if (agent === "claude-code") {
+  if (agent === "claude-code" || agent === "gemini") {
     return [
       JSON.stringify({ type: "result", result: text, session_id: `${agent}-local-heartbeat` }),
     ];
@@ -11183,7 +11183,7 @@ test("native Channel Connectors process runner keeps async child-task waits aliv
 });
 
 test("native Channel Connectors process runner times out async child-task waits after grace stops", async () => {
-  for (const agent of ["codex", "claude-code", "opencode"]) {
+  for (const agent of ["codex", "claude-code", "opencode", "gemini"]) {
     const root = makeTempRoot();
     const progress = [];
     const childScript = [
@@ -11212,7 +11212,7 @@ test("native Channel Connectors process runner times out async child-task waits 
 });
 
 test("native Channel Connectors process runner uses idle timeout instead of total timeout for CLI heartbeats", async () => {
-  for (const agent of ["codex", "claude-code", "opencode"]) {
+  for (const agent of ["codex", "claude-code", "opencode", "gemini"]) {
     const root = makeTempRoot();
     const progress = [];
     const completion = localHeartbeatCompletionScript(agent, `${agent} idle timeout replaced total timeout`);
@@ -11244,7 +11244,7 @@ test("native Channel Connectors process runner uses idle timeout instead of tota
 });
 
 test("native Channel Connectors process runner reports heartbeat-only stalls without killing active CLI agents", async () => {
-  for (const agent of ["codex", "claude-code", "opencode"]) {
+  for (const agent of ["codex", "claude-code", "opencode", "gemini"]) {
     const root = makeTempRoot();
     const progress = [];
     const completion = localHeartbeatCompletionScript(agent, `${agent} heartbeat-only stall diagnosed`);
@@ -11285,7 +11285,7 @@ test("native Channel Connectors process runner reports heartbeat-only stalls wit
 });
 
 test("native Channel Connectors process runner stall diagnostics do not refresh heartbeat timeout", async () => {
-  for (const agent of ["codex", "claude-code", "opencode"]) {
+  for (const agent of ["codex", "claude-code", "opencode", "gemini"]) {
     const root = makeTempRoot();
     const progress = [];
     const childScript = [
@@ -11501,7 +11501,7 @@ test("native Channel Connectors process runner lets cancellation win during term
 });
 
 test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
-  for (const agent of ["codex", "claude-code", "opencode"]) {
+  for (const agent of ["codex", "claude-code", "opencode", "gemini"]) {
     const root = makeTempRoot();
     const progress = [];
     const childScript = "setInterval(() => {}, 1000);";
@@ -11575,7 +11575,7 @@ test("native Channel Connectors process runner keeps fixed timeout behavior for 
     env: {},
     timeoutMs: 70,
     idleTimeoutMs: 500,
-    agent: "gemini",
+    agent: "kimi",
     onProgress: (event) => progress.push(event),
   });
 

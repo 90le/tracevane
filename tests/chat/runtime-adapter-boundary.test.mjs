@@ -158,3 +158,18 @@ test('ChatService delegates gateway file-reference text formatting to shared tra
 test('OpenClaw runtime adapter forwards structured fileRefs beside transport text', () => {
   assert.match(openClawAdapterSource, /fileRefs: input\.fileRefs \|\| \[\]/, 'OpenClaw adapter should pass structured Files API refs to compatible gateways');
 });
+
+
+test('Gemini CLI is exposed as a real native Chat runtime only through the shared runner contract', () => {
+  const connectorTypes = readFileSync(new URL('../../types/channel-connectors.ts', import.meta.url), 'utf8');
+  const terminalTypes = readFileSync(new URL('../../types/terminal.ts', import.meta.url), 'utf8');
+  const runnerSource = readFileSync(new URL('../../apps/api/modules/channel-connectors/agent-runner.ts', import.meta.url), 'utf8');
+  assert.match(connectorTypes, /"gemini",/);
+  assert.match(connectorTypes, /runnerContract: "gemini-prompt-stream-json"/);
+  assert.match(terminalTypes, /\| "gemini"/);
+  assert.match(runnerSource, /project\.agent === "gemini"/);
+  assert.match(runnerSource, /command: "gemini"/);
+  assert.match(runnerSource, /"--output-format"/);
+  assert.match(runnerSource, /"stream-json"/);
+  assert.match(runnerSource, /"--model", model/);
+});

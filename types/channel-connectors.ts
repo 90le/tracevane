@@ -19,6 +19,7 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS = [
   "codex",
   "claude-code",
   "opencode",
+  "gemini",
 ] as const satisfies readonly (typeof CHANNEL_CONNECTOR_AGENT_IDS[number])[];
 
 export type ChannelConnectorRuntimeAgentId = typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS[number];
@@ -26,10 +27,10 @@ export type ChannelConnectorRuntimeAgentId = typeof CHANNEL_CONNECTOR_RUNTIME_AG
 export interface ChannelConnectorRuntimeAgentMetadata {
   id: ChannelConnectorRuntimeAgentId;
   label: string;
-  binaryId: "codex" | "claude" | "opencode";
+  binaryId: "codex" | "claude" | "opencode" | "gemini";
   binaryName: string;
   description: string;
-  runnerContract: "codex-app-server" | "claude-code-stream-json" | "opencode-run-session";
+  runnerContract: "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "gemini-prompt-stream-json";
 }
 
 export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
@@ -56,6 +57,14 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
     binaryName: "opencode",
     description: "本地 OpenCode 会话，适合开源 CLI 工作流",
     runnerContract: "opencode-run-session",
+  },
+  gemini: {
+    id: "gemini",
+    label: "Gemini CLI",
+    binaryId: "gemini",
+    binaryName: "gemini",
+    description: "本地 Gemini CLI non-interactive 会话，使用 Gemini CLI 自身认证",
+    runnerContract: "gemini-prompt-stream-json",
   },
 } as const satisfies Record<ChannelConnectorRuntimeAgentId, ChannelConnectorRuntimeAgentMetadata>;
 

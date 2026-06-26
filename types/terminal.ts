@@ -2,11 +2,12 @@ export type TerminalBinaryId =
   | "claude"
   | "codex"
   | "opencode"
+  | "gemini"
   | "clawhub"
   | "skillhub"
   | "bash";
 export type TerminalInstallRequestId = TerminalBinaryId | "all" | "all-missing";
-export type TerminalLaunchCli = "claude" | "codex" | "opencode" | "bash";
+export type TerminalLaunchCli = "claude" | "codex" | "opencode" | "gemini" | "bash";
 export type TerminalProfileKind =
   | "shell"
   | "agent"

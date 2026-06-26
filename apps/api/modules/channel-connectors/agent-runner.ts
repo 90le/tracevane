@@ -1502,6 +1502,32 @@ export function buildChannelConnectorAgentProcessRequest(
     };
   }
 
+
+  if (project.agent === "gemini") {
+    const args = [
+      "-p",
+      content,
+      "--output-format",
+      "stream-json",
+      ...(model ? ["--model", model] : []),
+    ];
+    return {
+      command: "gemini",
+      args,
+      cwd,
+      stdin: "",
+      env: baseEnv,
+      timeoutMs,
+      nativeCommand: nativeCommand || null,
+      cleanupPaths: nativeVisualInputs.cleanupPaths,
+      sessionMode: "new",
+      agentNativeSessionId: null,
+      agent: project.agent,
+      permissionMode: project.permissionMode,
+      resolvePermission: request.resolvePermission,
+    };
+  }
+
   return null;
 }
 
@@ -1588,6 +1614,7 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   const text = errorText
     || normalizeString(raw.text)
     || normalizeString(raw.content)
+    || normalizeString(raw.result)
     || normalizeString(part?.text)
     || normalizeString(part?.content)
     || normalizeString(state?.output)
@@ -1602,7 +1629,7 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   const type: ChannelConnectorAgentProgressEvent["type"] =
     lowered.includes("error") ? "error"
       : lowered.includes("fail") ? "failed"
-        : lowered.includes("complete") || lowered.includes("done") ? "completed"
+        : rawType === "result" || lowered.includes("complete") || lowered.includes("done") ? "completed"
           : lowered.includes("tool") ? "tool"
             : lowered.includes("reason") || lowered.includes("thinking") ? "reasoning"
               : "event";
@@ -2068,7 +2095,7 @@ function createProgressLineParser(agent: ChannelConnectorAgentId): {
   parse: (line: string) => ChannelConnectorAgentProgressEvent[];
   flushFinal: () => ChannelConnectorAgentProgressEvent[];
 } {
-  const bufferAssistantText = agent === "codex" || agent === "claude-code" || agent === "opencode";
+  const bufferAssistantText = agent === "codex" || agent === "claude-code" || agent === "opencode" || agent === "gemini";
   const pendingAssistantText: ChannelConnectorAgentProgressEvent[] = [];
   const pendingToolNamesById = new Map<string, string>();
   const unknownStructuredProgress = new Set<string>();
@@ -2169,7 +2196,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
-    const usesHeartbeatTimeout = request.agent === "codex" || request.agent === "claude-code" || request.agent === "opencode";
+    const usesHeartbeatTimeout = request.agent === "codex" || request.agent === "claude-code" || request.agent === "opencode" || request.agent === "gemini";
     const heartbeatTimeoutMs = typeof request.idleTimeoutMs === "number" && Number.isFinite(request.idleTimeoutMs)
       ? Math.max(0, Math.floor(request.idleTimeoutMs))
       : request.timeoutMs;
