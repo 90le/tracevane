@@ -199,7 +199,6 @@ export function assignChatSessionsToFolder(
 
 const CHAT_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024;
 const CHAT_UPLOAD_DIRECTORY = ".tracevane/chat-uploads";
-const CHAT_UPLOAD_MAX_HASH_BYTES = 512 * 1024 * 1024;
 
 function selectChatUploadRoot(summary: Awaited<ReturnType<typeof getFilesSummary>>) {
   return (
@@ -232,7 +231,7 @@ export async function uploadChatFile(
   }
 
   const relativePath = `${CHAT_UPLOAD_DIRECTORY}/${safePathSegment(sessionKey)}/${safeFileName(file.name)}`;
-  const sha256 = await hashChatUploadFileIfUseful(file, signal);
+  const sha256 = undefined;
   const init = await initFileUpload({
     rootId: root.id,
     directoryPath: "",
@@ -293,23 +292,6 @@ export async function uploadChatFile(
 }
 
 
-async function hashChatUploadFileIfUseful(file: File, signal?: AbortSignal): Promise<string | undefined> {
-  if (!globalThis.crypto?.subtle) return undefined;
-  if (file.size <= 0 || file.size > CHAT_UPLOAD_MAX_HASH_BYTES) return undefined;
-  if (signal?.aborted) throw new DOMException("Upload aborted", "AbortError");
-  try {
-    const buffer = await file.arrayBuffer();
-    if (signal?.aborted) throw new DOMException("Upload aborted", "AbortError");
-    const digest = await globalThis.crypto.subtle.digest("SHA-256", buffer);
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  } catch (error) {
-    if (signal?.aborted) throw new DOMException("Upload aborted", "AbortError");
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
-    return undefined;
-  }
-}
 
 function buildFilesResourceRef(rootId: string, relativePath: string): string {
   const ref = buildTracevaneFilesResourceRef(rootId, relativePath);

@@ -20,8 +20,11 @@ test("chat composer uploads use the shared Files API contract", () => {
   assert.match(chatApi, /initFileUpload\(/);
   assert.match(chatApi, /uploadFileChunk\(/);
   assert.match(chatApi, /completeFileUpload\(/);
-  assert.match(chatApi, /hashChatUploadFileIfUseful\(file, signal\)/);
+  assert.match(chatApi, /const sha256 = undefined/);
   assert.match(chatApi, /sha256,/);
+  assert.doesNotMatch(chatApi, /hashChatUploadFileIfUseful/);
+  assert.doesNotMatch(chatApi, /file\.arrayBuffer\(\)/);
+  assert.doesNotMatch(chatApi, /CHAT_UPLOAD_MAX_HASH_BYTES/);
   assert.match(chatApi, /\/api\/files\/download\?/);
   assert.match(chatApi, /buildTracevaneFilesResourceRef\(rootId, relativePath\)/);
   assert.match(chatApi, /rootId: root\.id/);
@@ -73,7 +76,7 @@ test("chat upload transport passes abort signals through Files preflight and chu
   assert.match(chatApi, /initFileUpload\(\{[\s\S]*?\}, signal\)/);
   assert.match(chatApi, /uploadFileChunk\(init\.uploadId, index, file\.slice\(start, end\), undefined, signal\)/);
   assert.match(chatApi, /completeFileUpload\(\{ uploadId: init\.uploadId \}, signal\)/);
-  assert.match(chatApi, /if \(signal\?\.aborted\) throw new DOMException\("Upload aborted", "AbortError"\)/);
+  assert.doesNotMatch(chatApi, /file\.arrayBuffer\(\)/);
 });
 
 
