@@ -26,7 +26,7 @@ test("chat composer uploads use the shared Files API contract", () => {
   assert.doesNotMatch(chatApi, /sessions\/\$\{encodeSessionKey\(sessionKey\)\}\/upload/);
 });
 
-test("chat workspace picker keeps directory selection on Files browse roots", () => {
+test("chat Files-root picker keeps directory selection on Files browse roots", () => {
   assert.match(chatView, /useFilesSummaryQuery\(/);
   assert.match(chatView, /useFilesBrowseQuery\(/);
   assert.match(chatView, /files:\$\{rootId\}:\$\{filePath\}/);

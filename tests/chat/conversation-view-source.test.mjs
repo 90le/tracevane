@@ -6,12 +6,12 @@ import path from 'node:path';
 const sourcePath = path.join(process.cwd(), 'apps/web/src/features/chat/views/ConversationView.tsx');
 const source = fs.readFileSync(sourcePath, 'utf8');
 
-test('ConversationView exposes a workspace file picker backed by the Files API', () => {
+test('ConversationView exposes a Files-root picker backed by the Files API', () => {
   assert.match(source, /useFilesSummaryQuery/);
   assert.match(source, /useFilesBrowseQuery/);
-  assert.match(source, /workspaceRootId/);
-  assert.match(source, /@ 工作区文件/);
-  assert.match(source, /attachWorkspaceFile/);
+  assert.match(source, /defaultFilesRootId/);
+  assert.match(source, /@ 文件 \/ 工作区/);
+  assert.match(source, /attachFilesRootFile/);
   assert.match(source, /const resourceRef = `files:\$\{rootId\}:\$\{filePath\}`/);
   assert.match(source, /resourceRef,/);
 });
@@ -57,8 +57,8 @@ test('ConversationView clears composer only after send is accepted', () => {
 
 test('ConversationView uses Files roots explicitly and sends Files-root refs safely', () => {
   assert.match(source, /const filesRoots = filesSummary\.data\?\.roots \?\? \[\]/);
-  assert.match(source, /workspacePickerRootId/);
-  assert.match(source, /effectiveWorkspacePickerRootId/);
+  assert.match(source, /filePickerRootId/);
+  assert.match(source, /effectiveFilePickerRootId/);
   assert.match(source, /aria-label="选择文件根"/);
   assert.match(source, /`files:\$\{rootId\}:\$\{filePath\}`/);
   assert.doesNotMatch(source, /`workspace:\$\{filePath\}`/);

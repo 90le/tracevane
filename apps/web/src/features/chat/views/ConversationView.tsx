@@ -401,9 +401,9 @@ export function ConversationView({
   const [draft, setDraft] = React.useState("");
   const [fileRefs, setFileRefs] = React.useState<ComposerFileRefItem[]>([]);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
-  const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false);
-  const [workspacePickerDir, setWorkspacePickerDir] = React.useState("");
-  const [workspacePickerRootId, setWorkspacePickerRootId] = React.useState<string | null>(null);
+  const [filePickerOpen, setFilePickerOpen] = React.useState(false);
+  const [filePickerDir, setFilePickerDir] = React.useState("");
+  const [filePickerRootId, setFilePickerRootId] = React.useState<string | null>(null);
   const [previewFile, setPreviewFile] = React.useState<ComposerFileRefItem | null>(null);
   const [draftLoadedSessionKey, setDraftLoadedSessionKey] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -411,19 +411,19 @@ export function ConversationView({
   const uploadControllersRef = React.useRef(new Map<string, AbortController>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  const filesSummary = useFilesSummaryQuery({ enabled: workspacePickerOpen });
+  const filesSummary = useFilesSummaryQuery({ enabled: filePickerOpen });
   const filesRoots = filesSummary.data?.roots ?? [];
-  const workspaceRootId = React.useMemo(() => {
+  const defaultFilesRootId = React.useMemo(() => {
     const roots = filesSummary.data?.roots ?? [];
     return roots.find((root) => root.id === "project-root")?.id ?? filesSummary.data?.defaultRootId ?? null;
   }, [filesSummary.data]);
-  const effectiveWorkspacePickerRootId = workspacePickerRootId || workspaceRootId;
-  const selectedFilesRoot = filesRoots.find((root) => root.id === effectiveWorkspacePickerRootId) ?? null;
-  const workspaceBrowse = useFilesBrowseQuery(
-    workspacePickerOpen && effectiveWorkspacePickerRootId
+  const effectiveFilePickerRootId = filePickerRootId || defaultFilesRootId;
+  const selectedFilesRoot = filesRoots.find((root) => root.id === effectiveFilePickerRootId) ?? null;
+  const filesBrowse = useFilesBrowseQuery(
+    filePickerOpen && effectiveFilePickerRootId
       ? {
-        rootId: effectiveWorkspacePickerRootId,
-        path: workspacePickerDir,
+        rootId: effectiveFilePickerRootId,
+        path: filePickerDir,
         hidden: false,
         page: 1,
         pageSize: 80,
@@ -452,9 +452,9 @@ export function ConversationView({
       source: item.source ?? "files",
     })));
     setUploadError(null);
-    setWorkspacePickerOpen(false);
-    setWorkspacePickerDir("");
-    setWorkspacePickerRootId(null);
+    setFilePickerOpen(false);
+    setFilePickerDir("");
+    setFilePickerRootId(null);
     setPreviewFile(null);
     setDraftLoadedSessionKey(sessionKey);
     for (const controller of uploadControllersRef.current.values()) {
@@ -476,9 +476,9 @@ export function ConversationView({
   }, [draft, fileRefs, sessionKey, draftLoadedSessionKey]);
 
   React.useEffect(() => {
-    if (!workspacePickerOpen || !workspaceRootId) return;
-    setWorkspacePickerRootId((current) => current || workspaceRootId);
-  }, [workspacePickerOpen, workspaceRootId]);
+    if (!filePickerOpen || !defaultFilesRootId) return;
+    setFilePickerRootId((current) => current || defaultFilesRootId);
+  }, [filePickerOpen, defaultFilesRootId]);
 
   // Keep the transcript pinned to the bottom as content / stream grows.
   React.useEffect(() => {
@@ -513,9 +513,9 @@ export function ConversationView({
     setDraft("");
     setFileRefs([]);
     setUploadError(null);
-    setWorkspacePickerOpen(false);
-    setWorkspacePickerDir("");
-    setWorkspacePickerRootId(null);
+    setFilePickerOpen(false);
+    setFilePickerDir("");
+    setFilePickerRootId(null);
   };
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -605,9 +605,9 @@ export function ConversationView({
   };
 
 
-  const attachWorkspaceFile = (filePath: string, fileName: string) => {
-    const rootId = effectiveWorkspacePickerRootId || "project-root";
-    const isProjectRoot = rootId === workspaceRootId || rootId === "project-root";
+  const attachFilesRootFile = (filePath: string, fileName: string) => {
+    const rootId = effectiveFilePickerRootId || "project-root";
+    const isProjectRoot = rootId === defaultFilesRootId || rootId === "project-root";
     const resourceRef = `files:${rootId}:${filePath}`;
     const previewUrl = buildFilesDownloadUrl(rootId, filePath, false);
     const downloadUrl = buildFilesDownloadUrl(rootId, filePath, true);
@@ -631,7 +631,7 @@ export function ConversationView({
         },
       ];
     });
-    setWorkspacePickerOpen(false);
+    setFilePickerOpen(false);
   };
 
   return (
@@ -823,17 +823,17 @@ export function ConversationView({
             文件上传失败：{uploadError}
           </div>
         )}
-        {workspacePickerOpen && (
+        {filePickerOpen && (
           <div className="mb-2 overflow-hidden rounded-md border border-line bg-panel-2">
             <div className="flex items-center gap-1 border-b border-line px-2.5 py-2 text-xs text-muted">
               <Folder className="size-3.5" />
-              <button type="button" className="font-medium text-ink hover:text-primary" onClick={() => setWorkspacePickerDir("")}>项目文件</button>
+              <button type="button" className="font-medium text-ink hover:text-primary" onClick={() => setFilePickerDir("")}>文件根</button>
               {filesRoots.length > 1 && (
                 <select
-                  value={effectiveWorkspacePickerRootId ?? ""}
+                  value={effectiveFilePickerRootId ?? ""}
                   onChange={(event) => {
-                    setWorkspacePickerRootId(event.target.value || null);
-                    setWorkspacePickerDir("");
+                    setFilePickerRootId(event.target.value || null);
+                    setFilePickerDir("");
                   }}
                   className="ml-1 h-7 max-w-[190px] rounded-xs border border-line bg-panel px-1.5 text-xs text-ink outline-none focus:border-primary-line"
                   aria-label="选择文件根"
@@ -845,40 +845,40 @@ export function ConversationView({
                   ))}
                 </select>
               )}
-              {workspacePickerDir && (
+              {filePickerDir && (
                 <>
                   <ChevronRight className="size-3" />
-                  <span className="truncate">{workspacePickerDir}</span>
+                  <span className="truncate">{filePickerDir}</span>
                 </>
               )}
               <span className="flex-1" />
-              {workspacePickerDir && (
-                <Button variant="ghost" size="sm" onClick={() => setWorkspacePickerDir(parentPortablePath(workspacePickerDir))}>上一级</Button>
+              {filePickerDir && (
+                <Button variant="ghost" size="sm" onClick={() => setFilePickerDir(parentPortablePath(filePickerDir))}>上一级</Button>
               )}
             </div>
-            {selectedFilesRoot && effectiveWorkspacePickerRootId !== workspaceRootId && (
+            {selectedFilesRoot && effectiveFilePickerRootId !== defaultFilesRootId && (
               <div className="border-b border-line bg-panel-3 px-2.5 py-1.5 text-xs text-muted">
                 将以 Files 根引用附加“{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}”下的文件；后端会在发送时解析为本机安全路径。
               </div>
             )}
             <div className="max-h-56 overflow-auto p-1.5">
-              {filesSummary.isLoading || workspaceBrowse.isLoading ? (
+              {filesSummary.isLoading || filesBrowse.isLoading ? (
                 <div className="grid gap-2 p-2"><SkeletonRow /><SkeletonRow /></div>
-              ) : filesSummary.error || workspaceBrowse.error ? (
-                <div className="p-2 text-sm text-red">文件列表加载失败：{(filesSummary.error || workspaceBrowse.error)?.message}</div>
-              ) : !workspaceBrowse.data?.entries.length ? (
+              ) : filesSummary.error || filesBrowse.error ? (
+                <div className="p-2 text-sm text-red">文件列表加载失败：{(filesSummary.error || filesBrowse.error)?.message}</div>
+              ) : !filesBrowse.data?.entries.length ? (
                 <div className="p-2 text-sm text-muted">当前目录没有可附加的文件。</div>
               ) : (
                 <div className="grid gap-1">
-                  {workspaceBrowse.data.entries.map((entry) => {
-                    const nextPath = entry.path || joinPortablePath(workspacePickerDir, entry.name);
+                  {filesBrowse.data.entries.map((entry) => {
+                    const nextPath = entry.path || joinPortablePath(filePickerDir, entry.name);
                     if (entry.kind === "directory") {
                       return (
                         <button
                           key={`dir:${nextPath}`}
                           type="button"
                           className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink hover:bg-panel-3"
-                          onClick={() => setWorkspacePickerDir(nextPath)}
+                          onClick={() => setFilePickerDir(nextPath)}
                         >
                           <Folder className="size-4 shrink-0 text-muted" />
                           <span className="truncate">{entry.name}</span>
@@ -891,7 +891,7 @@ export function ConversationView({
                         type="button"
                         title="附加到当前 Agent 消息"
                         className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink hover:bg-primary-soft"
-                        onClick={() => attachWorkspaceFile(nextPath, entry.name)}
+                        onClick={() => attachFilesRootFile(nextPath, entry.name)}
                       >
                         <FileText className="size-4 shrink-0 text-muted" />
                         <span className="truncate">{entry.name}</span>
@@ -939,10 +939,10 @@ export function ConversationView({
             {uploading ? "上传中…" : "上传文件"}
           </Button>
           <Button
-            variant={workspacePickerOpen ? "outline" : "ghost"}
+            variant={filePickerOpen ? "outline" : "ghost"}
             size="sm"
             disabled={!sessionKey || !canSend}
-            onClick={() => setWorkspacePickerOpen((open) => !open)}
+            onClick={() => setFilePickerOpen((open) => !open)}
           >
             <FileText />
             @ 文件 / 工作区
