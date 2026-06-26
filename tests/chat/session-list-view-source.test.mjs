@@ -185,3 +185,13 @@ test('SessionListView offers Files-root work directory presets for CLI runtime t
   assert.match(source, /setRuntimeWorkDir\(root\.path\)/);
   assert.match(source, /默认 ·/);
 });
+
+test('SessionListView sends exactly one runtimeTarget permissionMode when creating sessions', () => {
+  const start = source.indexOf('const runCreate = () => {');
+  const end = source.indexOf('const runPatch = (', start);
+  const runCreateBody = start >= 0 && end > start ? source.slice(start, end) : '';
+  assert.match(runCreateBody, /runtimeTarget: \{/);
+  assert.equal((runCreateBody.match(/permissionMode: runtimePermissionMode \|\| null/g) || []).length, 1);
+  assert.match(runCreateBody, /adapterKind: option\.adapterKind/);
+  assert.match(runCreateBody, /agent: option\.agent/);
+});
