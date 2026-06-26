@@ -62,7 +62,7 @@ import type {
   LiveAssistantTurn,
 } from "../types";
 import { roleLabel, toolStatusTone } from "../_shared";
-import "../../workspace/preview/markdown-preview.css";
+import "./chat-message-markdown.css";
 
 function joinPortablePath(parent: string, name: string): string {
   const left = parent.trim().replace(/^\/+|\/+$/g, "");
@@ -152,7 +152,7 @@ function ChatMarkdownContent({ source, streaming = false }: { source: string; st
   return (
     <article
       ref={articleRef as React.RefObject<HTMLElement>}
-      className="md-preview__article chat-message-markdown min-w-0 max-w-none overflow-x-auto p-0 text-[0.95rem] leading-7"
+      className="chat-message-markdown min-w-0 max-w-none overflow-x-auto p-0 text-[0.95rem] leading-7"
       dangerouslySetInnerHTML={{ __html: html || "<p></p>" }}
     />
   );

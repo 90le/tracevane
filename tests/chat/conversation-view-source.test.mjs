@@ -167,6 +167,9 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /DOMPurify\.sanitize/);
   assert.match(source, /hljs\.highlightElement/);
   assert.match(source, /dangerouslySetInnerHTML/);
+  assert.match(source, /import "\.\/chat-message-markdown\.css"/);
+  assert.doesNotMatch(source, /workspace\/preview\/markdown-preview\.css/);
+  assert.doesNotMatch(source, /md-preview__article/);
   assert.match(source, /<ChatMarkdownContent source=\{block\.markdownSource\} \/>/);
   assert.match(source, /<ChatMarkdownContent source=\{turn\.text\} streaming=\{!turn\.done\} \/>/);
   assert.match(source, /function ToolPreviewBlock/);
