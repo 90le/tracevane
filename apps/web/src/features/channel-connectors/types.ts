@@ -11,6 +11,8 @@ export type {
   // Enums / unions
   ChannelConnectorsPhase,
   ChannelConnectorAgentId,
+  ChannelConnectorRuntimeAgentId,
+  ChannelConnectorRuntimeAgentMetadata,
   ChannelConnectorPlatformId,
   ChannelConnectorPermissionMode,
   ChannelConnectorBusyStrategy,
@@ -71,5 +73,6 @@ export {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
   CHANNEL_CONNECTOR_AGENT_IDS,
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA,
   CHANNEL_CONNECTOR_PLATFORM_IDS,
 } from "../../../../../types/channel-connectors";

@@ -61,6 +61,7 @@ import type { ApiError } from "@/lib/api/errors";
 import {
   CHANNEL_CONNECTOR_AGENT_IDS,
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA,
 } from "../../../../../../types/channel-connectors";
 import type { TerminalBinaryStatus } from "../../cli-agents/types";
 import type {
@@ -164,18 +165,6 @@ type FolderOption = {
 const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli";
 const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
 
-type NativeRuntimeAgentOptionDetail = {
-  binaryId: TerminalBinaryStatus["id"];
-  label: string;
-  description: string;
-};
-
-const NATIVE_RUNTIME_AGENT_OPTION_DETAILS = {
-  codex: { binaryId: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
-  "claude-code": { binaryId: "claude", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
-  opencode: { binaryId: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
-} as const satisfies Partial<Record<(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number], NativeRuntimeAgentOptionDetail>>;
-
 function titleCaseAgentName(value: string): string {
   return value
     .split(/[._-]+/)
@@ -185,17 +174,13 @@ function titleCaseAgentName(value: string): string {
 }
 
 function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number]): ChatRuntimeAgentOption {
-  const known = NATIVE_RUNTIME_AGENT_OPTION_DETAILS[agent];
-  if (known) {
-    return { adapterKind: "native-cli", agent, ...known };
-  }
-  const label = `${titleCaseAgentName(agent)} CLI`;
+  const metadata = CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA[agent];
   return {
     adapterKind: "native-cli",
     agent,
-    binaryId: agent,
-    label,
-    description: `${label} 会话，使用模型网关与当前工作区`,
+    binaryId: metadata.binaryId as TerminalBinaryStatus["id"],
+    label: metadata.label,
+    description: metadata.description,
   };
 }
 

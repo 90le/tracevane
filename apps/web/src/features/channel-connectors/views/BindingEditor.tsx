@@ -28,7 +28,7 @@ import type {
   ChannelConnectorAgentId,
   ChannelConnectorPermissionMode,
 } from "../types";
-import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from "../types";
+import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS, CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA } from "../types";
 
 type EditorMode = "create" | "edit";
 
@@ -1056,7 +1056,7 @@ export function RouteEditor({
               >
                 {CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => (
                   <option key={agent} value={agent}>
-                    {agent}
+                    {CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA[agent].label} · {agent}
                   </option>
                 ))}
               </SelectField>

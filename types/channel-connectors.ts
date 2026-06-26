@@ -21,6 +21,45 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS = [
   "opencode",
 ] as const satisfies readonly (typeof CHANNEL_CONNECTOR_AGENT_IDS[number])[];
 
+export type ChannelConnectorRuntimeAgentId = typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS[number];
+
+export interface ChannelConnectorRuntimeAgentMetadata {
+  id: ChannelConnectorRuntimeAgentId;
+  label: string;
+  binaryId: "codex" | "claude" | "opencode";
+  binaryName: string;
+  description: string;
+  runnerContract: "codex-app-server" | "claude-code-stream-json" | "opencode-run-session";
+}
+
+export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
+  codex: {
+    id: "codex",
+    label: "Codex CLI",
+    binaryId: "codex",
+    binaryName: "codex",
+    description: "本地 Codex 会话，使用模型网关与当前工作区",
+    runnerContract: "codex-app-server",
+  },
+  "claude-code": {
+    id: "claude-code",
+    label: "Claude Code",
+    binaryId: "claude",
+    binaryName: "claude",
+    description: "本地 Claude Code 会话，适合代码库任务",
+    runnerContract: "claude-code-stream-json",
+  },
+  opencode: {
+    id: "opencode",
+    label: "OpenCode",
+    binaryId: "opencode",
+    binaryName: "opencode",
+    description: "本地 OpenCode 会话，适合开源 CLI 工作流",
+    runnerContract: "opencode-run-session",
+  },
+} as const satisfies Record<ChannelConnectorRuntimeAgentId, ChannelConnectorRuntimeAgentMetadata>;
+
+
 export const CHANNEL_CONNECTOR_PLATFORM_IDS = [
   "octo",
   "feishu",

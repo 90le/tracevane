@@ -30,8 +30,8 @@ test('SessionListView defaults new sessions to native CLI Codex instead of OpenC
   assert.match(source, /const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli"/);
   assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
   assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map\(nativeRuntimeAgentOption\)/);
-  assert.match(source, /Partial<Record<\(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\)\[number\], NativeRuntimeAgentOptionDetail>>/);
-  assert.match(source, /codex: \{ binaryId: "codex", label: "Codex CLI"/);
+  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA/);
+  assert.match(source, /const metadata = CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA\[agent\]/);
   assert.match(source, /const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = \{/);
   assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
   assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
@@ -53,20 +53,18 @@ test('SessionListView builds OpenClaw runtime target choices from platform agent
 test('SessionListView surfaces CLI binary readiness in runtime target choices', () => {
   assert.match(source, /useTerminalStatusQuery\(\{ staleTime: 30_000, retry: false \}\)/);
   assert.match(source, /function nativeRuntimeAgentOption/);
-  assert.match(source, /binaryId: agent/);
-  assert.match(source, /codex: \{ binaryId: "codex"/);
-  assert.match(source, /"claude-code": \{ binaryId: "claude"/);
-  assert.match(source, /opencode: \{ binaryId: "opencode"/);
+  assert.match(source, /binaryId: metadata\.binaryId as TerminalBinaryStatus\["id"\]/);
+  assert.match(source, /label: metadata\.label/);
+  assert.match(source, /description: metadata\.description/);
   assert.match(source, /模型列表加载失败，将使用模型网关默认路由/);
 });
 
 
-test('SessionListView provides generic metadata for newly shared native CLI runtimes', () => {
-  assert.match(source, /function titleCaseAgentName/);
-  assert.match(source, /const known = NATIVE_RUNTIME_AGENT_OPTION_DETAILS\[agent\]/);
-  assert.match(source, /if \(known\) \{/);
-  assert.match(source, /const label = `\$\{titleCaseAgentName\(agent\)\} CLI`/);
-  assert.match(source, /description: `\$\{label\} 会话，使用模型网关与当前工作区`/);
+test('SessionListView takes runnable native CLI display metadata from the shared connector contract', () => {
+  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA/);
+  assert.match(source, /const metadata = CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA\[agent\]/);
+  assert.doesNotMatch(source, /NATIVE_RUNTIME_AGENT_OPTION_DETAILS/);
+  assert.doesNotMatch(source, /NativeRuntimeAgentOptionDetail/);
 });
 
 test('SessionListView discloses registered but unwired CLI agents without making them selectable', () => {
