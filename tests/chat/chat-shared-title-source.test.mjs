@@ -4,9 +4,9 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../../apps/web/src/features/chat/_shared.ts', import.meta.url), 'utf8');
 
-test('legacy webchat session keys are presented as compatible Agent Chat sessions', () => {
-  assert.doesNotMatch(source, /旧 Web 会话|WebChat/, 'Chat UI must not expose old WebChat wording as the primary session title');
-  assert.match(source, /surface === "webchat"\) return `\$\{agent\} · Agent 会话（兼容）`/);
+test('legacy webchat session keys are presented as unified Agent Chat sessions', () => {
+  assert.doesNotMatch(source, /旧 Web 会话|WebChat|历史兼容|兼容会话|Agent 会话（兼容）/, 'Chat UI must not expose old WebChat or compatibility wording as the primary session title');
+  assert.match(source, /surface === "webchat"\) return `\$\{agent\} · Agent 会话`/);
 });
 
 test('Chat shared labels do not expose raw unknown state or raw source fields', () => {
@@ -23,8 +23,8 @@ test('Chat shared labels do not expose raw unknown state or raw source fields', 
 
 test('Tracevane managed source label hides raw origin and legacy webchat channel', () => {
   assert.match(source, /session\.kind === "tracevane_managed"/);
-  assert.match(source, /Tracevane Agent 会话/);
-  assert.match(source, /Tracevane Agent 会话（历史兼容）/);
+  assert.match(source, /return "Tracevane Agent 会话"/);
+  assert.doesNotMatch(source, /Tracevane Agent 会话（历史兼容）/);
   assert.match(source, /const origin = session\.source\?\.originLabel\?\.trim\(\)/);
   assert.ok(
     source.indexOf('session.kind === "tracevane_managed"') < source.indexOf('const origin = session.source?.originLabel?.trim()'),

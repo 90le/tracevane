@@ -84,7 +84,7 @@ function readableRawToken(value: string | null | undefined): string | null {
     case "agent-chat":
       return "网页";
     case "webchat":
-      return "兼容会话";
+      return "Agent 会话";
     case "dashboard":
       return "总览";
     case "tracevane":
@@ -123,9 +123,7 @@ export function runtimeAgentLabel(session: Pick<ChatSessionRow, "agentId" | "run
 export function sessionSourceLabel(session: Pick<ChatSessionRow, "source" | "runtimeTarget" | "kind"> | null | undefined): string {
   if (!session) return "Tracevane";
   if (session.kind === "tracevane_managed") {
-    return session.source?.channel === "webchat"
-      ? "Tracevane Agent 会话（历史兼容）"
-      : "Tracevane Agent 会话";
+    return "Tracevane Agent 会话";
   }
 
   const origin = session.source?.originLabel?.trim();
@@ -188,7 +186,7 @@ function titleFromRawAgentKey(value: string): string | null {
   const agent = parts[1] || "Agent";
   const surface = parts[2] || "会话";
   if (surface === "agent-chat") return `${agent} · Agent 会话`;
-  if (surface === "webchat") return `${agent} · Agent 会话（兼容）`;
+  if (surface === "webchat") return `${agent} · Agent 会话`;
   if (surface === "dashboard") return `${agent} · 总览触发`;
   if (surface === "main") return `${agent} · 默认会话`;
   return `${agent} · ${surface}`;
