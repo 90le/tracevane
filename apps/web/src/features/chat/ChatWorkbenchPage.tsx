@@ -37,6 +37,7 @@ import type {
   ChatSendRequest,
   ChatStreamEvent,
   ChatPermissionRequestCard,
+  ChatRunOverlay,
   ChatToolCard,
   LiveAssistantTurn,
 } from "./types";
@@ -86,6 +87,51 @@ function isTerminalRuntimeState(state: string | null | undefined): boolean {
 
 function isActiveRuntimeState(state: string | null | undefined): boolean {
   return state === "running" || state === "streaming";
+}
+
+function isTerminalRunOverlay(overlay: ChatRunOverlay): boolean {
+  return overlay.lifecycle === "completed" || overlay.lifecycle === "aborted" || overlay.lifecycle === "error";
+}
+
+function mergeLiveText(current: string, incoming: string): string {
+  if (!incoming) return current;
+  if (!current) return incoming;
+  if (incoming.startsWith(current)) return incoming;
+  if (current.startsWith(incoming)) return current;
+  return incoming.length >= current.length ? incoming : current;
+}
+
+function mergeToolCardsFromOverlay(
+  current: ChatToolCard[],
+  overlayTools: ChatRunOverlay["toolCalls"],
+): ChatToolCard[] {
+  if (!overlayTools.length) return current;
+  const byId = new Map<string, ChatToolCard>();
+  for (const tool of current) {
+    byId.set(tool.toolCallId, tool);
+  }
+  for (const tool of overlayTools) {
+    byId.set(tool.toolCallId, { ...tool });
+  }
+  return [...byId.values()];
+}
+
+function mergeLiveTurnFromOverlay(
+  current: LiveAssistantTurn | null,
+  overlay: ChatRunOverlay,
+  terminal: boolean,
+): LiveAssistantTurn {
+  const base = current ?? EMPTY_TURN;
+  const done = terminal || isTerminalRunOverlay(overlay);
+  return {
+    ...base,
+    runId: overlay.runId || base.runId,
+    text: mergeLiveText(base.text, overlay.previewText || ""),
+    toolCards: mergeToolCardsFromOverlay(base.toolCards, overlay.toolCalls),
+    done,
+    aborted: base.aborted || overlay.lifecycle === "aborted",
+    error: base.error || (overlay.lifecycle === "error" ? "Agent 运行失败" : null),
+  };
 }
 
 /**
@@ -151,6 +197,13 @@ export function ChatWorkbenchPage() {
   const selectedRuntimeActive = Boolean(
     selectedActiveRunId && isActiveRuntimeState(runtime?.state),
   );
+  const selectedActiveOverlay = React.useMemo(
+    () =>
+      selectedActiveRunId
+        ? overlays.find((overlay) => overlay.runId === selectedActiveRunId) ?? null
+        : null,
+    [overlays, selectedActiveRunId],
+  );
 
   // --- Live streaming state -------------------------------------------------
   const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(
@@ -183,7 +236,11 @@ export function ChatWorkbenchPage() {
     if (selectedRuntimeActive && selectedActiveRunId) {
       activeRunIdRef.current = selectedActiveRunId;
       setStreamEnabled(true);
-      setLiveTurn({ ...EMPTY_TURN, runId: selectedActiveRunId });
+      setLiveTurn(
+        selectedActiveOverlay
+          ? mergeLiveTurnFromOverlay(null, selectedActiveOverlay, false)
+          : { ...EMPTY_TURN, runId: selectedActiveRunId },
+      );
       return;
     }
     if (!selectedActiveRunId) {
@@ -191,7 +248,7 @@ export function ChatWorkbenchPage() {
       setStreamEnabled(false);
       setLiveTurn(null);
     }
-  }, [selectedActiveRunId, selectedKey, selectedRuntimeActive]);
+  }, [selectedActiveOverlay, selectedActiveRunId, selectedKey, selectedRuntimeActive]);
 
   const handleStreamEvent = React.useCallback(
     (event: ChatStreamEvent) => {
@@ -275,6 +332,17 @@ export function ChatWorkbenchPage() {
               : [...base.processBlocks, event.block].slice(-8);
             return { ...base, runId: runId ?? base.runId, processBlocks };
           });
+          break;
+        }
+        case "run_overlay": {
+          if (activeRun && runId && runId !== activeRun) return;
+          setLiveTurn((prev) => mergeLiveTurnFromOverlay(prev, event.overlay, event.terminal));
+          if (event.terminal) {
+            setStreamEnabled(false);
+            activeRunIdRef.current = null;
+            refetchSelected();
+            window.setTimeout(() => setLiveTurn(null), 400);
+          }
           break;
         }
         case "side_result": {
