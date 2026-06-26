@@ -56,7 +56,13 @@ export type {
   ChatUsageSummary,
 } from "../../../../../types/chat";
 
-import type { ChatMessageItem, ChatToolCard } from "../../../../../types/chat";
+import type {
+  ChatMessageItem,
+  ChatPermissionRequestCard,
+  ChatProcessBlock,
+  ChatSideResult,
+  ChatToolCard,
+} from "../../../../../types/chat";
 
 // ---------------------------------------------------------------------------
 // Derived view-model tones (mirrors the established feature tone vocabulary)

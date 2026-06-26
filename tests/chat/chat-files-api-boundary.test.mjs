@@ -25,6 +25,8 @@ test("chat composer uploads use the shared Files API contract", () => {
   assert.match(chatApi, /\/api\/files\/download\?/);
   assert.match(chatApi, /buildTracevaneFilesResourceRef\(rootId, relativePath\)/);
   assert.match(chatApi, /rootId: root\.id/);
+  assert.match(chatApi, /resourceRef,\s*fileName: file\.name/);
+  assert.match(chatApi, /originalPath: resourceRef/);
   assert.doesNotMatch(chatApi, /new FormData\(/);
   assert.doesNotMatch(chatApi, /sessions\/\$\{encodeSessionKey\(sessionKey\)\}\/upload/);
 });

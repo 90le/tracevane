@@ -275,6 +275,7 @@ export async function uploadChatFile(
       kind,
       url: previewUrl,
       downloadUrl,
+      resourceRef,
       fileName: file.name || targetPath.split("/").pop() || "attachment",
       mimeType: file.type || null,
       relativePath: targetPath,
