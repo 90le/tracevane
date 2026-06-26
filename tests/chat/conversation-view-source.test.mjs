@@ -173,8 +173,23 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /<ChatMarkdownContent source=\{block\.markdownSource\} \/>/);
   assert.match(source, /<ChatMarkdownContent source=\{turn\.text\} streaming=\{!turn\.done\} \/>/);
   assert.match(source, /function ToolPreviewBlock/);
+  assert.match(source, /function isJsonPreview/);
+  assert.match(source, /render\?: "code" \| "markdown"/);
+  assert.match(source, /<ChatMarkdownContent source=\{value\} \/>/);
+  assert.match(source, /function ToolArtifactsBlock/);
+  assert.match(source, /工具产物 · \{artifacts\.length\}/);
   assert.match(source, /prettyPreview/);
   assert.match(source, /工具正在执行，结果会流式更新/);
   assert.match(source, /label="输入参数"/);
   assert.match(source, /label=\{tool\.isError \? "错误输出" : "执行结果"\}/);
+});
+
+test('ConversationView renders process and side-result blocks as readable chat workbench elements', () => {
+  assert.match(source, /function ProcessBlockView/);
+  assert.match(source, /推理摘要/);
+  assert.match(source, /<ChatMarkdownContent source=\{block\.text\} \/>/);
+  assert.match(source, /function SideResultBlock/);
+  assert.match(source, /旁路回复 · \{result\.question\}/);
+  assert.match(source, /<ChatMarkdownContent source=\{result\.text\} \/>/);
+  assert.match(source, /turn\.sideResults\.map/);
 });

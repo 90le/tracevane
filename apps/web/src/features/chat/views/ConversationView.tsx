@@ -52,12 +52,14 @@ import type {
   ChatMessageItem,
   ChatMessageToolCallItem,
   ChatPermissionRequestCard,
+  ChatProcessBlock,
   ChatFileCapability,
   ChatFileUploadResponse,
   ChatResourceItem,
   ChatSendFileRef,
   ChatSendRequest,
   ChatSessionPermissions,
+  ChatSideResult,
   ChatToolCard,
   LiveAssistantTurn,
 } from "../types";
@@ -178,7 +180,32 @@ function prettyPreview(value: string): string {
   }
 }
 
-function ToolPreviewBlock({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "error" }) {
+function isJsonPreview(value: string): boolean {
+  const trimmed = value.trim();
+  if (!((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]")))) {
+    return false;
+  }
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ToolPreviewBlock({
+  label,
+  value,
+  tone = "neutral",
+  render = "code",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "error";
+  render?: "code" | "markdown";
+}) {
+  const jsonLike = isJsonPreview(value);
+  const shouldRenderMarkdown = render === "markdown" && !jsonLike;
   return (
     <details className="group rounded-sm border border-line/80 bg-panel/70" open={tone === "error"}>
       <summary className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-subtle marker:hidden">
@@ -186,14 +213,25 @@ function ToolPreviewBlock({ label, value, tone = "neutral" }: { label: string; v
         <span>{label}</span>
         <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-muted">{previewLabel(value)}</span>
       </summary>
-      <code
-        className={cn(
-          "block max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-line px-3 py-2 font-mono text-xs leading-5",
-          tone === "error" ? "bg-red-soft text-red" : "bg-panel-3/70 text-muted",
-        )}
-      >
-        {prettyPreview(value)}
-      </code>
+      {shouldRenderMarkdown ? (
+        <div
+          className={cn(
+            "max-h-72 overflow-auto border-t border-line px-3 py-2",
+            tone === "error" ? "bg-red-soft/55 text-red" : "bg-panel-3/55 text-ink",
+          )}
+        >
+          <ChatMarkdownContent source={value} />
+        </div>
+      ) : (
+        <code
+          className={cn(
+            "block max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-line px-3 py-2 font-mono text-xs leading-5",
+            tone === "error" ? "bg-red-soft text-red" : "bg-panel-3/70 text-muted",
+          )}
+        >
+          {prettyPreview(value)}
+        </code>
+      )}
     </details>
   );
 }
@@ -444,8 +482,32 @@ function ToolCallBlock({
           </div>
         </div>
       </div>
-      {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} />}
-      {tool.resultPreview && <ToolPreviewBlock label={tool.isError ? "错误输出" : "执行结果"} value={tool.resultPreview} tone={tool.isError ? "error" : "neutral"} />}
+      {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
+      {tool.resultPreview && (
+        <ToolPreviewBlock
+          label={tool.isError ? "错误输出" : "执行结果"}
+          value={tool.resultPreview}
+          tone={tool.isError ? "error" : "neutral"}
+          render="markdown"
+        />
+      )}
+      {tool.artifacts && tool.artifacts.length > 0 && <ToolArtifactsBlock artifacts={tool.artifacts} />}
+    </div>
+  );
+}
+
+function ToolArtifactsBlock({ artifacts }: { artifacts: NonNullable<(ChatMessageToolCallItem | ChatToolCard)["artifacts"]> }) {
+  return (
+    <div className="grid gap-1.5 rounded-sm border border-line/80 bg-panel/70 px-2.5 py-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-subtle">
+        <Paperclip className="size-3.5" />
+        工具产物 · {artifacts.length}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {artifacts.map((artifact) => (
+          <ResourceChip key={artifact.id} resource={artifact} display="inline-chip" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -607,6 +669,40 @@ function DisplayBlockView({
   );
 }
 
+function SideResultBlock({ result }: { result: ChatSideResult }) {
+  return (
+    <div
+      className={cn(
+        "grid gap-1.5 rounded-sm border px-3 py-2 text-sm",
+        result.isError ? "border-red/40 bg-red-soft/50 text-red" : "border-primary-line bg-primary-soft/30 text-ink",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-subtle">
+        <MessagesSquare className="size-3.5 shrink-0" />
+        <span className="truncate">旁路回复 · {result.question}</span>
+      </div>
+      <ChatMarkdownContent source={result.text} />
+    </div>
+  );
+}
+
+function ProcessBlockView({ block }: { block: ChatProcessBlock }) {
+  const title = block.kind === "thinking" ? "思考过程" : "推理摘要";
+  return (
+    <details className="group rounded-sm border border-dashed border-line bg-panel-2 px-2.5 py-1.5 text-sm text-muted">
+      <summary className="flex cursor-pointer select-none items-center gap-2 text-xs text-subtle marker:hidden">
+        <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+        <span>{title}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px]">{previewLabel(block.text)}</span>
+        <span className="rounded-full bg-panel px-1.5 py-0.5 text-[10px] text-muted">{block.text.length} 字</span>
+      </summary>
+      <div className="mt-2 max-h-72 overflow-auto border-t border-line/70 pt-2 text-ink">
+        <ChatMarkdownContent source={block.text} />
+      </div>
+    </details>
+  );
+}
+
 function MessageBubble({
   message,
   onPreviewResource,
@@ -632,17 +728,7 @@ function MessageBubble({
       {processBlocks.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1">
           {processBlocks.map((block) => (
-            <details
-              key={block.id}
-              className="rounded-sm border border-dashed border-line bg-panel-2 px-2.5 py-1.5 text-sm text-muted"
-            >
-              <summary className="cursor-pointer select-none text-xs text-subtle">
-                {block.kind === "thinking" ? "思考过程" : "推理"}
-              </summary>
-              <div className="mt-1 whitespace-pre-wrap break-words">
-                {block.text}
-              </div>
-            </details>
+            <ProcessBlockView key={block.id} block={block} />
           ))}
         </div>
       )}
@@ -725,6 +811,13 @@ function LiveTurn({
           <span className="ml-0.5 animate-pulse">▋</span>
         )}
       </div>
+      {turn.sideResults.length > 0 && (
+        <div className="grid w-full max-w-[80%] gap-1.5">
+          {turn.sideResults.map((result, index) => (
+            <SideResultBlock key={`${result.kind}:${index}:${result.question}`} result={result} />
+          ))}
+        </div>
+      )}
       {turn.permissions.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1.5">
           {turn.permissions.map((permission) => (

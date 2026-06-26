@@ -71,6 +71,7 @@ const EMPTY_TURN: LiveAssistantTurn = {
   text: "",
   toolCards: [],
   permissions: [],
+  sideResults: [],
   done: false,
   error: null,
   aborted: false,
@@ -232,6 +233,15 @@ export function ChatWorkbenchPage() {
           break;
         }
 
+        case "side_result": {
+          if (activeRun && runId && runId !== activeRun) return;
+          setLiveTurn((prev) => {
+            const base = prev ?? EMPTY_TURN;
+            const next = [...base.sideResults, event.result].slice(-5);
+            return { ...base, runId: runId ?? base.runId, sideResults: next };
+          });
+          break;
+        }
         case "agent_permission": {
           if (activeRun && runId && runId !== activeRun) return;
           const permission = event.permission as ChatPermissionRequestCard;

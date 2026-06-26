@@ -44,6 +44,7 @@ export type {
   ChatSendAck,
   ChatSendFileRef,
   ChatSendRequest,
+  ChatSideResult,
   ChatSessionFolder,
   ChatSessionFolderMove,
   ChatSessionOrganizerState,
@@ -81,6 +82,8 @@ export interface LiveAssistantTurn {
   toolCards: ChatToolCard[];
   /** Pending/settled approval cards emitted by native CLI runners. */
   permissions: ChatPermissionRequestCard[];
+  /** Side-channel answers such as BTW/background results that should not be persisted as assistant transcript messages. */
+  sideResults: ChatSideResult[];
   /** Whether the run has reached a terminal state on the stream. */
   done: boolean;
   /** Set when the stream reported an error for this turn. */

@@ -67,3 +67,11 @@ test('ChatWorkbenchPage routes native permission events into live turns and reso
   assert.match(source, /onResolvePermission=\{handleResolvePermission\}/);
   assert.match(source, /resolvingPermission=\{resolvePermissionMutation\.isPending\}/);
 });
+
+
+test('ChatWorkbenchPage keeps side-result events in the live turn instead of losing process replies', () => {
+  assert.match(source, /sideResults: \[\]/);
+  assert.match(source, /case "side_result"/);
+  assert.match(source, /\.\.\.base\.sideResults, event\.result/);
+  assert.match(source, /slice\(-5\)/);
+});
