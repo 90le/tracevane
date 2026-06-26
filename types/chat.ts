@@ -349,6 +349,26 @@ export interface ChatRunOverlay {
   sequence: number;
 }
 
+export interface ChatRuntimeCapability {
+  adapterKind: ChatRuntimeAdapterKind;
+  agent: ChatRuntimeAgentId;
+  label: string;
+  binaryId: string | null;
+  binaryName: string | null;
+  runnerContract: string;
+  status: 'runnable' | 'registered_pending';
+  description: string;
+}
+
+export interface ChatFileCapability {
+  browseEndpoint: '/api/files/browse';
+  uploadEndpoint: '/api/files/uploads/*';
+  readEndpoint: '/api/files/read';
+  downloadEndpoint: '/api/files/download';
+  resourceRef: 'files:<rootId>:<path>';
+  legacyRefsReadOnly: readonly string[];
+}
+
 export interface ChatDiagnostics {
   gatewayReachable: boolean;
   gatewayWsUrl: string;
@@ -359,6 +379,8 @@ export interface ChatDiagnostics {
   sameOriginRequired: boolean;
   historyTruncated: boolean;
   truncationMode: 'none' | 'tail_marked' | 'omitted_placeholder';
+  runtimeCapabilities: ChatRuntimeCapability[];
+  fileCapability: ChatFileCapability;
   notes: string[];
 }
 

@@ -309,6 +309,24 @@ test('chat health treats an online gateway as usable even when the system servic
     assert.equal(health.gatewayReachable, true);
     assert.equal(Object.prototype.hasOwnProperty.call(health, 'serviceState'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(health, 'serviceSubState'), false);
+    assert.deepEqual(
+      health.runtimeCapabilities
+        .filter((capability) => capability.status === 'runnable' && capability.adapterKind === 'native-cli')
+        .map((capability) => [capability.agent, capability.binaryId, capability.runnerContract]),
+      [
+        ['codex', 'codex', 'codex-app-server'],
+        ['claude-code', 'claude', 'claude-code-stream-json'],
+        ['opencode', 'opencode', 'opencode-run-session'],
+      ],
+    );
+    assert.deepEqual(health.fileCapability, {
+      browseEndpoint: '/api/files/browse',
+      uploadEndpoint: '/api/files/uploads/*',
+      readEndpoint: '/api/files/read',
+      downloadEndpoint: '/api/files/download',
+      resourceRef: 'files:<rootId>:<path>',
+      legacyRefsReadOnly: ['workspace:', 'uploads:'],
+    });
 
     const bootstrap = await context.services.chat.getBootstrap({
       recentLimit: 5,

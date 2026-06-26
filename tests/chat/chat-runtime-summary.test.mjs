@@ -41,6 +41,15 @@ test("buildChatDiagnosticsSummary flags truncation and gateway reachability issu
     sameOriginRequired: true,
     historyTruncated: false,
     truncationMode: "none",
+    runtimeCapabilities: [],
+    fileCapability: {
+      browseEndpoint: "/api/files/browse",
+      uploadEndpoint: "/api/files/uploads/*",
+      readEndpoint: "/api/files/read",
+      downloadEndpoint: "/api/files/download",
+      resourceRef: "files:<rootId>:<path>",
+      legacyRefsReadOnly: ["workspace:", "uploads:"],
+    },
     notes: ["ok"],
   });
   assert.equal(healthy.hasIssues, false);
@@ -56,6 +65,15 @@ test("buildChatDiagnosticsSummary flags truncation and gateway reachability issu
     sameOriginRequired: true,
     historyTruncated: true,
     truncationMode: "tail_marked",
+    runtimeCapabilities: [],
+    fileCapability: {
+      browseEndpoint: "/api/files/browse",
+      uploadEndpoint: "/api/files/uploads/*",
+      readEndpoint: "/api/files/read",
+      downloadEndpoint: "/api/files/download",
+      resourceRef: "files:<rootId>:<path>",
+      legacyRefsReadOnly: ["workspace:", "uploads:"],
+    },
     notes: ["gateway down", "truncated"],
   });
 

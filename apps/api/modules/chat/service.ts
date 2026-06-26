@@ -6,6 +6,11 @@ import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
+import {
+  CHANNEL_CONNECTOR_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA,
+} from '../../../../types/channel-connectors.js';
 import type {
   ChatAbortResponse,
   ChatGatewayAckResponse,
@@ -733,6 +738,59 @@ function isGatewayHistoryBehindInMemory(
 }
 
 
+function buildChatRuntimeCapabilities(): ChatDiagnostics['runtimeCapabilities'] {
+  const runnable = CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => {
+    const metadata = CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA[agent];
+    return {
+      adapterKind: 'native-cli' as const,
+      agent,
+      label: metadata.label,
+      binaryId: metadata.binaryId,
+      binaryName: metadata.binaryName,
+      runnerContract: metadata.runnerContract,
+      status: 'runnable' as const,
+      description: metadata.description,
+    };
+  });
+  const pending = CHANNEL_CONNECTOR_AGENT_IDS
+    .filter((agent) => !CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.includes(agent as typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS[number]))
+    .map((agent) => ({
+      adapterKind: 'native-cli' as const,
+      agent,
+      label: agent,
+      binaryId: null,
+      binaryName: null,
+      runnerContract: 'pending-runner-verification',
+      status: 'registered_pending' as const,
+      description: '已登记但尚未完成 Chat native CLI runner、模型网关映射与终端检测验证。',
+    }));
+  return [
+    ...runnable,
+    ...pending,
+    {
+      adapterKind: 'openclaw-gateway' as const,
+      agent: 'openclaw',
+      label: 'OpenClaw Gateway',
+      binaryId: null,
+      binaryName: null,
+      runnerContract: 'openclaw-gateway-session-bridge',
+      status: 'runnable' as const,
+      description: '第三方平台 OpenClaw Gateway 兼容入口；仅作为平台 runtime，不代表 native CLI。',
+    },
+  ];
+}
+
+function buildChatFileCapability(): ChatDiagnostics['fileCapability'] {
+  return {
+    browseEndpoint: '/api/files/browse',
+    uploadEndpoint: '/api/files/uploads/*',
+    readEndpoint: '/api/files/read',
+    downloadEndpoint: '/api/files/download',
+    resourceRef: 'files:<rootId>:<path>',
+    legacyRefsReadOnly: ['workspace:', 'uploads:'],
+  };
+}
+
 function createBaseDiagnostics(config: TracevaneServerConfig, gatewayReachable: boolean, notes: string[]): ChatDiagnostics {
   return {
     gatewayReachable,
@@ -744,6 +802,8 @@ function createBaseDiagnostics(config: TracevaneServerConfig, gatewayReachable: 
     sameOriginRequired: CHAT_POLICY_DEFAULTS.defaultSameOriginRequired,
     historyTruncated: false,
     truncationMode: 'none',
+    runtimeCapabilities: buildChatRuntimeCapabilities(),
+    fileCapability: buildChatFileCapability(),
     notes,
   };
 }
