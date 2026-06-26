@@ -103,3 +103,15 @@ test('ConversationView previews text-like attachments through Files read API', (
   assert.match(source, /文件预览加载失败/);
   assert.match(source, /已按 Files API 预览上限截断/);
 });
+
+test('ConversationView renders structured message blocks through shared Chat display model', () => {
+  assert.match(source, /deriveChatDisplayMessage/);
+  assert.match(source, /type ChatDisplayBlock/);
+  assert.match(source, /type ChatDisplayParagraphSegment/);
+  assert.match(source, /function DisplayBlockView/);
+  assert.match(source, /function InlineDisplaySegment/);
+  assert.match(source, /block\.runs\.map/);
+  assert.match(source, /display\.blocks\.map/);
+  assert.match(source, /display=\{segment\.display\}/);
+  assert.doesNotMatch(source, /const resources = message\.resources \?\? \[\]/);
+});

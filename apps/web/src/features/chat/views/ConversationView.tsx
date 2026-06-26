@@ -32,6 +32,7 @@ import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 import { useFileReadQuery, useFilesBrowseQuery, useFilesSummaryQuery } from "@/lib/query/files";
+import { deriveChatDisplayMessage, type ChatDisplayBlock, type ChatDisplayParagraphSegment } from "../../../../../../lib/chat-display";
 
 import { ToneBadge, formatTime } from "@/features/cli-agents/views/_shared";
 
@@ -214,18 +215,52 @@ function ToolCallBlock({
   );
 }
 
-function ResourceChip({ resource }: { resource: ChatResourceItem }) {
-  const isImage = resource.kind === "image" && resource.status === "ready";
+function ResourceChip({
+  resource,
+  display = "card",
+}: {
+  resource: ChatResourceItem;
+  display?: "card" | "inline-image" | "inline-video" | "inline-chip" | "break-image" | "break-video" | "break-chip";
+}) {
   const href = resource.downloadUrl || resource.url;
-  if (isImage) {
+  const isBreak = display.startsWith("break-") || display === "card";
+  const compact = display === "inline-chip" || display === "break-chip";
+
+  if (resource.kind === "image" && resource.status === "ready" && !compact) {
     return (
       <a
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="group block w-fit max-w-[min(420px,80%)] overflow-hidden rounded-md border border-line bg-panel-2"
+        className={cn(
+          "group overflow-hidden rounded-md border border-line bg-panel-2 align-middle",
+          isBreak ? "block w-fit max-w-[min(420px,80%)]" : "mx-1 inline-block max-w-[220px]",
+        )}
       >
-        <img src={resource.url} alt={resource.fileName} className="max-h-64 w-auto object-contain" />
+        <img
+          src={resource.url}
+          alt={resource.fileName}
+          className={cn(isBreak ? "max-h-64" : "max-h-28", "w-auto object-contain")}
+        />
+        <span className="block truncate border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
+          {resource.fileName}
+        </span>
+      </a>
+    );
+  }
+
+  if (resource.kind === "video" && resource.status === "ready" && !compact) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={cn(
+          "group overflow-hidden rounded-md border border-line bg-panel-2 align-middle",
+          isBreak ? "block w-fit max-w-[min(480px,90%)]" : "mx-1 inline-block max-w-[260px]",
+        )}
+      >
+        <video src={resource.url} controls className={cn(isBreak ? "max-h-64" : "max-h-32", "w-auto max-w-full")} />
         <span className="block truncate border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
           {resource.fileName}
         </span>
@@ -238,20 +273,67 @@ function ResourceChip({ resource }: { resource: ChatResourceItem }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex max-w-[80%] items-center gap-2 rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted hover:border-primary-line hover:text-ink"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted align-middle hover:border-primary-line hover:text-ink",
+        isBreak ? "max-w-[80%]" : "mx-1 max-w-[240px]",
+      )}
     >
-      <Paperclip className="size-3.5" />
+      <Paperclip className="size-3.5 shrink-0" />
       <span className="truncate">{resource.fileName}</span>
       {resource.status !== "ready" && <Badge variant="warn">缺失</Badge>}
     </a>
   );
 }
 
+function InlineDisplaySegment({ segment }: { segment: ChatDisplayParagraphSegment }) {
+  if (segment.type === "text") {
+    return <span className="whitespace-pre-wrap break-words">{segment.text}</span>;
+  }
+  return <ResourceChip resource={segment.item} display={segment.display} />;
+}
+
+function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
+  if (block.type === "markdown") {
+    return (
+      <div className="whitespace-pre-wrap break-words">
+        {block.markdownSource}
+      </div>
+    );
+  }
+
+  if (block.type === "resource") {
+    return <ResourceChip resource={block.item} display="card" />;
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      {block.runs.map((run, index) => (
+        run.type === "break-run" ? (
+          <ResourceChip
+            key={`${run.segment.item.id}:${index}`}
+            resource={run.segment.item}
+            display={run.segment.display}
+          />
+        ) : (
+          <p key={`inline:${index}`} className="m-0 whitespace-pre-wrap break-words">
+            {run.segments.map((segment, segmentIndex) => (
+              <InlineDisplaySegment
+                key={segment.type === "resource" ? `${segment.item.id}:${segmentIndex}` : `text:${segmentIndex}`}
+                segment={segment}
+              />
+            ))}
+          </p>
+        )
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ChatMessageItem }) {
   const isUser = message.role === "user";
+  const display = deriveChatDisplayMessage(message);
   const toolCalls = message.toolCalls ?? [];
   const processBlocks = message.processBlocks ?? [];
-  const resources = message.resources ?? [];
   return (
     <article className={cn("grid gap-1.5", isUser && "justify-items-end")}>
       <div className="flex items-center gap-1.5 text-xs text-subtle">
@@ -281,28 +363,33 @@ function MessageBubble({ message }: { message: ChatMessageItem }) {
         </div>
       )}
 
-      <div
-        className={cn(
-          "max-w-[80%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base",
-          isUser
-            ? "bg-primary-soft text-ink-strong"
-            : "border border-line bg-panel text-ink",
-        )}
-      >
-        {message.text ? (
-          message.text
-        ) : message.omitted ? (
-          <span className="italic text-subtle">内容已省略。</span>
-        ) : (
-          <span className="italic text-subtle">无文本内容。</span>
-        )}
-      </div>
-
-      {resources.length > 0 && (
-        <div className={cn("grid w-full gap-1.5", isUser && "justify-items-end")}>
-          {resources.map((resource) => (
-            <ResourceChip key={resource.id} resource={resource} />
+      {display.blocks.length > 0 ? (
+        <div
+          className={cn(
+            "grid max-w-[80%] gap-2 rounded-md px-3 py-2 text-base",
+            isUser
+              ? "bg-primary-soft text-ink-strong"
+              : "border border-line bg-panel text-ink",
+          )}
+        >
+          {display.blocks.map((block, index) => (
+            <DisplayBlockView key={`${block.type}:${index}`} block={block} />
           ))}
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "max-w-[80%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base",
+            isUser
+              ? "bg-primary-soft text-ink-strong"
+              : "border border-line bg-panel text-ink",
+          )}
+        >
+          {message.omitted ? (
+            <span className="italic text-subtle">内容已省略。</span>
+          ) : (
+            <span className="italic text-subtle">无文本内容。</span>
+          )}
         </div>
       )}
 
