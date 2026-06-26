@@ -193,6 +193,77 @@ function isJsonPreview(value: string): boolean {
   }
 }
 
+function parsePreviewJsonObject(value: string | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || !trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function shortToolValue(value: unknown, max = 180): string | null {
+  if (value == null) return null;
+  const text = typeof value === "string" ? value : String(value);
+  const clean = text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return null;
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+function formatDurationMs(value: unknown): string | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (n < 1000) return `${Math.round(n)}ms`;
+  return `${(n / 1000).toFixed(n >= 10_000 ? 1 : 2)}s`;
+}
+
+function toolSummaryRows(tool: ChatMessageToolCallItem | ChatToolCard): Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> {
+  const args = parsePreviewJsonObject(tool.argsPreview);
+  const result = parsePreviewJsonObject(tool.resultPreview);
+  const rows: Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> = [];
+  const command = shortToolValue(args?.command ?? args?.cmd ?? args?.script ?? args?.input, 260);
+  const cwd = shortToolValue(result?.cwd ?? args?.cwd ?? args?.workdir ?? args?.workingDirectory, 160);
+  const exitCode = result?.exitCode ?? result?.code ?? result?.statusCode;
+  const status = shortToolValue(result?.status ?? result?.state ?? tool.status, 80);
+  const duration = formatDurationMs(result?.durationMs ?? result?.elapsedMs ?? result?.duration);
+
+  if (command) rows.push({ label: "命令", value: command });
+  if (cwd) rows.push({ label: "目录", value: cwd });
+  if (status) rows.push({ label: "状态", value: status, tone: tool.isError ? "bad" : tool.status === "completed" ? "ok" : "normal" });
+  if (exitCode != null) {
+    const text = String(exitCode);
+    rows.push({ label: "退出码", value: text, tone: text === "0" ? "ok" : "bad" });
+  }
+  if (duration) rows.push({ label: "耗时", value: duration });
+  return rows.slice(0, 5);
+}
+
+function ToolSummaryBlock({ rows }: { rows: Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> }) {
+  if (!rows.length) return null;
+  return (
+    <div className="grid gap-1.5 rounded-sm border border-line/80 bg-panel/75 px-2.5 py-2 text-xs">
+      {rows.map((row) => (
+        <div key={row.label} className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
+          <span className="text-subtle">{row.label}</span>
+          <span
+            className={cn(
+              "min-w-0 truncate font-medium",
+              row.tone === "bad" ? "text-red" : row.tone === "ok" ? "text-green" : "text-ink",
+              row.label === "命令" && "font-mono",
+            )}
+            title={row.value}
+          >
+            {row.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ToolPreviewBlock({
   label,
   value,
@@ -458,6 +529,7 @@ function ToolCallBlock({
 }) {
   const st = toolStatusTone(tool.status);
   const running = tool.status === "running";
+  const summaryRows = toolSummaryRows(tool);
   return (
     <div className={cn(
       "grid gap-2 rounded-md border px-3 py-2.5 shadow-sm",
@@ -482,6 +554,7 @@ function ToolCallBlock({
           </div>
         </div>
       </div>
+      <ToolSummaryBlock rows={summaryRows} />
       {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
       {tool.resultPreview && (
         <ToolPreviewBlock
