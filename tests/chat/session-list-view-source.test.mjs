@@ -32,9 +32,22 @@ test('SessionListView defaults new sessions to native CLI Codex instead of OpenC
   assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map\(nativeRuntimeAgentOption\)/);
   assert.match(source, /Partial<Record<\(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\)\[number\], NativeRuntimeAgentOptionDetail>>/);
   assert.match(source, /codex: \{ binaryId: "codex", label: "Codex CLI"/);
-  assert.match(source, /agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent"/);
+  assert.match(source, /const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = \{/);
   assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
   assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
+});
+
+test('SessionListView builds OpenClaw runtime target choices from platform agent summary', () => {
+  assert.match(source, /useAgentsSummaryQuery\(\{ staleTime: 30_000, retry: false \}\)/);
+  assert.match(source, /const chatRuntimeAgentOptions = React\.useMemo<ChatRuntimeAgentOption\[\]>/);
+  assert.match(source, /agentsSummary\.data\?\.agents/);
+  assert.match(source, /adapterKind: "openclaw-gateway" as const/);
+  assert.match(source, /agent: agent\.id/);
+  assert.match(source, /label: `\$\{agent\.name \|\| agent\.id\} 平台 Agent`/);
+  assert.match(source, /OpenClaw 原生 Agent/);
+  assert.match(source, /OPENCLAW_RUNTIME_FALLBACK_OPTION/);
+  assert.match(source, /chatRuntimeAgentOptions\.find/);
+  assert.match(source, /chatRuntimeAgentOptions\.map\(\(option\) =>/);
 });
 
 test('SessionListView surfaces CLI binary readiness in runtime target choices', () => {

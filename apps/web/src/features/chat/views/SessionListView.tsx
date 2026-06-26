@@ -53,6 +53,7 @@ import {
   usePatchChatOrganizerFolderMutation,
   usePatchChatSessionMutation,
 } from "@/lib/query/chat";
+import { useAgentsSummaryQuery } from "@/lib/query/agents";
 import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import type { ApiError } from "@/lib/api/errors";
@@ -187,10 +188,16 @@ function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT
   };
 }
 
-const CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] = [
-  ...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption),
-  { adapterKind: "openclaw-gateway", agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
-];
+const NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] =
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption);
+
+const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = {
+  adapterKind: "openclaw-gateway",
+  agent: "openclaw",
+  binaryId: null,
+  label: "OpenClaw 平台 Agent",
+  description: "兼容 OpenClaw 平台原生 Agent 会话",
+};
 
 const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode | ""; label: string }> = [
   { value: "", label: "使用运行器默认" },
@@ -302,6 +309,7 @@ export function SessionListView({
   const patchFolder = usePatchChatOrganizerFolderMutation();
   const deleteFolder = useDeleteChatOrganizerFolderMutation();
   const assignSessionToFolder = useAssignChatSessionsToFolderMutation();
+  const agentsSummary = useAgentsSummaryQuery({ staleTime: 30_000, retry: false });
   const modelCatalog = useModelGatewayModelsQuery({ staleTime: 30_000 });
   const terminalStatus = useTerminalStatusQuery({ staleTime: 30_000, retry: false });
 
@@ -596,6 +604,30 @@ export function SessionListView({
     [terminalStatus.data?.binaries],
   );
 
+  const chatRuntimeAgentOptions = React.useMemo<ChatRuntimeAgentOption[]>(() => {
+    const openClawAgentOptions = (agentsSummary.data?.agents ?? [])
+      .filter((agent) => agent.id)
+      .map((agent) => ({
+        adapterKind: "openclaw-gateway" as const,
+        agent: agent.id,
+        binaryId: null,
+        label: `${agent.name || agent.id} 平台 Agent`,
+        description: [
+          "OpenClaw 原生 Agent",
+          agent.model ? `模型 ${agent.model}` : null,
+          agent.workspace ? `目录 ${agent.workspace}` : null,
+          agent.enabled === false ? "已停用" : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      }));
+
+    return [
+      ...NATIVE_CHAT_RUNTIME_AGENT_OPTIONS,
+      ...(openClawAgentOptions.length ? openClawAgentOptions : [OPENCLAW_RUNTIME_FALLBACK_OPTION]),
+    ];
+  }, [agentsSummary.data?.agents]);
+
   const runtimeOptionReadiness = React.useCallback(
     (option: ChatRuntimeAgentOption): ChatRuntimeOptionReadiness => {
       if (option.adapterKind !== "native-cli" || !option.binaryId) {
@@ -617,8 +649,11 @@ export function SessionListView({
   );
 
   const selectedRuntimeOption = React.useMemo(
-    () => CHAT_RUNTIME_AGENT_OPTIONS.find((item) => item.adapterKind === runtimeAdapterKind && item.agent === runtimeAgent) ?? CHAT_RUNTIME_AGENT_OPTIONS[0],
-    [runtimeAdapterKind, runtimeAgent],
+    () =>
+      chatRuntimeAgentOptions.find(
+        (item) => item.adapterKind === runtimeAdapterKind && item.agent === runtimeAgent,
+      ) ?? chatRuntimeAgentOptions[0],
+    [chatRuntimeAgentOptions, runtimeAdapterKind, runtimeAgent],
   );
   const selectedRuntimeReadiness = runtimeOptionReadiness(selectedRuntimeOption);
 
@@ -1424,7 +1459,7 @@ export function SessionListView({
                   <div className="grid gap-2">
                     <span className="text-sm text-muted">运行器 / Agent</span>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
+                      {chatRuntimeAgentOptions.map((option) => {
                         const active = option.adapterKind === runtimeAdapterKind && option.agent === runtimeAgent;
                         const readiness = runtimeOptionReadiness(option);
                         return (
@@ -1547,7 +1582,7 @@ export function SessionListView({
                   <div className="grid gap-2">
                     <span className="text-sm text-muted">运行器 / Agent</span>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {CHAT_RUNTIME_AGENT_OPTIONS.map((option) => {
+                      {chatRuntimeAgentOptions.map((option) => {
                         const active = option.adapterKind === runtimeAdapterKind && option.agent === runtimeAgent;
                         const readiness = runtimeOptionReadiness(option);
                         return (
