@@ -176,8 +176,14 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /function isJsonPreview/);
   assert.match(source, /function toolSummaryRows/);
   assert.match(source, /function ToolSummaryBlock/);
+  assert.match(source, /function toolOutputPreview/);
+  assert.match(source, /function ToolOutputBlock/);
+  assert.match(source, /function looksLikeTerminalOutput/);
   assert.match(source, /const summaryRows = toolSummaryRows\(tool\)/);
+  assert.match(source, /const outputPreview = toolOutputPreview\(tool\)/);
   assert.match(source, /<ToolSummaryBlock rows=\{summaryRows\} \/>/);
+  assert.match(source, /<ToolOutputBlock output=\{outputPreview\} \/>/);
+  assert.match(source, /result\?\.stdout \?\? result\?\.stderr \?\? result\?\.output/);
   assert.match(source, /label: "命令"/);
   assert.match(source, /label: "退出码"/);
   assert.match(source, /label: "耗时"/);

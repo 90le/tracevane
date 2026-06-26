@@ -264,6 +264,63 @@ function ToolSummaryBlock({ rows }: { rows: Array<{ label: string; value: string
   );
 }
 
+function toolOutputPreview(tool: ChatMessageToolCallItem | ChatToolCard): { label: string; value: string; tone: "neutral" | "error"; render: "code" | "markdown" } | null {
+  const result = parsePreviewJsonObject(tool.resultPreview);
+  const raw = result?.stdout ?? result?.stderr ?? result?.output ?? result?.text ?? result?.message ?? null;
+  const value = typeof raw === "string" ? raw.trim() : null;
+  if (!value) {
+    if (tool.resultPreview && !isJsonPreview(tool.resultPreview)) {
+      return {
+        label: tool.isError ? "错误输出" : "执行输出",
+        value: tool.resultPreview,
+        tone: tool.isError ? "error" : "neutral",
+        render: "markdown",
+      };
+    }
+    return null;
+  }
+  return {
+    label: result?.stderr && !result?.stdout ? "标准错误" : "执行输出",
+    value,
+    tone: tool.isError || Boolean(result?.stderr && !result?.stdout) ? "error" : "neutral",
+    render: looksLikeTerminalOutput(value) ? "code" : "markdown",
+  };
+}
+
+function looksLikeTerminalOutput(value: string): boolean {
+  const lines = value.split(/\r?\n/);
+  if (lines.length > 8) return true;
+  return /(^|\n)(\$ |>|npm |pnpm |yarn |git |node |python |pytest |TAP version|# Subtest:|ok \d+|not ok \d+)/.test(value);
+}
+
+function ToolOutputBlock({ output }: { output: { label: string; value: string; tone: "neutral" | "error"; render: "code" | "markdown" } | null }) {
+  if (!output) return null;
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-sm border",
+        output.tone === "error" ? "border-red/35 bg-red-soft/35" : "border-line/80 bg-panel/75",
+      )}
+    >
+      <div className="border-b border-line/70 px-2.5 py-1.5 text-xs font-semibold text-subtle">{output.label}</div>
+      {output.render === "code" ? (
+        <code
+          className={cn(
+            "block max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5",
+            output.tone === "error" ? "text-red" : "text-muted",
+          )}
+        >
+          {output.value}
+        </code>
+      ) : (
+        <div className={cn("max-h-72 overflow-auto px-3 py-2", output.tone === "error" ? "text-red" : "text-ink")}>
+          <ChatMarkdownContent source={output.value} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolPreviewBlock({
   label,
   value,
@@ -530,6 +587,7 @@ function ToolCallBlock({
   const st = toolStatusTone(tool.status);
   const running = tool.status === "running";
   const summaryRows = toolSummaryRows(tool);
+  const outputPreview = toolOutputPreview(tool);
   return (
     <div className={cn(
       "grid gap-2 rounded-md border px-3 py-2.5 shadow-sm",
@@ -555,6 +613,7 @@ function ToolCallBlock({
         </div>
       </div>
       <ToolSummaryBlock rows={summaryRows} />
+      <ToolOutputBlock output={outputPreview} />
       {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
       {tool.resultPreview && (
         <ToolPreviewBlock
