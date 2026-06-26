@@ -508,6 +508,49 @@ function resolveWorkspaceRelativePath(ctx: CollectResourceContext, filePath: str
   return undefined;
 }
 
+function buildFilesDownloadUrl(rootId: string, relativePath: string, download: boolean): string {
+  const query = new URLSearchParams({
+    rootId,
+    path: toPortableRelativePath(relativePath),
+  });
+  if (download) query.set('download', 'true');
+  return `/api/files/download?${query.toString()}`;
+}
+
+function buildFilesApiResourceItem(
+  rootId: string,
+  relativePath: string,
+  options: {
+    source: ChatResourceItem['source'];
+    originalPath?: string;
+    id?: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    kind?: ChatAttachmentKind | null;
+    toolCallId?: string | null;
+  },
+): ChatResourceItem {
+  const normalizedPath = toPortableRelativePath(relativePath);
+  const fileName = options.fileName || path.basename(normalizedPath) || 'file';
+  const mimeType = normalizeMimeType(options.mimeType) || mimeTypeFromPath(fileName);
+  const kind = options.kind || inferMediaKind(fileName, mimeType);
+  const resourceRef = buildTracevaneFilesResourceRef(rootId, normalizedPath) || `files:${rootId}:${normalizedPath}`;
+  return {
+    id: options.id || `resource-${hashId(resourceRef)}`,
+    kind,
+    url: buildFilesDownloadUrl(rootId, normalizedPath, false),
+    downloadUrl: buildFilesDownloadUrl(rootId, normalizedPath, true),
+    fileName,
+    mimeType,
+    relativePath: normalizedPath,
+    originalPath: options.originalPath || resourceRef,
+    source: options.source,
+    status: 'ready',
+    placement: 'append',
+    toolCallId: options.toolCallId || null,
+  };
+}
+
 function buildLocalResourceItem(
   ctx: CollectResourceContext,
   filePath: string,
@@ -584,6 +627,12 @@ function buildAssistantMarkdownResourceItem(
 ): ChatResourceItem | null {
   const localFilePath = resolveTracevaneMarkdownMediaFilePath(ctx.config, ctx.sessionKey, ref, parsedRef);
   if (localFilePath) {
+    if (parsedRef?.kind === 'files') {
+      return buildFilesApiResourceItem(parsedRef.rootId, parsedRef.path, {
+        source: 'assistant_markdown',
+        originalPath: ref,
+      });
+    }
     return buildLocalResourceItem(ctx, localFilePath, {
       source: 'assistant_markdown',
       relativePath: resolveWorkspaceRelativePath(ctx, localFilePath),
@@ -639,6 +688,23 @@ function maybeAddResourceRef(
       buildRemoteResourceItem(remoteUrl, options.source, options.toolCallId || null),
     );
     return;
+  }
+
+  const parsedScopedRef = parseTracevaneMarkdownMediaRef(ref);
+  if (parsedScopedRef?.kind === 'files' && isSafeScopedResourceRefPath(parsedScopedRef.path)) {
+    const filePath = resolveFilesResourceFilePath(ctx.config, parsedScopedRef.rootId, parsedScopedRef.path);
+    if (filePath) {
+      pushResourceItem(
+        ctx.items,
+        ctx.seenKeys,
+        buildFilesApiResourceItem(parsedScopedRef.rootId, parsedScopedRef.path, {
+          source: options.source,
+          originalPath: options.originalPath || ref,
+          toolCallId: options.toolCallId || null,
+        }),
+      );
+      return;
+    }
   }
 
   const localFilePath = resolveLocalFilePath(ctx.config, ctx.sessionKey, ref);
@@ -924,12 +990,14 @@ function buildUserUploadResourceFromSendFileRef(
     const filePath = resolveFilesResourceFilePath(ctx.config, parsedFilesRef.rootId, parsedFilesRef.path);
     const fileName = fileRef.fileName || path.basename(parsedFilesRef.path) || `file-${index + 1}`;
     if (filePath) {
-      const item = buildLocalResourceItem(ctx, filePath, {
+      return buildFilesApiResourceItem(parsedFilesRef.rootId, parsedFilesRef.path, {
         source: 'user_upload',
-        relativePath: parsedFilesRef.path,
         originalPath: fileRef.resourceRef || parsedFilesRef.path,
+        id: fileRef.id,
+        fileName,
+        mimeType: fileRef.mimeType,
+        kind: fileRef.kind,
       });
-      return fileRef.id ? { ...item, id: fileRef.id, fileName: fileRef.fileName || item.fileName } : item;
     }
     const missing = buildMissingResourceItem(ctx, fileName, {
       source: 'user_upload',
@@ -1550,11 +1618,16 @@ export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
           : undefined;
 
       const resource = localFilePath
-        ? buildLocalResourceItem(ctx, localFilePath, {
-          source: 'tracevane_resource',
-          relativePath: resolveWorkspaceRelativePath(ctx, localFilePath) || relativePath,
-          originalPath: normalizedRef,
-        })
+        ? parsedRef?.kind === 'files'
+          ? buildFilesApiResourceItem(parsedRef.rootId, parsedRef.path, {
+            source: 'tracevane_resource',
+            originalPath: normalizedRef,
+          })
+          : buildLocalResourceItem(ctx, localFilePath, {
+            source: 'tracevane_resource',
+            relativePath: resolveWorkspaceRelativePath(ctx, localFilePath) || relativePath,
+            originalPath: normalizedRef,
+          })
         : buildMissingResourceItem(ctx, refPath, {
           source: 'tracevane_resource',
           relativePath,

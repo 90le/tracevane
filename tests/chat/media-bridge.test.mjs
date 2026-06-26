@@ -123,8 +123,39 @@ test('resolves send file refs from Files API roots without workspace coupling', 
     assert.equal(resources.length, 1);
     assert.equal(resources[0].status, 'ready');
     assert.equal(resources[0].relativePath, 'docs/brief.md');
+    assert.match(resources[0].url, /^\/api\/files\/download\?/);
+    assert.match(resources[0].downloadUrl, /[?&]download=true/);
+    assert.doesNotMatch(resources[0].url, /\/api\/chat\/sessions\//);
     assert.equal(nativeAttachments.length, 1);
     assert.equal(nativeAttachments[0].localPath, path.join(projectRoot, 'docs', 'brief.md'));
+  } finally {
+    fs.rmSync(projectRoot, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
+  }
+});
+
+
+test('assistant markdown files refs compile to Files download urls instead of Chat media urls', () => {
+  const tracevane = createTempTracevaneConfig();
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-markdown-files-root-'));
+  try {
+    tracevane.config.projectRoot = projectRoot;
+    fs.mkdirSync(path.join(projectRoot, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, 'docs', 'diagram.png'), 'png');
+
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const compiled = bridge.compileAssistantMarkdown(
+      'agent:main:webchat:direct:tracevane-test',
+      '[结构图](files:project-root:docs/diagram.png "tracevane:break-image")',
+    );
+
+    assert.ok(compiled);
+    assert.equal(compiled.resources.length, 1);
+    assert.equal(compiled.resources[0]?.originalPath, 'files:project-root:docs/diagram.png');
+    assert.equal(compiled.resources[0]?.relativePath, 'docs/diagram.png');
+    assert.match(compiled.resources[0]?.url || '', /^\/api\/files\/download\?/);
+    assert.doesNotMatch(compiled.resources[0]?.url || '', /\/api\/chat\/sessions\//);
+    assert.match(compiled.markdown, /\/api\/files\/download\?/);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
     fs.rmSync(tracevane.root, { recursive: true, force: true });
