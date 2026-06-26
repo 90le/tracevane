@@ -124,6 +124,31 @@ function resolveComposerFilesRef(item: ComposerFileRefItem | null): { rootId: st
   return rootId && filePath ? { rootId, path: filePath.replace(/\\/g, "/").replace(/^\.\/+/, "") } : null;
 }
 
+function composerFileRefFromMessageResource(resource: ChatResourceItem): ComposerFileRefItem {
+  const parsedFilesRef = parseFilesResourceRef(resource.originalPath);
+  const rootId = parsedFilesRef?.rootId ?? null;
+  const relativePath = parsedFilesRef?.path
+    ?? resource.relativePath?.trim().replace(/\\/g, "/").replace(/^\.\/+/, "")
+    ?? resource.fileName;
+  const resourceRef = parsedFilesRef
+    ? `files:${parsedFilesRef.rootId}:${parsedFilesRef.path}`
+    : resource.originalPath || resource.relativePath || resource.downloadUrl || resource.url;
+  return {
+    id: resource.id,
+    rootId,
+    relativePath,
+    resourceRef,
+    fileName: resource.fileName,
+    kind: resource.kind,
+    mimeType: resource.mimeType,
+    previewUrl: resource.url,
+    downloadUrl: resource.downloadUrl,
+    status: resource.status === "ready" ? "ready" : "failed",
+    source: parsedFilesRef ? "files" : "workspace",
+    error: resource.status === "ready" ? null : "资源缺失，无法预览",
+  };
+}
+
 const COMPOSER_DRAFT_PREFIX = "tracevane.chat.composer-draft:";
 
 type PersistedComposerFileRef = Omit<ComposerFileRefItem, "status" | "error">;
@@ -218,81 +243,126 @@ function ToolCallBlock({
 function ResourceChip({
   resource,
   display = "card",
+  onPreview,
 }: {
   resource: ChatResourceItem;
   display?: "card" | "inline-image" | "inline-video" | "inline-chip" | "break-image" | "break-video" | "break-chip";
+  onPreview?: (resource: ChatResourceItem) => void;
 }) {
   const href = resource.downloadUrl || resource.url;
   const isBreak = display.startsWith("break-") || display === "card";
   const compact = display === "inline-chip" || display === "break-chip";
+  const canPreview = Boolean(onPreview && resource.status === "ready" && href);
 
   if (resource.kind === "image" && resource.status === "ready" && !compact) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
+      <span
         className={cn(
           "group overflow-hidden rounded-md border border-line bg-panel-2 align-middle",
           isBreak ? "block w-fit max-w-[min(420px,80%)]" : "mx-1 inline-block max-w-[220px]",
         )}
       >
-        <img
-          src={resource.url}
-          alt={resource.fileName}
-          className={cn(isBreak ? "max-h-64" : "max-h-28", "w-auto object-contain")}
-        />
-        <span className="block truncate border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
-          {resource.fileName}
+        <a href={href} target="_blank" rel="noreferrer" className="block">
+          <img
+            src={resource.url}
+            alt={resource.fileName}
+            className={cn(isBreak ? "max-h-64" : "max-h-28", "w-auto object-contain")}
+          />
+        </a>
+        <span className="flex min-w-0 items-center gap-2 border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
+          <span className="truncate">{resource.fileName}</span>
+          {canPreview && (
+            <button
+              type="button"
+              className="ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-primary hover:bg-primary-soft"
+              onClick={() => onPreview?.(resource)}
+            >
+              预览
+            </button>
+          )}
         </span>
-      </a>
+      </span>
     );
   }
 
   if (resource.kind === "video" && resource.status === "ready" && !compact) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
+      <span
         className={cn(
           "group overflow-hidden rounded-md border border-line bg-panel-2 align-middle",
           isBreak ? "block w-fit max-w-[min(480px,90%)]" : "mx-1 inline-block max-w-[260px]",
         )}
       >
         <video src={resource.url} controls className={cn(isBreak ? "max-h-64" : "max-h-32", "w-auto max-w-full")} />
-        <span className="block truncate border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
-          {resource.fileName}
+        <span className="flex min-w-0 items-center gap-2 border-t border-line px-2 py-1 text-xs text-muted group-hover:text-ink">
+          <a href={href} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:text-primary">
+            {resource.fileName}
+          </a>
+          {canPreview && (
+            <button
+              type="button"
+              className="ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-primary hover:bg-primary-soft"
+              onClick={() => onPreview?.(resource)}
+            >
+              预览
+            </button>
+          )}
         </span>
-      </a>
+      </span>
     );
   }
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
+    <span
       className={cn(
         "inline-flex items-center gap-2 rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted align-middle hover:border-primary-line hover:text-ink",
         isBreak ? "max-w-[80%]" : "mx-1 max-w-[240px]",
       )}
     >
       <Paperclip className="size-3.5 shrink-0" />
-      <span className="truncate">{resource.fileName}</span>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="min-w-0 truncate hover:text-primary"
+      >
+        {resource.fileName}
+      </a>
+      {canPreview && (
+        <button
+          type="button"
+          className="shrink-0 rounded-full px-1 py-0.5 text-[11px] text-primary hover:bg-primary-soft"
+          aria-label={`预览 ${resource.fileName}`}
+          onClick={() => onPreview?.(resource)}
+        >
+          预览
+        </button>
+      )}
       {resource.status !== "ready" && <Badge variant="warn">缺失</Badge>}
-    </a>
+    </span>
   );
 }
 
-function InlineDisplaySegment({ segment }: { segment: ChatDisplayParagraphSegment }) {
+function InlineDisplaySegment({
+  segment,
+  onPreviewResource,
+}: {
+  segment: ChatDisplayParagraphSegment;
+  onPreviewResource?: (resource: ChatResourceItem) => void;
+}) {
   if (segment.type === "text") {
     return <span className="whitespace-pre-wrap break-words">{segment.text}</span>;
   }
-  return <ResourceChip resource={segment.item} display={segment.display} />;
+  return <ResourceChip resource={segment.item} display={segment.display} onPreview={onPreviewResource} />;
 }
 
-function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
+function DisplayBlockView({
+  block,
+  onPreviewResource,
+}: {
+  block: ChatDisplayBlock;
+  onPreviewResource?: (resource: ChatResourceItem) => void;
+}) {
   if (block.type === "markdown") {
     return (
       <div className="whitespace-pre-wrap break-words">
@@ -302,7 +372,7 @@ function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
   }
 
   if (block.type === "resource") {
-    return <ResourceChip resource={block.item} display="card" />;
+    return <ResourceChip resource={block.item} display="card" onPreview={onPreviewResource} />;
   }
 
   return (
@@ -313,6 +383,7 @@ function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
             key={`${run.segment.item.id}:${index}`}
             resource={run.segment.item}
             display={run.segment.display}
+            onPreview={onPreviewResource}
           />
         ) : (
           <p key={`inline:${index}`} className="m-0 whitespace-pre-wrap break-words">
@@ -320,6 +391,7 @@ function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
               <InlineDisplaySegment
                 key={segment.type === "resource" ? `${segment.item.id}:${segmentIndex}` : `text:${segmentIndex}`}
                 segment={segment}
+                onPreviewResource={onPreviewResource}
               />
             ))}
           </p>
@@ -329,7 +401,13 @@ function DisplayBlockView({ block }: { block: ChatDisplayBlock }) {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessageItem }) {
+function MessageBubble({
+  message,
+  onPreviewResource,
+}: {
+  message: ChatMessageItem;
+  onPreviewResource?: (resource: ChatResourceItem) => void;
+}) {
   const isUser = message.role === "user";
   const display = deriveChatDisplayMessage(message);
   const toolCalls = message.toolCalls ?? [];
@@ -373,7 +451,11 @@ function MessageBubble({ message }: { message: ChatMessageItem }) {
           )}
         >
           {display.blocks.map((block, index) => (
-            <DisplayBlockView key={`${block.type}:${index}`} block={block} />
+            <DisplayBlockView
+              key={`${block.type}:${index}`}
+              block={block}
+              onPreviewResource={onPreviewResource}
+            />
           ))}
         </div>
       ) : (
@@ -758,7 +840,11 @@ export function ConversationView({
         ) : (
           <div className="grid gap-4">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble
+                key={m.id}
+                message={m}
+                onPreviewResource={(resource) => setPreviewFile(composerFileRefFromMessageResource(resource))}
+              />
             ))}
             {liveTurn && <LiveTurn turn={liveTurn} />}
           </div>

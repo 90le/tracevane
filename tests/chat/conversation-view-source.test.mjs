@@ -98,10 +98,21 @@ test('ConversationView previews text-like attachments through Files read API', (
   assert.match(source, /useFileReadQuery/);
   assert.match(source, /function parseFilesResourceRef/);
   assert.match(source, /function resolveComposerFilesRef/);
+  assert.match(source, /function composerFileRefFromMessageResource/);
+  assert.match(source, /parseFilesResourceRef\(resource\.originalPath\)/);
   assert.match(source, /canReadPreviewAttachment/);
   assert.match(source, /limit: 192 \* 1024/);
   assert.match(source, /文件预览加载失败/);
   assert.match(source, /已按 Files API 预览上限截断/);
+});
+
+test('ConversationView previews historical message resources through the shared Files preview dialog', () => {
+  assert.match(source, /onPreviewResource\?: \(resource: ChatResourceItem\) => void/);
+  assert.match(source, /onPreview=\{onPreviewResource\}/);
+  assert.match(source, /onPreviewResource=\{onPreviewResource\}/);
+  assert.match(source, /onPreviewResource=\{\(resource\) => setPreviewFile\(composerFileRefFromMessageResource\(resource\)\)\}/);
+  assert.match(source, /previewUrl: resource\.url/);
+  assert.match(source, /downloadUrl: resource\.downloadUrl/);
 });
 
 test('ConversationView renders structured message blocks through shared Chat display model', () => {
