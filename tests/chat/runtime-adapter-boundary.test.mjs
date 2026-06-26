@@ -65,6 +65,19 @@ test('ChatService keeps native CLI runner details inside the native runtime adap
 });
 
 
+
+test('Native CLI adapter keeps supported agent ids centralized', () => {
+  assert.match(nativeCliAdapterSource, /export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = \['codex', 'claude-code', 'opencode'\]/);
+  assert.match(nativeCliAdapterSource, /const NATIVE_CHAT_AGENT_ALIASES: Record<string, ChannelConnectorAgentId>/);
+  assert.match(nativeCliAdapterSource, /return NATIVE_CHAT_AGENT_ALIASES\[normalized\] \?\? null/);
+  assert.match(nativeCliAdapterSource, /SUPPORTED_NATIVE_CHAT_AGENT_IDS\.join\(', '\)/);
+  assert.doesNotMatch(
+    nativeCliAdapterSource,
+    /normalized === 'codex'[\s\S]*?normalized === 'claude-code'[\s\S]*?normalized === 'opencode'/,
+    'supported native Chat agent ids should not be re-listed inside normalizeNativeChatAgent',
+  );
+});
+
 test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw runtime targets', () => {
   assert.ok(
     serviceSource.includes("function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {\n    return session?.runtimeTarget?.adapterKind === 'openclaw-gateway';\n  }"),

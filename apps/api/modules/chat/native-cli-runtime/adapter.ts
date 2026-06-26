@@ -34,6 +34,20 @@ import {
 } from '../runtime-adapter.js';
 import { normalizeString } from '../shared.js';
 
+export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = ['codex', 'claude-code', 'opencode'] as const satisfies readonly ChannelConnectorAgentId[];
+
+const NATIVE_CHAT_AGENT_ALIASES: Record<string, ChannelConnectorAgentId> = {
+  codex: 'codex',
+  'openai-codex': 'codex',
+  'codex-cli': 'codex',
+  'claude-code': 'claude-code',
+  claude: 'claude-code',
+  'claude-code-cli': 'claude-code',
+  opencode: 'opencode',
+  'open-code': 'opencode',
+  open_code: 'opencode',
+};
+
 export type NativeChatActiveRun = {
   runId: string;
   controller: AbortController;
@@ -86,10 +100,7 @@ function buildChatChannelConnectorPaths(config: TracevaneServerConfig): Pick<Cha
 
 export function normalizeNativeChatAgent(agent: string | null | undefined): ChannelConnectorAgentId | null {
   const normalized = normalizeString(agent);
-  if (normalized === 'codex' || normalized === 'openai-codex' || normalized === 'codex-cli') return 'codex';
-  if (normalized === 'claude-code' || normalized === 'claude' || normalized === 'claude-code-cli') return 'claude-code';
-  if (normalized === 'opencode' || normalized === 'open-code' || normalized === 'open_code') return 'opencode';
-  return null;
+  return NATIVE_CHAT_AGENT_ALIASES[normalized] ?? null;
 }
 
 export function assertSupportedNativeRuntimeTarget(target: ChatSessionRuntimeTarget): void {
@@ -101,7 +112,7 @@ export function assertSupportedNativeRuntimeTarget(target: ChatSessionRuntimeTar
   }
   throw new ChatServiceError(400, buildChatError(
     'invalid_request',
-    `Native CLI agent '${target.agent || 'unknown'}' is not supported. Supported agents: codex, claude-code, opencode`,
+    `Native CLI agent '${target.agent || 'unknown'}' is not supported. Supported agents: ${SUPPORTED_NATIVE_CHAT_AGENT_IDS.join(', ')}`,
   ));
 }
 
