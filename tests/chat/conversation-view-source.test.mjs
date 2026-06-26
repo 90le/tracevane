@@ -159,3 +159,19 @@ test('ConversationView renders pending native tool approvals as actionable live 
   assert.match(source, /onResolve\(permission, "deny"\)/);
   assert.match(source, /turn\.permissions\.map/);
 });
+
+
+test('ConversationView renders assistant markdown and tool stream cards with designed affordances', () => {
+  assert.match(source, /function ChatMarkdownContent/);
+  assert.match(source, /remarkGfm/);
+  assert.match(source, /DOMPurify\.sanitize/);
+  assert.match(source, /hljs\.highlightElement/);
+  assert.match(source, /dangerouslySetInnerHTML/);
+  assert.match(source, /<ChatMarkdownContent source=\{block\.markdownSource\} \/>/);
+  assert.match(source, /<ChatMarkdownContent source=\{turn\.text\} streaming=\{!turn\.done\} \/>/);
+  assert.match(source, /function ToolPreviewBlock/);
+  assert.match(source, /prettyPreview/);
+  assert.match(source, /工具正在执行，结果会流式更新/);
+  assert.match(source, /label="输入参数"/);
+  assert.match(source, /label=\{tool\.isError \? "错误输出" : "执行结果"\}/);
+});

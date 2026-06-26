@@ -1,4 +1,12 @@
 import * as React from "react";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import remarkRehype from "remark-rehype";
+import rehypeRaw from "rehype-raw";
+import rehypeStringify from "rehype-stringify";
+import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
 import {
   AlertTriangle,
   Bot,
@@ -54,6 +62,7 @@ import type {
   LiveAssistantTurn,
 } from "../types";
 import { roleLabel, toolStatusTone } from "../_shared";
+import "../../workspace/preview/markdown-preview.css";
 
 function joinPortablePath(parent: string, name: string): string {
   const left = parent.trim().replace(/^\/+|\/+$/g, "");
@@ -67,6 +76,127 @@ function parentPortablePath(value: string): string {
   return normalized.split("/").slice(0, -1).join("/");
 }
 
+
+
+async function renderChatMarkdown(markdown: string): Promise<string> {
+  const file = await unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeStringify)
+    .process(markdown);
+  return DOMPurify.sanitize(String(file), {
+    ADD_ATTR: ["class", "target", "rel", "controls", "loading", "decoding", "playsinline", "preload"],
+  });
+}
+
+function ChatMarkdownContent({ source, streaming = false }: { source: string; streaming?: boolean }) {
+  const articleRef = React.useRef<HTMLElement | null>(null);
+  const [html, setHtml] = React.useState("");
+  const [error, setError] = React.useState<Error | null>(null);
+
+  React.useEffect(() => {
+    const markdown = source.trim();
+    if (!markdown) {
+      setHtml("");
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    const delay = streaming ? 120 : 0;
+    const timer = window.setTimeout(() => {
+      renderChatMarkdown(markdown)
+        .then((clean) => {
+          if (cancelled) return;
+          setHtml(clean);
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setHtml("");
+        });
+    }, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [source, streaming]);
+
+  React.useEffect(() => {
+    const node = articleRef.current;
+    if (!node || error) return;
+    node.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((anchor) => {
+      anchor.target = "_blank";
+      anchor.rel = "noreferrer";
+    });
+    node.querySelectorAll<HTMLElement>("pre code:not([data-highlighted])").forEach((block) => {
+      try {
+        hljs.highlightElement(block);
+      } catch {
+        // Unknown languages should not break Chat rendering.
+      }
+      block.setAttribute("data-highlighted", "1");
+    });
+  }, [html, error]);
+
+  if (error) {
+    return <span className="whitespace-pre-wrap break-words">{source}</span>;
+  }
+
+  if (!html && source.trim()) {
+    return <span className="whitespace-pre-wrap break-words">{source}</span>;
+  }
+
+  return (
+    <article
+      ref={articleRef as React.RefObject<HTMLElement>}
+      className="md-preview__article chat-message-markdown min-w-0 max-w-none overflow-x-auto p-0 text-[0.95rem] leading-7"
+      dangerouslySetInnerHTML={{ __html: html || "<p></p>" }}
+    />
+  );
+}
+
+function previewLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed;
+}
+
+function prettyPreview(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (!((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]")))) {
+    return value;
+  }
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function ToolPreviewBlock({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "error" }) {
+  return (
+    <details className="group rounded-sm border border-line/80 bg-panel/70" open={tone === "error"}>
+      <summary className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-subtle marker:hidden">
+        <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+        <span>{label}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-muted">{previewLabel(value)}</span>
+      </summary>
+      <code
+        className={cn(
+          "block max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-line px-3 py-2 font-mono text-xs leading-5",
+          tone === "error" ? "bg-red-soft text-red" : "bg-panel-3/70 text-muted",
+        )}
+      >
+        {prettyPreview(value)}
+      </code>
+    </details>
+  );
+}
 
 const FALLBACK_CHAT_FILE_CAPABILITY: ChatFileCapability = {
   browseEndpoint: "/api/files/browse",
@@ -289,32 +419,33 @@ function ToolCallBlock({
   tool: ChatMessageToolCallItem | ChatToolCard;
 }) {
   const st = toolStatusTone(tool.status);
+  const running = tool.status === "running";
   return (
-    <div className="grid gap-1 rounded-sm border border-line bg-panel-2 px-2.5 py-2">
-      <div className="flex items-center gap-2">
-        <span className="grid size-5 shrink-0 place-items-center rounded-[6px] bg-panel-3 text-muted [&_svg]:size-3">
-          <Wrench />
+    <div className={cn(
+      "grid gap-2 rounded-md border px-3 py-2.5 shadow-sm",
+      tool.isError ? "border-red/40 bg-red-soft/45" : running ? "border-primary-line bg-primary-soft/35" : "border-line bg-panel-2",
+    )}>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={cn(
+          "grid size-7 shrink-0 place-items-center rounded-[8px] [&_svg]:size-3.5",
+          running ? "bg-primary-soft text-primary" : tool.isError ? "bg-red-soft text-red" : "bg-panel-3 text-muted",
+        )}>
+          {running ? <Loader2 className="animate-spin" /> : <Wrench />}
         </span>
-        <span className="truncate font-mono text-sm text-ink-strong">
-          {tool.name}
-        </span>
-        <ToneBadge tone={tool.isError ? "bad" : st.tone}>{st.label}</ToneBadge>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-sm font-semibold text-ink-strong">
+              {tool.name}
+            </span>
+            <ToneBadge tone={tool.isError ? "bad" : st.tone}>{st.label}</ToneBadge>
+          </div>
+          <div className="text-xs text-subtle">
+            {running ? "工具正在执行，结果会流式更新。" : tool.isError ? "工具执行失败。" : "工具执行完成。"}
+          </div>
+        </div>
       </div>
-      {tool.argsPreview && (
-        <code className="block max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-panel-3 px-2 py-1 font-mono text-xs text-muted">
-          {tool.argsPreview}
-        </code>
-      )}
-      {tool.resultPreview && (
-        <code
-          className={cn(
-            "block max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-sm px-2 py-1 font-mono text-xs",
-            tool.isError ? "bg-red-soft text-red" : "bg-panel-3 text-muted",
-          )}
-        >
-          {tool.resultPreview}
-        </code>
-      )}
+      {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} />}
+      {tool.resultPreview && <ToolPreviewBlock label={tool.isError ? "错误输出" : "执行结果"} value={tool.resultPreview} tone={tool.isError ? "error" : "neutral"} />}
     </div>
   );
 }
@@ -443,11 +574,7 @@ function DisplayBlockView({
   onPreviewResource?: (resource: ChatResourceItem) => void;
 }) {
   if (block.type === "markdown") {
-    return (
-      <div className="whitespace-pre-wrap break-words">
-        {block.markdownSource}
-      </div>
-    );
+    return <ChatMarkdownContent source={block.markdownSource} />;
   }
 
   if (block.type === "resource") {
@@ -590,8 +717,8 @@ function LiveTurn({
         )}
         {turn.aborted && <Badge variant="bad">已中止</Badge>}
       </div>
-      <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
-        {turn.text || (
+      <div className="max-w-[80%] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
+        {turn.text ? <ChatMarkdownContent source={turn.text} streaming={!turn.done} /> : (
           <span className="italic text-subtle">等待 Agent 响应…</span>
         )}
         {!turn.done && turn.text && (
