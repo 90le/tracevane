@@ -6,6 +6,7 @@ import type {
   ChatSessionRow,
   ChatSessionRuntimeTarget,
 } from '../../../../../types/chat.js';
+import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from '../../../../../types/channel-connectors.js';
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorInboundAttachment,
@@ -34,7 +35,8 @@ import {
 } from '../runtime-adapter.js';
 import { normalizeString } from '../shared.js';
 
-export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = ['codex', 'claude-code', 'opencode'] as const satisfies readonly ChannelConnectorAgentId[];
+export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS;
+const SUPPORTED_NATIVE_CHAT_AGENT_ID_SET = new Set<string>(SUPPORTED_NATIVE_CHAT_AGENT_IDS);
 
 const NATIVE_CHAT_AGENT_ALIASES: Record<string, ChannelConnectorAgentId> = {
   codex: 'codex',
@@ -100,7 +102,8 @@ function buildChatChannelConnectorPaths(config: TracevaneServerConfig): Pick<Cha
 
 export function normalizeNativeChatAgent(agent: string | null | undefined): ChannelConnectorAgentId | null {
   const normalized = normalizeString(agent);
-  return NATIVE_CHAT_AGENT_ALIASES[normalized] ?? null;
+  const candidate = NATIVE_CHAT_AGENT_ALIASES[normalized] ?? normalized;
+  return SUPPORTED_NATIVE_CHAT_AGENT_ID_SET.has(candidate) ? candidate as ChannelConnectorAgentId : null;
 }
 
 export function assertSupportedNativeRuntimeTarget(target: ChatSessionRuntimeTarget): void {

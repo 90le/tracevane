@@ -67,9 +67,11 @@ test('ChatService keeps native CLI runner details inside the native runtime adap
 
 
 test('Native CLI adapter keeps supported agent ids centralized', () => {
-  assert.match(nativeCliAdapterSource, /export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = \['codex', 'claude-code', 'opencode'\]/);
+  assert.match(nativeCliAdapterSource, /import \{ CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS \}/);
+  assert.match(nativeCliAdapterSource, /export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS/);
   assert.match(nativeCliAdapterSource, /const NATIVE_CHAT_AGENT_ALIASES: Record<string, ChannelConnectorAgentId>/);
-  assert.match(nativeCliAdapterSource, /return NATIVE_CHAT_AGENT_ALIASES\[normalized\] \?\? null/);
+  assert.match(nativeCliAdapterSource, /const candidate = NATIVE_CHAT_AGENT_ALIASES\[normalized\] \?\? normalized/);
+  assert.match(nativeCliAdapterSource, /SUPPORTED_NATIVE_CHAT_AGENT_ID_SET\.has\(candidate\)/);
   assert.match(nativeCliAdapterSource, /SUPPORTED_NATIVE_CHAT_AGENT_IDS\.join\(', '\)/);
   assert.doesNotMatch(
     nativeCliAdapterSource,

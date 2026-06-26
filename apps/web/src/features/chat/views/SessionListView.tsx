@@ -56,6 +56,7 @@ import {
 import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import type { ApiError } from "@/lib/api/errors";
+import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from "../../../../../../types/channel-connectors";
 import type { TerminalBinaryStatus } from "../../cli-agents/types";
 import type {
   ChatSessionFolder,
@@ -151,10 +152,22 @@ type FolderOption = {
 const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli";
 const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
 
+const NATIVE_RUNTIME_AGENT_OPTION_DETAILS = {
+  codex: { binaryId: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
+  "claude-code": { binaryId: "claude", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
+  opencode: { binaryId: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
+} as const satisfies Record<(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number], {
+  binaryId: string;
+  label: string;
+  description: string;
+}>;
+
 const CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] = [
-  { adapterKind: "native-cli", agent: "codex", binaryId: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
-  { adapterKind: "native-cli", agent: "claude-code", binaryId: "claude", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
-  { adapterKind: "native-cli", agent: "opencode", binaryId: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
+  ...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => ({
+    adapterKind: "native-cli" as const,
+    agent,
+    ...NATIVE_RUNTIME_AGENT_OPTION_DETAILS[agent],
+  })),
   { adapterKind: "openclaw-gateway", agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
 ];
 

@@ -29,7 +29,8 @@ test('SessionListView exposes runtime target editing for managed sessions', () =
 test('SessionListView defaults new sessions to native CLI Codex instead of OpenClaw webchat', () => {
   assert.match(source, /const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli"/);
   assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
-  assert.match(source, /agent: "codex", binaryId: "codex", label: "Codex CLI"/);
+  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map/);
+  assert.match(source, /codex: \{ binaryId: "codex", label: "Codex CLI"/);
   assert.match(source, /agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent"/);
   assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
   assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
@@ -37,9 +38,10 @@ test('SessionListView defaults new sessions to native CLI Codex instead of OpenC
 
 test('SessionListView surfaces CLI binary readiness in runtime target choices', () => {
   assert.match(source, /useTerminalStatusQuery\(\{ staleTime: 30_000, retry: false \}\)/);
-  assert.match(source, /binaryId: "codex"/);
-  assert.match(source, /binaryId: "claude"/);
-  assert.match(source, /binaryId: "opencode"/);
+  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS/);
+  assert.match(source, /codex: \{ binaryId: "codex"/);
+  assert.match(source, /"claude-code": \{ binaryId: "claude"/);
+  assert.match(source, /opencode: \{ binaryId: "opencode"/);
   assert.match(source, /模型列表加载失败，将使用模型网关默认路由/);
 });
 
