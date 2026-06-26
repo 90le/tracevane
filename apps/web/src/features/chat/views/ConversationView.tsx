@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   AlertTriangle,
   Bot,
+  Check,
   ChevronRight,
   FileText,
   Folder,
@@ -13,6 +14,7 @@ import {
   Square,
   User,
   X,
+  ShieldCheck,
   Wrench,
 } from "lucide-react";
 
@@ -41,6 +43,7 @@ import type { ApiError } from "@/lib/api/errors";
 import type {
   ChatMessageItem,
   ChatMessageToolCallItem,
+  ChatPermissionRequestCard,
   ChatFileCapability,
   ChatFileUploadResponse,
   ChatResourceItem,
@@ -208,6 +211,76 @@ function buildPersistedComposerDraft(text: string, fileRefs: ComposerFileRefItem
     text,
     fileRefs: readyFileRefs,
   };
+}
+
+function permissionTone(status: ChatPermissionRequestCard["status"]): "ok" | "warn" | "bad" | "info" | "mute" {
+  if (status === "allowed") return "ok";
+  if (status === "pending") return "warn";
+  return "bad";
+}
+
+function permissionLabel(status: ChatPermissionRequestCard["status"]): string {
+  switch (status) {
+    case "pending": return "等待审批";
+    case "allowed": return "已允许";
+    case "denied": return "已拒绝";
+    case "timed-out": return "已超时";
+    case "failed": return "失败";
+    default: return status;
+  }
+}
+
+function PermissionRequestBlock({
+  permission,
+  resolving,
+  onResolve,
+}: {
+  permission: ChatPermissionRequestCard;
+  resolving?: boolean;
+  onResolve?: (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => void;
+}) {
+  const pending = permission.status === "pending";
+  return (
+    <div className="grid gap-2 rounded-sm border border-amber/40 bg-amber-soft/40 px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="grid size-6 shrink-0 place-items-center rounded-[7px] bg-panel text-amber [&_svg]:size-3.5">
+          <ShieldCheck />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-ink-strong">
+          工具审批 · {permission.toolName}
+        </span>
+        <ToneBadge tone={permissionTone(permission.status)}>{permissionLabel(permission.status)}</ToneBadge>
+      </div>
+      {permission.inputPreview && (
+        <code className="block max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-panel px-2 py-1 font-mono text-xs text-muted">
+          {permission.inputPreview}
+        </code>
+      )}
+      {permission.message && <p className="text-xs text-muted">{permission.message}</p>}
+      {pending && onResolve && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={resolving}
+            onClick={() => onResolve(permission, "deny")}
+          >
+            <X className="size-3.5" />
+            拒绝
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={resolving}
+            onClick={() => onResolve(permission, "allow")}
+          >
+            <Check className="size-3.5" />
+            允许
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ToolCallBlock({
@@ -493,7 +566,15 @@ function MessageBubble({
 }
 
 /** Live (streaming) assistant turn assembled from SSE deltas. */
-function LiveTurn({ turn }: { turn: LiveAssistantTurn }) {
+function LiveTurn({
+  turn,
+  resolvingPermission,
+  onResolvePermission,
+}: {
+  turn: LiveAssistantTurn;
+  resolvingPermission?: boolean;
+  onResolvePermission?: (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => void;
+}) {
   return (
     <article className="grid gap-1.5">
       <div className="flex items-center gap-1.5 text-xs text-subtle">
@@ -517,6 +598,18 @@ function LiveTurn({ turn }: { turn: LiveAssistantTurn }) {
           <span className="ml-0.5 animate-pulse">▋</span>
         )}
       </div>
+      {turn.permissions.length > 0 && (
+        <div className="grid w-full max-w-[80%] gap-1.5">
+          {turn.permissions.map((permission) => (
+            <PermissionRequestBlock
+              key={permission.requestId}
+              permission={permission}
+              resolving={resolvingPermission}
+              onResolve={onResolvePermission}
+            />
+          ))}
+        </div>
+      )}
       {turn.toolCards.length > 0 && (
         <div className="grid w-full max-w-[80%] gap-1.5">
           {turn.toolCards.map((tool) => (
@@ -555,6 +648,8 @@ export function ConversationView({
   onSend,
   onUploadFile,
   onAbort,
+  onResolvePermission,
+  resolvingPermission = false,
   onRetry,
 }: {
   sessionKey: string | null;
@@ -573,6 +668,8 @@ export function ConversationView({
   onSend: (payload: ChatSendRequest) => Promise<boolean>;
   onUploadFile: (file: File, signal?: AbortSignal) => Promise<ChatFileUploadResponse>;
   onAbort: () => void;
+  onResolvePermission?: (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => void;
+  resolvingPermission?: boolean;
   onRetry: () => void;
 }) {
   const [draft, setDraft] = React.useState("");
@@ -856,7 +953,13 @@ export function ConversationView({
                 onPreviewResource={(resource) => setPreviewFile(composerFileRefFromMessageResource(resource))}
               />
             ))}
-            {liveTurn && <LiveTurn turn={liveTurn} />}
+            {liveTurn && (
+              <LiveTurn
+                turn={liveTurn}
+                resolvingPermission={resolvingPermission}
+                onResolvePermission={onResolvePermission}
+              />
+            )}
           </div>
         )}
       </div>

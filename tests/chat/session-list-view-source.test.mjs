@@ -88,6 +88,17 @@ test('SessionListView discloses registered but unwired CLI agents without making
   assert.match(source, /尚未接入 Channel Connector 进程适配器/);
 });
 
+
+test('SessionListView scopes model selection by runtime model source', () => {
+  assert.match(source, /modelSource: "gateway" \| "native" \| "platform"/);
+  assert.match(source, /const usesGatewayModelCatalog = selectedRuntimeModelMode === "gateway"/);
+  assert.match(source, /if \(!usesGatewayModelCatalog\) return \[\]/);
+  assert.match(source, /runtimeModelPlaceholder/);
+  assert.match(source, /该 Agent 使用自身 CLI 账号和模型名称/);
+  assert.match(source, /平台 Agent 默认使用自身配置/);
+  assert.match(source, /\{usesGatewayModelCatalog && runtimeModelOptions\.map/);
+});
+
 test('SessionListView keeps the current runtime model visible when gateway catalog changes', () => {
   assert.match(source, /type ChatRuntimeModelOption = \{/);
   assert.match(source, /const runtimeModelOptions = React\.useMemo<ChatRuntimeModelOption\[\]>/);

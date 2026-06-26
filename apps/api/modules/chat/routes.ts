@@ -8,6 +8,7 @@ import type {
   ChatCreateSessionRequest,
   ChatCreateOrganizerFolderRequest,
   ChatPatchQueueEntryRequest,
+  ChatResolvePermissionRequest,
   ChatPatchOrganizerFolderRequest,
   ChatPatchSessionRequest,
   ChatHistorySearchContentFilter,
@@ -509,6 +510,28 @@ export function registerChatRoutes(
           sendChatError(res, error);
         });
         stream.pipe(res);
+      } catch (error) {
+        sendChatError(res, error);
+      }
+    },
+  );
+
+
+  router.post(
+    "/api/chat/sessions/:sessionKey/runs/:runId/permissions/:requestId",
+    async (req, res, routeCtx, params) => {
+      try {
+        const payload = await parseJsonBody<ChatResolvePermissionRequest>(req);
+        sendJson(
+          res,
+          200,
+          await routeCtx.services.chat.resolvePermission(
+            params.sessionKey,
+            params.runId,
+            params.requestId,
+            payload,
+          ),
+        );
       } catch (error) {
         sendChatError(res, error);
       }

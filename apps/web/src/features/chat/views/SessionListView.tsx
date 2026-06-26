@@ -132,6 +132,8 @@ type ChatRuntimeAgentOption = {
   binaryId: TerminalBinaryStatus["id"] | null;
   label: string;
   description: string;
+  modelSource: "gateway" | "native" | "platform";
+  defaultModelLabel: string | null;
 };
 
 type ChatRuntimeOptionReadiness = {
@@ -183,6 +185,8 @@ function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT
     binaryId: metadata.binaryId as TerminalBinaryStatus["id"],
     label: metadata.label,
     description: metadata.description,
+    modelSource: metadata.modelSource,
+    defaultModelLabel: metadata.defaultModelLabel ?? null,
   };
 }
 
@@ -193,6 +197,8 @@ function runtimeCapabilityOption(capability: ChatRuntimeCapability): ChatRuntime
     binaryId: capability.binaryId as TerminalBinaryStatus["id"] | null,
     label: capability.label,
     description: capability.description,
+    modelSource: capability.modelSource ?? (capability.adapterKind === "native-cli" ? "gateway" : "platform"),
+    defaultModelLabel: capability.defaultModelLabel ?? null,
   };
 }
 
@@ -216,6 +222,8 @@ const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = {
   binaryId: null,
   label: "OpenClaw 平台 Agent",
   description: "兼容 OpenClaw 平台原生 Agent 会话",
+  modelSource: "platform",
+  defaultModelLabel: "平台 Agent 配置",
 };
 
 const CHAT_RUNTIME_PERMISSION_OPTIONS: Array<{ value: ChatRuntimePermissionMode | ""; label: string }> = [
@@ -661,6 +669,8 @@ export function SessionListView({
         ]
           .filter(Boolean)
           .join(" · "),
+        modelSource: "platform" as const,
+        defaultModelLabel: agent.model || "平台 Agent 配置",
       }));
 
     return [
@@ -697,6 +707,14 @@ export function SessionListView({
     [chatRuntimeAgentOptions, runtimeAdapterKind, runtimeAgent],
   );
   const selectedRuntimeReadiness = runtimeOptionReadiness(selectedRuntimeOption);
+
+  const selectedRuntimeModelMode = selectedRuntimeOption.modelSource;
+  const usesGatewayModelCatalog = selectedRuntimeModelMode === "gateway";
+  const runtimeModelPlaceholder = selectedRuntimeModelMode === "native"
+    ? (selectedRuntimeOption.defaultModelLabel || `${selectedRuntimeOption.label} 默认模型`)
+    : selectedRuntimeModelMode === "platform"
+      ? (selectedRuntimeOption.defaultModelLabel || "平台 Agent 配置")
+      : "模型网关默认路由";
   const runtimeWorkDirPresets = React.useMemo(
     () => (filesSummary.data?.roots ?? [])
       .filter((root) => root.absolutePath)
@@ -731,6 +749,7 @@ export function SessionListView({
     [modelCatalog.data],
   );
   const runtimeModelOptions = React.useMemo<ChatRuntimeModelOption[]>(() => {
+    if (!usesGatewayModelCatalog) return [];
     const currentModel = runtimeModel.trim();
     if (!currentModel || selectableModels.some((model) => model.id === currentModel)) {
       return selectableModels;
@@ -743,7 +762,7 @@ export function SessionListView({
       },
       ...selectableModels,
     ];
-  }, [runtimeModel, selectableModels]);
+  }, [runtimeModel, selectableModels, usesGatewayModelCatalog]);
 
   const runCreate = () => {
     if (!ensureRuntimeSelectable()) return;
@@ -1570,15 +1589,19 @@ export function SessionListView({
                         onChange={(event) => setRuntimeModel(event.target.value)}
                         className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
                       >
-                        <option value="">使用模型网关默认路由</option>
-                        {runtimeModelOptions.map((model) => (
+                        <option value="">{runtimeModelPlaceholder}</option>
+                        {usesGatewayModelCatalog && runtimeModelOptions.map((model) => (
                           <option key={model.id} value={model.id}>
                             {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
                           </option>
                         ))}
                       </select>
-                      {modelCatalog.isError ? (
+                      {usesGatewayModelCatalog && modelCatalog.isError ? (
                         <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
+                      ) : selectedRuntimeModelMode === "native" ? (
+                        <span className="text-2xs text-subtle">该 Agent 使用自身 CLI 账号和模型名称；可留空使用 CLI 默认模型。</span>
+                      ) : selectedRuntimeModelMode === "platform" ? (
+                        <span className="text-2xs text-subtle">平台 Agent 默认使用自身配置；需要覆盖时再填写模型名称。</span>
                       ) : null}
                     </label>
                     <label className="grid gap-2 text-sm text-muted">
@@ -1623,7 +1646,7 @@ export function SessionListView({
 
                   <p className="rounded-sm bg-panel-2 px-3 py-2 text-xs text-subtle">
                     当前保存运行目标：{selectedRuntimeOption.adapterKind} / {selectedRuntimeOption.agent}
-                    {runtimeModel.trim() ? ` / ${runtimeModel.trim()}` : " / 默认模型"}
+                    {runtimeModel.trim() ? ` / ${runtimeModel.trim()}` : ` / ${runtimeModelPlaceholder}`}
                     {runtimeWorkDir.trim() ? ` / ${runtimeWorkDir.trim()}` : " / 默认目录"}。
                     发送时会按这里的 Agent、模型、目录和权限启动或恢复对应运行时会话。
                     {!selectedRuntimeReadiness.selectable ? ` 当前运行器不可用：${selectedRuntimeReadiness.detail}` : ""}
@@ -1708,15 +1731,19 @@ export function SessionListView({
                         onChange={(event) => setRuntimeModel(event.target.value)}
                         className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
                       >
-                        <option value="">使用模型网关默认路由</option>
-                        {runtimeModelOptions.map((model) => (
+                        <option value="">{runtimeModelPlaceholder}</option>
+                        {usesGatewayModelCatalog && runtimeModelOptions.map((model) => (
                           <option key={model.id} value={model.id}>
                             {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
                           </option>
                         ))}
                       </select>
-                      {modelCatalog.isError ? (
+                      {usesGatewayModelCatalog && modelCatalog.isError ? (
                         <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
+                      ) : selectedRuntimeModelMode === "native" ? (
+                        <span className="text-2xs text-subtle">该 Agent 使用自身 CLI 账号和模型名称；可留空使用 CLI 默认模型。</span>
+                      ) : selectedRuntimeModelMode === "platform" ? (
+                        <span className="text-2xs text-subtle">平台 Agent 默认使用自身配置；需要覆盖时再填写模型名称。</span>
                       ) : null}
                     </label>
                     <label className="grid gap-2 text-sm text-muted">

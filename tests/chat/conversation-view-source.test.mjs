@@ -150,3 +150,12 @@ test('ConversationView paginates Files directory picker through browse API', () 
   assert.match(source, /下一页/);
   assert.match(source, /setFilePickerPage\(1\)/);
 });
+
+test('ConversationView renders pending native tool approvals as actionable live cards', () => {
+  assert.match(source, /function PermissionRequestBlock/);
+  assert.match(source, /工具审批 · \{permission\.toolName\}/);
+  assert.match(source, /permission\.status === "pending"/);
+  assert.match(source, /onResolve\(permission, "allow"\)/);
+  assert.match(source, /onResolve\(permission, "deny"\)/);
+  assert.match(source, /turn\.permissions\.map/);
+});

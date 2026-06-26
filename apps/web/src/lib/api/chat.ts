@@ -26,6 +26,8 @@ import type {
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
+  ChatResolvePermissionRequest,
+  ChatResolvePermissionResponse,
   ChatFileUploadResponse,
   ChatSendAck,
   ChatSendRequest,
@@ -370,6 +372,20 @@ export function sendChatMessage(
 ): Promise<ChatSendAck> {
   return apiRequest<ChatSendAck>(
     `${BASE}/sessions/${encodeSessionKey(sessionKey)}/send`,
+    { method: "POST", body: jsonBody(payload) },
+  );
+}
+
+
+/** POST /api/chat/sessions/:key/runs/:runId/permissions/:requestId — resolve a pending native CLI approval. */
+export function resolveChatPermission(
+  sessionKey: string,
+  runId: string,
+  requestId: string,
+  payload: ChatResolvePermissionRequest,
+): Promise<ChatResolvePermissionResponse> {
+  return apiRequest<ChatResolvePermissionResponse>(
+    `${BASE}/sessions/${encodeSessionKey(sessionKey)}/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`,
     { method: "POST", body: jsonBody(payload) },
   );
 }

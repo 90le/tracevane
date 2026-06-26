@@ -31,6 +31,8 @@ export interface ChannelConnectorRuntimeAgentMetadata {
   binaryName: string;
   description: string;
   runnerContract: "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "gemini-prompt-stream-json";
+  modelSource: "gateway" | "native";
+  defaultModelLabel?: string | null;
 }
 
 export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
@@ -41,6 +43,8 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
     binaryName: "codex",
     description: "本地 Codex 会话，使用模型网关与当前工作区",
     runnerContract: "codex-app-server",
+    modelSource: "gateway",
+    defaultModelLabel: "模型网关默认路由",
   },
   "claude-code": {
     id: "claude-code",
@@ -49,6 +53,8 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
     binaryName: "claude",
     description: "本地 Claude Code 会话，适合代码库任务",
     runnerContract: "claude-code-stream-json",
+    modelSource: "gateway",
+    defaultModelLabel: "模型网关默认路由",
   },
   opencode: {
     id: "opencode",
@@ -57,6 +63,8 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
     binaryName: "opencode",
     description: "本地 OpenCode 会话，适合开源 CLI 工作流",
     runnerContract: "opencode-run-session",
+    modelSource: "gateway",
+    defaultModelLabel: "模型网关默认路由",
   },
   gemini: {
     id: "gemini",
@@ -65,6 +73,8 @@ export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = {
     binaryName: "gemini",
     description: "本地 Gemini CLI non-interactive 会话，使用 Gemini CLI 自身认证",
     runnerContract: "gemini-prompt-stream-json",
+    modelSource: "native",
+    defaultModelLabel: "Gemini CLI 默认模型",
   },
 } as const satisfies Record<ChannelConnectorRuntimeAgentId, ChannelConnectorRuntimeAgentMetadata>;
 

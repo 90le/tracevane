@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { TracevaneServerConfig } from '../../../../../types/api.js';
 import type {
+  ChatPermissionRequestCard,
   ChatSendAttachment,
   ChatSendFileRef,
   ChatSessionRow,
@@ -17,6 +18,7 @@ import type {
 import { MODEL_GATEWAY_DEFAULT_HOST, MODEL_GATEWAY_DEFAULT_PORT } from '../../../../../types/model-gateway.js';
 import {
   runChannelConnectorAgentTurn,
+  type ChannelConnectorAgentPermissionDecision,
   type ChannelConnectorAgentProcessRunner,
   type ChannelConnectorAgentProgressEvent,
   type ChannelConnectorRuntimeBinding,
@@ -38,6 +40,22 @@ import { normalizeString } from '../shared.js';
 export const SUPPORTED_NATIVE_CHAT_AGENT_IDS = CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS;
 const SUPPORTED_NATIVE_CHAT_AGENT_ID_SET = new Set<string>(SUPPORTED_NATIVE_CHAT_AGENT_IDS);
 
+function truncatePreview(value: unknown, maxLength = 1200): string | null {
+  let text = '';
+  try {
+    text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  } catch {
+    text = String(value ?? '');
+  }
+  const normalized = text.trim();
+  if (!normalized) return null;
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
+}
+
+function nativePermissionKey(sessionKey: string, runId: string, requestId: string): string {
+  return `${sessionKey}::${runId}::${requestId}`;
+}
+
 const NATIVE_CHAT_AGENT_ALIASES: Record<string, ChannelConnectorAgentId> = {
   codex: 'codex',
   'openai-codex': 'codex',
@@ -58,6 +76,13 @@ export type NativeChatActiveRun = {
 
 export type NativeChatActiveRuns = Map<string, NativeChatActiveRun>;
 
+export interface NativeChatPendingPermission {
+  card: ChatPermissionRequestCard;
+  resolve: (decision: ChannelConnectorAgentPermissionDecision) => void;
+}
+
+export type NativeChatPendingPermissions = Map<string, NativeChatPendingPermission>;
+
 export interface NativeCliChatMediaBridge {
   buildNativeInboundAttachments(
     sessionKey: string,
@@ -71,6 +96,8 @@ export interface NativeCliChatRuntimeAdapterOptions {
   session: ChatSessionRow;
   runtimeSession: { agentNativeSessionId?: string | null; codexThreadId?: string | null } | null;
   activeRuns: NativeChatActiveRuns;
+  pendingPermissions: NativeChatPendingPermissions;
+  onPermission: (sessionKey: string, runId: string, permission: ChatPermissionRequestCard) => void;
   mediaBridge: NativeCliChatMediaBridge;
   onProgress: (sessionKey: string, requestId: string, event: ChannelConnectorAgentProgressEvent) => void;
   processRunner?: ChannelConnectorAgentProcessRunner;
@@ -196,7 +223,7 @@ function buildChatNativeMessage(mediaBridge: NativeCliChatMediaBridge, input: Ch
 }
 
 export function createNativeCliChatRuntimeAdapter(options: NativeCliChatRuntimeAdapterOptions): ChatRuntimeAdapter {
-  const { activeRuns, config, mediaBridge, processRunner, runtimeSession, session } = options;
+  const { activeRuns, config, mediaBridge, pendingPermissions, processRunner, runtimeSession, session } = options;
   const agent = normalizeNativeChatAgent(session.runtimeTarget.agent);
   return {
     kind: 'native-cli',
@@ -237,6 +264,53 @@ export function createNativeCliChatRuntimeAdapter(options: NativeCliChatRuntimeA
             progressEvents.push(event);
             options.onProgress(input.sessionKey, input.idempotencyKey, event);
           },
+          resolvePermission: async (request) => {
+            const requestedAt = new Date().toISOString();
+            const card: ChatPermissionRequestCard = {
+              requestId: request.requestId,
+              runId,
+              toolName: normalizeString(request.toolName) || normalizeString(request.subtype) || 'tool',
+              status: 'pending',
+              requestedAt,
+              updatedAt: null,
+              inputPreview: truncatePreview(request.input),
+              message: null,
+            };
+            options.onPermission(input.sessionKey, runId, card);
+            return new Promise<ChannelConnectorAgentPermissionDecision>((resolve) => {
+              const key = nativePermissionKey(input.sessionKey, runId, request.requestId);
+              const timeout = setTimeout(() => {
+                const current = pendingPermissions.get(key);
+                if (!current) return;
+                pendingPermissions.delete(key);
+                const updated: ChatPermissionRequestCard = {
+                  ...current.card,
+                  status: 'timed-out',
+                  updatedAt: new Date().toISOString(),
+                  message: '审批超时，已自动拒绝。',
+                };
+                options.onPermission(input.sessionKey, runId, updated);
+                resolve({ behavior: 'deny', message: 'Tracevane Chat permission request timed out.' });
+              }, 120_000);
+              timeout.unref();
+              pendingPermissions.set(key, {
+                card,
+                resolve: (decision) => {
+                  clearTimeout(timeout);
+                  pendingPermissions.delete(key);
+                  const updated: ChatPermissionRequestCard = {
+                    ...card,
+                    status: decision.behavior === 'allow' ? 'allowed' : 'denied',
+                    updatedAt: new Date().toISOString(),
+                    message: decision.behavior === 'allow' ? '用户已允许该工具。' : (decision.message || '用户已拒绝该工具。'),
+                    inputPreview: truncatePreview(decision.behavior === 'allow' ? (decision.updatedInput || request.input) : request.input),
+                  };
+                  options.onPermission(input.sessionKey, runId, updated);
+                  resolve(decision);
+                },
+              });
+            });
+          },
           processRunner,
         });
         return {
@@ -268,6 +342,11 @@ export function createNativeCliChatRuntimeAdapter(options: NativeCliChatRuntimeA
         });
       }
       active.controller.abort();
+      for (const [key, entry] of [...pendingPermissions.entries()]) {
+        if (!key.startsWith(`${input.sessionKey}::${active.runId}::`)) continue;
+        pendingPermissions.delete(key);
+        entry.resolve({ behavior: 'deny', message: 'Tracevane Chat aborted the active run.' });
+      }
       return normalizeChatRuntimeAbortResult({
         aborted: true,
         runIds: [active.runId],

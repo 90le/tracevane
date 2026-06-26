@@ -20,6 +20,7 @@ import {
   useAbortChatSessionMutation,
   useChatBootstrapQuery,
   useChatStream,
+  useResolveChatPermissionMutation,
   useSendChatMessageMutation,
   useUploadChatFileMutation,
 } from "@/lib/query/chat";
@@ -35,6 +36,7 @@ import type {
   ChatMessageItem,
   ChatSendRequest,
   ChatStreamEvent,
+  ChatPermissionRequestCard,
   ChatToolCard,
   LiveAssistantTurn,
 } from "./types";
@@ -68,6 +70,7 @@ const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
   text: "",
   toolCards: [],
+  permissions: [],
   done: false,
   error: null,
   aborted: false,
@@ -150,6 +153,7 @@ export function ChatWorkbenchPage() {
   const sendMutation = useSendChatMessageMutation();
   const uploadMutation = useUploadChatFileMutation();
   const abortMutation = useAbortChatSessionMutation();
+  const resolvePermissionMutation = useResolveChatPermissionMutation();
 
   const refetchSelected = React.useCallback(() => {
     void queryClient.invalidateQueries({
@@ -225,6 +229,20 @@ export function ChatWorkbenchPage() {
             runId: runId ?? prev?.runId ?? null,
             text: event.text,
           }));
+          break;
+        }
+
+        case "agent_permission": {
+          if (activeRun && runId && runId !== activeRun) return;
+          const permission = event.permission as ChatPermissionRequestCard;
+          setLiveTurn((prev) => {
+            const base = prev ?? EMPTY_TURN;
+            const existing = base.permissions.findIndex((item) => item.requestId === permission.requestId);
+            const permissions = existing >= 0
+              ? base.permissions.map((item, index) => (index === existing ? permission : item))
+              : [...base.permissions, permission];
+            return { ...base, runId: runId ?? base.runId, permissions };
+          });
           break;
         }
         case "temporary.tool":
@@ -315,6 +333,24 @@ export function ChatWorkbenchPage() {
     );
     setListOpen(false);
   };
+
+
+  const handleResolvePermission = React.useCallback(async (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => {
+    if (!selectedKey || !permission.runId) return;
+    try {
+      await resolvePermissionMutation.mutateAsync({
+        sessionKey: selectedKey,
+        runId: permission.runId,
+        requestId: permission.requestId,
+        payload: { decision },
+      });
+      toast.success(decision === "allow" ? "已允许工具执行" : "已拒绝工具执行");
+    } catch (error) {
+      toast.error("审批操作失败", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [resolvePermissionMutation, selectedKey]);
 
   const handleSend = React.useCallback(async (payload: ChatSendRequest): Promise<boolean> => {
     if (!selectedKey) return false;
@@ -524,6 +560,8 @@ export function ChatWorkbenchPage() {
             onUploadFile={handleUploadFile}
             uploading={uploadMutation.isPending}
             onAbort={handleAbort}
+            onResolvePermission={handleResolvePermission}
+            resolvingPermission={resolvePermissionMutation.isPending}
             onRetry={() => void bootstrap.refetch()}
           />
         </div>

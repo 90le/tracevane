@@ -312,12 +312,12 @@ test('chat health treats an online gateway as usable even when the system servic
     assert.deepEqual(
       health.runtimeCapabilities
         .filter((capability) => capability.status === 'runnable' && capability.adapterKind === 'native-cli')
-        .map((capability) => [capability.agent, capability.binaryId, capability.runnerContract]),
+        .map((capability) => [capability.agent, capability.binaryId, capability.runnerContract, capability.modelSource, capability.defaultModelLabel]),
       [
-        ['codex', 'codex', 'codex-app-server'],
-        ['claude-code', 'claude', 'claude-code-stream-json'],
-        ['opencode', 'opencode', 'opencode-run-session'],
-        ['gemini', 'gemini', 'gemini-prompt-stream-json'],
+        ['codex', 'codex', 'codex-app-server', 'gateway', '模型网关默认路由'],
+        ['claude-code', 'claude', 'claude-code-stream-json', 'gateway', '模型网关默认路由'],
+        ['opencode', 'opencode', 'opencode-run-session', 'gateway', '模型网关默认路由'],
+        ['gemini', 'gemini', 'gemini-prompt-stream-json', 'native', 'Gemini CLI 默认模型'],
       ],
     );
     assert.deepEqual(health.fileCapability, {
@@ -1042,6 +1042,78 @@ test('Gemini CLI chat sessions send through the native runner with model and wor
   }
 });
 
+
+
+test('native CLI chat permission requests can be approved from Chat before the runner continues', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-approval-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    gateway = await startFakeGateway();
+    let releasePermissionRequest;
+    const permissionRequested = new Promise((resolve) => {
+      releasePermissionRequest = resolve;
+    });
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          const decisionPromise = request.resolvePermission({
+            requestId: 'perm-chat-1',
+            subtype: 'can_use_tool',
+            toolName: 'Bash',
+            input: { command: 'echo approved' },
+          });
+          releasePermissionRequest();
+          const decision = await decisionPromise;
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ type: 'result', result: `permission ${decision.behavior}`, session_id: 'claude-approval-session' })}\n`,
+            stderr: '',
+            durationMs: 12,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Approval session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'claude-code',
+        permissionMode: 'suggest',
+      },
+    });
+
+    const sendPromise = context.services.chat.send(created.session.key, {
+      text: 'run a command that needs approval',
+      clientRequestId: 'approval-run-1',
+    });
+    await permissionRequested;
+
+    const resolved = await context.services.chat.resolvePermission(
+      created.session.key,
+      'approval-run-1',
+      'perm-chat-1',
+      { decision: 'allow' },
+    );
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.permission.status, 'allowed');
+    assert.equal(resolved.permission.toolName, 'Bash');
+
+    const ack = await sendPromise;
+    assert.equal(ack.runtime.state, 'completed');
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.match(history.messages.at(-1)?.text || '', /permission allow/);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('patching runtime target clears native CLI resume session state', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-reset-'));

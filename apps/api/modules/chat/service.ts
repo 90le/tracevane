@@ -38,9 +38,12 @@ import type {
   ChatHistorySearchPayload,
   ChatMessageItem,
   ChatMessageToolCallItem,
+  ChatPermissionRequestCard,
   ChatObservabilityState,
   ChatOrganizerPayload,
   ChatPatchQueueEntryRequest,
+  ChatResolvePermissionRequest,
+  ChatResolvePermissionResponse,
   ChatPatchOrganizerFolderRequest,
   ChatPatchOrganizerFolderResponse,
   ChatPatchSessionRequest,
@@ -203,6 +206,7 @@ import {
   assertSupportedNativeRuntimeTarget,
   createNativeCliChatRuntimeAdapter,
   type NativeChatActiveRuns,
+  type NativeChatPendingPermissions,
 } from './native-cli-runtime/adapter.js';
 import {
   createSessionGatewayBridge,
@@ -748,6 +752,8 @@ function buildChatRuntimeCapabilities(): ChatDiagnostics['runtimeCapabilities'] 
       binaryId: metadata.binaryId,
       binaryName: metadata.binaryName,
       runnerContract: metadata.runnerContract,
+      modelSource: metadata.modelSource,
+      defaultModelLabel: metadata.defaultModelLabel ?? null,
       status: 'runnable' as const,
       description: metadata.description,
     };
@@ -761,6 +767,8 @@ function buildChatRuntimeCapabilities(): ChatDiagnostics['runtimeCapabilities'] 
       binaryId: null,
       binaryName: null,
       runnerContract: 'pending-runner-verification',
+      modelSource: 'native' as const,
+      defaultModelLabel: null,
       status: 'registered_pending' as const,
       description: '已登记但尚未完成 Chat native CLI runner、模型网关映射与终端检测验证。',
     }));
@@ -774,6 +782,8 @@ function buildChatRuntimeCapabilities(): ChatDiagnostics['runtimeCapabilities'] 
       binaryId: null,
       binaryName: null,
       runnerContract: 'openclaw-gateway-session-bridge',
+      modelSource: 'platform' as const,
+      defaultModelLabel: '平台 Agent 配置',
       status: 'runnable' as const,
       description: '第三方平台 OpenClaw Gateway 兼容入口；仅作为平台 runtime，不代表 native CLI。',
     },
@@ -895,6 +905,7 @@ export interface ChatService {
   patchQueueEntry(sessionKey: string, entryId: string, payload: ChatPatchQueueEntryRequest): Promise<ChatQueuePayload>;
   deleteQueueEntry(sessionKey: string, entryId: string): Promise<ChatQueuePayload>;
   send(sessionKey: string, payload: ChatSendRequest): Promise<ChatSendAck>;
+  resolvePermission(sessionKey: string, runId: string, requestId: string, payload: ChatResolvePermissionRequest): Promise<ChatResolvePermissionResponse>;
   resolveMedia(sessionKey: string, mediaId: string): Promise<ResolvedChatMedia>;
   deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse>;
   abort(sessionKey: string): Promise<ChatAbortResponse>;
@@ -942,6 +953,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   const gatewaySubscribers = new Map<string, Map<string, ChatGatewaySubscriber>>();
   const sessionBridges = new Map<string, SessionGatewayBridge>();
   const nativeActiveRuns: NativeChatActiveRuns = new Map();
+  const nativePendingPermissions: NativeChatPendingPermissions = new Map();
   const streamReplayState = createChatStreamReplayState();
   const queueFlushSessions = new Set<string>();
   const queueFlushRerunSessions = new Set<string>();
@@ -1981,6 +1993,32 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (overlayEvent) {
       broadcastToSession(sessionKey, overlayEvent);
     }
+  }
+
+
+  function applyNativeCliPermissionEvent(
+    sessionKey: string,
+    runId: string,
+    permission: ChatPermissionRequestCard,
+  ): void {
+    const emittedAt = normalizeDate(permission.updatedAt || permission.requestedAt) || new Date().toISOString();
+    broadcastToSession(sessionKey, {
+      kind: 'agent_permission',
+      sessionKey,
+      runId,
+      emittedAt,
+      permission,
+    });
+    updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
+      id: `native-permission-${permission.requestId}-${permission.status}`,
+      kind: 'tool_call',
+      runId,
+      toolCallId: permission.requestId,
+      emittedAt,
+      title: `${permission.status === 'pending' ? 'Permission pending' : 'Permission resolved'} · ${permission.toolName}`,
+      detail: permission.message || permission.inputPreview || null,
+      level: permission.status === 'pending' ? 'warning' : permission.status === 'allowed' ? 'success' : 'error',
+    }, `native-permission-${permission.requestId}-${permission.status}`));
   }
 
   function clearRunProjections(sessionKey: string): void {
@@ -6687,8 +6725,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         session,
         runtimeSession: getRegistryEntry(session.key)?.runtimeSession || null,
         activeRuns: nativeActiveRuns,
+        pendingPermissions: nativePendingPermissions,
         mediaBridge,
         onProgress: applyNativeCliProgressEvent,
+        onPermission: applyNativeCliPermissionEvent,
         processRunner: options.agentProcessRunner,
       });
     }
@@ -7707,6 +7747,32 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
 
       return resolved;
+    },
+
+
+    async resolvePermission(sessionKey, runId, requestId, payload): Promise<ChatResolvePermissionResponse> {
+      const normalizedSessionKey = normalizeString(sessionKey);
+      const normalizedRunId = normalizeString(runId);
+      const normalizedRequestId = normalizeString(requestId);
+      if (!normalizedSessionKey || !normalizedRunId || !normalizedRequestId) {
+        throw new ChatServiceError(400, buildChatError('invalid_request', 'Permission session, run, and request ids are required'));
+      }
+      const key = `${normalizedSessionKey}::${normalizedRunId}::${normalizedRequestId}`;
+      const pending = nativePendingPermissions.get(key);
+      if (!pending) {
+        throw new ChatServiceError(404, buildChatError('no_active_run', 'Permission request is no longer pending'));
+      }
+      const decision = payload?.decision === 'allow' ? 'allow' : 'deny';
+      pending.resolve(decision === 'allow'
+        ? { behavior: 'allow', updatedInput: payload.updatedInput || null }
+        : { behavior: 'deny', message: normalizeString(payload?.message) || 'User denied this tool use from Tracevane Chat.' });
+      const settled = {
+        ...pending.card,
+        status: decision === 'allow' ? 'allowed' as const : 'denied' as const,
+        updatedAt: new Date().toISOString(),
+        message: decision === 'allow' ? '用户已允许该工具。' : (normalizeString(payload?.message) || '用户已拒绝该工具。'),
+      };
+      return { ok: true, permission: settled };
     },
 
     async deleteSession(sessionKey: string): Promise<ChatDeleteSessionResponse> {

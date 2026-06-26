@@ -57,3 +57,13 @@ test('ChatWorkbenchPage settles immediate native CLI acknowledgements without wa
   assert.match(source, /ack\.status === "duplicate_completed" \|\| isTerminalRuntimeState\(ack\.runtime\.state\)/);
   assert.match(source, /toast\.error\("Agent 运行失败"/);
 });
+
+test('ChatWorkbenchPage routes native permission events into live turns and resolve mutations', () => {
+  assert.match(source, /useResolveChatPermissionMutation/);
+  assert.match(source, /case "agent_permission"/);
+  assert.match(source, /base\.permissions\.findIndex/);
+  assert.match(source, /handleResolvePermission/);
+  assert.match(source, /payload: \{ decision \}/);
+  assert.match(source, /onResolvePermission=\{handleResolvePermission\}/);
+  assert.match(source, /resolvingPermission=\{resolvePermissionMutation\.isPending\}/);
+});

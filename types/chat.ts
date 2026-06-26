@@ -11,6 +11,7 @@ export type ChatRuntimePermissionMode = 'suggest' | 'read-only' | 'auto-edit' | 
 export type ChatAgentLifecyclePhase = 'start' | 'end' | 'error';
 
 export type ChatToolStatus = 'running' | 'completed' | 'error';
+export type ChatPermissionStatus = 'pending' | 'allowed' | 'denied' | 'timed-out' | 'failed';
 export type ChatRunProjectionLifecycle = 'queued' | 'running' | 'completed' | 'aborted' | 'error';
 export type ChatQueuedMessageStatus = 'queued' | 'blocked';
 
@@ -114,6 +115,17 @@ export interface ChatToolCard {
   resultPreview: string | null;
   isError: boolean;
   artifacts?: ChatToolArtifactItem[];
+}
+
+export interface ChatPermissionRequestCard {
+  requestId: string;
+  runId: string | null;
+  toolName: string;
+  status: ChatPermissionStatus;
+  requestedAt: string;
+  updatedAt: string | null;
+  inputPreview: string | null;
+  message: string | null;
 }
 
 export interface ChatMessageToolCallItem {
@@ -358,6 +370,8 @@ export interface ChatRuntimeCapability {
   binaryId: string | null;
   binaryName: string | null;
   runnerContract: string;
+  modelSource?: 'gateway' | 'native' | 'platform';
+  defaultModelLabel?: string | null;
   status: 'runnable' | 'registered_pending';
   description: string;
 }
@@ -581,6 +595,17 @@ export interface ChatQueuePayload {
   items: ChatQueuedMessageItem[];
 }
 
+export interface ChatResolvePermissionRequest {
+  decision: 'allow' | 'deny';
+  updatedInput?: Record<string, unknown> | null;
+  message?: string | null;
+}
+
+export interface ChatResolvePermissionResponse {
+  ok: boolean;
+  permission: ChatPermissionRequestCard;
+}
+
 export interface ChatPatchQueueEntryRequest extends ChatSendRequest {}
 
 
@@ -708,6 +733,13 @@ export type ChatStreamEvent = (
     runId: string | null;
     emittedAt: string;
     runtime: ChatRuntimeState;
+  }
+  | {
+    kind: 'agent_permission';
+    sessionKey: string;
+    runId: string | null;
+    emittedAt: string;
+    permission: ChatPermissionRequestCard;
   }
   | {
     kind: 'run_overlay';

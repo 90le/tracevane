@@ -26,6 +26,7 @@ export type {
   ChatMessageRole,
   ChatMessageToolCallItem,
   ChatObservabilityState,
+  ChatPermissionRequestCard,
   ChatProcessBlock,
   ChatQueuePayload,
   ChatQueuedMessageItem,
@@ -78,6 +79,8 @@ export interface LiveAssistantTurn {
   text: string;
   /** Tool cards keyed by toolCallId, in arrival order. */
   toolCards: ChatToolCard[];
+  /** Pending/settled approval cards emitted by native CLI runners. */
+  permissions: ChatPermissionRequestCard[];
   /** Whether the run has reached a terminal state on the stream. */
   done: boolean;
   /** Set when the stream reported an error for this turn. */

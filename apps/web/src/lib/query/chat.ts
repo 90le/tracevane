@@ -23,6 +23,7 @@ import {
   patchChatOrganizerFolder,
   patchChatSession,
   resetChatSession,
+  resolveChatPermission,
   sendChatMessage,
   uploadChatFile,
 } from "../api/chat";
@@ -46,6 +47,8 @@ import type {
   ChatQueuePayload,
   ChatQueuedMessageItem,
   ChatResetResponse,
+  ChatResolvePermissionRequest,
+  ChatResolvePermissionResponse,
   ChatFileUploadResponse,
   ChatSendAck,
   ChatSendRequest,
@@ -313,6 +316,30 @@ export function useSendChatMessageMutation(
     mutationFn: ({ sessionKey, payload }) =>
       sendChatMessage(sessionKey, payload),
     ...options,
+  });
+}
+
+
+/** Resolve a native CLI tool approval request surfaced in Agent Chat. */
+export function useResolveChatPermissionMutation(
+  options?: MutationOpts<
+    ChatResolvePermissionResponse,
+    { sessionKey: string; runId: string; requestId: string; payload: ChatResolvePermissionRequest }
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChatResolvePermissionResponse,
+    ApiError,
+    { sessionKey: string; runId: string; requestId: string; payload: ChatResolvePermissionRequest }
+  >({
+    mutationFn: ({ sessionKey, runId, requestId, payload }) =>
+      resolveChatPermission(sessionKey, runId, requestId, payload),
+    ...options,
+    onSuccess: (data, variables, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.bootstrap(variables.sessionKey) });
+      options?.onSuccess?.(data, variables, ...rest);
+    },
   });
 }
 
