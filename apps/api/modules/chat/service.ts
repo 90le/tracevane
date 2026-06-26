@@ -1996,6 +1996,20 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
 
+  function buildPendingPermissionEvents(sessionKey: string, emittedAt = new Date().toISOString()): ChatStreamEvent[] {
+    const prefix = `${sessionKey}::`;
+    return [...nativePendingPermissions.entries()]
+      .filter(([key, entry]) => key.startsWith(prefix) && entry.card.status === 'pending')
+      .map(([, entry]) => ({
+        kind: 'agent_permission' as const,
+        sessionKey,
+        runId: entry.card.runId,
+        emittedAt: normalizeDate(entry.card.updatedAt || entry.card.requestedAt) || emittedAt,
+        permission: { ...entry.card },
+      }))
+      .sort((left, right) => left.emittedAt.localeCompare(right.emittedAt));
+  }
+
   function applyNativeCliPermissionEvent(
     sessionKey: string,
     runId: string,
@@ -4738,6 +4752,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         terminal: isRunProjectionTerminal(overlay.lifecycle),
       } satisfies ChatStreamEvent);
     }
+    for (const permissionEvent of buildPendingPermissionEvents(sessionKey)) {
+      sendSequencedSseEvent(res, sessionKey, permissionEvent);
+    }
     if (options.includeSnapshot !== false) {
       const snapshot = await buildCanonicalSnapshotEvent(sessionKey);
       if (snapshot) {
@@ -4789,6 +4806,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         terminal: isRunProjectionTerminal(overlay.lifecycle),
       });
     }
+    events.push(...buildPendingPermissionEvents(sessionKey, emittedAt));
 
     if (options.includeSnapshot !== false) {
       const snapshotEvent = await buildCanonicalSnapshotEvent(sessionKey);
@@ -6566,6 +6584,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             terminal: isRunProjectionTerminal(overlay.lifecycle),
           };
           sendSequencedWebSocketEvent(ws, sessionKey, overlayEvent);
+        }
+        for (const permissionEvent of buildPendingPermissionEvents(sessionKey, runtimeEvent.emittedAt)) {
+          sendSequencedWebSocketEvent(ws, sessionKey, permissionEvent);
         }
         if (
           shouldEmitCanonicalProtocol()

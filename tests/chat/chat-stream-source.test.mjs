@@ -20,3 +20,15 @@ test('Chat contract declares permission route and stream event kind', () => {
   assert.match(contractSource, /permissionByRun: '\/api\/chat\/sessions\/:sessionKey\/runs\/:runId\/permissions\/:requestId'/);
   assert.match(contractSource, /'agent_permission'/);
 });
+
+
+test('Chat attach events replay pending native permission cards', () => {
+  const serviceSource = fs.readFileSync(path.join(process.cwd(), 'apps/api/modules/chat/service.ts'), 'utf8');
+  assert.match(serviceSource, /function buildPendingPermissionEvents/);
+  assert.match(serviceSource, /nativePendingPermissions\.entries\(\)/);
+  assert.match(serviceSource, /entry\.card\.status === 'pending'/);
+  assert.match(serviceSource, /kind: 'agent_permission' as const/);
+  assert.match(serviceSource, /sendSequencedSseEvent\(res, sessionKey, permissionEvent\)/);
+  assert.match(serviceSource, /sendSequencedWebSocketEvent\(ws, sessionKey, permissionEvent\)/);
+  assert.match(serviceSource, /events\.push\(\.\.\.buildPendingPermissionEvents\(sessionKey, emittedAt\)\)/);
+});
