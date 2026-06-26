@@ -78,10 +78,14 @@ test('SessionListView takes runnable native CLI display metadata from the shared
 });
 
 test('SessionListView discloses registered but unwired CLI agents without making them selectable', () => {
+  const pendingTypeBody = source.match(/type PendingNativeRuntimeAgentOption = \{([\s\S]*?)\n\};/)?.[1] || '';
   assert.match(source, /CHANNEL_CONNECTOR_AGENT_IDS/);
   assert.match(source, /type PendingNativeRuntimeAgentOption/);
+  assert.match(pendingTypeBody, /agent: string/);
+  assert.doesNotMatch(pendingTypeBody, /ChatRuntimeAgentId/);
   assert.match(source, /const FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
   assert.match(source, /status === \"registered_pending\"/);
+  assert.doesNotMatch(source, /agent is PendingNativeRuntimeAgentOption\["agent"\]/);
   assert.match(source, /待接入 CLI Agent/);
   assert.equal((source.match(/待接入 CLI Agent/g) || []).length, 1);
   assert.match(source, /Chat 不会假装可运行/);

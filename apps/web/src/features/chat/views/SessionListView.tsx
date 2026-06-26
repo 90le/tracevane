@@ -144,7 +144,7 @@ type ChatRuntimeOptionReadiness = {
 };
 
 type PendingNativeRuntimeAgentOption = {
-  agent: ChatRuntimeAgentId;
+  agent: string;
   label: string;
   description: string;
 };
@@ -206,7 +206,7 @@ const FALLBACK_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] =
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption);
 
 const FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: PendingNativeRuntimeAgentOption[] = CHANNEL_CONNECTOR_AGENT_IDS
-  .filter((agent): agent is PendingNativeRuntimeAgentOption["agent"] => !(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(agent))
+  .filter((agent) => !(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(agent))
   .map((agent) => {
     const label = `${titleCaseAgentName(agent)} CLI`;
     return {
