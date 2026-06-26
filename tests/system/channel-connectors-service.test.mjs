@@ -3736,6 +3736,37 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const tracevaneChatGroupLikeRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message: {
+      messageId: "chat-group-like-1",
+      fromUid: "tracevane-web-user",
+      channelId: "chat-session-1",
+      channelType: 2,
+      payload: { type: 1, content: "hello from agent chat" },
+      metadata: { source: "tracevane-chat", surface: "agent-chat" },
+      members: [{ uid: "user-2", name: "Alice" }],
+    },
+    sessionKey: "chat-session-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    channelSkillContext: [
+      "[Tracevane IM channel skills]",
+      "Current IM platform: octo.",
+      "Available platform skills in this binding:",
+      "- /octo-send: Send Octo DM, group, thread, and mention messages",
+    ].join("\n"),
+  });
+  assert.ok(tracevaneChatGroupLikeRequest);
+  assert.match(tracevaneChatGroupLikeRequest.stdin, /\[Current Tracevane Chat message - respond to this ONLY\]\nhello from agent chat/);
+  assert.doesNotMatch(tracevaneChatGroupLikeRequest.stdin, /\[Current IM message - respond to this ONLY\]/);
+  assert.doesNotMatch(tracevaneChatGroupLikeRequest.stdin, /\[Tracevane group context\]/);
+  assert.doesNotMatch(tracevaneChatGroupLikeRequest.stdin, /Current IM platform: octo/);
+  assert.doesNotMatch(tracevaneChatGroupLikeRequest.stdin, /Known members from Octo Bot API/);
+  assert.doesNotMatch(tracevaneChatGroupLikeRequest.stdin, /To send a private Octo message/);
+  for (const cleanupPath of tracevaneChatGroupLikeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const feishuGroupRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding: {

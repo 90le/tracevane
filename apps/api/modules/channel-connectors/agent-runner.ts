@@ -598,8 +598,17 @@ function inboundMessageSource(message: ChannelConnectorOctoInboundMessage): stri
   return typeof source === "string" ? source.trim() : "";
 }
 
+function inboundMessageSurface(message: ChannelConnectorOctoInboundMessage): string {
+  const surface = recordValue(message.metadata)?.surface;
+  return typeof surface === "string" ? surface.trim() : "";
+}
+
+function isTracevaneChatMessage(message: ChannelConnectorOctoInboundMessage): boolean {
+  return inboundMessageSource(message) === "tracevane-chat" || inboundMessageSurface(message) === "agent-chat";
+}
+
 function currentMessageBlock(message: ChannelConnectorOctoInboundMessage, content: string): string {
-  const isTracevaneChat = inboundMessageSource(message) === "tracevane-chat";
+  const isTracevaneChat = isTracevaneChatMessage(message);
   return [
     isTracevaneChat
       ? "[Current Tracevane Chat message - respond to this ONLY]"
@@ -621,8 +630,9 @@ function buildAgentInputContent(
   const attachments = extractOctoAttachments(message);
   const persona = normalizeString(message.personaSystemPrompt);
   const history = normalizeString(historyContext);
-  const skills = normalizeString(channelSkillContext);
-  const groupContext = buildGroupContext(message, binding);
+  const isTracevaneChat = isTracevaneChatMessage(message);
+  const skills = isTracevaneChat ? "" : normalizeString(channelSkillContext);
+  const groupContext = isTracevaneChat ? "" : buildGroupContext(message, binding);
   const outboundFilePolicy = buildTracevaneOutboundFilePolicy();
   const current = currentMessageBlock(message, content);
   if (!attachments.length) return [persona, history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");

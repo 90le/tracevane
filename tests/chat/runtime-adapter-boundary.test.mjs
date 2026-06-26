@@ -88,7 +88,10 @@ test('Native Chat runner marks web Chat messages instead of leaking IM prompt se
   assert.match(runnerSource, /function currentMessageBlock\(message: ChannelConnectorOctoInboundMessage, content: string\)/);
   assert.match(runnerSource, /Current Tracevane Chat message - respond to this ONLY/);
   assert.match(runnerSource, /Current IM message - respond to this ONLY/);
-  assert.match(runnerSource, /inboundMessageSource\(message\) === "tracevane-chat"/);
+  assert.match(runnerSource, /function isTracevaneChatMessage\(message: ChannelConnectorOctoInboundMessage\): boolean/);
+  assert.match(runnerSource, /inboundMessageSource\(message\) === "tracevane-chat" \|\| inboundMessageSurface\(message\) === "agent-chat"/);
+  assert.match(runnerSource, /const skills = isTracevaneChat \? "" : normalizeString\(channelSkillContext\)/);
+  assert.match(runnerSource, /const groupContext = isTracevaneChat \? "" : buildGroupContext\(message, binding\)/);
 });
 
 test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw runtime targets', () => {
