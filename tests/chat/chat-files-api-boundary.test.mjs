@@ -77,6 +77,15 @@ test("chat upload transport passes abort signals through Files preflight and chu
 });
 
 
+test("legacy chat media route stays internal and is not a public Chat file capability", () => {
+  const chatContractSource = fs.readFileSync(new URL("../../apps/api/modules/chat/contract.ts", import.meta.url), "utf-8");
+  assert.doesNotMatch(chatContractSource, /mediaBySession/);
+  assert.match(chatRoutes, /\/api\/chat\/sessions\/:sessionKey\/media\/:mediaId/);
+  assert.match(chatService, /legacyRefsReadOnly: \['workspace:', 'uploads:'\]/);
+  assert.match(chatMediaBridge, /buildFilesDownloadUrl\(rootId, normalizedPath, false\)/);
+});
+
+
 test("chat docs describe Files API attachment boundary", () => {
   const chatContract = fs.readFileSync(new URL("../../docs/聊天契约.md", import.meta.url), "utf-8");
   assert.match(chatContract, /Files API `\/api\/files\/summary`/);
