@@ -152,22 +152,43 @@ type FolderOption = {
 const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli";
 const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex";
 
+type NativeRuntimeAgentOptionDetail = {
+  binaryId: TerminalBinaryStatus["id"];
+  label: string;
+  description: string;
+};
+
 const NATIVE_RUNTIME_AGENT_OPTION_DETAILS = {
   codex: { binaryId: "codex", label: "Codex CLI", description: "本地 Codex 会话，使用模型网关与当前工作区" },
   "claude-code": { binaryId: "claude", label: "Claude Code", description: "本地 Claude Code 会话，适合代码库任务" },
   opencode: { binaryId: "opencode", label: "OpenCode", description: "本地 OpenCode 会话，适合开源 CLI 工作流" },
-} as const satisfies Record<(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number], {
-  binaryId: string;
-  label: string;
-  description: string;
-}>;
+} as const satisfies Partial<Record<(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number], NativeRuntimeAgentOptionDetail>>;
+
+function titleCaseAgentName(value: string): string {
+  return value
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || "CLI Agent";
+}
+
+function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number]): ChatRuntimeAgentOption {
+  const known = NATIVE_RUNTIME_AGENT_OPTION_DETAILS[agent];
+  if (known) {
+    return { adapterKind: "native-cli", agent, ...known };
+  }
+  const label = `${titleCaseAgentName(agent)} CLI`;
+  return {
+    adapterKind: "native-cli",
+    agent,
+    binaryId: agent,
+    label,
+    description: `${label} 会话，使用模型网关与当前工作区`,
+  };
+}
 
 const CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] = [
-  ...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map((agent) => ({
-    adapterKind: "native-cli" as const,
-    agent,
-    ...NATIVE_RUNTIME_AGENT_OPTION_DETAILS[agent],
-  })),
+  ...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption),
   { adapterKind: "openclaw-gateway", agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent", description: "兼容 OpenClaw 平台原生 Agent 会话" },
 ];
 

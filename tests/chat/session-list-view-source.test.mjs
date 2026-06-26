@@ -29,7 +29,8 @@ test('SessionListView exposes runtime target editing for managed sessions', () =
 test('SessionListView defaults new sessions to native CLI Codex instead of OpenClaw webchat', () => {
   assert.match(source, /const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli"/);
   assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
-  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map/);
+  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map\(nativeRuntimeAgentOption\)/);
+  assert.match(source, /Partial<Record<\(typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\)\[number\], NativeRuntimeAgentOptionDetail>>/);
   assert.match(source, /codex: \{ binaryId: "codex", label: "Codex CLI"/);
   assert.match(source, /agent: "openclaw", binaryId: null, label: "OpenClaw 平台 Agent"/);
   assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
@@ -38,11 +39,21 @@ test('SessionListView defaults new sessions to native CLI Codex instead of OpenC
 
 test('SessionListView surfaces CLI binary readiness in runtime target choices', () => {
   assert.match(source, /useTerminalStatusQuery\(\{ staleTime: 30_000, retry: false \}\)/);
-  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS/);
+  assert.match(source, /function nativeRuntimeAgentOption/);
+  assert.match(source, /binaryId: agent/);
   assert.match(source, /codex: \{ binaryId: "codex"/);
   assert.match(source, /"claude-code": \{ binaryId: "claude"/);
   assert.match(source, /opencode: \{ binaryId: "opencode"/);
   assert.match(source, /模型列表加载失败，将使用模型网关默认路由/);
+});
+
+
+test('SessionListView provides generic metadata for newly shared native CLI runtimes', () => {
+  assert.match(source, /function titleCaseAgentName/);
+  assert.match(source, /const known = NATIVE_RUNTIME_AGENT_OPTION_DETAILS\[agent\]/);
+  assert.match(source, /if \(known\) \{/);
+  assert.match(source, /const label = `\$\{titleCaseAgentName\(agent\)\} CLI`/);
+  assert.match(source, /description: `\$\{label\} 会话，使用模型网关与当前工作区`/);
 });
 
 test('SessionListView keeps the current runtime model visible when gateway catalog changes', () => {
