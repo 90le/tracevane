@@ -35,3 +35,9 @@ test('ChatWorkbenchPage surfaces IM delivery source detail in the conversation h
   assert.match(source, /const selectedSourceDetail = selectedSession/);
   assert.match(source, /title=\{selectedSourceDetail\}/);
 });
+
+test('ChatWorkbenchPage passes backend diagnostics into the session runtime picker', () => {
+  assert.match(source, new RegExp('const diagnostics =[\\s\\S]*history\\?\\.diagnostics \\?\\? bootstrap\\.data\\?\\.diagnostics \\?\\? null'));
+  assert.match(source, /<SessionListView/);
+  assert.match(source, /diagnostics=\{diagnostics\}/);
+});

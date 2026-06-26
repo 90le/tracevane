@@ -68,8 +68,10 @@ import type {
   ChatSessionFolder,
   ChatSessionFolderMove,
   ChatSessionOrganizerState,
+  ChatDiagnostics,
   ChatRuntimeAdapterKind,
   ChatRuntimeAgentId,
+  ChatRuntimeCapability,
   ChatRuntimePermissionMode,
   ChatSessionRow,
 } from "../types";
@@ -140,7 +142,7 @@ type ChatRuntimeOptionReadiness = {
 };
 
 type PendingNativeRuntimeAgentOption = {
-  agent: Exclude<(typeof CHANNEL_CONNECTOR_AGENT_IDS)[number], (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number]>;
+  agent: ChatRuntimeAgentId;
   label: string;
   description: string;
 };
@@ -184,10 +186,20 @@ function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT
   };
 }
 
-const NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] =
+function runtimeCapabilityOption(capability: ChatRuntimeCapability): ChatRuntimeAgentOption {
+  return {
+    adapterKind: capability.adapterKind,
+    agent: capability.agent,
+    binaryId: capability.binaryId as TerminalBinaryStatus["id"] | null,
+    label: capability.label,
+    description: capability.description,
+  };
+}
+
+const FALLBACK_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] =
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption);
 
-const PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: PendingNativeRuntimeAgentOption[] = CHANNEL_CONNECTOR_AGENT_IDS
+const FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: PendingNativeRuntimeAgentOption[] = CHANNEL_CONNECTOR_AGENT_IDS
   .filter((agent): agent is PendingNativeRuntimeAgentOption["agent"] => !(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(agent))
   .map((agent) => {
     const label = `${titleCaseAgentName(agent)} CLI`;
@@ -276,6 +288,7 @@ export function SessionListView({
   isFetching,
   error,
   organizer,
+  diagnostics,
   onSelect,
   onRefresh,
 }: {
@@ -285,6 +298,7 @@ export function SessionListView({
   isFetching: boolean;
   error: ApiError | null;
   organizer?: ChatSessionOrganizerState | null;
+  diagnostics?: ChatDiagnostics | null;
   onSelect: (key: string) => void;
   onRefresh: () => void;
 }) {
@@ -613,6 +627,24 @@ export function SessionListView({
     [terminalStatus.data?.binaries],
   );
 
+  const backendRuntimeCapabilities = diagnostics?.runtimeCapabilities ?? [];
+  const backendNativeRuntimeOptions = React.useMemo<ChatRuntimeAgentOption[]>(
+    () => backendRuntimeCapabilities
+      .filter((capability) => capability.adapterKind === "native-cli" && capability.status === "runnable")
+      .map(runtimeCapabilityOption),
+    [backendRuntimeCapabilities],
+  );
+  const pendingNativeRuntimeOptions = React.useMemo<PendingNativeRuntimeAgentOption[]>(() => {
+    const pending = backendRuntimeCapabilities
+      .filter((capability) => capability.adapterKind === "native-cli" && capability.status === "registered_pending")
+      .map((capability) => ({
+        agent: capability.agent,
+        label: capability.label || `${titleCaseAgentName(capability.agent)} CLI`,
+        description: capability.description,
+      }));
+    return pending.length ? pending : FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS;
+  }, [backendRuntimeCapabilities]);
+
   const chatRuntimeAgentOptions = React.useMemo<ChatRuntimeAgentOption[]>(() => {
     const openClawAgentOptions = (agentsSummary.data?.agents ?? [])
       .filter((agent) => agent.id)
@@ -632,10 +664,10 @@ export function SessionListView({
       }));
 
     return [
-      ...NATIVE_CHAT_RUNTIME_AGENT_OPTIONS,
+      ...(backendNativeRuntimeOptions.length ? backendNativeRuntimeOptions : FALLBACK_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS),
       ...(openClawAgentOptions.length ? openClawAgentOptions : [OPENCLAW_RUNTIME_FALLBACK_OPTION]),
     ];
-  }, [agentsSummary.data?.agents]);
+  }, [agentsSummary.data?.agents, backendNativeRuntimeOptions]);
 
   const runtimeOptionReadiness = React.useCallback(
     (option: ChatRuntimeAgentOption): ChatRuntimeOptionReadiness => {
@@ -1512,12 +1544,12 @@ export function SessionListView({
                     </div>
                   </div>
 
-                  {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.length > 0 && (
+                  {pendingNativeRuntimeOptions.length > 0 && (
                     <div className="rounded-sm border border-dashed border-line bg-panel-2 px-3 py-2 text-xs text-muted">
                       <div className="font-medium text-ink">待接入 CLI Agent</div>
                       <p className="mt-1 text-subtle">这些 Agent 已在配置枚举中登记，但还没有真实 runner 合同；Chat 不会假装可运行。</p>
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.map((option) => (
+                        {pendingNativeRuntimeOptions.map((option) => (
                           <span
                             key={option.agent}
                             title={option.description}
@@ -1530,12 +1562,12 @@ export function SessionListView({
                     </div>
                   )}
 
-                  {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.length > 0 && (
+                  {pendingNativeRuntimeOptions.length > 0 && (
                     <div className="rounded-sm border border-dashed border-line bg-panel-2 px-3 py-2 text-xs text-muted">
                       <div className="font-medium text-ink">待接入 CLI Agent</div>
                       <p className="mt-1 text-subtle">这些 Agent 已在配置枚举中登记，但还没有真实 runner 合同；Chat 不会假装可运行。</p>
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.map((option) => (
+                        {pendingNativeRuntimeOptions.map((option) => (
                           <span
                             key={option.agent}
                             title={option.description}

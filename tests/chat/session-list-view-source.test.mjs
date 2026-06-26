@@ -29,12 +29,22 @@ test('SessionListView exposes runtime target editing for managed sessions', () =
 test('SessionListView defaults new sessions to native CLI Codex instead of OpenClaw webchat', () => {
   assert.match(source, /const DEFAULT_RUNTIME_ADAPTER_KIND: ChatRuntimeAdapterKind = "native-cli"/);
   assert.match(source, /const DEFAULT_RUNTIME_AGENT: ChatRuntimeAgentId = "codex"/);
-  assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS\.map\(nativeRuntimeAgentOption\)/);
+  assert.match(source, /FALLBACK_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
   assert.match(source, /CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA/);
   assert.match(source, /const metadata = CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA\[agent\]/);
   assert.match(source, /const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = \{/);
   assert.match(source, /setRuntimeAdapterKind\(DEFAULT_RUNTIME_ADAPTER_KIND\)/);
   assert.match(source, /setRuntimeAgent\(DEFAULT_RUNTIME_AGENT\)/);
+});
+
+
+test('SessionListView derives runtime choices from backend Chat diagnostics before local fallback', () => {
+  assert.match(source, /diagnostics\?: ChatDiagnostics \| null/);
+  assert.match(source, /const backendRuntimeCapabilities = diagnostics\?\.runtimeCapabilities \?\? \[\]/);
+  assert.match(source, /status === "runnable"/);
+  assert.match(source, /runtimeCapabilityOption/);
+  assert.match(source, /backendNativeRuntimeOptions\.length \? backendNativeRuntimeOptions : FALLBACK_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
+  assert.match(source, /pending\.length \? pending : FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
 });
 
 test('SessionListView builds OpenClaw runtime target choices from platform agent summary', () => {
@@ -70,8 +80,8 @@ test('SessionListView takes runnable native CLI display metadata from the shared
 test('SessionListView discloses registered but unwired CLI agents without making them selectable', () => {
   assert.match(source, /CHANNEL_CONNECTOR_AGENT_IDS/);
   assert.match(source, /type PendingNativeRuntimeAgentOption/);
-  assert.match(source, /const PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
-  assert.match(source, /!\(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string\[\]\)\.includes\(agent\)/);
+  assert.match(source, /const FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
+  assert.match(source, /status === \"registered_pending\"/);
   assert.match(source, /待接入 CLI Agent/);
   assert.match(source, /Chat 不会假装可运行/);
   assert.match(source, /尚未接入 Channel Connector 进程适配器/);

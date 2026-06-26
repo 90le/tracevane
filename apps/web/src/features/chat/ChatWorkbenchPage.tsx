@@ -373,6 +373,7 @@ export function ChatWorkbenchPage() {
     <SessionListView
       sessions={sessions}
       organizer={bootstrap.data?.organizer ?? null}
+      diagnostics={diagnostics}
       selectedKey={selectedKey}
       isLoading={bootstrap.isLoading}
       isFetching={bootstrap.isFetching}
