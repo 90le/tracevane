@@ -6,6 +6,7 @@ const chatApi = fs.readFileSync(new URL("../../apps/web/src/lib/api/chat.ts", im
 const chatView = fs.readFileSync(new URL("../../apps/web/src/features/chat/views/ConversationView.tsx", import.meta.url), "utf-8");
 const chatRoutes = fs.readFileSync(new URL("../../apps/api/modules/chat/routes.ts", import.meta.url), "utf-8");
 const chatService = fs.readFileSync(new URL("../../apps/api/modules/chat/service.ts", import.meta.url), "utf-8");
+const chatMediaBridge = fs.readFileSync(new URL("../../apps/api/modules/chat/media-bridge.ts", import.meta.url), "utf-8");
 const chatAcceptanceSources = fs.readdirSync(new URL(".", import.meta.url), { withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith(".acceptance.py"))
   .map((entry) => fs.readFileSync(new URL(entry.name, new URL(".", import.meta.url)), "utf-8"))
@@ -47,6 +48,9 @@ test("chat backend no longer exposes a legacy upload owner", () => {
   assert.doesNotMatch(chatService, /uploadFileBytes\(/);
   assert.doesNotMatch(chatService, /uploadFile\(sessionKey/);
   assert.doesNotMatch(chatService, /resolveResourceRefs\(/);
+  assert.doesNotMatch(chatMediaBridge, /saveBufferToWorkspace/);
+  assert.doesNotMatch(chatMediaBridge, /saveFileToWorkspace/);
+  assert.doesNotMatch(chatMediaBridge, /function saveBufferToWorkspaceImpl/);
 });
 
 test("chat acceptance upload smokes do not mock the removed Chat upload route", () => {
