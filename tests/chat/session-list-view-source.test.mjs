@@ -100,7 +100,10 @@ test('SessionListView scopes model selection by runtime model source', () => {
   assert.match(source, /runtimeModelPlaceholder/);
   assert.match(source, /该 Agent 使用自身 CLI 账号和模型名称/);
   assert.match(source, /平台 Agent 默认使用自身配置/);
-  assert.match(source, /\{usesGatewayModelCatalog && runtimeModelOptions\.map/);
+  assert.match(source, /\{usesGatewayModelCatalog \? \(/);
+  assert.match(source, /runtimeModelOptions\.map\(\(model\) => \(/);
+  assert.match(source, /placeholder=\{runtimeModelPlaceholder\}/);
+  assert.match(source, /spellCheck=\{false\}/);
 });
 
 test('SessionListView keeps the current runtime model visible when gateway catalog changes', () => {

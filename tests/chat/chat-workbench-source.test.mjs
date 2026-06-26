@@ -84,3 +84,11 @@ test('ChatWorkbenchPage keeps live reasoning/process stream blocks in the transi
   assert.match(source, /\.\.\.base\.processBlocks, event\.block/);
   assert.match(source, /slice\(-8\)/);
 });
+
+
+test('ChatWorkbenchPage accumulates native assistant deltas instead of replacing the live reply', () => {
+  assert.match(source, /case "agent_assistant"/);
+  assert.match(source, /event\.deltaText/);
+  assert.match(source, /`\$\{base\.text\}\$\{event\.deltaText\}`/);
+  assert.match(source, /incoming\.startsWith\(base\.text\)/);
+});

@@ -220,19 +220,49 @@ function formatDurationMs(value: unknown): string | null {
   return `${(n / 1000).toFixed(n >= 10_000 ? 1 : 2)}s`;
 }
 
+
+type NativeToolProgressText = {
+  status: string | null;
+  command: string | null;
+  exitCode: string | null;
+  output: string | null;
+};
+
+function parseNativeToolProgressText(value: string | null | undefined): NativeToolProgressText | null {
+  if (!value) return null;
+  const text = value.trim();
+  if (!text) return null;
+  const status = /\b(completed|failed|started|running)\b/i.exec(text)?.[1]?.toLowerCase() ?? null;
+  const command = (() => {
+    const lineMatch = /(?:^|\n)command=([^\n]+)/.exec(text);
+    const inlineMatch = /\bcommand=([\s\S]*?)(?=\s+(?:exit|exit_code|status)=|\s+output:|$)/.exec(text);
+    return compactToolPreviewLine(lineMatch?.[1] ?? inlineMatch?.[1] ?? "") || null;
+  })();
+  const exitCode = /(?:^|\s|\n)(?:exit|exit_code)=([^\s]+)/.exec(text)?.[1] ?? null;
+  const output = (() => {
+    const marker = text.indexOf("output:");
+    if (marker < 0) return null;
+    const raw = text.slice(marker + "output:".length).trim();
+    return raw || null;
+  })();
+  if (!status && !command && !exitCode && !output) return null;
+  return { status, command, exitCode, output };
+}
+
 function toolSummaryRows(tool: ChatMessageToolCallItem | ChatToolCard): Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> {
   const args = parsePreviewJsonObject(tool.argsPreview);
   const result = parsePreviewJsonObject(tool.resultPreview);
+  const progress = parseNativeToolProgressText(tool.resultPreview) ?? parseNativeToolProgressText(tool.argsPreview);
   const rows: Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> = [];
-  const command = shortToolValue(args?.command ?? args?.cmd ?? args?.script ?? args?.input, 260);
+  const command = shortToolValue(args?.command ?? args?.cmd ?? args?.script ?? args?.input ?? progress?.command, 260);
   const cwd = shortToolValue(result?.cwd ?? args?.cwd ?? args?.workdir ?? args?.workingDirectory, 160);
-  const exitCode = result?.exitCode ?? result?.code ?? result?.statusCode;
-  const status = shortToolValue(result?.status ?? result?.state ?? tool.status, 80);
+  const exitCode = result?.exitCode ?? result?.code ?? result?.statusCode ?? progress?.exitCode;
+  const status = shortToolValue(result?.status ?? result?.state ?? progress?.status ?? tool.status, 80);
   const duration = formatDurationMs(result?.durationMs ?? result?.elapsedMs ?? result?.duration);
 
   if (command) rows.push({ label: "命令", value: command });
   if (cwd) rows.push({ label: "目录", value: cwd });
-  if (status) rows.push({ label: "状态", value: status, tone: tool.isError ? "bad" : tool.status === "completed" ? "ok" : "normal" });
+  if (status) rows.push({ label: "状态", value: status, tone: tool.isError ? "bad" : tool.status === "completed" || status === "completed" ? "ok" : "normal" });
   if (exitCode != null) {
     const text = String(exitCode);
     rows.push({ label: "退出码", value: text, tone: text === "0" ? "ok" : "bad" });
@@ -244,13 +274,13 @@ function toolSummaryRows(tool: ChatMessageToolCallItem | ChatToolCard): Array<{ 
 function ToolSummaryBlock({ rows }: { rows: Array<{ label: string; value: string; tone?: "normal" | "bad" | "ok" }> }) {
   if (!rows.length) return null;
   return (
-    <div className="grid gap-1.5 rounded-sm border border-line/80 bg-panel/75 px-2.5 py-2 text-xs">
+    <div className="grid min-w-0 gap-1.5 rounded-sm border border-line/80 bg-panel/75 px-2.5 py-2 text-xs">
       {rows.map((row) => (
-        <div key={row.label} className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
+        <div key={row.label} className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-2 max-sm:grid-cols-1 max-sm:gap-0.5">
           <span className="text-subtle">{row.label}</span>
           <span
             className={cn(
-              "min-w-0 truncate font-medium",
+              "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium",
               row.tone === "bad" ? "text-red" : row.tone === "ok" ? "text-green" : "text-ink",
               row.label === "命令" && "font-mono",
             )}
@@ -266,7 +296,8 @@ function ToolSummaryBlock({ rows }: { rows: Array<{ label: string; value: string
 
 function toolOutputPreview(tool: ChatMessageToolCallItem | ChatToolCard): { label: string; value: string; tone: "neutral" | "error"; render: "code" | "markdown" } | null {
   const result = parsePreviewJsonObject(tool.resultPreview);
-  const raw = result?.stdout ?? result?.stderr ?? result?.output ?? result?.text ?? result?.message ?? null;
+  const progress = parseNativeToolProgressText(tool.resultPreview) ?? parseNativeToolProgressText(tool.argsPreview);
+  const raw = result?.stdout ?? result?.stderr ?? result?.output ?? result?.text ?? result?.message ?? progress?.output ?? null;
   const value = typeof raw === "string" ? raw.trim() : null;
   if (!value) {
     if (tool.resultPreview && !isJsonPreview(tool.resultPreview)) {
@@ -293,6 +324,21 @@ function looksLikeTerminalOutput(value: string): boolean {
   return /(^|\n)(\$ |>|npm |pnpm |yarn |git |node |python |pytest |TAP version|# Subtest:|ok \d+|not ok \d+)/.test(value);
 }
 
+function compactToolPreviewLine(value: string): string {
+  return value
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isVerboseToolPreview(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > 420) return true;
+  return trimmed.split(/\r?\n/).length > 6;
+}
+
 function ToolOutputBlock({ output }: { output: { label: string; value: string; tone: "neutral" | "error"; render: "code" | "markdown" } | null }) {
   if (!output) return null;
   return (
@@ -306,14 +352,14 @@ function ToolOutputBlock({ output }: { output: { label: string; value: string; t
       {output.render === "code" ? (
         <code
           className={cn(
-            "block max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5",
+            "block min-w-0 max-h-72 max-w-full overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-5",
             output.tone === "error" ? "text-red" : "text-muted",
           )}
         >
           {output.value}
         </code>
       ) : (
-        <div className={cn("max-h-72 overflow-auto px-3 py-2", output.tone === "error" ? "text-red" : "text-ink")}>
+        <div className={cn("min-w-0 max-h-72 max-w-full overflow-auto px-3 py-2", output.tone === "error" ? "text-red" : "text-ink")}>
           <ChatMarkdownContent source={output.value} />
         </div>
       )}
@@ -334,17 +380,19 @@ function ToolPreviewBlock({
 }) {
   const jsonLike = isJsonPreview(value);
   const shouldRenderMarkdown = render === "markdown" && !jsonLike;
+  const verbose = isVerboseToolPreview(value);
+  const preview = previewLabel(compactToolPreviewLine(value));
   return (
-    <details className="group rounded-sm border border-line/80 bg-panel/70" open={tone === "error"}>
-      <summary className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-subtle marker:hidden">
-        <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
-        <span>{label}</span>
-        <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-muted">{previewLabel(value)}</span>
+    <details className="group min-w-0 rounded-sm border border-line/80 bg-panel/70" open={tone === "error" && !verbose}>
+      <summary className="flex min-w-0 cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-subtle marker:hidden">
+        <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+        <span className="shrink-0">{label}</span>
+        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-normal text-muted">{preview}</span>
       </summary>
       {shouldRenderMarkdown ? (
         <div
           className={cn(
-            "max-h-72 overflow-auto border-t border-line px-3 py-2",
+            "min-w-0 max-h-72 max-w-full overflow-auto border-t border-line px-3 py-2",
             tone === "error" ? "bg-red-soft/55 text-red" : "bg-panel-3/55 text-ink",
           )}
         >
@@ -353,7 +401,7 @@ function ToolPreviewBlock({
       ) : (
         <code
           className={cn(
-            "block max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-line px-3 py-2 font-mono text-xs leading-5",
+            "block min-w-0 max-h-56 max-w-full overflow-auto whitespace-pre-wrap break-words border-t border-line px-3 py-2 font-mono text-xs leading-5",
             tone === "error" ? "bg-red-soft text-red" : "bg-panel-3/70 text-muted",
           )}
         >
@@ -590,7 +638,7 @@ function ToolCallBlock({
   const outputPreview = toolOutputPreview(tool);
   return (
     <div className={cn(
-      "grid gap-2 rounded-md border px-3 py-2.5 shadow-sm",
+      "grid min-w-0 gap-2 rounded-md border px-3 py-2.5 shadow-sm",
       tool.isError ? "border-red/40 bg-red-soft/45" : running ? "border-primary-line bg-primary-soft/35" : "border-line bg-panel-2",
     )}>
       <div className="flex min-w-0 items-center gap-2">
@@ -614,8 +662,8 @@ function ToolCallBlock({
       </div>
       <ToolSummaryBlock rows={summaryRows} />
       <ToolOutputBlock output={outputPreview} />
-      {tool.argsPreview && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
-      {tool.resultPreview && (
+      {tool.argsPreview && !summaryRows.length && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
+      {tool.resultPreview && !outputPreview && (
         <ToolPreviewBlock
           label={tool.isError ? "错误输出" : "执行结果"}
           value={tool.resultPreview}
@@ -858,7 +906,7 @@ function MessageBubble({
       </div>
 
       {processBlocks.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1">
           {processBlocks.map((block) => (
             <ProcessBlockView key={block.id} block={block} />
           ))}
@@ -868,7 +916,7 @@ function MessageBubble({
       {display.blocks.length > 0 ? (
         <div
           className={cn(
-            "grid max-w-[80%] gap-2 rounded-md px-3 py-2 text-base",
+            "grid max-w-[min(82ch,100%)] min-w-0 gap-2 rounded-md px-3 py-2 text-base",
             isUser
               ? "bg-primary-soft text-ink-strong"
               : "border border-line bg-panel text-ink",
@@ -885,7 +933,7 @@ function MessageBubble({
       ) : (
         <div
           className={cn(
-            "max-w-[80%] whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base",
+            "max-w-[min(82ch,100%)] min-w-0 whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base",
             isUser
               ? "bg-primary-soft text-ink-strong"
               : "border border-line bg-panel text-ink",
@@ -900,7 +948,7 @@ function MessageBubble({
       )}
 
       {toolCalls.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1.5">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
           {toolCalls.map((tool) => (
             <ToolCallBlock key={tool.toolCallId} tool={tool} />
           ))}
@@ -935,7 +983,7 @@ function LiveTurn({
         )}
         {turn.aborted && <Badge variant="bad">已中止</Badge>}
       </div>
-      <div className="max-w-[80%] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
+      <div className="max-w-[min(82ch,100%)] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
         {turn.text ? <ChatMarkdownContent source={turn.text} streaming={!turn.done} /> : (
           <span className="italic text-subtle">等待 Agent 响应…</span>
         )}
@@ -944,21 +992,21 @@ function LiveTurn({
         )}
       </div>
       {turn.processBlocks.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1">
           {turn.processBlocks.map((block) => (
             <ProcessBlockView key={block.id} block={block} />
           ))}
         </div>
       )}
       {turn.sideResults.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1.5">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
           {turn.sideResults.map((result, index) => (
             <SideResultBlock key={`${result.kind}:${index}:${result.question}`} result={result} />
           ))}
         </div>
       )}
       {turn.permissions.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1.5">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
           {turn.permissions.map((permission) => (
             <PermissionRequestBlock
               key={permission.requestId}
@@ -970,14 +1018,14 @@ function LiveTurn({
         </div>
       )}
       {turn.toolCards.length > 0 && (
-        <div className="grid w-full max-w-[80%] gap-1.5">
+        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
           {turn.toolCards.map((tool) => (
             <ToolCallBlock key={tool.toolCallId} tool={tool} />
           ))}
         </div>
       )}
       {turn.error && (
-        <div className="flex max-w-[80%] items-center gap-2 rounded-sm border border-red bg-red-soft px-3 py-2 text-sm text-red">
+        <div className="flex max-w-[min(82ch,100%)] min-w-0 items-center gap-2 rounded-sm border border-red bg-red-soft px-3 py-2 text-sm text-red">
           <AlertTriangle className="size-4 shrink-0" />
           流式出错：{turn.error}
         </div>
@@ -1274,7 +1322,7 @@ export function ConversationView({
 
   return (
     <section className="chat-conversation-pane flex h-full min-h-0 flex-col bg-panel">
-      <div ref={scrollRef} className="chat-conversation-thread min-h-0 flex-1 overflow-auto p-4">
+      <div ref={scrollRef} className="chat-conversation-thread min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 max-sm:p-2">
         {!sessionKey ? (
           <EmptyState
             icon={<MessagesSquare />}

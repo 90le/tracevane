@@ -176,6 +176,9 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /function isJsonPreview/);
   assert.match(source, /function toolSummaryRows/);
   assert.match(source, /function ToolSummaryBlock/);
+  assert.match(source, /function parseNativeToolProgressText/);
+  assert.match(source, /function compactToolPreviewLine/);
+  assert.match(source, /function isVerboseToolPreview/);
   assert.match(source, /function toolOutputPreview/);
   assert.match(source, /function ToolOutputBlock/);
   assert.match(source, /function looksLikeTerminalOutput/);
@@ -183,7 +186,11 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /const outputPreview = toolOutputPreview\(tool\)/);
   assert.match(source, /<ToolSummaryBlock rows=\{summaryRows\} \/>/);
   assert.match(source, /<ToolOutputBlock output=\{outputPreview\} \/>/);
-  assert.match(source, /result\?\.stdout \?\? result\?\.stderr \?\? result\?\.output/);
+  assert.match(source, /progress\?\.output/);
+  assert.match(source, /progress\?\.command/);
+  assert.match(source, /open=\{tone === "error" && !verbose\}/);
+  assert.match(source, /overflow-x-hidden overflow-y-auto/);
+  assert.match(source, /max-w-\[min\(82ch,100%\)\]/);
   assert.match(source, /label: "命令"/);
   assert.match(source, /label: "退出码"/);
   assert.match(source, /label: "耗时"/);

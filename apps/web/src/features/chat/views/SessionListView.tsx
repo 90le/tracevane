@@ -1584,18 +1584,28 @@ export function SessionListView({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-2 text-sm text-muted">
                       默认模型
-                      <select
-                        value={runtimeModel}
-                        onChange={(event) => setRuntimeModel(event.target.value)}
-                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
-                      >
-                        <option value="">{runtimeModelPlaceholder}</option>
-                        {usesGatewayModelCatalog && runtimeModelOptions.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
-                          </option>
-                        ))}
-                      </select>
+                      {usesGatewayModelCatalog ? (
+                        <select
+                          value={runtimeModel}
+                          onChange={(event) => setRuntimeModel(event.target.value)}
+                          className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                        >
+                          <option value="">{runtimeModelPlaceholder}</option>
+                          {runtimeModelOptions.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          value={runtimeModel}
+                          onChange={(event) => setRuntimeModel(event.target.value)}
+                          placeholder={runtimeModelPlaceholder}
+                          spellCheck={false}
+                          className="h-9 font-mono text-sm"
+                        />
+                      )}
                       {usesGatewayModelCatalog && modelCatalog.isError ? (
                         <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
                       ) : selectedRuntimeModelMode === "native" ? (
@@ -1726,18 +1736,28 @@ export function SessionListView({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-2 text-sm text-muted">
                       默认模型
-                      <select
-                        value={runtimeModel}
-                        onChange={(event) => setRuntimeModel(event.target.value)}
-                        className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
-                      >
-                        <option value="">{runtimeModelPlaceholder}</option>
-                        {usesGatewayModelCatalog && runtimeModelOptions.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
-                          </option>
-                        ))}
-                      </select>
+                      {usesGatewayModelCatalog ? (
+                        <select
+                          value={runtimeModel}
+                          onChange={(event) => setRuntimeModel(event.target.value)}
+                          className="h-9 rounded-sm border border-line bg-panel-2 px-2 text-sm text-ink outline-none focus:border-primary-line focus:shadow-[var(--ring)]"
+                        >
+                          <option value="">{runtimeModelPlaceholder}</option>
+                          {runtimeModelOptions.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {(model.display_name || model.id)}{model.healthyProviderIds?.length ? " · 可用" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          value={runtimeModel}
+                          onChange={(event) => setRuntimeModel(event.target.value)}
+                          placeholder={runtimeModelPlaceholder}
+                          spellCheck={false}
+                          className="h-9 font-mono text-sm"
+                        />
+                      )}
                       {usesGatewayModelCatalog && modelCatalog.isError ? (
                         <span className="text-2xs text-amber">模型列表加载失败，将使用模型网关默认路由。</span>
                       ) : selectedRuntimeModelMode === "native" ? (

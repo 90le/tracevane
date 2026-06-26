@@ -1888,6 +1888,24 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       .sort((left, right) => (left.startedAt || '').localeCompare(right.startedAt || ''));
   }
 
+
+  function mergeNativeAssistantProgressText(previous: string, incoming: string, phase: ChannelConnectorAgentProgressEvent['phase'] | undefined | null): { accumulatedText: string; textDelta: string } {
+    const current = normalizeString(previous);
+    const next = normalizeString(incoming);
+    if (!current) return { accumulatedText: next, textDelta: next };
+    if (!next) return { accumulatedText: current, textDelta: '' };
+    if (next.startsWith(current)) {
+      return { accumulatedText: next, textDelta: next.slice(current.length) };
+    }
+    if (current.startsWith(next)) {
+      return { accumulatedText: current, textDelta: '' };
+    }
+    if (phase === 'intermediate') {
+      return { accumulatedText: `${current}${next}`, textDelta: next };
+    }
+    return { accumulatedText: next, textDelta: next };
+  }
+
   function applyNativeCliProgressEvent(
     sessionKey: string,
     runId: string,
@@ -1984,26 +2002,27 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           level: 'error',
         }));
       } else if (event.type === 'assistant') {
-        projection.previewText = text;
+        const merged = mergeNativeAssistantProgressText(projection.previewText, text, event.phase);
+        projection.previewText = merged.accumulatedText;
         projection.firstAssistantSeenAt = projection.firstAssistantSeenAt || emittedAt;
         settleProjectionRunningToolsBeforeAssistant(projection, emittedAt);
         updateObservabilityCache(sessionKey, (current) => appendTimelineItem(current, {
-          id: `native-assistant-${runId}-${emittedAt}`,
+          id: `native-assistant-${runId}`,
           kind: 'assistant',
           runId,
           toolCallId: null,
           emittedAt,
           title: 'Assistant progress',
-          detail: text,
+          detail: summarizeUnknown(merged.accumulatedText, 220),
           level: 'info',
-        }));
+        }, `native-assistant-${runId}`));
         broadcastToSession(sessionKey, {
           kind: 'temporary.assistant',
           sessionKey,
           runId,
           emittedAt,
-          textDelta: text,
-          accumulatedText: text,
+          textDelta: merged.textDelta || text,
+          accumulatedText: merged.accumulatedText,
         });
       } else if (!projection.previewText) {
         projection.previewText = text;

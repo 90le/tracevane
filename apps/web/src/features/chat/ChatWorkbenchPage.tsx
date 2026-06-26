@@ -226,11 +226,20 @@ export function ChatWorkbenchPage() {
         }
         case "agent_assistant": {
           if (activeRun && runId && runId !== activeRun) return;
-          setLiveTurn((prev) => ({
-            ...(prev ?? EMPTY_TURN),
-            runId: runId ?? prev?.runId ?? null,
-            text: event.text,
-          }));
+          setLiveTurn((prev) => {
+            const base = prev ?? EMPTY_TURN;
+            const incoming = event.text || "";
+            const nextText = event.deltaText
+              ? `${base.text}${event.deltaText}`
+              : incoming.startsWith(base.text) || base.text.startsWith(incoming)
+                ? (incoming.length >= base.text.length ? incoming : base.text)
+                : incoming;
+            return {
+              ...base,
+              runId: runId ?? base.runId ?? null,
+              text: nextText,
+            };
+          });
           break;
         }
 
