@@ -477,6 +477,49 @@ test('OpenClaw runtime target validation rejects unknown or cross-owner platform
   }
 });
 
+
+test('chat runtime adapter kind validation rejects unknown adapters before fallback normalization', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-runtime-adapter-guard-'));
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    const context = await createContextForRoot(root);
+
+    await assert.rejects(
+      () => context.services.chat.createSession('main', {
+        label: 'Invalid runtime adapter',
+        runtimeTarget: {
+          adapterKind: 'legacy-webchat',
+          agent: 'codex',
+        },
+      }),
+      /Chat runtime adapter 'legacy-webchat' is not supported/,
+    );
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Valid native session',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+      },
+    });
+
+    await assert.rejects(
+      () => context.services.chat.patchSession(created.session.key, {
+        runtimeTarget: {
+          adapterKind: 'legacy-webchat',
+        },
+      }),
+      /Chat runtime adapter 'legacy-webchat' is not supported/,
+    );
+
+    const registry = readJson(registryPath(root), {});
+    assert.equal(registry[created.session.key].runtimeTarget.adapterKind, 'native-cli');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('native CLI runtime target aliases canonicalize to supported CLI agents', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-agent-alias-'));
   try {

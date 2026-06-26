@@ -6597,6 +6597,17 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return normalizedRuntimeTargetIdentity(previous) !== normalizedRuntimeTargetIdentity(next);
   }
 
+  function assertKnownChatRuntimeAdapterKind(adapterKind: string | null | undefined): void {
+    const normalized = normalizeString(adapterKind);
+    if (!normalized || normalized === 'native-cli' || normalized === 'openclaw-gateway') {
+      return;
+    }
+    throw new ChatServiceError(400, buildChatError(
+      'invalid_request',
+      `Chat runtime adapter '${normalized}' is not supported. Supported adapters: native-cli, openclaw-gateway`,
+    ));
+  }
+
   function assertSupportedChatRuntimeTarget(
     target: ChatSessionRuntimeTarget,
     availableAgentIds: string[],
@@ -7489,6 +7500,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const normalizedAgentId = normalizeString(agentId, 'main');
       const availableAgents = resolveAvailableAgentIds(options.config);
       const requestedAdapterKind = normalizeString(payload.runtimeTarget?.adapterKind);
+      assertKnownChatRuntimeAdapterKind(requestedAdapterKind);
       const requestedRuntimeAgent = normalizeString(payload.runtimeTarget?.agent);
       const createAgentId = requestedAdapterKind === 'openclaw-gateway'
         ? normalizeString(requestedRuntimeAgent, normalizedAgentId)
@@ -7557,6 +7569,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           throw new ChatServiceError(400, buildChatError('invalid_request', 'Session archived must be a boolean'));
         }
         nextArchivedAt = payload.archived ? now : null;
+      }
+
+      if (hasRuntimeTarget) {
+        assertKnownChatRuntimeAdapterKind(payload.runtimeTarget?.adapterKind);
       }
 
       const nextRuntimeTarget = hasRuntimeTarget

@@ -83,6 +83,7 @@ test('SessionListView discloses registered but unwired CLI agents without making
   assert.match(source, /const FALLBACK_PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
   assert.match(source, /status === \"registered_pending\"/);
   assert.match(source, /待接入 CLI Agent/);
+  assert.equal((source.match(/待接入 CLI Agent/g) || []).length, 1);
   assert.match(source, /Chat 不会假装可运行/);
   assert.match(source, /尚未接入 Channel Connector 进程适配器/);
 });
