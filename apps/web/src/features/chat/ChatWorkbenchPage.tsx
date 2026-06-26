@@ -84,6 +84,10 @@ function isTerminalRuntimeState(state: string | null | undefined): boolean {
   return state === "completed" || state === "aborted" || state === "error";
 }
 
+function isActiveRuntimeState(state: string | null | undefined): boolean {
+  return state === "running" || state === "streaming";
+}
+
 /**
  * Chat Agent Operations Workbench (`/chat`).
  *
@@ -143,6 +147,10 @@ export function ChatWorkbenchPage() {
   const overlays = history?.overlays ?? [];
   const historyMessages: ChatMessageItem[] = history?.messages ?? [];
   const queueItems = bootstrap.data?.queue?.items ?? [];
+  const selectedActiveRunId = runtime?.activeRunId ?? null;
+  const selectedRuntimeActive = Boolean(
+    selectedActiveRunId && isActiveRuntimeState(runtime?.state),
+  );
 
   // --- Live streaming state -------------------------------------------------
   const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(
@@ -164,12 +172,26 @@ export function ChatWorkbenchPage() {
     void bootstrap.refetch();
   }, [queryClient, selectedKey, bootstrap]);
 
-  // Reset live state when switching sessions.
+  // Reset or reconnect the transient live stream when switching sessions.
+  //
+  // A run can be started outside this mounted page: browser refresh, IM
+  // delivery, route test, or a future Agent entry can all leave the selected
+  // session with runtime.activeRunId already populated. In that case the
+  // bootstrap runtime is the recovery source, and the page should attach to
+  // the existing SSE stream instead of waiting for a local send.
   React.useEffect(() => {
-    setLiveTurn(null);
-    setStreamEnabled(false);
-    activeRunIdRef.current = null;
-  }, [selectedKey]);
+    if (selectedRuntimeActive && selectedActiveRunId) {
+      activeRunIdRef.current = selectedActiveRunId;
+      setStreamEnabled(true);
+      setLiveTurn({ ...EMPTY_TURN, runId: selectedActiveRunId });
+      return;
+    }
+    if (!selectedActiveRunId) {
+      activeRunIdRef.current = null;
+      setStreamEnabled(false);
+      setLiveTurn(null);
+    }
+  }, [selectedActiveRunId, selectedKey, selectedRuntimeActive]);
 
   const handleStreamEvent = React.useCallback(
     (event: ChatStreamEvent) => {
@@ -441,7 +463,9 @@ export function ChatWorkbenchPage() {
     ? "选择一个会话以发送"
     : permissions && !permissions.canSend
       ? "该会话不可写"
-      : sendMutation.isPending || (streamEnabled && !liveTurn?.done)
+      : sendMutation.isPending ||
+          selectedRuntimeActive ||
+          (streamEnabled && !liveTurn?.done)
         ? "运行进行中"
         : null;
 

@@ -58,6 +58,21 @@ test('ChatWorkbenchPage settles immediate native CLI acknowledgements without wa
   assert.match(source, /toast\.error\("Agent 运行失败"/);
 });
 
+test('ChatWorkbenchPage reconnects to active runs discovered from bootstrap runtime', () => {
+  assert.match(source, /function isActiveRuntimeState\(state: string \| null \| undefined\): boolean/);
+  assert.match(source, /return state === "running" \|\| state === "streaming"/);
+  assert.match(source, /const selectedActiveRunId = runtime\?\.activeRunId \?\? null/);
+  assert.match(source, /const selectedRuntimeActive = Boolean\(/);
+  assert.match(source, /selectedActiveRunId && isActiveRuntimeState\(runtime\?\.state\)/);
+  assert.match(source, /if \(selectedRuntimeActive && selectedActiveRunId\)/);
+  assert.match(source, /activeRunIdRef\.current = selectedActiveRunId/);
+  assert.match(source, /setStreamEnabled\(true\)/);
+  assert.match(source, /runId: selectedActiveRunId/);
+  assert.match(source, /if \(!selectedActiveRunId\)/);
+  assert.match(source, /setStreamEnabled\(false\)/);
+  assert.match(source, /selectedRuntimeActive \|\|/);
+});
+
 test('ChatWorkbenchPage routes native permission events into live turns and resolve mutations', () => {
   assert.match(source, /useResolveChatPermissionMutation/);
   assert.match(source, /case "agent_permission"/);
