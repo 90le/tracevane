@@ -45,3 +45,15 @@ test('ChatWorkbenchPage passes backend diagnostics into the session runtime pick
 test('ChatWorkbenchPage passes backend file capability into the conversation composer', () => {
   assert.match(source, /fileCapability=\{diagnostics\?\.fileCapability \?\? null\}/);
 });
+
+
+test('ChatWorkbenchPage settles immediate native CLI acknowledgements without waiting for a legacy final event', () => {
+  assert.match(source, /function isTerminalRuntimeState\(state: string \| null \| undefined\): boolean/);
+  assert.match(source, /case "ack": \{/);
+  assert.match(source, /case "runtime":/);
+  assert.match(source, /case "runtime\.state": \{/);
+  assert.match(source, /isTerminalRuntimeState\(event\.runtime\.state\)/);
+  assert.match(source, /isTerminalRuntimeState\(ack\.runtime\.state\)/);
+  assert.match(source, /ack\.status === "duplicate_completed" \|\| isTerminalRuntimeState\(ack\.runtime\.state\)/);
+  assert.match(source, /toast\.error\("Agent 运行失败"/);
+});

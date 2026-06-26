@@ -74,6 +74,11 @@ const EMPTY_TURN: LiveAssistantTurn = {
   finalMessage: null,
 };
 
+
+function isTerminalRuntimeState(state: string | null | undefined): boolean {
+  return state === "completed" || state === "aborted" || state === "error";
+}
+
 /**
  * Chat Agent Operations Workbench (`/chat`).
  *
@@ -167,6 +172,41 @@ export function ChatWorkbenchPage() {
       const activeRun = activeRunIdRef.current;
 
       switch (event.kind) {
+        case "ack": {
+          if (activeRun && runId && runId !== activeRun) return;
+          if (isTerminalRuntimeState(event.runtime.state)) {
+            setLiveTurn((prev) => ({
+              ...(prev ?? EMPTY_TURN),
+              runId: runId ?? prev?.runId ?? null,
+              done: true,
+              aborted: event.runtime.state === "aborted",
+              error: event.runtime.state === "error" ? event.runtime.lastErrorMessage || "Agent 运行失败" : null,
+            }));
+            setStreamEnabled(false);
+            activeRunIdRef.current = null;
+            refetchSelected();
+            window.setTimeout(() => setLiveTurn(null), 400);
+          }
+          break;
+        }
+        case "runtime":
+        case "runtime.state": {
+          if (activeRun && runId && runId !== activeRun) return;
+          if (isTerminalRuntimeState(event.runtime.state)) {
+            setLiveTurn((prev) => ({
+              ...(prev ?? EMPTY_TURN),
+              runId: runId ?? prev?.runId ?? null,
+              done: true,
+              aborted: event.runtime.state === "aborted",
+              error: event.runtime.state === "error" ? event.runtime.lastErrorMessage || "Agent 运行失败" : null,
+            }));
+            setStreamEnabled(false);
+            activeRunIdRef.current = null;
+            refetchSelected();
+            window.setTimeout(() => setLiveTurn(null), 400);
+          }
+          break;
+        }
         case "delta":
         case "temporary.assistant": {
           if (activeRun && runId && runId !== activeRun) return;
@@ -287,10 +327,14 @@ export function ChatWorkbenchPage() {
         ...(prev ?? EMPTY_TURN),
         runId: ack.runId,
       }));
-      if (ack.status === "duplicate_completed") {
+      if (ack.status === "duplicate_completed" || isTerminalRuntimeState(ack.runtime.state)) {
         setStreamEnabled(false);
+        activeRunIdRef.current = null;
         setLiveTurn(null);
         refetchSelected();
+        if (ack.runtime.state === "error") {
+          toast.error("Agent 运行失败", { description: ack.runtime.lastErrorMessage || "请打开证据面板查看运行详情" });
+        }
       }
       return true;
     } catch (error) {
