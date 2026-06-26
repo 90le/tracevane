@@ -23,7 +23,7 @@ test("chat composer uploads use the shared Files API contract", () => {
   assert.match(chatApi, /hashChatUploadFileIfUseful\(file, signal\)/);
   assert.match(chatApi, /sha256,/);
   assert.match(chatApi, /\/api\/files\/download\?/);
-  assert.match(chatApi, /files:\$\{rootId\}:\$\{normalizePortablePath\(relativePath\)\}/);
+  assert.match(chatApi, /buildTracevaneFilesResourceRef\(rootId, relativePath\)/);
   assert.match(chatApi, /rootId: root\.id/);
   assert.doesNotMatch(chatApi, /new FormData\(/);
   assert.doesNotMatch(chatApi, /sessions\/\$\{encodeSessionKey\(sessionKey\)\}\/upload/);
@@ -32,7 +32,7 @@ test("chat composer uploads use the shared Files API contract", () => {
 test("chat Files-root picker keeps directory selection on Files browse roots", () => {
   assert.match(chatView, /useFilesSummaryQuery\(/);
   assert.match(chatView, /useFilesBrowseQuery\(/);
-  assert.match(chatView, /files:\$\{rootId\}:\$\{filePath\}/);
+  assert.match(chatView, /buildTracevaneFilesResourceRef\(rootId, filePath\)/);
   assert.match(chatView, /const nextPath = entry\.path \|\| joinPortablePath/);
   assert.match(chatView, /rootId: item\.rootId/);
   assert.doesNotMatch(chatView, /workspace:\$\{filePath\}/);

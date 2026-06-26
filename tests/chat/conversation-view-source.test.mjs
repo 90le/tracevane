@@ -12,7 +12,7 @@ test('ConversationView exposes a Files-root picker backed by the Files API', () 
   assert.match(source, /defaultFilesRootId/);
   assert.match(source, /@ 文件 \/ 工作区/);
   assert.match(source, /attachFilesRootFile/);
-  assert.match(source, /const resourceRef = `files:\$\{rootId\}:\$\{filePath\}`/);
+  assert.match(source, /const resourceRef = buildTracevaneFilesResourceRef\(rootId, filePath\)/);
   assert.match(source, /resourceRef,/);
 });
 
@@ -60,7 +60,7 @@ test('ConversationView uses Files roots explicitly and sends Files-root refs saf
   assert.match(source, /filePickerRootId/);
   assert.match(source, /effectiveFilePickerRootId/);
   assert.match(source, /aria-label="选择文件根"/);
-  assert.match(source, /`files:\$\{rootId\}:\$\{filePath\}`/);
+  assert.match(source, /buildTracevaneFilesResourceRef\(rootId, filePath\)/);
   assert.doesNotMatch(source, /`workspace:\$\{filePath\}`/);
   assert.match(source, /source: isProjectRoot \? "workspace" : "files"/);
   assert.match(source, /Files 根引用/);
@@ -97,6 +97,7 @@ test('ConversationView handles mixed text and file paste through Files uploads',
 test('ConversationView previews text-like attachments through Files read API', () => {
   assert.match(source, /useFileReadQuery/);
   assert.match(source, /function parseFilesResourceRef/);
+  assert.match(source, /parseTracevaneFilesResourceRef\(value\)/);
   assert.match(source, /function resolveComposerFilesRef/);
   assert.match(source, /function composerFileRefFromMessageResource/);
   assert.match(source, /parseFilesResourceRef\(resource\.originalPath\)/);

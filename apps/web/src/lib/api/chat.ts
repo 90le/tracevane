@@ -6,6 +6,7 @@ import {
   initFileUpload,
   uploadFileChunk,
 } from "./files";
+import { buildTracevaneFilesResourceRef } from "../../../../../lib/tracevane-resource-refs";
 import type {
   ChatAbortResponse,
   ChatBootstrapPayload,
@@ -308,7 +309,11 @@ async function hashChatUploadFileIfUseful(file: File, signal?: AbortSignal): Pro
 }
 
 function buildFilesResourceRef(rootId: string, relativePath: string): string {
-  return `files:${rootId}:${normalizePortablePath(relativePath)}`;
+  const ref = buildTracevaneFilesResourceRef(rootId, relativePath);
+  if (!ref) {
+    throw new Error("无法创建 Files 资源引用");
+  }
+  return ref;
 }
 
 function buildFilesDownloadUrl(rootId: string, relativePath: string, download: boolean): string {

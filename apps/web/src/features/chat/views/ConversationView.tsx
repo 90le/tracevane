@@ -33,6 +33,7 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 import { useFileReadQuery, useFilesBrowseQuery, useFilesSummaryQuery } from "@/lib/query/files";
 import { deriveChatDisplayMessage, type ChatDisplayBlock, type ChatDisplayParagraphSegment } from "../../../../../../lib/chat-display";
+import { buildTracevaneFilesResourceRef, parseTracevaneFilesResourceRef } from "../../../../../../lib/tracevane-resource-refs";
 
 import { ToneBadge, formatTime } from "@/features/cli-agents/views/_shared";
 
@@ -105,14 +106,8 @@ function canReadPreviewAttachment(item: ComposerFileRefItem | null): boolean {
 }
 
 function parseFilesResourceRef(value: string | null | undefined): { rootId: string; path: string } | null {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed.toLowerCase().startsWith("files:")) return null;
-  const body = trimmed.slice("files:".length);
-  const splitIndex = body.indexOf(":");
-  if (splitIndex <= 0) return null;
-  const rootId = body.slice(0, splitIndex).trim();
-  const filePath = body.slice(splitIndex + 1).trim().replace(/\\/g, "/").replace(/^\.\/+/, "");
-  return rootId && filePath ? { rootId, path: filePath } : null;
+  const parsed = parseTracevaneFilesResourceRef(value);
+  return parsed ? { rootId: parsed.rootId, path: parsed.path } : null;
 }
 
 function resolveComposerFilesRef(item: ComposerFileRefItem | null): { rootId: string; path: string } | null {
@@ -131,7 +126,7 @@ function composerFileRefFromMessageResource(resource: ChatResourceItem): Compose
     ?? resource.relativePath?.trim().replace(/\\/g, "/").replace(/^\.\/+/, "")
     ?? resource.fileName;
   const resourceRef = parsedFilesRef
-    ? `files:${parsedFilesRef.rootId}:${parsedFilesRef.path}`
+    ? buildTracevaneFilesResourceRef(parsedFilesRef.rootId, parsedFilesRef.path) || resource.originalPath
     : resource.originalPath || resource.relativePath || resource.downloadUrl || resource.url;
   return {
     id: resource.id,
@@ -780,7 +775,8 @@ export function ConversationView({
   const attachFilesRootFile = (filePath: string, fileName: string) => {
     const rootId = effectiveFilePickerRootId || "project-root";
     const isProjectRoot = rootId === defaultFilesRootId || rootId === "project-root";
-    const resourceRef = `files:${rootId}:${filePath}`;
+    const resourceRef = buildTracevaneFilesResourceRef(rootId, filePath);
+    if (!resourceRef) return;
     const previewUrl = buildFilesDownloadUrl(rootId, filePath, false);
     const downloadUrl = buildFilesDownloadUrl(rootId, filePath, true);
     const kind = inferComposerAttachmentKind(fileName);
