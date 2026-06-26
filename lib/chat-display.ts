@@ -144,7 +144,7 @@ function normalizeDisplayResourceItems(items: ChatResourceItem[] | undefined): C
 
   for (const item of items || []) {
     if (!item?.id) continue;
-    const key = `${item.kind}:${item.url || 'missing'}:${item.downloadUrl || 'missing'}:${item.id}:${item.relativePath || item.fileName}:${item.source}:${item.status}`;
+    const key = `${item.kind}:${item.resourceRef || item.url || 'missing'}:${item.downloadUrl || 'missing'}:${item.id}:${item.relativePath || item.fileName}:${item.source}:${item.status}`;
     if (seen.has(key)) continue;
     seen.add(key);
     normalized.push({

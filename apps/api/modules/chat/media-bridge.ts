@@ -411,7 +411,7 @@ function hashId(value: string): string {
 }
 
 function pushResourceItem(target: ChatResourceItem[], seenKeys: Set<string>, item: ChatResourceItem): void {
-  const key = `${item.kind}:${item.url}:${item.downloadUrl}:${item.id}:${item.relativePath || item.fileName}:${item.source}:${item.status}`;
+  const key = `${item.kind}:${item.resourceRef || item.url}:${item.downloadUrl}:${item.id}:${item.relativePath || item.fileName}:${item.source}:${item.status}`;
   if (seenKeys.has(key)) {
     return;
   }
@@ -432,6 +432,7 @@ function buildRemoteResourceItem(
     kind,
     url: ref,
     downloadUrl: ref,
+    resourceRef: ref,
     fileName,
     mimeType,
     source,
@@ -455,6 +456,7 @@ function buildInlineImageResourceItem(
     kind: 'image',
     url: dataUrl,
     downloadUrl: dataUrl,
+    resourceRef: null,
     fileName: resolvedName,
     mimeType: normalizedMimeType,
     source,
@@ -485,6 +487,7 @@ function buildInlineDataResourceItem(
     kind,
     url: dataUrl,
     downloadUrl: dataUrl,
+    resourceRef: null,
     fileName: resolvedName,
     mimeType: normalizedMimeType,
     source,
@@ -540,6 +543,7 @@ function buildFilesApiResourceItem(
     kind,
     url: buildFilesDownloadUrl(rootId, normalizedPath, false),
     downloadUrl: buildFilesDownloadUrl(rootId, normalizedPath, true),
+    resourceRef,
     fileName,
     mimeType,
     relativePath: normalizedPath,
@@ -579,6 +583,7 @@ function buildLocalResourceItem(
     kind,
     url: baseUrl,
     downloadUrl: `${baseUrl}?download=1`,
+    resourceRef: options.originalPath || buildTracevaneResourceRefFromRelativePath(options.relativePath || resolveWorkspaceRelativePath(ctx, filePath) || ''),
     fileName,
     mimeType,
     relativePath: options.relativePath || resolveWorkspaceRelativePath(ctx, filePath),
@@ -609,6 +614,7 @@ function buildMissingResourceItem(
     kind,
     url: '',
     downloadUrl: '',
+    resourceRef: options.originalPath || buildTracevaneResourceRefFromRelativePath(options.relativePath || refPath) || refPath,
     fileName,
     mimeType,
     relativePath: options.relativePath || refPath,
@@ -1007,7 +1013,12 @@ function buildUserUploadResourceFromSendFileRef(
     });
     return fileRef.id ? { ...missing, id: fileRef.id } : missing;
   }
-  return buildUserUploadResourceFromRef(ctx, fileRef.relativePath, index, fileRef.id);
+  const resource = buildUserUploadResourceFromRef(ctx, fileRef.relativePath, index, fileRef.id);
+  return {
+    ...resource,
+    resourceRef: fileRef.resourceRef || resource.resourceRef,
+    originalPath: fileRef.resourceRef || resource.originalPath,
+  };
 }
 
 function buildTracevaneDeliveryResourceItem(
@@ -1200,6 +1211,7 @@ function rehydrateStoredResourceItem(
       ...item,
       url: remoteUrl,
       downloadUrl: item.downloadUrl || remoteUrl,
+      resourceRef: item.resourceRef || remoteUrl,
       status: 'ready',
     };
   }
@@ -1210,6 +1222,7 @@ function rehydrateStoredResourceItem(
       id: item.id,
       relativePath: item.relativePath,
       originalPath: item.originalPath,
+      resourceRef: item.resourceRef || null,
       status: 'ready',
     };
   }
@@ -1221,6 +1234,7 @@ function rehydrateStoredResourceItem(
       fileName: item.fileName || rebuilt.fileName,
       mimeType: item.mimeType || rebuilt.mimeType,
       toolCallId: item.toolCallId || null,
+      resourceRef: item.resourceRef || rebuilt.resourceRef,
     };
   }
 
@@ -1238,6 +1252,7 @@ function rehydrateStoredResourceItem(
         kind: item.kind,
         fileName: item.fileName || path.basename(localFilePath),
         mimeType: item.mimeType || mimeTypeFromPath(localFilePath),
+        resourceRef: item.resourceRef || item.originalPath || originalPath,
       };
     }
     return {
@@ -1251,6 +1266,7 @@ function rehydrateStoredResourceItem(
       kind: item.kind,
       fileName: item.fileName || path.basename(originalPath),
       mimeType: item.mimeType || mimeTypeFromPath(originalPath),
+      resourceRef: item.resourceRef || item.originalPath || originalPath,
     };
   }
 

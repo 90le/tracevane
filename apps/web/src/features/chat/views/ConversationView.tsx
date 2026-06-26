@@ -131,14 +131,14 @@ function resolveComposerFilesRef(item: ComposerFileRefItem | null): { rootId: st
 }
 
 function composerFileRefFromMessageResource(resource: ChatResourceItem): ComposerFileRefItem {
-  const parsedFilesRef = parseFilesResourceRef(resource.originalPath);
+  const parsedFilesRef = parseFilesResourceRef(resource.resourceRef || resource.originalPath);
   const rootId = parsedFilesRef?.rootId ?? null;
   const relativePath = parsedFilesRef?.path
     ?? resource.relativePath?.trim().replace(/\\/g, "/").replace(/^\.\/+/, "")
     ?? resource.fileName;
   const resourceRef = parsedFilesRef
     ? buildTracevaneFilesResourceRef(parsedFilesRef.rootId, parsedFilesRef.path) || resource.originalPath
-    : resource.originalPath || resource.relativePath || resource.downloadUrl || resource.url;
+    : resource.resourceRef || resource.originalPath || resource.relativePath || resource.downloadUrl || resource.url;
   return {
     id: resource.id,
     rootId,

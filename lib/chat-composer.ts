@@ -23,6 +23,7 @@ export interface ChatComposerAttachmentLike {
   content?: string | null;
   dataUrl: string;
   downloadUrl?: string | null;
+  resourceRef?: string | null;
   relativePath?: string | null;
   uploadState?: ChatComposerUploadState;
 }
@@ -140,6 +141,7 @@ export function buildOptimisticResourcesFromComposerAttachments(
       kind: attachment.type,
       url: attachment.dataUrl,
       downloadUrl: attachment.downloadUrl || attachment.dataUrl,
+      resourceRef: attachment.resourceRef || attachment.relativePath || attachment.downloadUrl || attachment.dataUrl || null,
       fileName: attachment.fileName || `file-${attachment.id}`,
       mimeType: attachment.mimeType || null,
       relativePath: attachment.relativePath || undefined,

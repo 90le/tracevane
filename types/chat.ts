@@ -90,6 +90,7 @@ export interface ChatResourceItem {
   kind: ChatAttachmentKind;
   url: string;
   downloadUrl: string;
+  resourceRef: string | null;
   fileName: string;
   mimeType: string | null;
   relativePath?: string;
@@ -228,6 +229,7 @@ export interface ChatMessageMediaItem {
   kind: ChatAttachmentKind;
   url: string;
   downloadUrl: string;
+  resourceRef: string | null;
   fileName: string;
   mimeType: string | null;
   relativePath?: string;

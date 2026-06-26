@@ -84,6 +84,7 @@ test('resolves send file refs from the Tracevane project root for Chat workspace
     assert.equal(resources.length, 1);
     assert.equal(resources[0].status, 'ready');
     assert.equal(resources[0].relativePath, 'package.json');
+    assert.equal(resources[0].resourceRef, 'workspace:package.json');
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });
     fs.rmSync(tracevane.root, { recursive: true, force: true });
@@ -123,6 +124,7 @@ test('resolves send file refs from Files API roots without workspace coupling', 
     assert.equal(resources.length, 1);
     assert.equal(resources[0].status, 'ready');
     assert.equal(resources[0].relativePath, 'docs/brief.md');
+    assert.equal(resources[0].resourceRef, 'files:project-root:docs/brief.md');
     assert.match(resources[0].url, /^\/api\/files\/download\?/);
     assert.match(resources[0].downloadUrl, /[?&]download=true/);
     assert.doesNotMatch(resources[0].url, /\/api\/chat\/sessions\//);

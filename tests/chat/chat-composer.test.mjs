@@ -146,6 +146,7 @@ test('optimistic resources only include ready attachments', () => {
   assert.equal(resources.length, 1);
   assert.equal(resources[0]?.fileName, 'a.png');
   assert.equal(resources[0]?.status, 'ready');
+  assert.equal(resources[0]?.resourceRef, 'uploads/a.png');
 });
 
 test('composer resource insertion supports click insertion and multiple references', () => {

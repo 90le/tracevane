@@ -111,7 +111,7 @@ test('ConversationView previews text-like attachments through Files read API', (
   assert.match(source, /parseTracevaneFilesResourceRef\(value\)/);
   assert.match(source, /function resolveComposerFilesRef/);
   assert.match(source, /function composerFileRefFromMessageResource/);
-  assert.match(source, /parseFilesResourceRef\(resource\.originalPath\)/);
+  assert.match(source, /parseFilesResourceRef\(resource\.resourceRef \|\| resource\.originalPath\)/);
   assert.match(source, /canReadPreviewAttachment/);
   assert.match(source, /limit: 192 \* 1024/);
   assert.match(source, /文件预览加载失败/);
