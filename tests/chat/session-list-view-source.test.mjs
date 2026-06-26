@@ -69,6 +69,16 @@ test('SessionListView provides generic metadata for newly shared native CLI runt
   assert.match(source, /description: `\$\{label\} 会话，使用模型网关与当前工作区`/);
 });
 
+test('SessionListView discloses registered but unwired CLI agents without making them selectable', () => {
+  assert.match(source, /CHANNEL_CONNECTOR_AGENT_IDS/);
+  assert.match(source, /type PendingNativeRuntimeAgentOption/);
+  assert.match(source, /const PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS/);
+  assert.match(source, /!\(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string\[\]\)\.includes\(agent\)/);
+  assert.match(source, /待接入 CLI Agent/);
+  assert.match(source, /Chat 不会假装可运行/);
+  assert.match(source, /尚未接入 Channel Connector 进程适配器/);
+});
+
 test('SessionListView keeps the current runtime model visible when gateway catalog changes', () => {
   assert.match(source, /type ChatRuntimeModelOption = \{/);
   assert.match(source, /const runtimeModelOptions = React\.useMemo<ChatRuntimeModelOption\[\]>/);

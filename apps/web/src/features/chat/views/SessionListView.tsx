@@ -58,7 +58,10 @@ import { useModelGatewayModelsQuery } from "@/lib/query/model-gateway";
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
 import { useFilesSummaryQuery } from "@/lib/query/files";
 import type { ApiError } from "@/lib/api/errors";
-import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS } from "../../../../../../types/channel-connectors";
+import {
+  CHANNEL_CONNECTOR_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
+} from "../../../../../../types/channel-connectors";
 import type { TerminalBinaryStatus } from "../../cli-agents/types";
 import type {
   ChatSessionFolder,
@@ -134,6 +137,12 @@ type ChatRuntimeOptionReadiness = {
   selectable: boolean;
 };
 
+type PendingNativeRuntimeAgentOption = {
+  agent: Exclude<(typeof CHANNEL_CONNECTOR_AGENT_IDS)[number], (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS)[number]>;
+  label: string;
+  description: string;
+};
+
 type ChatRuntimeModelOption = {
   id: string;
   display_name?: string | null;
@@ -191,6 +200,17 @@ function nativeRuntimeAgentOption(agent: (typeof CHANNEL_CONNECTOR_RUNTIME_AGENT
 
 const NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: ChatRuntimeAgentOption[] =
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS.map(nativeRuntimeAgentOption);
+
+const PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS: PendingNativeRuntimeAgentOption[] = CHANNEL_CONNECTOR_AGENT_IDS
+  .filter((agent): agent is PendingNativeRuntimeAgentOption["agent"] => !(CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(agent))
+  .map((agent) => {
+    const label = `${titleCaseAgentName(agent)} CLI`;
+    return {
+      agent,
+      label,
+      description: `${label} 尚未接入 Channel Connector 进程适配器；完成 runner、模型网关与终端安装检测后才会进入可选列表。`,
+    };
+  });
 
 const OPENCLAW_RUNTIME_FALLBACK_OPTION: ChatRuntimeAgentOption = {
   adapterKind: "openclaw-gateway",
@@ -1503,6 +1523,42 @@ export function SessionListView({
                       })}
                     </div>
                   </div>
+
+                  {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.length > 0 && (
+                    <div className="rounded-sm border border-dashed border-line bg-panel-2 px-3 py-2 text-xs text-muted">
+                      <div className="font-medium text-ink">待接入 CLI Agent</div>
+                      <p className="mt-1 text-subtle">这些 Agent 已在配置枚举中登记，但还没有真实 runner 合同；Chat 不会假装可运行。</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.map((option) => (
+                          <span
+                            key={option.agent}
+                            title={option.description}
+                            className="rounded-full border border-line bg-panel px-2 py-0.5 text-2xs text-subtle"
+                          >
+                            {option.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.length > 0 && (
+                    <div className="rounded-sm border border-dashed border-line bg-panel-2 px-3 py-2 text-xs text-muted">
+                      <div className="font-medium text-ink">待接入 CLI Agent</div>
+                      <p className="mt-1 text-subtle">这些 Agent 已在配置枚举中登记，但还没有真实 runner 合同；Chat 不会假装可运行。</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {PENDING_NATIVE_CHAT_RUNTIME_AGENT_OPTIONS.map((option) => (
+                          <span
+                            key={option.agent}
+                            title={option.description}
+                            className="rounded-full border border-line bg-panel px-2 py-0.5 text-2xs text-subtle"
+                          >
+                            {option.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-2 text-sm text-muted">
