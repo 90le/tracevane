@@ -871,7 +871,7 @@ export function ConversationView({
               ) : (
                 <div className="grid gap-1">
                   {workspaceBrowse.data.entries.map((entry) => {
-                    const nextPath = joinPortablePath(workspacePickerDir, entry.name);
+                    const nextPath = entry.path || joinPortablePath(workspacePickerDir, entry.name);
                     if (entry.kind === "directory") {
                       return (
                         <button
@@ -945,7 +945,7 @@ export function ConversationView({
             onClick={() => setWorkspacePickerOpen((open) => !open)}
           >
             <FileText />
-            @ 工作区文件
+            @ 文件 / 工作区
           </Button>
           <span className="flex-1" />
           {streaming && !liveTurn?.done && (

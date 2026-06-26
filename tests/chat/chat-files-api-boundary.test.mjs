@@ -30,9 +30,11 @@ test("chat workspace picker keeps directory selection on Files browse roots", ()
   assert.match(chatView, /useFilesSummaryQuery\(/);
   assert.match(chatView, /useFilesBrowseQuery\(/);
   assert.match(chatView, /files:\$\{rootId\}:\$\{filePath\}/);
+  assert.match(chatView, /const nextPath = entry\.path \|\| joinPortablePath/);
   assert.match(chatView, /rootId: item\.rootId/);
   assert.doesNotMatch(chatView, /workspace:\$\{filePath\}/);
   assert.match(chatView, /buildFilesDownloadUrl\(rootId, filePath, false\)/);
+  assert.match(chatView, /@ 文件 \/ 工作区/);
   assert.match(chatView, /chat-composer-preview-dialog/);
 });
 

@@ -3,6 +3,8 @@ import type { ChatMessageRole } from '../types/chat.js';
 const LEADING_TIMESTAMP_PREFIX_RE = /^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\] */;
 const ENVELOPE_PREFIX = /^\[([^\]]+)\]\s*/;
 const ENVELOPE_CHANNELS = [
+  'Agent Chat',
+  'Tracevane Chat',
   'WebChat',
   'WhatsApp',
   'Telegram',

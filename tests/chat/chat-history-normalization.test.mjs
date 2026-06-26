@@ -33,6 +33,22 @@ test('normalizeChatHistoryText also removes envelope headers and message id hint
   assert.equal(normalizeChatHistoryText(raw, 'user'), 'Visible payload');
 });
 
+test('normalizeChatHistoryText removes new Agent Chat envelope headers', () => {
+  const raw = [
+    '[Agent Chat 2026-06-26 12:30] [message_id: chat-123]',
+    'Visible Agent Chat payload',
+  ].join('\n');
+
+  assert.equal(normalizeChatHistoryText(raw, 'user'), 'Visible Agent Chat payload');
+
+  const tracevaneRaw = [
+    '[Tracevane Chat 2026-06-26T12:31Z] [message_id: tracevane-123]',
+    'Visible Tracevane Chat payload',
+  ].join('\n');
+
+  assert.equal(normalizeChatHistoryText(tracevaneRaw, 'user'), 'Visible Tracevane Chat payload');
+});
+
 test('normalizeChatHistoryText strips a timestamp that becomes leading after sender metadata is removed', () => {
   const raw = [
     'Sender (untrusted metadata):',
