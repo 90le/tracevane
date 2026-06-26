@@ -62,6 +62,7 @@ import type {
   ChatSideResult,
   ChatToolCard,
   LiveAssistantTurn,
+  LiveTurnTimelineItem,
 } from "../types";
 import { roleLabel, toolStatusTone } from "../_shared";
 import "./chat-message-markdown.css";
@@ -704,13 +705,32 @@ function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
 
 function ToolCallBlock({
   tool,
+  collapsed = false,
 }: {
   tool: ChatMessageToolCallItem | ChatToolCard;
+  collapsed?: boolean;
 }) {
   const st = toolStatusTone(tool.status);
   const running = tool.status === "running";
   const summaryRows = toolSummaryRows(tool);
   const outputPreview = toolOutputPreview(tool);
+  const content = (
+    <>
+      <ToolSummaryBlock rows={summaryRows} />
+      <ToolOutputBlock output={outputPreview} />
+      {tool.argsPreview && !summaryRows.length && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
+      {tool.resultPreview && !outputPreview && (
+        <ToolPreviewBlock
+          label={tool.isError ? "错误输出" : "执行结果"}
+          value={tool.resultPreview}
+          tone={tool.isError ? "error" : "neutral"}
+          render="markdown"
+        />
+      )}
+      {tool.artifacts && tool.artifacts.length > 0 && <ToolArtifactsBlock artifacts={tool.artifacts} />}
+    </>
+  );
+
   return (
     <div className={cn(
       "grid min-w-0 gap-2 rounded-md border px-3 py-2.5 shadow-sm",
@@ -735,18 +755,20 @@ function ToolCallBlock({
           </div>
         </div>
       </div>
-      <ToolSummaryBlock rows={summaryRows} />
-      <ToolOutputBlock output={outputPreview} />
-      {tool.argsPreview && !summaryRows.length && <ToolPreviewBlock label="输入参数" value={tool.argsPreview} render="code" />}
-      {tool.resultPreview && !outputPreview && (
-        <ToolPreviewBlock
-          label={tool.isError ? "错误输出" : "执行结果"}
-          value={tool.resultPreview}
-          tone={tool.isError ? "error" : "neutral"}
-          render="markdown"
-        />
+      {collapsed && !running && !tool.isError ? (
+        <details className="group min-w-0 rounded-sm border border-line/80 bg-panel/70">
+          <summary className="flex min-w-0 cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs text-subtle marker:hidden">
+            <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+            <span className="font-medium">展开工具详情</span>
+            <span className="min-w-0 flex-1 truncate">{tool.resultPreview ? previewLabel(tool.resultPreview) : "输入、输出和产物默认折叠"}</span>
+          </summary>
+          <div className="grid min-w-0 gap-2 border-t border-line/70 p-2">
+            {content}
+          </div>
+        </details>
+      ) : (
+        content
       )}
-      {tool.artifacts && tool.artifacts.length > 0 && <ToolArtifactsBlock artifacts={tool.artifacts} />}
     </div>
   );
 }
@@ -1041,6 +1063,7 @@ function LiveTurn({
   resolvingPermission?: boolean;
   onResolvePermission?: (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => void;
 }) {
+  const timeline = turn.timeline.length ? turn.timeline : buildLegacyLiveTimeline(turn);
   return (
     <article className="grid gap-1.5">
       <div className="flex items-center gap-1.5 text-xs text-subtle">
@@ -1056,43 +1079,21 @@ function LiveTurn({
         )}
         {turn.aborted && <Badge variant="bad">已中止</Badge>}
       </div>
-      <div className="max-w-[min(82ch,100%)] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
-        {turn.text ? <ChatMarkdownContent source={turn.text} streaming={!turn.done} /> : (
+      {timeline.length === 0 ? (
+        <div className="max-w-[min(82ch,100%)] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
           <span className="italic text-subtle">等待 Agent 响应…</span>
-        )}
-        {!turn.done && turn.text && (
-          <span className="ml-0.5 animate-pulse">▋</span>
-        )}
-      </div>
-      {turn.processBlocks.length > 0 && (
-        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1">
-          {turn.processBlocks.map((block) => (
-            <ProcessBlockView key={block.id} block={block} />
-          ))}
         </div>
-      )}
-      {turn.sideResults.length > 0 && (
+      ) : (
         <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
-          {turn.sideResults.map((result, index) => (
-            <SideResultBlock key={`${result.kind}:${index}:${result.question}`} result={result} />
-          ))}
-        </div>
-      )}
-      {turn.permissions.length > 0 && (
-        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
-          {turn.permissions.map((permission) => (
-            <PermissionRequestBlock
-              key={permission.requestId}
-              permission={permission}
-              resolving={resolvingPermission}
-              onResolve={onResolvePermission}
+          {timeline.map((item) => (
+            <LiveTimelineItemView
+              key={item.id}
+              item={item}
+              streaming={!turn.done}
+              resolvingPermission={resolvingPermission}
+              onResolvePermission={onResolvePermission}
             />
           ))}
-        </div>
-      )}
-      {turn.toolCards.length > 0 && (
-        <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
-          <ToolCallGroup tools={turn.toolCards} />
         </div>
       )}
       {turn.error && (
@@ -1105,6 +1106,53 @@ function LiveTurn({
   );
 }
 
+function buildLegacyLiveTimeline(turn: LiveAssistantTurn): LiveTurnTimelineItem[] {
+  const items: LiveTurnTimelineItem[] = [];
+  if (turn.text) items.push({ kind: "assistant", id: "assistant-live", text: turn.text });
+  for (const block of turn.processBlocks) items.push({ kind: "thinking", id: `thinking:${block.id}`, blockId: block.id, block });
+  for (const permission of turn.permissions) items.push({ kind: "permission", id: `permission:${permission.requestId}`, requestId: permission.requestId, permission });
+  for (const result of turn.sideResults) items.push({ kind: "side_result", id: `side:${items.length}:${result.question}`, result });
+  for (const tool of turn.toolCards) items.push({ kind: "tool", id: `tool:${tool.toolCallId}`, toolCallId: tool.toolCallId, tool });
+  return items;
+}
+
+function LiveTimelineItemView({
+  item,
+  streaming,
+  resolvingPermission,
+  onResolvePermission,
+}: {
+  item: LiveTurnTimelineItem;
+  streaming: boolean;
+  resolvingPermission?: boolean;
+  onResolvePermission?: (permission: ChatPermissionRequestCard, decision: "allow" | "deny") => void;
+}) {
+  if (item.kind === "assistant") {
+    return (
+      <div className="max-w-[min(82ch,100%)] min-w-0 rounded-md border border-line bg-panel px-3 py-2 text-base text-ink">
+        <ChatMarkdownContent source={item.text} streaming={streaming} />
+        {streaming && item.text && <span className="ml-0.5 animate-pulse">▋</span>}
+      </div>
+    );
+  }
+  if (item.kind === "tool") {
+    return <ToolCallBlock tool={item.tool} collapsed />;
+  }
+  if (item.kind === "thinking") {
+    return <ProcessBlockView block={item.block} />;
+  }
+  if (item.kind === "permission") {
+    return (
+      <PermissionRequestBlock
+        permission={item.permission}
+        resolving={resolvingPermission}
+        onResolve={onResolvePermission}
+      />
+    );
+  }
+  return <SideResultBlock result={item.result} />;
+}
+
 /**
  * Center column: the conversation. Renders the authoritative history (with
  * tool-call blocks, reasoning, abort/truncate markers) plus the live streaming
@@ -1113,6 +1161,7 @@ function LiveTurn({
 export function ConversationView({
   sessionKey,
   messages,
+  optimisticMessages = [],
   permissions,
   fileCapability,
   isLoading,
@@ -1132,6 +1181,7 @@ export function ConversationView({
 }: {
   sessionKey: string | null;
   messages: ChatMessageItem[];
+  optimisticMessages?: ChatMessageItem[];
   permissions: ChatSessionPermissions | null;
   fileCapability?: ChatFileCapability | null;
   isLoading: boolean;
@@ -1164,6 +1214,15 @@ export function ConversationView({
   const uploadControllersRef = React.useRef(new Map<string, AbortController>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const effectiveFileCapability = fileCapability ?? FALLBACK_CHAT_FILE_CAPABILITY;
+  const visibleMessages = React.useMemo(() => {
+    if (!optimisticMessages.length) return messages;
+    const existingIds = new Set(messages.map((message) => message.id));
+    const existingUserTexts = new Set(messages.filter((message) => message.role === "user").map((message) => message.text.trim()));
+    return [
+      ...messages,
+      ...optimisticMessages.filter((message) => !existingIds.has(message.id) && !existingUserTexts.has(message.text.trim())),
+    ];
+  }, [messages, optimisticMessages]);
 
   const filesSummary = useFilesSummaryQuery({ enabled: filePickerOpen });
   const filesRoots = filesSummary.data?.roots ?? [];
@@ -1245,7 +1304,7 @@ export function ConversationView({
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, liveTurn?.text, liveTurnScrollKey, sessionKey]);
+  }, [visibleMessages, liveTurn?.text, liveTurn?.timeline, liveTurnScrollKey, sessionKey]);
 
   const canSend = !sendDisabledReason;
   const readyFileRefs = React.useMemo(
@@ -1422,7 +1481,7 @@ export function ConversationView({
               </Button>
             }
           />
-        ) : messages.length === 0 && !liveTurn ? (
+        ) : visibleMessages.length === 0 && !liveTurn ? (
           <EmptyState
             icon={<MessagesSquare />}
             title="该会话暂无消息"
@@ -1430,7 +1489,7 @@ export function ConversationView({
           />
         ) : (
           <div className="grid gap-4">
-            {messages.map((m) => (
+            {visibleMessages.map((m) => (
               <MessageBubble
                 key={m.id}
                 message={m}

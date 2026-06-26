@@ -26,6 +26,15 @@ import {
 } from "@/lib/query/chat";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatKeys } from "@/lib/query/chat";
+import {
+  appendAgentProgressSideResult,
+  mergeAgentProgressOverlay,
+  mergeAgentProgressText,
+  upsertAgentProgressAssistant,
+  upsertAgentProgressPermission,
+  upsertAgentProgressThinking,
+  upsertAgentProgressTool,
+} from "../../../../../lib/agent-progress-timeline";
 
 import {
   ConversationView,
@@ -70,6 +79,7 @@ function decodeSessionRef(value: string | null): string | null {
 const EMPTY_TURN: LiveAssistantTurn = {
   runId: null,
   text: "",
+  timeline: [],
   toolCards: [],
   processBlocks: [],
   permissions: [],
@@ -91,14 +101,6 @@ function isActiveRuntimeState(state: string | null | undefined): boolean {
 
 function isTerminalRunOverlay(overlay: ChatRunOverlay): boolean {
   return overlay.lifecycle === "completed" || overlay.lifecycle === "aborted" || overlay.lifecycle === "error";
-}
-
-function mergeLiveText(current: string, incoming: string): string {
-  if (!incoming) return current;
-  if (!current) return incoming;
-  if (incoming.startsWith(current)) return incoming;
-  if (current.startsWith(incoming)) return current;
-  return incoming.length >= current.length ? incoming : current;
 }
 
 function mergeToolCardsFromOverlay(
@@ -126,7 +128,8 @@ function mergeLiveTurnFromOverlay(
   return {
     ...base,
     runId: overlay.runId || base.runId,
-    text: mergeLiveText(base.text, overlay.previewText || ""),
+    text: mergeAgentProgressText(base.text, overlay.previewText || ""),
+    timeline: mergeAgentProgressOverlay(base.timeline, overlay),
     toolCards: mergeToolCardsFromOverlay(base.toolCards, overlay.toolCalls),
     done,
     aborted: base.aborted || overlay.lifecycle === "aborted",
@@ -209,6 +212,7 @@ export function ChatWorkbenchPage() {
   const [liveTurn, setLiveTurn] = React.useState<LiveAssistantTurn | null>(
     null,
   );
+  const [optimisticMessages, setOptimisticMessages] = React.useState<ChatMessageItem[]>([]);
   // We only open the SSE stream while a send is in-flight / streaming.
   const [streamEnabled, setStreamEnabled] = React.useState(false);
   const activeRunIdRef = React.useRef<string | null>(null);
@@ -247,6 +251,7 @@ export function ChatWorkbenchPage() {
       activeRunIdRef.current = null;
       setStreamEnabled(false);
       setLiveTurn(null);
+      setOptimisticMessages([]);
     }
   }, [selectedActiveOverlay, selectedActiveRunId, selectedKey, selectedRuntimeActive]);
 
@@ -300,6 +305,7 @@ export function ChatWorkbenchPage() {
             ...(prev ?? EMPTY_TURN),
             runId: runId ?? prev?.runId ?? null,
             text: accumulated,
+            timeline: upsertAgentProgressAssistant((prev ?? EMPTY_TURN).timeline, accumulated),
           }));
           break;
         }
@@ -310,13 +316,12 @@ export function ChatWorkbenchPage() {
             const incoming = event.text || "";
             const nextText = event.deltaText
               ? `${base.text}${event.deltaText}`
-              : incoming.startsWith(base.text) || base.text.startsWith(incoming)
-                ? (incoming.length >= base.text.length ? incoming : base.text)
-                : incoming;
+              : mergeAgentProgressText(base.text, incoming);
             return {
               ...base,
               runId: runId ?? base.runId ?? null,
               text: nextText,
+              timeline: upsertAgentProgressAssistant(base.timeline, nextText),
             };
           });
           break;
@@ -330,7 +335,12 @@ export function ChatWorkbenchPage() {
             const processBlocks = existing >= 0
               ? base.processBlocks.map((item, index) => (index === existing ? event.block : item))
               : [...base.processBlocks, event.block].slice(-8);
-            return { ...base, runId: runId ?? base.runId, processBlocks };
+            return {
+              ...base,
+              runId: runId ?? base.runId,
+              processBlocks,
+              timeline: upsertAgentProgressThinking(base.timeline, event.block),
+            };
           });
           break;
         }
@@ -350,7 +360,12 @@ export function ChatWorkbenchPage() {
           setLiveTurn((prev) => {
             const base = prev ?? EMPTY_TURN;
             const next = [...base.sideResults, event.result].slice(-5);
-            return { ...base, runId: runId ?? base.runId, sideResults: next };
+            return {
+              ...base,
+              runId: runId ?? base.runId,
+              sideResults: next,
+              timeline: appendAgentProgressSideResult(base.timeline, event.result),
+            };
           });
           break;
         }
@@ -363,7 +378,12 @@ export function ChatWorkbenchPage() {
             const permissions = existing >= 0
               ? base.permissions.map((item, index) => (index === existing ? permission : item))
               : [...base.permissions, permission];
-            return { ...base, runId: runId ?? base.runId, permissions };
+            return {
+              ...base,
+              runId: runId ?? base.runId,
+              permissions,
+              timeline: upsertAgentProgressPermission(base.timeline, permission),
+            };
           });
           break;
         }
@@ -381,7 +401,12 @@ export function ChatWorkbenchPage() {
               existing >= 0
                 ? base.toolCards.map((t, i) => (i === existing ? tool : t))
                 : [...base.toolCards, tool];
-            return { ...base, runId: runId ?? base.runId, toolCards };
+            return {
+              ...base,
+              runId: runId ?? base.runId,
+              toolCards,
+              timeline: upsertAgentProgressTool(base.timeline, tool),
+            };
           });
           break;
         }
@@ -476,6 +501,25 @@ export function ChatWorkbenchPage() {
 
   const handleSend = React.useCallback(async (payload: ChatSendRequest): Promise<boolean> => {
     if (!selectedKey) return false;
+    const optimisticId = `optimistic:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const optimisticText = payload.text?.trim()
+      || (payload.fileRefs?.length ? `已附加 ${payload.fileRefs.length} 个文件。` : "");
+    if (optimisticText || payload.fileRefs?.length) {
+      const now = new Date().toISOString();
+      setOptimisticMessages((current) => [...current, {
+        id: optimisticId,
+        role: "user",
+        text: optimisticText,
+        createdAt: now,
+        source: "stream",
+        runId: null,
+        truncated: false,
+        omitted: false,
+        aborted: false,
+        stopReason: null,
+        resources: [],
+      }]);
+    }
     setLiveTurn({ ...EMPTY_TURN });
     setStreamEnabled(true);
     try {
@@ -489,6 +533,7 @@ export function ChatWorkbenchPage() {
         setStreamEnabled(false);
         activeRunIdRef.current = null;
         setLiveTurn(null);
+        setOptimisticMessages([]);
         refetchSelected();
         if (ack.runtime.state === "error") {
           toast.error("Agent 运行失败", { description: ack.runtime.lastErrorMessage || "请打开证据面板查看运行详情" });
@@ -499,6 +544,7 @@ export function ChatWorkbenchPage() {
       setStreamEnabled(false);
       activeRunIdRef.current = null;
       setLiveTurn(null);
+      setOptimisticMessages((current) => current.filter((message) => message.id !== optimisticId));
       toast.error("发送失败", { description: error instanceof Error ? error.message : String(error) });
       return false;
     }
@@ -669,6 +715,7 @@ export function ChatWorkbenchPage() {
           <ConversationView
             sessionKey={selectedKey}
             messages={historyMessages}
+            optimisticMessages={optimisticMessages}
             permissions={permissions}
             fileCapability={diagnostics?.fileCapability ?? null}
             isLoading={bootstrap.isLoading && Boolean(selectedKey)}

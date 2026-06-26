@@ -6,6 +6,20 @@ import path from 'node:path';
 const sourcePath = path.join(process.cwd(), 'apps/web/src/features/chat/ChatWorkbenchPage.tsx');
 const source = fs.readFileSync(sourcePath, 'utf8');
 const sharedSource = fs.readFileSync(path.join(process.cwd(), 'apps/web/src/features/chat/_shared.ts'), 'utf8');
+const progressTimelineSource = fs.readFileSync(path.join(process.cwd(), 'lib/agent-progress-timeline.ts'), 'utf8');
+
+test('shared Agent progress timeline follows the Feishu progress-card pattern', () => {
+  assert.match(progressTimelineSource, /Shared Agent progress timeline/);
+  assert.match(progressTimelineSource, /Feishu progress-card model/);
+  assert.match(progressTimelineSource, /AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT/);
+  assert.match(progressTimelineSource, /export type AgentProgressTimelineItem/);
+  assert.match(progressTimelineSource, /upsertAgentProgressAssistant/);
+  assert.match(progressTimelineSource, /upsertAgentProgressTool/);
+  assert.match(progressTimelineSource, /upsertAgentProgressThinking/);
+  assert.match(progressTimelineSource, /upsertAgentProgressPermission/);
+  assert.match(progressTimelineSource, /appendAgentProgressSideResult/);
+  assert.match(progressTimelineSource, /mergeAgentProgressOverlay/);
+});
 
 test('ChatWorkbenchPage reports send success so the composer can preserve failed drafts', () => {
   assert.match(source, /const handleSend = React\.useCallback\(async \(payload: ChatSendRequest\): Promise<boolean>/);
@@ -61,6 +75,7 @@ test('ChatWorkbenchPage settles immediate native CLI acknowledgements without wa
 test('ChatWorkbenchPage reconnects to active runs discovered from bootstrap runtime', () => {
   assert.match(source, /function isActiveRuntimeState\(state: string \| null \| undefined\): boolean/);
   assert.match(source, /function mergeLiveTurnFromOverlay/);
+  assert.match(source, /mergeAgentProgressOverlay/);
   assert.match(source, /return state === "running" \|\| state === "streaming"/);
   assert.match(source, /const selectedActiveRunId = runtime\?\.activeRunId \?\? null/);
   assert.match(source, /const selectedRuntimeActive = Boolean\(/);
@@ -80,7 +95,7 @@ test('ChatWorkbenchPage reconnects to active runs discovered from bootstrap runt
 test('ChatWorkbenchPage consumes run overlays as live assistant/tool fallback', () => {
   assert.match(source, /case "run_overlay": \{/);
   assert.match(source, /mergeLiveTurnFromOverlay\(prev, event\.overlay, event\.terminal\)/);
-  assert.match(source, /mergeLiveText\(base\.text, overlay\.previewText \|\| ""\)/);
+  assert.match(source, /mergeAgentProgressText\(base\.text, overlay\.previewText \|\| ""\)/);
   assert.match(source, /mergeToolCardsFromOverlay\(base\.toolCards, overlay\.toolCalls\)/);
   assert.match(source, /overlay\.lifecycle === "aborted"/);
   assert.match(source, /overlay\.lifecycle === "error" \? "Agent 运行失败" : null/);
@@ -104,6 +119,7 @@ test('ChatWorkbenchPage keeps side-result events in the live turn instead of los
   assert.match(source, /case "side_result"/);
   assert.match(source, /\.\.\.base\.sideResults, event\.result/);
   assert.match(source, /slice\(-5\)/);
+  assert.match(source, /appendAgentProgressSideResult\(base\.timeline, event\.result\)/);
 });
 
 
@@ -113,6 +129,7 @@ test('ChatWorkbenchPage keeps live reasoning/process stream blocks in the transi
   assert.match(source, /base\.processBlocks\.findIndex/);
   assert.match(source, /\.\.\.base\.processBlocks, event\.block/);
   assert.match(source, /slice\(-8\)/);
+  assert.match(source, /upsertAgentProgressThinking\(base\.timeline, event\.block\)/);
 });
 
 
@@ -120,5 +137,6 @@ test('ChatWorkbenchPage accumulates native assistant deltas instead of replacing
   assert.match(source, /case "agent_assistant"/);
   assert.match(source, /event\.deltaText/);
   assert.match(source, /`\$\{base\.text\}\$\{event\.deltaText\}`/);
-  assert.match(source, /incoming\.startsWith\(base\.text\)/);
+  assert.match(source, /mergeAgentProgressText\(base\.text, incoming\)/);
+  assert.match(source, /upsertAgentProgressAssistant\(base\.timeline, nextText\)/);
 });

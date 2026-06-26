@@ -63,6 +63,7 @@ import type {
   ChatSideResult,
   ChatToolCard,
 } from "../../../../../types/chat";
+import type { AgentProgressTimelineItem } from "../../../../../lib/agent-progress-timeline";
 
 // ---------------------------------------------------------------------------
 // Derived view-model tones (mirrors the established feature tone vocabulary)
@@ -74,6 +75,8 @@ export type ChatTone = "ok" | "warn" | "bad" | "info" | "mute";
 // Live streaming view-model
 // ---------------------------------------------------------------------------
 
+export type LiveTurnTimelineItem = AgentProgressTimelineItem;
+
 /**
  * The in-flight assistant turn assembled from the SSE stream. This is a
  * transient projection rendered while a run is active; on `final`/`aborted` the
@@ -84,6 +87,8 @@ export interface LiveAssistantTurn {
   runId: string | null;
   /** Accumulated assistant text as deltas arrive. */
   text: string;
+  /** Ordered live stream timeline; unlike the aggregate fields below, this preserves reply/tool/reply order. */
+  timeline: LiveTurnTimelineItem[];
   /** Tool cards keyed by toolCallId, in arrival order. */
   toolCards: ChatToolCard[];
   /** Live thinking/reasoning process blocks emitted before final transcript persistence. */

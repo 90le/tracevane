@@ -157,7 +157,8 @@ test('ConversationView renders pending native tool approvals as actionable live 
   assert.match(source, /permission\.status === "pending"/);
   assert.match(source, /onResolve\(permission, "allow"\)/);
   assert.match(source, /onResolve\(permission, "deny"\)/);
-  assert.match(source, /turn\.permissions\.map/);
+  assert.match(source, /item\.kind === "permission"/);
+  assert.match(source, /permission=\{item\.permission\}/);
 });
 
 
@@ -171,7 +172,9 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.doesNotMatch(source, /workspace\/preview\/markdown-preview\.css/);
   assert.doesNotMatch(source, /md-preview__article/);
   assert.match(source, /<ChatMarkdownContent source=\{block\.markdownSource\} \/>/);
-  assert.match(source, /<ChatMarkdownContent source=\{turn\.text\} streaming=\{!turn\.done\} \/>/);
+  assert.match(source, /function LiveTimelineItemView/);
+  assert.match(source, /item\.kind === "assistant"/);
+  assert.match(source, /<ChatMarkdownContent source=\{item\.text\} streaming=\{streaming\} \/>/);
   assert.match(source, /function ToolPreviewBlock/);
   assert.match(source, /function isJsonPreview/);
   assert.match(source, /function compactToolStatusSummary/);
@@ -209,7 +212,8 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /label="输入参数"/);
   assert.match(source, /label=\{tool\.isError \? "错误输出" : "执行结果"\}/);
   assert.match(source, /<ToolCallGroup tools=\{toolCalls\} \/>/);
-  assert.match(source, /<ToolCallGroup tools=\{turn\.toolCards\} \/>/);
+  assert.match(source, /<ToolCallBlock tool=\{item\.tool\} collapsed \/>/);
+  assert.match(source, /展开工具详情/);
   assert.match(source, /liveTurnScrollKey/);
   assert.match(source, /tool\.resultPreview\?\.length/);
 });
@@ -221,6 +225,16 @@ test('ConversationView renders process and side-result blocks as readable chat w
   assert.match(source, /function SideResultBlock/);
   assert.match(source, /旁路回复 · \{result\.question\}/);
   assert.match(source, /<ChatMarkdownContent source=\{result\.text\} \/>/);
-  assert.match(source, /turn\.processBlocks\.map/);
-  assert.match(source, /turn\.sideResults\.map/);
+  assert.match(source, /buildLegacyLiveTimeline/);
+  assert.match(source, /kind: "thinking"/);
+  assert.match(source, /kind: "side_result"/);
+});
+
+test('ConversationView appends optimistic user messages before backend history catches up', () => {
+  assert.match(source, /optimisticMessages = \[\]/);
+  assert.match(source, /const visibleMessages = React\.useMemo/);
+  assert.match(source, /existingUserTexts/);
+  assert.match(source, /\.\.\.optimisticMessages\.filter/);
+  assert.match(source, /visibleMessages\.length === 0 && !liveTurn/);
+  assert.match(source, /visibleMessages\.map/);
 });
