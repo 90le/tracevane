@@ -435,10 +435,12 @@ export interface UploadChunkProgress {
 /** POST /api/files/uploads/init — initialize a resumable binary upload. */
 export function initFileUpload(
   payload: FilesUploadInitPayload,
+  signal?: AbortSignal,
 ): Promise<FilesUploadInitResponse> {
   return apiRequest<FilesUploadInitResponse>("/api/files/uploads/init", {
     method: "POST",
     body: JSON.stringify(payload),
+    signal,
   });
 }
 
@@ -495,20 +497,24 @@ export function uploadFileChunk(
 /** POST /api/files/uploads/complete — finalize a resumable binary upload. */
 export function completeFileUpload(
   payload: FilesUploadCompletePayload,
+  signal?: AbortSignal,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/uploads/complete", {
     method: "POST",
     body: JSON.stringify(payload),
+    signal,
   });
 }
 
 /** DELETE /api/files/uploads — cancel a resumable binary upload and remove temp chunks. */
 export function cancelFileUpload(
   payload: FilesUploadCancelPayload,
+  signal?: AbortSignal,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/uploads", {
     method: "DELETE",
     body: JSON.stringify(payload),
+    signal,
   });
 }
 

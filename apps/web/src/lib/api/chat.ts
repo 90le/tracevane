@@ -236,7 +236,7 @@ export async function uploadChatFile(
     size: file.size,
     chunkSize: CHAT_UPLOAD_CHUNK_SIZE,
     conflictPolicy: "rename",
-  });
+  }, signal);
 
   const targetPath = init.targetPath || relativePath;
   if (!init.skipped && !init.instant) {
@@ -247,7 +247,7 @@ export async function uploadChatFile(
         const end = Math.min(file.size, start + init.chunkSize);
         await uploadFileChunk(init.uploadId, index, file.slice(start, end), undefined, signal);
       }
-      await completeFileUpload({ uploadId: init.uploadId });
+      await completeFileUpload({ uploadId: init.uploadId }, signal);
     } catch (error) {
       await cancelFileUpload({ uploadId: init.uploadId }).catch(() => undefined);
       throw error;

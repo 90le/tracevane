@@ -46,6 +46,15 @@ test("files api binds write endpoints", () => {
   }
 });
 
+test("resumable files upload control requests accept abort signals", () => {
+  assert.match(src, /export function initFileUpload\(\s*payload: FilesUploadInitPayload,\s*signal\?: AbortSignal/s);
+  assert.match(src, /export function completeFileUpload\(\s*payload: FilesUploadCompletePayload,\s*signal\?: AbortSignal/s);
+  assert.match(src, /export function cancelFileUpload\(\s*payload: FilesUploadCancelPayload,\s*signal\?: AbortSignal/s);
+  assert.match(src, /apiRequest<FilesUploadInitResponse>\("\/api\/files\/uploads\/init", \{[\s\S]*?signal,/);
+  assert.match(src, /apiRequest<FilesMutationResponse>\("\/api\/files\/uploads\/complete", \{[\s\S]*?signal,/);
+  assert.match(src, /apiRequest<FilesMutationResponse>\("\/api\/files\/uploads", \{[\s\S]*?signal,/);
+});
+
 test("files version history API exposes server-side version contract", () => {
   const routes = fs.readFileSync(new URL("../../apps/api/modules/files/routes.ts", import.meta.url), "utf-8");
   const service = fs.readFileSync(new URL("../../apps/api/modules/files/service.ts", import.meta.url), "utf-8");

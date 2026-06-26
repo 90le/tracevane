@@ -62,7 +62,9 @@ test("chat acceptance upload smokes do not mock the removed Chat upload route", 
 test("chat upload transport passes abort signals through Files preflight and chunk uploads", () => {
   assert.match(chatApi, /uploadChatFile\(\s*sessionKey: string,\s*file: File,\s*signal\?: AbortSignal/s);
   assert.match(chatApi, /const summary = await getFilesSummary\(signal\)/);
+  assert.match(chatApi, /initFileUpload\(\{[\s\S]*?\}, signal\)/);
   assert.match(chatApi, /uploadFileChunk\(init\.uploadId, index, file\.slice\(start, end\), undefined, signal\)/);
+  assert.match(chatApi, /completeFileUpload\(\{ uploadId: init\.uploadId \}, signal\)/);
 });
 
 
