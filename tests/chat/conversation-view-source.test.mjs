@@ -17,6 +17,17 @@ test('ConversationView exposes a Files-root picker backed by the Files API', () 
 });
 
 
+test('ConversationView consumes backend Chat file capability for user-facing file contracts', () => {
+  assert.match(source, /fileCapability\?: ChatFileCapability \| null/);
+  assert.match(source, /const FALLBACK_CHAT_FILE_CAPABILITY: ChatFileCapability/);
+  assert.match(source, /const effectiveFileCapability = fileCapability \?\? FALLBACK_CHAT_FILE_CAPABILITY/);
+  assert.match(source, /effectiveFileCapability\.browseEndpoint/);
+  assert.match(source, /effectiveFileCapability\.uploadEndpoint/);
+  assert.match(source, /effectiveFileCapability\.readEndpoint/);
+  assert.match(source, /effectiveFileCapability\.resourceRef/);
+});
+
+
 test('ConversationView keeps composer file refs structured and removable across upload states', () => {
   assert.match(source, /type ComposerFileRefItem = ChatSendFileRef &/);
   assert.match(source, /status: "uploading" \| "ready" \| "failed"/);
@@ -63,7 +74,7 @@ test('ConversationView uses Files roots explicitly and sends Files-root refs saf
   assert.match(source, /buildTracevaneFilesResourceRef\(rootId, filePath\)/);
   assert.doesNotMatch(source, /`workspace:\$\{filePath\}`/);
   assert.match(source, /source: isProjectRoot \? "workspace" : "files"/);
-  assert.match(source, /Files 根引用/);
+  assert.match(source, /effectiveFileCapability\.resourceRef/);
 });
 
 
@@ -104,7 +115,7 @@ test('ConversationView previews text-like attachments through Files read API', (
   assert.match(source, /canReadPreviewAttachment/);
   assert.match(source, /limit: 192 \* 1024/);
   assert.match(source, /文件预览加载失败/);
-  assert.match(source, /已按 Files API 预览上限截断/);
+  assert.match(source, /已按 \$\{effectiveFileCapability\.readEndpoint\} 预览上限截断/);
 });
 
 test('ConversationView previews historical message resources through the shared Files preview dialog', () => {

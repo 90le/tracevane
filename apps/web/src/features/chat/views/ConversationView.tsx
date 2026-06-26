@@ -41,6 +41,7 @@ import type { ApiError } from "@/lib/api/errors";
 import type {
   ChatMessageItem,
   ChatMessageToolCallItem,
+  ChatFileCapability,
   ChatFileUploadResponse,
   ChatResourceItem,
   ChatSendFileRef,
@@ -62,6 +63,16 @@ function parentPortablePath(value: string): string {
   if (!normalized.includes("/")) return "";
   return normalized.split("/").slice(0, -1).join("/");
 }
+
+
+const FALLBACK_CHAT_FILE_CAPABILITY: ChatFileCapability = {
+  browseEndpoint: "/api/files/browse",
+  uploadEndpoint: "/api/files/uploads/*",
+  readEndpoint: "/api/files/read",
+  downloadEndpoint: "/api/files/download",
+  resourceRef: "files:<rootId>:<path>",
+  legacyRefsReadOnly: ["workspace:", "uploads:"],
+};
 
 type ComposerFileRefItem = ChatSendFileRef & {
   status: "uploading" | "ready" | "failed";
@@ -532,6 +543,7 @@ export function ConversationView({
   sessionKey,
   messages,
   permissions,
+  fileCapability,
   isLoading,
   error,
   liveTurn,
@@ -548,6 +560,7 @@ export function ConversationView({
   sessionKey: string | null;
   messages: ChatMessageItem[];
   permissions: ChatSessionPermissions | null;
+  fileCapability?: ChatFileCapability | null;
   isLoading: boolean;
   error: ApiError | null;
   liveTurn: LiveAssistantTurn | null;
@@ -575,6 +588,7 @@ export function ConversationView({
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
   const uploadControllersRef = React.useRef(new Map<string, AbortController>());
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const effectiveFileCapability = fileCapability ?? FALLBACK_CHAT_FILE_CAPABILITY;
 
   const filesSummary = useFilesSummaryQuery({ enabled: filePickerOpen });
   const filesRoots = filesSummary.data?.roots ?? [];
@@ -931,7 +945,7 @@ export function ConversationView({
               <div className="min-w-0">
                 <DialogTitle className="truncate text-base">{previewFile?.fileName || "文件预览"}</DialogTitle>
                 <DialogDescription className="truncate text-sm">
-                  {previewFile?.resourceRef || "通过 Files API 预览当前附件"}
+                  {previewFile?.resourceRef || `通过 ${effectiveFileCapability.readEndpoint} 预览当前附件`}
                 </DialogDescription>
               </div>
             </DialogHeader>
@@ -946,7 +960,7 @@ export function ConversationView({
                 ) : (
                   <pre className="max-h-[62vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-panel-2 p-3 font-mono text-xs leading-relaxed text-ink-strong">
                     {previewRead.data?.content ?? "该文件没有可显示的文本内容。"}
-                    {previewRead.data?.truncated ? "\n\n… 已按 Files API 预览上限截断，请打开文件管理器或下载查看完整内容。" : ""}
+                    {previewRead.data?.truncated ? `\n\n… 已按 ${effectiveFileCapability.readEndpoint} 预览上限截断，请打开文件管理器或下载查看完整内容。` : ""}
                   </pre>
                 )
               ) : previewFile?.previewUrl && canInlinePreviewAttachment(previewFile) ? (
@@ -1031,7 +1045,7 @@ export function ConversationView({
             </div>
             {selectedFilesRoot && effectiveFilePickerRootId !== defaultFilesRootId && (
               <div className="border-b border-line bg-panel-3 px-2.5 py-1.5 text-xs text-muted">
-                将以 Files 根引用附加“{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}”下的文件；后端会在发送时解析为本机安全路径。
+                将以 {effectiveFileCapability.resourceRef} 引用附加“{selectedFilesRoot.labelZh || selectedFilesRoot.labelEn || selectedFilesRoot.id}”下的文件；后端会在发送时解析为本机安全路径。
               </div>
             )}
             <div className="max-h-56 overflow-auto p-1.5">
@@ -1077,7 +1091,7 @@ export function ConversationView({
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-line px-2.5 py-1.5 text-xs text-subtle">
               <span className="min-w-0 flex-1">
-                附加文件会作为结构化 fileRef 传给当前 Agent；工作区与其它文件根都会使用 files: 引用并由后端按 Files API 安全解析。
+                附加文件会作为结构化 fileRef 传给当前 Agent；目录来自 {effectiveFileCapability.browseEndpoint}，上传来自 {effectiveFileCapability.uploadEndpoint}，引用格式为 {effectiveFileCapability.resourceRef}。
               </span>
               {filesBrowse.data?.pagination && filesBrowse.data.pagination.totalPages > 1 && (
                 <span className="inline-flex items-center gap-1">

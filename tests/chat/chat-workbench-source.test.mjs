@@ -41,3 +41,7 @@ test('ChatWorkbenchPage passes backend diagnostics into the session runtime pick
   assert.match(source, /<SessionListView/);
   assert.match(source, /diagnostics=\{diagnostics\}/);
 });
+
+test('ChatWorkbenchPage passes backend file capability into the conversation composer', () => {
+  assert.match(source, /fileCapability=\{diagnostics\?\.fileCapability \?\? null\}/);
+});

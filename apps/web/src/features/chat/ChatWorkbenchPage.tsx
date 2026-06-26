@@ -466,6 +466,7 @@ export function ChatWorkbenchPage() {
             sessionKey={selectedKey}
             messages={historyMessages}
             permissions={permissions}
+            fileCapability={diagnostics?.fileCapability ?? null}
             isLoading={bootstrap.isLoading && Boolean(selectedKey)}
             error={bootstrap.error ?? null}
             liveTurn={liveTurn}
