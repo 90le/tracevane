@@ -115,3 +115,15 @@ test('ConversationView renders structured message blocks through shared Chat dis
   assert.match(source, /display=\{segment\.display\}/);
   assert.doesNotMatch(source, /const resources = message\.resources \?\? \[\]/);
 });
+
+
+test('ConversationView paginates Files directory picker through browse API', () => {
+  assert.match(source, /const \[filePickerPage, setFilePickerPage\] = React\.useState\(1\)/);
+  assert.match(source, /page: filePickerPage/);
+  assert.match(source, /pageSize: 80/);
+  assert.match(source, /filesBrowse\.data\?\.pagination/);
+  assert.match(source, /pagination\.totalPages > 1/);
+  assert.match(source, /上一页/);
+  assert.match(source, /下一页/);
+  assert.match(source, /setFilePickerPage\(1\)/);
+});

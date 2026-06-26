@@ -491,6 +491,7 @@ export function ConversationView({
   const [filePickerOpen, setFilePickerOpen] = React.useState(false);
   const [filePickerDir, setFilePickerDir] = React.useState("");
   const [filePickerRootId, setFilePickerRootId] = React.useState<string | null>(null);
+  const [filePickerPage, setFilePickerPage] = React.useState(1);
   const [previewFile, setPreviewFile] = React.useState<ComposerFileRefItem | null>(null);
   const [draftLoadedSessionKey, setDraftLoadedSessionKey] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -512,7 +513,7 @@ export function ConversationView({
         rootId: effectiveFilePickerRootId,
         path: filePickerDir,
         hidden: false,
-        page: 1,
+        page: filePickerPage,
         pageSize: 80,
         sortKey: "name",
         sortDirection: "asc",
@@ -542,6 +543,7 @@ export function ConversationView({
     setFilePickerOpen(false);
     setFilePickerDir("");
     setFilePickerRootId(null);
+    setFilePickerPage(1);
     setPreviewFile(null);
     setDraftLoadedSessionKey(sessionKey);
     for (const controller of uploadControllersRef.current.values()) {
@@ -603,6 +605,7 @@ export function ConversationView({
     setFilePickerOpen(false);
     setFilePickerDir("");
     setFilePickerRootId(null);
+    setFilePickerPage(1);
   };
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -914,13 +917,14 @@ export function ConversationView({
           <div className="mb-2 overflow-hidden rounded-md border border-line bg-panel-2">
             <div className="flex items-center gap-1 border-b border-line px-2.5 py-2 text-xs text-muted">
               <Folder className="size-3.5" />
-              <button type="button" className="font-medium text-ink hover:text-primary" onClick={() => setFilePickerDir("")}>文件根</button>
+              <button type="button" className="font-medium text-ink hover:text-primary" onClick={() => { setFilePickerDir(""); setFilePickerPage(1); }}>文件根</button>
               {filesRoots.length > 1 && (
                 <select
                   value={effectiveFilePickerRootId ?? ""}
                   onChange={(event) => {
                     setFilePickerRootId(event.target.value || null);
                     setFilePickerDir("");
+                    setFilePickerPage(1);
                   }}
                   className="ml-1 h-7 max-w-[190px] rounded-xs border border-line bg-panel px-1.5 text-xs text-ink outline-none focus:border-primary-line"
                   aria-label="选择文件根"
@@ -940,7 +944,7 @@ export function ConversationView({
               )}
               <span className="flex-1" />
               {filePickerDir && (
-                <Button variant="ghost" size="sm" onClick={() => setFilePickerDir(parentPortablePath(filePickerDir))}>上一级</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setFilePickerDir(parentPortablePath(filePickerDir)); setFilePickerPage(1); }}>上一级</Button>
               )}
             </div>
             {selectedFilesRoot && effectiveFilePickerRootId !== defaultFilesRootId && (
@@ -965,7 +969,7 @@ export function ConversationView({
                           key={`dir:${nextPath}`}
                           type="button"
                           className="flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-ink hover:bg-panel-3"
-                          onClick={() => setFilePickerDir(nextPath)}
+                          onClick={() => { setFilePickerDir(nextPath); setFilePickerPage(1); }}
                         >
                           <Folder className="size-4 shrink-0 text-muted" />
                           <span className="truncate">{entry.name}</span>
@@ -989,8 +993,33 @@ export function ConversationView({
                 </div>
               )}
             </div>
-            <div className="border-t border-line px-2.5 py-1.5 text-xs text-subtle">
-              附加文件会作为结构化 fileRef 传给当前 Agent；工作区与其它文件根都会使用 files: 引用并由后端按 Files API 安全解析。
+            <div className="flex flex-wrap items-center gap-2 border-t border-line px-2.5 py-1.5 text-xs text-subtle">
+              <span className="min-w-0 flex-1">
+                附加文件会作为结构化 fileRef 传给当前 Agent；工作区与其它文件根都会使用 files: 引用并由后端按 Files API 安全解析。
+              </span>
+              {filesBrowse.data?.pagination && filesBrowse.data.pagination.totalPages > 1 && (
+                <span className="inline-flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={filesBrowse.data.pagination.page <= 1 || filesBrowse.isFetching}
+                    onClick={() => setFilePickerPage((page) => Math.max(1, page - 1))}
+                  >
+                    上一页
+                  </Button>
+                  <span className="whitespace-nowrap">
+                    {filesBrowse.data.pagination.page} / {filesBrowse.data.pagination.totalPages} · {filesBrowse.data.pagination.totalEntries} 项
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={filesBrowse.data.pagination.page >= filesBrowse.data.pagination.totalPages || filesBrowse.isFetching}
+                    onClick={() => setFilePickerPage((page) => page + 1)}
+                  >
+                    下一页
+                  </Button>
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -1029,7 +1058,13 @@ export function ConversationView({
             variant={filePickerOpen ? "outline" : "ghost"}
             size="sm"
             disabled={!sessionKey || !canSend}
-            onClick={() => setFilePickerOpen((open) => !open)}
+            onClick={() => {
+              setFilePickerOpen((open) => {
+                const next = !open;
+                if (next) setFilePickerPage(1);
+                return next;
+              });
+            }}
           >
             <FileText />
             @ 文件 / 工作区
