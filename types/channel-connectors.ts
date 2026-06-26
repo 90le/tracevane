@@ -223,6 +223,7 @@ export interface ChannelConnectorOctoInboundMessage {
   personaTriggered?: boolean | null;
   oboTrusted?: boolean | null;
   oboRejectedReason?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChannelConnectorOctoInboundRequest {

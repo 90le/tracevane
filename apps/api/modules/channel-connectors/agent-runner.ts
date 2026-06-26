@@ -593,9 +593,17 @@ function buildGroupContext(
   return lines.join("\n");
 }
 
-function currentMessageBlock(content: string): string {
+function inboundMessageSource(message: ChannelConnectorOctoInboundMessage): string {
+  const source = recordValue(message.metadata)?.source;
+  return typeof source === "string" ? source.trim() : "";
+}
+
+function currentMessageBlock(message: ChannelConnectorOctoInboundMessage, content: string): string {
+  const isTracevaneChat = inboundMessageSource(message) === "tracevane-chat";
   return [
-    "[Current IM message - respond to this ONLY]",
+    isTracevaneChat
+      ? "[Current Tracevane Chat message - respond to this ONLY]"
+      : "[Current IM message - respond to this ONLY]",
     content || "(no text content; use attachments and context if present)",
   ].join("\n");
 }
@@ -616,7 +624,7 @@ function buildAgentInputContent(
   const skills = normalizeString(channelSkillContext);
   const groupContext = buildGroupContext(message, binding);
   const outboundFilePolicy = buildTracevaneOutboundFilePolicy();
-  const current = currentMessageBlock(content);
+  const current = currentMessageBlock(message, content);
   if (!attachments.length) return [persona, history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)

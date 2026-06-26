@@ -78,6 +78,19 @@ test('Native CLI adapter keeps supported agent ids centralized', () => {
   );
 });
 
+
+test('Native Chat runner marks web Chat messages instead of leaking IM prompt semantics', () => {
+  assert.match(
+    nativeCliAdapterSource,
+    /metadata: \{\n\s*source: 'tracevane-chat',\n\s*surface: 'agent-chat',\n\s*runtimeAdapter: 'native-cli'/,
+  );
+  const runnerSource = readFileSync(new URL('../../apps/api/modules/channel-connectors/agent-runner.ts', import.meta.url), 'utf8');
+  assert.match(runnerSource, /function currentMessageBlock\(message: ChannelConnectorOctoInboundMessage, content: string\)/);
+  assert.match(runnerSource, /Current Tracevane Chat message - respond to this ONLY/);
+  assert.match(runnerSource, /Current IM message - respond to this ONLY/);
+  assert.match(runnerSource, /inboundMessageSource\(message\) === "tracevane-chat"/);
+});
+
 test('Chat frontend streams only attach the OpenClaw session bridge for OpenClaw runtime targets', () => {
   assert.ok(
     serviceSource.includes("function shouldUseOpenClawGatewayBridge(session: ChatSessionRow | null | undefined): boolean {\n    return session?.runtimeTarget?.adapterKind === 'openclaw-gateway';\n  }"),

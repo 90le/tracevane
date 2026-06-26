@@ -588,6 +588,8 @@ test('native CLI chat sessions send through channel connector runner and persist
     assert.equal(runnerCalls[0].sessionMode, 'new');
     assert.equal(runnerCalls[0].permissionMode, 'yolo');
     assert.match(runnerCalls[0].env.OPENAI_BASE_URL, /\/v1$/);
+    assert.match(runnerCalls[0].stdin, /Current Tracevane Chat message - respond to this ONLY/);
+    assert.doesNotMatch(runnerCalls[0].stdin, /Current IM message - respond to this ONLY/);
     assert.match(runnerCalls[0].stdin, /hello native codex/);
     assert.doesNotMatch(runnerCalls[0].stdin, /@notes\.md/);
     assert.match(runnerCalls[0].stdin, new RegExp(`local: ${workspaceFile.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`));

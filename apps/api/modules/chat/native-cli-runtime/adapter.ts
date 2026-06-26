@@ -183,6 +183,11 @@ function buildChatNativeMessage(mediaBridge: NativeCliChatMediaBridge, input: Ch
       content: input.message,
       plain: input.message,
     },
+    metadata: {
+      source: 'tracevane-chat',
+      surface: 'agent-chat',
+      runtimeAdapter: 'native-cli',
+    },
     attachments: nativeAttachments.length ? nativeAttachments : undefined,
   };
 }
