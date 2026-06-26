@@ -98,6 +98,13 @@ test('SessionListView persists chat list filters and folder scope in URL params'
   assert.match(source, /setSearchParams\(/);
 });
 
+test('SessionListView indexes and renders IM delivery source detail', () => {
+  assert.match(source, /sessionSourceDetail/);
+  assert.match(source, /sessionSourceDetail\(s\)/);
+  assert.match(source, /const sourceDetail = sessionSourceDetail\(s\)/);
+  assert.match(source, /\{agentLabel\} · \{sourceDetail \|\| source\}/);
+});
+
 test('SessionListView recovers stale folder URL params instead of stranding the rail', () => {
   assert.match(source, /folderFilter\.startsWith\("folder:"\)/);
   assert.match(source, /!folderOptions\.some\(\(folder\) => folder\.id === folderId\)/);

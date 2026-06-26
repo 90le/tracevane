@@ -75,6 +75,7 @@ import type {
 import {
   runStateTone,
   runtimeAgentLabel,
+  sessionSourceDetail,
   sessionSourceLabel,
   sessionTitle,
   shouldShowRunState,
@@ -611,6 +612,7 @@ export function SessionListView({
         sessionTitle(s),
         s.agentId,
         sessionSourceLabel(s),
+        sessionSourceDetail(s),
         folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null),
         s.lastMessagePreview ?? "",
       ]
@@ -1187,6 +1189,7 @@ export function SessionListView({
               const st = runStateTone(s.runtime?.state);
               const agentLabel = runtimeAgentLabel(s);
               const source = sessionSourceLabel(s);
+              const sourceDetail = sessionSourceDetail(s);
               const preview =
                 s.lastMessagePreview?.trim() ||
                 (s.kind === "observed_external"
@@ -1234,7 +1237,7 @@ export function SessionListView({
                         {preview}
                       </span>
                       <span className="truncate text-2xs text-subtle">
-                        {agentLabel} · {source} · {folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null)}
+                        {agentLabel} · {sourceDetail || source} · {folderLabel(organizer?.sessionFolderMap?.[s.key] ?? null)}
                         {s.presentation?.archived ? " · 已归档" : ""}
                         {!manageable ? " · 只读" : ""}
                       </span>

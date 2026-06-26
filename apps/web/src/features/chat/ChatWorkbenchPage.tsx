@@ -42,6 +42,7 @@ import {
   runStateTone,
   runtimeAgentLabel,
   sessionSourceLabel,
+  sessionSourceDetail,
   sessionTitle,
   shouldShowRunState,
 } from "./_shared";
@@ -336,6 +337,9 @@ export function ChatWorkbenchPage() {
   const selectedSource = selectedSession
     ? sessionSourceLabel(selectedSession)
     : "Tracevane";
+  const selectedSourceDetail = selectedSession
+    ? sessionSourceDetail(selectedSession)
+    : "Tracevane";
   const runtimeTarget = selectedSession?.runtimeTarget ?? null;
   const selectedAgent = runtimeAgentLabel(selectedSession);
   const selectedModel = runtimeTarget?.model || "使用默认模型路由";
@@ -423,7 +427,7 @@ export function ChatWorkbenchPage() {
               </span>
               <span className="inline-flex min-w-0 items-center gap-1 [&_svg]:size-3.5">
                 <MessagesSquare />
-                <span className="truncate">{selectedSource}</span>
+                <span className="truncate" title={selectedSourceDetail}>{selectedSourceDetail || selectedSource}</span>
               </span>
               <span className="hidden min-w-0 items-center gap-1 lg:inline-flex [&_svg]:size-3.5">
                 <FolderOpen />

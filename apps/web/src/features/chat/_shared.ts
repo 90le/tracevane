@@ -148,6 +148,28 @@ export function sessionSourceLabel(session: Pick<ChatSessionRow, "source" | "run
   return "Tracevane";
 }
 
+/** Detailed source context for IM / external deliveries shown in Chat rails and headers. */
+export function sessionSourceDetail(session: Pick<ChatSessionRow, "source" | "deliveryContext" | "runtimeTarget" | "kind"> | null | undefined): string {
+  if (!session) return "";
+  const base = sessionSourceLabel(session);
+  const delivery = session.deliveryContext;
+  const parts = [
+    base,
+    readableRawToken(delivery?.channel),
+    delivery?.accountId ? `账号 ${delivery.accountId}` : null,
+    delivery?.to ? `目标 ${delivery.to}` : null,
+    delivery?.threadId ? `线程 ${delivery.threadId}` : null,
+  ]
+    .map((item) => item?.trim())
+    .filter((item): item is string => Boolean(item));
+
+  const deduped: string[] = [];
+  for (const part of parts) {
+    if (!deduped.includes(part)) deduped.push(part);
+  }
+  return deduped.join(" · ");
+}
+
 /** Boolean → tone + label for permission / connectivity flags. */
 export function boolTone(value: boolean | null | undefined): {
   tone: ChatTone;
