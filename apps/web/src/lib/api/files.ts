@@ -1,6 +1,15 @@
 import { apiRequest } from "./client";
+import { ApiError, normalizeApiError } from "./errors";
 import type {
   FilesArchivePayload,
+  FilesChmodDryRunResponse,
+  FilesChmodPayload,
+  FilesContentIndexActionPayload,
+  FilesContentIndexActionResponse,
+  FilesContentIndexRecordsParams,
+  FilesContentIndexRecordsPayload,
+  FilesContentIndexRebuildResponse,
+  FilesContentIndexStatsPayload,
   FilesCreateDirectoryPayload,
   FilesCreateFilePayload,
   FilesDeletePayload,
@@ -10,7 +19,21 @@ import type {
   FilesRenamePayload,
   FilesSearchPayload,
   FilesSummaryPayload,
+  FilesTransferDryRunPayload,
+  FilesTransferDryRunResponse,
   FilesTransferPayload,
+  FilesVersionDeletePayload,
+  FilesVersionReadPayload,
+  FilesVersionRestorePayload,
+  FilesVersionsPayload,
+  FilesTrashPayload,
+  FilesTrashPurgePayload,
+  FilesTrashRestorePayload,
+  FilesUploadCancelPayload,
+  FilesUploadCompletePayload,
+  FilesUnarchiveDryRunResponse,
+  FilesUploadInitPayload,
+  FilesUploadInitResponse,
   FilesUnarchivePayload,
   FilesUploadPayload,
   FilesWritePayload,
@@ -18,9 +41,7 @@ import type {
 
 /**
  * Typed transport bindings for the read slice of the Files HTTP API
- * (`apps/api/modules/files/routes.ts`) consumed by the read evidence surfaces:
- * the Workspace IDE read workbench (`/ide`) and the File & Git evidence browser
- * (`/files`).
+ * (`apps/api/modules/files/routes.ts`) consumed by File Manager, Workspace, and Chat file surfaces.
  *
  * Bound here (read-only GET):
  *  - GET /api/files/summary  → file roots roster
@@ -28,8 +49,8 @@ import type {
  *  - GET /api/files/read     → single file content (text-like only is useful)
  *  - GET /api/files/search   → recursive name/content search under a root
  *
- * Also bound here (write slice — Workspace IDE P1):
- *  - PUT  /api/files/content     → overwrite file content (IDE save)
+ * Also bound here (write slice — File Manager / Workspace):
+ *  - PUT  /api/files/content     → overwrite file content
  *  - POST /api/files/directories → create directory
  *  - POST /api/files/files       → create file
  *  - POST /api/files/rename      → rename path
@@ -85,6 +106,10 @@ export interface FilesReadParams {
   rootId: string;
   /** File path relative to the root. */
   path: string;
+  /** Byte offset for large text preview slices. */
+  offset?: number;
+  /** Max bytes to read for this slice. */
+  limit?: number;
 }
 
 /** GET /api/files/read — single file content + metadata. */
@@ -93,6 +118,8 @@ export function readFile(
   signal?: AbortSignal,
 ): Promise<FilesReadPayload> {
   const search = new URLSearchParams({ rootId: params.rootId, path: params.path });
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.limit != null) search.set("limit", String(params.limit));
   return apiRequest<FilesReadPayload>(`${BASE}/read?${search.toString()}`, {
     signal,
   });
@@ -108,6 +135,12 @@ export interface FilesSearchParams {
   recursive?: boolean;
   /** Include dotfiles / hidden entries (defaults to backend default). */
   hidden?: boolean;
+  /** Match case exactly for name/content search. */
+  caseSensitive?: boolean;
+  /** Treat query as a JavaScript regular expression. */
+  regex?: boolean;
+  /** Safe result limit for this search request. */
+  limit?: number;
 }
 
 /** GET /api/files/search — recursive name/content search under a root. */
@@ -119,14 +152,69 @@ export function searchFiles(
   if (params.path) search.set("path", params.path);
   if (params.recursive != null) search.set("recursive", params.recursive ? "true" : "false");
   if (params.hidden != null) search.set("hidden", params.hidden ? "true" : "false");
+  if (params.caseSensitive != null) search.set("caseSensitive", params.caseSensitive ? "true" : "false");
+  if (params.regex != null) search.set("regex", params.regex ? "true" : "false");
+  if (params.limit != null) search.set("limit", String(params.limit));
   return apiRequest<FilesSearchPayload>(`${BASE}/search?${search.toString()}`, {
     signal,
   });
 }
 
+
+/** GET /api/files/content-index — content index stats for one root. */
+export function getFilesContentIndexStats(
+  rootId: string,
+  signal?: AbortSignal,
+): Promise<FilesContentIndexStatsPayload> {
+  const search = new URLSearchParams({ rootId });
+  return apiRequest<FilesContentIndexStatsPayload>(`${BASE}/content-index?${search.toString()}`, { signal });
+}
+
+/** GET /api/files/content-index/records — paged content index records for one root. */
+export function getFilesContentIndexRecords(
+  params: FilesContentIndexRecordsParams,
+  signal?: AbortSignal,
+): Promise<FilesContentIndexRecordsPayload> {
+  const search = new URLSearchParams({ rootId: params.rootId });
+  if (params.status) search.set("status", params.status);
+  if (params.query) search.set("query", params.query);
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.limit != null) search.set("limit", String(params.limit));
+  return apiRequest<FilesContentIndexRecordsPayload>(`${BASE}/content-index/records?${search.toString()}`, { signal });
+}
+
+/** POST /api/files/content-index/scan — scan content index validity for one root. */
+export function scanFilesContentIndex(
+  payload: FilesContentIndexActionPayload,
+): Promise<FilesContentIndexStatsPayload> {
+  return apiRequest<FilesContentIndexStatsPayload>("/api/files/content-index/scan", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/content-index/clean — remove stale index records for one root. */
+export function cleanFilesContentIndex(
+  payload: FilesContentIndexActionPayload,
+): Promise<FilesContentIndexActionResponse> {
+  return apiRequest<FilesContentIndexActionResponse>("/api/files/content-index/clean", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/content-index/rebuild — rebuild the content index by scanning real files under one root. */
+export function rebuildFilesContentIndex(
+  payload: FilesContentIndexActionPayload,
+): Promise<FilesContentIndexRebuildResponse> {
+  return apiRequest<FilesContentIndexRebuildResponse>("/api/files/content-index/rebuild", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
- * Write bindings for the Files HTTP API. These let the Workspace IDE (and the
- * `/files` manager) perform real file CRUD against
+ * Write bindings for the Files HTTP API. These let File Manager and Workspace surfaces perform real file CRUD against
  * `apps/api/modules/files/routes.ts`. Every mutation returns the shared
  * {@link FilesMutationResponse} envelope.
  *
@@ -136,12 +224,40 @@ export function searchFiles(
  * HTTP contract by scanning this file.
  */
 
-/** PUT /api/files/content — overwrite file content (IDE save). */
+/** PUT /api/files/content — overwrite file content (Workspace save). */
 export function writeFileContent(
   payload: FilesWritePayload,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/content", {
     method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** GET /api/files/versions — list server-side file versions for one file. */
+export function getFileVersions(rootId: string, path: string, signal?: AbortSignal): Promise<FilesVersionsPayload> {
+  const search = new URLSearchParams({ rootId, path });
+  return apiRequest<FilesVersionsPayload>(`/api/files/versions?${search.toString()}`, { signal });
+}
+
+/** GET /api/files/versions/read — read one server-side file version content. */
+export function readFileVersion(rootId: string, path: string, versionId: string, signal?: AbortSignal): Promise<FilesVersionReadPayload> {
+  const search = new URLSearchParams({ rootId, path, versionId });
+  return apiRequest<FilesVersionReadPayload>(`/api/files/versions/read?${search.toString()}`, { signal });
+}
+
+/** POST /api/files/versions/restore — restore one server-side file version to disk. */
+export function restoreFileVersion(payload: FilesVersionRestorePayload): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/versions/restore", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** DELETE /api/files/versions — delete one server-side file version. */
+export function deleteFileVersion(payload: FilesVersionDeletePayload): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/versions", {
+    method: "DELETE",
     body: JSON.stringify(payload),
   });
 }
@@ -171,6 +287,43 @@ export function renameFile(
   payload: FilesRenamePayload,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/rename", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+
+/** POST /api/files/chmod/dry-run — preview permission changes. */
+export function dryRunChmodFiles(payload: FilesChmodPayload): Promise<FilesChmodDryRunResponse> {
+  return apiRequest<FilesChmodDryRunResponse>("/api/files/chmod/dry-run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/chmod — change POSIX permissions for files/directories. */
+export function chmodFiles(payload: FilesChmodPayload): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/chmod", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/copy — copy a path. */
+export function dryRunFileTransfer(
+  payload: FilesTransferDryRunPayload,
+): Promise<FilesTransferDryRunResponse> {
+  return apiRequest<FilesTransferDryRunResponse>("/api/files/transfer/dry-run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/transfer — execute bulk copy/move with the same conflict policy as dry-run. */
+export function transferFiles(
+  payload: FilesTransferDryRunPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/transfer", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -206,11 +359,44 @@ export function deleteFiles(
   });
 }
 
+
+/** GET /api/files/trash — list recycle-bin items for one root. */
+export function getFilesTrash(rootId: string, signal?: AbortSignal): Promise<FilesTrashPayload> {
+  const search = new URLSearchParams({ rootId });
+  return apiRequest<FilesTrashPayload>(`/api/files/trash?${search.toString()}`, { signal });
+}
+
+/** POST /api/files/trash/restore — restore one recycle-bin item. */
+export function restoreFilesTrash(payload: FilesTrashRestorePayload): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/trash/restore", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** DELETE /api/files/trash — permanently remove selected recycle-bin items, or all when omitted. */
+export function purgeFilesTrash(payload: FilesTrashPurgePayload): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/trash", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
 /** POST /api/files/archive — archive paths into a single archive. */
 export function archiveFiles(
   payload: FilesArchivePayload,
 ): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/archive", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/unarchive — unarchive a single archive. */
+export function dryRunUnarchiveFile(
+  payload: FilesUnarchivePayload,
+): Promise<FilesUnarchiveDryRunResponse> {
+  return apiRequest<FilesUnarchiveDryRunResponse>("/api/files/unarchive/dry-run", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -233,5 +419,134 @@ export function uploadFiles(
   return apiRequest<FilesMutationResponse>("/api/files/upload", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export interface UploadFilesProgress {
+  loaded: number;
+  total: number;
+}
+
+export interface UploadChunkProgress {
+  loaded: number;
+  total: number;
+}
+
+/** POST /api/files/uploads/init — initialize a resumable binary upload. */
+export function initFileUpload(
+  payload: FilesUploadInitPayload,
+): Promise<FilesUploadInitResponse> {
+  return apiRequest<FilesUploadInitResponse>("/api/files/uploads/init", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** GET /api/files/uploads/:uploadId — fetch resumable upload status. */
+export function getFileUpload(uploadId: string): Promise<FilesUploadInitResponse> {
+  return apiRequest<FilesUploadInitResponse>(
+    `/api/files/uploads/${encodeURIComponent(uploadId)}`,
+  );
+}
+
+/** PUT /api/files/uploads/:uploadId/chunks/:chunkIndex — upload one binary chunk. */
+export function uploadFileChunk(
+  uploadId: string,
+  chunkIndex: number,
+  chunk: Blob,
+  onProgress?: (progress: UploadChunkProgress) => void,
+  signal?: AbortSignal,
+): Promise<FilesUploadInitResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      "PUT",
+      `/api/files/uploads/${encodeURIComponent(uploadId)}/chunks/${chunkIndex}`,
+    );
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress?.({ loaded: event.loaded, total: event.total });
+    };
+    xhr.onload = () => {
+      let parsed: unknown;
+      try {
+        parsed = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        parsed = xhr.responseText;
+      }
+      const normalized = normalizeApiError(xhr.status, parsed);
+      if (normalized) {
+        reject(new ApiError(xhr.status, normalized));
+        return;
+      }
+      resolve(parsed as FilesUploadInitResponse);
+    };
+    xhr.onerror = () => reject(new Error("Upload chunk network error"));
+    xhr.onabort = () => reject(new DOMException("Upload chunk aborted", "AbortError"));
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    xhr.onloadend = () => signal?.removeEventListener("abort", onAbort);
+    xhr.send(chunk);
+  });
+}
+
+/** POST /api/files/uploads/complete — finalize a resumable binary upload. */
+export function completeFileUpload(
+  payload: FilesUploadCompletePayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/uploads/complete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** DELETE /api/files/uploads — cancel a resumable binary upload and remove temp chunks. */
+export function cancelFileUpload(
+  payload: FilesUploadCancelPayload,
+): Promise<FilesMutationResponse> {
+  return apiRequest<FilesMutationResponse>("/api/files/uploads", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/upload with native XHR upload progress events. */
+export function uploadFilesWithProgress(
+  payload: FilesUploadPayload,
+  onProgress?: (progress: UploadFilesProgress) => void,
+  signal?: AbortSignal,
+): Promise<FilesMutationResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const body = JSON.stringify(payload);
+    xhr.open("POST", "/api/files/upload");
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress?.({ loaded: event.loaded, total: event.total });
+    };
+    xhr.onload = () => {
+      let parsed: unknown;
+      try {
+        parsed = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        parsed = xhr.responseText;
+      }
+      const normalized = normalizeApiError(xhr.status, parsed);
+      if (normalized) {
+        reject(new ApiError(xhr.status, normalized));
+        return;
+      }
+      resolve(parsed as FilesMutationResponse);
+    };
+    xhr.onerror = () => reject(new Error("Upload network error"));
+    xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    xhr.onloadend = () => signal?.removeEventListener("abort", onAbort);
+    xhr.send(body);
   });
 }
