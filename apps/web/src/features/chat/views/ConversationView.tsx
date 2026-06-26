@@ -627,6 +627,81 @@ function PermissionRequestBlock({
   );
 }
 
+type ToolCardLike = ChatMessageToolCallItem | ChatToolCard;
+
+function compactToolStatusSummary(tools: ToolCardLike[]): string {
+  const total = tools.length;
+  const running = tools.filter((tool) => tool.status === "running").length;
+  const errors = tools.filter((tool) => tool.isError || tool.status === "error").length;
+  const completed = tools.filter((tool) => tool.status === "completed").length;
+  return [
+    `${total} 个工具`,
+    running ? `${running} 运行中` : null,
+    completed ? `${completed} 完成` : null,
+    errors ? `${errors} 异常` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+function selectPrimaryToolIndexes(tools: ToolCardLike[]): Set<number> {
+  const visible = new Set<number>();
+  tools.forEach((tool, index) => {
+    if (tool.status === "running" || tool.isError || tool.status === "error") visible.add(index);
+  });
+  if (tools.length > 0) visible.add(tools.length - 1);
+  if (visible.size === 0 && tools.length > 0) visible.add(0);
+  return visible;
+}
+
+function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
+  if (tools.length === 0) return null;
+  if (tools.length <= 2) {
+    return (
+      <>
+        {tools.map((tool) => (
+          <ToolCallBlock key={tool.toolCallId} tool={tool} />
+        ))}
+      </>
+    );
+  }
+
+  const primaryIndexes = selectPrimaryToolIndexes(tools);
+  const primaryTools = tools.filter((_, index) => primaryIndexes.has(index));
+  const secondaryTools = tools.filter((_, index) => !primaryIndexes.has(index));
+  const hasActiveOrError = tools.some((tool) => tool.status === "running" || tool.isError || tool.status === "error");
+
+  return (
+    <section className="grid min-w-0 gap-2 rounded-md border border-line bg-panel-2/70 p-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 px-1 text-xs text-subtle">
+        <span className="inline-flex items-center gap-1 font-semibold text-ink-strong">
+          <Wrench className="size-3.5" />
+          工具调用队列
+        </span>
+        <span className="min-w-0 flex-1 truncate">{compactToolStatusSummary(tools)}</span>
+        {hasActiveOrError && <ToneBadge tone={hasActiveOrError ? "warn" : "mute"}>重点已展开</ToneBadge>}
+      </div>
+
+      {primaryTools.map((tool) => (
+        <ToolCallBlock key={tool.toolCallId} tool={tool} />
+      ))}
+
+      {secondaryTools.length > 0 && (
+        <details className="group min-w-0 rounded-sm border border-line/80 bg-panel/75">
+          <summary className="flex min-w-0 cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-subtle marker:hidden">
+            <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+            <span>查看较早工具</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-normal">已折叠 {secondaryTools.length} 个完成/历史工具，避免刷屏。</span>
+          </summary>
+          <div className="grid min-w-0 gap-2 border-t border-line p-2">
+            {secondaryTools.map((tool) => (
+              <ToolCallBlock key={tool.toolCallId} tool={tool} />
+            ))}
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
 function ToolCallBlock({
   tool,
 }: {
@@ -949,9 +1024,7 @@ function MessageBubble({
 
       {toolCalls.length > 0 && (
         <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
-          {toolCalls.map((tool) => (
-            <ToolCallBlock key={tool.toolCallId} tool={tool} />
-          ))}
+          <ToolCallGroup tools={toolCalls} />
         </div>
       )}
     </article>
@@ -1019,9 +1092,7 @@ function LiveTurn({
       )}
       {turn.toolCards.length > 0 && (
         <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1.5">
-          {turn.toolCards.map((tool) => (
-            <ToolCallBlock key={tool.toolCallId} tool={tool} />
-          ))}
+          <ToolCallGroup tools={turn.toolCards} />
         </div>
       )}
       {turn.error && (
@@ -1164,11 +1235,17 @@ export function ConversationView({
     setFilePickerRootId((current) => current || defaultFilesRootId);
   }, [filePickerOpen, defaultFilesRootId]);
 
+  const liveTurnScrollKey = React.useMemo(() => (
+    liveTurn?.toolCards
+      .map((tool) => `${tool.toolCallId}:${tool.status}:${tool.updatedAt || ""}:${tool.resultPreview?.length || 0}`)
+      .join("|") || ""
+  ), [liveTurn?.toolCards]);
+
   // Keep the transcript pinned to the bottom as content / stream grows.
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, liveTurn?.text, liveTurn?.toolCards.length, sessionKey]);
+  }, [messages, liveTurn?.text, liveTurnScrollKey, sessionKey]);
 
   const canSend = !sendDisabledReason;
   const readyFileRefs = React.useMemo(

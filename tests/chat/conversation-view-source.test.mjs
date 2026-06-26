@@ -174,6 +174,12 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /<ChatMarkdownContent source=\{turn\.text\} streaming=\{!turn\.done\} \/>/);
   assert.match(source, /function ToolPreviewBlock/);
   assert.match(source, /function isJsonPreview/);
+  assert.match(source, /function compactToolStatusSummary/);
+  assert.match(source, /function selectPrimaryToolIndexes/);
+  assert.match(source, /function ToolCallGroup/);
+  assert.match(source, /工具调用队列/);
+  assert.match(source, /查看较早工具/);
+  assert.match(source, /避免刷屏/);
   assert.match(source, /function toolSummaryRows/);
   assert.match(source, /function ToolSummaryBlock/);
   assert.match(source, /function parseNativeToolProgressText/);
@@ -202,6 +208,10 @@ test('ConversationView renders assistant markdown and tool stream cards with des
   assert.match(source, /工具正在执行，结果会流式更新/);
   assert.match(source, /label="输入参数"/);
   assert.match(source, /label=\{tool\.isError \? "错误输出" : "执行结果"\}/);
+  assert.match(source, /<ToolCallGroup tools=\{toolCalls\} \/>/);
+  assert.match(source, /<ToolCallGroup tools=\{turn\.toolCards\} \/>/);
+  assert.match(source, /liveTurnScrollKey/);
+  assert.match(source, /tool\.resultPreview\?\.length/);
 });
 
 test('ConversationView renders process and side-result blocks as readable chat workbench elements', () => {
