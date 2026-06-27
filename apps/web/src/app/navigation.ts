@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   Bot,
   Boxes,
+  FolderCog,
   LayoutDashboard,
   MessageSquare,
   Network,
@@ -52,6 +53,15 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle: "文件、编辑器、终端、Git、预览和 Agent handoff 的主工作面。",
     group: "工作",
     icon: Boxes,
+    status: "ready",
+  },
+  {
+    path: "/file-manager",
+    label: "文件管理器",
+    title: "文件管理器",
+    subtitle: "系统级文件管理、上传、归档、内容索引库管理入口。",
+    group: "工作",
+    icon: FolderCog,
     status: "ready",
   },
   {

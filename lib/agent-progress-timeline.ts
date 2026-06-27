@@ -14,6 +14,37 @@ import type {
  * entries by stable ids, and let each surface decide how to render/collapse.
  */
 export const AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT = 40;
+export const AGENT_PROGRESS_ENTRY_LIMIT_MAX = 30;
+
+export function normalizeAgentProgressEntryLimit(
+  entryLimit: number,
+  fallback = 8,
+): number {
+  const value = Number.isFinite(entryLimit) ? Math.floor(entryLimit) : Math.floor(fallback);
+  return Math.min(AGENT_PROGRESS_ENTRY_LIMIT_MAX, Math.max(1, value));
+}
+
+export function trimAgentProgressEntries<T>(items: T[], limit: number): T[] {
+  return items.slice(-normalizeAgentProgressEntryLimit(limit, AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT));
+}
+
+export function createAgentProgressFingerprint(input: {
+  kind: string;
+  rawType?: string | null;
+  itemType?: string | null;
+  toolCallId?: string | null;
+  toolName?: string | null;
+  text?: string | null;
+}): string {
+  return [
+    input.kind,
+    input.rawType || '',
+    input.itemType || '',
+    input.toolCallId || '',
+    input.toolName || '',
+    input.text || '',
+  ].join(':');
+}
 
 export type AgentProgressTimelineItem =
   | { kind: 'assistant'; id: string; text: string }
@@ -31,7 +62,7 @@ export function mergeAgentProgressText(current: string, incoming: string): strin
 }
 
 function trimTimeline(items: AgentProgressTimelineItem[], limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT): AgentProgressTimelineItem[] {
-  return items.slice(-Math.max(1, Math.floor(limit)));
+  return trimAgentProgressEntries(items, limit);
 }
 
 export function upsertAgentProgressAssistant(

@@ -230,6 +230,43 @@ test("terminal service attach responses include authoritative session descriptor
   }
 });
 
+test("terminal service creates a persisted session before http stream attach", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
+  const service = createTestService(tempDir);
+  const events = [];
+
+  try {
+    const created = await service.createPersistedSession({
+      sid: "term-http-create-first",
+      targetKind: "local",
+      cwd: tempDir,
+    });
+
+    assert.equal(created.sessionId, "term-http-create-first");
+    assert.equal(created.canResume, true);
+    assert.equal(created.cwd, tempDir);
+
+    const streamed = service.attachStreamClient(
+      { sid: created.sessionId },
+      {
+        streamId: "stream-created",
+        emit(event) {
+          events.push(event);
+          return true;
+        },
+      },
+    );
+
+    assert.equal(streamed.sid, created.sessionId);
+    assert.equal(streamed.descriptor?.status, "running");
+    assert.equal(events.some((event) => event.type === "session"), false);
+    assert.equal(streamed.events.some((event) => event.type === "session"), true);
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service starts new pty sessions in requested resource cwd", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const resourceDir = path.join(tempDir, "resource-folder");

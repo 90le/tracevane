@@ -7,17 +7,20 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  createTerminalSession,
   deleteTerminalSession,
   endTerminalSession,
   getTerminalSession,
   getTerminalSessions,
   installTerminalCli,
   launchTerminal,
+  renameTerminalSession,
 } from "../api/terminal";
 import type { ApiError } from "../api/errors";
 import type {
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
   TerminalLaunchPayload,
@@ -65,6 +68,21 @@ export function useTerminalSessionsQuery(
     queryKey: terminalKeys.sessions(),
     queryFn: ({ signal }) => getTerminalSessions(signal),
     ...options,
+  });
+}
+
+/** Create a detached PTY session descriptor before attaching the SSE stream. */
+export function useCreateTerminalSessionMutation(
+  options?: MutationOpts<TerminalSessionDescriptor, TerminalGatewayAttachPayload>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<TerminalSessionDescriptor, ApiError, TerminalGatewayAttachPayload>({
+    mutationFn: (payload) => createTerminalSession(payload),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: terminalKeys.sessions() });
+      options?.onSuccess?.(...args);
+    },
   });
 }
 
@@ -119,6 +137,31 @@ export function useEndTerminalSessionMutation(
     onSuccess: (...args) => {
       void queryClient.invalidateQueries({ queryKey: terminalKeys.sessions() });
       options?.onSuccess?.(...args);
+    },
+  });
+}
+
+/** Rename a persisted session title. Invalidates the roster and descriptor. */
+export function useRenameTerminalSessionMutation(
+  options?: MutationOpts<
+    TerminalSessionDescriptor,
+    { sessionId: string; title: string }
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    TerminalSessionDescriptor,
+    ApiError,
+    { sessionId: string; title: string }
+  >({
+    mutationFn: ({ sessionId, title }) => renameTerminalSession(sessionId, title),
+    ...options,
+    onSuccess: (data, ...rest) => {
+      void queryClient.invalidateQueries({ queryKey: terminalKeys.sessions() });
+      void queryClient.invalidateQueries({
+        queryKey: terminalKeys.session(data.sessionId),
+      });
+      options?.onSuccess?.(data, ...rest);
     },
   });
 }

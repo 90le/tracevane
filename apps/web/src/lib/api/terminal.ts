@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 import type {
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
   TerminalLaunchPayload,
@@ -15,10 +16,12 @@ import type {
  * (`apps/api/modules/terminal/routes.ts`) the CLI Agent Workbench drives.
  *
  * Bound here:
- *  - GET  /api/terminal/sessions               → persisted session roster
- *  - GET  /api/terminal/sessions/:id           → single session descriptor
+  *  - GET  /api/terminal/sessions               → persisted session roster
+ *  - POST /api/terminal/sessions               → create a PTY session descriptor
+  *  - GET  /api/terminal/sessions/:id           → single session descriptor
  *  - POST /api/terminal/launch                 → resolve a launch command (write)
  *  - POST /api/terminal/end                    → end a live session by sid (write)
+ *  - POST /api/terminal/sessions/:id/rename    → rename a persisted session (write)
  *  - POST /api/terminal/sessions/:id/delete    → delete a persisted session (write)
  *
  * NOT bound here (reused / out of scope):
@@ -42,6 +45,16 @@ export function getTerminalSessions(
 ): Promise<TerminalSessionSummaryResponse> {
   return apiRequest<TerminalSessionSummaryResponse>(`${BASE}/sessions`, {
     signal,
+  });
+}
+
+/** POST /api/terminal/sessions — create a new detached PTY session. */
+export function createTerminalSession(
+  payload: TerminalGatewayAttachPayload,
+): Promise<TerminalSessionDescriptor> {
+  return apiRequest<TerminalSessionDescriptor>(`${BASE}/sessions`, {
+    method: "POST",
+    body: jsonBody(payload),
   });
 }
 
@@ -88,6 +101,17 @@ export function endTerminalSession(
     method: "POST",
     body: jsonBody(payload),
   });
+}
+
+/** POST /api/terminal/sessions/:sessionId/rename — rename a persisted session. */
+export function renameTerminalSession(
+  sessionId: string,
+  title: string,
+): Promise<TerminalSessionDescriptor> {
+  return apiRequest<TerminalSessionDescriptor>(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/rename`,
+    { method: "POST", body: jsonBody({ title }) },
+  );
 }
 
 /**

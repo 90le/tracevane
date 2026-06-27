@@ -28,13 +28,12 @@ import type { ApiError } from "../api/errors";
 import type { GitDiffPayload, GitStatusPayload } from "../../../../../types/git";
 
 /**
- * TanStack Query hooks for the Git data layer consumed by the Workspace IDE
- * workbench (`/ide`).
+ * TanStack Query hooks for the Git data layer consumed by Workspace.
  *
  * Query keys are namespaced under `["ide", "git", ...]`. Read queries are
  * read-only; the mutation hooks (stage / unstage / commit / branch / checkout)
  * return the refreshed `GitStatusPayload` from the backend and invalidate the
- * git surface (status + diff slices) on success so the IDE panel updates.
+ * git surface (status + diff slices) on success so the Workspace Git panel updates.
  */
 
 export const gitKeys = {

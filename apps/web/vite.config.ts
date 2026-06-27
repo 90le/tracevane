@@ -133,7 +133,12 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['katex'],
+    exclude: [
+      'katex',
+      'monaco-editor',
+      'dockview-react',
+      'dompurify',
+    ],
   },
   plugins: [
     createKatexOptimizedDepFallbackPlugin(),

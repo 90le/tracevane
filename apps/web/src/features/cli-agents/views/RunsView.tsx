@@ -67,7 +67,7 @@ function targetHref(run: AgentRuntimeRunSummary): string {
   if (run.primaryHref) return run.primaryHref;
   const first = run.evidenceRefs.find((ref) => ref.href)?.href;
   if (first) return first;
-  if (run.source === "terminal") return "#/ide";
+  if (run.source === "terminal") return "#/workspace?mode=terminal";
   if (run.source === "im-channel") return "#/im-channels?view=sessions";
   return "#/chat";
 }
@@ -114,7 +114,7 @@ function metadataText(run: AgentRuntimeRunSummary): string {
 
 /**
  * Unified Agent Run view. This is intentionally a projection, not a fourth
- * owning runtime: IDE terminal sessions, IM agent sessions and chat sessions keep
+ * owning runtime: Workspace terminal sessions, IM agent sessions and chat sessions keep
  * their original owners while CLI Agents becomes the operator's runtime list.
  */
 export function RunsView(_props: CliAgentsViewProps) {

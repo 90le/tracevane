@@ -2,7 +2,7 @@
 
 /* ============================================================
    Aurora design system — Tailwind v4 token layer
-   Source of truth: docs/prototypes/app/styles.css
+   Source of truth: this token layer + docs/界面设计守则.md
    ============================================================ */
 
 /* dark mode is driven by [data-theme="dark"] on a wrapping element */
@@ -189,6 +189,19 @@
    Class names match the prototype.
    ============================================================ */
 @layer components {
+  .tv-monaco-search-inline {
+    background: color-mix(in srgb, var(--primary) 32%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--primary) 72%, transparent);
+  }
+  .tv-monaco-search-inline-active {
+    background: color-mix(in srgb, var(--amber) 48%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--amber) 82%, transparent);
+  }
+  .tv-monaco-search-match,
+  .tv-monaco-search-match-active {
+    border-radius: 2px;
+  }
+
   /* full-bleed page wrapper (fills height for workbench/console) */
   .tv-fillbox { height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; }
 

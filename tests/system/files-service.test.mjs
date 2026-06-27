@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -95,6 +96,10 @@ test("files service discovers safe roots and browses directories", () => {
   assert.equal(projectListing.entries.some((entry) => entry.name === "README.md"), true);
   assert.equal(projectListing.entries.some((entry) => entry.name === "src" && entry.kind === "directory"), true);
   assert.equal(projectListing.entries[0].kind, "directory");
+  assert.match(projectListing.entries[0].mode, /^[0-7]{4}$/);
+  assert.match(projectListing.entries[0].permissions, /^d[rwx-]{9}$/);
+  assert.equal(typeof projectListing.entries[0].uid === "number" || projectListing.entries[0].uid === null, true);
+  assert.equal(typeof projectListing.entries[0].gid === "number" || projectListing.entries[0].gid === null, true);
   assert.equal(projectListing.pagination.page, 1);
   assert.equal(projectListing.pagination.totalEntries, projectListing.counts.total);
   assert.equal(secondPage.pagination.page, 2);
@@ -114,15 +119,58 @@ test("files service supports search, read, write, create, rename, copy, move, de
   const search = service.search("project-root", "", "guide", true, true);
   assert.equal(search.results[0].path, "docs/guide.md");
   assert.equal(search.results[0].matchKind, "name");
+  assert.equal(search.limit, 250);
+  assert.equal(search.truncated, false);
+
+  const limitedSearch = service.search("project-root", "", "guide", true, true, { limit: 1 });
+  assert.equal(limitedSearch.limit, 1);
+  assert.equal(limitedSearch.results.length, 1);
+  assert.equal(limitedSearch.truncated, true);
 
   const contentSearch = service.search("project-root", "", "needle", true, true);
   assert.equal(contentSearch.results[0].path, "docs/content-only.txt");
   assert.equal(contentSearch.results[0].matchKind, "content");
   assert.match(contentSearch.results[0].snippet || "", /needle/);
 
+  const caseSensitiveMiss = service.search("project-root", "", "GUIDE", true, true, { caseSensitive: true });
+  assert.equal(caseSensitiveMiss.results.some((result) => result.path === "docs/guide.md"), false);
+  assert.equal(caseSensitiveMiss.caseSensitive, true);
+
+  const regexSearch = service.search("project-root", "", "h.dden\\s+needle", true, true, { regex: true });
+  assert.equal(regexSearch.results[0].path, "docs/content-only.txt");
+  assert.equal(regexSearch.regex, true);
+
+  const invalidRegexSearch = service.search("project-root", "", "[", true, true, { regex: true });
+  assert.match(invalidRegexSearch.error || "", /regular expression|Unterminated|Invalid/i);
+  assert.equal(invalidRegexSearch.limit, 250);
+  assert.equal(invalidRegexSearch.truncated, false);
+  assert.equal(invalidRegexSearch.results.length, 0);
+
   const read = service.readFile("project-root", "docs/guide.md");
   assert.equal(read.editable, true);
+  assert.match(read.mode, /^[0-7]{4}$/);
+  assert.match(read.permissions, /^-[rwx-]{9}$/);
+  assert.equal(typeof read.uid === "number" || read.uid === null, true);
+  assert.equal(typeof read.gid === "number" || read.gid === null, true);
+  assert.equal(read.contentOffset, 0);
+  assert.equal(read.contentBytes, Buffer.byteLength("hello world\n"));
+  assert.equal(read.truncated, false);
   assert.match(read.content || "", /hello world/);
+
+  const largeLogBody = `${"a".repeat(1024 * 1024 + 256)}TAIL-END`;
+  writeFile(path.join(config.projectRoot, "docs", "large.log"), largeLogBody);
+  const largeHead = service.readFile("project-root", "docs/large.log");
+  assert.equal(largeHead.editable, false);
+  assert.equal(largeHead.truncated, true);
+  assert.equal(largeHead.contentOffset, 0);
+  assert.equal(largeHead.contentBytes, 1024 * 1024);
+  assert.equal(largeHead.readLimitBytes, 1024 * 1024);
+  assert.equal((largeHead.content || "").includes("TAIL-END"), false);
+  const largeTail = service.readFile("project-root", "docs/large.log", { offset: 1024 * 1024, limit: 512 });
+  assert.equal(largeTail.contentOffset, 1024 * 1024);
+  assert.equal(largeTail.readLimitBytes, 512);
+  assert.equal(largeTail.truncated, true);
+  assert.match(largeTail.content || "", /TAIL-END/);
 
   service.writeFile({
     rootId: "project-root",
@@ -130,6 +178,30 @@ test("files service supports search, read, write, create, rename, copy, move, de
     content: "updated body\n",
   });
   assert.match(fs.readFileSync(path.join(config.projectRoot, "docs", "guide.md"), "utf8"), /updated body/);
+
+  const versions = service.listVersions("project-root", "docs/guide.md");
+  assert.equal(versions.rootId, "project-root");
+  assert.equal(versions.path, "docs/guide.md");
+  assert.equal(versions.versions.length >= 1, true);
+  assert.equal(versions.versions[0].path, "docs/guide.md");
+  assert.equal(versions.versions[0].name, "guide.md");
+  const firstVersionId = versions.versions[0].id;
+  const historical = service.readVersion("project-root", "docs/guide.md", firstVersionId);
+  assert.match(historical.content, /hello world/);
+  const restoreResult = service.restoreVersion({ rootId: "project-root", path: "docs/guide.md", versionId: firstVersionId });
+  assert.equal(restoreResult.action, "restore-version");
+  assert.match(fs.readFileSync(path.join(config.projectRoot, "docs", "guide.md"), "utf8"), /hello world/);
+  const versionsAfterRestore = service.listVersions("project-root", "docs/guide.md");
+  assert.equal(versionsAfterRestore.versions.length >= 1, true);
+  const deleteVersionResult = service.deleteVersion({ rootId: "project-root", path: "docs/guide.md", versionId: firstVersionId });
+  assert.equal(deleteVersionResult.action, "delete-version");
+  assert.equal(service.listVersions("project-root", "docs/guide.md").versions.some((version) => version.id === firstVersionId), false);
+
+  service.writeFile({
+    rootId: "project-root",
+    path: "docs/guide.md",
+    content: "updated body\n",
+  });
 
   service.createDirectory({
     rootId: "project-root",
@@ -153,6 +225,21 @@ test("files service supports search, read, write, create, rename, copy, move, de
   });
   assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "notes-renamed.txt")), true);
 
+  const chmodPreview = service.dryRunChmod({
+    rootId: "project-root",
+    paths: ["docs"],
+    mode: "0750",
+    recursive: true,
+  });
+  assert.equal(chmodPreview.mode, "0750");
+  assert.equal(chmodPreview.recursive, true);
+  assert.equal(chmodPreview.counts.directories >= 1, true);
+  assert.equal(chmodPreview.items.some((item) => item.path === "docs/guide.md" && item.nextMode === "0750"), true);
+  const chmodResult = service.chmodPaths({ rootId: "project-root", paths: ["docs/guide.md"], mode: "0600" });
+  assert.equal(chmodResult.action, "chmod");
+  assert.equal(fs.statSync(path.join(config.projectRoot, "docs", "guide.md")).mode & 0o777, 0o600);
+  assert.throws(() => service.dryRunChmod({ rootId: "project-root", paths: ["docs/guide.md"], mode: "9999" }));
+
   service.copyPath({
     sourceRootId: "project-root",
     sourcePath: "docs/guide.md",
@@ -172,6 +259,71 @@ test("files service supports search, read, write, create, rename, copy, move, de
   assert.equal(fs.existsSync(path.join(config.projectRoot, "fresh-moved.md")), true);
   assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "archive", "fresh.md")), false);
 
+  const blockingTransfer = service.dryRunTransfer({
+    operation: "copy",
+    sourceRootId: "project-root",
+    sourcePaths: ["docs/guide.md"],
+    destinationRootId: "project-root",
+    destinationDirectoryPath: "docs",
+    conflictPolicy: "fail",
+  });
+  assert.equal(blockingTransfer.counts.conflicts, 1);
+  assert.equal(blockingTransfer.items[0].status, "conflict");
+  const renamedTransfer = service.dryRunTransfer({
+    operation: "copy",
+    sourceRootId: "project-root",
+    sourcePaths: ["docs/guide.md"],
+    destinationRootId: "project-root",
+    destinationDirectoryPath: "docs",
+    conflictPolicy: "rename",
+  });
+  assert.equal(renamedTransfer.counts.rename, 1);
+  assert.equal(renamedTransfer.items[0].destinationPath, "docs/guide (1).md");
+  const explicitNamedTransfer = service.dryRunTransfer({
+    operation: "copy",
+    sourceRootId: "project-root",
+    sourcePaths: ["docs/guide.md"],
+    destinationRootId: "project-root",
+    destinationDirectoryPath: "docs",
+    nextName: "guide-copy.md",
+    conflictPolicy: "fail",
+  });
+  assert.equal(explicitNamedTransfer.counts.ready, 1);
+  assert.equal(explicitNamedTransfer.items[0].destinationPath, "docs/guide-copy.md");
+  assert.throws(() =>
+    service.dryRunTransfer({
+      operation: "copy",
+      sourceRootId: "project-root",
+      sourcePaths: ["docs/guide.md", "docs/notes-renamed.txt"],
+      destinationRootId: "project-root",
+      destinationDirectoryPath: "docs",
+      nextName: "single-name-only.md",
+      conflictPolicy: "rename",
+    }),
+  );
+  const transferCopy = service.transferPaths({
+    operation: "copy",
+    sourceRootId: "project-root",
+    sourcePaths: ["docs/guide.md"],
+    destinationRootId: "project-root",
+    destinationDirectoryPath: "docs",
+    conflictPolicy: "rename",
+  });
+  assert.equal(transferCopy.action, "transfer");
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "guide (1).md")), true);
+
+  fs.mkdirSync(path.join(config.projectRoot, "docs", "nested"), { recursive: true });
+  const unsafeMove = service.dryRunTransfer({
+    operation: "move",
+    sourceRootId: "project-root",
+    sourcePaths: ["docs"],
+    destinationRootId: "project-root",
+    destinationDirectoryPath: "docs/nested",
+    conflictPolicy: "rename",
+  });
+  assert.equal(unsafeMove.counts.errors, 1);
+  assert.match(unsafeMove.items[0].message || "", /自身|子目录/);
+
   service.uploadFiles({
     rootId: "project-root",
     directoryPath: "",
@@ -183,6 +335,26 @@ test("files service supports search, read, write, create, rename, copy, move, de
     ],
   });
   assert.match(fs.readFileSync(path.join(config.projectRoot, "upload.txt"), "utf8"), /uploaded/);
+
+  service.uploadFiles({
+    rootId: "project-root",
+    directoryPath: "docs",
+    files: [
+      {
+        fileName: "current-dir-upload.txt",
+        dataBase64: Buffer.from("current directory upload\n").toString("base64"),
+      },
+      {
+        fileName: "empty-paste-file.txt",
+        dataBase64: "",
+      },
+    ],
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "docs", "current-dir-upload.txt"), "utf8"),
+    /current directory upload/,
+  );
+  assert.equal(fs.statSync(path.join(config.projectRoot, "docs", "empty-paste-file.txt")).size, 0);
 
   service.uploadFiles({
     rootId: "project-root",
@@ -216,6 +388,212 @@ test("files service supports search, read, write, create, rename, copy, move, de
     largerThanPreviousUploadLimit.length,
   );
 
+  const chunked = Buffer.alloc((700 * 1024) + 13, "c");
+  const init = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked.txt",
+    size: chunked.length,
+    chunkSize: 97,
+  });
+  assert.equal(init.chunkCount, Math.ceil(chunked.length / init.chunkSize));
+  for (let index = init.chunkCount - 1; index >= 0; index -= 1) {
+    const start = index * init.chunkSize;
+    service.writeUploadChunk(
+      init.uploadId,
+      index,
+      chunked.subarray(start, Math.min(chunked.length, start + init.chunkSize)),
+    );
+  }
+  const status = service.getUpload(init.uploadId);
+  assert.equal(status.targetPath, "docs/chunked.txt");
+
+  const completed = service.completeUpload({ uploadId: init.uploadId });
+  assert.equal(completed.affectedPaths[0], "docs/chunked.txt");
+  assert.equal(
+    fs.readFileSync(path.join(config.projectRoot, "docs", "chunked.txt"), "utf8"),
+    chunked.toString("utf8"),
+  );
+  assert.throws(() =>
+    service.initUpload({
+      rootId: "project-root",
+      directoryPath: "docs",
+      fileName: "chunked.txt",
+      size: 0,
+      chunkSize: 97,
+      conflictPolicy: "fail",
+    }),
+  );
+
+  const skipped = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked.txt",
+    size: 0,
+    chunkSize: 97,
+    conflictPolicy: "skip",
+  });
+  assert.equal(skipped.skipped, true);
+  assert.equal(skipped.targetPath, "docs/chunked.txt");
+
+  const renamed = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked.txt",
+    size: 0,
+    chunkSize: 97,
+    conflictPolicy: "rename",
+  });
+  assert.equal(renamed.targetPath, "docs/chunked (1).txt");
+  service.completeUpload({ uploadId: renamed.uploadId });
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "chunked (1).txt")), true);
+
+  const sameHash = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked.txt",
+    size: chunked.length,
+    chunkSize: 97,
+    conflictPolicy: "rename",
+    sha256: "not-a-valid-hash",
+  });
+  assert.equal(sameHash.instant, undefined);
+  service.cancelUpload({ uploadId: sameHash.uploadId });
+
+  const realHash = createHash("sha256").update(chunked).digest("hex");
+  const instant = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked.txt",
+    size: chunked.length,
+    chunkSize: 97,
+    conflictPolicy: "rename",
+    sha256: realHash,
+  });
+  assert.equal(instant.instant, true);
+  assert.equal(instant.targetPath, "docs/chunked (2).txt");
+  assert.equal(fs.readFileSync(path.join(config.projectRoot, "docs", "chunked (2).txt"), "utf8"), chunked.toString("utf8"));
+
+  const globalInstant = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "global-hash-copy.txt",
+    size: chunked.length,
+    chunkSize: 97,
+    conflictPolicy: "rename",
+    sha256: realHash,
+  });
+  assert.equal(globalInstant.instant, true);
+  assert.equal(globalInstant.targetPath, "docs/global-hash-copy.txt");
+  assert.equal(fs.readFileSync(path.join(config.projectRoot, "docs", "global-hash-copy.txt"), "utf8"), chunked.toString("utf8"));
+  const indexShardPath = path.join(config.openclawRoot, ".tracevane", "file-content-index", "project-root", `${realHash.slice(0, 2)}.json`);
+  assert.equal(fs.existsSync(indexShardPath), true);
+  const indexShard = JSON.parse(fs.readFileSync(indexShardPath, "utf8"));
+  assert.equal(Array.isArray(indexShard[realHash]), true);
+  assert.equal(indexShard[realHash].some((record) => record.path === "docs/global-hash-copy.txt"), true);
+  const indexStats = service.getContentIndexStats("project-root");
+  assert.equal(indexStats.rootId, "project-root");
+  assert.equal(indexStats.shardCount >= 1, true);
+  assert.equal(indexStats.validRecordCount >= 1, true);
+  assert.equal(indexStats.staleRecordCount, 0);
+  assert.equal(indexStats.previewLimit, 200);
+  assert.equal(Array.isArray(indexStats.recordsPreview), true);
+  const globalPreview = indexStats.recordsPreview.find((record) => record.path === "docs/global-hash-copy.txt");
+  assert.equal(globalPreview?.status, "valid");
+  assert.equal(globalPreview?.sha256, realHash);
+  assert.equal(globalPreview?.size, chunked.length);
+  const indexRecordsPage = service.getContentIndexRecords({
+    rootId: "project-root",
+    status: "valid",
+    query: "global-hash",
+    offset: 0,
+    limit: 1,
+  });
+  assert.equal(indexRecordsPage.rootId, "project-root");
+  assert.equal(indexRecordsPage.status, "valid");
+  assert.equal(indexRecordsPage.query, "global-hash");
+  assert.equal(indexRecordsPage.limit, 1);
+  assert.equal(indexRecordsPage.returnedRecordCount, 1);
+  assert.equal(indexRecordsPage.records[0]?.path, "docs/global-hash-copy.txt");
+  assert.equal(indexRecordsPage.records[0]?.sha256, realHash);
+  fs.rmSync(path.join(config.projectRoot, "docs", "global-hash-copy.txt"), { force: true });
+  const staleIndexStats = service.scanContentIndex("project-root");
+  assert.equal(staleIndexStats.staleRecordCount >= 1, true);
+  const staleRecordsPage = service.getContentIndexRecords({
+    rootId: "project-root",
+    status: "stale",
+    query: realHash.slice(0, 16),
+    offset: 0,
+    limit: 10,
+  });
+  assert.equal(staleRecordsPage.records.some((record) => record.path === "docs/global-hash-copy.txt" && record.status === "stale"), true);
+  const stalePreview = staleIndexStats.recordsPreview.find((record) => record.path === "docs/global-hash-copy.txt");
+  assert.equal(stalePreview?.status, "stale");
+  assert.equal(stalePreview?.sha256, realHash);
+  const cleanedIndexStats = service.cleanContentIndex("project-root");
+  assert.equal((cleanedIndexStats.cleanedRecordCount ?? 0) >= 1, true);
+  assert.equal(cleanedIndexStats.staleRecordCount, 0);
+  assert.equal(cleanedIndexStats.previewLimit, 200);
+  assert.equal(cleanedIndexStats.recordsPreview.some((record) => record.path === "docs/global-hash-copy.txt"), false);
+  assert.equal(cleanedIndexStats.recordsPreview.every((record) => record.status === "valid"), true);
+
+  const rebuiltIndexStats = service.rebuildContentIndex("project-root");
+  assert.equal(rebuiltIndexStats.rootId, "project-root");
+  assert.equal(rebuiltIndexStats.scannedFileCount >= 1, true);
+  assert.equal(rebuiltIndexStats.rebuiltRecordCount >= 1, true);
+  assert.equal(typeof rebuiltIndexStats.skippedFileCount, "number");
+  assert.equal(rebuiltIndexStats.truncated, false);
+  assert.equal(rebuiltIndexStats.validRecordCount >= 1, true);
+  assert.equal(rebuiltIndexStats.previewLimit, 200);
+  assert.equal(rebuiltIndexStats.recordsPreview.some((record) => record.status === "valid"), true);
+  const indexedSearch = service.search("project-root", "", "updated body", true, true);
+  assert.equal(indexedSearch.index?.used, true);
+  assert.equal((indexedSearch.index?.candidateCount ?? 0) >= 1, true);
+  assert.equal((indexedSearch.index?.resultCount ?? 0) >= 1, true);
+  assert.equal(indexedSearch.results.some((entry) => entry.path === "docs/guide.md" && entry.matchKind === "content"), true);
+
+  const emptyInit = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "chunked-empty.txt",
+    size: 0,
+    chunkSize: 97,
+  });
+  assert.equal(emptyInit.chunkCount, 0);
+  service.completeUpload({ uploadId: emptyInit.uploadId });
+  assert.equal(fs.statSync(path.join(config.projectRoot, "docs", "chunked-empty.txt")).size, 0);
+
+  const cancelInit = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "cancel-me.txt",
+    size: 4,
+    chunkSize: 97,
+  });
+  service.cancelUpload({ uploadId: cancelInit.uploadId });
+  assert.throws(() => service.completeUpload({ uploadId: cancelInit.uploadId }));
+
+  const staleInit = service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "stale-upload.txt",
+    size: 4,
+    chunkSize: 97,
+  });
+  const staleManifestPath = path.join(os.tmpdir(), "tracevane-files-uploads", staleInit.uploadId, "manifest.json");
+  const staleManifest = JSON.parse(fs.readFileSync(staleManifestPath, "utf8"));
+  staleManifest.createdAt = new Date(Date.now() - (25 * 60 * 60 * 1000)).toISOString();
+  fs.writeFileSync(staleManifestPath, JSON.stringify(staleManifest), "utf8");
+  service.initUpload({
+    rootId: "project-root",
+    directoryPath: "docs",
+    fileName: "gc-trigger.txt",
+    size: 0,
+    chunkSize: 97,
+  });
+  assert.equal(fs.existsSync(staleManifestPath), false);
+  assert.throws(() => service.getUpload(staleInit.uploadId));
+
   assert.throws(() =>
     service.uploadFiles({
       rootId: "project-root",
@@ -231,11 +609,44 @@ test("files service supports search, read, write, create, rename, copy, move, de
   );
   assert.equal(fs.existsSync(path.join(config.projectRoot, "..", "escape.txt")), false);
 
-  service.deletePaths({
+  const deleteResult = service.deletePaths({
     rootId: "project-root",
     paths: ["docs/archive"],
   });
   assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "archive")), false);
+  assert.match(deleteResult.message, /Moved 1 item\(s\) to recycle bin/);
+  assert.equal(fs.existsSync(path.join(config.projectRoot, ".tracevane-trash")), true);
+  assert.equal(deleteResult.affectedPaths.some((entryPath) => entryPath.startsWith(".tracevane-trash/")), true);
+  const trashMetadataPath = fs.readdirSync(path.join(config.projectRoot, ".tracevane-trash"))
+    .map((entry) => path.join(config.projectRoot, ".tracevane-trash", entry, "metadata.json"))
+    .find((entryPath) => fs.existsSync(entryPath));
+  assert.ok(trashMetadataPath);
+  const trashMetadata = JSON.parse(fs.readFileSync(trashMetadataPath, "utf8"));
+  assert.equal(trashMetadata.originalPath, "docs/archive");
+  const trash = service.listTrash("project-root");
+  assert.equal(trash.trashDirectoryPath, ".tracevane-trash");
+  assert.equal(trash.items.some((item) => item.originalPath === "docs/archive" && item.trashPath.startsWith(".tracevane-trash/")), true);
+  const restored = service.restoreTrash({ rootId: "project-root", trashPath: trash.items[0].trashPath, conflictPolicy: "rename" });
+  assert.equal(restored.action, "restore-trash");
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "archive")), true);
+  assert.equal(service.listTrash("project-root").items.some((item) => item.originalPath === "docs/archive"), false);
+
+  service.createDirectory({ rootId: "project-root", directoryPath: "docs", name: "purge-me" });
+  service.deletePaths({ rootId: "project-root", paths: ["docs/purge-me"] });
+  const purgeTarget = service.listTrash("project-root").items.find((item) => item.originalPath === "docs/purge-me");
+  assert.ok(purgeTarget);
+  const purged = service.purgeTrash({ rootId: "project-root", trashPaths: [purgeTarget.trashPath] });
+  assert.equal(purged.action, "purge-trash");
+  assert.equal(service.listTrash("project-root").items.some((item) => item.originalPath === "docs/purge-me"), false);
+
+  service.createDirectory({ rootId: "project-root", directoryPath: "docs", name: "permanent" });
+  const permanentDelete = service.deletePaths({
+    rootId: "project-root",
+    paths: ["docs/permanent"],
+    permanent: true,
+  });
+  assert.match(permanentDelete.message, /Permanently deleted 1 item\(s\)/);
+  assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "permanent")), false);
 });
 
 test("files service exposes tree nodes and download payloads", () => {
@@ -273,12 +684,96 @@ test("files service exposes tree nodes and download payloads", () => {
   assert.equal(fontDownload.mimeType, "font/woff2");
 });
 
+test("files service returns content-index records in stable sorted pages", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
+  writeFile(path.join(config.projectRoot, "zeta.txt"), "zeta\n");
+  const service = createFilesService(config);
+
+  const indexDir = path.join(
+    config.openclawRoot,
+    ".tracevane",
+    "file-content-index",
+    "project-root",
+  );
+  fs.mkdirSync(indexDir, { recursive: true });
+  const alphaSha = "f".repeat(64);
+  const zetaSha = "0".repeat(64);
+  const alphaStat = fs.statSync(path.join(config.projectRoot, "alpha.txt"));
+  const zetaStat = fs.statSync(path.join(config.projectRoot, "zeta.txt"));
+  fs.writeFileSync(
+    path.join(indexDir, "00.json"),
+    JSON.stringify({
+      [zetaSha]: [
+        {
+          rootId: "project-root",
+          path: "zeta.txt",
+          size: zetaStat.size,
+          sha256: zetaSha,
+          mtimeMs: zetaStat.mtimeMs,
+          indexedAt: "2026-06-26T00:00:00.000Z",
+        },
+      ],
+    }),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(indexDir, "ff.json"),
+    JSON.stringify({
+      [alphaSha]: [
+        {
+          rootId: "project-root",
+          path: "alpha.txt",
+          size: alphaStat.size,
+          sha256: alphaSha,
+          mtimeMs: alphaStat.mtimeMs,
+          indexedAt: "2026-06-26T00:00:01.000Z",
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const firstPage = service.getContentIndexRecords({
+    rootId: "project-root",
+    status: "valid",
+    offset: 0,
+    limit: 1,
+  });
+  const secondPage = service.getContentIndexRecords({
+    rootId: "project-root",
+    status: "valid",
+    offset: 1,
+    limit: 1,
+  });
+
+  assert.equal(firstPage.totalRecordCount, 2);
+  assert.equal(firstPage.returnedRecordCount, 1);
+  assert.equal(firstPage.hasMore, true);
+  assert.equal(firstPage.records[0]?.path, "alpha.txt");
+  assert.equal(secondPage.totalRecordCount, 2);
+  assert.equal(secondPage.returnedRecordCount, 1);
+  assert.equal(secondPage.hasMore, false);
+  assert.equal(secondPage.records[0]?.path, "zeta.txt");
+});
+
 test("files service can archive and unarchive zip and tar bundles", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "bundle", "a.txt"), "alpha\n");
   writeFile(path.join(config.projectRoot, "bundle", "nested", "b.txt"), "beta\n");
   const service = createFilesService(config);
+
+  const archiveDryRun = service.dryRunArchive({
+    rootId: "project-root",
+    directoryPath: "",
+    paths: ["bundle"],
+    name: "bundle-backup",
+  });
+  assert.equal(archiveDryRun.destinationExists, false);
+  assert.equal(archiveDryRun.archivePath, "bundle-backup.zip");
+  assert.equal(archiveDryRun.counts.ready, 1);
 
   service.archivePaths({
     rootId: "project-root",
@@ -289,6 +784,21 @@ test("files service can archive and unarchive zip and tar bundles", () => {
 
   const archivePath = path.join(config.projectRoot, "bundle-backup.zip");
   assert.equal(fs.existsSync(archivePath), true);
+  const archiveConflictDryRun = service.dryRunArchive({
+    rootId: "project-root",
+    directoryPath: "",
+    paths: ["bundle"],
+    name: "bundle-backup.zip",
+  });
+  assert.equal(archiveConflictDryRun.destinationExists, true);
+  assert.throws(() =>
+    service.archivePaths({
+      rootId: "project-root",
+      directoryPath: "",
+      paths: ["bundle"],
+      name: "bundle-backup.zip",
+    }),
+  );
 
   fs.mkdirSync(path.join(config.projectRoot, "restore"), { recursive: true });
   service.unarchiveFile({
@@ -346,6 +856,67 @@ test("files service can archive and unarchive zip and tar bundles", () => {
     /alpha/,
   );
 
+  assert.throws(() =>
+    service.unarchiveFile({
+      rootId: "project-root",
+      archivePath: "bundle-backup.zip",
+      directoryPath: "restore",
+      conflictPolicy: "fail",
+    }),
+  );
+  const blockedExtract = service.dryRunUnarchive({
+    rootId: "project-root",
+    archivePath: "bundle-backup.zip",
+    directoryPath: "restore",
+    conflictPolicy: "fail",
+  });
+  assert.equal(blockedExtract.counts.conflicts >= 1, true);
+  assert.equal(blockedExtract.items.some((item) => item.status === "conflict"), true);
+  const overwriteExtract = service.dryRunUnarchive({
+    rootId: "project-root",
+    archivePath: "bundle-backup.zip",
+    directoryPath: "restore",
+    conflictPolicy: "overwrite",
+  });
+  assert.equal(overwriteExtract.counts.overwrite >= 1, true);
+  assert.throws(() =>
+    service.unarchiveFile({
+      rootId: "project-root",
+      archivePath: "bundle-backup.zip",
+      directoryPath: "restore",
+      conflictPolicy: "overwrite",
+    }),
+  );
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.zip",
+    directoryPath: "restore",
+    conflictPolicy: "overwrite",
+    overwriteConfirm: "OVERWRITE",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore", "bundle", "a.txt"), "utf8"),
+    /alpha/,
+  );
+  const renamedExtract = service.dryRunUnarchive({
+    rootId: "project-root",
+    archivePath: "bundle-backup.zip",
+    directoryPath: "restore",
+    conflictPolicy: "rename",
+  });
+  assert.equal(renamedExtract.counts.rename >= 1, true);
+  assert.equal(renamedExtract.items.some((item) => item.destinationPath?.endsWith("a (1).txt")), true);
+  service.unarchiveFile({
+    rootId: "project-root",
+    archivePath: "bundle-backup.zip",
+    directoryPath: "restore",
+    conflictPolicy: "rename",
+  });
+  assert.match(
+    fs.readFileSync(path.join(config.projectRoot, "restore", "bundle", "a (1).txt"), "utf8"),
+    /alpha/,
+  );
+
   service.archivePaths({
     rootId: "project-root",
     directoryPath: "",
@@ -395,6 +966,14 @@ test("files service rejects zip entries that escape the extraction directory", (
 
   fs.mkdirSync(restorePath, { recursive: true });
   writeZipEntry(archivePath, "../restore-evil/escape.txt", "escaped\n");
+
+  const dryRun = service.dryRunUnarchive({
+    rootId: "project-root",
+    archivePath: "unsafe.zip",
+    directoryPath: "restore",
+  });
+  assert.equal(dryRun.counts.errors, 1);
+  assert.match(dryRun.items[0].message || "", /escapes|Path escapes|逃逸/i);
 
   assert.throws(() =>
     service.unarchiveFile({

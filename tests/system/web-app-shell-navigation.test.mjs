@@ -4,19 +4,32 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => fs.readFileSync(path.join(rootDir, relativePath), "utf8");
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const read = (relativePath) =>
+  fs.readFileSync(path.join(rootDir, relativePath), "utf8");
 
 test("app shell navigation metadata matches current product domains", () => {
   const navigation = read("apps/web/src/app/navigation.ts");
-  assert.match(navigation, /export type NavGroup = "总览" \| "工作" \| "连接" \| "平台"/);
-  assert.match(navigation, /NAV_GROUP_ORDER: NavGroup\[\] = \["总览", "工作", "连接", "平台"\]/);
+  assert.match(
+    navigation,
+    /export type NavGroup = "总览" \| "工作" \| "连接" \| "平台"/,
+  );
+  assert.match(
+    navigation,
+    /NAV_GROUP_ORDER: NavGroup\[\] = \["总览", "工作", "连接", "平台"\]/,
+  );
   assert.match(navigation, /label: "模型网关"/);
   assert.match(navigation, /Provider、模型、协议、路由和客户端接入/);
   assert.match(navigation, /label: "IM 渠道"/);
   assert.match(navigation, /连接飞书、企微、Telegram/);
   assert.match(navigation, /label: "CLI 代理"/);
   assert.match(navigation, /Codex、Claude Code、OpenCode/);
+  assert.match(navigation, /path: "\/file-manager"/);
+  assert.match(navigation, /label: "文件管理器"/);
+  assert.match(navigation, /系统级文件管理、上传、归档、内容索引库管理入口/);
   assert.match(navigation, /label: "平台"/);
   assert.match(navigation, /第三方平台管理入口；当前平台为 OpenClaw/);
   assert.match(navigation, /group: "平台"/);
@@ -26,6 +39,13 @@ test("app shell navigation metadata matches current product domains", () => {
   assert.doesNotMatch(navigation, /path: "\/approvals"/);
   assert.doesNotMatch(navigation, /HIDDEN_PAGE_META/);
   const router = read("apps/web/src/app/router.tsx");
+  assert.match(router, /import \{ FileManagerPage \} from/);
+  assert.match(router, /import \{ WorkspacePage \} from/);
+  assert.doesNotMatch(router, /const FileManagerPage = React\.lazy/);
+  assert.doesNotMatch(router, /const WorkspacePage = React\.lazy/);
+  assert.match(router, /React\.Suspense/);
+  assert.match(router, /RouteLoadingState/);
+  assert.match(router, /path="\/file-manager"/);
   assert.doesNotMatch(router, /ApprovalsPage/);
   assert.doesNotMatch(router, /path="\/approvals"/);
   assert.doesNotMatch(navigation, /group: "系统"/);
@@ -41,11 +61,24 @@ test("global shell renders dynamic breadcrumbs and synchronizes browser title", 
   assert.match(shell, /resolvePageMeta\(pathname, search\)/);
   assert.match(shell, /document\.title = pageMeta\.browserTitle/);
   assert.match(shell, /pageMeta\.breadcrumbs\.map/);
-  assert.match(shell, /aria-current=\{index === pageMeta\.breadcrumbs\.length - 1 \? "page" : undefined\}/);
+  assert.match(shell, /aria-current=\{/);
+  assert.match(shell, /index === pageMeta\.breadcrumbs\.length - 1/);
+  assert.match(shell, /MobileDrawerQuickActions/);
+  assert.match(shell, /data-app-shell-mobile-drawer-actions/);
+  assert.match(shell, /SidebarUtilities/);
+  assert.match(shell, /data-app-shell-sidebar-utilities/);
+  assert.doesNotMatch(shell, /打开快速操作/);
+  assert.doesNotMatch(shell, /MobileTopbarActions/);
+  assert.match(shell, /h-12[\s\S]*sm:h-14/);
+  assert.match(shell, /data-app-shell-mobile-hidden-breadcrumbs/);
+  assert.match(shell, /hidden min-w-0 items-center[\s\S]*sm:flex/);
+  assert.match(shell, /text-sm font-semibold[\s\S]*sm:text-md/);
+  assert.doesNotMatch(shell, /xl:flex/);
+  assert.doesNotMatch(shell, /lg:flex/);
+  assert.doesNotMatch(shell, /className="lg:hidden"/);
   assert.match(shell, /isNavItemActive\(item, pathname, search\)/);
   assert.match(workspace, /document\.title = "工作区 · Tracevane"/);
 });
-
 
 test("vite keeps xterm buildable under Rolldown", () => {
   const vite = read("apps/web/vite.config.ts");

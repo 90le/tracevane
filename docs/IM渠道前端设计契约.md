@@ -2,7 +2,7 @@
 
 > Status: active design contract
 > Updated: 2026-06-24
-> Authority: this document is the IM Channels UI contract under the Aurora design system. It refines `docs/界面设计守则.md`, `docs/prototypes/Aurora设计体系.md`, and `DESIGN.md` for the IM Channels domain.
+> Authority: this document is the IM Channels UI contract under the Aurora design system. It refines `docs/界面设计守则.md` and `DESIGN.md` for the IM Channels domain.
 
 ## 1. Design position
 

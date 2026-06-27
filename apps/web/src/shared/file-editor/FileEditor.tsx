@@ -3,7 +3,7 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
-import { CodeEditor } from "@/features/ide/editor/CodeEditor";
+import { CodeEditor } from "@/features/workspace/editor/CodeEditor";
 import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files";
 import { CodeBlock } from "@/shared/diff/DiffView";
 import { EmptyState } from "@/shared/states/EmptyState";
@@ -19,7 +19,7 @@ export interface FileEditorProps {
 }
 
 /**
- * Shared single-file editor control for `/files` and `/ide`.
+ * Shared single-file editor control for Workspace-backed file editing.
  *
  * The component owns one editable buffer per mounted file. It loads the latest
  * on-disk content via `useFileReadQuery`, seeds `CodeEditor` from that content,

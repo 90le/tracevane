@@ -67,7 +67,7 @@ export function OverviewView({ goToView }: CliAgentsViewProps) {
                 icon={<Terminal />}
                 iconClass={toneIconClass(missingAgents.length > 0 ? "warn" : "ok")}
                 title={missingAgents.length > 0 ? `${missingAgents.length} 个 CLI 缺失` : "Codex / Claude Code / OpenCode 可启动"}
-                subtitle={missingAgents.length > 0 ? missingAgents.map((b) => b.label || b.id).join(" / ") : "解析启动命令后交给 IDE 终端执行"}
+                subtitle={missingAgents.length > 0 ? missingAgents.map((b) => b.label || b.id).join(" / ") : "解析启动命令后交给 Workspace 终端执行"}
                 trailing={<Button variant="ghost" size="sm" onClick={() => goToView("cli")}>启动台<ArrowRight /></Button>}
               />
               <Row

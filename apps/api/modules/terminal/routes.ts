@@ -8,6 +8,7 @@ import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
   TerminalEndPayload,
+  TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalLaunchPayload,
   TerminalTargetKind,
@@ -31,6 +32,22 @@ export function registerTerminalRoutes(
       200,
       await routeCtx.services.terminal.listPersistedSessions(),
     );
+  });
+
+  router.post("/api/terminal/sessions", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<TerminalGatewayAttachPayload>(req);
+    try {
+      const session = await routeCtx.services.terminal.createPersistedSession(
+        body,
+      );
+      sendJson(res, 201, session);
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "terminal_create_failed",
+        message:
+          error instanceof Error ? error.message : "terminal_create_failed",
+      });
+    }
   });
 
   router.get(

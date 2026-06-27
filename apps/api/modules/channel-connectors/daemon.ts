@@ -10,6 +10,11 @@ import {
   type Logger,
   type WSConnectionStatus,
 } from "@larksuiteoapi/node-sdk";
+import {
+  createAgentProgressFingerprint,
+  normalizeAgentProgressEntryLimit,
+  trimAgentProgressEntries,
+} from "../../../../lib/agent-progress-timeline.js";
 import type {
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorFeishuTransportConfig,
@@ -7046,7 +7051,7 @@ function isPermissionApprovalProgressEvent(event: ChannelConnectorAgentProgressE
 }
 
 function trimFeishuProgressCardEntries(cardState: FeishuProgressCardState): void {
-  cardState.entries = cardState.entries.slice(-cardState.entryLimit);
+  cardState.entries = trimAgentProgressEntries(cardState.entries, cardState.entryLimit);
 }
 
 function createFeishuProgressCardState(entryLimit = 8): FeishuProgressCardState {
@@ -7054,7 +7059,7 @@ function createFeishuProgressCardState(entryLimit = 8): FeishuProgressCardState 
   return {
     messageId: null,
     replyToMessageId: null,
-    entryLimit: clampNumber(Math.floor(entryLimit), 1, 30),
+    entryLimit: normalizeAgentProgressEntryLimit(entryLimit, 8),
     status: "running",
     startedAtMs,
     updatedAtMs: startedAtMs,
@@ -7132,7 +7137,14 @@ function pushFeishuProgressCardEvent(
   if (!text) return false;
   const toolName = normalizeString(event.toolName)
     || (kind === "tool_result" ? recentFeishuProgressToolName(cardState, event.toolCallId) : "");
-  const fingerprint = `${kind}:${event.rawType || ""}:${event.itemType || ""}:${event.toolCallId || ""}:${toolName}:${text}`;
+  const fingerprint = createAgentProgressFingerprint({
+    kind,
+    rawType: event.rawType,
+    itemType: event.itemType,
+    toolCallId: event.toolCallId,
+    toolName,
+    text,
+  });
   if (cardState.seenFingerprints.has(fingerprint)) return false;
   if (kind === "error" && cardState.latestError === text) return false;
   cardState.seenFingerprints.add(fingerprint);

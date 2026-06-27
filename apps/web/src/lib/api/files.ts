@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 import { ApiError, normalizeApiError } from "./errors";
 import type {
   FilesArchivePayload,
+  FilesArchiveDryRunResponse,
   FilesChmodDryRunResponse,
   FilesChmodPayload,
   FilesContentIndexActionPayload,
@@ -378,6 +379,16 @@ export function restoreFilesTrash(payload: FilesTrashRestorePayload): Promise<Fi
 export function purgeFilesTrash(payload: FilesTrashPurgePayload): Promise<FilesMutationResponse> {
   return apiRequest<FilesMutationResponse>("/api/files/trash", {
     method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/files/archive/dry-run — validate archive target and sources without writing. */
+export function dryRunArchiveFiles(
+  payload: FilesArchivePayload,
+): Promise<FilesArchiveDryRunResponse> {
+  return apiRequest<FilesArchiveDryRunResponse>("/api/files/archive/dry-run", {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }

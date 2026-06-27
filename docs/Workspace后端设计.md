@@ -15,7 +15,18 @@ Workspace 后端不是另起一个巨大服务，而是在现有 files/git/termi
 - Agent handoff 有结构化来源和结果；
 - PC 与移动端使用同一套后端能力。
 
-## 2. 服务模块
+## 2. 后端 owner 边界
+
+后端也必须避免把文件、终端和 CLI Agents 混成一个服务：
+
+| Backend owner | 负责 | 禁止 |
+| --- | --- | --- |
+| Files service | root allowlist、path normalize、CRUD、batch、archive、download/upload。 | 创建/管理 PTY session；管理 CLI Agent run。 |
+| Terminal runtime | PTY lifecycle、input/output、replay、reconnect、resize、ports/logs。 | 文件批量操作；Provider/Agent runtime 配置。 |
+| CLI Agents service | Agent runtime readiness、run lifecycle、result evidence refs。 | 普通 shell tab、terminal split/delete/rename。 |
+| Evidence service | append-only evidence refs。 | 作为文件事实源或 terminal session registry。 |
+
+## 3. 服务模块
 
 ```text
 workspace-service
@@ -30,7 +41,7 @@ workspace-service
 
 短期可作为 BFF facade 组合现有服务；长期再沉淀统一存储。
 
-## 3. 文件操作安全
+## 4. 文件操作安全
 
 文件 API 必须：
 
@@ -42,7 +53,7 @@ workspace-service
 - 大文件、二进制、权限错误要结构化返回。
 - archive/unarchive 限制目标路径和文件数量/大小。
 
-## 4. Terminal Runtime System
+## 5. Terminal Runtime System
 
 终端后端必须升级为一等 runtime：
 
@@ -78,7 +89,7 @@ TerminalSessionRecord {
 - mobile-friendly command actions；
 - evidence capture。
 
-## 5. Preview 后端
+## 6. Preview 后端
 
 Preview 能力分级：
 
@@ -91,7 +102,7 @@ Preview 能力分级：
 
 禁止把 secrets 注入 preview iframe。
 
-## 6. Evidence
+## 7. Evidence
 
 Evidence 是 append-only 记录，不是 UI 临时状态：
 
@@ -107,7 +118,7 @@ EvidenceRecord {
 }
 ```
 
-## 7. Agent handoff
+## 8. Agent handoff
 
 Workspace 发起 Agent task 时只负责上下文和审查面；CLI Agents 负责 runtime/readiness/run lifecycle。
 
@@ -119,7 +130,7 @@ CLI Agents executes/observes Agent Run
 Workspace reviews/applies/verifies
 ```
 
-## 8. 验证要求
+## 9. 验证要求
 
 后端改动必须覆盖：
 

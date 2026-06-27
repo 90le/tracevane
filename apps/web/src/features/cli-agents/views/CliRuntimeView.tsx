@@ -225,7 +225,7 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="max-w-[36rem] truncate text-sm text-ink">
-                          {installed ? "生成启动命令 → 复制 → IDE 终端运行" : "安装 CLI → 刷新检测 → 完成登录"}
+                          {installed ? "生成启动命令 → 复制 → Workspace 终端运行" : "安装 CLI → 刷新检测 → 完成登录"}
                         </div>
                         <div className="max-w-[36rem] truncate text-xs text-subtle">
                           {installed ? binary?.version || binary?.path || "已安装" : installTarget?.installHint || "请按项目文档安装后刷新。"}
@@ -266,8 +266,8 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
                               ) : null}
                             </>
                           )}
-                          <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/ide")}>
-                            IDE
+                          <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/workspace?mode=terminal")}>
+                            工作区
                             <ExternalLink />
                           </Button>
                         </div>
@@ -311,15 +311,15 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
         <Panel>
           <PanelHead
             title="启动命令"
-            sub="复制后到 IDE 终端执行；CLI Agents 不自动写 shell、不自动登录外部账号。"
+            sub="复制后到 Workspace 终端执行；CLI Agents 不自动写 shell、不自动登录外部账号。"
             action={
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => copyText(resolved.command)}>
                   <Copy />
                   复制
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/ide")}>
-                  打开 IDE
+                <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/workspace?mode=terminal")}>
+                  打开工作区
                   <ExternalLink />
                 </Button>
               </div>
@@ -395,9 +395,9 @@ export function CliRuntimeView(_props: CliAgentsViewProps) {
               <span className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}><Terminal className="size-4" /></span>
               <span className="min-w-0 flex-1 basis-[180px]">
                 <strong className="block truncate text-sm text-ink-strong">PTY 不可用</strong>
-                <span className="block truncate text-xs text-muted">无法在 IDE 终端完成登录、启动或修复。</span>
+                <span className="block truncate text-xs text-muted">无法在 Workspace 终端完成登录、启动或修复。</span>
               </span>
-              <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/ide")}>打开 IDE<ExternalLink /></Button>
+              <Button variant="outline" size="sm" onClick={() => (window.location.hash = "#/workspace?mode=terminal")}>打开工作区<ExternalLink /></Button>
             </div>
           ) : null}
           {missingAgentBinaries.length === 0 && gatewayReady && ptyAvailable ? (

@@ -12,6 +12,10 @@ test('shared Agent progress timeline follows the Feishu progress-card pattern', 
   assert.match(progressTimelineSource, /Shared Agent progress timeline/);
   assert.match(progressTimelineSource, /Feishu progress-card model/);
   assert.match(progressTimelineSource, /AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT/);
+  assert.match(progressTimelineSource, /AGENT_PROGRESS_ENTRY_LIMIT_MAX/);
+  assert.match(progressTimelineSource, /normalizeAgentProgressEntryLimit/);
+  assert.match(progressTimelineSource, /trimAgentProgressEntries/);
+  assert.match(progressTimelineSource, /createAgentProgressFingerprint/);
   assert.match(progressTimelineSource, /export type AgentProgressTimelineItem/);
   assert.match(progressTimelineSource, /upsertAgentProgressAssistant/);
   assert.match(progressTimelineSource, /upsertAgentProgressTool/);

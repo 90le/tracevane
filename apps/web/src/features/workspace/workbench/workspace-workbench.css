@@ -1,0 +1,50 @@
+.tracevane-dockview {
+  --dv-group-view-background-color: var(--canvas);
+  --dv-tabs-and-actions-container-background-color: var(--panel);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--canvas);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--panel);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--panel-2);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--panel);
+  --dv-tab-divider-color: var(--line);
+  --dv-separator-border: var(--line-2);
+  --dv-paneview-active-outline-color: var(--primary);
+  --dv-drag-over-background-color: var(--primary-soft);
+  --dv-drag-over-border-color: var(--primary);
+  --dv-active-sash-color: var(--primary);
+  --dv-background-color: var(--canvas);
+  --dv-tabs-container-scrollbar-color: var(--line-2);
+  background: var(--canvas);
+}
+
+.tracevane-dockview .dv-tab {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tracevane-dockview .dv-tab.dv-active-tab {
+  color: var(--ink-strong);
+}
+
+.tracevane-dockview .dv-view-container,
+.tracevane-dockview .dv-groupview {
+  background: var(--canvas);
+}
+
+.tracevane-dockview .dv-sash {
+  background: transparent;
+}
+
+/* Workspace owns file tabs inside the editor. Dockview remains for split panes,
+   but its single outer "Editor" tab is only container chrome and should not
+   duplicate the active document title. */
+.tracevane-dockview .dv-tabs-and-actions-container.dv-single-tab {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+}
+
+.tracevane-dockview .dv-tabs-and-actions-container.dv-single-tab + .dv-content-container,
+.tracevane-dockview .dv-tabs-and-actions-container.dv-single-tab ~ .dv-content-container {
+  min-height: 0;
+}

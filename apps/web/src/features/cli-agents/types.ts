@@ -44,6 +44,7 @@ export type {
   TerminalInstallResponse,
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalGatewayAttachPayload,
 } from "../../../../../types/terminal";
 
 // ---------------------------------------------------------------------------

@@ -455,6 +455,9 @@ export interface TerminalService {
   getStatus(): Promise<TerminalStatusPayload>;
   listWorkspaceSessions(): Promise<TerminalSessionSummaryResponse>;
   listPersistedSessions(): Promise<TerminalSessionSummaryResponse>;
+  createPersistedSession(
+    payload: TerminalGatewayAttachPayload,
+  ): Promise<TerminalSessionDescriptor>;
   getPersistedSession(
     sessionId: string,
   ): Promise<TerminalSessionDescriptor | null>;
@@ -2369,6 +2372,23 @@ export function createTerminalService(
             Boolean(descriptor),
           ),
       };
+    },
+
+    async createPersistedSession(
+      payload: TerminalGatewayAttachPayload,
+    ): Promise<TerminalSessionDescriptor> {
+      if (!pty) {
+        throw new Error(
+          "node-pty is not available; terminal sessions are disabled",
+        );
+      }
+      const session = getOrCreateSession(payload.sid || null, {
+        resumePersisted: normalizeResumeSession(payload.resume),
+        metadata: payload,
+      });
+      applySessionMetadata(session, payload);
+      persistSessionDescriptor(session);
+      return buildSessionDescriptor(session, "detached");
     },
 
     async getPersistedSession(

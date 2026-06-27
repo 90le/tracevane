@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
+  Search,
   Moon,
   Palette,
   PanelLeftClose,
@@ -115,19 +116,61 @@ function WorkspaceBrand() {
   );
 }
 
-function CollapseToggle({
+function SidebarUtilities({
   collapsed,
-  onToggle,
+  onOpenCommand,
+  onToggleCollapse,
 }: {
   collapsed: boolean;
-  onToggle: () => void;
+  onOpenCommand: () => void;
+  onToggleCollapse: () => void;
 }) {
   return (
-    <SidebarFooter>
+    <SidebarFooter
+      className={cn(
+        "gap-2 border-t border-line pt-3",
+        collapsed && "items-center",
+      )}
+      data-app-shell-sidebar-utilities
+    >
       <Button
         variant="ghost"
         size={collapsed ? "icon" : "sm"}
-        onClick={onToggle}
+        onClick={onOpenCommand}
+        className={cn(
+          "text-subtle",
+          collapsed ? "mx-auto" : "w-full justify-start gap-2",
+        )}
+        title="搜索 / 跳转（⌘K）"
+        aria-label="搜索 / 跳转"
+      >
+        <Search />
+        {!collapsed && (
+          <>
+            <span>搜索 / 跳转</span>
+            <kbd className="ml-auto rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
+              ⌘K
+            </kbd>
+          </>
+        )}
+      </Button>
+      <div
+        className={cn(
+          "flex items-center gap-1",
+          collapsed
+            ? "flex-col"
+            : "rounded-md border border-line bg-panel-2 p-1",
+        )}
+        aria-label="外观设置"
+      >
+        <PaletteToggle />
+        <ThemeToggle />
+        {!collapsed && <span className="px-1 text-xs text-muted">外观</span>}
+      </div>
+      <Button
+        variant="ghost"
+        size={collapsed ? "icon" : "sm"}
+        onClick={onToggleCollapse}
         className={cn(
           "text-subtle",
           collapsed ? "mx-auto" : "w-full justify-start gap-2",
@@ -173,6 +216,41 @@ function ThemeToggle() {
     >
       {theme === "dark" ? <Sun /> : <Moon />}
     </Button>
+  );
+}
+
+function MobileDrawerQuickActions({
+  onOpenCommand,
+}: {
+  onOpenCommand: () => void;
+}) {
+  return (
+    <div
+      className="mt-3 grid gap-2 border-t border-line pt-3"
+      data-app-shell-mobile-drawer-actions
+    >
+      <Button
+        variant="ghost"
+        className="justify-start gap-2 rounded-md border border-line bg-panel-2"
+        onClick={onOpenCommand}
+      >
+        <Search />
+        <span>搜索 / 跳转</span>
+        <kbd className="ml-auto rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
+          ⌘K
+        </kbd>
+      </Button>
+      <div className="rounded-md border border-line bg-panel-2 p-2">
+        <div className="px-2 pb-2 text-2xs font-semibold uppercase tracking-[.12em] text-subtle">
+          外观
+        </div>
+        <div className="flex items-center gap-1">
+          <PaletteToggle />
+          <ThemeToggle />
+          <span className="text-xs text-muted">配色与明暗主题</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -276,7 +354,11 @@ export function AppShell() {
       <Sidebar collapsed={collapsed} className="hidden md:grid">
         <WorkspaceBrand />
         <NavList pathname={pathname} search={search} />
-        <CollapseToggle collapsed={collapsed} onToggle={toggleCollapsed} />
+        <SidebarUtilities
+          collapsed={collapsed}
+          onOpenCommand={() => setCommandOpen(true)}
+          onToggleCollapse={toggleCollapsed}
+        />
       </Sidebar>
 
       {/* Mobile drawer */}
@@ -290,6 +372,12 @@ export function AppShell() {
               pathname={pathname}
               search={search}
               onNavigate={() => setMobileNavOpen(false)}
+            />
+            <MobileDrawerQuickActions
+              onOpenCommand={() => {
+                setMobileNavOpen(false);
+                setCommandOpen(true);
+              }}
             />
           </div>
         </SheetContent>
@@ -305,7 +393,7 @@ export function AppShell() {
       >
         {/* Topbar */}
         {!isChromeLessRoute && (
-          <header className="flex h-14 items-center gap-2 border-b border-line bg-panel px-4">
+          <header className="flex h-12 items-center gap-2 border-b border-line bg-panel px-3 sm:h-14 sm:px-4">
             <Button
               variant="ghost"
               size="icon"
@@ -316,7 +404,10 @@ export function AppShell() {
               <Menu />
             </Button>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+              <div
+                className="hidden min-w-0 items-center gap-1.5 text-xs text-muted sm:flex"
+                data-app-shell-mobile-hidden-breadcrumbs
+              >
                 {pageMeta.breadcrumbs.map((crumb, index) => (
                   <React.Fragment key={`${crumb.label}-${index}`}>
                     {index > 0 ? <span className="text-subtle">/</span> : null}
@@ -342,26 +433,9 @@ export function AppShell() {
                   </React.Fragment>
                 ))}
               </div>
-              <div className="truncate text-md font-semibold text-ink-strong">
+              <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
                 {pageMeta.title}
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setCommandOpen(true)}
-              className={cn(
-                "hidden h-9 items-center gap-2 rounded-sm border border-line-2 bg-panel-2 px-3 text-sm text-subtle outline-none transition-colors sm:flex",
-                "hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)]",
-              )}
-            >
-              <span>搜索 / 跳转</span>
-              <kbd className="rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs">
-                ⌘K
-              </kbd>
-            </button>
-            <div className="flex items-center gap-1 sm:ml-2">
-              <PaletteToggle />
-              <ThemeToggle />
             </div>
           </header>
         )}

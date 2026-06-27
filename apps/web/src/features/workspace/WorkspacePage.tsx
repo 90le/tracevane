@@ -1,13 +1,13 @@
 import * as React from "react";
 
-import { WorkspaceShell } from "./shell/WorkspaceShell";
+import { WorkspaceWorkbench } from "./workbench";
 
 export function WorkspacePage() {
   React.useEffect(() => {
     document.title = "工作区 · Tracevane";
   }, []);
 
-  return <WorkspaceShell />;
+  return <WorkspaceWorkbench />;
 }
 
 export default WorkspacePage;

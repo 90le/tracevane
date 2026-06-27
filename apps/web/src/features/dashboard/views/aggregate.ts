@@ -27,7 +27,7 @@ export const ROUTES = {
   platforms: "/platforms",
   chat: "/chat",
   cliAgents: "/cli-agents",
-  ide: "/ide",
+  workspace: "/workspace",
 } as const;
 
 /** Inputs the synthesis functions consume — every field may be undefined. */

@@ -3,8 +3,7 @@ import type { GitDiffPayload, GitStatusPayload } from "../../../../../types/git"
 
 /**
  * Typed transport bindings for the Git HTTP API
- * (`apps/api/modules/git/routes.ts`) consumed by the Workspace IDE workbench
- * (`/ide`).
+ * (`apps/api/modules/git/routes.ts`) consumed by Workspace Git/editor surfaces.
  *
  * Bound here (read GET):
  *  - GET /api/git/status  → branch / changes / commits roll-up for a root
