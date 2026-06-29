@@ -9,9 +9,12 @@ import {
   KeyRound,
   Plug,
   Plus,
+  RefreshCw,
+  Route,
   ScanSearch,
   Settings2,
   Trash2,
+  Wand2,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -59,9 +62,10 @@ import {
 } from "./ModelCatalogEditor";
 import { ProviderPresetChooser, type ProviderCreatePreset } from "./ProviderPresetChooser";
 
-type Section = "basic" | "endpoint" | "models" | "advanced";
+type Section = "guide" | "basic" | "endpoint" | "models" | "advanced";
 
 const SECTIONS: ReadonlyArray<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: "guide", label: "向导", icon: Wand2 },
   { id: "basic", label: "基础", icon: Info },
   { id: "endpoint", label: "Endpoint", icon: Plug },
   { id: "models", label: "模型", icon: Box },
@@ -424,6 +428,33 @@ function healthLabel(health: ModelGatewayProviderView["health"] | undefined): { 
   return { label: "未测试", className: "text-muted" };
 }
 
+
+function modelCapabilitySummary(models: ModelRow[]): string[] {
+  const count = (pick: (m: ModelRow) => boolean) => models.filter(pick).length;
+  const summary: string[] = [];
+  const tools = count((m) => m.tools);
+  const vision = count((m) => m.vision);
+  const reasoning = count((m) => m.reasoning);
+  if (tools) summary.push(`${tools} tools`);
+  if (vision) summary.push(`${vision} vision`);
+  if (reasoning) summary.push(`${reasoning} reasoning`);
+  return summary;
+}
+
+function maxNumeric(rows: ModelRow[], pick: (m: ModelRow) => string): number | null {
+  const values = rows
+    .map((m) => Number(pick(m)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return values.length ? Math.max(...values) : null;
+}
+
+function compactTokenCount(value: number | null): string {
+  if (value == null) return "未知";
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return String(value);
+}
+
 function providerConfigWarnings(provider: ModelGatewayProviderView | null): string[] {
   if (!provider) return [];
   const warnings: string[] = [];
@@ -470,9 +501,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     enabled: Boolean(selectedProvider),
   });
 
-  const [section, setSection] = React.useState<Section>("basic");
+  const [section, setSection] = React.useState<Section>(isCreate ? "guide" : "basic");
   const [form, setForm] = React.useState<FormState>(emptyForm);
   const [initialized, setInitialized] = React.useState(false);
+  const [hydratedKey, setHydratedKey] = React.useState<string | null>(null);
   const [showErrors, setShowErrors] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState(false);
@@ -488,21 +520,30 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const [secretDraft, setSecretDraft] = React.useState("");
   const [revealSecret, setRevealSecret] = React.useState(false);
 
-  // Hydrate the form once the provider (edit) or create intent is known.
+  // Hydrate the form whenever the create/edit target changes. This keeps the
+  // post-create handoff on the same sub-view from showing stale create-state.
   React.useEffect(() => {
-    if (initialized) return;
     if (isCreate) {
+      if (hydratedKey === "create") return;
       const next = emptyForm();
       setForm(next);
       baselineRef.current = JSON.stringify(next);
+      setSection("guide");
       setInitialized(true);
+      setHydratedKey("create");
     } else if (provider) {
+      const key = `provider:${provider.id}`;
+      if (hydratedKey === key) return;
       const next = formFromProvider(provider);
       setForm(next);
       baselineRef.current = JSON.stringify(next);
+      setSection("basic");
+      setCandidates([]);
+      setSecretDraft("");
       setInitialized(true);
+      setHydratedKey(key);
     }
-  }, [isCreate, provider, initialized]);
+  }, [isCreate, provider, hydratedKey]);
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -513,9 +554,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     const next = formFromPreset(preset);
     setForm(next);
     baselineRef.current = JSON.stringify(next);
+    setHydratedKey("create");
     setCandidates([]);
     setShowErrors(false);
-    setSection("basic");
+    setSection("guide");
     setPresetChosen(true);
   };
 
@@ -581,7 +623,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     }
   }
 
-  const saving = createMutation.isPending || updateMutation.isPending;
+  const saving = createMutation.isPending || updateMutation.isPending || setSecretMutation.isPending;
   const activeRoutesForProvider = React.useMemo(() => {
     if (!provider) return [];
     return (providersQuery.data?.activeRoutes ?? []).filter(
@@ -617,10 +659,29 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     }
     const payload = buildPayload(form, provider?.id);
     if (isCreate) {
+      const apiKey = secretDraft.trim();
       createMutation.mutate(payload, {
-        onSuccess: () => {
-          toast.success("Provider 已创建");
-          goToView("providers");
+        onSuccess: (result) => {
+          const providerId = result.provider.id;
+          const finish = () => {
+            toast.success("Provider 已创建", { description: "下一步可直接绑定到 Codex / Claude Code / OpenCode。" });
+            setSecretDraft("");
+            goToView("providercfg", { provider: providerId });
+          };
+          if (!apiKey || form.authStrategy === "none") {
+            finish();
+            return;
+          }
+          setSecretMutation.mutate(
+            { providerId, payload: { apiKey } },
+            {
+              onSuccess: finish,
+              onError: (error) => {
+                toast.error("Provider 已创建，但密钥保存失败", { description: error.message });
+                goToView("providercfg", { provider: providerId });
+              },
+            },
+          );
         },
         onError: (error) => toast.error("创建失败", { description: error.message }),
       });
@@ -641,7 +702,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const handleDetect = () => {
     if (!form.baseUrl.trim()) {
       toast.error("请先填写 baseUrl");
-      setSection("basic");
+      setSection(isCreate ? "guide" : "basic");
       return;
     }
     detectMutation.mutate(
@@ -666,7 +727,8 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
               tools: m.features?.tools ?? false,
             }));
           setCandidates(detected);
-          if (detected.length > 0) setSection("models");
+          if (isCreate) setSection("guide");
+          else if (detected.length > 0) setSection("models");
           toast.success(`探测完成 · ${result.models.length} 个模型`, {
             description: detected.length
               ? `${detected.length} 个新模型可在「模型」中加入${rec ? ` · 推荐协议 ${API_FORMAT_LABEL[rec.apiFormat]}` : ""}`
@@ -815,6 +877,158 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       </div>
     </CfgCard>
   ) : null;
+
+  const detectedRows: ModelRow[] = React.useMemo(
+    () => candidates.map((c) => ({
+      ...newModelRow(),
+      id: c.id,
+      contextWindow: c.contextWindow,
+      maxOutput: c.maxOutput,
+      reasoning: c.reasoning,
+      vision: c.vision,
+      tools: c.tools,
+    })),
+    [candidates],
+  );
+  const importableRows = detectedRows.length ? detectedRows : form.models;
+  const capabilitySummary = modelCapabilitySummary(importableRows);
+  const maxContext = maxNumeric(importableRows, (m) => m.contextWindow);
+  const maxOutput = maxNumeric(importableRows, (m) => m.maxOutput);
+  const recommendedDefault = form.models.find((m) => m.isDefault && m.id.trim())?.id.trim()
+    ?? form.models.find((m) => m.id.trim())?.id.trim()
+    ?? candidates[0]?.id
+    ?? null;
+
+  const importRecommended = () => {
+    const ids = candidates.slice(0, 20).map((c) => c.id);
+    if (ids.length) addCandidates(ids);
+  };
+
+  const guideSection = (
+    <div className="grid gap-4">
+      <CfgCard icon={Wand2} title="连接向导" sub="推荐路径：填 2 项 → 自动识别 → 保存">
+        <div className="rounded-sm border border-primary-line bg-primary-soft/35 p-3 text-sm text-muted">
+          普通新增只需要供应商名称、Base URL 和 API Key。协议、鉴权、模型上下文、输出和 tools / vision / reasoning 能力会通过探测结果自动带入；高级网络和多 endpoint 可以保存后再调。
+        </div>
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label="供应商名称" hint="例如 OpenRouter、硅基流动、公司内网代理。">
+            <Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="例如 OpenRouter" />
+          </Field>
+          <Field label="Provider 类型" hint="不确定时选 OpenAI-compatible。">
+            <SegRadio
+              value={form.category}
+              options={MODEL_GATEWAY_PROVIDER_CATEGORIES}
+              onChange={(v) => update("category", v)}
+            />
+          </Field>
+        </div>
+        <Field label="Base URL" hint="OpenAI 兼容服务通常形如 https://host/v1。">
+          <Input value={form.baseUrl} onChange={(e) => update("baseUrl", e.target.value)} placeholder="https://api.example.com/v1" />
+        </Field>
+        <Field
+          label="API Key"
+          hint={provider ? "输入新密钥可更新；留空不改变已有密钥。" : "新建时会用于探测；保存 Provider 后仍可在基础页更新。"}
+        >
+          <div className="flex gap-2">
+            <Input
+              type={revealSecret ? "text" : "password"}
+              value={secretDraft}
+              onChange={(e) => setSecretDraft(e.target.value)}
+              placeholder="sk-…"
+            />
+            <Button type="button" variant="ghost" size="sm" onClick={() => setRevealSecret((v) => !v)}>
+              {revealSecret ? "隐藏" : "显示"}
+            </Button>
+          </div>
+        </Field>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="primary" size="sm" onClick={handleDetect} disabled={detectMutation.isPending || !form.baseUrl.trim()}>
+            {detectMutation.isPending ? <RefreshCw className="animate-spin" /> : <ScanSearch />}
+            {detectMutation.isPending ? "正在识别…" : "测试连接并自动识别"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSection("basic")}>
+            专家编辑完整配置
+          </Button>
+          <span className="text-xs text-subtle">不确定协议时先点识别，Tracevane 会推荐 API 格式和鉴权方式。</span>
+        </div>
+      </CfgCard>
+
+      <CfgCard icon={Box} title="识别结果" sub="保存前审核，不要求逐行编辑">
+        {importableRows.length === 0 ? (
+          <div className="grid gap-2 rounded-sm border border-dashed border-line bg-panel-2 p-4 text-sm text-muted">
+            <span>尚未识别模型。填写 Base URL / API Key 后点击“测试连接并自动识别”。</span>
+            <span>如果供应商不支持 /models，可切到“模型”分区手动添加。</span>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            <div className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3 sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-subtle">模型数</div>
+                <strong className="text-lg text-ink-strong">{importableRows.length}</strong>
+              </div>
+              <div>
+                <div className="text-xs text-subtle">最大上下文</div>
+                <strong className="text-lg text-ink-strong">{compactTokenCount(maxContext)}</strong>
+              </div>
+              <div>
+                <div className="text-xs text-subtle">最大输出</div>
+                <strong className="text-lg text-ink-strong">{compactTokenCount(maxOutput)}</strong>
+              </div>
+              <div>
+                <div className="text-xs text-subtle">默认建议</div>
+                <strong className="break-all text-sm text-ink-strong">{recommendedDefault ?? "未选择"}</strong>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(capabilitySummary.length ? capabilitySummary : ["仅文本或未知能力"]).map((label) => (
+                <span key={label} className="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted">{label}</span>
+              ))}
+              <span className="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted">
+                协议：{API_FORMAT_LABEL[form.apiFormat]}
+              </span>
+              <span className="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted">
+                鉴权：{form.authStrategy}
+              </span>
+            </div>
+            {candidates.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="primary" size="sm" onClick={importRecommended}>
+                  <Plus />
+                  导入推荐 {Math.min(20, candidates.length)} 个
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => addCandidates(candidates.map((c) => c.id))}>
+                  全部导入 {candidates.length} 个
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSection("models")}>
+                  手动选择/编辑
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {importableRows.slice(0, 18).map((m) => (
+                <span key={m.id} className="rounded-full bg-panel-3 px-2.5 py-1 text-xs text-muted">
+                  {m.id}
+                </span>
+              ))}
+              {importableRows.length > 18 && <span className="self-center text-xs text-subtle">…还有 {importableRows.length - 18} 个</span>}
+            </div>
+          </div>
+        )}
+      </CfgCard>
+
+      <CfgCard icon={Route} title="保存后下一步" sub="把 Provider 用起来">
+        <div className="grid gap-2 text-sm text-muted">
+          <p>创建成功后会留在该 Provider 配置页，并显示当前 active route 诊断。你可以继续：</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => goToView("apps", { app: "codex" })}>用于 Codex</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => goToView("apps", { app: "claude-code" })}>用于 Claude Code</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => goToView("apps", { app: "opencode" })}>用于 OpenCode</Button>
+          </div>
+          <p className="text-xs text-subtle">应用 CLI 配置会继续使用安全上下文预算；网关模型目录保留供应商真实上下文。</p>
+        </div>
+      </CfgCard>
+    </div>
+  );
 
   const basicSection = (
     <CfgCard icon={Info} title="基础" sub="必填">
@@ -1100,6 +1314,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
 
       {/* Section body */}
       <div className="grid gap-4">
+        {section === "guide" && guideSection}
         {section === "basic" && (
           <>
             {basicSection}
@@ -1121,7 +1336,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
           </span>
         ) : (
           <span className="text-sm text-subtle">
-            {isCreate ? "填写后保存以创建 Provider" : "修改后保存"}
+            {isCreate ? "识别并导入模型后创建 Provider；也可切专家模式手动保存" : "修改后保存"}
           </span>
         )}
         <span className="ml-auto flex gap-2">

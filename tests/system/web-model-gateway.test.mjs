@@ -210,6 +210,27 @@ test("Providers view aggregates endpoint risk and smokes every active scope for 
   );
 });
 
+
+
+test("Provider config create mode defaults to a simplified onboarding wizard", () => {
+  const config = read(`${VIEWS_DIR}/ProviderConfigView.tsx`);
+  assert.match(config, /type Section = "guide" \| "basic" \| "endpoint" \| "models" \| "advanced"/);
+  assert.match(config, /连接向导/);
+  assert.match(config, /测试连接并自动识别/);
+  assert.match(config, /导入推荐/);
+  assert.match(config, /全部导入/);
+  assert.match(config, /专家编辑完整配置/);
+  assert.match(config, /保存后下一步/);
+  assert.match(config, /setHydratedKey/);
+  assert.match(config, /Provider 已创建，但密钥保存失败/);
+  assert.match(config, /setSecretMutation\.mutate/);
+  assert.match(config, /goToView\("apps", \{ app: "codex" \}\)/);
+  assert.match(config, /goToView\("apps", \{ app: "claude-code" \}\)/);
+  assert.match(config, /goToView\("apps", \{ app: "opencode" \}\)/);
+  assert.match(config, /应用 CLI 配置会继续使用安全上下文预算/);
+  assert.match(config, /网关模型目录保留供应商真实上下文/);
+});
+
 test("Provider config view explains provider smoke versus active-route smoke", () => {
   const config = read(`${VIEWS_DIR}/ProviderConfigView.tsx`);
   assert.match(config, /路由与诊断/);
