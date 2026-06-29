@@ -25,6 +25,19 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /git add.*显式列路径/);
 });
 
+test("legacy Workspace writing-goal document is downgraded behind the IDE-first blueprint", () => {
+  assert.equal(
+    fs.existsSync(new URL("../../docs/Workspace全球顶级AI编程写作工作区Goal.md", import.meta.url)),
+    false,
+  );
+  const legacy = readRoot("docs/Workspace旧Goal兼容入口.md");
+  assert.match(legacy, /Workspace 旧 Goal 兼容入口/);
+  assert.match(legacy, /Superseded/);
+  assert.match(legacy, /当前权威蓝图：`Workspace全球顶级AI编程IDE工作区Goal蓝图\.md`/);
+  assert.match(legacy, /当前主线不是独立写作产品线/);
+  assert.match(legacy, /不进入当前 Phase 0\/1\/2/);
+});
+
 test("docs README promotes the goal blueprint as the first authority", () => {
   const readme = readRoot("docs/README.md");
   assert.match(readme, /Workspace全球顶级AI编程IDE工作区Goal蓝图\.md/);
