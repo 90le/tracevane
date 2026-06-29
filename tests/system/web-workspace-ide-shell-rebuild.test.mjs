@@ -1280,3 +1280,24 @@ test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(cssSource, /workspace-ide-shell__layout-snapshots/);
   assert.match(cssSource, /workspace-ide-shell__layout-snapshot/);
 });
+
+test("new Workspace IDE shell supports undo and redo for layout changes", () => {
+  assert.match(shellSource, /const MAX_LAYOUT_HISTORY = 32/);
+  assert.match(shellSource, /layoutHistoryPast/);
+  assert.match(shellSource, /layoutHistoryFuture/);
+  assert.match(shellSource, /lastLayoutHistoryStateRef/);
+  assert.match(shellSource, /applyingLayoutHistoryRef/);
+  assert.match(shellSource, /serializeIdeLayoutHistoryState/);
+  assert.match(shellSource, /function undoIdeLayoutChange\(\)/);
+  assert.match(shellSource, /function redoIdeLayoutChange\(\)/);
+  assert.match(shellSource, /setLayoutHistoryPast\(\(history\) => \[\.\.\.history, previousLayoutState\]\.slice\(-MAX_LAYOUT_HISTORY\)\)/);
+  assert.match(shellSource, /setLayoutHistoryFuture\(\[\]\)/);
+  assert.match(shellSource, /ide\.layout\.history\.undo/);
+  assert.match(shellSource, /ide\.layout\.history\.redo/);
+  assert.match(shellSource, /shortcut: "⌘⌥Z"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧Z"/);
+  assert.match(shellSource, /data-ide-layout-history=\{`\$\{layoutHistoryPast\.length\}:\$\{layoutHistoryFuture\.length\}`\}/);
+  assert.match(shellSource, /data-ide-layout-history-undo/);
+  assert.match(shellSource, /data-ide-layout-history-redo/);
+  assert.match(shellSource, /布局历史: \{layoutHistoryPast\.length\}\/\{layoutHistoryFuture\.length\}/);
+});

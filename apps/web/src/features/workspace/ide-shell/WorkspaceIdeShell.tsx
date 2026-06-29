@@ -12,6 +12,7 @@ import {
   PanelRight,
   Plus,
   RotateCcw,
+  RotateCw,
   Search,
   Settings2,
   TerminalSquare,
@@ -126,6 +127,7 @@ const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 const IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.snapshots.v1";
 const MAX_LAYOUT_SNAPSHOTS = 8;
+const MAX_LAYOUT_HISTORY = 32;
 
 const DEFAULT_PANE_SIZES: IdePaneSizes = { top: 170, left: 320, right: 340, bottom: 260 };
 const CODE_PANE_SIZES: IdePaneSizes = { top: 140, left: 280, right: 300, bottom: 190 };
@@ -369,6 +371,8 @@ export function WorkspaceIdeShell() {
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
   const [layoutLocked, setLayoutLocked] = React.useState(layoutState.layoutLocked ?? false);
+  const [layoutHistoryPast, setLayoutHistoryPast] = React.useState<IdeLayoutState[]>([]);
+  const [layoutHistoryFuture, setLayoutHistoryFuture] = React.useState<IdeLayoutState[]>([]);
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>(layoutState.activePath);
   const [activePathRootId, setActivePathRootId] = React.useState(layoutState.activePathRootId ?? "");
@@ -394,6 +398,9 @@ export function WorkspaceIdeShell() {
   const centerPaneRef = React.useRef<HTMLElement | null>(null);
   const rightDockRef = React.useRef<HTMLElement | null>(null);
   const bottomDockRef = React.useRef<HTMLElement | null>(null);
+  const lastLayoutHistoryStateRef = React.useRef<IdeLayoutState | null>(null);
+  const lastLayoutHistoryKeyRef = React.useRef("");
+  const applyingLayoutHistoryRef = React.useRef(false);
 
   const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder, hiddenPanes), [hiddenPanes, paneOrder, panePlacements]);
   const topPaneIds = panesByPlacement.top;
@@ -426,30 +433,29 @@ export function WorkspaceIdeShell() {
   }, [defaultRootId, rootId, roots]);
 
   React.useEffect(() => {
-    storeIdeLayoutState({
-      topOpen,
-      leftOpen,
-      rightOpen,
-      bottomOpen,
-      maximizedPane,
-      layoutPreset,
-      paneSizes,
-      activeEditorGroup,
-      activePath,
-      activePathRootId: activePathRootId || "",
-      secondaryPath,
-      secondaryPathRootId: secondaryPathRootId || "",
-      editorSplitMode,
-      editorSplitRatio,
-      panePlacements,
-      paneOrder,
-      dockSplitModes,
-      dockSplitRatios,
-      dockPaneSelections,
-      editorGroupTabs,
-      hiddenPanes,
-      layoutLocked,
-    });
+    const nextLayoutState = currentIdeLayoutState();
+    storeIdeLayoutState(nextLayoutState);
+
+    const nextHistoryKey = serializeIdeLayoutHistoryState(nextLayoutState);
+    if (!lastLayoutHistoryStateRef.current || !lastLayoutHistoryKeyRef.current) {
+      lastLayoutHistoryStateRef.current = nextLayoutState;
+      lastLayoutHistoryKeyRef.current = nextHistoryKey;
+      return;
+    }
+    if (lastLayoutHistoryKeyRef.current === nextHistoryKey) return;
+
+    if (applyingLayoutHistoryRef.current) {
+      applyingLayoutHistoryRef.current = false;
+      lastLayoutHistoryStateRef.current = nextLayoutState;
+      lastLayoutHistoryKeyRef.current = nextHistoryKey;
+      return;
+    }
+
+    const previousLayoutState = lastLayoutHistoryStateRef.current;
+    setLayoutHistoryPast((history) => [...history, previousLayoutState].slice(-MAX_LAYOUT_HISTORY));
+    setLayoutHistoryFuture([]);
+    lastLayoutHistoryStateRef.current = nextLayoutState;
+    lastLayoutHistoryKeyRef.current = nextHistoryKey;
   }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutLocked, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
 
   React.useEffect(() => {
@@ -487,6 +493,15 @@ export function WorkspaceIdeShell() {
         if (event.shiftKey && key === "l") {
           event.preventDefault();
           setLayoutLocked((locked) => !locked);
+          return;
+        }
+        if (key === "z") {
+          event.preventDefault();
+          if (event.shiftKey) {
+            redoIdeLayoutChange();
+          } else {
+            undoIdeLayoutChange();
+          }
           return;
         }
         if (event.key === "\\") {
@@ -912,6 +927,30 @@ export function WorkspaceIdeShell() {
         run: () => applyWorkbenchRecipe(recipe.id),
       })),
       {
+        id: "ide.layout.history.undo",
+        group: "布局",
+        label: "撤销上一次 IDE 布局变更",
+        description: "恢复到上一个窗格开合、尺寸、拆分、停靠、顺序和编辑器分组状态",
+        shortcut: "⌘⌥Z",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        disabled: layoutHistoryPast.length === 0,
+        run: undoIdeLayoutChange,
+      },
+      {
+        id: "ide.layout.history.redo",
+        group: "布局",
+        label: "重做 IDE 布局变更",
+        description: "重新应用刚刚撤销的窗格布局状态",
+        shortcut: "⌘⌥⇧Z",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCw />,
+        disabled: layoutHistoryFuture.length === 0,
+        run: redoIdeLayoutChange,
+      },
+      {
         id: "ide.layout.toggle-lock",
         group: "布局",
         label: layoutLocked ? "解锁 IDE 布局" : "锁定 IDE 布局",
@@ -1121,7 +1160,7 @@ export function WorkspaceIdeShell() {
         run: resetPanePlacements,
       },
     ],
-    [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, layoutLocked, leftOpen, maximizedPane, rightOpen, topOpen],
+    [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, layoutHistoryFuture.length, layoutHistoryPast.length, layoutLocked, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
   const paneVisibilityCommands = React.useMemo<WorkspaceCommand[]>(
@@ -2058,6 +2097,26 @@ export function WorkspaceIdeShell() {
     };
   }
 
+  function undoIdeLayoutChange() {
+    if (layoutHistoryPast.length === 0) return;
+    const previousLayoutState = layoutHistoryPast[layoutHistoryPast.length - 1];
+    const currentLayoutState = currentIdeLayoutState();
+    applyingLayoutHistoryRef.current = true;
+    setLayoutHistoryPast((history) => history.slice(0, -1));
+    setLayoutHistoryFuture((history) => [currentLayoutState, ...history].slice(0, MAX_LAYOUT_HISTORY));
+    applyIdeLayoutState(previousLayoutState);
+  }
+
+  function redoIdeLayoutChange() {
+    if (layoutHistoryFuture.length === 0) return;
+    const nextLayoutState = layoutHistoryFuture[0];
+    const currentLayoutState = currentIdeLayoutState();
+    applyingLayoutHistoryRef.current = true;
+    setLayoutHistoryFuture((history) => history.slice(1));
+    setLayoutHistoryPast((history) => [...history, currentLayoutState].slice(-MAX_LAYOUT_HISTORY));
+    applyIdeLayoutState(nextLayoutState);
+  }
+
   function saveLayoutSnapshot() {
     const createdAt = new Date().toISOString();
     const defaultName = `工作台布局 ${layoutSnapshots.length + 1}`;
@@ -2964,6 +3023,7 @@ export function WorkspaceIdeShell() {
       data-ide-edge-drop-target={edgeDropTarget ? `${edgeDropTarget.placement}:${edgeDropTarget.edge}` : ""}
       data-ide-mobile-panel={mobilePanel}
       data-ide-layout-locked={layoutLocked ? "true" : "false"}
+      data-ide-layout-history={`${layoutHistoryPast.length}:${layoutHistoryFuture.length}`}
       data-ide-dock-selection-state={dockSelectionState(dockPaneSelections)}
       style={{
         "--ide-top-height": `${paneSizes.top}px`,
@@ -3023,6 +3083,12 @@ export function WorkspaceIdeShell() {
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
             <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={layoutHistoryPast.length === 0} onClick={undoIdeLayoutChange} data-ide-layout-history-undo>
+            <RotateCcw className="mr-2 h-4 w-4" />撤销布局
+          </Button>
+          <Button size="sm" variant="ghost" disabled={layoutHistoryFuture.length === 0} onClick={redoIdeLayoutChange} data-ide-layout-history-redo>
+            <RotateCw className="mr-2 h-4 w-4" />重做布局
           </Button>
           <Button size="sm" variant="ghost" disabled={layoutLocked} onClick={() => setTopOpen((value) => !value)}>
             <PanelBottom className="mr-2 h-4 w-4 rotate-180" />顶部
@@ -3686,6 +3752,7 @@ export function WorkspaceIdeShell() {
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
         <span>布局锁: {layoutLocked ? "locked" : "open"}</span>
+        <span>布局历史: {layoutHistoryPast.length}/{layoutHistoryFuture.length}</span>
         <span>快照: {layoutSnapshots.length}</span>
         <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
@@ -4935,6 +5002,10 @@ function getPaneSizeLimits(pane: keyof IdePaneSizes): { min: number; max: number
     };
   }
   return PANE_SIZE_LIMITS[pane];
+}
+
+function serializeIdeLayoutHistoryState(state: IdeLayoutState): string {
+  return JSON.stringify(sanitizeIdeLayoutState(state));
 }
 
 function loadIdeLayoutState(): IdeLayoutState {
