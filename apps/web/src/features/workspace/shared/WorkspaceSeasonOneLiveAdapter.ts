@@ -12,6 +12,10 @@ export interface WorkspaceSeasonOneLiveAdapterInput {
   gitChanges?: number;
   evidenceItems?: number;
   aiContextItems?: number;
+  activeContent?: string | null;
+  activeContentLanguage?: string | null;
+  activeContentLabel?: string;
+  activeContentEditable?: boolean;
   terminalState?: "idle" | "running" | "failed" | "passed";
   agentState?: "idle" | "drafting" | "waiting-review" | "approved";
   lastRunLabel?: string;
@@ -27,6 +31,9 @@ export function createWorkspaceSeasonOneLiveModel(
   const gitChanges = clampCount(input.gitChanges);
   const evidenceItems = clampCount(input.evidenceItems);
   const aiContextItems = clampCount(input.aiContextItems);
+  const activeContent = normalizeValue(input.activeContent);
+  const activeContentLabel = normalizeValue(input.activeContentLabel);
+  const activeContentLanguage = normalizeValue(input.activeContentLanguage);
   const terminalState = input.terminalState ?? "idle";
   const agentState = input.agentState ?? "idle";
   const terminalSummary = describeTerminalState(
@@ -93,8 +100,21 @@ export function createWorkspaceSeasonOneLiveModel(
       ...base.canvas,
       fileName: activePath,
       badge: openFiles.includes(activePath) ? "open" : "focused",
-      writingBody: `Season One live adapter is focused on ${activePath}. The shell should keep writing, code, run output and evidence visible as one coherent workspace task.`,
-      codeSample: `<WorkspaceSeasonOneFramePreview
+      writingBody: activeContent
+        ? createActiveContentBrief({
+            activePath,
+            activeContent,
+            activeContentLabel,
+            activeContentEditable: input.activeContentEditable,
+          })
+        : `Season One live adapter is focused on ${activePath}. The shell should keep writing, code, run output and evidence visible as one coherent workspace task.`,
+      codeSample: activeContent
+        ? createActiveContentCodeSample({
+            activePath,
+            activeContent,
+            activeContentLanguage,
+          })
+        : `<WorkspaceSeasonOneFramePreview
   model={createWorkspaceSeasonOneLiveModel({
     rootLabel: ${JSON.stringify(input.rootLabel ?? base.identity.rootLabel)},
     activePath: ${JSON.stringify(activePath)},
@@ -124,6 +144,52 @@ export function createWorkspaceSeasonOneLiveModel(
       label: "Season One Live Adapter",
     },
   };
+}
+
+function createActiveContentBrief({
+  activePath,
+  activeContent,
+  activeContentLabel,
+  activeContentEditable,
+}: {
+  activePath: string;
+  activeContent: string;
+  activeContentLabel?: string;
+  activeContentEditable?: boolean;
+}) {
+  const lines = activeContent.split(/\r\n|\r|\n/).length;
+  const words = activeContent.trim().split(/\s+/).filter(Boolean).length;
+  return [
+    `Live document loaded from ${activePath}.`,
+    activeContentLabel ? `Snapshot: ${activeContentLabel}.` : null,
+    `Shape: ${lines} line${lines === 1 ? "" : "s"}, ${words} token${words === 1 ? "" : "s"} for AI coding and writing review.`,
+    activeContentEditable === false
+      ? "This artifact is read-only in the current files contract; require explicit handoff before edits."
+      : "This artifact can become the primary edit target after evidence-gated apply controls are wired.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function createActiveContentCodeSample({
+  activePath,
+  activeContent,
+  activeContentLanguage,
+}: {
+  activePath: string;
+  activeContent: string;
+  activeContentLanguage?: string;
+}) {
+  const preview = activeContent
+    .split(/\r\n|\r|\n/)
+    .slice(0, 28)
+    .join("\n")
+    .trimEnd();
+  const language = activeContentLanguage ? ` · ${activeContentLanguage}` : "";
+  return [
+    `// Live file preview: ${activePath}${language}`,
+    preview || "// Empty file",
+  ].join("\n");
 }
 
 function createLiveActivityItems({

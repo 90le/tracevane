@@ -72,7 +72,16 @@ async function run() {
         await page.waitForSelector("[data-workspace-season-one-frame]", {
           timeout: 30_000,
         });
-        await page.waitForTimeout(250);
+        await page.waitForFunction(
+          () => {
+            const text = document.body.innerText.toLowerCase();
+            return (
+              text.includes("live file preview:") ||
+              text.includes("live document loaded from")
+            );
+          },
+          { timeout: 10_000 },
+        );
 
         const metrics = await page.evaluate(() => {
           const visible = (selector) => {
@@ -110,9 +119,12 @@ async function run() {
             hasEvidence: text.includes("Evidence"),
             hasRunPanel: text.includes("Run panel"),
             hasLiveAdapterStatus: text.includes("Season One Live Adapter"),
-            hasLiveFocusedPath: text.includes("docs/DESIGN.md"),
+            hasLiveFocusedPath: text.includes("DESIGN.md"),
             hasLiveEvidenceCount: text.includes("3 evidence items"),
             hasLiveTerminalRun: text.includes("Season One browser smoke"),
+            hasLiveFilePreview:
+              normalizedText.includes("live file preview:") ||
+              normalizedText.includes("live document loaded from"),
             hasRebuildStudio: normalizedText.includes("rebuild studio"),
             hasLegacyReplacement: normalizedText.includes(
               "legacy shell replacement",
@@ -170,6 +182,10 @@ async function run() {
           [metrics.hasLiveFocusedPath, "live focused path should render"],
           [metrics.hasLiveEvidenceCount, "live evidence count should render"],
           [metrics.hasLiveTerminalRun, "live terminal run should render"],
+          [
+            metrics.hasLiveFilePreview,
+            "live active file preview should render",
+          ],
           [
             metrics.hasRebuildStudio,
             "visible rebuild studio marker should render",

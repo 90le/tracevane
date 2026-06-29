@@ -111,8 +111,7 @@ export function createWorkspaceSeasonOnePreviewModel(): WorkspaceSeasonOneProduc
     mission: {
       eyebrow: "First season rebuild",
       title: "Redesign the Workspace around one live task artifact.",
-      body:
-        "The new frame makes the editor or writing canvas dominant. Files, terminal, Git, AI, previews and evidence become task context instead of competing page chrome.",
+      body: "The new frame makes the editor or writing canvas dominant. Files, terminal, Git, AI, previews and evidence become task context instead of competing page chrome.",
       currentLabel: "Current mission",
       currentBody: "Replace the IDE shell with a focused AI work surface.",
       resourceSummary: "5 artifacts attached to this task stage",
@@ -125,33 +124,55 @@ export function createWorkspaceSeasonOnePreviewModel(): WorkspaceSeasonOneProduc
       { id: "evidence", label: "Evidence", icon: "evidence" },
     ],
     resources: [
-      { id: "design", label: "DESIGN.md", meta: "design contract", state: "open" },
-      { id: "workspace", label: "apps/web/workspace", meta: "frontend shell", state: "active" },
-      { id: "acceptance", label: "Season One acceptance", meta: "desktop · tablet · phone", state: "locked" },
-      { id: "evidence", label: "Evidence packet", meta: "tests · screenshots · diff", state: "ready" },
-      { id: "terminal", label: "Terminal run", meta: "smoke verified", state: "clean" },
+      {
+        id: "design",
+        label: "DESIGN.md",
+        meta: "design contract",
+        state: "open",
+      },
+      {
+        id: "workspace",
+        label: "apps/web/workspace",
+        meta: "frontend shell",
+        state: "active",
+      },
+      {
+        id: "acceptance",
+        label: "Season One acceptance",
+        meta: "desktop · tablet · phone",
+        state: "locked",
+      },
+      {
+        id: "evidence",
+        label: "Evidence packet",
+        meta: "tests · screenshots · diff",
+        state: "ready",
+      },
+      {
+        id: "terminal",
+        label: "Terminal run",
+        meta: "smoke verified",
+        state: "clean",
+      },
     ],
     phases: [
       {
         id: "frame",
         label: "Frame",
         status: "done",
-        copy:
-          "Topbar, rails, stage, panel, status and mobile switcher are separated as replaceable slots.",
+        copy: "Topbar, rails, stage, panel, status and mobile switcher are separated as replaceable slots.",
       },
       {
         id: "work-stage",
         label: "Work stage",
         status: "active",
-        copy:
-          "Coding, writing, preview and AI review converge around one visible task artifact.",
+        copy: "Coding, writing, preview and AI review converge around one visible task artifact.",
       },
       {
         id: "evidence",
         label: "Evidence",
         status: "next",
-        copy:
-          "Every AI handoff must attach files, commands, tests and approval state before apply.",
+        copy: "Every AI handoff must attach files, commands, tests and approval state before apply.",
       },
     ],
     aiPartner: {
@@ -182,16 +203,14 @@ export function createWorkspaceSeasonOnePreviewModel(): WorkspaceSeasonOneProduc
       {
         id: "review-loop",
         label: "Review loop",
-        body:
-          "Human notes, AI proposals and evidence review stay beside the work instead of hiding in another page.",
+        body: "Human notes, AI proposals and evidence review stay beside the work instead of hiding in another page.",
         icon: "ai",
         tone: "violet",
       },
       {
         id: "recovery-model",
         label: "Recovery model",
-        body:
-          "Layout reset, staged apply and rollback affordances are designed into the shell from day one.",
+        body: "Layout reset, staged apply and rollback affordances are designed into the shell from day one.",
         icon: "timer",
         tone: "amber",
       },
@@ -199,8 +218,7 @@ export function createWorkspaceSeasonOnePreviewModel(): WorkspaceSeasonOneProduc
     evidence: {
       badge: "Evidence",
       title: "Approval cockpit",
-      body:
-        "The right rail is for proof, risk and handoff state—not another decorative sidebar.",
+      body: "The right rail is for proof, risk and handoff state—not another decorative sidebar.",
     },
     runPanel: {
       title: "Run panel",

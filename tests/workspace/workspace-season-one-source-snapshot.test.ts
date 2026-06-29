@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 
 import {
+  createWorkspaceSeasonOneActiveFileContentSnapshot,
+  createWorkspaceSeasonOneActiveFileReadParams,
   createWorkspaceSeasonOneAdapterInputFromSnapshot,
   createWorkspaceSeasonOneAiContextSnapshot,
   createWorkspaceSeasonOneDemoSourceSnapshot,
@@ -14,8 +16,8 @@ const snapshot = createWorkspaceSeasonOneDemoSourceSnapshot();
 const secondSnapshot = createWorkspaceSeasonOneDemoSourceSnapshot();
 
 assert.notEqual(snapshot.openFiles, secondSnapshot.openFiles);
-assert.equal(snapshot.activePath, "docs/DESIGN.md");
-assert.equal(snapshot.openFiles?.[0], "docs/DESIGN.md");
+assert.equal(snapshot.activePath, "DESIGN.md");
+assert.equal(snapshot.openFiles?.[0], "DESIGN.md");
 
 const adapterInput = createWorkspaceSeasonOneAdapterInputFromSnapshot({
   rootLabel: "  project-root  ",
@@ -52,6 +54,67 @@ const fallback = createWorkspaceSeasonOneAdapterInputFromSnapshot({
 assert.equal(fallback.activePath, "notes.md");
 assert.equal(fallback.terminalState, "idle");
 assert.equal(fallback.agentState, "idle");
+
+const readParams = createWorkspaceSeasonOneActiveFileReadParams({
+  rootLabel: "project-root",
+  activePath: "DESIGN.md",
+});
+assert.deepEqual(readParams, {
+  rootId: "project-root",
+  path: "DESIGN.md",
+  limit: 16000,
+});
+assert.equal(
+  createWorkspaceSeasonOneActiveFileReadParams({ rootLabel: "project-root" }),
+  null,
+);
+
+const contentSnapshot = createWorkspaceSeasonOneActiveFileContentSnapshot(
+  {
+    checkedAt: "2026-06-29T00:00:00.000Z",
+    rootId: "project-root",
+    path: "DESIGN.md",
+    absolutePath: "/project/DESIGN.md",
+    name: "DESIGN.md",
+    ext: "md",
+    size: 42,
+    modifiedAt: "2026-06-29T00:00:00.000Z",
+    mimeType: "text/markdown",
+    textLike: true,
+    imageLike: false,
+    editable: true,
+    truncated: false,
+    contentOffset: 0,
+    contentBytes: 42,
+    readLimitBytes: 16000,
+    content: "# Live design\n\nSeason One reads real files.",
+    mode: "0644",
+    permissions: "rw-r--r--",
+    uid: 1000,
+    gid: 1000,
+  },
+  {
+    rootLabel: "project-root",
+    activePath: "docs/Old.md",
+    openFiles: ["docs/Old.md"],
+  },
+);
+assert.equal(contentSnapshot.activePath, "DESIGN.md");
+assert.equal(
+  contentSnapshot.activeContent,
+  "# Live design\n\nSeason One reads real files.",
+);
+assert.equal(contentSnapshot.activeContentLanguage, "md");
+assert.equal(contentSnapshot.activeContentLabel, "DESIGN.md · 42 bytes");
+assert.equal(contentSnapshot.activeContentEditable, true);
+
+const contentAdapterInput =
+  createWorkspaceSeasonOneAdapterInputFromSnapshot(contentSnapshot);
+assert.equal(
+  contentAdapterInput.activeContent,
+  "# Live design\n\nSeason One reads real files.",
+);
+assert.equal(contentAdapterInput.activeContentLanguage, "md");
 
 const stored = createWorkspaceSeasonOneStoredSessionSnapshot({
   getItem(key) {
@@ -154,17 +217,17 @@ const defaultRootSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot({
 });
 
 assert.equal(defaultRootSnapshot?.rootLabel, "project-root");
-assert.equal(defaultRootSnapshot?.activePath, "docs/DESIGN.md");
+assert.equal(defaultRootSnapshot?.activePath, "DESIGN.md");
 assert.equal(defaultRootSnapshot?.evidenceItems, 3);
 assert.equal(defaultRootSnapshot?.aiContextItems, 2);
 assert.equal(createWorkspaceSeasonOneFilesSummarySnapshot(undefined), null);
 
 const validAiContextItem = {
-  id: "document:docs/DESIGN.md",
+  id: "document:DESIGN.md",
   kind: "document",
-  path: "docs/DESIGN.md",
+  path: "DESIGN.md",
   title: "DESIGN.md",
-  context: "@document\npath: docs/DESIGN.md",
+  context: "@document\npath: DESIGN.md",
   addedAt: "2026-06-29T00:00:00.000Z",
 };
 const aiContextSnapshot = createWorkspaceSeasonOneAiContextSnapshot({

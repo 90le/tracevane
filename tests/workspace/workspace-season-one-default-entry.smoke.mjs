@@ -27,7 +27,16 @@ async function run() {
     await page.waitForSelector("[data-workspace-season-one-frame]", {
       timeout: 30_000,
     });
-    await page.waitForTimeout(250);
+    await page.waitForFunction(
+      () => {
+        const text = document.body.innerText.toLowerCase();
+        return (
+          text.includes("live file preview:") ||
+          text.includes("live document loaded from")
+        );
+      },
+      { timeout: 10_000 },
+    );
 
     const metrics = await page.evaluate(() => {
       const text = document.body.innerText.toLowerCase();
@@ -42,6 +51,9 @@ async function run() {
         hasRebuildStudio: text.includes("rebuild studio"),
         hasLegacyReplacement: text.includes("legacy shell replacement"),
         hasCommandDeck: text.includes("command deck"),
+        hasLiveFilePreview:
+          text.includes("live file preview:") ||
+          text.includes("live document loaded from"),
         hasOldWorkbenchOnlyTitle: text.includes("工作区 · tracevane"),
       };
     });

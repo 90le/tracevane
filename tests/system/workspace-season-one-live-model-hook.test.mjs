@@ -27,7 +27,9 @@ test("Season One route gets live model through a replaceable hook", () => {
   assert.doesNotMatch(page, /createWorkspaceSeasonOneLiveModel\(/);
   assert.doesNotMatch(page, /seasonOneLiveDemoModel/);
 
+  assert.match(hook, /useFileReadQuery/);
   assert.match(hook, /useFilesSummaryQuery/);
+  assert.match(hook, /FilesReadPayload/);
   assert.match(hook, /FilesSummaryPayload/);
   assert.match(hook, /WorkspaceSeasonOneSourceSnapshot/);
   assert.match(hook, /WorkspaceSeasonOneLiveModelState/);
@@ -39,6 +41,8 @@ test("Season One route gets live model through a replaceable hook", () => {
   );
   assert.match(hook, /WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY/);
   assert.match(hook, /WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY/);
+  assert.match(hook, /createWorkspaceSeasonOneActiveFileReadParams/);
+  assert.match(hook, /createWorkspaceSeasonOneActiveFileContentSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneStoredSessionSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneAiContextSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneEvidenceSnapshot/);
@@ -47,6 +51,7 @@ test("Season One route gets live model through a replaceable hook", () => {
   assert.match(hook, /isWorkspaceSeasonOneEvidenceRecord/);
   assert.match(hook, /createWorkspaceSeasonOneFilesSummarySnapshot/);
   assert.match(hook, /filesSummary\.data/);
+  assert.match(hook, /activeFileRead\.data/);
   assert.match(hook, /selectWorkspaceSeasonOneRoot/);
   assert.match(
     hook,

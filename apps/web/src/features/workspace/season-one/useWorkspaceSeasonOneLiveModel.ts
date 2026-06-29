@@ -1,6 +1,9 @@
 import * as React from "react";
 
-import { useFilesSummaryQuery } from "../../../lib/query/files";
+import {
+  useFileReadQuery,
+  useFilesSummaryQuery,
+} from "../../../lib/query/files";
 import { WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY } from "../shared/WorkspaceAiContextBasket";
 import { WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY } from "../shared/WorkspaceEvidenceBasket";
 
@@ -9,7 +12,10 @@ import {
   type WorkspaceSeasonOneLiveAdapterInput,
 } from "../shared/WorkspaceSeasonOneLiveAdapter";
 import type { WorkspaceSeasonOneProductModel } from "../shared/WorkspaceSeasonOneProductModel";
-import type { FilesSummaryPayload } from "../../../../../../types/files";
+import type {
+  FilesReadPayload,
+  FilesSummaryPayload,
+} from "../../../../../../types/files";
 
 export interface WorkspaceSeasonOneSourceSnapshot {
   rootLabel?: string;
@@ -18,6 +24,10 @@ export interface WorkspaceSeasonOneSourceSnapshot {
   gitChanges?: number;
   evidenceItems?: number;
   aiContextItems?: number;
+  activeContent?: string | null;
+  activeContentLanguage?: string | null;
+  activeContentLabel?: string;
+  activeContentEditable?: boolean;
   terminalState?: WorkspaceSeasonOneLiveAdapterInput["terminalState"];
   agentState?: WorkspaceSeasonOneLiveAdapterInput["agentState"];
   lastRunLabel?: string;
@@ -32,9 +42,9 @@ const WORKSPACE_SESSION_STORAGE_KEY = "tracevane.workspace.session.v1";
 
 const DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT: WorkspaceSeasonOneSourceSnapshot = {
   rootLabel: "project-root",
-  activePath: "docs/DESIGN.md",
+  activePath: "DESIGN.md",
   openFiles: [
-    "docs/DESIGN.md",
+    "DESIGN.md",
     "apps/web/src/features/workspace/shared/WorkspaceSeasonOneLiveAdapter.ts",
     "tests/workspace/workspace-season-one-responsive.smoke.mjs",
   ],
@@ -88,12 +98,21 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
           : "demo",
     } as const;
   }, [aiContextSnapshot, evidenceSnapshot, filesSummary.data, storedSnapshot]);
-  const adapterInput = React.useMemo(
+  const activeFileRead = useFileReadQuery(
+    createWorkspaceSeasonOneActiveFileReadParams(liveState.sourceSnapshot),
+    { staleTime: 30_000, refetchOnWindowFocus: false },
+  );
+  const contentSnapshot = React.useMemo(
     () =>
-      createWorkspaceSeasonOneAdapterInputFromSnapshot(
+      createWorkspaceSeasonOneActiveFileContentSnapshot(
+        activeFileRead.data,
         liveState.sourceSnapshot,
       ),
-    [liveState.sourceSnapshot],
+    [activeFileRead.data, liveState.sourceSnapshot],
+  );
+  const adapterInput = React.useMemo(
+    () => createWorkspaceSeasonOneAdapterInputFromSnapshot(contentSnapshot),
+    [contentSnapshot],
   );
   const model = React.useMemo(
     () => createWorkspaceSeasonOneLiveModel(adapterInput),
@@ -103,8 +122,36 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
   return {
     model,
     adapterInput,
-    sourceSnapshot: liveState.sourceSnapshot,
+    sourceSnapshot: contentSnapshot,
     source: liveState.source,
+  };
+}
+
+export function createWorkspaceSeasonOneActiveFileReadParams(
+  snapshot: WorkspaceSeasonOneSourceSnapshot,
+): { rootId: string; path: string; limit?: number } | null {
+  const rootId = normalizeText(snapshot.rootLabel);
+  const path = normalizeText(snapshot.activePath);
+  if (!rootId || !path) return null;
+  return { rootId, path, limit: 16_000 };
+}
+
+export function createWorkspaceSeasonOneActiveFileContentSnapshot(
+  file: FilesReadPayload | undefined,
+  baseSnapshot: WorkspaceSeasonOneSourceSnapshot,
+): WorkspaceSeasonOneSourceSnapshot {
+  const snapshot = cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot);
+  if (!file) return snapshot;
+  return {
+    ...snapshot,
+    activePath: file.path || snapshot.activePath,
+    activeContent: file.content,
+    activeContentLanguage:
+      file.ext || inferWorkspaceSeasonOneLanguage(file.path),
+    activeContentLabel: file.truncated
+      ? `${file.name} · preview truncated at ${file.contentBytes} bytes`
+      : `${file.name} · ${file.contentBytes} bytes`,
+    activeContentEditable: file.editable,
   };
 }
 
@@ -246,6 +293,10 @@ export function createWorkspaceSeasonOneAdapterInputFromSnapshot(
     gitChanges: normalizeCount(snapshot.gitChanges),
     evidenceItems: normalizeCount(snapshot.evidenceItems),
     aiContextItems: normalizeCount(snapshot.aiContextItems),
+    activeContent: normalizeText(snapshot.activeContent),
+    activeContentLanguage: normalizeText(snapshot.activeContentLanguage),
+    activeContentLabel: normalizeText(snapshot.activeContentLabel),
+    activeContentEditable: snapshot.activeContentEditable,
     terminalState: snapshot.terminalState ?? "idle",
     agentState: snapshot.agentState ?? "idle",
     lastRunLabel: normalizeText(snapshot.lastRunLabel),
@@ -300,6 +351,12 @@ function isGitDiffTarget(value: unknown) {
     typeof target.untracked === "boolean" &&
     typeof target.kind === "string"
   );
+}
+
+function inferWorkspaceSeasonOneLanguage(path?: string | null) {
+  const ext = path?.split(".").pop()?.toLowerCase();
+  if (!ext || ext === path) return undefined;
+  return ext;
 }
 
 function selectWorkspaceSeasonOneRoot(
