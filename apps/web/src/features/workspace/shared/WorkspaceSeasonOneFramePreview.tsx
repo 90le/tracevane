@@ -10,7 +10,6 @@ import {
   FileCode2,
   FileText,
   GitBranch,
-  MessageSquareText,
   PanelBottom,
   PenLine,
   Play,

@@ -21,4 +21,5 @@ export * from "./WorkspaceEvidenceMobileSheet";
 export * from "./WorkspaceEvidenceResponsiveLauncher";
 export * from "./WorkspaceSeasonOneFrame";
 export * from "./WorkspaceSeasonOneProductModel";
+export * from "./WorkspaceSeasonOneLiveAdapter";
 export * from "./WorkspaceSeasonOneFramePreview";
