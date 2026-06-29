@@ -22,10 +22,10 @@ test("Season One responsive contract covers desktop tablet and phone explicitly"
   assert.match(frame, /className="md:hidden"/);
   assert.match(frame, /data-workspace-season-one-mobile-switcher/);
   assert.match(preview, /Workspace mobile task switcher/);
-  assert.match(preview, /\['Files', FileText\]/);
-  assert.match(preview, /\['Stage', Braces\]/);
-  assert.match(preview, /\['AI', Bot\]/);
-  assert.match(preview, /\['Evidence', ShieldCheck\]/);
-  assert.match(preview, /\['Run', Play\]/);
+  assert.match(preview, /[\[\{]\s*[\"']Files[\"'],?\s*(?:icon:\s*)?FileText/);
+  assert.match(preview, /[\[\{]\s*[\"']Stage[\"'],?\s*(?:icon:\s*)?Braces/);
+  assert.match(preview, /[\[\{]\s*[\"']AI[\"'],?\s*(?:icon:\s*)?Bot/);
+  assert.match(preview, /[\[\{]\s*[\"']Evidence[\"'],?\s*(?:icon:\s*)?ShieldCheck/);
+  assert.match(preview, /[\[\{]\s*[\"']Run[\"'],?\s*(?:icon:\s*)?Play/);
   assert.match(router, /path="\/workspace\/season-one"/);
 });
