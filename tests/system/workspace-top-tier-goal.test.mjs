@@ -83,6 +83,8 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   const readme = readRoot("docs/README.md");
   assert.match(readme, /Workspace全球顶级AI编程IDE工作区Goal蓝图\.md/);
   assert.match(readme, /当前 Codex Goal 的最高执行宪章/);
+  assert.match(readme, /WorkspaceIDE重建设计执行Backlog\.md/);
+  assert.match(readme, /Shell Architecture、Terminal First、Files\/Editor、Search、Git、Command\/Status、Responsive Hardening、ADR/);
   assert.match(readme, /终端、前后端边界、桌面\/手机 UI\/UX/);
   assert.match(readme, /文件\/终端\/Git\/搜索\/证据\/Agent handoff 后端设计/);
   assert.match(readme, /文件管理、代码编辑器、终端、Git、搜索、上下文证据/);

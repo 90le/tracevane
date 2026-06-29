@@ -8,17 +8,18 @@
 按顺序阅读：
 
 1. `Workspace全球顶级AI编程IDE工作区Goal蓝图.md` — 当前 Codex Goal 的最高执行宪章；当前主线是 IDE-first / AI 编程 IDE 工作区；先完成工作区本体、终端、前后端边界、桌面/手机 UI/UX，写作、渲染、预览增强均不进入当前阶段。
-2. `WorkspaceIDE工作区现状审计与下一步清理计划.md` — Phase 1 UI/UX 全面重设计审计：IDE 主体、终端、Git、搜索、文件/编辑器/命令/布局、电脑/手机端，以及当前 dirty 文件约束。
-3. `WorkspaceIDE-UIUX重设计验收.md` — IDE 主体、Terminal、Git、Search、Files/Editor、Command/Status、Desktop/Mobile 的 UI/UX 验收合同。
-4. `整体目标.md` — Tracevane 当前最高目标和领域边界。
-5. `产品需求.md` — 产品需求、核心域与近期优先级。
-6. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
-7. `Workspace架构.md` — Workspace 总体系统架构和边界。
-8. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
-9. `Workspace后端设计.md` — 文件/终端/Git/搜索/证据/Agent handoff 后端设计；预览/渲染仅作为未来扩展边界。
-10. `文件管理设计.md` — Workspace 文件管理目标。
-11. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
-12. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁.
+2. `WorkspaceIDE重建设计执行Backlog.md` — 当前执行顺序：Shell Architecture、Terminal First、Files/Editor、Search、Git、Command/Status、Responsive Hardening、ADR；保留全局顶栏，不做说明页式 Workspace。
+3. `WorkspaceIDE工作区现状审计与下一步清理计划.md` — Phase 1 UI/UX 全面重设计审计：IDE 主体、终端、Git、搜索、文件/编辑器/命令/布局、电脑/手机端，以及当前 dirty 文件约束。
+4. `WorkspaceIDE-UIUX重设计验收.md` — IDE 主体、Terminal、Git、Search、Files/Editor、Command/Status、Desktop/Mobile 的 UI/UX 验收合同。
+5. `整体目标.md` — Tracevane 当前最高目标和领域边界。
+6. `产品需求.md` — 产品需求、核心域与近期优先级。
+7. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
+8. `Workspace架构.md` — Workspace 总体系统架构和边界。
+9. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
+10. `Workspace后端设计.md` — 文件/终端/Git/搜索/证据/Agent handoff 后端设计；预览/渲染仅作为未来扩展边界。
+11. `文件管理设计.md` — Workspace 文件管理目标。
+12. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
+13. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁.
 
 ## 2. 仍有效领域文档
 
