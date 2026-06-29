@@ -568,8 +568,12 @@ test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /function sanitizeIdeLayoutSnapshots/);
   assert.match(shellSource, /ide\.layout\.snapshot\.save/);
   assert.match(shellSource, /ide\.layout\.snapshot\.restore\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /ide\.layout\.snapshot\.delete\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /删除布局快照：\$\{snapshot\.name\}/);
+  assert.match(shellSource, /run: \(\) => deleteLayoutSnapshot\(snapshot\.id\)/);
   assert.match(shellSource, /data-ide-layout-snapshot-save/);
   assert.match(shellSource, /data-ide-layout-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /aria-label=\{`删除布局快照 \$\{snapshot\.name\}`\}/);
   assert.match(shellSource, /快照: \{layoutSnapshots\.length\}/);
   assert.match(cssSource, /workspace-ide-shell__layout-snapshots/);
   assert.match(cssSource, /workspace-ide-shell__layout-snapshot/);

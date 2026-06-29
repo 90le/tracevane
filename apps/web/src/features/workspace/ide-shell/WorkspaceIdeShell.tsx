@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   TerminalSquare,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
@@ -1039,6 +1040,16 @@ export function WorkspaceIdeShell() {
         surface: "layout" as const,
         icon: <RotateCcw />,
         run: () => restoreLayoutSnapshot(snapshot),
+      })),
+      ...layoutSnapshots.map((snapshot) => ({
+        id: `ide.layout.snapshot.delete.${snapshot.id}`,
+        group: "布局" as const,
+        label: `删除布局快照：${snapshot.name}`,
+        description: `删除 ${formatSnapshotTime(snapshot.createdAt)} 保存的 IDE 布局快照`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Trash2 />,
+        run: () => deleteLayoutSnapshot(snapshot.id),
       })),
     ],
     [layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
