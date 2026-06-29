@@ -334,6 +334,19 @@ export function WorkspaceIdeShell() {
         return;
       }
       if (mod && event.altKey) {
+        if (event.key === "\\") {
+          event.preventDefault();
+          if (activeDockFocus) {
+            openDockPlacement(activeDockFocus.placement);
+            setDockSplitMode(activeDockFocus.placement, event.shiftKey ? "horizontal" : "vertical");
+          }
+          return;
+        }
+        if (!event.shiftKey && event.key === "0") {
+          event.preventDefault();
+          if (activeDockFocus) mergeDockSplitGroups(activeDockFocus.placement, activeDockFocus.role);
+          return;
+        }
         if (event.shiftKey && event.key === "Tab") {
           event.preventDefault();
           moveActiveDockPaneToOppositeGroup();
@@ -1005,6 +1018,7 @@ export function WorkspaceIdeShell() {
         group: "窗格",
         label: "当前 Dock 左右拆分",
         description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 变成左右窗格组` : "先聚焦一个 Dock 窗格组，再拆分当前 Dock",
+        shortcut: "⌘⌥\\",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <Columns3 />,
@@ -1020,6 +1034,7 @@ export function WorkspaceIdeShell() {
         group: "窗格",
         label: "当前 Dock 上下拆分",
         description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 变成上下窗格组` : "先聚焦一个 Dock 窗格组，再拆分当前 Dock",
+        shortcut: "⌘⌥⇧\\",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <PanelBottom />,
@@ -1049,6 +1064,7 @@ export function WorkspaceIdeShell() {
         group: "窗格",
         label: "关闭当前 Dock 拆分",
         description: activeDockFocus ? `恢复当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 为单一窗格组` : "先聚焦一个 Dock 窗格组，再关闭拆分",
+        shortcut: "⌘⌥0",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <RotateCcw />,

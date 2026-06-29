@@ -565,9 +565,12 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /movePaneToPlacement\(pane\.id, activeDockFocus\.placement, undefined, activeDockFocus\.role\)/);
   assert.match(shellSource, /const activeDockLayoutCommands = React\.useMemo<WorkspaceCommand\[\]>/);
   assert.match(shellSource, /ide\.dock\.active\.split-right/);
+  assert.match(shellSource, /shortcut: "⌘⌥\\\\"/);
   assert.match(shellSource, /ide\.dock\.active\.split-down/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧\\\\"/);
   assert.match(shellSource, /ide\.dock\.active\.swap-groups/);
   assert.match(shellSource, /ide\.dock\.active\.close-split/);
+  assert.match(shellSource, /shortcut: "⌘⌥0"/);
   assert.match(shellSource, /mergeDockSplitGroups\(activeDockFocus\.placement, activeDockFocus\.role\)/);
   assert.match(shellSource, /ide\.dock\.active\.focus-other-group/);
   assert.match(shellSource, /切换当前 Dock 主副窗格组焦点/);
@@ -579,6 +582,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /shortcut: "⌘⌥⇧Tab"/);
   assert.match(shellSource, /disabled: !canMoveActiveDockPaneToOppositeGroup\(\)/);
   assert.match(shellSource, /run: moveActiveDockPaneToOppositeGroup/);
+  assert.match(shellSource, /if \(event\.key === "\\\\"\)/);
+  assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, event\.shiftKey \? "horizontal" : "vertical"\)/);
+  assert.match(shellSource, /if \(!event\.shiftKey && event\.key === "0"\)/);
+  assert.match(shellSource, /if \(activeDockFocus\) mergeDockSplitGroups\(activeDockFocus\.placement, activeDockFocus\.role\)/);
   assert.match(shellSource, /event\.shiftKey && event\.key === "Tab"/);
   assert.match(shellSource, /moveActiveDockPaneToOppositeGroup\(\)/);
   assert.match(shellSource, /event\.key === "Tab"/);
