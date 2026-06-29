@@ -802,6 +802,62 @@ export function WorkspaceIdeShell() {
     [activeBottomPane, activeLeftPane, activeRightPane, activeTopPane],
   );
 
+  const mobilePanelCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.mobile.panel.editor",
+        group: "布局",
+        label: "手机面板：编辑器",
+        description: "在窄屏/手机布局中显示主编辑器区域",
+        risk: "safe",
+        surface: "layout",
+        icon: <Code2 />,
+        run: () => showMobilePanel("editor"),
+      },
+      {
+        id: "ide.mobile.panel.top",
+        group: "布局",
+        label: "手机面板：顶部 Dock",
+        description: "在窄屏/手机布局中显示顶部 Dock",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => showMobilePanel("top"),
+      },
+      {
+        id: "ide.mobile.panel.left",
+        group: "布局",
+        label: "手机面板：左侧工具 Dock",
+        description: "在窄屏/手机布局中显示文件、搜索、Git 等左侧工具",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelLeft />,
+        run: () => showMobilePanel("left"),
+      },
+      {
+        id: "ide.mobile.panel.right",
+        group: "布局",
+        label: "手机面板：右侧 AI Dock",
+        description: "在窄屏/手机布局中显示 AI、Outline、扩展等右侧区域",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelRight />,
+        run: () => showMobilePanel("right"),
+      },
+      {
+        id: "ide.mobile.panel.bottom",
+        group: "布局",
+        label: "手机面板：底部终端 Dock",
+        description: "在窄屏/手机布局中显示终端、问题、输出等底部区域",
+        risk: "safe",
+        surface: "layout",
+        icon: <TerminalSquare />,
+        run: () => showMobilePanel("bottom"),
+      },
+    ],
+    [],
+  );
+
   const activeDockLayoutCommands = React.useMemo<WorkspaceCommand[]>(
     () => [
       {
@@ -1056,8 +1112,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -1102,6 +1158,14 @@ export function WorkspaceIdeShell() {
     setLeftOpen(true);
     setRightOpen(true);
     setBottomOpen(true);
+  }
+
+  function showMobilePanel(panel: MobilePanel) {
+    if (panel === "top") setTopOpen(true);
+    if (panel === "left") setLeftOpen(true);
+    if (panel === "right") setRightOpen(true);
+    if (panel === "bottom") setBottomOpen(true);
+    setMobilePanel(panel);
   }
 
   function currentIdeLayoutState(): IdeLayoutState {
@@ -1671,44 +1735,32 @@ export function WorkspaceIdeShell() {
           </Button>
         </div>
         <div className="workspace-ide-shell__mobile-switcher" aria-label="手机工作区面板切换">
-          <button type="button" data-active={mobilePanel === "editor"} onClick={() => setMobilePanel("editor")}>编辑</button>
+          <button type="button" data-active={mobilePanel === "editor"} onClick={() => showMobilePanel("editor")}>编辑</button>
           <button
             type="button"
             data-active={mobilePanel === "top"}
-            onClick={() => {
-              setTopOpen(true);
-              setMobilePanel("top");
-            }}
+            onClick={() => showMobilePanel("top")}
           >
             顶部
           </button>
           <button
             type="button"
             data-active={mobilePanel === "left"}
-            onClick={() => {
-              setLeftOpen(true);
-              setMobilePanel("left");
-            }}
+            onClick={() => showMobilePanel("left")}
           >
             工具
           </button>
           <button
             type="button"
             data-active={mobilePanel === "right"}
-            onClick={() => {
-              setRightOpen(true);
-              setMobilePanel("right");
-            }}
+            onClick={() => showMobilePanel("right")}
           >
             AI
           </button>
           <button
             type="button"
             data-active={mobilePanel === "bottom"}
-            onClick={() => {
-              setBottomOpen(true);
-              setMobilePanel("bottom");
-            }}
+            onClick={() => showMobilePanel("bottom")}
           >
             终端
           </button>
