@@ -77,7 +77,7 @@ export function createSearchPanelCommands({
       run: clearReplace,
     },
     {
-      id: "search.panel.prepareReplacePreview",
+      id: "search.panel.prepareReplacePlan",
       group: "编辑器",
       label: "搜索：审查跨文件替换计划",
       description:
@@ -89,7 +89,7 @@ export function createSearchPanelCommands({
       run: prepareReplacePlan,
     },
     {
-      id: "search.panel.applyReplacePreview",
+      id: "search.panel.applyReplacePlan",
       group: "编辑器",
       label: "搜索：应用本次替换计划",
       description: hasReplacePlan

@@ -470,8 +470,8 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.match(searchCommands, /hasReplacePlan/);
   assert.match(searchCommands, /prepareReplacePlan/);
   assert.match(searchCommands, /applyReplacePlan/);
-  assert.match(searchCommands, /search\.panel\.prepareReplacePreview/);
-  assert.match(searchCommands, /search\.panel\.applyReplacePreview/);
+  assert.match(searchCommands, /search\.panel\.prepareReplacePlan/);
+  assert.match(searchCommands, /search\.panel\.applyReplacePlan/);
   assert.match(searchCommands, /搜索：应用本次替换计划/);
   assert.match(searchPanel, /项目搜索/);
   assert.match(searchPanel, /data-workspace-search-panel-summary/);
@@ -496,6 +496,8 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.doesNotMatch(searchPanel, /预览替换/);
   assert.doesNotMatch(searchPanel, /ReplacePreviewDialog/);
   assert.doesNotMatch(searchPanel, /prepareReplacePreview/);
+  assert.doesNotMatch(searchCommands, /search\.panel\.prepareReplacePreview/);
+  assert.doesNotMatch(searchCommands, /search\.panel\.applyReplacePreview/);
   assert.doesNotMatch(searchPanel, /selectedReplaceItems/);
   assert.doesNotMatch(searchPanel, /全选本次预览/);
   assert.doesNotMatch(searchPanel, /复制 AI 上下文/);
