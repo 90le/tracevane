@@ -39,7 +39,7 @@ export interface TerminalPanelCommandRegistryInput {
   moveSessionToEditor: (session: TerminalSessionDescriptor) => void;
   clearSession: (sessionId: string) => void;
   copyOutput: (sessionId: string) => void;
-  copyAiContext: (session: TerminalSessionDescriptor) => void;
+  copyEvidenceContext: (session: TerminalSessionDescriptor) => void;
   insertCwd: (sessionId: string, cwd: string) => void;
   endSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
@@ -72,7 +72,7 @@ export function createTerminalPanelCommands({
   moveSessionToEditor,
   clearSession,
   copyOutput,
-  copyAiContext,
+  copyEvidenceContext,
   insertCwd,
   endSession,
   deleteSession,
@@ -206,7 +206,7 @@ export function createTerminalPanelCommands({
       },
     },
     {
-      id: "terminal.panel.copyAiContext",
+      id: "terminal.panel.copyEvidenceContext",
       group: "终端",
       label: "终端：复制上下文证据",
       description: activeSessionId
@@ -215,7 +215,7 @@ export function createTerminalPanelCommands({
       icon: <MessageSquarePlus />,
       disabled: !activeSession,
       run: () => {
-        if (activeSession) copyAiContext(activeSession);
+        if (activeSession) copyEvidenceContext(activeSession);
       },
     },
     {

@@ -55,7 +55,7 @@ export interface TerminalSessionActionRegistryInput {
   moveSessionToEditor: (session: TerminalSessionDescriptor) => void;
   clearSession: (sessionId: string) => void;
   copyOutput: (sessionId: string) => void;
-  copyAiContext: (session: TerminalSessionDescriptor) => void;
+  copyEvidenceContext: (session: TerminalSessionDescriptor) => void;
   insertCwd: (sessionId: string, cwd: string) => void;
   endSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => void;
@@ -74,7 +74,7 @@ export function createTerminalSessionActions({
   moveSessionToEditor,
   clearSession,
   copyOutput,
-  copyAiContext,
+  copyEvidenceContext,
   insertCwd,
   endSession,
   deleteSession,
@@ -151,7 +151,7 @@ export function createTerminalSessionActions({
       id: "terminal.session.copyEvidenceContext",
       label: "复制上下文证据",
       icon: <MessageSquarePlus />,
-      run: () => copyAiContext(session),
+      run: () => copyEvidenceContext(session),
     },
     {
       id: "terminal.session.end",
