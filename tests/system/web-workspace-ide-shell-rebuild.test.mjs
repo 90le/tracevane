@@ -269,6 +269,12 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function resizeDockSplitFromKeyboard/);
   assert.match(shellSource, /function DockPaneFrame/);
   assert.match(shellSource, /function DockSplitHandle/);
+  assert.match(shellSource, /secondaryLeftPane/);
+  assert.match(shellSource, /splitMode=\{dockSplitModes\.left\}/);
+  assert.match(shellSource, /splitRatio=\{dockSplitRatios\.left\}/);
+  assert.match(shellSource, /renderPane=\{\(paneId, role\) =>/);
+  assert.match(shellSource, /revealRequest=\{role === "primary" \? explorerRevealRequest : null\}/);
+  assert.match(shellSource, /onSearchCommandsChange=\{role === "primary" \? setSearchCommands : ignoreWorkspaceCommands\}/);
   assert.match(shellSource, /data-ide-dock-split=\{shouldSplit \? splitMode : "single"\}/);
   assert.match(shellSource, /data-ide-dock-split-pane=\{role\}/);
   assert.match(shellSource, /data-ide-dock-split-handle=\{mode\}/);

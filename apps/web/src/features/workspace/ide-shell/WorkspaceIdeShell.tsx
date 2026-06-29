@@ -141,6 +141,8 @@ const LazyWorkspaceTerminal = React.lazy(() =>
   })),
 );
 
+const ignoreWorkspaceCommands = () => undefined;
+
 export function WorkspaceIdeShell() {
   const filesSummary = useFilesSummaryQuery();
   const roots = filesSummary.data?.roots ?? [];
@@ -221,6 +223,7 @@ export function WorkspaceIdeShell() {
   const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0];
   const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0];
   const secondaryTopPane = secondaryDockPane(topPaneIds, activeTopPane);
+  const secondaryLeftPane = secondaryDockPane(leftPaneIds, activeLeftPane);
   const secondaryRightPane = secondaryDockPane(rightPaneIds, activeRightPane);
   const secondaryBottomPane = secondaryDockPane(bottomPaneIds, activeBottomPane);
 
@@ -1065,28 +1068,44 @@ export function WorkspaceIdeShell() {
                 <PaneDockControls
                   paneId={activeLeftPane}
                   placement="left"
+                  splitMode={dockSplitModes.left}
                   onMovePane={movePaneToPlacement}
+                  onSetDockSplitMode={setDockSplitMode}
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
                   onCloseDock={() => setLeftOpen(false)}
                 />
-                <LeftPane
-                  activity={activeLeftPane}
-                  rootId={rootId}
-                  activePath={activePath}
+                <DockPaneFrame
+                  placement="left"
+                  splitMode={dockSplitModes.left}
+                  splitRatio={dockSplitRatios.left}
+                  primaryPane={activeLeftPane}
+                  secondaryPane={secondaryLeftPane}
                   workspaceDirectory={workspaceDirectory}
-                  revealRequest={explorerRevealRequest}
-                  onOpenFile={openFile}
-                  onOpenDiff={openDiff}
-                  onChangeRoot={setRootId}
-                  onWorkspaceDirectoryChange={setWorkspaceDirectory}
-                  onSearchCommandsChange={setSearchCommands}
-                  onGitCommandsChange={setGitCommands}
-                  onRevealInExplorer={revealInExplorer}
-                  onFocusTerminal={() => {
-                    setBottomPanel("terminal");
-                    setBottomOpen(true);
-                  }}
+                  onTerminalCommandsChange={setTerminalCommands}
+                  onRestore={resetPanePlacements}
+                  onStartSplitResize={startDockSplitResize}
+                  onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
+                  renderPane={(paneId, role) => (
+                    <LeftPane
+                      activity={paneId}
+                      rootId={rootId}
+                      activePath={activePath}
+                      workspaceDirectory={workspaceDirectory}
+                      revealRequest={role === "primary" ? explorerRevealRequest : null}
+                      onOpenFile={openFile}
+                      onOpenDiff={openDiff}
+                      onChangeRoot={setRootId}
+                      onWorkspaceDirectoryChange={setWorkspaceDirectory}
+                      onSearchCommandsChange={role === "primary" ? setSearchCommands : ignoreWorkspaceCommands}
+                      onGitCommandsChange={role === "primary" ? setGitCommands : ignoreWorkspaceCommands}
+                      onRevealInExplorer={revealInExplorer}
+                      onFocusTerminal={() => {
+                        setBottomPanel("terminal");
+                        setBottomOpen(true);
+                      }}
+                    />
+                  )}
                 />
               </>
             ) : (
@@ -1755,7 +1774,7 @@ function DockPaneFrame({
   onRestore: () => void;
   onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
-  renderPane?: (paneId: PaneId) => React.ReactNode;
+  renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
@@ -1763,7 +1782,7 @@ function DockPaneFrame({
   const render = (paneId: PaneId, role: "primary" | "secondary") => (
     <section className="workspace-ide-shell__dock-split-pane" data-ide-dock-split-pane={role} data-ide-dock-split-placement={placement}>
       {renderPane ? (
-        renderPane(paneId)
+        renderPane(paneId, role)
       ) : (
         <DockPaneContent panel={paneId} workspaceDirectory={workspaceDirectory} onTerminalCommandsChange={onTerminalCommandsChange} />
       )}
