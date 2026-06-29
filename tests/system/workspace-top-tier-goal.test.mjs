@@ -73,3 +73,13 @@ test("Workspace command palette has IDE command-center styling hooks", () => {
   assert.match(css, /data-workspace-command-palette-mobile-sheet/);
   assert.match(css, /generic AI prompt box/);
 });
+
+test("Workspace terminal commands treat terminal as a first-class IDE panel", () => {
+  const panelCommands = readWeb("features/workspace/terminal/terminalPanelCommands.tsx");
+  const sessionActions = readWeb("features/workspace/terminal/terminalSessionActions.tsx");
+  assert.match(panelCommands, /终端：停靠到 IDE 主工作区/);
+  assert.match(panelCommands, /一等 IDE 面板参与工作区布局/);
+  assert.match(sessionActions, /停靠到 IDE 主工作区/);
+  assert.doesNotMatch(panelCommands, /预留终端编辑器标签能力/);
+  assert.doesNotMatch(sessionActions, /移动到编辑区域/);
+});

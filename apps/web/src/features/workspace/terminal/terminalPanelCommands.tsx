@@ -169,10 +169,10 @@ export function createTerminalPanelCommands({
     {
       id: "terminal.panel.moveToEditor",
       group: "终端",
-      label: "终端：移动到编辑区域",
+      label: "终端：停靠到 IDE 主工作区",
       description: activeSessionId
-        ? "预留终端编辑器标签能力，后续接入 Dockview editor group"
-        : "当前没有可移动的终端会话",
+        ? "把当前终端作为一等 IDE 面板参与工作区布局，而不是伪装成编辑器标签"
+        : "当前没有可停靠的终端会话",
       icon: <MoveRight />,
       disabled: !activeSession?.canResume,
       run: () => {

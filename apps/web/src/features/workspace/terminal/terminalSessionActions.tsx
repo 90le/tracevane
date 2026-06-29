@@ -126,7 +126,7 @@ export function createTerminalSessionActions({
     },
     {
       id: "terminal.session.moveToEditor",
-      label: "移动到编辑区域",
+      label: "停靠到 IDE 主工作区",
       disabled: !session.canResume,
       icon: <MoveRight />,
       run: () => moveSessionToEditor(session),
