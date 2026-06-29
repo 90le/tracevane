@@ -38,8 +38,15 @@ test("new Workspace IDE shell is responsive for desktop tablet and phone", () =>
   assert.match(cssSource, /grid-template-columns: 72px var\(--ide-left-width\) var\(--ide-resize-width\) minmax\(0, 1fr\) var\(--ide-resize-width\) var\(--ide-right-width\)/);
   assert.match(cssSource, /@media \(max-width: 1100px\)/);
   assert.match(cssSource, /@media \(max-width: 760px\)/);
+  assert.match(cssSource, /min-height: 100dvh/);
+  assert.match(cssSource, /--ide-bottom-height: min\(42vh, 320px\)/);
   assert.match(cssSource, /grid-template-columns: 1fr/);
-  assert.match(cssSource, /flex-direction: row/);
+  assert.match(cssSource, /grid-template-rows: minmax\(0, 1fr\) 58px/);
+  assert.match(cssSource, /scroll-snap-type: x proximity/);
+  assert.match(cssSource, /env\(safe-area-inset-bottom\)/);
+  assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="vertical"\]/);
+  assert.match(cssSource, /cursor: row-resize/);
+  assert.match(cssSource, /workspace-ide-shell__layout-snapshot/);
 });
 
 test("Workspace uses the new IDE shell as the only native workspace entry", () => {
