@@ -126,6 +126,7 @@ const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
 
 interface IdeLayoutState {
+  editorGroupTabs?: EditorGroupTabs;
   topOpen?: boolean;
   leftOpen?: boolean;
   rightOpen?: boolean;
@@ -217,7 +218,7 @@ export function WorkspaceIdeShell() {
   const [activePathRootId, setActivePathRootId] = React.useState("");
   const [secondaryPath, setSecondaryPath] = React.useState<string | undefined>();
   const [secondaryPathRootId, setSecondaryPathRootId] = React.useState("");
-  const [editorGroupTabs, setEditorGroupTabs] = React.useState<EditorGroupTabs>({ primary: [], secondary: [] });
+  const [editorGroupTabs, setEditorGroupTabs] = React.useState<EditorGroupTabs>(() => sanitizeEditorGroupTabs(layoutState.editorGroupTabs));
   const [gitDiffTarget, setGitDiffTarget] = React.useState<WorkspaceGitDiffTarget | null>(null);
   const [searchRequest, setSearchRequest] = React.useState<WorkspaceEditorSearchRequest | null>(null);
   const [workspaceDirectory, setWorkspaceDirectory] = React.useState<WorkspaceDirectoryContext | null>(null);
@@ -283,9 +284,10 @@ export function WorkspaceIdeShell() {
       dockSplitModes,
       dockSplitRatios,
       dockPaneSelections,
+      editorGroupTabs,
       hiddenPanes,
     });
-  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1278,6 +1280,7 @@ export function WorkspaceIdeShell() {
       dockSplitModes,
       dockSplitRatios,
       dockPaneSelections,
+      editorGroupTabs,
       hiddenPanes,
     };
   }
@@ -1331,6 +1334,7 @@ export function WorkspaceIdeShell() {
     setPaneSizes({ ...DEFAULT_PANE_SIZES, ...sanitized.paneSizes });
     setEditorSplitMode(sanitized.editorSplitMode ?? "single");
     setEditorSplitRatio(sanitized.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
+    setEditorGroupTabs(sanitizeEditorGroupTabs(sanitized.editorGroupTabs));
     setTopPanel(nextGroups.top[0] ?? "output");
     setActivity(nextGroups.left[0] ?? "explorer");
     setRightPanel(nextGroups.right[0] ?? "ai");
@@ -3316,10 +3320,35 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     dockSplitModes: sanitizeDockSplitModes(value.dockSplitModes),
     dockSplitRatios: sanitizeDockSplitRatios(value.dockSplitRatios),
     dockPaneSelections: sanitizeDockPaneSelections(value.dockPaneSelections),
+    editorGroupTabs: sanitizeEditorGroupTabs(value.editorGroupTabs),
     hiddenPanes: sanitizeHiddenPanes(value.hiddenPanes),
   };
 }
 
+function sanitizeEditorGroupTabs(value: unknown): EditorGroupTabs {
+  if (!value || typeof value !== "object") return { primary: [], secondary: [] };
+  const tabs = value as Partial<EditorGroupTabs>;
+  return {
+    primary: sanitizeEditorTabs(tabs.primary),
+    secondary: sanitizeEditorTabs(tabs.secondary),
+  };
+}
+
+function sanitizeEditorTabs(value: unknown): EditorTab[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const tabs: EditorTab[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const tab = item as Partial<EditorTab>;
+    if (typeof tab.path !== "string" || typeof tab.rootId !== "string" || !tab.path || !tab.rootId) continue;
+    const key = `${tab.rootId}:${tab.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tabs.push({ path: tab.path, rootId: tab.rootId });
+  }
+  return tabs.slice(-12);
+}
 
 function sanitizeHiddenPanes(value: PaneId[] | undefined): PaneId[] | undefined {
   if (!Array.isArray(value)) return undefined;

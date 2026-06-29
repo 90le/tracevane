@@ -164,6 +164,12 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /data-ide-editor-split=\{editorSplitMode\}/);
   assert.match(shellSource, /data-ide-editor-group=\{group\}/);
   assert.match(shellSource, /editorGroupTabs/);
+  assert.match(shellSource, /editorGroupTabs\?: EditorGroupTabs/);
+  assert.match(shellSource, /sanitizeEditorGroupTabs\(layoutState\.editorGroupTabs\)/);
+  assert.match(shellSource, /editorGroupTabs: sanitizeEditorGroupTabs\(value\.editorGroupTabs\)/);
+  assert.match(shellSource, /setEditorGroupTabs\(sanitizeEditorGroupTabs\(sanitized\.editorGroupTabs\)\)/);
+  assert.match(shellSource, /function sanitizeEditorGroupTabs\(value: unknown\): EditorGroupTabs/);
+  assert.match(shellSource, /function sanitizeEditorTabs\(value: unknown\): EditorTab\[\]/);
   assert.match(shellSource, /rememberEditorTab\("primary", path, targetRootId\)/);
   assert.match(shellSource, /rememberEditorTab\("secondary", path, targetRootId\)/);
   assert.match(shellSource, /function rememberEditorTab\(group: EditorGroupId, path: string, tabRootId: string\)/);
