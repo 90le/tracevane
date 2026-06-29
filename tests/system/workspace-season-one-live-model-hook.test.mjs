@@ -17,10 +17,14 @@ test("Season One route gets live model through a replaceable hook", () => {
   assert.doesNotMatch(page, /createWorkspaceSeasonOneLiveModel\(/);
   assert.doesNotMatch(page, /seasonOneLiveDemoModel/);
 
+  assert.match(hook, /WorkspaceSeasonOneSourceSnapshot/);
   assert.match(hook, /WorkspaceSeasonOneLiveModelState/);
   assert.match(hook, /source: "demo" \| "workspace-hooks"/);
+  assert.match(hook, /sourceSnapshot: WorkspaceSeasonOneSourceSnapshot/);
+  assert.match(hook, /createWorkspaceSeasonOneAdapterInputFromSnapshot/);
+  assert.match(hook, /createWorkspaceSeasonOneDemoSourceSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneDemoAdapterInput/);
   assert.match(hook, /createWorkspaceSeasonOneLiveModel\(adapterInput\)/);
-  assert.ok(hook.includes("openFiles: [...(DEFAULT_SEASON_ONE_LIVE_INPUT.openFiles ?? [])]"));
+  assert.match(hook, /normalizeOpenFiles/);
   assert.match(index, /useWorkspaceSeasonOneLiveModel/);
 });

@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 
-import { createWorkspaceSeasonOneDemoAdapterInput } from "../../apps/web/src/features/workspace/season-one/useWorkspaceSeasonOneLiveModel";
+import {
+  createWorkspaceSeasonOneAdapterInputFromSnapshot,
+  createWorkspaceSeasonOneDemoAdapterInput,
+  createWorkspaceSeasonOneDemoSourceSnapshot,
+} from "../../apps/web/src/features/workspace/season-one/useWorkspaceSeasonOneLiveModel";
 import { createWorkspaceSeasonOneLiveModel } from "../../apps/web/src/features/workspace/shared/WorkspaceSeasonOneLiveAdapter";
 
+const source = createWorkspaceSeasonOneDemoSourceSnapshot();
+const secondSource = createWorkspaceSeasonOneDemoSourceSnapshot();
 const first = createWorkspaceSeasonOneDemoAdapterInput();
-const second = createWorkspaceSeasonOneDemoAdapterInput();
+const second = createWorkspaceSeasonOneAdapterInputFromSnapshot(secondSource);
 
+assert.notEqual(source.openFiles, secondSource.openFiles);
 assert.notEqual(first.openFiles, second.openFiles);
 assert.deepEqual(first.openFiles, second.openFiles);
 assert.equal(first.rootLabel, "project-root");
