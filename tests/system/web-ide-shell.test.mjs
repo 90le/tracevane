@@ -145,6 +145,7 @@ test("WorkspaceWorkbench imports Dockview and wires core panels", () => {
   assert.match(workbench, /data-workspace-mobile-panel-over-terminal/);
   assert.match(workbench, /overTerminal && "z-\[110\]"/);
   assert.match(workbench, /fullscreen && overTerminal && "z-\[120\]"/);
+  assert.match(workbench, /workspace-mobile-panel-over-terminal/);
   assert.match(workbench, /data-workspace-mobile-panel-reserves-nav/);
   assert.match(workbench, /data-workspace-mobile-panel-nav-reserved/);
   assert.match(workbench, /--workspace-mobile-nav-height/);
@@ -2098,6 +2099,11 @@ test("Workspace explorer supports address-bar cwd, path copy, terminal drop, and
     workbenchCss,
     /workspace-dock-maximized > :not\(\.tracevane-dockview\)/,
   );
+  assert.match(
+    workbenchCss,
+    /data-workspace-mobile-panel-over-terminal="true"/,
+  );
+  assert.match(workbenchCss, /workspace-mobile-panel-over-terminal/);
   assert.match(workbench, /WorkbenchDockQuickControls/);
   assert.match(workbench, /data-workspace-dock-quick-controls/);
   assert.match(workbench, /data-workspace-dock-controls-collapsed/);
@@ -2196,6 +2202,7 @@ test("Workspace explorer supports address-bar cwd, path copy, terminal drop, and
   assert.match(workbench, /data-workspace-mobile-panel-over-terminal/);
   assert.match(workbench, /overTerminal && "z-\[110\]"/);
   assert.match(workbench, /fullscreen && overTerminal && "z-\[120\]"/);
+  assert.match(workbench, /workspace-mobile-panel-over-terminal/);
   assert.match(workbench, /data-workspace-mobile-panel-reserves-nav/);
   assert.match(workbench, /data-workspace-mobile-panel-nav-reserved/);
   assert.match(workbench, /--workspace-mobile-nav-height/);

@@ -1620,6 +1620,7 @@ function WorkbenchMobilePanelDock({
           "fixed inset-x-0 top-0 bottom-[var(--workspace-mobile-nav-height)] z-[80] h-auto rounded-none border-0 shadow-none",
         overTerminal && "z-[110]",
         fullscreen && overTerminal && "z-[120]",
+        overTerminal && "workspace-mobile-panel-over-terminal",
         dragging && "workspace-mobile-panel-resizing",
       )}
       id={id}

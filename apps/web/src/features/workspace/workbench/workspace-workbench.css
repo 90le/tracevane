@@ -85,6 +85,18 @@
   display: none !important;
 }
 
+/* Mobile side panels must stay reachable above a fullscreen/maximized terminal.
+   The generic maximized-dock rule hides non-Dockview siblings; this exception
+   keeps File/Search/Git drawers visible when opened from the bottom nav. */
+.workspace-dock-maximized
+  > [data-workspace-mobile-panel-over-terminal="true"] {
+  display: block !important;
+}
+
+.workspace-mobile-panel-over-terminal {
+  isolation: isolate;
+}
+
 .workspace-dock-maximized .tracevane-dockview {
   position: absolute;
   inset: 0;
