@@ -1254,7 +1254,7 @@ export function WorkspaceIdeShell() {
         run: () => deleteLayoutSnapshot(snapshot.id),
       })),
     ],
-    [layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
+    [layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
   const commands = React.useMemo(

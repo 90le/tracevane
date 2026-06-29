@@ -762,6 +762,8 @@ test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /function storeIdeLayoutSnapshots/);
   assert.match(shellSource, /function sanitizeIdeLayoutSnapshots/);
   assert.match(shellSource, /ide\.layout\.snapshot\.save/);
+  assert.match(shellSource, /layoutSnapshotCommands = React\.useMemo<WorkspaceCommand\[\]>/);
+  assert.match(shellSource, /\[layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes/);
   assert.match(shellSource, /ide\.layout\.snapshot\.restore\.\$\{snapshot\.id\}/);
   assert.match(shellSource, /ide\.layout\.snapshot\.delete\.\$\{snapshot\.id\}/);
   assert.match(shellSource, /删除布局快照：\$\{snapshot\.name\}/);
