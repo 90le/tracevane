@@ -27,10 +27,22 @@ export interface WorkspaceAiContextBasketItem {
   addedAt: string;
 }
 
+export type WorkspaceAiContextBasketAction =
+  | "add"
+  | "remove"
+  | "clear"
+  | "replace";
+
 export interface WorkspaceAiContextBasketUpdateDetail {
+  action: WorkspaceAiContextBasketAction;
   items: WorkspaceAiContextBasketItem[];
-  added: WorkspaceAiContextBasketItem;
+  added?: WorkspaceAiContextBasketItem;
+  removed?: WorkspaceAiContextBasketItem | null;
 }
+
+export type WorkspaceAiContextBasketSubscriber = (
+  detail: WorkspaceAiContextBasketUpdateDetail,
+) => void;
 
 export interface WorkspaceAiDocumentContextInput {
   path: string;
@@ -113,12 +125,40 @@ export function readWorkspaceAiContextBasket(): WorkspaceAiContextBasketItem[] {
 
 export function writeWorkspaceAiContextBasket(
   items: WorkspaceAiContextBasketItem[],
-): void {
-  if (typeof window === "undefined") return;
+): WorkspaceAiContextBasketItem[] {
+  const next = items.slice(0, WORKSPACE_AI_CONTEXT_BASKET_LIMIT);
+  if (typeof window === "undefined") return next;
   window.localStorage.setItem(
     WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY,
-    JSON.stringify(items.slice(0, WORKSPACE_AI_CONTEXT_BASKET_LIMIT)),
+    JSON.stringify(next),
   );
+  return next;
+}
+
+export function subscribeWorkspaceAiContextBasket(
+  subscriber: WorkspaceAiContextBasketSubscriber,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onUpdate = (event: Event) => {
+    subscriber((event as CustomEvent<WorkspaceAiContextBasketUpdateDetail>).detail);
+  };
+  window.addEventListener(TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT, onUpdate);
+  return () =>
+    window.removeEventListener(
+      TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT,
+      onUpdate,
+    );
+}
+
+function dispatchWorkspaceAiContextBasketUpdate(
+  detail: WorkspaceAiContextBasketUpdateDetail,
+): WorkspaceAiContextBasketUpdateDetail {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT, { detail }),
+    );
+  }
+  return detail;
 }
 
 export function addDocumentToAiContextBasket(
@@ -129,16 +169,48 @@ export function addDocumentToAiContextBasket(
   const items = readWorkspaceAiContextBasket().filter(
     (item) => item.id !== nextItem.id,
   );
-  const next = [nextItem, ...items].slice(0, WORKSPACE_AI_CONTEXT_BASKET_LIMIT);
-  writeWorkspaceAiContextBasket(next);
-  const detail: WorkspaceAiContextBasketUpdateDetail = {
+  const next = writeWorkspaceAiContextBasket([nextItem, ...items]);
+  return dispatchWorkspaceAiContextBasketUpdate({
+    action: "add",
     items: next,
     added: nextItem,
-  };
-  window.dispatchEvent(
-    new CustomEvent(TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT, { detail }),
+  });
+}
+
+export function removeWorkspaceAiContextBasketItem(
+  itemId: string,
+): WorkspaceAiContextBasketUpdateDetail | null {
+  if (typeof window === "undefined") return null;
+  const items = readWorkspaceAiContextBasket();
+  const removed = items.find((item) => item.id === itemId) ?? null;
+  const next = writeWorkspaceAiContextBasket(
+    items.filter((item) => item.id !== itemId),
   );
-  return detail;
+  return dispatchWorkspaceAiContextBasketUpdate({
+    action: "remove",
+    items: next,
+    removed,
+  });
+}
+
+export function clearWorkspaceAiContextBasket(): WorkspaceAiContextBasketUpdateDetail | null {
+  if (typeof window === "undefined") return null;
+  const next = writeWorkspaceAiContextBasket([]);
+  return dispatchWorkspaceAiContextBasketUpdate({
+    action: "clear",
+    items: next,
+  });
+}
+
+export function replaceWorkspaceAiContextBasket(
+  items: WorkspaceAiContextBasketItem[],
+): WorkspaceAiContextBasketUpdateDetail | null {
+  if (typeof window === "undefined") return null;
+  const next = writeWorkspaceAiContextBasket(items);
+  return dispatchWorkspaceAiContextBasketUpdate({
+    action: "replace",
+    items: next,
+  });
 }
 
 export function exportWorkspaceAiContextBundle(

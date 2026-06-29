@@ -172,3 +172,21 @@ npm run typecheck:web -- --pretty false
 node --test tests/system/workspace-ai-context-basket.test.mjs tests/system/workspace-document-workbench.test.mjs
 npm run typecheck:web -- --pretty false
 ```
+
+### 2026-06-29 / Phase D 小步：AI Context Basket 管理 API
+
+本阶段继续沿用已验证的外部设计依据：顶级工作区需要可恢复、可订阅、可管理的工作对象，而不是单点 UI 状态。Context Basket 共享契约新增订阅、删除单项、清空、整体替换与 bundle 导出能力，使后续 Workspace 级上下文面板、移动端上下文 sheet、Agent handoff 和 Evidence 审查可以复用同一套前端契约。
+
+完成范围：
+
+- `WorkspaceAiContextBasket.ts` 新增 `WorkspaceAiContextBasketAction`、subscriber 类型和统一 update detail。
+- 新增 `subscribeWorkspaceAiContextBasket`、`removeWorkspaceAiContextBasketItem`、`clearWorkspaceAiContextBasket`、`replaceWorkspaceAiContextBasket`。
+- `writeWorkspaceAiContextBasket` 返回裁剪后的 items，保证所有写入遵守 24 项上限。
+- 结构测试覆盖新增管理 API 与事件 action。
+
+验证：
+
+```bash
+node --test tests/system/workspace-ai-context-basket.test.mjs
+npm run typecheck:web -- --pretty false
+```
