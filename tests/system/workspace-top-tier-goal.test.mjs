@@ -181,6 +181,20 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace file types use inspection metadata instead of preview ownership", () => {
+  const fileTypes = readWeb("features/workspace/files/types.ts");
+  assert.match(fileTypes, /inspection metadata and file lifecycle/);
+  assert.match(fileTypes, /FilesInspectMode = "content" \| "diff"/);
+  assert.match(fileTypes, /Inspection mode for the selected file/);
+  assert.match(fileTypes, /text-readable for IDE inspection/);
+  assert.match(fileTypes, /not a file inspection target/);
+  assert.doesNotMatch(fileTypes, /preview metadata and file lifecycle/);
+  assert.doesNotMatch(fileTypes, /FilesPreviewMode/);
+  assert.doesNotMatch(fileTypes, /Preview mode for the selected file/);
+  assert.doesNotMatch(fileTypes, /text-previewable/);
+  assert.doesNotMatch(fileTypes, /not previewable/);
+});
+
 test("Workspace owner boundaries replace preview with IDE inspection", () => {
   const owners = readWeb("features/workspace/shared/workspaceOwners.ts");
   assert.match(owners, /"inspect"/);
