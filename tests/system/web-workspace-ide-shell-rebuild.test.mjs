@@ -178,6 +178,8 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /setActiveEditorGroup\(group\)/);
   assert.match(shellSource, /onSelectTab=\{selectEditorTab\}/);
   assert.match(shellSource, /onCloseTab=\{closeEditorTab\}/);
+  assert.match(shellSource, /onBeginTabDrag=\{beginEditorTabDrag\}/);
+  assert.match(shellSource, /onDropTabBefore=\{dropEditorTabBefore\}/);
   assert.match(shellSource, /onSelectTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
   assert.match(shellSource, /onCloseTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
   assert.match(shellSource, /function closeEditorTab\(group: EditorGroupId, tab: EditorTab\)/);
@@ -187,6 +189,18 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /setActivePath\(nextActiveTab\?\.path\)/);
   assert.match(shellSource, /setSecondaryPath\(nextActiveTab\?\.path\)/);
   assert.match(shellSource, /data-ide-editor-tab-close=\{tab\.path\}/);
+  assert.match(shellSource, /function beginEditorTabDrag\(group: EditorGroupId, tab: EditorTab, event: React\.DragEvent\)/);
+  assert.match(shellSource, /application\/x-tracevane-editor-tab/);
+  assert.match(shellSource, /function reorderEditorTab\(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\)/);
+  assert.match(shellSource, /function dropEditorTabBefore\(group: EditorGroupId, beforeTab: EditorTab, event: React\.DragEvent\)/);
+  assert.match(shellSource, /parseEditorTabDragPayload\(event\.dataTransfer\.getData\("application\/x-tracevane-editor-tab"\)\)/);
+  assert.match(shellSource, /payload\.group !== group/);
+  assert.match(shellSource, /function reorderEditorTabs\(tabs: EditorTab\[\], draggedTab: EditorTab, beforeTab: EditorTab\): EditorTab\[\]/);
+  assert.match(shellSource, /nextTabs\.splice\(targetIndex, 0, draggedTab\)/);
+  assert.match(shellSource, /function parseEditorTabDragPayload\(value: string\)/);
+  assert.match(shellSource, /draggable/);
+  assert.match(shellSource, /onDragStart=\{\(event\) => onBeginTabDrag\(group, tab, event\)\}/);
+  assert.match(shellSource, /onDrop=\{\(event\) => onDropTabBefore\(group, tab, event\)\}/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-label/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-close/);
   assert.match(shellSource, /event\.stopPropagation\(\)/);

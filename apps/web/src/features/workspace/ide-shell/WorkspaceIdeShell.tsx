@@ -1493,6 +1493,25 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function beginEditorTabDrag(group: EditorGroupId, tab: EditorTab, event: React.DragEvent) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-tracevane-editor-tab", JSON.stringify({ group, ...tab }));
+  }
+
+  function reorderEditorTab(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab) {
+    setEditorGroupTabs((current) => ({
+      ...current,
+      [group]: reorderEditorTabs(current[group], draggedTab, beforeTab),
+    }));
+  }
+
+  function dropEditorTabBefore(group: EditorGroupId, beforeTab: EditorTab, event: React.DragEvent) {
+    event.preventDefault();
+    const payload = parseEditorTabDragPayload(event.dataTransfer.getData("application/x-tracevane-editor-tab"));
+    if (!payload || payload.group !== group) return;
+    reorderEditorTab(group, payload, beforeTab);
+  }
+
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
@@ -2159,6 +2178,8 @@ export function WorkspaceIdeShell() {
               splitMode={editorSplitMode}
               onSelectTab={selectEditorTab}
               onCloseTab={closeEditorTab}
+              onBeginTabDrag={beginEditorTabDrag}
+              onDropTabBefore={dropEditorTabBefore}
               onFocus={() => setActiveEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
               onSplitDown={() => splitEditor("horizontal")}
@@ -2193,6 +2214,8 @@ export function WorkspaceIdeShell() {
                   splitMode={editorSplitMode}
                   onSelectTab={selectEditorTab}
                   onCloseTab={closeEditorTab}
+                  onBeginTabDrag={beginEditorTabDrag}
+                  onDropTabBefore={dropEditorTabBefore}
                   onFocus={() => setActiveEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
@@ -2558,6 +2581,8 @@ function EditorGroupFrame({
   children,
   onSelectTab,
   onCloseTab,
+  onBeginTabDrag,
+  onDropTabBefore,
   onFocus,
   onSplitRight,
   onSplitDown,
@@ -2572,6 +2597,8 @@ function EditorGroupFrame({
   children: React.ReactNode;
   onSelectTab: (group: EditorGroupId, tab: EditorTab) => void;
   onCloseTab: (group: EditorGroupId, tab: EditorTab) => void;
+  onBeginTabDrag: (group: EditorGroupId, tab: EditorTab, event: React.DragEvent) => void;
+  onDropTabBefore: (group: EditorGroupId, beforeTab: EditorTab, event: React.DragEvent) => void;
   onFocus: () => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
@@ -2591,7 +2618,19 @@ function EditorGroupFrame({
         </button>
         <div className="workspace-ide-shell__editor-tabs" data-ide-editor-tabs={group}>
           {tabs.map((tab) => (
-            <span key={`${tab.rootId}:${tab.path}`} className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")} data-ide-editor-tab={tab.path} title={tab.path}>
+            <span
+              key={`${tab.rootId}:${tab.path}`}
+              className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")}
+              data-ide-editor-tab={tab.path}
+              title={tab.path}
+              draggable
+              onDragStart={(event) => onBeginTabDrag(group, tab, event)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => onDropTabBefore(group, tab, event)}
+            >
               <button type="button" className="workspace-ide-shell__editor-tab-label" onClick={() => onSelectTab(group, tab)}>
                 {editorTabLabel(tab.path)}
               </button>
@@ -3086,6 +3125,25 @@ function placementShortLabel(placement: PanePlacement): string {
 function upsertEditorTab(tabs: EditorTab[], tab: EditorTab): EditorTab[] {
   const withoutDuplicate = tabs.filter((item) => item.path !== tab.path || item.rootId !== tab.rootId);
   return [...withoutDuplicate, tab].slice(-8);
+}
+
+function reorderEditorTabs(tabs: EditorTab[], draggedTab: EditorTab, beforeTab: EditorTab): EditorTab[] {
+  const withoutDragged = tabs.filter((item) => item.path !== draggedTab.path || item.rootId !== draggedTab.rootId);
+  const targetIndex = withoutDragged.findIndex((item) => item.path === beforeTab.path && item.rootId === beforeTab.rootId);
+  if (targetIndex < 0) return tabs;
+  const nextTabs = [...withoutDragged];
+  nextTabs.splice(targetIndex, 0, draggedTab);
+  return nextTabs;
+}
+
+function parseEditorTabDragPayload(value: string): (EditorTab & { group: EditorGroupId }) | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<EditorTab & { group: EditorGroupId }>;
+    if ((parsed.group === "primary" || parsed.group === "secondary") && typeof parsed.path === "string" && typeof parsed.rootId === "string") return { group: parsed.group, path: parsed.path, rootId: parsed.rootId };
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function editorTabLabel(path: string) {
