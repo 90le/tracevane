@@ -49,6 +49,24 @@ test("new Workspace IDE shell is responsive for desktop tablet and phone", () =>
   assert.match(cssSource, /workspace-ide-shell__layout-snapshot/);
 });
 
+
+test("new Workspace IDE shell has explicit mobile panel switching", () => {
+  assert.match(shellSource, /type MobilePanel = "editor" \| "left" \| "right" \| "bottom"/);
+  assert.match(shellSource, /mobilePanel/);
+  assert.match(shellSource, /data-ide-mobile-panel=\{mobilePanel\}/);
+  assert.match(shellSource, /workspace-ide-shell__mobile-switcher/);
+  assert.match(shellSource, /手机工作区面板切换/);
+  assert.match(shellSource, /setLeftOpen\(true\);\n\s+setMobilePanel\("left"\)/);
+  assert.match(shellSource, /setRightOpen\(true\);\n\s+setMobilePanel\("right"\)/);
+  assert.match(shellSource, /setBottomOpen\(true\);\n\s+setMobilePanel\("bottom"\)/);
+  assert.match(shellSource, /移动面板: \{mobilePanel\}/);
+  assert.match(cssSource, /workspace-ide-shell__mobile-switcher/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="left"\] \.workspace-ide-shell__left-pane/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="right"\] \.workspace-ide-shell__right-pane/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="bottom"\] \.workspace-ide-shell__center/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="editor"\] \.workspace-ide-shell__bottom/);
+});
+
 test("Workspace uses the new IDE shell as the only native workspace entry", () => {
   assert.match(pageSource, /return <WorkspaceIdeShell \/>/);
   assert.doesNotMatch(pageSource, /WorkspaceWorkbench/);

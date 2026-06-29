@@ -43,6 +43,7 @@ type MaximizedPane = "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
 type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
+type MobilePanel = "editor" | "left" | "right" | "bottom";
 
 interface IdePaneSizes {
   left: number;
@@ -169,6 +170,7 @@ export function WorkspaceIdeShell() {
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
+  const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>();
   const [activePathRootId, setActivePathRootId] = React.useState("");
@@ -719,14 +721,17 @@ export function WorkspaceIdeShell() {
     if (placement === "left") {
       setActivity(paneId);
       setLeftOpen(true);
+      setMobilePanel("left");
     }
     if (placement === "right") {
       setRightPanel(paneId);
       setRightOpen(true);
+      setMobilePanel("right");
     }
     if (placement === "bottom") {
       setBottomPanel(paneId);
       setBottomOpen(true);
+      setMobilePanel("bottom");
     }
   }
 
@@ -769,14 +774,17 @@ export function WorkspaceIdeShell() {
     if (placement === "bottom") {
       setBottomPanel(nextActivity);
       setBottomOpen(true);
+      setMobilePanel("bottom");
       return;
     }
     if (placement === "right") {
       setRightPanel(nextActivity);
       setRightOpen(true);
+      setMobilePanel("right");
       return;
     }
     setLeftOpen(true);
+    setMobilePanel("left");
   }
 
   return (
@@ -789,6 +797,7 @@ export function WorkspaceIdeShell() {
       data-ide-editor-split={editorSplitMode}
       data-ide-dragging-pane={draggingPane ?? ""}
       data-ide-drop-target={dropTarget ?? ""}
+      data-ide-mobile-panel={mobilePanel}
       style={{
         "--ide-left-width": `${paneSizes.left}px`,
         "--ide-right-width": `${paneSizes.right}px`,
@@ -838,6 +847,39 @@ export function WorkspaceIdeShell() {
           <Button size="sm" variant="ghost" onClick={() => setRightOpen((value) => !value)}>
             <PanelRight className="mr-2 h-4 w-4" />插件
           </Button>
+        </div>
+        <div className="workspace-ide-shell__mobile-switcher" aria-label="手机工作区面板切换">
+          <button type="button" data-active={mobilePanel === "editor"} onClick={() => setMobilePanel("editor")}>编辑</button>
+          <button
+            type="button"
+            data-active={mobilePanel === "left"}
+            onClick={() => {
+              setLeftOpen(true);
+              setMobilePanel("left");
+            }}
+          >
+            工具
+          </button>
+          <button
+            type="button"
+            data-active={mobilePanel === "right"}
+            onClick={() => {
+              setRightOpen(true);
+              setMobilePanel("right");
+            }}
+          >
+            AI
+          </button>
+          <button
+            type="button"
+            data-active={mobilePanel === "bottom"}
+            onClick={() => {
+              setBottomOpen(true);
+              setMobilePanel("bottom");
+            }}
+          >
+            终端
+          </button>
         </div>
       </header>
 
@@ -1152,6 +1194,7 @@ export function WorkspaceIdeShell() {
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
         <span>快照: {layoutSnapshots.length}</span>
+        <span>移动面板: {mobilePanel}</span>
         <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
         <span>窗格: L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
