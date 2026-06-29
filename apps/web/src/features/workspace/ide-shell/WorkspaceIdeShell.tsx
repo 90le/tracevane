@@ -1836,9 +1836,20 @@ export function WorkspaceIdeShell() {
   }
 
   function closeEditorSplit() {
+    const fallbackPrimaryTab = activePath ? null : editorGroupTabs.secondary.at(-1);
+    setEditorGroupTabs((current) => ({
+      primary: mergeEditorTabs(current.primary, current.secondary),
+      secondary: [],
+    }));
+    if (fallbackPrimaryTab) {
+      setActivePath(fallbackPrimaryTab.path);
+      setActivePathRootId(fallbackPrimaryTab.rootId);
+    }
+    setSecondaryPath(undefined);
+    setSecondaryPathRootId("");
     setEditorSplitMode("single");
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
-    setActiveEditorGroup("primary");
+    focusEditorGroup("primary");
   }
 
   function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
@@ -3260,6 +3271,10 @@ function placementShortLabel(placement: PanePlacement): string {
 function upsertEditorTab(tabs: EditorTab[], tab: EditorTab): EditorTab[] {
   const withoutDuplicate = tabs.filter((item) => item.path !== tab.path || item.rootId !== tab.rootId);
   return [...withoutDuplicate, tab].slice(-8);
+}
+
+function mergeEditorTabs(primaryTabs: EditorTab[], secondaryTabs: EditorTab[]): EditorTab[] {
+  return secondaryTabs.reduce((tabs, tab) => upsertEditorTab(tabs, tab), primaryTabs);
 }
 
 function reorderEditorTabs(tabs: EditorTab[], draggedTab: EditorTab, beforeTab: EditorTab): EditorTab[] {

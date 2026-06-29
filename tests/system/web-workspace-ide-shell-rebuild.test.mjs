@@ -175,6 +175,8 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /function rememberEditorTab\(group: EditorGroupId, path: string, tabRootId: string\)/);
   assert.match(shellSource, /upsertEditorTab\(current\[group\], \{ path, rootId: tabRootId \}\)/);
   assert.match(shellSource, /function upsertEditorTab\(tabs: EditorTab\[\], tab: EditorTab\): EditorTab\[\]/);
+  assert.match(shellSource, /function mergeEditorTabs\(primaryTabs: EditorTab\[\], secondaryTabs: EditorTab\[\]\): EditorTab\[\]/);
+  assert.match(shellSource, /secondaryTabs\.reduce\(\(tabs, tab\) => upsertEditorTab\(tabs, tab\), primaryTabs\)/);
   assert.match(shellSource, /function editorTabLabel\(path: string\)/);
   assert.match(shellSource, /data-ide-editor-tabs=\{group\}/);
   assert.match(shellSource, /data-ide-editor-tab=\{tab\.path\}/);
@@ -221,6 +223,13 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /setActivePath\(nextActiveTab\?\.path\)/);
   assert.match(shellSource, /setSecondaryPath\(nextActiveTab\?\.path\)/);
   assert.match(shellSource, /data-ide-editor-tab-close=\{tab\.path\}/);
+  assert.match(shellSource, /function closeEditorSplit\(\)/);
+  assert.match(shellSource, /const fallbackPrimaryTab = activePath \? null : editorGroupTabs\.secondary\.at\(-1\)/);
+  assert.match(shellSource, /primary: mergeEditorTabs\(current\.primary, current\.secondary\)/);
+  assert.match(shellSource, /secondary: \[\]/);
+  assert.match(shellSource, /setSecondaryPath\(undefined\)/);
+  assert.match(shellSource, /setSecondaryPathRootId\(""\)/);
+  assert.match(shellSource, /focusEditorGroup\("primary"\)/);
   assert.match(shellSource, /function beginEditorTabDrag\(group: EditorGroupId, tab: EditorTab, event: React\.DragEvent\)/);
   assert.match(shellSource, /application\/x-tracevane-editor-tab/);
   assert.match(shellSource, /function reorderEditorTab\(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\)/);
