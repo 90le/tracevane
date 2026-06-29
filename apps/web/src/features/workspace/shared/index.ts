@@ -17,3 +17,4 @@ export * from "./WorkspaceContextEvidenceBridge";
 export * from "./WorkspaceEvidenceHandoff";
 export * from "./WorkspaceEvidenceReviewPanel";
 export * from "./WorkspaceEvidenceReviewSurface";
+export * from "./WorkspaceEvidenceMobileSheet";
