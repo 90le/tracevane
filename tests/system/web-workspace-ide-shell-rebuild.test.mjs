@@ -525,6 +525,11 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function swapDockSplitPanes/);
   assert.match(shellSource, /setPrimaryDockPanel\(placement, secondaryPane\)/);
   assert.match(shellSource, /focusDockPane\(placement, "primary", secondaryPane\)/);
+  assert.match(shellSource, /function mergeDockSplitGroups\(placement: PanePlacement, preferredRole: DockPaneRole = "primary"\)/);
+  assert.match(shellSource, /const mergedPane = preferredRole === "secondary" \? secondaryPane \?\? primaryPane : primaryPane \?\? secondaryPane/);
+  assert.match(shellSource, /setDockSplitMode\(placement, "single"\)/);
+  assert.match(shellSource, /secondary: mergedPane === secondaryPane \? primaryPane : secondaryPane/);
+  assert.match(shellSource, /focusDockPane\(placement, "primary", mergedPane\)/);
   assert.match(shellSource, /function resetDockSplitRatio/);
   assert.match(shellSource, /function openDockPlacement/);
   assert.match(shellSource, /function closeDockPlacement/);
@@ -543,6 +548,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.active\.split-down/);
   assert.match(shellSource, /ide\.dock\.active\.swap-groups/);
   assert.match(shellSource, /ide\.dock\.active\.close-split/);
+  assert.match(shellSource, /mergeDockSplitGroups\(activeDockFocus\.placement, activeDockFocus\.role\)/);
   assert.match(shellSource, /ide\.dock\.active\.focus-other-group/);
   assert.match(shellSource, /切换当前 Dock 主副窗格组焦点/);
   assert.match(shellSource, /shortcut: "⌘⌥Tab"/);
@@ -595,6 +601,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.swap-groups\.\$\{placement\}/);
   assert.match(shellSource, /disabled: !canSwapDockSplit\(placement\)/);
   assert.match(shellSource, /run: \(\) => swapDockSplitPanes\(placement\)/);
+  assert.match(shellSource, /run: \(\) => mergeDockSplitGroups\(placement\)/);
   assert.match(shellSource, /\.\.\.activeDockGroupCommands/);
   assert.match(shellSource, /\.\.\.activeDockLayoutCommands/);
   assert.match(shellSource, /\.\.\.dockSplitCommands/);
@@ -605,14 +612,17 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
+  assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
   assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "left"\}/);
   assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "top"\}/);
   assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "right"\}/);
   assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "bottom"\}/);
   assert.match(shellSource, /data-ide-dock-swap-groups=\{placement\}/);
+  assert.match(shellSource, /data-ide-dock-merge-groups=\{placement\}/);
   assert.match(shellSource, /data-ide-dock-focus-other-group=\{placement\}/);
   assert.match(shellSource, /交换\$\{placementLabel\(placement\)\} Dock 主副窗格组/);
+  assert.match(shellSource, /合并\$\{placementLabel\(placement\)\} Dock 主副窗格组/);
   assert.match(shellSource, /切换\$\{placementLabel\(placement\)\} Dock 主副窗格组焦点/);
   assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-dock-selection-state=\{dockSelectionState\(dockPaneSelections\)\}/);

@@ -1047,7 +1047,7 @@ export function WorkspaceIdeShell() {
         disabled: !activeDockFocus,
         run: () => {
           if (!activeDockFocus) return;
-          setDockSplitMode(activeDockFocus.placement, "single");
+          mergeDockSplitGroups(activeDockFocus.placement, activeDockFocus.role);
         },
       },
       {
@@ -1200,11 +1200,11 @@ export function WorkspaceIdeShell() {
           id: `ide.dock.close-split.${placement}`,
           group: "窗格",
           label: `关闭${placementLabel(placement)} Dock 拆分`,
-          description: `恢复${placementLabel(placement)} Dock 为单一窗格组`,
+          description: `合并${placementLabel(placement)} Dock 的主副窗格组，并把当前主组保留为单一活动组`,
           risk: "safe" as const,
           surface: "layout" as const,
           icon: <RotateCcw />,
-          run: () => setDockSplitMode(placement, "single"),
+          run: () => mergeDockSplitGroups(placement),
         },
         {
           id: `ide.dock.reset-ratio.${placement}`,
@@ -1855,6 +1855,25 @@ export function WorkspaceIdeShell() {
     focusDockPane(placement, "primary", secondaryPane);
   }
 
+  function mergeDockSplitGroups(placement: PanePlacement, preferredRole: DockPaneRole = "primary") {
+    const primaryPane = activeDockPaneForPlacement(placement, "primary");
+    const secondaryPane = activeDockPaneForPlacement(placement, "secondary");
+    const mergedPane = preferredRole === "secondary" ? secondaryPane ?? primaryPane : primaryPane ?? secondaryPane;
+    setDockSplitMode(placement, "single");
+    if (!mergedPane) return;
+    setDockPaneSelections((current) => ({
+      ...current,
+      [placement]: {
+        ...current[placement],
+        primary: mergedPane,
+        secondary: mergedPane === secondaryPane ? primaryPane : secondaryPane,
+      },
+    }));
+    setPrimaryDockPanel(placement, mergedPane);
+    openDockPlacement(placement);
+    focusDockPane(placement, "primary", mergedPane);
+  }
+
   function resetDockSplitRatio(placement: PanePlacement) {
     setDockSplitRatios((current) => ({
       ...current,
@@ -2201,6 +2220,7 @@ export function WorkspaceIdeShell() {
                   onMovePane={movePaneToPlacement}
                   onSetDockSplitMode={setDockSplitMode}
                   onSwapDockGroups={swapDockSplitPanes}
+                  onMergeDockGroups={mergeDockSplitGroups}
                   onFocusOtherGroup={focusOppositeDockGroup}
                   canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "left"}
                   onBeginDrag={beginPaneDrag}
@@ -2309,6 +2329,7 @@ export function WorkspaceIdeShell() {
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
                       onSwapDockGroups={swapDockSplitPanes}
+                      onMergeDockGroups={mergeDockSplitGroups}
                       onFocusOtherGroup={focusOppositeDockGroup}
                       canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "top"}
                       onBeginDrag={beginPaneDrag}
@@ -2483,6 +2504,7 @@ export function WorkspaceIdeShell() {
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
                       onSwapDockGroups={swapDockSplitPanes}
+                      onMergeDockGroups={mergeDockSplitGroups}
                       onFocusOtherGroup={focusOppositeDockGroup}
                       canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "bottom"}
                       onBeginDrag={beginPaneDrag}
@@ -2571,6 +2593,7 @@ export function WorkspaceIdeShell() {
                     onMovePane={movePaneToPlacement}
                     onSetDockSplitMode={setDockSplitMode}
                     onSwapDockGroups={swapDockSplitPanes}
+                    onMergeDockGroups={mergeDockSplitGroups}
                     onFocusOtherGroup={focusOppositeDockGroup}
                     canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "right"}
                     onBeginDrag={beginPaneDrag}
@@ -2645,6 +2668,7 @@ function PaneDockControls({
   onMovePane,
   onSetDockSplitMode,
   onSwapDockGroups,
+  onMergeDockGroups,
   onFocusOtherGroup,
   canFocusOtherGroup = false,
   onHidePane,
@@ -2659,6 +2683,7 @@ function PaneDockControls({
   onMovePane: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
   onSwapDockGroups?: (placement: PanePlacement) => void;
+  onMergeDockGroups?: (placement: PanePlacement) => void;
   onFocusOtherGroup?: () => void;
   canFocusOtherGroup?: boolean;
   onHidePane: (paneId: PaneId) => void;
@@ -2721,6 +2746,17 @@ function PaneDockControls({
               >
                 ⇄组
               </button>
+              {onMergeDockGroups ? (
+                <button
+                  type="button"
+                  data-ide-dock-merge-groups={placement}
+                  disabled={splitMode === "single"}
+                  aria-label={`合并${placementLabel(placement)} Dock 主副窗格组`}
+                  onClick={() => onMergeDockGroups(placement)}
+                >
+                  合组
+                </button>
+              ) : null}
               {onFocusOtherGroup ? (
                 <button
                   type="button"
