@@ -15,6 +15,23 @@ import {
 
 import type { WorkspaceCommand } from "../workbench/workspaceCommands";
 
+export type EditorTabCommandRisk = "safe" | "mutating";
+export type EditorTabCommandSurface =
+  | "file-write"
+  | "tab-lifecycle"
+  | "layout"
+  | "clipboard"
+  | "terminal"
+  | "evidence"
+  | "explorer";
+
+export interface EditorTabCommandMetadata {
+  risk: EditorTabCommandRisk;
+  surface: EditorTabCommandSurface;
+}
+
+export type EditorTabWorkspaceCommand = WorkspaceCommand & EditorTabCommandMetadata;
+
 export interface EditorTabCommandRegistryInput {
   activePath: string | null;
   openTabs: string[];
@@ -64,7 +81,7 @@ export function createEditorTabCommands({
   copyAiFileContext,
   splitTab,
   moveTabToGroup,
-}: EditorTabCommandRegistryInput): WorkspaceCommand[] {
+}: EditorTabCommandRegistryInput): EditorTabWorkspaceCommand[] {
   const activeName = activePath?.split("/").pop() || activePath || "当前文件";
   const activeIndex = activePath ? openTabs.indexOf(activePath) : -1;
   const hasActive = Boolean(activePath);
@@ -77,6 +94,8 @@ export function createEditorTabCommands({
       label: "编辑器：保存当前文件",
       description: dirty ? `保存 ${activeName}` : "当前文件没有未保存更改",
       shortcut: "Ctrl S",
+      risk: "mutating",
+      surface: "file-write",
       icon: <Save />,
       disabled: !hasActive || !dirty || saving,
       run: saveActive,
@@ -86,6 +105,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：关闭当前标签",
       description: hasActive ? `关闭 ${activeName}` : "当前没有打开的文件",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <X />,
       disabled: !activePath,
       run: () => activePath && closeActive(activePath),
@@ -97,6 +118,8 @@ export function createEditorTabCommands({
       description: openTabs.length
         ? `关闭全部 ${openTabs.length} 个标签`
         : "当前没有打开的文件",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <X />,
       disabled: openTabs.length === 0,
       run: closeAll,
@@ -109,6 +132,8 @@ export function createEditorTabCommands({
         hasActive && openTabs.length > 1
           ? `保留 ${activeName}，关闭其它 ${openTabs.length - 1} 个标签`
           : "没有其它标签可关闭",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <PanelRightClose />,
       disabled: !activePath || openTabs.length <= 1,
       run: () => activePath && closeOthers(activePath),
@@ -121,6 +146,8 @@ export function createEditorTabCommands({
         savedCount > 0
           ? `关闭 ${savedCount} 个没有未保存更改的标签`
           : "没有已保存标签可关闭",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <PanelRightClose />,
       disabled: savedCount <= 0,
       run: closeSaved,
@@ -133,6 +160,8 @@ export function createEditorTabCommands({
         activeIndex > 0
           ? `关闭左侧 ${activeIndex} 个标签`
           : "左侧没有标签可关闭",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <PanelLeftClose />,
       disabled: activeIndex <= 0,
       run: () => activePath && closeLeft(activePath),
@@ -145,6 +174,8 @@ export function createEditorTabCommands({
         activeIndex >= 0 && activeIndex < openTabs.length - 1
           ? `关闭右侧 ${openTabs.length - activeIndex - 1} 个标签`
           : "右侧没有标签可关闭",
+      risk: "mutating",
+      surface: "tab-lifecycle",
       icon: <PanelRightClose />,
       disabled: activeIndex < 0 || activeIndex >= openTabs.length - 1,
       run: () => activePath && closeRight(activePath),
@@ -156,6 +187,8 @@ export function createEditorTabCommands({
       description: activePath
         ? `将 ${activeName} 放入右侧编辑组`
         : "当前没有打开的文件",
+      risk: "safe",
+      surface: "layout",
       icon: <Columns2 />,
       disabled: !activePath || !splitTab,
       run: () => activePath && splitTab?.(activePath, "right"),
@@ -167,6 +200,8 @@ export function createEditorTabCommands({
       description: activePath
         ? `将 ${activeName} 放入下方编辑组`
         : "当前没有打开的文件",
+      risk: "safe",
+      surface: "layout",
       icon: <Rows2 />,
       disabled: !activePath || !splitTab,
       run: () => activePath && splitTab?.(activePath, "down"),
@@ -180,6 +215,8 @@ export function createEditorTabCommands({
         : moveTabToGroup
           ? `将 ${activeName} 移入新的编辑组`
           : "当前布局尚未开放编辑组移动",
+      risk: "safe",
+      surface: "layout",
       icon: <MoveRight />,
       disabled: !activePath || !moveTabToGroup,
       run: () => activePath && moveTabToGroup?.(activePath),
@@ -189,6 +226,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：复制当前文件名",
       description: activeName,
+      risk: "safe",
+      surface: "clipboard",
       icon: <Copy />,
       disabled: !activePath || !copyFileName,
       run: () => activePath && copyFileName?.(activePath),
@@ -198,6 +237,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：复制当前文件路径",
       description: activePath || "当前没有打开的文件",
+      risk: "safe",
+      surface: "clipboard",
       icon: <Copy />,
       disabled: !activePath,
       run: () => activePath && copyPath(activePath),
@@ -207,6 +248,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：复制当前文件相对路径",
       description: relativePathLabel || activePath || "当前没有打开的文件",
+      risk: "safe",
+      surface: "clipboard",
       icon: <Copy />,
       disabled: !activePath || !copyRelativePath,
       run: () => activePath && copyRelativePath?.(activePath),
@@ -216,6 +259,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：在资源管理器中显示",
       description: activePath || "当前没有打开的文件",
+      risk: "safe",
+      surface: "explorer",
       icon: <FolderSearch />,
       disabled: !activePath || !revealInExplorer,
       run: () => activePath && revealInExplorer?.(activePath),
@@ -225,6 +270,8 @@ export function createEditorTabCommands({
       group: "编辑器",
       label: "编辑器：插入当前文件路径到终端",
       description: activePath || "当前没有打开的文件",
+      risk: "safe",
+      surface: "terminal",
       icon: <TerminalSquare />,
       disabled: !activePath || !insertPathToTerminal,
       run: () => activePath && insertPathToTerminal?.(activePath),
@@ -236,6 +283,8 @@ export function createEditorTabCommands({
       description: activePath
         ? `复制 @file ${relativePathLabel || activePath}，先形成可审查证据`
         : "当前没有打开的文件",
+      risk: "safe",
+      surface: "evidence",
       icon: <ClipboardCheck />,
       disabled: !activePath || !copyEvidence,
       run: () => activePath && copyEvidence?.(activePath),

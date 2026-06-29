@@ -725,3 +725,19 @@ test("Workspace search commands classify replace writes separately from safe IDE
   assert.match(searchCommands, /id: "search\.panel\.undoLastReplace"[\s\S]{0,260}risk: "mutating"[\s\S]{0,120}surface: "replace-plan"/);
   assert.match(searchCommands, /id: "search\.panel\.focusReplaceInput"[\s\S]{0,220}surface: "input"/);
 });
+
+test("Workspace editor tab actions classify lifecycle layout clipboard terminal and evidence operations", () => {
+  const tabActions = readWeb("features/workspace/editor/editorTabActions.tsx");
+  const tabCommands = readWeb("features/workspace/editor/editorTabCommands.tsx");
+  assert.match(tabActions, /EditorTabActionRisk = "safe" \| "mutating"/);
+  assert.match(tabActions, /EditorTabActionSurface =/);
+  assert.match(tabActions, /risk: EditorTabActionRisk/);
+  assert.match(tabActions, /surface: EditorTabActionSurface/);
+  assert.match(tabActions, /id: "editor\.tab\.close"[\s\S]{0,180}risk: "mutating"[\s\S]{0,120}surface: "tab-lifecycle"/);
+  assert.match(tabActions, /id: "editor\.tab\.splitRight"[\s\S]{0,220}risk: "safe"[\s\S]{0,120}surface: "layout"/);
+  assert.match(tabActions, /id: "editor\.tab\.insertPathToTerminal"[\s\S]{0,220}surface: "terminal"/);
+  assert.match(tabActions, /id: "editor\.tab\.copyFileEvidence"[\s\S]{0,180}surface: "evidence"/);
+  assert.match(tabCommands, /EditorTabWorkspaceCommand = WorkspaceCommand & EditorTabCommandMetadata/);
+  assert.match(tabCommands, /id: "editor\.tab\.saveActive"[\s\S]{0,220}risk: "mutating"[\s\S]{0,120}surface: "file-write"/);
+  assert.match(tabCommands, /id: "editor\.tab\.copyFileEvidence"[\s\S]{0,220}surface: "evidence"/);
+});
