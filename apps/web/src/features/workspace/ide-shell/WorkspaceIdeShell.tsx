@@ -979,6 +979,28 @@ export function WorkspaceIdeShell() {
         },
       },
       {
+        id: "ide.dock.active.grow",
+        group: "布局",
+        label: "放大当前 Dock",
+        description: activeDockFocus ? `扩大当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock，再扩大它的布局尺寸",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Maximize2 />,
+        disabled: !activeDockFocus,
+        run: () => resizeActiveDockPlacement(KEYBOARD_RESIZE_LARGE_STEP),
+      },
+      {
+        id: "ide.dock.active.shrink",
+        group: "布局",
+        label: "缩小当前 Dock",
+        description: activeDockFocus ? `缩小当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock，再缩小它的布局尺寸",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelLeft />,
+        disabled: !activeDockFocus,
+        run: () => resizeActiveDockPlacement(-KEYBOARD_RESIZE_LARGE_STEP),
+      },
+      {
         id: "ide.dock.active.maximize",
         group: "布局",
         label: "最大化当前 Dock",
@@ -1277,6 +1299,18 @@ export function WorkspaceIdeShell() {
       [pane]: clamp(current[pane] + delta, min, max),
     }));
     setLayoutPreset("balanced");
+  }
+
+  function resizeActiveDockPlacement(delta: number) {
+    if (!activeDockFocus) return;
+    const pane = activeDockFocus.placement;
+    const { min, max } = getPaneSizeLimits(pane);
+    setPaneSizes((current) => ({
+      ...current,
+      [pane]: clamp(current[pane] + delta, min, max),
+    }));
+    setLayoutPreset("balanced");
+    openDockPlacement(pane);
   }
 
   function startEditorSplitResize(event: React.PointerEvent) {
