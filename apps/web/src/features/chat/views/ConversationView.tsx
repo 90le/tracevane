@@ -59,6 +59,7 @@ import type {
   ChatSendFileRef,
   ChatSendRequest,
   ChatSessionPermissions,
+  ChatSessionRuntimeTarget,
   ChatSideResult,
   ChatToolCard,
   LiveAssistantTurn,
@@ -630,6 +631,68 @@ function PermissionRequestBlock({
 
 type ToolCardLike = ChatMessageToolCallItem | ChatToolCard;
 
+interface SlashCommandSuggestion {
+  command: string;
+  label: string;
+  description: string;
+  insertText: string;
+  nativeOnly?: boolean;
+}
+
+const BASE_SLASH_COMMANDS: SlashCommandSuggestion[] = [
+  {
+    command: "skills",
+    label: "/skills",
+    description: "列出当前 Agent 可发现的 Tracevane/Codex/Claude/OpenCode skills。",
+    insertText: "/skills",
+  },
+  {
+    command: "help",
+    label: "/help",
+    description: "查看所选原生 CLI 的帮助；Codex 会走 native command。",
+    insertText: "/help",
+    nativeOnly: true,
+  },
+  {
+    command: "help exec",
+    label: "/help exec",
+    description: "查看 Codex exec 非交互运行帮助。",
+    insertText: "/help exec",
+    nativeOnly: true,
+  },
+  {
+    command: "version",
+    label: "/version",
+    description: "查看所选 CLI 版本。",
+    insertText: "/version",
+    nativeOnly: true,
+  },
+  {
+    command: "compact",
+    label: "/compact",
+    description: "请求支持该命令的原生 Agent 压缩上下文；Codex exec 当前会显式拒绝。",
+    insertText: "/compact",
+    nativeOnly: true,
+  },
+];
+
+function slashCommandPrefix(text: string): string | null {
+  const match = text.match(/^\/([^\s]*)$/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function slashCommandSuggestions(
+  draft: string,
+  runtimeTarget: ChatSessionRuntimeTarget | null,
+): SlashCommandSuggestion[] {
+  const prefix = slashCommandPrefix(draft);
+  if (prefix == null) return [];
+  const isNativeCli = runtimeTarget?.adapterKind === "native-cli";
+  const options = BASE_SLASH_COMMANDS.filter((item) => !item.nativeOnly || isNativeCli);
+  const normalized = prefix.trim().toLowerCase();
+  return options.filter((item) => !normalized || item.command.startsWith(normalized)).slice(0, 6);
+}
+
 function compactToolStatusSummary(tools: ToolCardLike[]): string {
   const total = tools.length;
   const running = tools.filter((tool) => tool.status === "running").length;
@@ -1198,6 +1261,7 @@ export function ConversationView({
   optimisticMessages = [],
   permissions,
   fileCapability,
+  runtimeTarget,
   isLoading,
   error,
   liveTurn,
@@ -1218,6 +1282,7 @@ export function ConversationView({
   optimisticMessages?: ChatMessageItem[];
   permissions: ChatSessionPermissions | null;
   fileCapability?: ChatFileCapability | null;
+  runtimeTarget?: ChatSessionRuntimeTarget | null;
   isLoading: boolean;
   error: ApiError | null;
   liveTurn: LiveAssistantTurn | null;
@@ -1242,6 +1307,7 @@ export function ConversationView({
   const [filePickerRootId, setFilePickerRootId] = React.useState<string | null>(null);
   const [filePickerPage, setFilePickerPage] = React.useState(1);
   const [previewFile, setPreviewFile] = React.useState<ComposerFileRefItem | null>(null);
+  const [highlightedSlashCommand, setHighlightedSlashCommand] = React.useState(0);
   const [draftLoadedSessionKey, setDraftLoadedSessionKey] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const cancelledUploadIdsRef = React.useRef(new Set<string>());
@@ -1355,6 +1421,20 @@ export function ConversationView({
   const hasPendingFileRefs = fileRefs.some((item) => item.status === "uploading");
   const hasFailedFileRefs = fileRefs.some((item) => item.status === "failed");
   const hasPayload = Boolean(draft.trim() || readyFileRefs.length);
+  const slashSuggestions = React.useMemo(
+    () => slashCommandSuggestions(draft, runtimeTarget ?? null),
+    [draft, runtimeTarget],
+  );
+  const slashPaletteOpen = slashSuggestions.length > 0;
+
+  React.useEffect(() => {
+    setHighlightedSlashCommand(0);
+  }, [slashSuggestions.length, draft]);
+
+  const applySlashSuggestion = (suggestion: SlashCommandSuggestion) => {
+    setDraft(suggestion.insertText.endsWith(" ") ? suggestion.insertText : `${suggestion.insertText} `);
+    setHighlightedSlashCommand(0);
+  };
 
   const submit = async () => {
     const text = draft.trim();
@@ -1799,11 +1879,54 @@ export function ConversationView({
             </div>
           </div>
         )}
+        {slashPaletteOpen && (
+          <div id="chat-composer-slash-palette" className="chat-composer-slash-palette mb-2 overflow-hidden rounded-md border border-primary-line/70 bg-panel-2 shadow-lg">
+            <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs text-subtle">
+              <span className="font-semibold text-ink-strong">Slash 命令</span>
+              <span className="min-w-0 flex-1 truncate">↑/↓ 选择，Enter 填入，Ctrl/Cmd+Enter 发送</span>
+            </div>
+            <div className="max-h-56 overflow-auto p-1.5">
+              {slashSuggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.command}
+                  type="button"
+                  className={cn(
+                    "chat-composer-slash-option flex w-full min-w-0 items-start gap-2 rounded-sm px-2.5 py-2 text-left text-sm",
+                    index === highlightedSlashCommand ? "bg-primary-soft text-ink-strong" : "text-ink hover:bg-panel-3",
+                  )}
+                  onMouseEnter={() => setHighlightedSlashCommand(index)}
+                  onClick={() => applySlashSuggestion(suggestion)}
+                >
+                  <span className="shrink-0 rounded-full bg-panel px-2 py-0.5 font-mono text-xs text-primary">{suggestion.label}</span>
+                  <span className="min-w-0 flex-1 text-xs text-subtle">{suggestion.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onPaste={handleComposerPaste}
           onKeyDown={(e) => {
+            if (slashPaletteOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              setHighlightedSlashCommand((current) => {
+                const delta = e.key === "ArrowDown" ? 1 : -1;
+                return (current + delta + slashSuggestions.length) % slashSuggestions.length;
+              });
+              return;
+            }
+            if (slashPaletteOpen && e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+              e.preventDefault();
+              applySlashSuggestion(slashSuggestions[highlightedSlashCommand] ?? slashSuggestions[0]);
+              return;
+            }
+            if (slashPaletteOpen && e.key === "Escape") {
+              e.preventDefault();
+              setDraft("");
+              return;
+            }
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               void submit();
@@ -1811,9 +1934,11 @@ export function ConversationView({
           }}
           disabled={!sessionKey || !canSend || sending}
           placeholder={
-            sendDisabledReason ?? "输入消息… (Ctrl/Cmd + Enter 发送)"
+            sendDisabledReason ?? "输入消息… 输入 / 查看命令，Ctrl/Cmd + Enter 发送"
           }
           aria-label="消息输入"
+          aria-expanded={slashPaletteOpen}
+          aria-controls={slashPaletteOpen ? "chat-composer-slash-palette" : undefined}
           className={cn(
             "chat-composer-editor h-16 w-full resize-none rounded-md border border-line bg-panel-2 px-3 py-2 text-base text-ink-strong outline-none transition-[border-color,box-shadow]",
             "placeholder:text-subtle focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]",

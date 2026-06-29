@@ -157,3 +157,19 @@ test('ConversationView collapses completed tools and aggregates process blocks f
   assert.match(conversationSource, /查看较早过程/);
   assert.match(conversationSource, /<ProcessBlockGroup blocks=\{processBlocks\} \/>/);
 });
+
+
+test('ConversationView opens a slash command palette from the composer draft', () => {
+  const conversationSource = fs.readFileSync(path.join(process.cwd(), 'apps/web/src/features/chat/views/ConversationView.tsx'), 'utf8');
+  assert.match(conversationSource, /interface SlashCommandSuggestion/);
+  assert.match(conversationSource, /const BASE_SLASH_COMMANDS/);
+  assert.match(conversationSource, /function slashCommandPrefix/);
+  assert.match(conversationSource, /function slashCommandSuggestions/);
+  assert.match(conversationSource, /chat-composer-slash-palette/);
+  assert.match(conversationSource, /chat-composer-slash-option/);
+  assert.match(conversationSource, /Slash 命令/);
+  assert.match(conversationSource, /ArrowDown/);
+  assert.match(conversationSource, /applySlashSuggestion/);
+  assert.match(conversationSource, /输入消息… 输入 \/ 查看命令/);
+  assert.match(source, /runtimeTarget=\{runtimeTarget\}/);
+});

@@ -718,6 +718,7 @@ export function ChatWorkbenchPage() {
             optimisticMessages={optimisticMessages}
             permissions={permissions}
             fileCapability={diagnostics?.fileCapability ?? null}
+            runtimeTarget={runtimeTarget}
             isLoading={bootstrap.isLoading && Boolean(selectedKey)}
             error={bootstrap.error ?? null}
             liveTurn={liveTurn}
