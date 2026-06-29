@@ -423,6 +423,16 @@ export function WorkspaceIdeShell() {
           swapEditorGroups();
           return;
         }
+        if (event.shiftKey && event.key === ",") {
+          event.preventDefault();
+          reorderActiveDockPane("previous");
+          return;
+        }
+        if (event.shiftKey && event.key === ".") {
+          event.preventDefault();
+          reorderActiveDockPane("next");
+          return;
+        }
         if (event.shiftKey && event.key === "ArrowLeft") {
           event.preventDefault();
           moveActiveDockPaneToPlacement("left");
@@ -1240,6 +1250,30 @@ export function WorkspaceIdeShell() {
         run: () => selectAdjacentDockPane("previous"),
       },
       {
+        id: "ide.dock.active.reorder-previous",
+        group: "窗格",
+        label: "当前 Pane 在 Dock 内前移",
+        description: activeDockFocus ? `把当前聚焦的 Pane 在${placementLabel(activeDockFocus.placement)} Dock 标签顺序中向前移动一位` : "先聚焦一个 Dock Pane，再调整它在同一 Dock 内的标签顺序",
+        shortcut: "⌘⌥⇧,",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelLeft />,
+        disabled: !canReorderActiveDockPane("previous"),
+        run: () => reorderActiveDockPane("previous"),
+      },
+      {
+        id: "ide.dock.active.reorder-next",
+        group: "窗格",
+        label: "当前 Pane 在 Dock 内后移",
+        description: activeDockFocus ? `把当前聚焦的 Pane 在${placementLabel(activeDockFocus.placement)} Dock 标签顺序中向后移动一位` : "先聚焦一个 Dock Pane，再调整它在同一 Dock 内的标签顺序",
+        shortcut: "⌘⌥⇧.",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelRight />,
+        disabled: !canReorderActiveDockPane("next"),
+        run: () => reorderActiveDockPane("next"),
+      },
+      {
         id: "ide.dock.active.reset-ratio",
         group: "窗格",
         label: "重置当前 Dock 拆分比例",
@@ -1993,6 +2027,24 @@ export function WorkspaceIdeShell() {
     const currentIndex = Math.max(0, paneIds.indexOf(currentPane));
     const nextIndex = direction === "next" ? (currentIndex + 1) % paneIds.length : (currentIndex - 1 + paneIds.length) % paneIds.length;
     selectDockPane(activeDockFocus.placement, activeDockFocus.role, paneIds[nextIndex]);
+  }
+
+  function canReorderActiveDockPane(direction: "next" | "previous") {
+    if (!activeDockFocus) return false;
+    const paneIds = dockPaneIdsForPlacement(activeDockFocus.placement);
+    const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+    const index = paneIds.indexOf(paneId);
+    if (index < 0) return false;
+    return direction === "previous" ? index > 0 : index < paneIds.length - 1;
+  }
+
+  function reorderActiveDockPane(direction: "next" | "previous") {
+    if (!activeDockFocus || !canReorderActiveDockPane(direction)) return;
+    const { placement, role } = activeDockFocus;
+    const paneId = activeDockPaneForPlacement(placement, role) ?? activeDockFocus.paneId;
+    setPaneOrder((current) => reorderPaneWithinPlacement(current, paneId, placement, direction));
+    openDockPlacement(placement);
+    focusDockPane(placement, role, paneId);
   }
 
   function canSwapDockSplit(placement: PanePlacement) {
@@ -4068,6 +4120,16 @@ function reorderPane(current: PaneOrder, paneId: PaneId, placement: PanePlacemen
   }
   next[placement] = target;
   return next;
+}
+
+function reorderPaneWithinPlacement(current: PaneOrder, paneId: PaneId, placement: PanePlacement, direction: "next" | "previous"): PaneOrder {
+  const target = [...current[placement]];
+  const index = target.indexOf(paneId);
+  if (index < 0) return reorderPane(current, paneId, placement);
+  const nextIndex = direction === "previous" ? index - 1 : index + 1;
+  if (nextIndex < 0 || nextIndex >= target.length) return current;
+  [target[index], target[nextIndex]] = [target[nextIndex], target[index]];
+  return { ...current, [placement]: target };
 }
 
 function placementLabel(placement: PanePlacement): string {
