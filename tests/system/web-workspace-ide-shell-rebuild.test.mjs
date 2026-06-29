@@ -521,9 +521,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function dockPaneIdsForPlacement/);
   assert.match(shellSource, /function canNavigateActiveDockGroup/);
   assert.match(shellSource, /function canFocusOppositeDockGroup/);
-  assert.match(shellSource, /function focusOppositeDockGroup/);
-  assert.match(shellSource, /activeDockFocus\.role === "primary" \? "secondary" : "primary"/);
-  assert.match(shellSource, /focusDockPane\(activeDockFocus\.placement, nextRole, nextPane\)/);
+  assert.match(shellSource, /function focusOppositeDockGroup\(placement = activeDockFocus\?\.placement, role = activeDockFocus\?\.role\)/);
+  assert.match(shellSource, /role === "primary" \? "secondary" : "primary"/);
+  assert.match(shellSource, /focusDockPane\(placement, nextRole, nextPane\)/);
   assert.match(shellSource, /function canMoveActiveDockPaneToOppositeGroup/);
   assert.match(shellSource, /function moveActiveDockPaneToOppositeGroup/);
   assert.match(shellSource, /movePaneToPlacement\(paneId, activeDockFocus\.placement, undefined, nextRole\)/);
@@ -649,7 +649,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /isMaximized: boolean/);
   assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
   assert.match(shellSource, /onHidePane: \(paneId: PaneId\) => void/);
-  assert.match(shellSource, /onFocusOtherGroup: \(\) => void/);
+  assert.match(shellSource, /onFocusOtherGroup: \(placement\?: PanePlacement, role\?: DockPaneRole\) => void/);
   assert.match(shellSource, /onToggleMaximized: \(pane: NonNullable<MaximizedPane>\) => void/);
   assert.match(shellSource, /onCloseDock: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onResetSplitRatio: \(placement: PanePlacement\) => void/);
@@ -678,10 +678,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
-  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "left"\}/);
-  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "top"\}/);
-  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "right"\}/);
-  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "bottom"\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\("left", activeDockFocus\?\.placement === "left" \? activeDockFocus\.role : "primary"\)\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\("top", activeDockFocus\?\.placement === "top" \? activeDockFocus\.role : "primary"\)\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\("right", activeDockFocus\?\.placement === "right" \? activeDockFocus\.role : "primary"\)\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\("bottom", activeDockFocus\?\.placement === "bottom" \? activeDockFocus\.role : "primary"\)\}/);
   assert.match(shellSource, /data-ide-dock-swap-groups=\{placement\}/);
   assert.match(shellSource, /data-ide-dock-merge-groups=\{placement\}/);
   assert.match(shellSource, /data-ide-dock-focus-other-group=\{placement\}/);
@@ -762,7 +762,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /aria-label=\{`收起\$\{placementLabel\(placement\)\} Dock`\}/);
   assert.match(shellSource, /onCloseDock\(placement\)/);
   assert.match(shellSource, /aria-label=\{`聚焦\$\{placementLabel\(placement\)\} Dock 另一个窗格组`\}/);
-  assert.match(shellSource, /onFocusOtherGroup\(\)/);
+  assert.match(shellSource, /onFocusOtherGroup\(placement, role\)/);
   assert.match(shellSource, /const oppositeRole = \(role: DockPaneRole\): DockPaneRole => \(role === "primary" \? "secondary" : "primary"\)/);
   assert.match(shellSource, /aria-label=\{`重置\$\{placementLabel\(placement\)\} Dock 拆分比例`\}/);
   assert.match(shellSource, /onResetSplitRatio\(placement\)/);

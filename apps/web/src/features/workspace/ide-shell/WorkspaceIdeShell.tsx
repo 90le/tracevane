@@ -1885,17 +1885,17 @@ export function WorkspaceIdeShell() {
     return Boolean(activeDockFocus && dockPaneIdsForPlacement(activeDockFocus.placement).length > 1);
   }
 
-  function canFocusOppositeDockGroup() {
-    if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return false;
-    return Boolean(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role === "primary" ? "secondary" : "primary"));
+  function canFocusOppositeDockGroup(placement = activeDockFocus?.placement, role = activeDockFocus?.role) {
+    if (!placement || !role || dockSplitModes[placement] === "single") return false;
+    return Boolean(activeDockPaneForPlacement(placement, role === "primary" ? "secondary" : "primary"));
   }
 
-  function focusOppositeDockGroup() {
-    if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return;
-    const nextRole: DockPaneRole = activeDockFocus.role === "primary" ? "secondary" : "primary";
-    const nextPane = activeDockPaneForPlacement(activeDockFocus.placement, nextRole);
+  function focusOppositeDockGroup(placement = activeDockFocus?.placement, role = activeDockFocus?.role) {
+    if (!placement || !role || dockSplitModes[placement] === "single") return;
+    const nextRole: DockPaneRole = role === "primary" ? "secondary" : "primary";
+    const nextPane = activeDockPaneForPlacement(placement, nextRole);
     if (!nextPane) return;
-    focusDockPane(activeDockFocus.placement, nextRole, nextPane);
+    focusDockPane(placement, nextRole, nextPane);
   }
 
   function canMoveActiveDockPaneToOppositeGroup() {
@@ -2350,7 +2350,7 @@ export function WorkspaceIdeShell() {
                   onSwapDockGroups={swapDockSplitPanes}
                   onMergeDockGroups={mergeDockSplitGroups}
                   onFocusOtherGroup={focusOppositeDockGroup}
-                  canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "left"}
+                  canFocusOtherGroup={canFocusOppositeDockGroup("left", activeDockFocus?.placement === "left" ? activeDockFocus.role : "primary")}
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
                   onHidePane={hidePane}
@@ -2474,7 +2474,7 @@ export function WorkspaceIdeShell() {
                       onSwapDockGroups={swapDockSplitPanes}
                       onMergeDockGroups={mergeDockSplitGroups}
                       onFocusOtherGroup={focusOppositeDockGroup}
-                      canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "top"}
+                      canFocusOtherGroup={canFocusOppositeDockGroup("top", activeDockFocus?.placement === "top" ? activeDockFocus.role : "primary")}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
@@ -2664,7 +2664,7 @@ export function WorkspaceIdeShell() {
                       onSwapDockGroups={swapDockSplitPanes}
                       onMergeDockGroups={mergeDockSplitGroups}
                       onFocusOtherGroup={focusOppositeDockGroup}
-                      canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "bottom"}
+                      canFocusOtherGroup={canFocusOppositeDockGroup("bottom", activeDockFocus?.placement === "bottom" ? activeDockFocus.role : "primary")}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
@@ -2768,7 +2768,7 @@ export function WorkspaceIdeShell() {
                     onSwapDockGroups={swapDockSplitPanes}
                     onMergeDockGroups={mergeDockSplitGroups}
                     onFocusOtherGroup={focusOppositeDockGroup}
-                    canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "right"}
+                    canFocusOtherGroup={canFocusOppositeDockGroup("right", activeDockFocus?.placement === "right" ? activeDockFocus.role : "primary")}
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
                     onHidePane={hidePane}
@@ -3326,7 +3326,7 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onHidePane: (paneId: PaneId) => void;
-  onFocusOtherGroup: () => void;
+  onFocusOtherGroup: (placement?: PanePlacement, role?: DockPaneRole) => void;
   onToggleMaximized: (pane: NonNullable<MaximizedPane>) => void;
   onCloseDock: (placement: PanePlacement) => void;
   onResetSplitRatio: (placement: PanePlacement) => void;
@@ -3398,7 +3398,7 @@ function DockPaneFrame({
             onPointerDown={stopGroupAction}
             onClick={(event) => {
               event.stopPropagation();
-              onFocusOtherGroup();
+              onFocusOtherGroup(placement, role);
             }}
           >
             ⇄
