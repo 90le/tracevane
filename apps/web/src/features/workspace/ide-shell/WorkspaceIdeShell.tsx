@@ -1408,6 +1408,8 @@ export function WorkspaceIdeShell() {
     setEditorSplitMode(sanitized.editorSplitMode ?? "single");
     setEditorSplitRatio(sanitized.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
     setEditorGroupTabs(sanitizeEditorGroupTabs(sanitized.editorGroupTabs));
+    setActiveDockFocus(null);
+    setMobilePanel("editor");
     setTopPanel(nextGroups.top[0] ?? "output");
     setActivity(nextGroups.left[0] ?? "explorer");
     setRightPanel(nextGroups.right[0] ?? "ai");

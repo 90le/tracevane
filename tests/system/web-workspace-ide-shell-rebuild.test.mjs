@@ -790,6 +790,8 @@ test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /function restoreLayoutSnapshot/);
   assert.match(shellSource, /function deleteLayoutSnapshot/);
   assert.match(shellSource, /function applyIdeLayoutState/);
+  assert.match(shellSource, /setActiveDockFocus\(null\)/);
+  assert.match(shellSource, /setMobilePanel\("editor"\)/);
   assert.match(shellSource, /function loadIdeLayoutSnapshots/);
   assert.match(shellSource, /function storeIdeLayoutSnapshots/);
   assert.match(shellSource, /function sanitizeIdeLayoutSnapshots/);
