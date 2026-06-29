@@ -304,6 +304,26 @@ export function WorkspaceIdeShell() {
         return;
       }
       if (mod && event.altKey) {
+        if (event.shiftKey && event.key === "ArrowLeft") {
+          event.preventDefault();
+          moveActiveDockPaneToPlacement("left");
+          return;
+        }
+        if (event.shiftKey && event.key === "ArrowRight") {
+          event.preventDefault();
+          moveActiveDockPaneToPlacement("right");
+          return;
+        }
+        if (event.shiftKey && event.key === "ArrowUp") {
+          event.preventDefault();
+          moveActiveDockPaneToPlacement("top");
+          return;
+        }
+        if (event.shiftKey && event.key === "ArrowDown") {
+          event.preventDefault();
+          moveActiveDockPaneToPlacement("bottom");
+          return;
+        }
         if (event.key === "ArrowLeft") {
           event.preventDefault();
           focusIdeRegion("left");
@@ -639,6 +659,25 @@ export function WorkspaceIdeShell() {
     [activeDockFocus],
   );
 
+  const activeDockMoveCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      DOCK_PLACEMENTS.map((placement) => ({
+        id: `ide.dock.active.move-pane.${placement}`,
+        group: "窗格" as const,
+        label: `移动当前聚焦 Pane 到${placementLabel(placement)} Dock`,
+        description: activeDockFocus
+          ? `把当前聚焦的 ${paneLabel(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId)} 从${placementLabel(activeDockFocus.placement)} Dock 移到${placementLabel(placement)} Dock`
+          : "先聚焦一个 Dock 主/副窗格组，再移动当前 Pane 到目标 Dock",
+        shortcut: placement === "left" ? "⌘⌥⇧←" : placement === "right" ? "⌘⌥⇧→" : placement === "top" ? "⌘⌥⇧↑" : "⌘⌥⇧↓",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: placement === "left" ? <PanelLeft /> : placement === "right" ? <PanelRight /> : <PanelBottom />,
+        disabled: !activeDockFocus,
+        run: () => moveActiveDockPaneToPlacement(placement),
+      })),
+    [activeDockFocus, activeBottomPane, activeLeftPane, activeRightPane, activeTopPane],
+  );
+
   const focusRegionCommands = React.useMemo<WorkspaceCommand[]>(
     () => [
       {
@@ -920,8 +959,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, activeDockLayoutCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -1311,6 +1350,12 @@ export function WorkspaceIdeShell() {
 
   function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
     setMaximizedPane((current) => (current === pane ? null : pane));
+  }
+
+  function moveActiveDockPaneToPlacement(placement: PanePlacement) {
+    if (!activeDockFocus) return;
+    const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+    movePaneToPlacement(paneId, placement);
   }
 
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role: DockPaneRole = "primary") {

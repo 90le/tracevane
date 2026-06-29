@@ -399,6 +399,32 @@ test("new Workspace IDE shell supports split dock groups", () => {
 
 
 
+
+
+test("new Workspace IDE shell can move the focused pane between dock regions", () => {
+  assert.match(shellSource, /const activeDockMoveCommands = React\.useMemo<WorkspaceCommand\[\]>/);
+  assert.match(shellSource, /ide\.dock\.active\.move-pane\.\$\{placement\}/);
+  assert.match(shellSource, /移动当前聚焦 Pane 到\$\{placementLabel\(placement\)\} Dock/);
+  assert.match(shellSource, /disabled: !activeDockFocus/);
+  assert.match(shellSource, /run: \(\) => moveActiveDockPaneToPlacement\(placement\)/);
+  assert.match(shellSource, /function moveActiveDockPaneToPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /const paneId = activeDockPaneForPlacement\(activeDockFocus\.placement, activeDockFocus\.role\) \?\? activeDockFocus\.paneId/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, placement\)/);
+  assert.match(shellSource, /\.\.\.activeDockMoveCommands/);
+  assert.match(shellSource, /event\.shiftKey && event\.key === "ArrowLeft"/);
+  assert.match(shellSource, /event\.shiftKey && event\.key === "ArrowRight"/);
+  assert.match(shellSource, /event\.shiftKey && event\.key === "ArrowUp"/);
+  assert.match(shellSource, /event\.shiftKey && event\.key === "ArrowDown"/);
+  assert.match(shellSource, /moveActiveDockPaneToPlacement\("left"\)/);
+  assert.match(shellSource, /moveActiveDockPaneToPlacement\("right"\)/);
+  assert.match(shellSource, /moveActiveDockPaneToPlacement\("top"\)/);
+  assert.match(shellSource, /moveActiveDockPaneToPlacement\("bottom"\)/);
+  assert.match(shellSource, /⌘⌥⇧←/);
+  assert.match(shellSource, /⌘⌥⇧→/);
+  assert.match(shellSource, /⌘⌥⇧↑/);
+  assert.match(shellSource, /⌘⌥⇧↓/);
+});
+
 test("new Workspace IDE shell supports keyboard focus between IDE regions", () => {
   assert.match(shellSource, /type IdeFocusRegion = "top" \| "left" \| "center" \| "right" \| "bottom"/);
   assert.match(shellSource, /topDockRef/);
