@@ -4,7 +4,7 @@
  * This pass ships a read/evidence workbench: file explorer + viewer + a bottom
  * panel (Git changes / persisted terminal sessions). The write/run/PTY-attach/
  * AI-diff track is deliberately out of scope and documented in
- * `docs/Workspace重设计总纲.md`.
+ * `docs/Workspace全球顶级AI编程IDE工作区Goal蓝图.md`.
  *
  * Wire contracts are reused from the repo-level `types/*.ts`; we re-export the
  * pieces the views need plus the small view-routing/view-model types the page

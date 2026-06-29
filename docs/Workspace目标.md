@@ -14,7 +14,7 @@ Workspace 是 Tracevane 的核心工作面：
 
 Workspace 不是普通 IDE 复制品，也不是文件管理器、终端和聊天的拼盘。现有半成品设计必须推翻重建：文件管理、编辑/预览、终端、CLI Agents 各自拥有清晰 owner，只通过上下文和证据互通。它的中心是 **本地项目工作流 + Agent 审查闭环**。
 
-**上位约束**：`Workspace重设计总纲.md` 是本轮重设计的最高合同。本文后续章节若仍带有旧拼盘式表达，必须按总纲重写后才能进入实现。
+**上位约束**：`Workspace全球顶级AI编程IDE工作区Goal蓝图.md` 是当前 Workspace 的最高 Goal 合同。本文后续章节若仍带有旧拼盘式表达，必须按 Goal 蓝图重写后才能进入实现。
 
 ## 2. 核心对象
 
@@ -122,7 +122,7 @@ Workspace 的窗口/面板必须像专业 IDE 一样可控，但不复制 VS Cod
 
 ### Phase 0：重设计归零
 
-- 用 `Workspace重设计总纲.md` 重新审查目标、设计、前端架构、后端架构和阶段合同。
+- 用 `Workspace全球顶级AI编程IDE工作区Goal蓝图.md` 重新审查目标、设计、前端架构、后端架构和阶段合同。
 - 标记旧 `/files`、旧 IDE explorer、旧 terminal panel 的可复用片段与必须废弃部分。
 - 明确 Files、Editor/Preview、Terminal、CLI Agents 四个 owner 的生命周期，不允许跨 owner 偷管。
 - 通过设计审查后才进入 Phase 1。

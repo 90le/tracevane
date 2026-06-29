@@ -7,19 +7,16 @@
 
 按顺序阅读：
 
-1. `整体目标.md` — Tracevane 当前最高目标和领域边界。
-2. `产品需求.md` — 产品需求、核心域与近期优先级。
-3. `Tracevane前端重设计原型.md` — 统一 Agent 工作台、非三栏 Domain Console 和各域页面原型；其中自研 Web Chat/Agent 会话内容已废弃。
-4. `Workspace重设计总纲.md` — 本轮推翻半成品设计后的 Workspace 重设计总纲、分区和红线。
-5. `WorkspaceWebIDE布局研究.md` — 对 VS Code/Theia/Codespaces/Gitpod/Fleet/Zed/StackBlitz 等 Web IDE 布局能力的研究和 Tracevane DockTree 方向。
-6. `Workspace目标.md` — Workspace 的产品目标与分期。
-7. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
-8. `Workspace架构.md` — Workspace 总体系统架构和边界。
-9. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
-10. `Workspace后端设计.md` — 文件/终端/Git/预览/证据/Agent handoff 后端设计。
-11. `文件管理设计.md` — Workspace 文件管理目标。
-12. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
-13. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁。
+1. `Workspace全球顶级AI编程IDE工作区Goal蓝图.md` — 当前 Codex Goal 的最高执行宪章；当前主线是 IDE-first / AI 编程 IDE 工作区；先完成工作区本体、终端、前后端边界、桌面/手机 UI/UX，写作、渲染、预览增强均不进入当前阶段。
+2. `整体目标.md` — Tracevane 当前最高目标和领域边界。
+3. `产品需求.md` — 产品需求、核心域与近期优先级。
+4. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
+5. `Workspace架构.md` — Workspace 总体系统架构和边界。
+6. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
+7. `Workspace后端设计.md` — 文件/终端/Git/预览/证据/Agent handoff 后端设计。
+8. `文件管理设计.md` — Workspace 文件管理目标。
+9. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
+10. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁.
 
 ## 2. 仍有效领域文档
 
@@ -46,7 +43,7 @@
 
 ## 4. 旧文档政策
 
-- 旧“三域重构”阶段文档不再作为最高叙事。
+- 旧“三域重构”、旧 Workspace 重设计原型、说明页式 UI 阶段文档不再作为最高叙事。
 - 文件管理不再以“只读证据页”为目标；Workspace 文件管理必须是真操作。
 - `/files` 如保留，应命名为 Evidence/Artifacts，而不是完整文件管理器。
 - 未实现功能不得以“P1 占位/规划中”形式出现在用户首屏。
@@ -54,4 +51,4 @@
 
 ## 5. 变更记录
 
-本目录已删除历史原型与阶段性迁移记录；以当前权威文档和 git 历史追溯变更。
+本目录已删除或降级历史原型与阶段性迁移记录；以当前 Goal 蓝图、权威文档和 git 历史追溯变更。

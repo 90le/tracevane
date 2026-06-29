@@ -892,7 +892,7 @@ function WorkspaceTopTierEmptyState() {
         <div className="grid gap-4 rounded-[28px] border border-line bg-panel/82 p-5 shadow-lg backdrop-blur sm:p-8">
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary-line bg-primary-soft px-3 py-1 text-xs font-medium text-primary">
             <Sparkles className="size-3.5" />
-            全球顶级 AI 编程与写作工作区
+            全球顶级 AI 编程 IDE 工作区
           </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
             <div className="grid gap-3">
