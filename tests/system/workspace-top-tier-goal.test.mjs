@@ -671,3 +671,18 @@ test("Workspace context commands collect reviewable evidence before AI handoff",
   assert.doesNotMatch(searchCommands, /copySearchAiContext/);
   assert.doesNotMatch(searchCommands, /search\.panel\.copyAiContext/);
 });
+
+test("Workspace global shortcuts protect editor terminal and form input focus", () => {
+  const commandShortcuts = readWeb("features/workspace/workbench/workspaceCommandShortcuts.ts");
+  assert.match(commandShortcuts, /shouldIgnoreWorkspaceShortcutEvent/);
+  assert.match(commandShortcuts, /event\.defaultPrevented \|\| event\.isComposing/);
+  assert.match(commandShortcuts, /data-workspace-shortcuts=\\"ignore\\"/);
+  assert.match(commandShortcuts, /data-workspace-shortcuts=\\"allow\\"/);
+  assert.match(commandShortcuts, /tagName === "input"/);
+  assert.match(commandShortcuts, /tagName === "textarea"/);
+  assert.match(commandShortcuts, /tagName === "select"/);
+  assert.match(commandShortcuts, /\.monaco-editor, \.xterm/);
+  assert.match(commandShortcuts, /\[role=\\"textbox\\"\]/);
+  assert.match(commandShortcuts, /\[contenteditable=\\"true\\"\]/);
+  assert.match(commandShortcuts, /if \(shouldIgnoreWorkspaceShortcutEvent\(event\)\) return false/);
+});

@@ -25,6 +25,7 @@ export function runWorkspaceShortcutCommand(
   event: KeyboardEvent,
   commands: readonly WorkspaceCommand[],
 ): boolean {
+  if (shouldIgnoreWorkspaceShortcutEvent(event)) return false;
   const match = findWorkspaceCommandForShortcut(event, commands);
   if (!match) return false;
   event.preventDefault();
@@ -57,6 +58,29 @@ interface ParsedWorkspaceShortcut {
   ctrl: boolean;
   meta: boolean;
   shift: boolean;
+}
+
+export function shouldIgnoreWorkspaceShortcutEvent(
+  event: KeyboardEvent,
+): boolean {
+  if (event.defaultPrevented || event.isComposing) return true;
+  const target = event.target;
+  if (!(target instanceof Element)) return false;
+  if (target.closest("[data-workspace-shortcuts=\"allow\"]")) return false;
+  if (target.closest("[data-workspace-shortcuts=\"ignore\"]")) return true;
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+    return true;
+  }
+  if ((target as HTMLElement).isContentEditable) return true;
+  if (
+    target.closest(
+      ".monaco-editor, .xterm, [role=\"textbox\"], [contenteditable=\"true\"]",
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function parseWorkspaceShortcut(
