@@ -755,3 +755,16 @@ test("Workspace root command registry declares IDE command surfaces for command-
   assert.match(workspaceCommands, /id: "workspace\.layout\.reset"[\s\S]{0,220}surface: "layout"/);
   assert.match(workspaceCommands, /id: "workspace\.evidence\.context"[\s\S]{0,240}surface: "ai-handoff"/);
 });
+
+test("Workspace command palette exposes command risk and surface for IDE UX hierarchy", () => {
+  const palette = readWeb("features/workspace/workbench/WorkspaceCommandPalette.tsx");
+  assert.match(palette, /mutatingCommandCount/);
+  assert.match(palette, /destructiveCommandCount/);
+  assert.match(palette, /写入：\{mutatingCommandCount\}/);
+  assert.match(palette, /危险：\{destructiveCommandCount\}/);
+  assert.match(palette, /data-workspace-command-risk=\{command\.risk \?\? "unknown"\}/);
+  assert.match(palette, /data-workspace-command-surface=\{command\.surface \?\? "unknown"\}/);
+  assert.match(palette, /data-workspace-command-surface-badge/);
+  assert.match(palette, /data-workspace-command-risk-badge/);
+  assert.match(palette, /command\.risk === "destructive" \? "危险" : "写入"/);
+});

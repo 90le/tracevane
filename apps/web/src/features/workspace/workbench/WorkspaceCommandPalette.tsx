@@ -35,6 +35,14 @@ export function WorkspaceCommandPalette({
     [commands],
   );
   const totalCommandCount = commands.length;
+  const mutatingCommandCount = React.useMemo(
+    () => commands.filter((command) => command.risk === "mutating").length,
+    [commands],
+  );
+  const destructiveCommandCount = React.useMemo(
+    () => commands.filter((command) => command.risk === "destructive").length,
+    [commands],
+  );
   const commandGroups = React.useMemo(
     () =>
       WORKSPACE_COMMAND_GROUPS.map((group) => ({
@@ -95,6 +103,8 @@ export function WorkspaceCommandPalette({
           <span>桌面：键盘优先</span>
           <span>移动：拇指安全 Sheet</span>
           <span>冲突：{keybindingConflicts.length}</span>
+          <span>写入：{mutatingCommandCount}</span>
+          <span>危险：{destructiveCommandCount}</span>
         </div>
         <p
           id="workspace-command-palette-summary"
@@ -136,6 +146,8 @@ export function WorkspaceCommandPalette({
                 onSelect={() => runCommand(command)}
                 disabled={command.disabled}
                 data-workspace-command={command.id}
+                data-workspace-command-risk={command.risk ?? "unknown"}
+                data-workspace-command-surface={command.surface ?? "unknown"}
               >
                 {command.icon}
                 <span className="grid min-w-0 flex-1 gap-0.5">
@@ -146,6 +158,20 @@ export function WorkspaceCommandPalette({
                     {command.description}
                   </span>
                 </span>
+                <span
+                  className="hidden rounded-full border border-line bg-panel-2 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-subtle sm:inline-flex"
+                  data-workspace-command-surface-badge={command.surface ?? "unknown"}
+                >
+                  {command.surface ?? "legacy"}
+                </span>
+                {command.risk && command.risk !== "safe" ? (
+                  <span
+                    className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"
+                    data-workspace-command-risk-badge={command.risk}
+                  >
+                    {command.risk === "destructive" ? "危险" : "写入"}
+                  </span>
+                ) : null}
                 {command.shortcut ? (
                   <CommandShortcut>{command.shortcut}</CommandShortcut>
                 ) : null}
