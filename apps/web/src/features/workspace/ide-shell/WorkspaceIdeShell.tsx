@@ -576,6 +576,113 @@ export function WorkspaceIdeShell() {
     [activeDockFocus],
   );
 
+  const activeDockLayoutCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.dock.active.split-right",
+        group: "窗格",
+        label: "当前 Dock 左右拆分",
+        description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 变成左右窗格组` : "先聚焦一个 Dock 窗格组，再拆分当前 Dock",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          openDockPlacement(activeDockFocus.placement);
+          setDockSplitMode(activeDockFocus.placement, "vertical");
+        },
+      },
+      {
+        id: "ide.dock.active.split-down",
+        group: "窗格",
+        label: "当前 Dock 上下拆分",
+        description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 变成上下窗格组` : "先聚焦一个 Dock 窗格组，再拆分当前 Dock",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelBottom />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          openDockPlacement(activeDockFocus.placement);
+          setDockSplitMode(activeDockFocus.placement, "horizontal");
+        },
+      },
+      {
+        id: "ide.dock.active.swap-groups",
+        group: "窗格",
+        label: "交换当前 Dock 主副窗格组",
+        description: activeDockFocus ? `交换当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 主副窗格组` : "先聚焦一个已拆分的 Dock 窗格组，再交换主副组",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus || !canSwapDockSplit(activeDockFocus.placement),
+        run: () => {
+          if (!activeDockFocus) return;
+          swapDockSplitPanes(activeDockFocus.placement);
+        },
+      },
+      {
+        id: "ide.dock.active.close-split",
+        group: "窗格",
+        label: "关闭当前 Dock 拆分",
+        description: activeDockFocus ? `恢复当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 为单一窗格组` : "先聚焦一个 Dock 窗格组，再关闭拆分",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          setDockSplitMode(activeDockFocus.placement, "single");
+        },
+      },
+      {
+        id: "ide.dock.active.reset-ratio",
+        group: "窗格",
+        label: "重置当前 Dock 拆分比例",
+        description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 比例恢复为 50/50` : "先聚焦一个 Dock 窗格组，再重置比例",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          resetDockSplitRatio(activeDockFocus.placement);
+        },
+      },
+      {
+        id: "ide.dock.active.maximize",
+        group: "布局",
+        label: "最大化当前 Dock",
+        description: activeDockFocus ? `最大化当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock 窗格组，再最大化它所属的 Dock",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Maximize2 />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          openDockPlacement(activeDockFocus.placement);
+          toggleMaximizedPane(activeDockFocus.placement);
+        },
+      },
+      {
+        id: "ide.dock.active.collapse",
+        group: "布局",
+        label: "收起当前 Dock",
+        description: activeDockFocus ? `收起当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock 窗格组，再收起它所属的 Dock",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          closeDockPlacement(activeDockFocus.placement);
+        },
+      },
+    ],
+    [activeBottomPane, activeDockFocus, activeLeftPane, activeRightPane, activeTopPane, dockSplitModes, secondaryBottomPane, secondaryLeftPane, secondaryRightPane, secondaryTopPane],
+  );
+
   const dockSplitCommands = React.useMemo<WorkspaceCommand[]>(
     () =>
       DOCK_PLACEMENTS.flatMap((placement) => [
@@ -667,8 +774,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, activeDockLayoutCommands, dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -990,6 +1097,16 @@ export function WorkspaceIdeShell() {
       setBottomOpen(true);
       setMobilePanel("bottom");
     }
+  }
+
+  function closeDockPlacement(placement: PanePlacement) {
+    if (placement === "top") setTopOpen(false);
+    if (placement === "left") setLeftOpen(false);
+    if (placement === "right") setRightOpen(false);
+    if (placement === "bottom") setBottomOpen(false);
+    setActiveDockFocus((current) => (current?.placement === placement ? null : current));
+    setMaximizedPane((current) => (current === placement ? null : current));
+    if (mobilePanel === placement) setMobilePanel("editor");
   }
 
   function closeEditorSplit() {
