@@ -328,6 +328,12 @@ export function WorkspaceIdeShell() {
           resizeActiveDockPlacement(-KEYBOARD_RESIZE_LARGE_STEP);
           return;
         }
+        if (event.shiftKey && event.key === "]") {
+          event.preventDefault();
+          moveActiveEditorFileToOtherGroup();
+          focusIdeRegion("center");
+          return;
+        }
         if (!event.shiftKey && event.key === "[") {
           event.preventDefault();
           setActiveEditorGroup("primary");
@@ -601,6 +607,18 @@ export function WorkspaceIdeShell() {
         icon: <RotateCcw />,
         disabled: editorSplitMode === "single",
         run: swapEditorGroups,
+      },
+      {
+        id: "ide.editor.move-active-other-group",
+        group: "布局",
+        label: "移动当前文件到另一编辑器组",
+        description: "把当前编辑器组打开的文件移到另一组；未拆分时先创建副编辑器组",
+        shortcut: "⌘⌥⇧]",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        disabled: !activePath,
+        run: moveActiveEditorFileToOtherGroup,
       },
       {
         id: "ide.editor.focus-primary",
@@ -1446,6 +1464,15 @@ export function WorkspaceIdeShell() {
     setActivePath(nextPrimaryPath);
     setActivePathRootId(nextPrimaryRootId);
     setActiveEditorGroup((group) => (group === "primary" ? "secondary" : "primary"));
+  }
+
+  function moveActiveEditorFileToOtherGroup() {
+    if (!activePath) return;
+    if (editorSplitMode === "single") {
+      splitEditor("vertical");
+      return;
+    }
+    swapEditorGroups();
   }
 
   function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
