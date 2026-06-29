@@ -401,6 +401,16 @@ export function WorkspaceIdeShell() {
           focusEditorOnlyLayout();
           return;
         }
+        if (event.shiftKey && key === "m") {
+          event.preventDefault();
+          closeAllDockSplits();
+          return;
+        }
+        if (event.shiftKey && event.key === "5") {
+          event.preventDefault();
+          resetAllDockSplitRatios();
+          return;
+        }
         if (event.shiftKey && event.key === "]") {
           event.preventDefault();
           moveActiveEditorFileToOtherGroup();
@@ -695,6 +705,28 @@ export function WorkspaceIdeShell() {
         surface: "layout",
         icon: <Code2 />,
         run: focusEditorOnlyLayout,
+      },
+      {
+        id: "ide.dock.close-all-splits",
+        group: "窗格",
+        label: "合并全部 Dock 拆分",
+        description: "把顶部、左侧、右侧和底部 Dock 都恢复为单窗格组，但保留每个 Dock 的当前主 Pane 和标签顺序",
+        shortcut: "⌘⌥⇧M",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        run: closeAllDockSplits,
+      },
+      {
+        id: "ide.dock.reset-all-split-ratios",
+        group: "窗格",
+        label: "重置全部 Dock 拆分比例",
+        description: "把所有 Dock 的主副组比例恢复为 50/50，不改变拆分方向、Pane 组合或可见性",
+        shortcut: "⌘⌥⇧5",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        run: resetAllDockSplitRatios,
       },
       {
         id: "ide.editor.split-right",
@@ -1567,6 +1599,22 @@ export function WorkspaceIdeShell() {
     setActiveDockFocus(null);
     setMobilePanel("editor");
     focusIdeRegionNode("center");
+  }
+
+  function closeAllDockSplits() {
+    setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
+    setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
+    setDockPaneSelections((current) => ({
+      top: { ...current.top, secondary: secondaryDockPane(topPaneIds, activeTopPane) },
+      left: { ...current.left, secondary: secondaryDockPane(leftPaneIds, activeLeftPane) },
+      right: { ...current.right, secondary: secondaryDockPane(rightPaneIds, activeRightPane) },
+      bottom: { ...current.bottom, secondary: secondaryDockPane(bottomPaneIds, activeBottomPane) },
+    }));
+    setActiveDockFocus((current) => (current ? { ...current, role: "primary" } : current));
+  }
+
+  function resetAllDockSplitRatios() {
+    setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
   }
 
   function resetLayout() {
