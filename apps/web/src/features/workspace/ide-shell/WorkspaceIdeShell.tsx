@@ -409,7 +409,11 @@ export function WorkspaceIdeShell() {
       if (!mod || event.altKey) return;
       if (!event.shiftKey && key === "w") {
         event.preventDefault();
-        hideActiveDockPane();
+        if (activeDockFocus) {
+          hideActiveDockPane();
+        } else {
+          closeActiveEditorTab();
+        }
         return;
       }
       if (!event.shiftKey && key === "b") {
@@ -621,6 +625,18 @@ export function WorkspaceIdeShell() {
         run: swapEditorGroups,
       },
       {
+        id: "ide.editor.close-active-tab",
+        group: "编辑器",
+        label: "关闭当前编辑器标签",
+        description: "关闭当前聚焦编辑器组里的活动文件标签，并切回同组最近标签",
+        shortcut: "⌘W",
+        risk: "safe",
+        surface: "tab-lifecycle",
+        icon: <Trash2 />,
+        disabled: !activeEditorTab(),
+        run: closeActiveEditorTab,
+      },
+      {
         id: "ide.editor.move-active-other-group",
         group: "布局",
         label: "移动当前文件到另一编辑器组",
@@ -718,7 +734,7 @@ export function WorkspaceIdeShell() {
         group: "窗格" as const,
         label: "隐藏当前聚焦 Pane",
         description: activeDockFocus ? `隐藏当前聚焦的 ${paneLabel(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId)} Pane` : "先聚焦一个 Dock Pane，再隐藏它",
-        shortcut: "⌘W",
+        shortcut: "Dock 焦点：⌘W",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <RotateCcw />,
@@ -1468,6 +1484,26 @@ export function WorkspaceIdeShell() {
     }));
   }
 
+  function focusEditorGroup(group: EditorGroupId) {
+    setActiveEditorGroup(group);
+    setActiveDockFocus(null);
+    setMobilePanel("editor");
+  }
+
+  function activeEditorTab(): EditorTab | null {
+    if (activeEditorGroup === "secondary" && editorSplitMode !== "single" && secondaryPath) {
+      return { path: secondaryPath, rootId: secondaryPathRootId || activePathRootId || rootId };
+    }
+    if (activePath) return { path: activePath, rootId: activePathRootId || rootId };
+    return null;
+  }
+
+  function closeActiveEditorTab() {
+    const tab = activeEditorTab();
+    if (!tab) return;
+    closeEditorTab(activeEditorGroup === "secondary" && editorSplitMode !== "single" ? "secondary" : "primary", tab);
+  }
+
   function selectEditorTab(group: EditorGroupId, tab: EditorTab) {
     if (group === "primary") {
       setActivePath(tab.path);
@@ -1477,7 +1513,7 @@ export function WorkspaceIdeShell() {
       setSecondaryPath(tab.path);
       setSecondaryPathRootId(tab.rootId);
     }
-    setActiveEditorGroup(group);
+    focusEditorGroup(group);
     focusIdeRegion("center");
   }
 
@@ -2215,7 +2251,7 @@ export function WorkspaceIdeShell() {
               onBeginTabDrag={beginEditorTabDrag}
               onDropTabBefore={dropEditorTabBefore}
               onDropTabAtEnd={dropEditorTabAtEnd}
-              onFocus={() => setActiveEditorGroup("primary")}
+              onFocus={() => focusEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
               onSplitDown={() => splitEditor("horizontal")}
             >
@@ -2252,7 +2288,7 @@ export function WorkspaceIdeShell() {
                   onBeginTabDrag={beginEditorTabDrag}
                   onDropTabBefore={dropEditorTabBefore}
                   onDropTabAtEnd={dropEditorTabAtEnd}
-                  onFocus={() => setActiveEditorGroup("secondary")}
+                  onFocus={() => focusEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
                   onClose={closeEditorSplit}
