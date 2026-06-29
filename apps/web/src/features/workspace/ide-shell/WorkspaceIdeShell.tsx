@@ -43,6 +43,7 @@ type PanePlacement = "top" | "left" | "right" | "bottom";
 type SaveState = "idle" | "dirty" | "saving" | "saved";
 type MaximizedPane = "top" | "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
+type WorkbenchRecipeId = "classic" | "ai-pair" | "terminal-debug" | "review";
 type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
 interface EditorTab {
@@ -68,6 +69,20 @@ interface IdePaneSizes {
   left: number;
   right: number;
   bottom: number;
+}
+
+interface WorkbenchLayoutRecipe {
+  id: WorkbenchRecipeId;
+  label: string;
+  description: string;
+  shortcut?: string;
+  layoutPreset: LayoutPreset;
+  paneSizes: IdePaneSizes;
+  open: Record<PanePlacement, boolean>;
+  panePlacements: IdePanePlacements;
+  paneOrder: PaneOrder;
+  dockSplitModes: DockSplitModes;
+  dockPaneSelections: DockPaneSelections;
 }
 
 interface PaneDescriptor {
@@ -124,6 +139,133 @@ const KEYBOARD_RESIZE_LARGE_STEP = 40;
 const DEFAULT_DOCK_SPLIT_MODES: DockSplitModes = { top: "single", left: "single", right: "single", bottom: "single" };
 const DEFAULT_DOCK_SPLIT_RATIOS: DockSplitRatios = { top: 50, left: 50, right: 50, bottom: 50 };
 const DEFAULT_DOCK_PANE_SELECTIONS: DockPaneSelections = { top: {}, left: {}, right: {}, bottom: {} };
+const CLASSIC_IDE_PANE_PLACEMENTS: IdePanePlacements = { ...DEFAULT_PANE_PLACEMENTS };
+const CLASSIC_IDE_PANE_ORDER: PaneOrder = { ...DEFAULT_PANE_ORDER };
+const AI_PAIR_PANE_PLACEMENTS: IdePanePlacements = {
+  explorer: "left",
+  search: "left",
+  git: "left",
+  terminal: "bottom",
+  problems: "bottom",
+  output: "bottom",
+  ai: "right",
+  outline: "right",
+  extensions: "right",
+};
+const AI_PAIR_PANE_ORDER: PaneOrder = {
+  top: [],
+  left: ["explorer", "search", "git"],
+  right: ["ai", "outline", "extensions"],
+  bottom: ["terminal", "problems", "output"],
+};
+const TERMINAL_DEBUG_PANE_PLACEMENTS: IdePanePlacements = {
+  explorer: "left",
+  search: "left",
+  git: "left",
+  terminal: "bottom",
+  problems: "bottom",
+  output: "bottom",
+  ai: "right",
+  outline: "right",
+  extensions: "right",
+};
+const TERMINAL_DEBUG_PANE_ORDER: PaneOrder = {
+  top: [],
+  left: ["explorer", "git", "search"],
+  right: ["ai", "outline", "extensions"],
+  bottom: ["terminal", "problems", "output"],
+};
+const REVIEW_PANE_PLACEMENTS: IdePanePlacements = {
+  explorer: "left",
+  search: "top",
+  git: "left",
+  terminal: "bottom",
+  problems: "bottom",
+  output: "bottom",
+  ai: "right",
+  outline: "right",
+  extensions: "right",
+};
+const REVIEW_PANE_ORDER: PaneOrder = {
+  top: ["search"],
+  left: ["git", "explorer"],
+  right: ["ai", "outline", "extensions"],
+  bottom: ["problems", "output", "terminal"],
+};
+const WORKBENCH_LAYOUT_RECIPES: WorkbenchLayoutRecipe[] = [
+  {
+    id: "classic",
+    label: "经典 IDE",
+    description: "文件树在左、AI/大纲在右、终端在底部，适合作为默认完整 Workbench。",
+    shortcut: "⌘⌥⇧1",
+    layoutPreset: "balanced",
+    paneSizes: DEFAULT_PANE_SIZES,
+    open: { top: false, left: true, right: true, bottom: true },
+    panePlacements: CLASSIC_IDE_PANE_PLACEMENTS,
+    paneOrder: CLASSIC_IDE_PANE_ORDER,
+    dockSplitModes: DEFAULT_DOCK_SPLIT_MODES,
+    dockPaneSelections: {
+      top: {},
+      left: { primary: "explorer", secondary: "search" },
+      right: { primary: "ai", secondary: "outline" },
+      bottom: { primary: "terminal", secondary: "problems" },
+    },
+  },
+  {
+    id: "ai-pair",
+    label: "AI Pair",
+    description: "右侧拆成 AI 与大纲双组，底部保留终端，适合 AI 编程与上下文审阅。",
+    shortcut: "⌘⌥⇧2",
+    layoutPreset: "balanced",
+    paneSizes: { top: 150, left: 300, right: 420, bottom: 240 },
+    open: { top: false, left: true, right: true, bottom: true },
+    panePlacements: AI_PAIR_PANE_PLACEMENTS,
+    paneOrder: AI_PAIR_PANE_ORDER,
+    dockSplitModes: { top: "single", left: "single", right: "vertical", bottom: "single" },
+    dockPaneSelections: {
+      top: {},
+      left: { primary: "explorer", secondary: "search" },
+      right: { primary: "ai", secondary: "outline" },
+      bottom: { primary: "terminal", secondary: "problems" },
+    },
+  },
+  {
+    id: "terminal-debug",
+    label: "终端调试",
+    description: "底部上下/左右组合终端与问题面板，右侧可收起，适合运行、测试和修复。",
+    shortcut: "⌘⌥⇧3",
+    layoutPreset: "terminal",
+    paneSizes: TERMINAL_PANE_SIZES,
+    open: { top: false, left: true, right: false, bottom: true },
+    panePlacements: TERMINAL_DEBUG_PANE_PLACEMENTS,
+    paneOrder: TERMINAL_DEBUG_PANE_ORDER,
+    dockSplitModes: { top: "single", left: "single", right: "single", bottom: "horizontal" },
+    dockPaneSelections: {
+      top: {},
+      left: { primary: "explorer", secondary: "git" },
+      right: { primary: "ai", secondary: "outline" },
+      bottom: { primary: "terminal", secondary: "problems" },
+    },
+  },
+  {
+    id: "review",
+    label: "审阅/搜索",
+    description: "顶部放搜索，左侧 Git，底部问题/输出，适合代码审阅、全局搜索与变更检查。",
+    shortcut: "⌘⌥⇧4",
+    layoutPreset: "code",
+    paneSizes: { top: 190, left: 310, right: 360, bottom: 220 },
+    open: { top: true, left: true, right: true, bottom: true },
+    panePlacements: REVIEW_PANE_PLACEMENTS,
+    paneOrder: REVIEW_PANE_ORDER,
+    dockSplitModes: { top: "single", left: "single", right: "vertical", bottom: "vertical" },
+    dockPaneSelections: {
+      top: { primary: "search" },
+      left: { primary: "git", secondary: "explorer" },
+      right: { primary: "ai", secondary: "outline" },
+      bottom: { primary: "problems", secondary: "output" },
+    },
+  },
+];
 const DEFAULT_EDITOR_SPLIT_RATIO = 50;
 const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
@@ -409,6 +551,12 @@ export function WorkspaceIdeShell() {
         if (event.shiftKey && event.key === "5") {
           event.preventDefault();
           resetAllDockSplitRatios();
+          return;
+        }
+        if (event.shiftKey && ["1", "2", "3", "4"].includes(key)) {
+          event.preventDefault();
+          const recipe = WORKBENCH_LAYOUT_RECIPES.find((item) => item.shortcut?.endsWith(key));
+          if (recipe) applyWorkbenchRecipe(recipe.id);
           return;
         }
         if (event.shiftKey && event.key === "]") {
@@ -706,6 +854,17 @@ export function WorkspaceIdeShell() {
         icon: <Code2 />,
         run: focusEditorOnlyLayout,
       },
+      ...WORKBENCH_LAYOUT_RECIPES.map((recipe) => ({
+        id: `ide.workbench.recipe.${recipe.id}`,
+        group: "布局" as const,
+        label: `工作台组合：${recipe.label}`,
+        description: recipe.description,
+        shortcut: recipe.shortcut,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        run: () => applyWorkbenchRecipe(recipe.id),
+      })),
       {
         id: "ide.dock.close-all-splits",
         group: "窗格",
@@ -1589,6 +1748,32 @@ export function WorkspaceIdeShell() {
           ? TERMINAL_PANE_SIZES
           : DEFAULT_PANE_SIZES,
     );
+  }
+
+
+  function applyWorkbenchRecipe(recipeId: WorkbenchRecipeId) {
+    const recipe = WORKBENCH_LAYOUT_RECIPES.find((item) => item.id === recipeId);
+    if (!recipe) return;
+    const nextGroups = groupPanesByPlacement(recipe.panePlacements, recipe.paneOrder, []);
+    setLayoutPreset(recipe.layoutPreset);
+    setMaximizedPane(null);
+    setPaneSizes(recipe.paneSizes);
+    setPanePlacements(recipe.panePlacements);
+    setPaneOrder(recipe.paneOrder);
+    setHiddenPanes([]);
+    setDockSplitModes(recipe.dockSplitModes);
+    setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
+    setDockPaneSelections(mergeDockPaneSelections(recipe.dockPaneSelections));
+    setTopOpen(recipe.open.top);
+    setLeftOpen(recipe.open.left);
+    setRightOpen(recipe.open.right);
+    setBottomOpen(recipe.open.bottom);
+    setTopPanel(nextGroups.top[0] ?? "output");
+    setActivity(nextGroups.left[0] ?? "explorer");
+    setRightPanel(nextGroups.right[0] ?? "ai");
+    setBottomPanel(nextGroups.bottom[0] ?? "terminal");
+    setActiveDockFocus(null);
+    setMobilePanel("editor");
   }
 
   function openAllDocks() {
@@ -2566,6 +2751,13 @@ export function WorkspaceIdeShell() {
           <button type="button" data-active={layoutPreset === "balanced"} onClick={() => applyLayoutPreset("balanced")}>平衡</button>
           <button type="button" data-active={layoutPreset === "code"} onClick={() => applyLayoutPreset("code")}>代码</button>
           <button type="button" data-active={layoutPreset === "terminal"} onClick={() => applyLayoutPreset("terminal")}>终端</button>
+        </div>
+        <div className="workspace-ide-shell__layout-presets" aria-label="IDE 工作台组合预案" data-ide-workbench-recipes>
+          {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
+            <button key={recipe.id} type="button" onClick={() => applyWorkbenchRecipe(recipe.id)} title={recipe.description} data-ide-workbench-recipe={recipe.id}>
+              {recipe.label}
+            </button>
+          ))}
         </div>
         <div className="workspace-ide-shell__layout-snapshots" aria-label="IDE 布局快照">
           <button type="button" onClick={saveLayoutSnapshot} data-ide-layout-snapshot-save>保存布局</button>

@@ -1114,6 +1114,39 @@ test("new Workspace IDE shell supports keyboard focus between IDE regions", () =
   assert.match(shellSource, /tabIndex=\{-1\}/);
 });
 
+
+
+test("new Workspace IDE shell supports complete workbench layout recipes", () => {
+  assert.match(shellSource, /type WorkbenchRecipeId = "classic" \| "ai-pair" \| "terminal-debug" \| "review"/);
+  assert.match(shellSource, /interface WorkbenchLayoutRecipe/);
+  assert.match(shellSource, /WORKBENCH_LAYOUT_RECIPES/);
+  assert.match(shellSource, /id: "classic"/);
+  assert.match(shellSource, /id: "ai-pair"/);
+  assert.match(shellSource, /id: "terminal-debug"/);
+  assert.match(shellSource, /id: "review"/);
+  assert.match(shellSource, /function applyWorkbenchRecipe\(recipeId: WorkbenchRecipeId\)/);
+  assert.match(shellSource, /setPanePlacements\(recipe\.panePlacements\)/);
+  assert.match(shellSource, /setPaneOrder\(recipe\.paneOrder\)/);
+  assert.match(shellSource, /setDockSplitModes\(recipe\.dockSplitModes\)/);
+  assert.match(shellSource, /setDockPaneSelections\(mergeDockPaneSelections\(recipe\.dockPaneSelections\)\)/);
+  assert.match(shellSource, /setTopOpen\(recipe\.open\.top\)/);
+  assert.match(shellSource, /setLeftOpen\(recipe\.open\.left\)/);
+  assert.match(shellSource, /setRightOpen\(recipe\.open\.right\)/);
+  assert.match(shellSource, /setBottomOpen\(recipe\.open\.bottom\)/);
+  assert.match(shellSource, /setHiddenPanes\(\[\]\)/);
+  assert.match(shellSource, /data-ide-workbench-recipes/);
+  assert.match(shellSource, /data-ide-workbench-recipe=\{recipe\.id\}/);
+  assert.match(shellSource, /ide\.workbench\.recipe\.\$\{recipe\.id\}/);
+  assert.match(shellSource, /工作台组合：\$\{recipe\.label\}/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧1"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧2"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧3"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧4"/);
+  assert.match(shellSource, /"1", "2", "3", "4"/);
+  assert.match(shellSource, /includes\(key\)/);
+  assert.match(shellSource, /applyWorkbenchRecipe\(recipe\.id\)/);
+});
+
 test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY/);
   assert.match(shellSource, /interface IdeLayoutSnapshot/);
