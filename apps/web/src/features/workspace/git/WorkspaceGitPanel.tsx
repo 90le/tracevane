@@ -695,13 +695,13 @@ export function WorkspaceGitPanel({
       const context = formatGitCommitReleaseNote(commit, detail ?? null);
       void navigator.clipboard.writeText(context).then(
         () =>
-          toast.success("已复制变更日志条目", {
-            description: "可用于变更日志、周报或审查摘要生成。",
+          toast.success("已复制提交审查条目", {
+            description: "可用于审查摘要、变更证据或提交节奏分析。",
           }),
         () =>
-          toast.info("变更日志入口已预留", {
+          toast.info("提交审查条目入口已预留", {
             description:
-              "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git release-note context。",
+              "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git commit-review context。",
           }),
       );
     },
@@ -712,7 +712,7 @@ export function WorkspaceGitPanel({
     (commit: GitCommitSummary, detail?: GitCommitDetailPayload | null) => {
       if (!detail?.diff && !detail?.files?.length) {
         toast.info("提交 Diff 尚未加载", {
-          description: "请先打开提交详情，等待文件清单与 diff 预览加载完成。",
+          description: "请先打开提交详情，等待文件清单与差异视图加载完成。",
         });
         return;
       }
@@ -748,7 +748,7 @@ export function WorkspaceGitPanel({
       () =>
         toast.success("已复制 Git 近期历史上下文", {
           description:
-            "可用于总结最近变更、生成变更日志或审查提交节奏。",
+            "可用于审查最近变更、形成提交证据或分析提交节奏。",
         }),
       () =>
         toast.info("Git 历史上下文入口已预留", {
@@ -1850,7 +1850,7 @@ function GitCommitDetailsPanel({
                   }
                 >
                   <div className="flex items-center justify-between gap-2 border-b border-white/10 px-2 py-1 text-2xs text-white/60">
-                    <span>Diff 预览{detail.binary ? " · 含二进制" : ""}</span>
+                    <span>Diff 差异视图{detail.binary ? " · 含二进制" : ""}</span>
                     {detail.truncated ? <span>已截断</span> : null}
                   </div>
                   <pre className="max-h-40 overflow-auto whitespace-pre-wrap px-2 py-1.5 font-mono text-[10px] leading-relaxed text-white/80">

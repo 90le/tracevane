@@ -183,6 +183,12 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.match(gitCommands, /审查证据包/);
   assert.match(gitPanel, /复制 Git 审查上下文/);
   assert.match(gitPanel, /已复制 Git 审查上下文/);
+  assert.match(gitPanel, /已复制提交审查条目/);
+  assert.match(gitPanel, /Diff 差异视图/);
+  assert.match(gitPanel, /形成提交证据/);
+  assert.doesNotMatch(gitPanel, /Diff 预览/);
+  assert.doesNotMatch(gitPanel, /变更日志、周报/);
+  assert.doesNotMatch(gitPanel, /release-note context/);
   assert.doesNotMatch(gitCommands, /Diff AI 上下文/);
   assert.doesNotMatch(gitCommands, /复制该提交的 AI 上下文/);
   assert.doesNotMatch(gitPanel, /复制 Git AI 上下文/);
