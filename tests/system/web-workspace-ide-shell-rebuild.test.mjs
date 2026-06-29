@@ -282,11 +282,17 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function openDockPlacement/);
   assert.match(shellSource, /function startDockSplitResize/);
   assert.match(shellSource, /function resizeDockSplitFromKeyboard/);
+  assert.match(shellSource, /const activeDockGroupCommands = React\.useMemo<WorkspaceCommand\[\]>/);
+  assert.match(shellSource, /ide\.pane\.move\.\$\{pane\.id\}\.active-dock-group/);
+  assert.match(shellSource, /移动 \$\{pane\.label\} 到当前聚焦窗格组/);
+  assert.match(shellSource, /disabled: !activeDockFocus/);
+  assert.match(shellSource, /movePaneToPlacement\(pane\.id, activeDockFocus\.placement, undefined, activeDockFocus\.role\)/);
   assert.match(shellSource, /const dockSplitCommands = React\.useMemo<WorkspaceCommand\[\]>/);
   assert.match(shellSource, /ide\.dock\.split\.\$\{placement\}\.right/);
   assert.match(shellSource, /ide\.dock\.split\.\$\{placement\}\.down/);
   assert.match(shellSource, /ide\.dock\.close-split\.\$\{placement\}/);
   assert.match(shellSource, /ide\.dock\.reset-ratio\.\$\{placement\}/);
+  assert.match(shellSource, /\.\.\.activeDockGroupCommands/);
   assert.match(shellSource, /\.\.\.dockSplitCommands/);
   assert.match(shellSource, /function DockPaneFrame/);
   assert.match(shellSource, /function DockSplitHandle/);

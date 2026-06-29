@@ -554,6 +554,28 @@ export function WorkspaceIdeShell() {
     [],
   );
 
+
+  const activeDockGroupCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      PANE_REGISTRY.map((pane) => ({
+        id: `ide.pane.move.${pane.id}.active-dock-group`,
+        group: "窗格" as const,
+        label: `移动 ${pane.label} 到当前聚焦窗格组`,
+        description: activeDockFocus
+          ? `移动到${placementLabel(activeDockFocus.placement)} Dock 的${activeDockFocus.role === "primary" ? "主" : "副"}窗格组`
+          : "先点击或聚焦一个 Dock 主/副窗格组，再用此命令移动窗格",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: React.createElement(pane.icon),
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          movePaneToPlacement(pane.id, activeDockFocus.placement, undefined, activeDockFocus.role);
+        },
+      })),
+    [activeDockFocus],
+  );
+
   const dockSplitCommands = React.useMemo<WorkspaceCommand[]>(
     () =>
       DOCK_PLACEMENTS.flatMap((placement) => [
@@ -634,8 +656,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
