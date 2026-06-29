@@ -77,9 +77,27 @@ const BOTTOM_PANELS: Array<{ id: BottomPanelId; label: string }> = [
   { id: "output", label: "输出" },
 ];
 
+const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
+
 const DEFAULT_PANE_SIZES: IdePaneSizes = { left: 320, right: 340, bottom: 260 };
 const CODE_PANE_SIZES: IdePaneSizes = { left: 280, right: 300, bottom: 190 };
 const TERMINAL_PANE_SIZES: IdePaneSizes = { left: 300, right: 300, bottom: 380 };
+const PANE_SIZE_LIMITS: Record<keyof IdePaneSizes, { min: number; max: number }> = {
+  left: { min: 220, max: 560 },
+  right: { min: 240, max: 560 },
+  bottom: { min: 160, max: 520 },
+};
+const KEYBOARD_RESIZE_STEP = 16;
+const KEYBOARD_RESIZE_LARGE_STEP = 40;
+
+interface IdeLayoutState {
+  leftOpen?: boolean;
+  rightOpen?: boolean;
+  bottomOpen?: boolean;
+  maximizedPane?: MaximizedPane;
+  layoutPreset?: LayoutPreset;
+  paneSizes?: Partial<IdePaneSizes>;
+}
 
 const LazyWorkspaceTerminal = React.lazy(() =>
   import("../terminal/WorkspaceTerminal").then((module) => ({
@@ -100,15 +118,19 @@ export function WorkspaceIdeShell() {
     );
   }, [filesSummary.data?.defaultRootId, roots]);
 
+  const [layoutState] = React.useState(() => loadIdeLayoutState());
   const [activity, setActivity] = React.useState<ActivityId>("explorer");
   const [rightPanel, setRightPanel] = React.useState<RightPanelId>("ai");
   const [bottomPanel, setBottomPanel] = React.useState<BottomPanelId>("terminal");
-  const [leftOpen, setLeftOpen] = React.useState(true);
-  const [rightOpen, setRightOpen] = React.useState(true);
-  const [bottomOpen, setBottomOpen] = React.useState(true);
-  const [maximizedPane, setMaximizedPane] = React.useState<MaximizedPane>(null);
-  const [layoutPreset, setLayoutPreset] = React.useState<LayoutPreset>("balanced");
-  const [paneSizes, setPaneSizes] = React.useState<IdePaneSizes>(DEFAULT_PANE_SIZES);
+  const [leftOpen, setLeftOpen] = React.useState(layoutState.leftOpen ?? true);
+  const [rightOpen, setRightOpen] = React.useState(layoutState.rightOpen ?? true);
+  const [bottomOpen, setBottomOpen] = React.useState(layoutState.bottomOpen ?? true);
+  const [maximizedPane, setMaximizedPane] = React.useState<MaximizedPane>(layoutState.maximizedPane ?? null);
+  const [layoutPreset, setLayoutPreset] = React.useState<LayoutPreset>(layoutState.layoutPreset ?? "balanced");
+  const [paneSizes, setPaneSizes] = React.useState<IdePaneSizes>(() => ({
+    ...DEFAULT_PANE_SIZES,
+    ...layoutState.paneSizes,
+  }));
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>();
@@ -137,6 +159,17 @@ export function WorkspaceIdeShell() {
       setGitDiffTarget(null);
     }
   }, [defaultRootId, rootId, roots]);
+
+  React.useEffect(() => {
+    storeIdeLayoutState({
+      leftOpen,
+      rightOpen,
+      bottomOpen,
+      maximizedPane,
+      layoutPreset,
+      paneSizes,
+    });
+  }, [bottomOpen, layoutPreset, leftOpen, maximizedPane, paneSizes, rightOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -239,7 +272,46 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <Maximize2 />,
-        run: () => setMaximizedPane((pane) => (pane === "center" ? null : "center")),
+        run: () => toggleMaximizedPane("center"),
+      },
+      {
+        id: "ide.layout.maximize-left",
+        group: "布局",
+        label: maximizedPane === "left" ? "恢复组合布局" : "最大化左侧窗格",
+        description: "聚焦文件/搜索/Git/AI 左侧组合窗格",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelLeft />,
+        run: () => {
+          setLeftOpen(true);
+          toggleMaximizedPane("left");
+        },
+      },
+      {
+        id: "ide.layout.maximize-right",
+        group: "布局",
+        label: maximizedPane === "right" ? "恢复组合布局" : "最大化右侧插件窗格",
+        description: "聚焦 AI 上下文、符号大纲或扩展窗格",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelRight />,
+        run: () => {
+          setRightOpen(true);
+          toggleMaximizedPane("right");
+        },
+      },
+      {
+        id: "ide.layout.maximize-bottom",
+        group: "布局",
+        label: maximizedPane === "bottom" ? "恢复组合布局" : "最大化底部 Dock",
+        description: "聚焦终端、问题或输出底部组合窗格",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => {
+          setBottomOpen(true);
+          toggleMaximizedPane("bottom");
+        },
       },
       {
         id: "ide.layout.preset-balanced",
@@ -322,8 +394,7 @@ export function WorkspaceIdeShell() {
     const onPointerMove = (moveEvent: PointerEvent) => {
       const delta = pane === "bottom" ? startY - moveEvent.clientY : moveEvent.clientX - startX;
       const signedDelta = pane === "right" ? -delta : delta;
-      const min = pane === "bottom" ? 160 : 220;
-      const max = pane === "bottom" ? Math.round(window.innerHeight * 0.64) : 520;
+      const { min, max } = getPaneSizeLimits(pane);
       const next = clamp(startSize + signedDelta, min, max);
       setPaneSizes((current) => ({ ...current, [pane]: next }));
       setLayoutPreset("balanced");
@@ -336,6 +407,19 @@ export function WorkspaceIdeShell() {
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
+  }
+
+  function resizePaneFromKeyboard(pane: keyof IdePaneSizes, event: React.KeyboardEvent) {
+    const baseStep = event.shiftKey ? KEYBOARD_RESIZE_LARGE_STEP : KEYBOARD_RESIZE_STEP;
+    const delta = keyboardResizeDelta(pane, event.key, baseStep);
+    if (delta === 0) return;
+    event.preventDefault();
+    const { min, max } = getPaneSizeLimits(pane);
+    setPaneSizes((current) => ({
+      ...current,
+      [pane]: clamp(current[pane] + delta, min, max),
+    }));
+    setLayoutPreset("balanced");
   }
 
   function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
@@ -358,6 +442,7 @@ export function WorkspaceIdeShell() {
       data-testid="workspace-ide-shell"
       data-ide-layout-preset={layoutPreset}
       data-ide-maximized-pane={maximizedPane ?? ""}
+      data-ide-pane-size-state={`${paneSizes.left}:${paneSizes.right}:${paneSizes.bottom}`}
       style={{
         "--ide-left-width": `${paneSizes.left}px`,
         "--ide-right-width": `${paneSizes.right}px`,
@@ -451,7 +536,15 @@ export function WorkspaceIdeShell() {
           </section>
         ) : null}
         {leftOpen ? (
-          <ResizeHandle pane="left" label="调整左侧窗格宽度" onPointerDown={(event) => startPaneResize("left", event)} />
+          <ResizeHandle
+            pane="left"
+            label="调整左侧窗格宽度"
+            orientation="vertical"
+            value={paneSizes.left}
+            limits={getPaneSizeLimits("left")}
+            onPointerDown={(event) => startPaneResize("left", event)}
+            onKeyDown={(event) => resizePaneFromKeyboard("left", event)}
+          />
         ) : null}
 
         <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane" data-ide-pane="center">
@@ -471,7 +564,15 @@ export function WorkspaceIdeShell() {
           </div>
           {bottomOpen ? (
             <section className="workspace-ide-shell__bottom" data-testid="workspace-ide-bottom-pane" data-ide-pane="bottom">
-              <ResizeHandle pane="bottom" label="调整底部 Dock 高度" onPointerDown={(event) => startPaneResize("bottom", event)} />
+              <ResizeHandle
+                pane="bottom"
+                label="调整底部 Dock 高度"
+                orientation="horizontal"
+                value={paneSizes.bottom}
+                limits={getPaneSizeLimits("bottom")}
+                onPointerDown={(event) => startPaneResize("bottom", event)}
+                onKeyDown={(event) => resizePaneFromKeyboard("bottom", event)}
+              />
               <div className="workspace-ide-shell__panel-tabs">
                 {BOTTOM_PANELS.map((panel) => (
                   <button
@@ -483,7 +584,12 @@ export function WorkspaceIdeShell() {
                     {panel.label}
                   </button>
                 ))}
-                <button type="button" className="workspace-ide-shell__panel-icon" title="最大化终端">
+                <button
+                  type="button"
+                  className="workspace-ide-shell__panel-icon"
+                  title={maximizedPane === "bottom" ? "恢复底部 Dock" : "最大化底部 Dock"}
+                  onClick={() => toggleMaximizedPane("bottom")}
+                >
                   <Maximize2 className="h-4 w-4" aria-hidden={true} />
                 </button>
               </div>
@@ -497,7 +603,15 @@ export function WorkspaceIdeShell() {
         </section>
 
         {rightOpen ? (
-          <ResizeHandle pane="right" label="调整右侧窗格宽度" onPointerDown={(event) => startPaneResize("right", event)} />
+          <ResizeHandle
+            pane="right"
+            label="调整右侧窗格宽度"
+            orientation="vertical"
+            value={paneSizes.right}
+            limits={getPaneSizeLimits("right")}
+            onPointerDown={(event) => startPaneResize("right", event)}
+            onKeyDown={(event) => resizePaneFromKeyboard("right", event)}
+          />
         ) : null}
         {rightOpen ? (
           <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane" data-ide-pane="right">
@@ -547,20 +661,33 @@ export function WorkspaceIdeShell() {
 function ResizeHandle({
   pane,
   label,
+  orientation,
+  value,
+  limits,
   onPointerDown,
+  onKeyDown,
 }: {
   pane: keyof IdePaneSizes;
   label: string;
+  orientation: "horizontal" | "vertical";
+  value: number;
+  limits: { min: number; max: number };
   onPointerDown: (event: React.PointerEvent) => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
 }) {
   return (
     <div
       role="separator"
       aria-label={label}
+      aria-orientation={orientation}
+      aria-valuemin={limits.min}
+      aria-valuemax={limits.max}
+      aria-valuenow={value}
       tabIndex={0}
       className="workspace-ide-shell__resize-handle"
       data-ide-resize-handle={pane}
       onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
     />
   );
 }
@@ -745,6 +872,90 @@ function activityByShortcut(key: string): ActivityId | null {
   if (key === "5") return "ai";
   if (key === "6") return "extensions";
   return null;
+}
+
+function keyboardResizeDelta(pane: keyof IdePaneSizes, key: string, step: number): number {
+  if (pane === "bottom") {
+    if (key === "ArrowUp") return step;
+    if (key === "ArrowDown") return -step;
+    return 0;
+  }
+  if (pane === "left") {
+    if (key === "ArrowRight") return step;
+    if (key === "ArrowLeft") return -step;
+    return 0;
+  }
+  if (key === "ArrowLeft") return step;
+  if (key === "ArrowRight") return -step;
+  return 0;
+}
+
+function getPaneSizeLimits(pane: keyof IdePaneSizes): { min: number; max: number } {
+  if (pane === "bottom" && typeof window !== "undefined") {
+    return {
+      min: PANE_SIZE_LIMITS.bottom.min,
+      max: Math.min(PANE_SIZE_LIMITS.bottom.max, Math.round(window.innerHeight * 0.64)),
+    };
+  }
+  return PANE_SIZE_LIMITS[pane];
+}
+
+function loadIdeLayoutState(): IdeLayoutState {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(IDE_LAYOUT_STORAGE_KEY);
+    if (!raw) return {};
+    const value = JSON.parse(raw) as IdeLayoutState;
+    return sanitizeIdeLayoutState(value);
+  } catch {
+    return {};
+  }
+}
+
+function storeIdeLayoutState(state: Required<IdeLayoutState>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(IDE_LAYOUT_STORAGE_KEY, JSON.stringify(sanitizeIdeLayoutState(state)));
+  } catch {
+    // Layout persistence is best-effort; private mode/storage denial must not break the IDE shell.
+  }
+}
+
+function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
+  return {
+    leftOpen: typeof value.leftOpen === "boolean" ? value.leftOpen : undefined,
+    rightOpen: typeof value.rightOpen === "boolean" ? value.rightOpen : undefined,
+    bottomOpen: typeof value.bottomOpen === "boolean" ? value.bottomOpen : undefined,
+    maximizedPane: isMaximizedPane(value.maximizedPane) ? value.maximizedPane : undefined,
+    layoutPreset: isLayoutPreset(value.layoutPreset) ? value.layoutPreset : undefined,
+    paneSizes: sanitizePaneSizes(value.paneSizes),
+  };
+}
+
+function sanitizePaneSizes(value: Partial<IdePaneSizes> | undefined): Partial<IdePaneSizes> | undefined {
+  if (!value) return undefined;
+  const sizes: Partial<IdePaneSizes> = {};
+  const left = sanitizePaneSize("left", value.left);
+  const right = sanitizePaneSize("right", value.right);
+  const bottom = sanitizePaneSize("bottom", value.bottom);
+  if (left !== undefined) sizes.left = left;
+  if (right !== undefined) sizes.right = right;
+  if (bottom !== undefined) sizes.bottom = bottom;
+  return sizes;
+}
+
+function sanitizePaneSize(pane: keyof IdePaneSizes, value: number | undefined): number | undefined {
+  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+  const { min, max } = PANE_SIZE_LIMITS[pane];
+  return clamp(value, min, max);
+}
+
+function isLayoutPreset(value: unknown): value is LayoutPreset {
+  return value === "balanced" || value === "code" || value === "terminal";
+}
+
+function isMaximizedPane(value: unknown): value is MaximizedPane {
+  return value === null || value === "left" || value === "center" || value === "right" || value === "bottom";
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -80,3 +80,21 @@ test("new Workspace IDE shell supports real pane layout controls", () => {
   assert.match(cssSource, /workspace-ide-shell__body--max-center/);
   assert.match(cssSource, /workspace-ide-shell__body--max-bottom/);
 });
+
+test("new Workspace IDE shell persists and exposes accessible pane sizing", () => {
+  assert.match(shellSource, /IDE_LAYOUT_STORAGE_KEY/);
+  assert.match(shellSource, /loadIdeLayoutState/);
+  assert.match(shellSource, /storeIdeLayoutState/);
+  assert.match(shellSource, /sanitizeIdeLayoutState/);
+  assert.match(shellSource, /data-ide-pane-size-state/);
+  assert.match(shellSource, /keyboardResizeDelta/);
+  assert.match(shellSource, /ide\.layout\.maximize-left/);
+  assert.match(shellSource, /ide\.layout\.maximize-right/);
+  assert.match(shellSource, /ide\.layout\.maximize-bottom/);
+  assert.match(shellSource, /onKeyDown=\{onKeyDown\}/);
+  assert.match(shellSource, /aria-orientation=\{orientation\}/);
+  assert.match(shellSource, /aria-valuemin=\{limits\.min\}/);
+  assert.match(shellSource, /aria-valuemax=\{limits\.max\}/);
+  assert.match(shellSource, /aria-valuenow=\{value\}/);
+  assert.match(shellSource, /PANE_SIZE_LIMITS/);
+});
