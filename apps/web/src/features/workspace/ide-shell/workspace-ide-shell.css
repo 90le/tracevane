@@ -475,7 +475,45 @@
     flex: 1 1 100%;
     justify-content: space-between;
   }
-  .workspace-ide-shell__layout-snapshots {
+
+.workspace-ide-shell__dock-status-strip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.workspace-ide-shell__dock-status-chip {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--ide-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+
+.workspace-ide-shell__dock-status-chip.is-active,
+.workspace-ide-shell__dock-status-chip:hover,
+.workspace-ide-shell__dock-status-chip:focus-visible {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.68);
+  background: rgba(34, 211, 238, 0.16);
+  color: #ecfeff;
+}
+
+.workspace-ide-shell__dock-status-chip[data-ide-dock-status-open="false"] {
+  border-style: dashed;
+  opacity: 0.72;
+}
+.workspace-ide-shell__layout-snapshots {
     flex: 0 1 auto;
     max-width: 46vw;
   }

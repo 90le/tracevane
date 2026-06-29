@@ -2902,6 +2902,12 @@ export function WorkspaceIdeShell() {
         <span>移动面板: {mobilePanel}</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
+        <div className="workspace-ide-shell__dock-status-strip" aria-label="IDE Dock 布局状态">
+          <DockStatusChip placement="top" open={topOpen} splitMode={dockSplitModes.top} ratio={dockSplitRatios.top} size={paneSizes.top} paneCount={topPaneIds.length} active={activeDockFocus?.placement === "top"} onOpen={focusIdeRegion} />
+          <DockStatusChip placement="left" open={leftOpen} splitMode={dockSplitModes.left} ratio={dockSplitRatios.left} size={paneSizes.left} paneCount={leftPaneIds.length} active={activeDockFocus?.placement === "left"} onOpen={focusIdeRegion} />
+          <DockStatusChip placement="right" open={rightOpen} splitMode={dockSplitModes.right} ratio={dockSplitRatios.right} size={paneSizes.right} paneCount={rightPaneIds.length} active={activeDockFocus?.placement === "right"} onOpen={focusIdeRegion} />
+          <DockStatusChip placement="bottom" open={bottomOpen} splitMode={dockSplitModes.bottom} ratio={dockSplitRatios.bottom} size={paneSizes.bottom} paneCount={bottomPaneIds.length} active={activeDockFocus?.placement === "bottom"} onOpen={focusIdeRegion} />
+        </div>
         <span>
           聚焦窗格: {activeDockFocus ? `${placementShortLabel(activeDockFocus.placement)}:${activeDockFocus.role}:${activeDockFocus.paneId}` : "无"}
         </span>
@@ -2916,6 +2922,44 @@ export function WorkspaceIdeShell() {
         commands={commands}
       />
     </main>
+  );
+}
+
+function DockStatusChip({
+  placement,
+  open,
+  splitMode,
+  ratio,
+  size,
+  paneCount,
+  active,
+  onOpen,
+}: {
+  placement: PanePlacement;
+  open: boolean;
+  splitMode: DockSplitMode;
+  ratio: number;
+  size: number;
+  paneCount: number;
+  active: boolean;
+  onOpen: (placement: PanePlacement) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn("workspace-ide-shell__dock-status-chip", active && "is-active")}
+      data-ide-dock-status-chip={placement}
+      data-ide-dock-status-open={open ? "true" : "false"}
+      data-ide-dock-status-split={splitMode}
+      aria-label={`${open ? "聚焦" : "打开"}${placementLabel(placement)} Dock：${paneCount} 个 Pane，${splitMode}，${Math.round(ratio)}%，${size}px`}
+      onClick={() => onOpen(placement)}
+    >
+      <span>{placementShortLabel(placement)}</span>
+      <span>{open ? "开" : "关"}</span>
+      <span>{splitMode === "single" ? "单" : splitMode === "vertical" ? "左右" : "上下"}</span>
+      <span>{Math.round(ratio)}%</span>
+      <span>{paneCount}</span>
+    </button>
   );
 }
 
