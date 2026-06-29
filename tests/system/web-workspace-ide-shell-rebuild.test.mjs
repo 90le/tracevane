@@ -772,8 +772,12 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /sanitizeHiddenPanes/);
   assert.match(shellSource, /ide\.pane\.hide-active/);
   assert.match(shellSource, /ide\.pane\.restore-all-hidden/);
+  assert.match(shellSource, /ide\.pane\.restore-active-dock-hidden/);
+  assert.match(shellSource, /ide\.pane\.restore-hidden\.\$\{placement\}/);
   assert.match(shellSource, /label: "隐藏当前聚焦 Pane"/);
   assert.match(shellSource, /label: "恢复全部隐藏 Pane"/);
+  assert.match(shellSource, /label: "恢复当前 Dock 隐藏 Pane"/);
+  assert.match(shellSource, /恢复\$\{placementLabel\(placement\)\} Dock 隐藏 Pane/);
   assert.match(shellSource, /shortcut: "⌘W"/);
   assert.match(shellSource, /disabled: !activeDockFocus/);
   assert.match(shellSource, /disabled: hiddenPanes\.length === 0/);
@@ -784,9 +788,19 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /function restoreAllHiddenPanes\(\)/);
   assert.match(shellSource, /const panesToRestore = hiddenPanes/);
   assert.match(shellSource, /setHiddenPanes\(\[\]\)/);
+  assert.match(shellSource, /function hiddenPanesForPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /return hiddenPanes\.filter\(\(paneId\) => \(panePlacements\[paneId\] \?\? paneDescriptor\(paneId\)\.defaultPlacement\) === placement\)/);
+  assert.match(shellSource, /function restoreHiddenPanesForPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /const restoreSet = new Set\(panesToRestore\)/);
+  assert.match(shellSource, /current\.filter\(\(paneId\) => !restoreSet\.has\(paneId\)\)/);
   assert.match(shellSource, /for \(const paneId of panesToRestore\)/);
   assert.match(shellSource, /if \(!event\.shiftKey && key === "w"\)/);
   assert.match(shellSource, /hideActiveDockPane\(\)/);
+  assert.match(shellSource, /hiddenRestoreCount=\{hiddenPanesForPlacement\("left"\)\.length\}/);
+  assert.match(shellSource, /onRestoreHidden=\{\(\) => restoreHiddenPanesForPlacement\("left"\)\}/);
+  assert.match(shellSource, /function EmptyDockPane\(\{ placement, hiddenRestoreCount, onRestoreHidden, onRestore \}/);
+  assert.match(shellSource, /data-ide-restore-hidden-dock=\{placement\}/);
+  assert.match(cssSource, /workspace-ide-shell__empty-dock-actions/);
 });
 
 test("new Workspace IDE shell can move the focused pane between dock regions", () => {

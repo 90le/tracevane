@@ -838,6 +838,31 @@ export function WorkspaceIdeShell() {
         disabled: hiddenPanes.length === 0,
         run: restoreAllHiddenPanes,
       },
+      {
+        id: "ide.pane.restore-active-dock-hidden",
+        group: "窗格" as const,
+        label: "恢复当前 Dock 隐藏 Pane",
+        description: activeDockFocus ? `恢复 ${hiddenPanesForPlacement(activeDockFocus.placement).length} 个隐藏在${placementLabel(activeDockFocus.placement)} Dock 的 Pane` : "先聚焦一个 Dock，再恢复该 Dock 隐藏 Pane",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus || hiddenPanesForPlacement(activeDockFocus.placement).length === 0,
+        run: () => {
+          if (!activeDockFocus) return;
+          restoreHiddenPanesForPlacement(activeDockFocus.placement);
+        },
+      },
+      ...DOCK_PLACEMENTS.map((placement) => ({
+        id: `ide.pane.restore-hidden.${placement}`,
+        group: "窗格" as const,
+        label: `恢复${placementLabel(placement)} Dock 隐藏 Pane`,
+        description: `恢复 ${hiddenPanesForPlacement(placement).length} 个隐藏在${placementLabel(placement)} Dock 的 Pane`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: hiddenPanesForPlacement(placement).length === 0,
+        run: () => restoreHiddenPanesForPlacement(placement),
+      })),
       ...PANE_REGISTRY.flatMap((pane) => {
         const hidden = hiddenPanes.includes(pane.id);
         return [
@@ -2009,6 +2034,20 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function hiddenPanesForPlacement(placement: PanePlacement) {
+    return hiddenPanes.filter((paneId) => (panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement) === placement);
+  }
+
+  function restoreHiddenPanesForPlacement(placement: PanePlacement) {
+    const panesToRestore = hiddenPanesForPlacement(placement);
+    if (panesToRestore.length === 0) return;
+    const restoreSet = new Set(panesToRestore);
+    setHiddenPanes((current) => current.filter((paneId) => !restoreSet.has(paneId)));
+    for (const paneId of panesToRestore) {
+      movePaneToPlacement(paneId, panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement);
+    }
+  }
+
   function restorePane(paneId: PaneId) {
     setHiddenPanes((current) => current.filter((hiddenPane) => hiddenPane !== paneId));
     movePaneToPlacement(paneId, panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement);
@@ -2327,6 +2366,8 @@ export function WorkspaceIdeShell() {
                   workspaceDirectory={workspaceDirectory}
                   onTerminalCommandsChange={setTerminalCommands}
                   onRestore={resetPanePlacements}
+                  onRestoreHidden={() => restoreHiddenPanesForPlacement("left")}
+                  hiddenRestoreCount={hiddenPanesForPlacement("left").length}
                   onStartSplitResize={startDockSplitResize}
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
@@ -2358,7 +2399,7 @@ export function WorkspaceIdeShell() {
                 />
               </>
             ) : (
-              <EmptyDockPane placement="left" onRestore={resetPanePlacements} />
+              <EmptyDockPane placement="left" hiddenRestoreCount={hiddenPanesForPlacement("left").length} onRestoreHidden={() => restoreHiddenPanesForPlacement("left")} onRestore={resetPanePlacements} />
             )}
           </section>
         ) : null}
@@ -2451,6 +2492,8 @@ export function WorkspaceIdeShell() {
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
+                onRestoreHidden={() => restoreHiddenPanesForPlacement("top")}
+                hiddenRestoreCount={hiddenPanesForPlacement("top").length}
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
@@ -2630,6 +2673,8 @@ export function WorkspaceIdeShell() {
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
+                onRestoreHidden={() => restoreHiddenPanesForPlacement("bottom")}
+                hiddenRestoreCount={hiddenPanesForPlacement("bottom").length}
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
@@ -2715,6 +2760,8 @@ export function WorkspaceIdeShell() {
               workspaceDirectory={workspaceDirectory}
               onTerminalCommandsChange={setTerminalCommands}
               onRestore={resetPanePlacements}
+              onRestoreHidden={() => restoreHiddenPanesForPlacement("right")}
+              hiddenRestoreCount={hiddenPanesForPlacement("right").length}
               onStartSplitResize={startDockSplitResize}
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
@@ -2887,18 +2934,24 @@ function PaneDockControls({
   );
 }
 
-function EmptyDockPane({ placement, onRestore }: { placement: PanePlacement; onRestore: () => void }) {
+function EmptyDockPane({ placement, hiddenRestoreCount, onRestoreHidden, onRestore }: { placement: PanePlacement; hiddenRestoreCount: number; onRestoreHidden: () => void; onRestore: () => void }) {
   return (
     <div className="workspace-ide-shell__empty-dock" data-ide-empty-dock={placement}>
       <div className="workspace-ide-shell__empty-dock-mark" aria-hidden={true}>
         {placementShortLabel(placement)}
       </div>
       <h2>{placementLabel(placement)} Dock 为空</h2>
-      <p>当前没有窗格停靠在这里。你可以继续保持空 Dock，或一键恢复默认 IDE 窗格组合。</p>
-      <Button size="sm" onClick={onRestore}>
-        <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
-        恢复默认窗格布局
-      </Button>
+      <p>当前没有窗格停靠在这里。你可以恢复隐藏在该 Dock 的 Pane，或一键恢复默认 IDE 窗格组合。</p>
+      <div className="workspace-ide-shell__empty-dock-actions">
+        <Button size="sm" variant="outline" disabled={hiddenRestoreCount === 0} onClick={onRestoreHidden} data-ide-restore-hidden-dock={placement}>
+          <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
+          恢复本 Dock 隐藏 Pane{hiddenRestoreCount > 0 ? ` · ${hiddenRestoreCount}` : ""}
+        </Button>
+        <Button size="sm" onClick={onRestore}>
+          <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
+          恢复默认窗格布局
+        </Button>
+      </div>
     </div>
   );
 }
@@ -3199,6 +3252,8 @@ function DockPaneFrame({
   workspaceDirectory,
   onTerminalCommandsChange,
   onRestore,
+  onRestoreHidden,
+  hiddenRestoreCount,
   onStartSplitResize,
   onResizeSplitFromKeyboard,
   onFocusPane,
@@ -3219,6 +3274,8 @@ function DockPaneFrame({
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
   onRestore: () => void;
+  onRestoreHidden: () => void;
+  hiddenRestoreCount: number;
   onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
@@ -3228,7 +3285,7 @@ function DockPaneFrame({
   onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
-  if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
+  if (!primaryPane) return <EmptyDockPane placement={placement} hiddenRestoreCount={hiddenRestoreCount} onRestoreHidden={onRestoreHidden} onRestore={onRestore} />;
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
   const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
   const render = (paneId: PaneId, role: DockPaneRole) => {

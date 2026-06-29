@@ -792,6 +792,13 @@
   line-height: 1.7;
 }
 
+.workspace-ide-shell__empty-dock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 .workspace-ide-shell__body--dragging-pane [data-ide-dock-placement] {
   outline: 1px dashed rgba(34, 211, 238, 0.22);
   outline-offset: -4px;
