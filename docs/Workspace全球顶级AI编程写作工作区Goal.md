@@ -225,6 +225,9 @@ node --test tests/system/workspace-evidence-basket.test.mjs
 - refs 保留 path、mode、editable、textLike、stats、context 和 addedAt，为后续审查面板、Agent handoff、导出 bundle 提供证据链。
 - 提供单项与批量 append API，暂不修改多人协作中的 Workbench UI 文件。
 
+
+类型边界补正：`WorkspaceAiContextEvidenceRef` 明确继承 `Record<string, unknown>`，保证桥接 refs 与 `WorkspaceEvidenceInput` 的共享证据契约兼容，避免后续 UI/Agent 调用点通过类型断言绕过 evidence 边界。
+
 验证：
 
 ```bash

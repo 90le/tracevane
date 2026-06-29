@@ -9,7 +9,7 @@ test("Workspace context evidence bridge converts AI context into review evidence
   const bridge = readWeb("features/workspace/shared/WorkspaceContextEvidenceBridge.ts");
   assert.match(bridge, /from "\.\/WorkspaceAiContextBasket"/);
   assert.match(bridge, /from "\.\/WorkspaceEvidenceBasket"/);
-  assert.match(bridge, /export interface WorkspaceAiContextEvidenceRef/);
+  assert.match(bridge, /export interface WorkspaceAiContextEvidenceRef extends Record<string, unknown>/);
   assert.match(bridge, /export function buildWorkspaceEvidenceInputFromAiContext/);
   assert.match(bridge, /export function buildWorkspaceAiContextEvidenceRef/);
   assert.match(bridge, /export function buildWorkspaceEvidenceInputsFromAiContextBasket/);
