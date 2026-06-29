@@ -15,6 +15,40 @@
 One workspace for code, prose, agents, evidence, and shipping.
 ```
 
+## 1.1 超大目标方向（North Star，2026-06-29 补充）
+
+Tracevane Workspace 的最终形态必须是一个**真实可工作的顶级 IDE + AI 写作工作区**，而不是“看起来高级”的说明页、概念页、海报页或演示页。默认 `/workspace` 打开后，用户应该立刻进入可操作的生产环境：文件树、编辑器、预览、AI 协作、终端、Git、证据、审查与应用都围绕当前任务组织。
+
+最终 North Star：
+
+```text
+A real local-first AI IDE for code + writing, with evidence-gated agent changes.
+```
+
+必须像顶级产品一样成立的事实：
+
+1. **它首先是 IDE/工作区，不是文档展示页**：默认视图必须有真实文件导航、真实编辑/阅读区域、运行面板、AI/证据审查区和状态栏；大标题、使命宣言、设计说明只能出现在 onboarding/空状态/帮助层，不能占据主工作台。
+2. **它必须能工作**：用户能打开文件、编辑文本/代码、预览 Markdown/HTML/媒体、运行终端命令、查看 Git diff、把上下文交给 AI、审查 AI proposal、通过证据门禁应用或拒绝变更。
+3. **AI 是内嵌生产流，不是聊天装饰**：AI 面板必须绑定当前文件、选区、终端输出、Git diff 和 evidence；所有 AI 写入都先形成 proposal/diff，不允许静默覆盖文件。
+4. **写作与编程同级**：同一工作台要支持代码、Markdown、HTML、长文、配置、日志和研究材料；写作体验不能退化为普通代码框，代码体验也不能被文章预览挤掉。
+5. **桌面/平板/手机都是真工作区**：桌面是多栏 IDE；平板是 split + drawer；手机是 focus stack + bottom mode nav + full-screen sheet。三端都必须保留核心链路，而不是把手机降级成只读预览。
+6. **证据/审批是产品骨架**：每个高风险动作都能看到输入上下文、拟修改 diff、运行命令、验证结果、回滚说明和人工审批状态。
+7. **设计必须服务密集生产**：允许高级视觉，但不允许为视觉牺牲可读性、信息密度、键盘效率、无障碍和长期工作舒适度。
+
+明确禁止的错误方向：
+
+- 禁止把默认 Workspace 做成“第一季重构说明页”“设计愿景页”“巨大标语页”“卡片墙”或“静态产品宣传页”。
+- 禁止用漂亮 mock 替代真实文件、编辑器、终端、Git、AI 和 evidence 交互。
+- 禁止为了规避旧框架复杂度而交付一个不能编辑、不能运行、不能审查、不能应用变更的壳。
+- 禁止把用户正在工作的 IDE 入口变成需要滚动阅读的文档页面。
+
+默认入口验收红线：
+
+- `/workspace` 首屏必须看起来像可工作的 IDE/AI 写作工作区。
+- 首屏中“真实工作对象”面积必须大于“说明/宣言/营销文案”面积。
+- 至少应同时可见：文件/资源导航、当前文件编辑或阅读区域、AI/证据区、运行/终端区、状态信息。
+- 如果需要解释 Season One，可放在小型 onboarding banner、帮助入口或空状态，不得主导主工作台。
+
 ## 2. 研究记录（2026-06-29）
 
 遵循项目 Research-First Implementation Gate，本 goal 的第一轮设计依据来自以下稳定外部契约与产品方向：
@@ -140,6 +174,8 @@ npm run typecheck:web -- --pretty false
 
 本 Goal 当前不再把“创建 goal 文档、空状态北极星、AI Context Basket 基础契约、Evidence Basket 基础契约、Context→Evidence 桥接、Evidence Handoff Packet、侧边面板无上限高性能拖拽、移动面板置于终端前面”等已完成事项列为待办。当前剩余只跟踪以下可验证缺口：
 
+0. **纠正默认入口方向**：`/workspace` 必须从概念说明页回到真实 IDE/AI 写作工作区形态；保留 Season One 的新架构，但首屏必须以文件、编辑器、AI/证据、终端/Git 等真实生产对象为主。
+
 1. **Workspace 框架美学与布局**：PC/手机/平板统一视觉语言，减少重复标题、重复工具条和堆叠按钮；窗口模块可上下/左右组合、局部全屏、浏览器真实全屏。
 2. **编辑器与终端标签管理**：补齐右键/长按菜单、关闭/关闭其他/拆分/移动/复制路径/终止终端/重命名等操作；终端结束会话可彻底关闭删除。
 3. **移动端触屏与软键盘**：终端和编辑器输入时必须避让软键盘；触摸滚动、长按菜单、底部导航、100% 高度面板必须稳定。
@@ -257,7 +293,6 @@ node --test tests/system/workspace-evidence-basket.test.mjs
 - 使用稳定去重 id `ai-context:${contextId}`，确保同一上下文反复加入 evidence 时更新而不是无限复制。
 - refs 保留 path、mode、editable、textLike、stats、context 和 addedAt，为后续审查面板、Agent handoff、导出 bundle 提供证据链。
 - 提供单项与批量 append API，暂不修改多人协作中的 Workbench UI 文件。
-
 
 类型边界补正：`WorkspaceAiContextEvidenceRef` 明确继承 `Record<string, unknown>`，保证桥接 refs 与 `WorkspaceEvidenceInput` 的共享证据契约兼容，避免后续 UI/Agent 调用点通过类型断言绕过 evidence 边界。
 
