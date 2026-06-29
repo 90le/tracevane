@@ -279,6 +279,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function setPrimaryDockPanel/);
   assert.match(shellSource, /function focusDockPane/);
   assert.match(shellSource, /function activeDockPaneForPlacement/);
+  assert.match(shellSource, /function dockPaneIdsForPlacement/);
+  assert.match(shellSource, /function canNavigateActiveDockGroup/);
+  assert.match(shellSource, /function selectAdjacentDockPane/);
+  assert.match(shellSource, /selectDockPane\(activeDockFocus\.placement, activeDockFocus\.role, paneIds\[nextIndex\]\)/);
   assert.match(shellSource, /function canSwapDockSplit/);
   assert.match(shellSource, /function swapDockSplitPanes/);
   assert.match(shellSource, /setPrimaryDockPanel\(placement, secondaryPane\)/);
@@ -301,6 +305,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.active\.split-down/);
   assert.match(shellSource, /ide\.dock\.active\.swap-groups/);
   assert.match(shellSource, /ide\.dock\.active\.close-split/);
+  assert.match(shellSource, /ide\.dock\.active\.next-pane/);
+  assert.match(shellSource, /ide\.dock\.active\.previous-pane/);
   assert.match(shellSource, /ide\.dock\.active\.reset-ratio/);
   assert.match(shellSource, /ide\.dock\.active\.maximize/);
   assert.match(shellSource, /ide\.dock\.active\.collapse/);
@@ -308,6 +314,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "vertical"\)/);
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "horizontal"\)/);
   assert.match(shellSource, /swapDockSplitPanes\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /disabled: !canNavigateActiveDockGroup\(\)/);
+  assert.match(shellSource, /selectAdjacentDockPane\("next"\)/);
+  assert.match(shellSource, /selectAdjacentDockPane\("previous"\)/);
   assert.match(shellSource, /resetDockSplitRatio\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /toggleMaximizedPane\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /closeDockPlacement\(activeDockFocus\.placement\)/);

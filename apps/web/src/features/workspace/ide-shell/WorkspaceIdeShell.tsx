@@ -637,6 +637,28 @@ export function WorkspaceIdeShell() {
         },
       },
       {
+        id: "ide.dock.active.next-pane",
+        group: "窗格",
+        label: "当前窗格组切到下一个 Pane",
+        description: activeDockFocus ? `在当前聚焦的${placementLabel(activeDockFocus.placement)} Dock ${activeDockFocus.role === "primary" ? "主" : "副"}组内切换到下一个 Pane` : "先聚焦一个 Dock 主/副窗格组，再切换组内 Pane",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelRight />,
+        disabled: !canNavigateActiveDockGroup(),
+        run: () => selectAdjacentDockPane("next"),
+      },
+      {
+        id: "ide.dock.active.previous-pane",
+        group: "窗格",
+        label: "当前窗格组切到上一个 Pane",
+        description: activeDockFocus ? `在当前聚焦的${placementLabel(activeDockFocus.placement)} Dock ${activeDockFocus.role === "primary" ? "主" : "副"}组内切换到上一个 Pane` : "先聚焦一个 Dock 主/副窗格组，再切换组内 Pane",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelLeft />,
+        disabled: !canNavigateActiveDockGroup(),
+        run: () => selectAdjacentDockPane("previous"),
+      },
+      {
         id: "ide.dock.active.reset-ratio",
         group: "窗格",
         label: "重置当前 Dock 拆分比例",
@@ -680,7 +702,7 @@ export function WorkspaceIdeShell() {
         },
       },
     ],
-    [activeBottomPane, activeDockFocus, activeLeftPane, activeRightPane, activeTopPane, dockSplitModes, secondaryBottomPane, secondaryLeftPane, secondaryRightPane, secondaryTopPane],
+    [activeBottomPane, activeDockFocus, activeLeftPane, activeRightPane, activeTopPane, bottomPaneIds, dockSplitModes, leftPaneIds, rightPaneIds, secondaryBottomPane, secondaryLeftPane, secondaryRightPane, secondaryTopPane, topPaneIds],
   );
 
   const dockSplitCommands = React.useMemo<WorkspaceCommand[]>(
@@ -1050,6 +1072,27 @@ export function WorkspaceIdeShell() {
     if (placement === "left") return role === "primary" ? activeLeftPane : secondaryLeftPane;
     if (placement === "right") return role === "primary" ? activeRightPane : secondaryRightPane;
     return role === "primary" ? activeBottomPane : secondaryBottomPane;
+  }
+
+  function dockPaneIdsForPlacement(placement: PanePlacement): PaneId[] {
+    if (placement === "top") return topPaneIds;
+    if (placement === "left") return leftPaneIds;
+    if (placement === "right") return rightPaneIds;
+    return bottomPaneIds;
+  }
+
+  function canNavigateActiveDockGroup() {
+    return Boolean(activeDockFocus && dockPaneIdsForPlacement(activeDockFocus.placement).length > 1);
+  }
+
+  function selectAdjacentDockPane(direction: "next" | "previous") {
+    if (!activeDockFocus) return;
+    const paneIds = dockPaneIdsForPlacement(activeDockFocus.placement);
+    if (paneIds.length < 2) return;
+    const currentPane = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+    const currentIndex = Math.max(0, paneIds.indexOf(currentPane));
+    const nextIndex = direction === "next" ? (currentIndex + 1) % paneIds.length : (currentIndex - 1 + paneIds.length) % paneIds.length;
+    selectDockPane(activeDockFocus.placement, activeDockFocus.role, paneIds[nextIndex]);
   }
 
   function canSwapDockSplit(placement: PanePlacement) {
