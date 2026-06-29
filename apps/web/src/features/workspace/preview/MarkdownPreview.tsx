@@ -1,3 +1,11 @@
+/**
+ * Legacy Markdown preview compatibility surface.
+ *
+ * The active Workspace goal is IDE-first: code editing, terminal, Git, search,
+ * evidence, and responsive workbench layout. Rich Markdown rendering and
+ * preview editing are future `/document-engine` concerns; keep this component
+ * import-compatible only until that boundary owns the implementation.
+ */
 import * as React from "react";
 import { Eye, FileQuestion } from "lucide-react";
 import { unified } from "unified";

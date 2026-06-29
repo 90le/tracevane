@@ -1,8 +1,9 @@
 /* ============================================================
-   MarkdownPreview — scoped article styles
-   All rules are rooted under `.md-preview__article` so they do
-   not leak into the rest of the Workspace chrome. Tokens come from the
-   Aurora theme (`@/design/theme.css`).
+   Legacy MarkdownPreview compatibility styles.
+   Current Workspace UI is IDE-first; rich rendering and preview editing are
+   future `/document-engine` concerns. These scoped article styles remain only
+   so existing imports do not leak into the rest of the Workspace chrome.
+   Tokens come from the Aurora theme (`@/design/theme.css`).
    ============================================================ */
 
 .md-preview__article {

@@ -181,6 +181,21 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace markdown preview package is marked legacy compatibility only", () => {
+  const preview = readWeb("features/workspace/preview/MarkdownPreview.tsx");
+  const previewIndex = readWeb("features/workspace/preview/index.ts");
+  const previewCss = readWeb("features/workspace/preview/markdown-preview.css");
+
+  assert.match(preview, /Legacy Markdown preview compatibility surface/);
+  assert.match(preview, /The active Workspace goal is IDE-first/);
+  assert.match(preview, /future `\/document-engine` concerns/);
+  assert.match(previewIndex, /Legacy preview exports kept for compatibility/);
+  assert.match(previewIndex, /Do not treat this package as the current Workspace IDE mainline/);
+  assert.match(previewCss, /Legacy MarkdownPreview compatibility styles/);
+  assert.match(previewCss, /future `\/document-engine` concerns/);
+  assert.doesNotMatch(previewIndex, /Active preview package/);
+});
+
 test("Workspace document view registry is quarantined as a future adapter boundary", () => {
   const registry = readWeb("features/workspace/shared/DocumentViewRegistry.ts");
   assert.match(registry, /Legacy Workspace document-view registry/);
