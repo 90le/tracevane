@@ -92,6 +92,21 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
 });
 
+test("legacy Workspace design doc is downgraded behind the IDE-first UI contract", () => {
+  const designDoc = readRoot("docs/Workspace设计文档.md");
+  assert.match(designDoc, /状态：Superseded design reference/);
+  assert.match(designDoc, /当前 UI\/UX 验收合同：`WorkspaceIDE-UIUX重设计验收\.md`/);
+  assert.match(designDoc, /Tabs \/ Code \/ Diff \/ Review/);
+  assert.match(designDoc, /Bottom Nav: Files \/ Edit \/ Terminal \/ Git \/ Search \/ Evidence/);
+  assert.match(designDoc, /Editor Stage 只处理打开对象、dirty buffer、code\/diff\/review/);
+  assert.match(designDoc, /Markdown 实时预览或所见即所得作为主线验收/);
+  assert.doesNotMatch(designDoc, /状态：Active design contract/);
+  assert.doesNotMatch(designDoc, /编辑\/预览、终端、CLI Agents 必须作为四个独立 owner/);
+  assert.doesNotMatch(designDoc, /Tabs \/ Code \/ Diff \/ Markdown/);
+  assert.doesNotMatch(designDoc, /Editor\/Preview 从打开对象/);
+  assert.doesNotMatch(designDoc, /Preview[\s\S]{0,80}File Info/);
+});
+
 test("Workspace design contract keeps the active goal IDE-only", () => {
   const blueprint = readRoot("docs/Workspace全球顶级AI编程IDE工作区Goal蓝图.md");
   const design = readRoot("DESIGN.md");
