@@ -814,3 +814,17 @@ test("Workspace IDE provider route now prioritizes real IDE base POCs", () => {
   assert.match(research, /Tracevane Native Workbench 收敛为 AI-native Shell/);
   assert.match(research, /先接入成熟 IDE 能力做 POC，再决定长期平台/);
 });
+
+test("Workspace OpenVSCode code-server POC spec defines executable provider gates", () => {
+  const spec = readRoot("docs/WorkspaceOpenVSCodeCodeServerPOC实施规格.md");
+  assert.match(spec, /Workspace OpenVSCode \/ code-server POC 实施规格/);
+  assert.match(spec, /WorkspaceIdeProvider/);
+  assert.match(spec, /openvscode-server/);
+  assert.match(spec, /code-server/);
+  assert.match(spec, /\/api\/workspace\/ide-providers/);
+  assert.match(spec, /Proxy 必须支持 WebSocket/);
+  assert.match(spec, /Provider 端口不直接暴露公网/);
+  assert.match(spec, /Tracevane 顶栏保留/);
+  assert.match(spec, /打开真实项目、编辑文件、终端、Git、搜索/);
+  assert.match(spec, /失败不代表回到盲目自研；失败后进入 Theia POC/);
+});
