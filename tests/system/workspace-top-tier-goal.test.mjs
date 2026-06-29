@@ -689,3 +689,12 @@ test("Workspace global shortcuts protect editor terminal and form input focus", 
   assert.match(commandShortcuts, /\[contenteditable=\\"true\\"\]/);
   assert.match(commandShortcuts, /if \(shouldIgnoreWorkspaceShortcutEvent\(event\)\) return false/);
 });
+
+
+test("Workspace Monaco editor owns text focus before global commands", () => {
+  const editor = readWeb("features/workspace/editor/CodeEditor.tsx");
+  const commandShortcuts = readWeb("features/workspace/workbench/workspaceCommandShortcuts.ts");
+  assert.match(editor, /data-code-editor="monaco-direct"/);
+  assert.match(editor, /data-workspace-shortcuts="ignore"/);
+  assert.match(commandShortcuts, /data-workspace-shortcuts=\\"ignore\\"/);
+});

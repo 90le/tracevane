@@ -425,6 +425,7 @@ export function CodeEditor({
       data-editor-language={languageForPath(path)}
       data-editor-theme={theme === "dark" ? "vs-dark" : "vs"}
       data-code-editor="monaco-direct"
+      data-workspace-shortcuts="ignore"
       data-code-editor-keyboard-inset={
         editorKeyboardInset > 0 ? "true" : "false"
       }
