@@ -690,9 +690,9 @@ export function WorkspaceGitPanel({
     );
   }, []);
 
-  const copyGitCommitReleaseNote = React.useCallback(
+  const copyGitCommitReviewEntry = React.useCallback(
     (commit: GitCommitSummary, detail?: GitCommitDetailPayload | null) => {
-      const context = formatGitCommitReleaseNote(commit, detail ?? null);
+      const context = formatGitCommitReviewEntry(commit, detail ?? null);
       void navigator.clipboard.writeText(context).then(
         () =>
           toast.success("已复制提交审查条目", {
@@ -1001,8 +1001,8 @@ export function WorkspaceGitPanel({
         openCreateBranchDialog,
         copyBranch,
         copyCommitContext: copyGitCommitContext,
-        copyCommitReleaseNote: (commit) =>
-          copyGitCommitReleaseNote(commit, commitDetail.data),
+        copyCommitReviewEntry: (commit) =>
+          copyGitCommitReviewEntry(commit, commitDetail.data),
         copyCommitDiffContext: (commit) =>
           copyGitCommitDiffContext(commit, commitDetail.data),
         copyRecentHistoryContext,
@@ -1035,7 +1035,7 @@ export function WorkspaceGitPanel({
       createBranch.isPending,
       copyBranch,
       copyGitCommitContext,
-      copyGitCommitReleaseNote,
+      copyGitCommitReviewEntry,
       copyGitCommitDiffContext,
       commitDetail.data,
       copyRecentHistoryContext,
@@ -1195,7 +1195,7 @@ export function WorkspaceGitPanel({
         error={commitDetail.isError ? commitDetail.error?.message : null}
         onClose={() => setSelectedCommit(null)}
         onCopyContext={copyGitCommitContext}
-        onCopyReleaseNote={copyGitCommitReleaseNote}
+        onCopyReviewEntry={copyGitCommitReviewEntry}
         onCopyDiffContext={copyGitCommitDiffContext}
       />
       <GitChangeSelectionToolbar
@@ -1401,7 +1401,7 @@ export function WorkspaceGitPanel({
               void navigator.clipboard.writeText(
                 formatGitCommitContext(commit),
               ),
-            copyReleaseNote: (commit) => copyGitCommitReleaseNote(commit),
+            copyReviewEntry: (commit) => copyGitCommitReviewEntry(commit),
             explainCommit: copyGitCommitContext,
           })}
           onActionComplete={() => setCommitMenu(null)}
@@ -1422,7 +1422,7 @@ export function WorkspaceGitPanel({
               void navigator.clipboard.writeText(
                 formatGitCommitContext(commit),
               ),
-            copyReleaseNote: (commit) => copyGitCommitReleaseNote(commit),
+            copyReviewEntry: (commit) => copyGitCommitReviewEntry(commit),
             explainCommit: copyGitCommitContext,
           })}
           onActionComplete={() => setCommitMenu(null)}
@@ -1647,7 +1647,7 @@ type GitCommitActionId =
   | "git.commit.copyHash"
   | "git.commit.copySubject"
   | "git.commit.copyContext"
-  | "git.commit.copyReleaseNote"
+  | "git.commit.copyReviewEntry"
   | "git.commit.explain";
 
 interface GitCommitAction {
@@ -1666,7 +1666,7 @@ function createGitCommitActions(
     copyHash: (commit: GitCommitSummary) => void;
     copySubject: (commit: GitCommitSummary) => void;
     copyContext: (commit: GitCommitSummary) => void;
-    copyReleaseNote?: (commit: GitCommitSummary) => void;
+    copyReviewEntry?: (commit: GitCommitSummary) => void;
     explainCommit: (commit: GitCommitSummary) => void;
   },
 ): GitCommitAction[] {
@@ -1703,13 +1703,13 @@ function createGitCommitActions(
       icon: <GitCommitHorizontal className="size-3.5" />,
       run: () => handlers.copyContext(commit),
     },
-    ...(handlers.copyReleaseNote
+    ...(handlers.copyReviewEntry
       ? [
           {
-            id: "git.commit.copyReleaseNote" as const,
+            id: "git.commit.copyReviewEntry" as const,
             label: "复制提交审查条目",
             icon: <Sparkles className="size-3.5" />,
-            run: () => handlers.copyReleaseNote?.(commit),
+            run: () => handlers.copyReviewEntry?.(commit),
           },
         ]
       : []),
@@ -1730,7 +1730,7 @@ function GitCommitDetailsPanel({
   error,
   onClose,
   onCopyContext,
-  onCopyReleaseNote,
+  onCopyReviewEntry,
   onCopyDiffContext,
 }: {
   commit: GitCommitSummary | null;
@@ -1739,7 +1739,7 @@ function GitCommitDetailsPanel({
   error: string | null | undefined;
   onClose: () => void;
   onCopyContext: (commit: GitCommitSummary) => void;
-  onCopyReleaseNote: (
+  onCopyReviewEntry: (
     commit: GitCommitSummary,
     detail?: GitCommitDetailPayload | null,
   ) => void;
@@ -1866,7 +1866,7 @@ function GitCommitDetailsPanel({
           variant="ghost"
           size="sm"
           className="h-7 shrink-0 px-2 text-2xs"
-          onClick={() => onCopyReleaseNote(commit, detail)}
+          onClick={() => onCopyReviewEntry(commit, detail)}
           data-workspace-git-commit-details-copy-release-note
         >
           <Sparkles className="size-3.5" />
@@ -2707,14 +2707,14 @@ function formatGitCommitDiffContext(
     .join("\n");
 }
 
-function formatGitCommitReleaseNote(
+function formatGitCommitReviewEntry(
   commit: GitCommitSummary,
   detail?: GitCommitDetailPayload | null,
 ): string {
   const body = detail?.body?.trim();
   const fileSummary = summarizeGitCommitFiles(detail, 8);
   return [
-    "@git release-note",
+    "@git commit-review",
     `- ${commit.subject || "Untitled change"} (${commit.shortHash || commit.hash})`,
     body ? `details: ${body}` : "",
     fileSummary ? `files: ${fileSummary}` : "",
