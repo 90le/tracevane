@@ -234,3 +234,21 @@ node --test tests/system/workspace-evidence-basket.test.mjs
 node --test tests/system/workspace-context-evidence-bridge.test.mjs tests/system/workspace-ai-context-basket.test.mjs tests/system/workspace-evidence-basket.test.mjs
 npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --skipLibCheck --allowSyntheticDefaultImports apps/web/src/features/workspace/shared/WorkspaceContextEvidenceBridge.ts
 ```
+
+### 2026-06-29 / Phase D 小步：Evidence Handoff Packet 契约
+
+研究补充：VS Code UX Guidelines 的工作区容器模型强调信息需要在明确区域和工作对象之间流转，而不是散落在即时 UI 状态中；Accessibility 文档要求关键内容可被键盘和读屏访问；OpenAI Canvas 的写作/代码协作模式强调用户可控、可审查的上下文。因此 Evidence Basket 需要一个面向 AI/审查的 read-only handoff packet：限制记录数量、保留 schemaVersion、objective、guardrail 和可读 bundle，使后续 Agent、写作助手或审查面板都能引用同一证据包。
+
+完成范围：
+
+- 新增 `WorkspaceEvidenceHandoff.ts`，定义 handoff schema version 与默认 12 条 evidence 上限。
+- `buildWorkspaceEvidenceHandoffPacket` 将 evidence records 转为只读 packet，并内置“引用证据 id、风险编辑前请求 review”的 guardrail。
+- `formatWorkspaceEvidenceHandoffForAi` 输出可直接给 AI/审查面板使用的 markdown handoff。
+- 本阶段不改 Workbench UI，仅沉淀共享契约，降低多人协作冲突。
+
+验证：
+
+```bash
+node --test tests/system/workspace-evidence-handoff.test.mjs tests/system/workspace-evidence-basket.test.mjs
+npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --skipLibCheck --allowSyntheticDefaultImports apps/web/src/features/workspace/shared/WorkspaceEvidenceHandoff.ts
+```
