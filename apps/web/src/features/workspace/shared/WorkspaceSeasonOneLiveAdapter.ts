@@ -11,6 +11,7 @@ export interface WorkspaceSeasonOneLiveAdapterInput {
   openFiles?: string[];
   gitChanges?: number;
   evidenceItems?: number;
+  aiContextItems?: number;
   terminalState?: "idle" | "running" | "failed" | "passed";
   agentState?: "idle" | "drafting" | "waiting-review" | "approved";
   lastRunLabel?: string;
@@ -25,10 +26,18 @@ export function createWorkspaceSeasonOneLiveModel(
   const openFiles = normalizeList(input.openFiles);
   const gitChanges = clampCount(input.gitChanges);
   const evidenceItems = clampCount(input.evidenceItems);
+  const aiContextItems = clampCount(input.aiContextItems);
   const terminalState = input.terminalState ?? "idle";
   const agentState = input.agentState ?? "idle";
-  const terminalSummary = describeTerminalState(terminalState, input.lastRunLabel);
-  const agentSummary = describeAgentState(agentState, evidenceItems);
+  const terminalSummary = describeTerminalState(
+    terminalState,
+    input.lastRunLabel,
+  );
+  const agentSummary = describeAgentState(
+    agentState,
+    evidenceItems,
+    aiContextItems,
+  );
 
   return {
     ...base,
@@ -45,21 +54,37 @@ export function createWorkspaceSeasonOneLiveModel(
         openFileCount: openFiles.length,
         gitChanges,
         evidenceItems,
+        aiContextItems,
       }),
     },
-    activityItems: createLiveActivityItems({ gitChanges, evidenceItems, terminalState }),
+    activityItems: createLiveActivityItems({
+      gitChanges,
+      evidenceItems,
+      terminalState,
+    }),
     resources: createLiveResources({
       activePath,
       openFiles,
       gitChanges,
       evidenceItems,
+      aiContextItems,
       terminalSummary,
       agentSummary,
     }),
     aiPartner: {
       ...base.aiPartner,
-      badge: agentState === "approved" ? "approved" : evidenceItems > 0 ? "cited" : "needs evidence",
-      contextValue: [activePath, `${openFiles.length} open files`, `${evidenceItems} evidence items`]
+      badge:
+        agentState === "approved"
+          ? "approved"
+          : evidenceItems > 0
+            ? "cited"
+            : "needs evidence",
+      contextValue: [
+        activePath,
+        `${openFiles.length} open files`,
+        `${aiContextItems} AI contexts`,
+        `${evidenceItems} evidence items`,
+      ]
         .filter(Boolean)
         .join(" · "),
       nextActionValue: agentSummary,
@@ -108,13 +133,23 @@ function createLiveActivityItems({
 }: {
   gitChanges: number;
   evidenceItems: number;
-  terminalState: NonNullable<WorkspaceSeasonOneLiveAdapterInput["terminalState"]>;
+  terminalState: NonNullable<
+    WorkspaceSeasonOneLiveAdapterInput["terminalState"]
+  >;
 }): WorkspaceSeasonOneActivityItem[] {
   return [
     { id: "files", label: "Files", icon: "files", active: true },
     { id: "search", label: "Search", icon: "search" },
-    { id: "git", label: gitChanges > 0 ? `Git ${gitChanges}` : "Git", icon: "git" },
-    { id: "run", label: terminalState === "running" ? "Running" : "Run", icon: "terminal" },
+    {
+      id: "git",
+      label: gitChanges > 0 ? `Git ${gitChanges}` : "Git",
+      icon: "git",
+    },
+    {
+      id: "run",
+      label: terminalState === "running" ? "Running" : "Run",
+      icon: "terminal",
+    },
     {
       id: "evidence",
       label: evidenceItems > 0 ? `Evidence ${evidenceItems}` : "Evidence",
@@ -128,6 +163,7 @@ function createLiveResources({
   openFiles,
   gitChanges,
   evidenceItems,
+  aiContextItems,
   terminalSummary,
   agentSummary,
 }: {
@@ -135,10 +171,14 @@ function createLiveResources({
   openFiles: string[];
   gitChanges: number;
   evidenceItems: number;
+  aiContextItems: number;
   terminalSummary: string;
   agentSummary: string;
 }): WorkspaceSeasonOneResourceItem[] {
-  const primaryFiles = [activePath, ...openFiles.filter((path) => path !== activePath)].slice(0, 3);
+  const primaryFiles = [
+    activePath,
+    ...openFiles.filter((path) => path !== activePath),
+  ].slice(0, 3);
   const fileResources = primaryFiles.map((path, index) => ({
     id: `file-${index}`,
     label: path,
@@ -155,8 +195,20 @@ function createLiveResources({
       state: gitChanges > 0 ? "review" : "clean",
     },
     {
+      id: "ai-context-live",
+      label:
+        aiContextItems > 0
+          ? `${aiContextItems} AI context items`
+          : "AI context empty",
+      meta: "coding and writing prompt scope",
+      state: aiContextItems > 0 ? "ready" : "empty",
+    },
+    {
       id: "evidence-live",
-      label: evidenceItems > 0 ? `${evidenceItems} evidence items` : "Evidence required",
+      label:
+        evidenceItems > 0
+          ? `${evidenceItems} evidence items`
+          : "Evidence required",
       meta: "approval gate",
       state: evidenceItems > 0 ? "ready" : "blocked",
     },
@@ -179,12 +231,14 @@ function describeResourceSummary({
   openFileCount,
   gitChanges,
   evidenceItems,
+  aiContextItems,
 }: {
   openFileCount: number;
   gitChanges: number;
   evidenceItems: number;
+  aiContextItems: number;
 }) {
-  return `${openFileCount} open file${openFileCount === 1 ? "" : "s"} · ${gitChanges} Git change${gitChanges === 1 ? "" : "s"} · ${evidenceItems} evidence item${evidenceItems === 1 ? "" : "s"}`;
+  return `${openFileCount} open file${openFileCount === 1 ? "" : "s"} · ${gitChanges} Git change${gitChanges === 1 ? "" : "s"} · ${aiContextItems} AI context${aiContextItems === 1 ? "" : "s"} · ${evidenceItems} evidence item${evidenceItems === 1 ? "" : "s"}`;
 }
 
 function describeTerminalState(
@@ -192,21 +246,31 @@ function describeTerminalState(
   lastRunLabel?: string,
 ) {
   const label = normalizeValue(lastRunLabel) ?? "workspace verification";
-  if (state === "running") return `${label}\n… running inside the Season One run panel`;
-  if (state === "failed") return `${label}\n✕ failed — keep apply gated and inspect evidence`;
-  if (state === "passed") return `${label}\n✓ passed — ready for review evidence`;
+  if (state === "running")
+    return `${label}\n… running inside the Season One run panel`;
+  if (state === "failed")
+    return `${label}\n✕ failed — keep apply gated and inspect evidence`;
+  if (state === "passed")
+    return `${label}\n✓ passed — ready for review evidence`;
   return `${label}\n• idle — no active terminal run`;
 }
 
 function describeAgentState(
   state: NonNullable<WorkspaceSeasonOneLiveAdapterInput["agentState"]>,
   evidenceItems: number,
+  aiContextItems: number,
 ) {
-  if (state === "drafting") return "AI is drafting a proposal against the focused task context.";
-  if (state === "waiting-review") return "AI proposal is waiting for human review and evidence approval.";
-  if (state === "approved") return "AI proposal is approved and ready for staged apply.";
-  if (evidenceItems > 0) return "Attach evidence to the next AI handoff before staged apply.";
-  return "Collect evidence before allowing AI apply actions.";
+  if (state === "drafting")
+    return "AI is drafting a proposal against the focused task context.";
+  if (state === "waiting-review")
+    return "AI proposal is waiting for human review and evidence approval.";
+  if (state === "approved")
+    return "AI proposal is approved and ready for staged apply.";
+  if (evidenceItems > 0)
+    return "Attach evidence to the next AI handoff before staged apply.";
+  if (aiContextItems > 0)
+    return "AI context is ready; collect evidence before allowing apply actions.";
+  return "Collect AI context and evidence before allowing AI apply actions.";
 }
 
 function createStatusHealth({
@@ -214,7 +278,9 @@ function createStatusHealth({
   evidenceItems,
   agentState,
 }: {
-  terminalState: NonNullable<WorkspaceSeasonOneLiveAdapterInput["terminalState"]>;
+  terminalState: NonNullable<
+    WorkspaceSeasonOneLiveAdapterInput["terminalState"]
+  >;
   evidenceItems: number;
   agentState: NonNullable<WorkspaceSeasonOneLiveAdapterInput["agentState"]>;
 }) {

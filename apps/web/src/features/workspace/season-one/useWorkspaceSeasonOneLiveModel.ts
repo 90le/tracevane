@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { useFilesSummaryQuery } from "../../../lib/query/files";
+import { WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY } from "../shared/WorkspaceAiContextBasket";
 import { WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY } from "../shared/WorkspaceEvidenceBasket";
 
 import {
@@ -16,6 +17,7 @@ export interface WorkspaceSeasonOneSourceSnapshot {
   openFiles?: string[];
   gitChanges?: number;
   evidenceItems?: number;
+  aiContextItems?: number;
   terminalState?: WorkspaceSeasonOneLiveAdapterInput["terminalState"];
   agentState?: WorkspaceSeasonOneLiveAdapterInput["agentState"];
   lastRunLabel?: string;
@@ -38,6 +40,7 @@ const DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT: WorkspaceSeasonOneSourceSnapshot = {
   ],
   gitChanges: 4,
   evidenceItems: 3,
+  aiContextItems: 2,
   terminalState: "passed",
   agentState: "waiting-review",
   lastRunLabel: "Season One browser smoke",
@@ -61,9 +64,16 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
     () => createWorkspaceSeasonOneEvidenceSnapshot(),
     [],
   );
+  const aiContextSnapshot = React.useMemo(
+    () => createWorkspaceSeasonOneAiContextSnapshot(),
+    [],
+  );
   const liveState = React.useMemo(() => {
     const baseSnapshot = mergeWorkspaceSeasonOneSourceSnapshots(
-      storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
+      mergeWorkspaceSeasonOneSourceSnapshots(
+        storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
+        aiContextSnapshot,
+      ),
       evidenceSnapshot,
     );
     const filesSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot(
@@ -72,11 +82,17 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
     );
     return {
       sourceSnapshot: filesSnapshot ?? baseSnapshot,
-      source: storedSnapshot || evidenceSnapshot || filesSnapshot ? "workspace-hooks" : "demo",
+      source:
+        storedSnapshot || aiContextSnapshot || evidenceSnapshot || filesSnapshot
+          ? "workspace-hooks"
+          : "demo",
     } as const;
-  }, [evidenceSnapshot, filesSummary.data, storedSnapshot]);
+  }, [aiContextSnapshot, evidenceSnapshot, filesSummary.data, storedSnapshot]);
   const adapterInput = React.useMemo(
-    () => createWorkspaceSeasonOneAdapterInputFromSnapshot(liveState.sourceSnapshot),
+    () =>
+      createWorkspaceSeasonOneAdapterInputFromSnapshot(
+        liveState.sourceSnapshot,
+      ),
     [liveState.sourceSnapshot],
   );
   const model = React.useMemo(
@@ -93,7 +109,9 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
 }
 
 export function createWorkspaceSeasonOneDemoSourceSnapshot(): WorkspaceSeasonOneSourceSnapshot {
-  return cloneWorkspaceSeasonOneSourceSnapshot(DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT);
+  return cloneWorkspaceSeasonOneSourceSnapshot(
+    DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT,
+  );
 }
 
 export function createWorkspaceSeasonOneFilesSummarySnapshot(
@@ -103,7 +121,10 @@ export function createWorkspaceSeasonOneFilesSummarySnapshot(
   const fallbackSnapshot = baseSnapshot
     ? cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot)
     : createWorkspaceSeasonOneDemoSourceSnapshot();
-  const root = selectWorkspaceSeasonOneRoot(summary, fallbackSnapshot.rootLabel);
+  const root = selectWorkspaceSeasonOneRoot(
+    summary,
+    fallbackSnapshot.rootLabel,
+  );
   if (!root) return baseSnapshot ? fallbackSnapshot : null;
 
   return {
@@ -114,8 +135,34 @@ export function createWorkspaceSeasonOneFilesSummarySnapshot(
   };
 }
 
+export function createWorkspaceSeasonOneAiContextSnapshot(
+  storage:
+    | WorkspaceSeasonOneStorageReader
+    | undefined = getWorkspaceSeasonOneBrowserStorage(),
+): WorkspaceSeasonOneSourceSnapshot | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const aiContextItems = parsed.filter(
+      isWorkspaceSeasonOneAiContextBasketItem,
+    ).length;
+    return {
+      aiContextItems,
+      agentState: aiContextItems > 0 ? "drafting" : "idle",
+      lastRunLabel: aiContextItems > 0 ? "AI context basket ready" : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function createWorkspaceSeasonOneEvidenceSnapshot(
-  storage: WorkspaceSeasonOneStorageReader | undefined = getWorkspaceSeasonOneBrowserStorage(),
+  storage:
+    | WorkspaceSeasonOneStorageReader
+    | undefined = getWorkspaceSeasonOneBrowserStorage(),
 ): WorkspaceSeasonOneSourceSnapshot | null {
   if (!storage) return null;
   try {
@@ -123,7 +170,9 @@ export function createWorkspaceSeasonOneEvidenceSnapshot(
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return null;
-    const evidenceItems = parsed.filter(isWorkspaceSeasonOneEvidenceRecord).length;
+    const evidenceItems = parsed.filter(
+      isWorkspaceSeasonOneEvidenceRecord,
+    ).length;
     return {
       evidenceItems,
       agentState: evidenceItems > 0 ? "waiting-review" : "idle",
@@ -137,7 +186,8 @@ export function mergeWorkspaceSeasonOneSourceSnapshots(
   baseSnapshot: WorkspaceSeasonOneSourceSnapshot,
   overrideSnapshot: WorkspaceSeasonOneSourceSnapshot | null,
 ): WorkspaceSeasonOneSourceSnapshot {
-  if (!overrideSnapshot) return cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot);
+  if (!overrideSnapshot)
+    return cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot);
   return {
     ...cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot),
     ...overrideSnapshot,
@@ -148,7 +198,9 @@ export function mergeWorkspaceSeasonOneSourceSnapshots(
 }
 
 export function createWorkspaceSeasonOneStoredSessionSnapshot(
-  storage: WorkspaceSeasonOneStorageReader | undefined = getWorkspaceSeasonOneBrowserStorage(),
+  storage:
+    | WorkspaceSeasonOneStorageReader
+    | undefined = getWorkspaceSeasonOneBrowserStorage(),
 ): WorkspaceSeasonOneSourceSnapshot | null {
   if (!storage) return null;
   try {
@@ -165,6 +217,7 @@ export function createWorkspaceSeasonOneStoredSessionSnapshot(
       openFiles: activePath ? [activePath] : [],
       gitChanges: isGitDiffTarget(parsed.gitDiffTarget) ? 1 : 0,
       evidenceItems: 0,
+      aiContextItems: 0,
       terminalState: "idle",
       agentState: "idle",
       lastRunLabel: "Workspace session restore",
@@ -192,6 +245,7 @@ export function createWorkspaceSeasonOneAdapterInputFromSnapshot(
     openFiles,
     gitChanges: normalizeCount(snapshot.gitChanges),
     evidenceItems: normalizeCount(snapshot.evidenceItems),
+    aiContextItems: normalizeCount(snapshot.aiContextItems),
     terminalState: snapshot.terminalState ?? "idle",
     agentState: snapshot.agentState ?? "idle",
     lastRunLabel: normalizeText(snapshot.lastRunLabel),
@@ -227,7 +281,8 @@ function normalizeCount(value?: number) {
   return Math.max(0, Math.floor(value ?? 0));
 }
 
-function getWorkspaceSeasonOneBrowserStorage(): WorkspaceSeasonOneStorageReader | undefined {
+function getWorkspaceSeasonOneBrowserStorage():
+  WorkspaceSeasonOneStorageReader | undefined {
   if (typeof window === "undefined") return undefined;
   return window.localStorage;
 }
@@ -262,6 +317,18 @@ function selectWorkspaceSeasonOneRoot(
   );
 }
 
+function isWorkspaceSeasonOneAiContextBasketItem(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    item.kind === "document" &&
+    typeof item.id === "string" &&
+    typeof item.path === "string" &&
+    typeof item.title === "string" &&
+    typeof item.context === "string" &&
+    typeof item.addedAt === "string"
+  );
+}
 
 function isWorkspaceSeasonOneEvidenceRecord(value: unknown) {
   if (!value || typeof value !== "object") return false;
