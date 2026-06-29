@@ -1343,3 +1343,19 @@ test("new Workspace IDE shell supports dock composition snapshots", () => {
   assert.match(shellSource, /data-ide-dock-snapshot-placement=\{snapshot\.placement\}/);
   assert.match(shellSource, /Dock组合: \{dockSnapshots\.length\}/);
 });
+
+test("new Workspace IDE shell supports cross-dock pane keyboard navigation", () => {
+  assert.match(shellSource, /function workbenchPaneNavigationItems\(\): Array<\{ placement: PanePlacement; paneId: PaneId \}>/);
+  assert.match(shellSource, /DOCK_PLACEMENTS\.flatMap\(\(placement\) => dockPaneIdsForPlacement\(placement\)\.map/);
+  assert.match(shellSource, /function canNavigateWorkbenchPanes\(\)/);
+  assert.match(shellSource, /function selectAdjacentWorkbenchPane\(direction: "next" \| "previous"\)/);
+  assert.match(shellSource, /ide\.workbench\.next-pane/);
+  assert.match(shellSource, /ide\.workbench\.previous-pane/);
+  assert.match(shellSource, /shortcut: "⌘⌥PageDown"/);
+  assert.match(shellSource, /shortcut: "⌘⌥PageUp"/);
+  assert.match(shellSource, /selectAdjacentWorkbenchPane\("next"\)/);
+  assert.match(shellSource, /selectAdjacentWorkbenchPane\("previous"\)/);
+  assert.match(shellSource, /focusIdeRegion\(next\.placement\)/);
+  assert.match(shellSource, /!event\.shiftKey && event\.key === "PageDown"/);
+  assert.match(shellSource, /!event\.shiftKey && event\.key === "PageUp"/);
+});

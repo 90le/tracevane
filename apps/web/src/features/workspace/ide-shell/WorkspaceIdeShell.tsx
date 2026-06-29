@@ -529,6 +529,16 @@ export function WorkspaceIdeShell() {
           toggleActiveDockPanePinned();
           return;
         }
+        if (!event.shiftKey && event.key === "PageDown") {
+          event.preventDefault();
+          selectAdjacentWorkbenchPane("next");
+          return;
+        }
+        if (!event.shiftKey && event.key === "PageUp") {
+          event.preventDefault();
+          selectAdjacentWorkbenchPane("previous");
+          return;
+        }
         if (event.key === "\\") {
           event.preventDefault();
           if (activeDockFocus) {
@@ -1679,6 +1689,30 @@ export function WorkspaceIdeShell() {
         icon: <PanelLeft />,
         disabled: !canNavigateActiveDockGroup(),
         run: () => selectAdjacentDockPane("previous"),
+      },
+      {
+        id: "ide.workbench.next-pane",
+        group: "窗格",
+        label: "工作台切到下一个 Pane",
+        description: "按顶部、左侧、右侧、底部 Dock 顺序跨区域切换到下一个可见 Pane",
+        shortcut: "⌘⌥PageDown",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelRight />,
+        disabled: !canNavigateWorkbenchPanes(),
+        run: () => selectAdjacentWorkbenchPane("next"),
+      },
+      {
+        id: "ide.workbench.previous-pane",
+        group: "窗格",
+        label: "工作台切到上一个 Pane",
+        description: "按顶部、左侧、右侧、底部 Dock 顺序跨区域切换到上一个可见 Pane",
+        shortcut: "⌘⌥PageUp",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <PanelLeft />,
+        disabled: !canNavigateWorkbenchPanes(),
+        run: () => selectAdjacentWorkbenchPane("previous"),
       },
       {
         id: "ide.dock.active.reorder-previous",
@@ -2867,6 +2901,27 @@ export function WorkspaceIdeShell() {
     const currentIndex = Math.max(0, paneIds.indexOf(currentPane));
     const nextIndex = direction === "next" ? (currentIndex + 1) % paneIds.length : (currentIndex - 1 + paneIds.length) % paneIds.length;
     selectDockPane(activeDockFocus.placement, activeDockFocus.role, paneIds[nextIndex]);
+  }
+
+  function workbenchPaneNavigationItems(): Array<{ placement: PanePlacement; paneId: PaneId }> {
+    return DOCK_PLACEMENTS.flatMap((placement) => dockPaneIdsForPlacement(placement).map((paneId) => ({ placement, paneId })));
+  }
+
+  function canNavigateWorkbenchPanes() {
+    return workbenchPaneNavigationItems().length > 1;
+  }
+
+  function selectAdjacentWorkbenchPane(direction: "next" | "previous") {
+    const items = workbenchPaneNavigationItems();
+    if (items.length === 0) return;
+    const currentPaneId = activeDockPaneId();
+    const currentPlacement = activeDockFocus?.placement;
+    const currentIndex = items.findIndex((item) => item.paneId === currentPaneId && item.placement === currentPlacement);
+    const fallbackIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex = direction === "next" ? (fallbackIndex + 1) % items.length : (fallbackIndex - 1 + items.length) % items.length;
+    const next = items[nextIndex];
+    selectDockPane(next.placement, "primary", next.paneId);
+    focusIdeRegion(next.placement);
   }
 
   function canReorderActiveDockPane(direction: "next" | "previous") {
