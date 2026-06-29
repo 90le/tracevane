@@ -39,7 +39,7 @@
 1. **IDE 主体 Workbench**：整体壳、Activity/Nav、Side Panel、Editor Stage、Bottom Dock、Status Bar、Command Palette、布局记忆。
 2. **Terminal 前端体验**：session roster、输入区、移动端键盘、触摸滚动、命令插入、错误反馈、全屏/半屏/底栏切换。
 3. **Git 面板**：变更列表、diff 入口、stage/commit、当前分支状态、移动端审查模式。
-4. **搜索面板**：文件/内容搜索、结果密度、跳转、与终端/AI 上下文的交互。
+4. **搜索面板**：文件/内容搜索、结果密度、跳转、与终端/上下文证据的显式交互。
 5. **文件与编辑器基础体验**：文件树、tabs、dirty/save 状态、打开/定位/分屏/移动 tab。
 6. **电脑端 UI/UX**：高密度、低噪音、专业 IDE 信息架构。
 7. **手机端 UI/UX**：单任务流、底部模式切换、sheet/panel、终端输入优先、Git/search 审查优先。

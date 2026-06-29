@@ -15,7 +15,7 @@
 6. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。
 7. `Workspace架构.md` — Workspace 总体系统架构和边界。
 8. `Workspace前端架构.md` — 新前端目录、状态、响应式布局和命令系统。
-9. `Workspace后端设计.md` — 文件/终端/Git/预览/证据/Agent handoff 后端设计。
+9. `Workspace后端设计.md` — 文件/终端/Git/搜索/证据/Agent handoff 后端设计；预览/渲染仅作为未来扩展边界。
 10. `文件管理设计.md` — Workspace 文件管理目标。
 11. `终端能力设计.md` — Terminal Runtime System 目标；明确终端不是 CLI Agent。
 12. `研究先行开发清单.md` — 所有实现前必须遵守的 research-first 门禁.
@@ -36,7 +36,7 @@
 
 | Domain | Owns | Must not own |
 | --- | --- | --- |
-| Workspace | 文件管理、编辑器、预览、终端、Git。 | CLI Agent runtime 配置、Provider secret、IM bot token、OpenClaw 平台原生 CRUD。 |
+| Workspace | 文件管理、代码编辑器、终端、Git、搜索、上下文证据；预览/渲染只作为未来扩展边界。 | CLI Agent runtime 配置、Provider secret、IM bot token、OpenClaw 平台原生 CRUD。 |
 | Terminal | shell session、命令输入输出、tasks、logs、ports、terminal evidence。 | Codex/Claude/OpenCode runtime readiness 或 Agent Run 生命周期。 |
 | CLI Agents | CLI Agent 安装/版本/配置/readiness、Gateway 连接状态、Agent Run 生命周期、Agent 结果证据。 | 普通 PTY、terminal tabs、shell 输入、terminal split/delete/rename、自研聊天 UI。 |
 | Model Gateway | Provider、模型、协议、账号池、客户端接入、用量与路由证据。 | IM 账号、terminal、Agent Run UI。 |

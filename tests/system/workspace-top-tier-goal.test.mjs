@@ -30,6 +30,10 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.match(readme, /Workspace全球顶级AI编程IDE工作区Goal蓝图\.md/);
   assert.match(readme, /当前 Codex Goal 的最高执行宪章/);
   assert.match(readme, /终端、前后端边界、桌面\/手机 UI\/UX/);
+  assert.match(readme, /文件\/终端\/Git\/搜索\/证据\/Agent handoff 后端设计/);
+  assert.match(readme, /文件管理、代码编辑器、终端、Git、搜索、上下文证据/);
+  assert.match(readme, /预览\/渲染只作为未来扩展边界/);
+  assert.doesNotMatch(readme, /文件管理、编辑器、预览、终端、Git/);
   assert.doesNotMatch(readme, /Tracevane前端重设计原型\.md/);
   assert.doesNotMatch(readme, /Workspace重设计总纲\.md/);
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
@@ -183,6 +187,7 @@ test("Workspace Git commands separate evidence from AI generation", () => {
   assert.match(gitCommands, /Git：复制提交证据包/);
   assert.doesNotMatch(gitCommands, /Git：AI 提交信息/);
   assert.doesNotMatch(gitCommands, /Git：AI 总结当前变更/);
+  assert.doesNotMatch(gitCommands, /release note|changelog/i);
   assert.doesNotMatch(gitCommands, /group: "AI" as const/);
 });
 
