@@ -5,6 +5,7 @@ import fs from "node:fs";
 const shellSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/WorkspaceIdeShell.tsx", "utf-8");
 const cssSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/workspace-ide-shell.css", "utf-8");
 const pageSource = fs.readFileSync("apps/web/src/features/workspace/WorkspacePage.tsx", "utf-8");
+const workspaceIndexSource = fs.readFileSync("apps/web/src/features/workspace/index.ts", "utf-8");
 
 test("new Workspace IDE shell has real IDE layout regions", () => {
   assert.match(shellSource, /data-testid="workspace-ide-shell"/);
@@ -43,4 +44,11 @@ test("Workspace uses the new IDE shell as the only native workspace entry", () =
   assert.doesNotMatch(pageSource, /WorkspaceWorkbench/);
   assert.doesNotMatch(pageSource, /useWorkspaceLegacyMode/);
   assert.doesNotMatch(pageSource, /legacy/);
+});
+
+
+test("Workspace public API exports the new IDE surface and not the old Workbench", () => {
+  assert.match(workspaceIndexSource, /WorkspaceIdeShell/);
+  assert.doesNotMatch(workspaceIndexSource, /WorkspaceWorkbench/);
+  assert.doesNotMatch(workspaceIndexSource, /\.\/workbench/);
 });

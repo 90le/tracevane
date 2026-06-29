@@ -1,2 +1,2 @@
 export { WorkspacePage } from "./WorkspacePage";
-export { WorkspaceWorkbench } from "./workbench";
+export { WorkspaceIdeShell } from "./ide-shell";
