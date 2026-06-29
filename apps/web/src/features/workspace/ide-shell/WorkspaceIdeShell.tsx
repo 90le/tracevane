@@ -298,6 +298,7 @@ interface IdeLayoutState {
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
   hiddenPanes?: PaneId[];
+  pinnedPanes?: PaneId[];
   layoutLocked?: boolean;
 }
 
@@ -367,6 +368,7 @@ export function WorkspaceIdeShell() {
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [dockPaneSelections, setDockPaneSelections] = React.useState<DockPaneSelections>(() => mergeDockPaneSelections(layoutState.dockPaneSelections));
   const [hiddenPanes, setHiddenPanes] = React.useState<PaneId[]>(layoutState.hiddenPanes ?? []);
+  const [pinnedPanes, setPinnedPanes] = React.useState<PaneId[]>(layoutState.pinnedPanes ?? []);
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>(layoutState.activeEditorGroup ?? "primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
@@ -456,7 +458,7 @@ export function WorkspaceIdeShell() {
     setLayoutHistoryFuture([]);
     lastLayoutHistoryStateRef.current = nextLayoutState;
     lastLayoutHistoryKeyRef.current = nextHistoryKey;
-  }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutLocked, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
+  }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, pinnedPanes, layoutLocked, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -502,6 +504,11 @@ export function WorkspaceIdeShell() {
           } else {
             undoIdeLayoutChange();
           }
+          return;
+        }
+        if (!event.shiftKey && key === "p") {
+          event.preventDefault();
+          toggleActiveDockPanePinned();
           return;
         }
         if (event.key === "\\") {
@@ -1174,8 +1181,31 @@ export function WorkspaceIdeShell() {
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <RotateCcw />,
-        disabled: !activeDockFocus,
+        disabled: !activeDockFocus || Boolean(activeDockPaneId() && pinnedPanes.includes(activeDockPaneId() as PaneId)),
         run: hideActiveDockPane,
+      },
+      {
+        id: "ide.pane.pin-active",
+        group: "窗格" as const,
+        label: "固定当前聚焦 Pane",
+        description: activeDockFocus ? `固定当前聚焦的 ${paneLabel(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId)} Pane，防止误隐藏或误移动` : "先聚焦一个 Dock Pane，再固定它",
+        shortcut: "Dock 焦点：⌘⌥P",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        disabled: !activeDockFocus,
+        run: pinActiveDockPane,
+      },
+      {
+        id: "ide.pane.unpin-active",
+        group: "窗格" as const,
+        label: "取消固定当前聚焦 Pane",
+        description: activeDockFocus ? `取消固定当前聚焦的 ${paneLabel(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId)} Pane` : "先聚焦一个 Dock Pane，再取消固定",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        disabled: !activeDockFocus,
+        run: unpinActiveDockPane,
       },
       {
         id: "ide.pane.restore-all-hidden",
@@ -1215,7 +1245,18 @@ export function WorkspaceIdeShell() {
       })),
       ...PANE_REGISTRY.flatMap((pane) => {
         const hidden = hiddenPanes.includes(pane.id);
+        const pinned = pinnedPanes.includes(pane.id);
         return [
+          {
+            id: `ide.pane.${pinned ? "unpin" : "pin"}.${pane.id}`,
+            group: "窗格" as const,
+            label: `${pinned ? "取消固定" : "固定"} ${pane.label} Pane`,
+            description: pinned ? `${pane.label} Pane 已允许移动和隐藏` : `保护 ${pane.label} Pane，避免误拖动、误移动或误隐藏`,
+            risk: "safe" as const,
+            surface: "layout" as const,
+            icon: React.createElement(pane.icon),
+            run: () => togglePanePinned(pane.id),
+          },
           {
             id: `ide.pane.${hidden ? "show" : "hide"}.${pane.id}`,
             group: "窗格" as const,
@@ -1224,12 +1265,13 @@ export function WorkspaceIdeShell() {
             risk: "safe" as const,
             surface: "layout" as const,
             icon: React.createElement(pane.icon),
+            disabled: !hidden && pinned,
             run: () => (hidden ? restorePane(pane.id) : hidePane(pane.id)),
           },
         ];
       }),
     ],
-    [activeDockFocus, hiddenPanes, panePlacements],
+    [activeDockFocus, hiddenPanes, panePlacements, pinnedPanes],
   );
 
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
@@ -2042,6 +2084,7 @@ export function WorkspaceIdeShell() {
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setDockPaneSelections(DEFAULT_DOCK_PANE_SELECTIONS);
     setHiddenPanes([]);
+    setPinnedPanes([]);
     setActiveDockFocus(null);
     setMaximizedPane(null);
     setMobilePanel("editor");
@@ -2093,6 +2136,7 @@ export function WorkspaceIdeShell() {
       dockPaneSelections,
       editorGroupTabs,
       hiddenPanes,
+      pinnedPanes,
       layoutLocked,
     };
   }
@@ -2203,6 +2247,7 @@ export function WorkspaceIdeShell() {
       bottom: sanitized.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
     };
     const nextHiddenPanes = sanitized.hiddenPanes ?? [];
+    const nextPinnedPanes = sanitized.pinnedPanes ?? [];
     const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder, nextHiddenPanes);
     setPanePlacements(nextPanePlacements);
     setPaneOrder(nextPaneOrder);
@@ -2210,6 +2255,7 @@ export function WorkspaceIdeShell() {
     setDockSplitRatios({ ...DEFAULT_DOCK_SPLIT_RATIOS, ...sanitized.dockSplitRatios });
     setDockPaneSelections(mergeDockPaneSelections(sanitized.dockPaneSelections));
     setHiddenPanes(nextHiddenPanes);
+    setPinnedPanes(nextPinnedPanes);
     setLayoutLocked(sanitized.layoutLocked ?? false);
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
@@ -2819,8 +2865,47 @@ export function WorkspaceIdeShell() {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
+  function isPanePinned(paneId: PaneId) {
+    return pinnedPanes.includes(paneId);
+  }
+
+  function pinPane(paneId: PaneId) {
+    setPinnedPanes((current) => (current.includes(paneId) ? current : [...current, paneId]));
+  }
+
+  function unpinPane(paneId: PaneId) {
+    setPinnedPanes((current) => current.filter((pinnedPane) => pinnedPane !== paneId));
+  }
+
+  function togglePanePinned(paneId: PaneId) {
+    setPinnedPanes((current) => (current.includes(paneId) ? current.filter((pinnedPane) => pinnedPane !== paneId) : [...current, paneId]));
+  }
+
+  function activeDockPaneId() {
+    if (!activeDockFocus) return undefined;
+    return activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+  }
+
+  function toggleActiveDockPanePinned() {
+    const paneId = activeDockPaneId();
+    if (!paneId) return;
+    togglePanePinned(paneId);
+  }
+
+  function pinActiveDockPane() {
+    const paneId = activeDockPaneId();
+    if (!paneId) return;
+    pinPane(paneId);
+  }
+
+  function unpinActiveDockPane() {
+    const paneId = activeDockPaneId();
+    if (!paneId) return;
+    unpinPane(paneId);
+  }
+
   function hidePane(paneId: PaneId) {
-    if (layoutLocked) return;
+    if (layoutLocked || isPanePinned(paneId)) return;
     setHiddenPanes((current) => (current.includes(paneId) ? current : [...current, paneId]));
     setActiveDockFocus((current) => (current?.paneId === paneId ? null : current));
   }
@@ -2878,7 +2963,7 @@ export function WorkspaceIdeShell() {
   }
 
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
-    if (layoutLocked) return;
+    if (layoutLocked || isPanePinned(paneId)) return;
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
     selectDockPane(placement, role, paneId);
@@ -2905,7 +2990,7 @@ export function WorkspaceIdeShell() {
   }
 
   function beginPaneDrag(paneId: PaneId, event: React.DragEvent) {
-    if (layoutLocked) return;
+    if (layoutLocked || isPanePinned(paneId)) return;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/x-tracevane-pane", paneId);
     event.dataTransfer.setData("text/plain", paneLabel(paneId));
@@ -3024,6 +3109,7 @@ export function WorkspaceIdeShell() {
       data-ide-mobile-panel={mobilePanel}
       data-ide-layout-locked={layoutLocked ? "true" : "false"}
       data-ide-layout-history={`${layoutHistoryPast.length}:${layoutHistoryFuture.length}`}
+      data-ide-pinned-panes={pinnedPanes.join("|")}
       data-ide-dock-selection-state={dockSelectionState(dockPaneSelections)}
       style={{
         "--ide-top-height": `${paneSizes.top}px`,
@@ -3207,6 +3293,8 @@ export function WorkspaceIdeShell() {
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
                   onHidePane={hidePane}
+                  pinnedPanes={pinnedPanes}
+                  onTogglePanePinned={togglePanePinned}
                   onCloseDock={() => setLeftOpen(false)}
                 />
                 <DockPaneFrame
@@ -3358,6 +3446,8 @@ export function WorkspaceIdeShell() {
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
+                      pinnedPanes={pinnedPanes}
+                      onTogglePanePinned={togglePanePinned}
                       onCloseDock={() => setTopOpen(false)}
                     />
                   </div>
@@ -3571,6 +3661,8 @@ export function WorkspaceIdeShell() {
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
+                      pinnedPanes={pinnedPanes}
+                      onTogglePanePinned={togglePanePinned}
                       onCloseDock={() => setBottomOpen(false)}
                     />
                   </div>
@@ -3691,6 +3783,8 @@ export function WorkspaceIdeShell() {
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
                     onHidePane={hidePane}
+                    pinnedPanes={pinnedPanes}
+                    onTogglePanePinned={togglePanePinned}
                     onCloseDock={() => setRightOpen(false)}
                   />
                 </div>
@@ -3753,6 +3847,7 @@ export function WorkspaceIdeShell() {
         <span>布局: {layoutPreset}</span>
         <span>布局锁: {layoutLocked ? "locked" : "open"}</span>
         <span>布局历史: {layoutHistoryPast.length}/{layoutHistoryFuture.length}</span>
+        <span>固定 Pane: {pinnedPanes.length}</span>
         <span>快照: {layoutSnapshots.length}</span>
         <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
@@ -3870,6 +3965,8 @@ function PaneDockControls({
   onBeginDrag,
   onEndDrag,
   onCloseDock,
+  pinnedPanes = [],
+  onTogglePanePinned,
 }: {
   paneId: PaneId;
   placement: PanePlacement;
@@ -3885,15 +3982,19 @@ function PaneDockControls({
   onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
   onEndDrag: () => void;
   onCloseDock: () => void;
+  pinnedPanes?: PaneId[];
+  onTogglePanePinned?: (paneId: PaneId) => void;
 }) {
   const canAssignToSplitGroup = splitMode && splitMode !== "single";
+  const pinned = pinnedPanes.includes(paneId);
 
   return (
     <div
       className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
       data-ide-pane-dock-controls={paneId}
       data-ide-pane-draggable={paneId}
-      draggable
+      data-ide-pane-pinned={pinned ? "true" : "false"}
+      draggable={!pinned}
       onDragStart={(event) => onBeginDrag(paneId, event)}
       onDragEnd={onEndDrag}
     >
@@ -3901,7 +4002,7 @@ function PaneDockControls({
         <button
           key={target}
           type="button"
-          disabled={target === placement}
+          disabled={target === placement || pinned}
           aria-label={`移动 ${paneLabel(paneId)} 到${placementLabel(target)}`}
           onClick={() => onMovePane(paneId, target)}
         >
@@ -3919,7 +4020,7 @@ function PaneDockControls({
       <button
         type="button"
         data-ide-pane-assign-secondary-group={paneId}
-        disabled={!canAssignToSplitGroup}
+        disabled={!canAssignToSplitGroup || pinned}
         aria-label={`把 ${paneLabel(paneId)} 放入${placementLabel(placement)} Dock 副窗格组`}
         onClick={() => onMovePane(paneId, placement, undefined, "secondary")}
       >
@@ -3967,7 +4068,10 @@ function PaneDockControls({
           ) : null}
         </>
       ) : null}
-      <button type="button" aria-label={`隐藏 ${paneLabel(paneId)} Pane`} onClick={() => onHidePane(paneId)}>
+      <button type="button" data-ide-pane-pin={paneId} aria-pressed={pinned} aria-label={`${pinned ? "取消固定" : "固定"} ${paneLabel(paneId)} Pane`} onClick={() => onTogglePanePinned?.(paneId)}>
+        {pinned ? "固✓" : "固定"}
+      </button>
+      <button type="button" disabled={pinned} aria-label={`隐藏 ${paneLabel(paneId)} Pane`} onClick={() => onHidePane(paneId)}>
         隐
       </button>
       <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
@@ -5114,6 +5218,7 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     dockPaneSelections: sanitizeDockPaneSelections(value.dockPaneSelections),
     editorGroupTabs: sanitizeEditorGroupTabs(value.editorGroupTabs),
     hiddenPanes: sanitizeHiddenPanes(value.hiddenPanes),
+    pinnedPanes: sanitizePaneIdList(value.pinnedPanes),
     layoutLocked: typeof value.layoutLocked === "boolean" ? value.layoutLocked : undefined,
   };
 }
@@ -5152,8 +5257,12 @@ function sanitizeEditorTabs(value: unknown): EditorTab[] {
 }
 
 function sanitizeHiddenPanes(value: PaneId[] | undefined): PaneId[] | undefined {
+  return sanitizePaneIdList(value);
+}
+
+function sanitizePaneIdList(value: PaneId[] | undefined): PaneId[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value.filter((paneId, index, hidden) => isPaneId(paneId) && hidden.indexOf(paneId) === index);
+  return value.filter((paneId, index, panes) => isPaneId(paneId) && panes.indexOf(paneId) === index);
 }
 
 function sanitizeDockPaneSelections(value: Partial<DockPaneSelections> | undefined): Partial<DockPaneSelections> | undefined {

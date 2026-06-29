@@ -481,7 +481,7 @@ test("new Workspace IDE shell exposes direct dock controls for pane movement", (
   assert.match(shellSource, /把 \$\{paneLabel\(paneId\)\} 放入\$\{placementLabel\(placement\)\} Dock 副窗格组/);
   assert.match(shellSource, /onMovePane\(paneId, placement, undefined, "primary"\)/);
   assert.match(shellSource, /onMovePane\(paneId, placement, undefined, "secondary"\)/);
-  assert.match(shellSource, /disabled=\{!canAssignToSplitGroup\}/);
+  assert.match(shellSource, /disabled=\{!canAssignToSplitGroup \|\| pinned\}/);
   assert.match(shellSource, /关闭\$\{placementLabel\(placement\)\} Dock/);
   assert.match(shellSource, /onMovePane\(paneId, target\)/);
   assert.match(shellSource, /onFocusOtherGroup\?: \(\) => void/);
@@ -995,7 +995,7 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /hiddenPanes\?: PaneId\[\]/);
   assert.match(shellSource, /hiddenPanes, setHiddenPanes/);
   assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder, hiddenPanes\)/);
-  assert.match(shellSource, /hiddenPanes,\n\s+layoutLocked,/);
+  assert.match(shellSource, /hiddenPanes,\n\s+pinnedPanes,\n\s+layoutLocked,/);
   assert.match(shellSource, /hiddenPanes: sanitizeHiddenPanes\(value\.hiddenPanes\)/);
   assert.match(shellSource, /function sanitizeHiddenPanes\(value: PaneId\[\] \| undefined\)/);
   assert.match(shellSource, /const paneVisibilityCommands = React\.useMemo<WorkspaceCommand\[\]>/);
@@ -1159,6 +1159,25 @@ test("new Workspace IDE shell supports layout locking", () => {
   assert.match(shellSource, /function setEditorSplitRatioPreset[\s\S]*?if \(layoutLocked\) return;/);
   assert.match(shellSource, /function setDockSplitRatioPreset[\s\S]*?if \(layoutLocked\) return;/);
   assert.match(shellSource, /function hidePane[\s\S]*?if \(layoutLocked\) return;/);
+});
+
+
+test("new Workspace IDE shell supports pinned panes", () => {
+  assert.match(shellSource, /pinnedPanes\?: PaneId\[\]/);
+  assert.match(shellSource, /pinnedPanes, setPinnedPanes/);
+  assert.match(shellSource, /pinnedPanes,/);
+  assert.match(shellSource, /pinnedPanes: sanitizePaneIdList\(value\.pinnedPanes\)/);
+  assert.match(shellSource, /function isPanePinned\(paneId: PaneId\)/);
+  assert.match(shellSource, /function togglePanePinned\(paneId: PaneId\)/);
+  assert.match(shellSource, /function toggleActiveDockPanePinned\(\)/);
+  assert.match(shellSource, /ide\.pane\.pin-active/);
+  assert.match(shellSource, /ide\.pane\.unpin-active/);
+  assert.match(shellSource, /shortcut: "Dock 焦点：⌘⌥P"/);
+  assert.match(shellSource, /if \(layoutLocked \|\| isPanePinned\(paneId\)\) return;/);
+  assert.match(shellSource, /data-ide-pinned-panes=\{pinnedPanes\.join\("\\|"\)\}/);
+  assert.match(shellSource, /data-ide-pane-pinned=\{pinned \? "true" : "false"\}/);
+  assert.match(shellSource, /data-ide-pane-pin=\{paneId\}/);
+  assert.match(shellSource, /固定 Pane: \{pinnedPanes\.length\}/);
 });
 
 test("new Workspace IDE shell supports split ratio presets", () => {
