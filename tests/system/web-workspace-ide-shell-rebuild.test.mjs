@@ -22,21 +22,25 @@ test("new Workspace IDE shell models pane/plugin composition", () => {
   }
   assert.match(shellSource, /RIGHT_PANELS/);
   assert.match(shellSource, /BOTTOM_PANELS/);
-  assert.match(shellSource, /CENTER_TABS/);
+  assert.match(shellSource, /WorkspaceExplorer/);
+  assert.match(shellSource, /WorkspaceSearchPanel/);
+  assert.match(shellSource, /WorkspaceGitPanel/);
+  assert.match(shellSource, /WorkspaceEditorStage/);
+  assert.match(shellSource, /WorkspaceTerminal/);
   assert.match(shellSource, /插件组合/);
 });
 
 test("new Workspace IDE shell is responsive for desktop tablet and phone", () => {
-  assert.match(cssSource, /grid-template-columns: 72px minmax\(240px, 320px\) minmax\(0, 1fr\) minmax\(260px, 340px\)/);
+  assert.match(cssSource, /grid-template-columns: 72px minmax\(280px, 340px\) minmax\(0, 1fr\) minmax\(280px, 360px\)/);
   assert.match(cssSource, /@media \(max-width: 1100px\)/);
   assert.match(cssSource, /@media \(max-width: 760px\)/);
   assert.match(cssSource, /grid-template-columns: 1fr/);
   assert.match(cssSource, /flex-direction: row/);
 });
 
-test("Workspace defaults to the new IDE shell and keeps legacy workbench behind an explicit flag", () => {
-  assert.match(pageSource, /<WorkspaceIdeShell \/>/);
-  assert.match(pageSource, /useWorkspaceLegacyMode/);
-  assert.match(pageSource, /params\.get\("legacy"\) === "1"/);
-  assert.match(pageSource, /<WorkspaceWorkbench \/>/);
+test("Workspace uses the new IDE shell as the only native workspace entry", () => {
+  assert.match(pageSource, /return <WorkspaceIdeShell \/>/);
+  assert.doesNotMatch(pageSource, /WorkspaceWorkbench/);
+  assert.doesNotMatch(pageSource, /useWorkspaceLegacyMode/);
+  assert.doesNotMatch(pageSource, /legacy/);
 });

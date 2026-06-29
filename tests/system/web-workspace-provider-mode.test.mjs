@@ -4,11 +4,12 @@ import fs from "node:fs";
 
 const pageSource = fs.readFileSync("apps/web/src/features/workspace/WorkspacePage.tsx", "utf-8");
 
-test("workspace page exposes provider iframe mode without replacing the native workbench", () => {
+test("workspace page exposes provider iframe mode without replacing the native IDE shell", () => {
   assert.match(pageSource, /WorkspaceIdeProviderPanel/);
   assert.match(pageSource, /provider === "ide" \|\| provider === "vscode"/);
   assert.match(pageSource, /data-testid="workspace-provider-mode"/);
-  assert.match(pageSource, /return legacyMode \? <WorkspaceWorkbench \/> : <WorkspaceIdeShell \/>/);
+  assert.match(pageSource, /return <WorkspaceIdeShell \/>/);
+  assert.doesNotMatch(pageSource, /WorkspaceWorkbench/);
 });
 
 test("workspace provider mode accepts explicit provider kinds and workspace root", () => {

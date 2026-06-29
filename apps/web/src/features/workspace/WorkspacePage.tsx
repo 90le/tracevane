@@ -2,7 +2,6 @@ import * as React from "react";
 
 import { WorkspaceIdeShell } from "./ide-shell";
 import { WorkspaceIdeProviderPanel } from "./provider";
-import { WorkspaceWorkbench } from "./workbench";
 
 export function WorkspacePage() {
   React.useEffect(() => {
@@ -22,8 +21,7 @@ export function WorkspacePage() {
     );
   }
 
-  const legacyMode = useWorkspaceLegacyMode();
-  return legacyMode ? <WorkspaceWorkbench /> : <WorkspaceIdeShell />;
+  return <WorkspaceIdeShell />;
 }
 
 export default WorkspacePage;
@@ -63,12 +61,4 @@ function readWorkspaceProviderMode(): {
     workspaceRoot: params.get("workspaceRoot") || undefined,
     mobile: window.matchMedia?.("(max-width: 768px)").matches ?? false,
   };
-}
-
-function useWorkspaceLegacyMode(): boolean {
-  if (typeof window === "undefined") return false;
-  const hash = window.location.hash || "";
-  const queryIndex = hash.indexOf("?");
-  const params = new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : window.location.search);
-  return params.get("legacy") === "1" || params.get("workbench") === "legacy";
 }
