@@ -259,14 +259,24 @@ test("new Workspace IDE shell persists pane order and supports tab reorder drops
 test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /type DockSplitMode = "single" \| "vertical" \| "horizontal"/);
   assert.match(shellSource, /type DockSplitModes = Record<PanePlacement, DockSplitMode>/);
+  assert.match(shellSource, /type DockSplitRatios = Record<PanePlacement, number>/);
   assert.match(shellSource, /DEFAULT_DOCK_SPLIT_MODES/);
+  assert.match(shellSource, /DEFAULT_DOCK_SPLIT_RATIOS/);
   assert.match(shellSource, /dockSplitModes/);
+  assert.match(shellSource, /dockSplitRatios/);
   assert.match(shellSource, /function setDockSplitMode/);
+  assert.match(shellSource, /function startDockSplitResize/);
+  assert.match(shellSource, /function resizeDockSplitFromKeyboard/);
   assert.match(shellSource, /function DockPaneFrame/);
+  assert.match(shellSource, /function DockSplitHandle/);
   assert.match(shellSource, /data-ide-dock-split=\{shouldSplit \? splitMode : "single"\}/);
   assert.match(shellSource, /data-ide-dock-split-pane=\{role\}/);
+  assert.match(shellSource, /data-ide-dock-split-handle=\{mode\}/);
+  assert.match(shellSource, /--ide-dock-primary-size/);
+  assert.match(shellSource, /aria-valuenow=\{Math\.round\(value\)\}/);
   assert.match(shellSource, /function secondaryDockPane/);
   assert.match(shellSource, /sanitizeDockSplitModes/);
+  assert.match(shellSource, /sanitizeDockSplitRatios/);
   assert.match(shellSource, /isDockSplitMode/);
   assert.match(shellSource, /aria-label=\{`\$\{placementLabel\(placement\)\} Dock 左右拆分`\}/);
   assert.match(shellSource, /aria-label=\{`\$\{placementLabel\(placement\)\} Dock 上下拆分`\}/);
@@ -275,6 +285,11 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(cssSource, /data-ide-dock-split="horizontal"/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-divider/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-pane/);
+  assert.match(cssSource, /--ide-dock-primary-size/);
+  assert.match(cssSource, /data-ide-dock-split-handle="vertical"/);
+  assert.match(cssSource, /data-ide-dock-split-handle="horizontal"/);
+  assert.match(cssSource, /cursor: col-resize/);
+  assert.match(cssSource, /cursor: row-resize/);
 });
 
 test("new Workspace IDE shell supports named local layout snapshots", () => {

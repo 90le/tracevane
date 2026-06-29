@@ -866,13 +866,13 @@
 }
 
 .workspace-ide-shell__dock-split[data-ide-dock-split="vertical"] {
-  grid-template-columns: minmax(0, 1fr) 6px minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--ide-dock-primary-size, 50%)) 6px minmax(0, calc(100% - var(--ide-dock-primary-size, 50%)));
   grid-template-rows: minmax(0, 1fr);
 }
 
 .workspace-ide-shell__dock-split[data-ide-dock-split="horizontal"] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 6px minmax(0, 1fr);
+  grid-template-rows: minmax(0, var(--ide-dock-primary-size, 50%)) 6px minmax(0, calc(100% - var(--ide-dock-primary-size, 50%)));
 }
 
 .workspace-ide-shell__dock-split-pane {
@@ -885,6 +885,21 @@
 
 .workspace-ide-shell__dock-split-divider {
   background: rgba(148, 163, 184, 0.16);
+}
+
+.workspace-ide-shell__dock-split-divider[data-ide-dock-split-handle="vertical"] {
+  cursor: col-resize;
+}
+
+.workspace-ide-shell__dock-split-divider[data-ide-dock-split-handle="horizontal"] {
+  cursor: row-resize;
+}
+
+.workspace-ide-shell__dock-split-divider:hover,
+.workspace-ide-shell__dock-split-divider:focus-visible {
+  outline: none;
+  background: rgba(34, 211, 238, 0.42);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.32);
 }
 
 .workspace-ide-shell__pane-dock-controls button[data-active="true"] {

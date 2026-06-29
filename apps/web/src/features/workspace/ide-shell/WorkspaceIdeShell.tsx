@@ -45,6 +45,7 @@ type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitModes = Record<PanePlacement, DockSplitMode>;
+type DockSplitRatios = Record<PanePlacement, number>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
 interface IdePaneSizes {
@@ -106,8 +107,10 @@ const PANE_SIZE_LIMITS: Record<keyof IdePaneSizes, { min: number; max: number }>
 const KEYBOARD_RESIZE_STEP = 16;
 const KEYBOARD_RESIZE_LARGE_STEP = 40;
 const DEFAULT_DOCK_SPLIT_MODES: DockSplitModes = { top: "single", left: "single", right: "single", bottom: "single" };
+const DEFAULT_DOCK_SPLIT_RATIOS: DockSplitRatios = { top: 50, left: 50, right: 50, bottom: 50 };
 const DEFAULT_EDITOR_SPLIT_RATIO = 50;
-const EDITOR_SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
+const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
+const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
 
 interface IdeLayoutState {
   topOpen?: boolean;
@@ -120,6 +123,7 @@ interface IdeLayoutState {
   editorSplitMode?: EditorSplitMode;
   editorSplitRatio?: number;
   dockSplitModes?: Partial<DockSplitModes>;
+  dockSplitRatios?: Partial<DockSplitRatios>;
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
 }
@@ -180,6 +184,10 @@ export function WorkspaceIdeShell() {
   const [dockSplitModes, setDockSplitModes] = React.useState<DockSplitModes>(() => ({
     ...DEFAULT_DOCK_SPLIT_MODES,
     ...layoutState.dockSplitModes,
+  }));
+  const [dockSplitRatios, setDockSplitRatios] = React.useState<DockSplitRatios>(() => ({
+    ...DEFAULT_DOCK_SPLIT_RATIOS,
+    ...layoutState.dockSplitRatios,
   }));
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
@@ -246,8 +254,9 @@ export function WorkspaceIdeShell() {
       panePlacements,
       paneOrder,
       dockSplitModes,
+      dockSplitRatios,
     });
-  }, [bottomOpen, dockSplitModes, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -512,7 +521,7 @@ export function WorkspaceIdeShell() {
         run: resetPanePlacements,
       },
     ],
-    [bottomOpen, dockSplitModes, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
+    [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
@@ -555,7 +564,7 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
     ],
-    [layoutSnapshots, bottomOpen, dockSplitModes, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
+    [layoutSnapshots, bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
   const commands = React.useMemo(
@@ -583,6 +592,7 @@ export function WorkspaceIdeShell() {
     setLayoutPreset("balanced");
     setPaneSizes(DEFAULT_PANE_SIZES);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
+    setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setMaximizedPane(null);
     closeEditorSplit();
     resetPanePlacements();
@@ -592,6 +602,7 @@ export function WorkspaceIdeShell() {
     setPanePlacements(DEFAULT_PANE_PLACEMENTS);
     setPaneOrder(DEFAULT_PANE_ORDER);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
+    setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setActivity("explorer");
     setTopPanel("output");
     setRightPanel("ai");
@@ -616,6 +627,7 @@ export function WorkspaceIdeShell() {
       panePlacements,
       paneOrder,
       dockSplitModes,
+      dockSplitRatios,
     };
   }
 
@@ -655,6 +667,7 @@ export function WorkspaceIdeShell() {
     setPanePlacements(nextPanePlacements);
     setPaneOrder(nextPaneOrder);
     setDockSplitModes({ ...DEFAULT_DOCK_SPLIT_MODES, ...sanitized.dockSplitModes });
+    setDockSplitRatios({ ...DEFAULT_DOCK_SPLIT_RATIOS, ...sanitized.dockSplitRatios });
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
@@ -739,6 +752,45 @@ export function WorkspaceIdeShell() {
     setEditorSplitRatio((current) => clamp(current + delta, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max));
   }
 
+  function startDockSplitResize(placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) {
+    if (mode === "single") return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startRatio = dockSplitRatios[placement];
+    const host = event.currentTarget.parentElement;
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const rect = host?.getBoundingClientRect();
+      const axisSize = mode === "vertical" ? rect?.width : rect?.height;
+      if (!axisSize) return;
+      const delta = mode === "vertical" ? moveEvent.clientX - startX : moveEvent.clientY - startY;
+      const nextRatio = startRatio + (delta / axisSize) * 100;
+      setDockSplitRatios((current) => ({
+        ...current,
+        [placement]: clamp(nextRatio, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max),
+      }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  function resizeDockSplitFromKeyboard(placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) {
+    const baseStep = event.shiftKey ? 8 : 3;
+    const delta = splitKeyboardDelta(mode, event.key, baseStep);
+    if (delta === 0) return;
+    event.preventDefault();
+    setDockSplitRatios((current) => ({
+      ...current,
+      [placement]: clamp(current[placement] + delta, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max),
+    }));
+  }
+
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
@@ -749,6 +801,9 @@ export function WorkspaceIdeShell() {
 
   function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
     setDockSplitModes((current) => ({ ...current, [placement]: mode }));
+    if (mode !== "single") {
+      setDockSplitRatios((current) => ({ ...current, [placement]: current[placement] ?? DEFAULT_DOCK_SPLIT_RATIOS[placement] }));
+    }
   }
 
   function closeEditorSplit() {
@@ -1106,11 +1161,14 @@ export function WorkspaceIdeShell() {
               <DockPaneFrame
                 placement="top"
                 splitMode={dockSplitModes.top}
+                splitRatio={dockSplitRatios.top}
                 primaryPane={activeTopPane}
                 secondaryPane={secondaryTopPane}
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
+                onStartSplitResize={startDockSplitResize}
+                onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               />
               <ResizeHandle
                 pane="top"
@@ -1253,11 +1311,14 @@ export function WorkspaceIdeShell() {
               <DockPaneFrame
                 placement="bottom"
                 splitMode={dockSplitModes.bottom}
+                splitRatio={dockSplitRatios.bottom}
                 primaryPane={activeBottomPane}
                 secondaryPane={secondaryBottomPane}
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
+                onStartSplitResize={startDockSplitResize}
+                onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               />
             </section>
           ) : null}
@@ -1320,11 +1381,14 @@ export function WorkspaceIdeShell() {
             <DockPaneFrame
               placement="right"
               splitMode={dockSplitModes.right}
+              splitRatio={dockSplitRatios.right}
               primaryPane={activeRightPane}
               secondaryPane={secondaryRightPane}
               workspaceDirectory={workspaceDirectory}
               onTerminalCommandsChange={setTerminalCommands}
               onRestore={resetPanePlacements}
+              onStartSplitResize={startDockSplitResize}
+              onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               renderPane={(paneId) => (
                 <RightPane
                   panel={paneId}
@@ -1671,24 +1735,31 @@ function RightPane({
 function DockPaneFrame({
   placement,
   splitMode,
+  splitRatio,
   primaryPane,
   secondaryPane,
   workspaceDirectory,
   onTerminalCommandsChange,
   onRestore,
+  onStartSplitResize,
+  onResizeSplitFromKeyboard,
   renderPane,
 }: {
   placement: PanePlacement;
   splitMode: DockSplitMode;
+  splitRatio: number;
   primaryPane?: PaneId;
   secondaryPane?: PaneId;
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
   onRestore: () => void;
+  onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
+  onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   renderPane?: (paneId: PaneId) => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
+  const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
   const render = (paneId: PaneId, role: "primary" | "secondary") => (
     <section className="workspace-ide-shell__dock-split-pane" data-ide-dock-split-pane={role} data-ide-dock-split-placement={placement}>
       {renderPane ? (
@@ -1704,15 +1775,53 @@ function DockPaneFrame({
       className="workspace-ide-shell__dock-split"
       data-ide-dock-split={shouldSplit ? splitMode : "single"}
       data-ide-dock-split-placement={placement}
+      style={style}
     >
       {render(primaryPane, "primary")}
       {shouldSplit && secondaryPane ? (
         <>
-          <div className="workspace-ide-shell__dock-split-divider" aria-hidden={true} />
+          <DockSplitHandle
+            placement={placement}
+            mode={splitMode}
+            value={splitRatio}
+            onPointerDown={(event) => onStartSplitResize(placement, splitMode, event)}
+            onKeyDown={(event) => onResizeSplitFromKeyboard(placement, splitMode, event)}
+          />
           {render(secondaryPane, "secondary")}
         </>
       ) : null}
     </div>
+  );
+}
+
+function DockSplitHandle({
+  placement,
+  mode,
+  value,
+  onPointerDown,
+  onKeyDown,
+}: {
+  placement: PanePlacement;
+  mode: DockSplitMode;
+  value: number;
+  onPointerDown: (event: React.PointerEvent) => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label={`调整${placementLabel(placement)} Dock 拆分比例`}
+      aria-orientation={mode === "vertical" ? "vertical" : "horizontal"}
+      aria-valuemin={SPLIT_RATIO_LIMITS.min}
+      aria-valuemax={SPLIT_RATIO_LIMITS.max}
+      aria-valuenow={Math.round(value)}
+      tabIndex={0}
+      className="workspace-ide-shell__dock-split-divider"
+      data-ide-dock-split-handle={mode}
+      data-ide-dock-split-handle-placement={placement}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+    />
   );
 }
 
@@ -1849,6 +1958,10 @@ function placementShortLabel(placement: PanePlacement): string {
 }
 
 function editorSplitKeyboardDelta(mode: EditorSplitMode, key: string, step: number): number {
+  return splitKeyboardDelta(mode, key, step);
+}
+
+function splitKeyboardDelta(mode: DockSplitMode | EditorSplitMode, key: string, step: number): number {
   if (mode === "vertical") {
     if (key === "ArrowRight") return step;
     if (key === "ArrowLeft") return -step;
@@ -1961,6 +2074,7 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     panePlacements: sanitizePanePlacements(value.panePlacements),
     paneOrder: sanitizePaneOrder(value.paneOrder),
     dockSplitModes: sanitizeDockSplitModes(value.dockSplitModes),
+    dockSplitRatios: sanitizeDockSplitRatios(value.dockSplitRatios),
   };
 }
 
@@ -1976,6 +2090,18 @@ function sanitizeDockSplitModes(value: Partial<DockSplitModes> | undefined): Par
 
 function isDockSplitMode(value: unknown): value is DockSplitMode {
   return value === "single" || value === "vertical" || value === "horizontal";
+}
+
+function sanitizeDockSplitRatios(value: Partial<DockSplitRatios> | undefined): Partial<DockSplitRatios> | undefined {
+  if (!value) return undefined;
+  const ratios: Partial<DockSplitRatios> = {};
+  for (const placement of ["top", "left", "right", "bottom"] as PanePlacement[]) {
+    const ratio = value[placement];
+    if (typeof ratio === "number" && !Number.isNaN(ratio)) {
+      ratios[placement] = clamp(ratio, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max);
+    }
+  }
+  return ratios;
 }
 
 function sanitizePaneOrder(value: Partial<PaneOrder> | undefined): Partial<PaneOrder> | undefined {
