@@ -92,14 +92,30 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
 });
 
+test("Workspace Web IDE layout research follows the IDE-first current scope", () => {
+  const layoutResearch = readRoot("docs/WorkspaceWebIDE布局研究.md");
+  assert.match(layoutResearch, /状态：IDE-first layout research reference/);
+  assert.match(layoutResearch, /MainStage[\s\S]*MonacoEditorPanel[\s\S]*DiffReviewPanel/);
+  assert.match(layoutResearch, /Terminal 是 BottomPanel 的一等 IDE 面板/);
+  assert.match(layoutResearch, /Preview dock panel \/ Markdown panel 作为当前落地目标/);
+  assert.match(layoutResearch, /当前非主线[\s\S]*Preview 切换、Preview smoke、Preview dock panel/);
+  assert.match(layoutResearch, /不得新增说明页式 Workspace/);
+  assert.doesNotMatch(layoutResearch, /状态：Active research\/design note/);
+  assert.doesNotMatch(layoutResearch, /MarkdownPreviewPanel/);
+  assert.doesNotMatch(layoutResearch, /Editor、Preview、Terminal/);
+  assert.doesNotMatch(layoutResearch, /切换 preview/);
+  assert.doesNotMatch(layoutResearch, /视觉原型细化/);
+});
+
 test("Workspace frontend architecture keeps preview out of the current main stage", () => {
   const frontendArchitecture = readRoot("docs/Workspace前端架构.md");
   assert.match(frontendArchitecture, /状态：IDE-first frontend architecture reference/);
   assert.match(frontendArchitecture, /MainStage 默认只承载 `Editor \/ Diff \/ Review`/);
   assert.match(frontendArchitecture, /Terminal 是 BottomPanel 的一等 IDE 面板/);
-  assert.match(frontendArchitecture, /当前不把 preview\/rendering\/writing view mode 作为持久化验收项/);
+  assert.match(frontendArchitecture, /Workspace 不持久化独立 preview\/rendering\/writing 内核状态/);
+  assert.match(frontendArchitecture, /Markdown\/HTML 预览编辑不在 Workspace 内自建；统一调用 `\/document-engine`/);
   assert.match(frontendArchitecture, /Preview dock panel/);
-  assert.match(frontendArchitecture, /Future extension boundary:[\s\S]*preview\/[\s\S]*compatibility\/future document preview provider only/);
+  assert.match(frontendArchitecture, /External domain boundary:[\s\S]*features\/document-engine\//);
   assert.doesNotMatch(frontendArchitecture, /状态：Active frontend architecture/);
   assert.doesNotMatch(frontendArchitecture, /Center 默认只含 `Editor \/ Preview`/);
   assert.doesNotMatch(frontendArchitecture, /Editor\/Preview\s+\|\s+Terminal/);
