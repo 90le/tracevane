@@ -1547,6 +1547,16 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
       ...layoutSnapshots.map((snapshot) => ({
+        id: `ide.layout.snapshot.rename.${snapshot.id}`,
+        group: "布局" as const,
+        label: `重命名布局快照：${snapshot.name}`,
+        description: `重命名 ${formatSnapshotTime(snapshot.createdAt)} 保存的 IDE 布局快照，不改变其中保存的窗格状态`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        run: () => renameLayoutSnapshot(snapshot.id),
+      })),
+      ...layoutSnapshots.map((snapshot) => ({
         id: `ide.layout.snapshot.delete.${snapshot.id}`,
         group: "布局" as const,
         label: `删除布局快照：${snapshot.name}`,
@@ -1713,13 +1723,25 @@ export function WorkspaceIdeShell() {
 
   function saveLayoutSnapshot() {
     const createdAt = new Date().toISOString();
+    const defaultName = `工作台布局 ${layoutSnapshots.length + 1}`;
+    const requestedName = typeof window !== "undefined" ? window.prompt("命名当前 IDE 布局快照", defaultName) : defaultName;
     const snapshot: IdeLayoutSnapshot = {
       id: `layout-${Date.now()}`,
-      name: `工作台布局 ${layoutSnapshots.length + 1}`,
+      name: sanitizeSnapshotName(requestedName, defaultName),
       createdAt,
       state: currentIdeLayoutState(),
     };
     const nextSnapshots = [snapshot, ...layoutSnapshots].slice(0, MAX_LAYOUT_SNAPSHOTS);
+    setLayoutSnapshots(nextSnapshots);
+    storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function renameLayoutSnapshot(snapshotId: string) {
+    const snapshot = layoutSnapshots.find((item) => item.id === snapshotId);
+    if (!snapshot) return;
+    const requestedName = typeof window !== "undefined" ? window.prompt("重命名 IDE 布局快照", snapshot.name) : snapshot.name;
+    const nextName = sanitizeSnapshotName(requestedName, snapshot.name);
+    const nextSnapshots = layoutSnapshots.map((item) => (item.id === snapshotId ? { ...item, name: nextName } : item));
     setLayoutSnapshots(nextSnapshots);
     storeIdeLayoutSnapshots(nextSnapshots);
   }
@@ -2551,6 +2573,9 @@ export function WorkspaceIdeShell() {
             <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-layout-snapshot={snapshot.id}>
               <button type="button" onClick={() => restoreLayoutSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
                 {snapshot.name}
+              </button>
+              <button type="button" aria-label={`重命名布局快照 ${snapshot.name}`} onClick={() => renameLayoutSnapshot(snapshot.id)} data-ide-layout-snapshot-rename={snapshot.id}>
+                ✎
               </button>
               <button type="button" aria-label={`删除布局快照 ${snapshot.name}`} onClick={() => deleteLayoutSnapshot(snapshot.id)}>
                 ×
@@ -4458,11 +4483,16 @@ function sanitizeIdeLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
     .filter((snapshot): snapshot is IdeLayoutSnapshot => Boolean(snapshot) && typeof snapshot === "object")
     .map((snapshot) => ({
       id: typeof snapshot.id === "string" ? snapshot.id : `layout-${Date.now()}`,
-      name: typeof snapshot.name === "string" ? snapshot.name.slice(0, 48) : "工作台布局",
+      name: sanitizeSnapshotName(snapshot.name, "工作台布局"),
       createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : new Date().toISOString(),
       state: sanitizeIdeLayoutState(snapshot.state ?? {}),
     }))
     .slice(0, MAX_LAYOUT_SNAPSHOTS);
+}
+
+function sanitizeSnapshotName(value: unknown, fallback: string): string {
+  const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 48) : "";
+  return name || fallback;
 }
 
 function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
