@@ -270,8 +270,8 @@ export function createGitPanelCommands({
     {
       id: "git.panel.ai.commitMessage",
       group: "Git",
-      label: "Git：AI 提交信息",
-      description: "预留 @git staged diff 上下文入口，当前生成本地草稿",
+      label: "Git：生成提交信息建议",
+      description: "基于 @git staged diff 上下文生成可审查本地草稿",
       icon: <Sparkles />,
       disabled: pending || !canGenerateCommitDraft,
       run: requestAiCommitDraft,
@@ -292,14 +292,14 @@ export function createGitPanelCommands({
     {
       id: "git.panel.explainStatus",
       group: "Git",
-      label: "Git：AI 总结当前变更",
-      description: "预留 @git status / @git diff 上下文入口",
+      label: "Git：生成变更审查摘要",
+      description: "基于 @git status / @git diff 上下文生成可审查摘要",
       icon: <Sparkles />,
       run: explainStatus,
     },
     {
       id: "git.panel.recentHistoryContext",
-      group: "AI",
+      group: "证据",
       label: "Git：复制近期历史上下文",
       description:
         commits.length > 0
@@ -335,7 +335,7 @@ export function createGitPanelCommands({
       },
       {
         id: `git.panel.commitReleaseNote.${commit.shortHash || commit.hash}`,
-        group: "AI" as const,
+        group: "证据" as const,
         label: `Git：复制变更日志条目 ${commit.shortHash}`,
         description: commit.subject
           ? `复制 release note/changelog 条目：${commit.subject}`
@@ -345,7 +345,7 @@ export function createGitPanelCommands({
       },
       {
         id: `git.panel.commitDiffContext.${commit.shortHash || commit.hash}`,
-        group: "AI" as const,
+        group: "证据" as const,
         label: `Git：复制 Diff 审查上下文 ${commit.shortHash}`,
         description: commit.subject
           ? `复制 @git commit-diff 审查上下文：${commit.subject}`
@@ -355,7 +355,7 @@ export function createGitPanelCommands({
       },
       {
         id: `git.panel.commitContext.${commit.shortHash || commit.hash}`,
-        group: "AI" as const,
+        group: "证据" as const,
         label: `Git：复制提交证据包 ${commit.shortHash}`,
         description: commit.subject
           ? `复制 @git commit 证据包：${commit.subject}`

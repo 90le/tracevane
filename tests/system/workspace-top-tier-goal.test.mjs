@@ -134,11 +134,27 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.doesNotMatch(gitPanel, /已复制 Git AI 上下文/);
 });
 
+test("Workspace Git commands separate evidence from AI generation", () => {
+  const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
+  assert.match(gitCommands, /Git：生成提交信息建议/);
+  assert.match(gitCommands, /Git：生成变更审查摘要/);
+  assert.match(gitCommands, /group: "证据"/);
+  assert.match(gitCommands, /group: "证据" as const/);
+  assert.match(gitCommands, /Git：复制近期历史上下文/);
+  assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
+  assert.match(gitCommands, /Git：复制提交证据包/);
+  assert.doesNotMatch(gitCommands, /Git：AI 提交信息/);
+  assert.doesNotMatch(gitCommands, /Git：AI 总结当前变更/);
+  assert.doesNotMatch(gitCommands, /group: "AI" as const/);
+});
+
 test("Workspace context commands collect reviewable evidence before AI handoff", () => {
   const workspaceCommands = readWeb("features/workspace/workbench/workspaceCommands.tsx");
   const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
+  assert.match(workspaceCommands, /"证据"/);
   assert.match(workspaceCommands, /准备 IDE 上下文证据/);
   assert.match(workspaceCommands, /交给 AI 扩展前先形成可审查证据/);
+  assert.match(searchCommands, /group: "证据"/);
   assert.match(searchCommands, /搜索：复制上下文证据/);
   assert.match(searchCommands, /可审查上下文证据/);
   assert.doesNotMatch(workspaceCommands, /准备 AI 上下文入口/);

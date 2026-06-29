@@ -17,7 +17,7 @@ export type WorkspaceSidePanelCommand = "explorer" | "search" | "git";
 export type WorkspaceDockPanelCommand =
   "editor" | "terminal" | WorkspaceSidePanelCommand;
 export type WorkspaceCommandGroup =
-  "导航" | "布局" | "Git" | "终端" | "编辑器" | "AI";
+  "导航" | "布局" | "Git" | "终端" | "编辑器" | "证据" | "AI";
 
 export interface WorkspaceCommand {
   id: string;
@@ -52,6 +52,7 @@ export const WORKSPACE_COMMAND_GROUPS: readonly WorkspaceCommandGroup[] = [
   "Git",
   "终端",
   "编辑器",
+  "证据",
   "AI",
 ];
 
@@ -254,7 +255,7 @@ export function createWorkspaceCommandRegistry({
     ...extensionCommands,
     {
       id: "workspace.ai.context",
-      group: "AI",
+      group: "证据",
       label: "准备 IDE 上下文证据",
       description: "收集 @file / @terminal / @git / @selection，交给 AI 扩展前先形成可审查证据",
       icon: <Search />,

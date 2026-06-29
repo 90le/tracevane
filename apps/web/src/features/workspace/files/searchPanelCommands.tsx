@@ -43,7 +43,7 @@ export function createSearchPanelCommands({
     },
     {
       id: "search.panel.copyAiContext",
-      group: "AI",
+      group: "证据",
       label: "搜索：复制上下文证据",
       description:
         resultCount > 0
