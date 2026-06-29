@@ -119,3 +119,22 @@ npm run typecheck:web -- --pretty false
 ## 6. 提交纪律
 
 多人协作约束：每个阶段性代码修改后必须 git commit；提交前只 stage 本阶段实际修改文件，禁止提交已有他人改动、未确认删除、或与本阶段无关文件。提交信息遵守 Lore Commit Protocol。
+
+## 7. 阶段进展记录
+
+### 2026-06-29 / Phase B 小步：文档级 AI 上下文入口
+
+研究补充：VS Code 官方 UI 文档强调文件、Explorer、Editor、Panel、Command Palette 和状态恢复是现代 IDE 的基础结构；VS Code Accessibility 文档强调键盘和读屏辅助；Monaco API 是当前源码选择与编辑底座；OpenAI Canvas 官方说明将写作和代码项目定位为需要编辑与修订的协作空间。基于这些证据，本阶段不新增聊天式大面板，而是在当前文件 tab 的 `DocumentWorkbench` 内增加轻量可执行入口：文档统计、`@document` 上下文复制、`@selection`/`@file` 指引、保存/Git/终端验证证据提示。
+
+完成范围：
+
+- `DocumentWorkbench` 的 AI 工作上下文提示条从说明升级为可复制 `@document` 上下文。
+- 显示当前文档行数、词/中文字单位、估算阅读时间，服务写作与代码审查。
+- 继续保持单文件 tab 模型：AI 上下文依附当前文件，不创建第二个文档对象或泛聊天面板。
+
+验证：
+
+```bash
+node --test tests/system/workspace-document-workbench.test.mjs
+npm run typecheck:web -- --pretty false
+```

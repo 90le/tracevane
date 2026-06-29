@@ -15,4 +15,10 @@ test("DocumentWorkbench exposes AI writing context without creating a second doc
   assert.match(workbench, /保存 \/ Git Diff \/ 终端验证后形成审查证据/);
   assert.match(workbench, /showAiWritingGuide = !compact && !splitPane && showModeSwitcher/);
   assert.match(workbench, /data-document-ai-writing-mode=\{mode\}/);
+  assert.match(workbench, /data-document-writing-stats/);
+  assert.match(workbench, /data-document-copy-ai-context/);
+  assert.match(workbench, /function summarizeDocumentForAi/);
+  assert.match(workbench, /function formatDocumentAiContext/);
+  assert.match(workbench, /@document/);
+  assert.match(workbench, /wordsOrCjkUnits/);
 });

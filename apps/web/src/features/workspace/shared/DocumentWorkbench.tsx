@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Bot, Columns2, FileCode, PenLine, ShieldCheck } from "lucide-react";
+import { Bot, Columns2, Copy, FileCode, PenLine, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
@@ -390,6 +391,7 @@ export function DocumentWorkbench({
           {showAiWritingGuide ? (
             <DocumentAiWritingGuide
               path={path}
+              content={content}
               mode={actualMode}
               textLike={textLike}
               editable={editable}
@@ -572,17 +574,20 @@ export function DocumentWorkbench({
 
 function DocumentAiWritingGuide({
   path,
+  content,
   mode,
   textLike,
   editable,
 }: {
   path: string;
+  content: string;
   mode: DocumentWorkbenchMode;
   textLike: boolean;
   editable: boolean;
 }) {
   const name = path.split("/").pop() || path;
   const tone = textLike ? "可编辑上下文" : "只读上下文";
+  const stats = React.useMemo(() => summarizeDocumentForAi(content), [content]);
   const modeLabel =
     mode === "source"
       ? "源码"
@@ -591,6 +596,21 @@ function DocumentAiWritingGuide({
         : mode === "split"
           ? "边写边预览"
           : "预览时编辑";
+  const copyDocumentAiContext = React.useCallback(async () => {
+    const context = formatDocumentAiContext({
+      path,
+      mode,
+      editable,
+      textLike,
+      stats,
+    });
+    try {
+      await navigator.clipboard.writeText(context);
+      toast.success("已复制文档 AI 上下文", { description: name });
+    } catch {
+      toast.error("复制文档 AI 上下文失败", { description: name });
+    }
+  }, [editable, mode, name, path, stats, textLike]);
   return (
     <div
       className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-primary-line bg-primary-soft/70 px-2.5 py-2 text-2xs text-muted"
@@ -606,15 +626,78 @@ function DocumentAiWritingGuide({
         <PenLine className="size-3.5" />
         {modeLabel}
       </span>
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-panel/80 px-2 py-0.5 text-subtle"
+        data-document-writing-stats
+      >
+        {stats.lines} 行 · {stats.words} 词/字 · 约 {stats.readingMinutes} 分钟读完
+      </span>
       <span className="min-w-0 flex-1 truncate">
         {name} · {tone}；选中文本可复制 @selection，标签菜单可复制 @file，所有改动先留在当前文件 buffer。
       </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 shrink-0 border border-primary-line bg-panel/80 px-2 text-2xs text-primary hover:bg-panel"
+        onClick={copyDocumentAiContext}
+        data-document-copy-ai-context
+      >
+        <Copy className="size-3.5" />
+        复制文档上下文
+      </Button>
       <span className="inline-flex items-center gap-1 rounded-full bg-panel/80 px-2 py-0.5 text-subtle">
         <ShieldCheck className="size-3.5" />
         保存 / Git Diff / 终端验证后形成审查证据
       </span>
     </div>
   );
+}
+
+function summarizeDocumentForAi(content: string): {
+  lines: number;
+  words: number;
+  characters: number;
+  readingMinutes: number;
+} {
+  const trimmed = content.trim();
+  const lines = content.length ? content.split(/\r\n|\r|\n/).length : 0;
+  const latinWords = trimmed.match(/[A-Za-z0-9_]+(?:[-'][A-Za-z0-9_]+)*/g)?.length ?? 0;
+  const cjkUnits = trimmed.match(/[\u3400-\u9fff\uf900-\ufaff]/g)?.length ?? 0;
+  const words = latinWords + cjkUnits;
+  return {
+    lines,
+    words,
+    characters: content.length,
+    readingMinutes: Math.max(1, Math.ceil(Math.max(words, content.length / 5) / 220)),
+  };
+}
+
+function formatDocumentAiContext({
+  path,
+  mode,
+  editable,
+  textLike,
+  stats,
+}: {
+  path: string;
+  mode: DocumentWorkbenchMode;
+  editable: boolean;
+  textLike: boolean;
+  stats: { lines: number; words: number; characters: number; readingMinutes: number };
+}): string {
+  return [
+    "@document",
+    `path: ${path}`,
+    `mode: ${mode}`,
+    `editable: ${editable ? "yes" : "no"}`,
+    `textLike: ${textLike ? "yes" : "no"}`,
+    `lines: ${stats.lines}`,
+    `wordsOrCjkUnits: ${stats.words}`,
+    `characters: ${stats.characters}`,
+    `readingMinutes: ${stats.readingMinutes}`,
+    "intent: use the current Tracevane document tab as AI coding/writing context; preserve user control and require diff/review before risky edits",
+  ].join("\n");
 }
 
 function SplitSourceEditor({
