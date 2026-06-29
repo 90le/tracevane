@@ -8,7 +8,7 @@ test("workspace page exposes provider iframe mode without replacing the native w
   assert.match(pageSource, /WorkspaceIdeProviderPanel/);
   assert.match(pageSource, /provider === "ide" \|\| provider === "vscode"/);
   assert.match(pageSource, /data-testid="workspace-provider-mode"/);
-  assert.match(pageSource, /return <WorkspaceWorkbench \/>/);
+  assert.match(pageSource, /return legacyMode \? <WorkspaceWorkbench \/> : <WorkspaceIdeShell \/>/);
 });
 
 test("workspace provider mode accepts explicit provider kinds and workspace root", () => {
