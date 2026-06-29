@@ -434,3 +434,123 @@
     white-space: nowrap;
   }
 }
+
+.workspace-ide-shell__editor-grid {
+  --ide-editor-primary-size: 50%;
+  display: grid;
+  background: #050812;
+}
+
+.workspace-ide-shell__editor-grid[data-ide-editor-split="single"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-ide-shell__editor-grid[data-ide-editor-split="vertical"] {
+  grid-template-columns: minmax(0, var(--ide-editor-primary-size)) 6px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-ide-shell__editor-grid[data-ide-editor-split="horizontal"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, var(--ide-editor-primary-size)) 6px minmax(0, 1fr);
+}
+
+.workspace-ide-shell__editor-group {
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: #060a14;
+}
+
+.workspace-ide-shell__editor-group.is-active {
+  border-color: rgba(34, 211, 238, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.1);
+}
+
+.workspace-ide-shell__editor-group-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 13, 26, 0.96));
+  padding: 0 8px;
+}
+
+.workspace-ide-shell__editor-group-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.workspace-ide-shell__editor-group-title small {
+  overflow: hidden;
+  color: var(--ide-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-ide-shell__editor-group-bar button:not(.workspace-ide-shell__editor-group-title),
+.workspace-ide-shell__editor-group-mode {
+  border-radius: 8px;
+  color: var(--ide-muted);
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.workspace-ide-shell__editor-group-bar button:not(.workspace-ide-shell__editor-group-title):hover {
+  background: rgba(34, 211, 238, 0.14);
+  color: #cffafe;
+}
+
+.workspace-ide-shell__editor-group-stage {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-ide-shell__editor-group-stage > * {
+  height: 100%;
+  min-height: 0;
+}
+
+.workspace-ide-shell__editor-split-handle {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+  touch-action: none;
+  z-index: 5;
+}
+
+.workspace-ide-shell__editor-split-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(148, 163, 184, 0.1);
+  transition: background 120ms ease;
+}
+
+.workspace-ide-shell__editor-split-handle:hover::after,
+.workspace-ide-shell__editor-split-handle:focus-visible::after {
+  background: rgba(34, 211, 238, 0.32);
+}
+
+.workspace-ide-shell__editor-split-handle[data-ide-editor-split-handle="vertical"] {
+  cursor: col-resize;
+}
+
+.workspace-ide-shell__editor-split-handle[data-ide-editor-split-handle="horizontal"] {
+  cursor: row-resize;
+}

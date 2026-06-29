@@ -42,6 +42,8 @@ type BottomPanelId = "terminal" | "problems" | "output";
 type SaveState = "idle" | "dirty" | "saving" | "saved";
 type MaximizedPane = "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
+type EditorGroupId = "primary" | "secondary";
+type EditorSplitMode = "single" | "vertical" | "horizontal";
 
 interface IdePaneSizes {
   left: number;
@@ -89,6 +91,8 @@ const PANE_SIZE_LIMITS: Record<keyof IdePaneSizes, { min: number; max: number }>
 };
 const KEYBOARD_RESIZE_STEP = 16;
 const KEYBOARD_RESIZE_LARGE_STEP = 40;
+const DEFAULT_EDITOR_SPLIT_RATIO = 50;
+const EDITOR_SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 
 interface IdeLayoutState {
   leftOpen?: boolean;
@@ -97,6 +101,8 @@ interface IdeLayoutState {
   maximizedPane?: MaximizedPane;
   layoutPreset?: LayoutPreset;
   paneSizes?: Partial<IdePaneSizes>;
+  editorSplitMode?: EditorSplitMode;
+  editorSplitRatio?: number;
 }
 
 const LazyWorkspaceTerminal = React.lazy(() =>
@@ -131,10 +137,15 @@ export function WorkspaceIdeShell() {
     ...DEFAULT_PANE_SIZES,
     ...layoutState.paneSizes,
   }));
+  const [editorSplitMode, setEditorSplitMode] = React.useState<EditorSplitMode>(layoutState.editorSplitMode ?? "single");
+  const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
+  const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>();
   const [activePathRootId, setActivePathRootId] = React.useState("");
+  const [secondaryPath, setSecondaryPath] = React.useState<string | undefined>();
+  const [secondaryPathRootId, setSecondaryPathRootId] = React.useState("");
   const [gitDiffTarget, setGitDiffTarget] = React.useState<WorkspaceGitDiffTarget | null>(null);
   const [searchRequest, setSearchRequest] = React.useState<WorkspaceEditorSearchRequest | null>(null);
   const [workspaceDirectory, setWorkspaceDirectory] = React.useState<WorkspaceDirectoryContext | null>(null);
@@ -156,6 +167,8 @@ export function WorkspaceIdeShell() {
       setRootId(defaultRootId);
       setActivePath(undefined);
       setActivePathRootId(defaultRootId);
+      setSecondaryPath(undefined);
+      setSecondaryPathRootId(defaultRootId);
       setGitDiffTarget(null);
     }
   }, [defaultRootId, rootId, roots]);
@@ -168,8 +181,10 @@ export function WorkspaceIdeShell() {
       maximizedPane,
       layoutPreset,
       paneSizes,
+      editorSplitMode,
+      editorSplitRatio,
     });
-  }, [bottomOpen, layoutPreset, leftOpen, maximizedPane, paneSizes, rightOpen]);
+  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneSizes, rightOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -192,8 +207,14 @@ export function WorkspaceIdeShell() {
   const openFile = React.useCallback(
     (path: string, options?: WorkspaceOpenFileOptions) => {
       setGitDiffTarget(null);
-      setActivePath(path);
-      setActivePathRootId(options?.rootId ?? rootId);
+      const targetRootId = options?.rootId ?? rootId;
+      if (activeEditorGroup === "secondary" && editorSplitMode !== "single") {
+        setSecondaryPath(path);
+        setSecondaryPathRootId(targetRootId);
+      } else {
+        setActivePath(path);
+        setActivePathRootId(targetRootId);
+      }
       if (options?.initialSearch?.query) {
         setSearchRequest({
           path,
@@ -204,7 +225,7 @@ export function WorkspaceIdeShell() {
         });
       }
     },
-    [rootId],
+    [activeEditorGroup, editorSplitMode, rootId],
   );
 
   const openDiff = React.useCallback(
@@ -314,6 +335,60 @@ export function WorkspaceIdeShell() {
         },
       },
       {
+        id: "ide.editor.split-right",
+        group: "布局",
+        label: "向右拆分编辑器",
+        description: "创建第二个编辑器组，形成左右代码分栏",
+        shortcut: "⌘\\",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        run: () => splitEditor("vertical"),
+      },
+      {
+        id: "ide.editor.split-down",
+        group: "布局",
+        label: "向下拆分编辑器",
+        description: "创建第二个编辑器组，形成上下代码分栏",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => splitEditor("horizontal"),
+      },
+      {
+        id: "ide.editor.close-split",
+        group: "布局",
+        label: "关闭编辑器拆分",
+        description: "恢复单编辑器组，但保留已打开的主编辑器",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        run: closeEditorSplit,
+      },
+      {
+        id: "ide.editor.focus-primary",
+        group: "布局",
+        label: "聚焦主编辑器组",
+        description: "后续打开文件进入主编辑器组",
+        risk: "safe",
+        surface: "layout",
+        icon: <Code2 />,
+        run: () => setActiveEditorGroup("primary"),
+      },
+      {
+        id: "ide.editor.focus-secondary",
+        group: "布局",
+        label: "聚焦副编辑器组",
+        description: "后续打开文件进入副编辑器组；未拆分时先向右拆分",
+        risk: "safe",
+        surface: "layout",
+        icon: <Code2 />,
+        run: () => {
+          if (editorSplitMode === "single") splitEditor("vertical");
+          setActiveEditorGroup("secondary");
+        },
+      },
+      {
         id: "ide.layout.preset-balanced",
         group: "布局",
         label: "布局预设：平衡",
@@ -354,7 +429,7 @@ export function WorkspaceIdeShell() {
         run: resetLayout,
       },
     ],
-    [bottomOpen, leftOpen, maximizedPane, rightOpen],
+    [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen],
   );
 
   const commands = React.useMemo(
@@ -384,6 +459,7 @@ export function WorkspaceIdeShell() {
     setRightOpen(true);
     setBottomOpen(true);
     setMaximizedPane(null);
+    closeEditorSplit();
   }
 
   function startPaneResize(pane: keyof IdePaneSizes, event: React.PointerEvent) {
@@ -422,6 +498,53 @@ export function WorkspaceIdeShell() {
     setLayoutPreset("balanced");
   }
 
+  function startEditorSplitResize(event: React.PointerEvent) {
+    if (editorSplitMode === "single") return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startRatio = editorSplitRatio;
+    const host = event.currentTarget.parentElement;
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const rect = host?.getBoundingClientRect();
+      const axisSize = editorSplitMode === "vertical" ? rect?.width : rect?.height;
+      if (!axisSize) return;
+      const delta = editorSplitMode === "vertical" ? moveEvent.clientX - startX : moveEvent.clientY - startY;
+      const nextRatio = startRatio + (delta / axisSize) * 100;
+      setEditorSplitRatio(clamp(nextRatio, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  function resizeEditorSplitFromKeyboard(event: React.KeyboardEvent) {
+    const baseStep = event.shiftKey ? 8 : 3;
+    const delta = editorSplitKeyboardDelta(editorSplitMode, event.key, baseStep);
+    if (delta === 0) return;
+    event.preventDefault();
+    setEditorSplitRatio((current) => clamp(current + delta, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max));
+  }
+
+  function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
+    setEditorSplitMode(mode);
+    setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
+    setSecondaryPath((current) => current ?? activePath);
+    setSecondaryPathRootId((current) => current || activePathRootId || rootId);
+    setActiveEditorGroup("secondary");
+  }
+
+  function closeEditorSplit() {
+    setEditorSplitMode("single");
+    setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
+    setActiveEditorGroup("primary");
+  }
+
   function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
@@ -443,6 +566,7 @@ export function WorkspaceIdeShell() {
       data-ide-layout-preset={layoutPreset}
       data-ide-maximized-pane={maximizedPane ?? ""}
       data-ide-pane-size-state={`${paneSizes.left}:${paneSizes.right}:${paneSizes.bottom}`}
+      data-ide-editor-split={editorSplitMode}
       style={{
         "--ide-left-width": `${paneSizes.left}px`,
         "--ide-right-width": `${paneSizes.right}px`,
@@ -548,19 +672,72 @@ export function WorkspaceIdeShell() {
         ) : null}
 
         <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane" data-ide-pane="center">
-          <div className="workspace-ide-shell__editor-grid">
-            <WorkspaceEditorStage
-              openFile={activePath}
-              gitDiffTarget={gitDiffTarget}
-              searchRequest={searchRequest}
-              rootId={activePathRootId || rootId}
-              workspaceRootId={rootId}
-              workspaceRootAbsolutePath={workspaceDirectory?.rootAbsolutePath ?? ""}
-              onSaveStateChange={setSaveState}
-              onCommandsChange={setEditorCommands}
-              onRevealInExplorer={revealInExplorer}
-              onActiveFileChange={syncActiveEditorFile}
-            />
+          <div
+            className="workspace-ide-shell__editor-grid"
+            data-ide-editor-split={editorSplitMode}
+            style={{ "--ide-editor-primary-size": `${editorSplitRatio}%` } as React.CSSProperties}
+          >
+            <EditorGroupFrame
+              group="primary"
+              title="主编辑器组"
+              active={activeEditorGroup === "primary"}
+              filePath={activePath}
+              splitMode={editorSplitMode}
+              onFocus={() => setActiveEditorGroup("primary")}
+              onSplitRight={() => splitEditor("vertical")}
+              onSplitDown={() => splitEditor("horizontal")}
+            >
+              <WorkspaceEditorStage
+                openFile={activePath}
+                gitDiffTarget={gitDiffTarget}
+                searchRequest={searchRequest}
+                rootId={activePathRootId || rootId}
+                workspaceRootId={rootId}
+                workspaceRootAbsolutePath={workspaceDirectory?.rootAbsolutePath ?? ""}
+                onSaveStateChange={setSaveState}
+                onCommandsChange={setEditorCommands}
+                onRevealInExplorer={revealInExplorer}
+                onActiveFileChange={syncActiveEditorFile}
+              />
+            </EditorGroupFrame>
+            {editorSplitMode !== "single" ? (
+              <>
+                <EditorSplitHandle
+                  mode={editorSplitMode}
+                  value={editorSplitRatio}
+                  onPointerDown={startEditorSplitResize}
+                  onKeyDown={resizeEditorSplitFromKeyboard}
+                />
+                <EditorGroupFrame
+                  group="secondary"
+                  title="副编辑器组"
+                  active={activeEditorGroup === "secondary"}
+                  filePath={secondaryPath ?? activePath}
+                  splitMode={editorSplitMode}
+                  onFocus={() => setActiveEditorGroup("secondary")}
+                  onSplitRight={() => splitEditor("vertical")}
+                  onSplitDown={() => splitEditor("horizontal")}
+                  onClose={closeEditorSplit}
+                >
+                  <WorkspaceEditorStage
+                    openFile={secondaryPath ?? activePath}
+                    gitDiffTarget={null}
+                    searchRequest={null}
+                    rootId={secondaryPathRootId || activePathRootId || rootId}
+                    workspaceRootId={rootId}
+                    workspaceRootAbsolutePath={workspaceDirectory?.rootAbsolutePath ?? ""}
+                    onSaveStateChange={() => undefined}
+                    onCommandsChange={() => undefined}
+                    onRevealInExplorer={revealInExplorer}
+                    onActiveFileChange={(path, tabRootId) => {
+                      if (!path) return;
+                      setSecondaryPath(path);
+                      if (tabRootId) setSecondaryPathRootId(tabRootId);
+                    }}
+                  />
+                </EditorGroupFrame>
+              </>
+            ) : null}
           </div>
           {bottomOpen ? (
             <section className="workspace-ide-shell__bottom" data-testid="workspace-ide-bottom-pane" data-ide-pane="bottom">
@@ -646,6 +823,7 @@ export function WorkspaceIdeShell() {
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
         <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
+        <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
       </footer>
 
@@ -655,6 +833,88 @@ export function WorkspaceIdeShell() {
         commands={commands}
       />
     </main>
+  );
+}
+
+function EditorGroupFrame({
+  group,
+  title,
+  active,
+  filePath,
+  splitMode,
+  children,
+  onFocus,
+  onSplitRight,
+  onSplitDown,
+  onClose,
+}: {
+  group: EditorGroupId;
+  title: string;
+  active: boolean;
+  filePath?: string;
+  splitMode: EditorSplitMode;
+  children: React.ReactNode;
+  onFocus: () => void;
+  onSplitRight: () => void;
+  onSplitDown: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <section
+      className={cn("workspace-ide-shell__editor-group", active && "is-active")}
+      data-ide-editor-group={group}
+      data-ide-editor-group-active={active}
+      onFocusCapture={onFocus}
+    >
+      <div className="workspace-ide-shell__editor-group-bar">
+        <button type="button" className="workspace-ide-shell__editor-group-title" onClick={onFocus}>
+          <span>{title}</span>
+          <small>{filePath || "未打开文件"}</small>
+        </button>
+        <button type="button" onClick={onSplitRight} aria-label="向右拆分编辑器">
+          右拆
+        </button>
+        <button type="button" onClick={onSplitDown} aria-label="向下拆分编辑器">
+          下拆
+        </button>
+        {onClose ? (
+          <button type="button" onClick={onClose} aria-label="关闭编辑器拆分">
+            关闭
+          </button>
+        ) : (
+          <span className="workspace-ide-shell__editor-group-mode">{splitMode === "single" ? "单组" : "已拆分"}</span>
+        )}
+      </div>
+      <div className="workspace-ide-shell__editor-group-stage">{children}</div>
+    </section>
+  );
+}
+
+function EditorSplitHandle({
+  mode,
+  value,
+  onPointerDown,
+  onKeyDown,
+}: {
+  mode: Exclude<EditorSplitMode, "single">;
+  value: number;
+  onPointerDown: (event: React.PointerEvent) => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label={mode === "vertical" ? "调整左右编辑器组比例" : "调整上下编辑器组比例"}
+      aria-orientation={mode === "vertical" ? "vertical" : "horizontal"}
+      aria-valuemin={EDITOR_SPLIT_RATIO_LIMITS.min}
+      aria-valuemax={EDITOR_SPLIT_RATIO_LIMITS.max}
+      aria-valuenow={Math.round(value)}
+      tabIndex={0}
+      className="workspace-ide-shell__editor-split-handle"
+      data-ide-editor-split-handle={mode}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+    />
   );
 }
 
@@ -874,6 +1134,19 @@ function activityByShortcut(key: string): ActivityId | null {
   return null;
 }
 
+function editorSplitKeyboardDelta(mode: EditorSplitMode, key: string, step: number): number {
+  if (mode === "vertical") {
+    if (key === "ArrowRight") return step;
+    if (key === "ArrowLeft") return -step;
+    return 0;
+  }
+  if (mode === "horizontal") {
+    if (key === "ArrowDown") return step;
+    if (key === "ArrowUp") return -step;
+  }
+  return 0;
+}
+
 function keyboardResizeDelta(pane: keyof IdePaneSizes, key: string, step: number): number {
   if (pane === "bottom") {
     if (key === "ArrowUp") return step;
@@ -929,6 +1202,8 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     maximizedPane: isMaximizedPane(value.maximizedPane) ? value.maximizedPane : undefined,
     layoutPreset: isLayoutPreset(value.layoutPreset) ? value.layoutPreset : undefined,
     paneSizes: sanitizePaneSizes(value.paneSizes),
+    editorSplitMode: isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined,
+    editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
   };
 }
 
@@ -948,6 +1223,15 @@ function sanitizePaneSize(pane: keyof IdePaneSizes, value: number | undefined): 
   if (typeof value !== "number" || Number.isNaN(value)) return undefined;
   const { min, max } = PANE_SIZE_LIMITS[pane];
   return clamp(value, min, max);
+}
+
+function sanitizeEditorSplitRatio(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+  return clamp(value, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max);
+}
+
+function isEditorSplitMode(value: unknown): value is EditorSplitMode {
+  return value === "single" || value === "vertical" || value === "horizontal";
 }
 
 function isLayoutPreset(value: unknown): value is LayoutPreset {

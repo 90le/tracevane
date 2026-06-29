@@ -98,3 +98,23 @@ test("new Workspace IDE shell persists and exposes accessible pane sizing", () =
   assert.match(shellSource, /aria-valuenow=\{value\}/);
   assert.match(shellSource, /PANE_SIZE_LIMITS/);
 });
+
+test("new Workspace IDE shell supports split editor groups", () => {
+  assert.match(shellSource, /type EditorGroupId = "primary" \| "secondary"/);
+  assert.match(shellSource, /type EditorSplitMode = "single" \| "vertical" \| "horizontal"/);
+  assert.match(shellSource, /editorSplitMode/);
+  assert.match(shellSource, /editorSplitRatio/);
+  assert.match(shellSource, /data-ide-editor-split=\{editorSplitMode\}/);
+  assert.match(shellSource, /data-ide-editor-group=\{group\}/);
+  assert.match(shellSource, /data-ide-editor-split-handle=\{mode\}/);
+  assert.match(shellSource, /startEditorSplitResize/);
+  assert.match(shellSource, /resizeEditorSplitFromKeyboard/);
+  assert.match(shellSource, /ide\.editor\.split-right/);
+  assert.match(shellSource, /ide\.editor\.split-down/);
+  assert.match(shellSource, /ide\.editor\.close-split/);
+  assert.match(shellSource, /ide\.editor\.focus-primary/);
+  assert.match(shellSource, /ide\.editor\.focus-secondary/);
+  assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="vertical"\]/);
+  assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="horizontal"\]/);
+  assert.match(cssSource, /workspace-ide-shell__editor-split-handle/);
+});
