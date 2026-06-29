@@ -83,3 +83,12 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
   assert.doesNotMatch(panelCommands, /预留终端编辑器标签能力/);
   assert.doesNotMatch(sessionActions, /移动到编辑区域/);
 });
+
+test("Workspace search commands frame replace as reviewable IDE plans", () => {
+  const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
+  assert.match(searchCommands, /搜索：审查跨文件替换计划/);
+  assert.match(searchCommands, /可审查替换计划/);
+  assert.match(searchCommands, /搜索：应用本次替换计划/);
+  assert.doesNotMatch(searchCommands, /搜索：预览跨文件替换/);
+  assert.doesNotMatch(searchCommands, /确认本次替换预览/);
+});

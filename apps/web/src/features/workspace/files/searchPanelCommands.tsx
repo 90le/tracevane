@@ -56,10 +56,10 @@ export function createSearchPanelCommands({
     {
       id: "search.panel.prepareReplacePreview",
       group: "编辑器",
-      label: "搜索：预览跨文件替换",
+      label: "搜索：审查跨文件替换计划",
       description:
         replaceTargetCount > 0
-          ? `为 ${replaceTargetCount} 个文本文件生成替换预览`
+          ? `为 ${replaceTargetCount} 个文本文件生成可审查替换计划`
           : "当前结果内没有可替换文本文件",
       icon: <Replace />,
       disabled: !query || replaceTargetCount === 0 || replaceBusy,
@@ -68,10 +68,10 @@ export function createSearchPanelCommands({
     {
       id: "search.panel.applyReplacePreview",
       group: "编辑器",
-      label: "搜索：确认本次替换预览",
+      label: "搜索：应用本次替换计划",
       description: hasReplacePreview
-        ? "写入当前替换预览中勾选的文件"
-        : "请先生成替换预览",
+        ? "写入当前替换计划中勾选的文件"
+        : "请先生成可审查替换计划",
       icon: <Clipboard />,
       disabled: !hasReplacePreview || replaceBusy,
       run: applyReplacePreview,
