@@ -8,10 +8,15 @@ import {
   type WorkspaceIdeProviderConfig,
   type WorkspaceIdeProviderLifecycleController,
 } from "./provider-service.js";
+import {
+  handleWorkspaceIdeProviderProxyRequest,
+  type WorkspaceIdeProviderProxyFetch,
+} from "./proxy.js";
 
 export interface WorkspaceIdeProviderRoutesOptions {
   config: WorkspaceIdeProviderConfig;
   controller: WorkspaceIdeProviderLifecycleController;
+  proxyFetch?: WorkspaceIdeProviderProxyFetch;
 }
 
 interface CreateIdeProviderSessionPayload {
@@ -80,6 +85,36 @@ export function registerWorkspaceIdeProviderRoutes(
       sendWorkspaceIdeProviderRouteError(res, error);
     }
   });
+
+  const registerProviderProxyRoute = (method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"): void => {
+    router.add(method, "/api/workspace/ide-provider-sessions/:sessionId/proxy", async (req, res, _routeCtx, params) => {
+      const session = options.controller.registry.getSession(params.sessionId || "");
+      if (!session) {
+        sendJson(res, 404, { error: "workspace_ide_provider_session_not_found" });
+        return;
+      }
+      if (session.status !== "ready") {
+        sendJson(res, 409, {
+          error: "workspace_ide_provider_session_not_ready",
+          message: `IDE provider session '${session.id}' is ${session.status}.`,
+        });
+        return;
+      }
+      const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+      const targetPath = requestUrl.searchParams.get("path") || "/";
+      const targetSearch = requestUrl.searchParams.get("search") || "";
+      await handleWorkspaceIdeProviderProxyRequest(
+        req,
+        res,
+        { session, path: targetPath, search: targetSearch },
+        options.proxyFetch,
+      );
+    });
+  };
+
+  for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"] as const) {
+    registerProviderProxyRoute(method);
+  }
 }
 
 function sendWorkspaceIdeProviderRouteError(res: http.ServerResponse, error: unknown): void {

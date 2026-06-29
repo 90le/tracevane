@@ -52,6 +52,9 @@ function createResponse() {
       if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
       this.writableEnded = true;
     },
+    chunks() {
+      return chunks;
+    },
     json() {
       return JSON.parse(Buffer.concat(chunks).toString("utf-8"));
     },
@@ -141,4 +144,68 @@ test("main Tracevane router registers workspace IDE provider routes", async () =
   assert.equal(handled, true);
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().defaultKind, "openvscode-server");
+});
+
+
+test("workspace IDE provider proxy route forwards ready sessions", async () => {
+  const config = parseWorkspaceIdeProviderConfig({ kind: "openvscode-server" });
+  const registry = new WorkspaceIdeProviderSessionRegistry(39800);
+  const controller = new WorkspaceIdeProviderLifecycleController(registry, {
+    start() {
+      return { pid: 200, stop() {} };
+    },
+  });
+  const calls = [];
+  const router = new TracevaneRouter();
+  registerWorkspaceIdeProviderRoutes(router, createContext(), {
+    config,
+    controller,
+    async proxyFetch(input, init) {
+      calls.push({ input: String(input), init });
+      return new Response("provider ok", {
+        status: 203,
+        headers: { "content-type": "text/plain", connection: "close" },
+      });
+    },
+  });
+
+  const created = await dispatch(router, "POST", "/api/workspace/ide-providers/openvscode-server/sessions", {
+    workspaceRoot: projectRoot,
+  });
+  const id = created.json().session.id;
+  const proxied = await dispatch(
+    router,
+    "GET",
+    `/api/workspace/ide-provider-sessions/${id}/proxy?path=%2Fapi%2Fstatus&search=q%3D1`,
+  );
+  assert.equal(proxied.statusCode, 203);
+  assert.equal(proxied.getHeader("content-type"), "text/plain");
+  assert.equal(proxied.getHeader("connection"), undefined);
+  assert.equal(Buffer.concat(proxied.chunks()).toString("utf-8"), "provider ok");
+  assert.equal(calls[0].input, "http://127.0.0.1:39800/api/status?q=1");
+});
+
+test("workspace IDE provider proxy route rejects missing or stopped sessions", async () => {
+  const config = parseWorkspaceIdeProviderConfig({ kind: "code-server" });
+  const registry = new WorkspaceIdeProviderSessionRegistry(39900);
+  const controller = new WorkspaceIdeProviderLifecycleController(registry, {
+    start() {
+      return { stop() {} };
+    },
+  });
+  const router = new TracevaneRouter();
+  registerWorkspaceIdeProviderRoutes(router, createContext(), { config, controller });
+
+  const missing = await dispatch(router, "GET", "/api/workspace/ide-provider-sessions/missing/proxy?path=%2F");
+  assert.equal(missing.statusCode, 404);
+  assert.equal(missing.json().error, "workspace_ide_provider_session_not_found");
+
+  const created = await dispatch(router, "POST", "/api/workspace/ide-providers/code-server/sessions", {
+    workspaceRoot: projectRoot,
+  });
+  const id = created.json().session.id;
+  await dispatch(router, "POST", `/api/workspace/ide-provider-sessions/${id}/stop`);
+  const stopped = await dispatch(router, "GET", `/api/workspace/ide-provider-sessions/${id}/proxy?path=%2F`);
+  assert.equal(stopped.statusCode, 409);
+  assert.equal(stopped.json().error, "workspace_ide_provider_session_not_ready");
 });
