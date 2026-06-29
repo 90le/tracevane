@@ -32,6 +32,21 @@
 - **AI 只能作为 IDE 上的增强层**：AI 面板、证据、Agent handoff 不能替代 IDE 主体，也不能抢走 Terminal/Git/Search/Editor 的默认视觉重心。
 - **阶段验收看可工作能力，不看概念图**：如果没有更好的终端输入、搜索跳转、Git 审查、文件编辑、布局恢复和移动端任务流，就不能称为完成重构。
 
+
+### 0.2 真 IDE Workbench 不可降级定义
+
+“IDE-first”不是视觉像 IDE，而是交互模型和布局能力达到 IDE 的基本门槛。后续任何设计、代码、测试、文档都必须用下面定义校准：
+
+- **Pane 不是静态卡片**：Files、Search、Git、Terminal、Problems、Output、AI、Outline 等都是可注册、可激活、可隐藏、可移动、可组合的 pane。
+- **Dock 不是固定三栏**：Workspace 必须支持 left/right/top/bottom Dock；Dock 内能形成 tab group、primary/secondary group、vertical/horizontal split，并允许空 Dock 恢复。
+- **布局不是 CSS 截图**：用户必须能打开/收起、左右上下拆分、组合、拖放、tab reorder、跨区域移动、最大化/恢复、resize、保存快照、恢复快照。
+- **命令系统是一等入口**：所有关键布局动作必须能通过 Command Palette、快捷键或可访问按钮触发；不能把 IDE 能力藏在只能鼠标操作的边角。
+- **大小拖动是真能力**：Dock size、Editor split ratio、Dock group split ratio、Terminal panel height 必须有受限范围、状态持久化和命令式 grow/shrink。
+- **响应式不是压缩桌面**：桌面面向多窗格并行；平板面向折叠/分屏；手机面向单任务 panel mode，但仍保留真实终端、Git、搜索、文件、命令和 pane 切换。
+- **旧兼容不优先**：如果旧框架、旧页面、旧说明文档或旧测试阻止上述能力，直接删除或重写旧物；兼容新 IDE 架构，不兼容错误方向。
+
+因此，后续验收不能只看截图是否“像 IDE”。必须验证布局动作是否真实可操作、状态是否可恢复、手机端是否可用、Terminal/Git/Search/Files/Editor 是否仍是主体。
+
 ---
 
 ## 1. 最高产品目标

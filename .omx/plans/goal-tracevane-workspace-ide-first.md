@@ -43,6 +43,22 @@ Workspace IDE
 
 AI 很重要，但 AI 必须生长在 IDE 平台上；AI 不能替代 IDE 主体，也不能把页面变成说明文档或概念展示。
 
+### 1.1 真实 IDE 窗格系统不可降级约束
+
+Workspace 不能只做到“界面看起来像 IDE”。第一阶段 IDE 前端重建的硬门槛是建立真实可操作的 Workbench 窗格编排系统：
+
+1. **窗格生命周期**：Files、Search、Git、Terminal、Problems、Output、AI、Outline 等 pane 必须能打开、收起、隐藏、恢复、关闭空 Dock，并能明确显示当前激活状态。
+2. **区域与组合**：pane 必须能组合成左、右、上、下 Dock 区域内的 tab group；同一区域内必须支持 primary / secondary group 或等价分组，而不是固定死的单栏卡片。
+3. **拆分能力**：Dock 与 Editor 至少支持 single、vertical split、horizontal split；用户可以把当前 pane 移到另一组或另一侧，并可交换组。
+4. **大小调整**：左/右/上/下 Dock、底部 Terminal、Editor split、Dock split 都必须支持鼠标/触摸拖动调整；核心 resizing 也必须有命令入口，不能只靠隐藏的 pointer handle。
+5. **布局操作入口**：所有关键布局动作必须进入 Command Palette /快捷键体系，包括聚焦区域、移动 pane、拆分、切换组、最大化/恢复、收起、恢复隐藏 pane、保存/恢复 layout snapshot。
+6. **拖放与重排**：pane tab 必须支持重新排序和跨 Dock/跨 group 移动；拖放失败或空区域必须有可理解的目标反馈。
+7. **持久化与恢复**：pane placement、order、split mode、split ratio、active pane、hidden panes、layout preset、snapshot 必须可恢复，刷新后不能回到随机状态。
+8. **响应式适配**：桌面是多 Dock 专业工作台；平板是可折叠双区/三区；手机是单任务 panel mode，但仍必须保留 pane 切换、终端、Git、搜索、文件和命令入口。
+9. **可测试性**：每个布局能力都必须至少有源码级系统测试或后续浏览器 smoke 验证；没有测试的“看起来像”不算完成。
+
+如果旧代码、旧样式或旧文档与以上约束冲突，优先删除旧实现，不为了兼容旧页面而牺牲新 IDE 架构。
+
 ---
 
 ## 2. 当前阶段目标
