@@ -4351,6 +4351,35 @@ function DockLayoutManager({
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onFocusRegion: (region: IdeFocusRegion) => void;
 }) {
+  const [dragTarget, setDragTarget] = React.useState<{ placement: PanePlacement; role: DockPaneRole } | null>(null);
+
+  function beginManagerPaneDrag(paneId: PaneId, event: React.DragEvent) {
+    if (layoutLocked || pinnedPanes.includes(paneId)) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-tracevane-pane", paneId);
+    event.dataTransfer.setData("text/plain", paneLabel(paneId));
+  }
+
+  function dragManagerPaneOverGroup(placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) {
+    if (layoutLocked) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragTarget({ placement, role });
+  }
+
+  function dropManagerPaneOnGroup(placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) {
+    if (layoutLocked) return;
+    event.preventDefault();
+    const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
+    if (isPaneId(paneId) && !pinnedPanes.includes(paneId)) {
+      if (role === "secondary" && splitModes[placement] === "single") {
+        onSetDockSplitMode(placement, "vertical");
+      }
+      onMovePaneToGroup(paneId, placement, undefined, role);
+    }
+    setDragTarget(null);
+  }
+
   return (
     <section className="workspace-ide-shell__dock-layout-manager" aria-label="IDE Pane 布局管理器" data-ide-pane-layout-manager>
       <div className="workspace-ide-shell__dock-layout-manager-head">
@@ -4399,7 +4428,15 @@ function DockLayoutManager({
               />
               <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
                 {(["primary", "secondary"] as const).map((role) => (
-                  <div key={role} className="workspace-ide-shell__dock-layout-group" data-ide-pane-layout-group={role}>
+                  <div
+                    key={role}
+                    className="workspace-ide-shell__dock-layout-group"
+                    data-ide-pane-layout-group={role}
+                    data-ide-pane-layout-drop-active={dragTarget?.placement === placement && dragTarget.role === role ? "true" : "false"}
+                    onDragOver={(event) => dragManagerPaneOverGroup(placement, role, event)}
+                    onDragLeave={() => setDragTarget(null)}
+                    onDrop={(event) => dropManagerPaneOnGroup(placement, role, event)}
+                  >
                     <span>{role === "primary" ? "主组" : "副组"}</span>
                     {paneIds.map((paneId) => {
                       const selected = dockPaneSelections[placement][role] === paneId;
@@ -4413,6 +4450,9 @@ function DockLayoutManager({
                           data-ide-pane-layout-assign-placement={placement}
                           data-ide-pane-layout-assign-role={role}
                           data-active={selected ? "true" : "false"}
+                          draggable={!layoutLocked && !pinned}
+                          onDragStart={(event) => beginManagerPaneDrag(paneId, event)}
+                          onDragEnd={() => setDragTarget(null)}
                           onClick={() => onMovePaneToGroup(paneId, placement, undefined, role)}
                         >
                           {paneLabel(paneId)}{pinned ? " · 固定" : ""}

@@ -1418,3 +1418,25 @@ test("new Workspace IDE shell exposes a visual pane layout manager", () => {
   assert.match(cssSource, /@media \(max-width: 1200px\)/);
   assert.match(cssSource, /@media \(max-width: 760px\)/);
 });
+
+test("new Workspace IDE shell supports drag assignment in the pane layout manager", () => {
+  assert.match(shellSource, /const \[dragTarget, setDragTarget\] = React\.useState<\{ placement: PanePlacement; role: DockPaneRole \} \| null>\(null\)/);
+  assert.match(shellSource, /function beginManagerPaneDrag\(paneId: PaneId, event: React\.DragEvent\)/);
+  assert.match(shellSource, /event\.dataTransfer\.setData\("application\/x-tracevane-pane", paneId\)/);
+  assert.match(shellSource, /function dragManagerPaneOverGroup\(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\)/);
+  assert.match(shellSource, /setDragTarget\(\{ placement, role \}\)/);
+  assert.match(shellSource, /function dropManagerPaneOnGroup\(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\)/);
+  assert.match(shellSource, /event\.dataTransfer\.getData\("application\/x-tracevane-pane"\)/);
+  assert.match(shellSource, /if \(role === "secondary" && splitModes\[placement\] === "single"\)/);
+  assert.match(shellSource, /onSetDockSplitMode\(placement, "vertical"\)/);
+  assert.match(shellSource, /onMovePaneToGroup\(paneId, placement, undefined, role\)/);
+  assert.match(shellSource, /data-ide-pane-layout-drop-active=\{dragTarget\?\.placement === placement && dragTarget\.role === role \? "true" : "false"\}/);
+  assert.match(shellSource, /onDragOver=\{\(event\) => dragManagerPaneOverGroup\(placement, role, event\)\}/);
+  assert.match(shellSource, /onDrop=\{\(event\) => dropManagerPaneOnGroup\(placement, role, event\)\}/);
+  assert.match(shellSource, /draggable=\{!layoutLocked && !pinned\}/);
+  assert.match(shellSource, /onDragStart=\{\(event\) => beginManagerPaneDrag\(paneId, event\)\}/);
+  assert.match(shellSource, /onDragEnd=\{\(\) => setDragTarget\(null\)\}/);
+  assert.match(cssSource, /data-ide-pane-layout-drop-active="true"/);
+  assert.match(cssSource, /button\[draggable="true"\]/);
+  assert.match(cssSource, /cursor: grab/);
+});
