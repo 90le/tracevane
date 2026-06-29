@@ -397,6 +397,51 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(cssSource, /cursor: row-resize/);
 });
 
+
+
+test("new Workspace IDE shell supports keyboard focus between IDE regions", () => {
+  assert.match(shellSource, /type IdeFocusRegion = "top" \| "left" \| "center" \| "right" \| "bottom"/);
+  assert.match(shellSource, /topDockRef/);
+  assert.match(shellSource, /leftDockRef/);
+  assert.match(shellSource, /centerPaneRef/);
+  assert.match(shellSource, /rightDockRef/);
+  assert.match(shellSource, /bottomDockRef/);
+  assert.match(shellSource, /function focusIdeRegion\(region: IdeFocusRegion\)/);
+  assert.match(shellSource, /function focusIdeRegionNode\(region: IdeFocusRegion\)/);
+  assert.match(shellSource, /function ideFocusRegionRef\(region: IdeFocusRegion\)/);
+  assert.match(shellSource, /requestAnimationFrame/);
+  assert.match(shellSource, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(shellSource, /const focusRegionCommands = React\.useMemo<WorkspaceCommand\[\]>/);
+  assert.match(shellSource, /ide\.focus\.left/);
+  assert.match(shellSource, /ide\.focus\.center/);
+  assert.match(shellSource, /ide\.focus\.right/);
+  assert.match(shellSource, /ide\.focus\.bottom/);
+  assert.match(shellSource, /ide\.focus\.top/);
+  assert.match(shellSource, /⌘⌥←/);
+  assert.match(shellSource, /⌘⌥↵/);
+  assert.match(shellSource, /⌘⌥→/);
+  assert.match(shellSource, /⌘⌥↓/);
+  assert.match(shellSource, /⌘⌥↑/);
+  assert.match(shellSource, /mod && event\.altKey/);
+  assert.match(shellSource, /event\.key === "ArrowLeft"/);
+  assert.match(shellSource, /event\.key === "ArrowRight"/);
+  assert.match(shellSource, /event\.key === "ArrowUp"/);
+  assert.match(shellSource, /event\.key === "ArrowDown"/);
+  assert.match(shellSource, /event\.key === "Enter"/);
+  assert.match(shellSource, /focusIdeRegion\("left"\)/);
+  assert.match(shellSource, /focusIdeRegion\("center"\)/);
+  assert.match(shellSource, /focusIdeRegion\("right"\)/);
+  assert.match(shellSource, /focusIdeRegion\("bottom"\)/);
+  assert.match(shellSource, /focusIdeRegion\("top"\)/);
+  assert.match(shellSource, /\.\.\.focusRegionCommands/);
+  assert.match(shellSource, /data-ide-focus-region="left"/);
+  assert.match(shellSource, /data-ide-focus-region="center"/);
+  assert.match(shellSource, /data-ide-focus-region="right"/);
+  assert.match(shellSource, /data-ide-focus-region="bottom"/);
+  assert.match(shellSource, /data-ide-focus-region="top"/);
+  assert.match(shellSource, /tabIndex=\{-1\}/);
+});
+
 test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY/);
   assert.match(shellSource, /interface IdeLayoutSnapshot/);

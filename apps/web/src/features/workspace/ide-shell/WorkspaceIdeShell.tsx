@@ -50,6 +50,7 @@ type DockPaneRole = "primary" | "secondary";
 type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
 type DockPaneSelections = Record<PanePlacement, Partial<Record<DockPaneRole, PaneId>>>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
+type IdeFocusRegion = "top" | "left" | "center" | "right" | "bottom";
 
 const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
 
@@ -221,6 +222,11 @@ export function WorkspaceIdeShell() {
   const [dropTarget, setDropTarget] = React.useState<PanePlacement | null>(null);
   const [activeDockFocus, setActiveDockFocus] = React.useState<ActiveDockFocus>(null);
   const searchSignalRef = React.useRef(0);
+  const topDockRef = React.useRef<HTMLElement | null>(null);
+  const leftDockRef = React.useRef<HTMLElement | null>(null);
+  const centerPaneRef = React.useRef<HTMLElement | null>(null);
+  const rightDockRef = React.useRef<HTMLElement | null>(null);
+  const bottomDockRef = React.useRef<HTMLElement | null>(null);
 
   const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder), [paneOrder, panePlacements]);
   const topPaneIds = panesByPlacement.top;
@@ -296,6 +302,33 @@ export function WorkspaceIdeShell() {
         event.preventDefault();
         splitEditor(event.shiftKey ? "horizontal" : "vertical");
         return;
+      }
+      if (mod && event.altKey) {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          focusIdeRegion("left");
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          focusIdeRegion("right");
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          focusIdeRegion("top");
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          focusIdeRegion("bottom");
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          focusIdeRegion("center");
+          return;
+        }
       }
       if (!mod || event.altKey) return;
       if (!event.shiftKey && key === "b") {
@@ -606,6 +639,67 @@ export function WorkspaceIdeShell() {
     [activeDockFocus],
   );
 
+  const focusRegionCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.focus.left",
+        group: "布局",
+        label: "聚焦左侧 Dock",
+        description: "打开并聚焦文件、搜索、Git 等左侧 IDE 区域",
+        shortcut: "⌘⌥←",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelLeft />,
+        run: () => focusIdeRegion("left"),
+      },
+      {
+        id: "ide.focus.center",
+        group: "布局",
+        label: "聚焦编辑器区域",
+        description: "回到主编辑器组合区域，适合从 Dock/终端回到代码",
+        shortcut: "⌘⌥↵",
+        risk: "safe",
+        surface: "layout",
+        icon: <Code2 />,
+        run: () => focusIdeRegion("center"),
+      },
+      {
+        id: "ide.focus.right",
+        group: "布局",
+        label: "聚焦右侧 Dock",
+        description: "打开并聚焦 AI、Outline、扩展等右侧 IDE 区域",
+        shortcut: "⌘⌥→",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelRight />,
+        run: () => focusIdeRegion("right"),
+      },
+      {
+        id: "ide.focus.bottom",
+        group: "布局",
+        label: "聚焦底部 Dock",
+        description: "打开并聚焦终端、问题、输出等底部 IDE 区域",
+        shortcut: "⌘⌥↓",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => focusIdeRegion("bottom"),
+      },
+      {
+        id: "ide.focus.top",
+        group: "布局",
+        label: "聚焦顶部 Dock",
+        description: "打开并聚焦可停靠在编辑器上方的顶部 IDE 区域",
+        shortcut: "⌘⌥↑",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => focusIdeRegion("top"),
+      },
+    ],
+    [activeBottomPane, activeLeftPane, activeRightPane, activeTopPane],
+  );
+
   const activeDockLayoutCommands = React.useMemo<WorkspaceCommand[]>(
     () => [
       {
@@ -826,8 +920,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, activeDockLayoutCommands, dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, activeDockLayoutCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -1095,6 +1189,33 @@ export function WorkspaceIdeShell() {
 
   function focusDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
     setActiveDockFocus({ placement, role, paneId });
+  }
+
+  function focusIdeRegion(region: IdeFocusRegion) {
+    if (region === "center") {
+      setMobilePanel("editor");
+      setActiveDockFocus(null);
+      focusIdeRegionNode(region);
+      return;
+    }
+    openDockPlacement(region);
+    const activePane = activeDockPaneForPlacement(region, "primary");
+    if (activePane) focusDockPane(region, "primary", activePane);
+    focusIdeRegionNode(region);
+  }
+
+  function focusIdeRegionNode(region: IdeFocusRegion) {
+    requestAnimationFrame(() => {
+      ideFocusRegionRef(region).current?.focus({ preventScroll: true });
+    });
+  }
+
+  function ideFocusRegionRef(region: IdeFocusRegion) {
+    if (region === "top") return topDockRef;
+    if (region === "left") return leftDockRef;
+    if (region === "right") return rightDockRef;
+    if (region === "bottom") return bottomDockRef;
+    return centerPaneRef;
   }
 
   function activeDockPaneForPlacement(placement: PanePlacement, role: DockPaneRole): PaneId | undefined {
@@ -1444,9 +1565,12 @@ export function WorkspaceIdeShell() {
 
         {leftOpen ? (
           <section
+            ref={(node) => { leftDockRef.current = node; }}
             className={cn("workspace-ide-shell__left-pane", dropTarget === "left" && "is-drop-target")}
             data-testid="workspace-ide-left-pane"
+            data-ide-focus-region="left"
             data-ide-dock-placement="left"
+            tabIndex={-1}
             onDragOver={(event) => dragPaneOverDock("left", event)}
             onDragLeave={(event) => leavePaneDock("left", event)}
             onDrop={(event) => dropPaneOnDock("left", event)}
@@ -1518,13 +1642,23 @@ export function WorkspaceIdeShell() {
           />
         ) : null}
 
-        <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane" data-ide-pane="center">
+        <section
+          ref={(node) => { centerPaneRef.current = node; }}
+          className="workspace-ide-shell__center"
+          data-testid="workspace-ide-center-pane"
+          data-ide-focus-region="center"
+          data-ide-pane="center"
+          tabIndex={-1}
+        >
           {topOpen ? (
             <section
+              ref={(node) => { topDockRef.current = node; }}
               className={cn("workspace-ide-shell__top-dock", dropTarget === "top" && "is-drop-target")}
               data-testid="workspace-ide-top-pane"
+              data-ide-focus-region="top"
               data-ide-pane="top"
               data-ide-dock-placement="top"
+              tabIndex={-1}
               onDragOver={(event) => dragPaneOverDock("top", event)}
               onDragLeave={(event) => leavePaneDock("top", event)}
               onDrop={(event) => dropPaneOnDock("top", event)}
@@ -1666,10 +1800,13 @@ export function WorkspaceIdeShell() {
           </div>
           {bottomOpen ? (
             <section
+              ref={(node) => { bottomDockRef.current = node; }}
               className={cn("workspace-ide-shell__bottom", dropTarget === "bottom" && "is-drop-target")}
               data-testid="workspace-ide-bottom-pane"
+              data-ide-focus-region="bottom"
               data-ide-pane="bottom"
               data-ide-dock-placement="bottom"
+              tabIndex={-1}
               onDragOver={(event) => dragPaneOverDock("bottom", event)}
               onDragLeave={(event) => leavePaneDock("bottom", event)}
               onDrop={(event) => dropPaneOnDock("bottom", event)}
@@ -1757,10 +1894,13 @@ export function WorkspaceIdeShell() {
         ) : null}
         {rightOpen ? (
           <aside
+            ref={(node) => { rightDockRef.current = node; }}
             className={cn("workspace-ide-shell__right-pane", dropTarget === "right" && "is-drop-target")}
             data-testid="workspace-ide-right-pane"
+            data-ide-focus-region="right"
             data-ide-pane="right"
             data-ide-dock-placement="right"
+            tabIndex={-1}
             onDragOver={(event) => dragPaneOverDock("right", event)}
             onDragLeave={(event) => leavePaneDock("right", event)}
             onDrop={(event) => dropPaneOnDock("right", event)}
