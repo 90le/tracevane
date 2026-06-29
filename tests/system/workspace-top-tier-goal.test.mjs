@@ -92,3 +92,13 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.doesNotMatch(searchCommands, /搜索：预览跨文件替换/);
   assert.doesNotMatch(searchCommands, /确认本次替换预览/);
 });
+
+test("Workspace Git commands prioritize review evidence over generic AI copy", () => {
+  const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
+  assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
+  assert.match(gitCommands, /Diff 审查上下文/);
+  assert.match(gitCommands, /Git：复制提交证据包/);
+  assert.match(gitCommands, /审查证据包/);
+  assert.doesNotMatch(gitCommands, /Diff AI 上下文/);
+  assert.doesNotMatch(gitCommands, /复制该提交的 AI 上下文/);
+});

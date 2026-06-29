@@ -346,20 +346,20 @@ export function createGitPanelCommands({
       {
         id: `git.panel.commitDiffContext.${commit.shortHash || commit.hash}`,
         group: "AI" as const,
-        label: `Git：复制提交 Diff 上下文 ${commit.shortHash}`,
+        label: `Git：复制 Diff 审查上下文 ${commit.shortHash}`,
         description: commit.subject
-          ? `复制 @git commit-diff 上下文：${commit.subject}`
-          : "复制该提交的文件清单和 Diff AI 上下文",
+          ? `复制 @git commit-diff 审查上下文：${commit.subject}`
+          : "复制该提交的文件清单和 Diff 审查上下文",
         icon: <FileDiff />,
         run: () => copyCommitDiffContext(commit),
       },
       {
         id: `git.panel.commitContext.${commit.shortHash || commit.hash}`,
         group: "AI" as const,
-        label: `Git：复制提交上下文 ${commit.shortHash}`,
+        label: `Git：复制提交证据包 ${commit.shortHash}`,
         description: commit.subject
-          ? `复制 @git commit 上下文：${commit.subject}`
-          : "复制该提交的 AI 上下文",
+          ? `复制 @git commit 证据包：${commit.subject}`
+          : "复制该提交的审查证据包",
         icon: <GitCommitHorizontal />,
         run: () => copyCommitContext(commit),
       },
