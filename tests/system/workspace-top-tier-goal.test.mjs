@@ -25,6 +25,19 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /git add.*显式列路径/);
 });
 
+test("legacy Workbench IDE goal entry points at the current IDE-first authorities", () => {
+  const legacyIdeGoal = readRoot("docs/工作区IDE目标.md");
+  assert.match(legacyIdeGoal, /状态：Superseded compatibility entry/);
+  assert.match(legacyIdeGoal, /当前权威蓝图：`Workspace全球顶级AI编程IDE工作区Goal蓝图\.md`/);
+  assert.match(legacyIdeGoal, /当前验收合同：`WorkspaceIDE-UIUX重设计验收\.md`/);
+  assert.match(legacyIdeGoal, /终端是 Workspace 的一等 IDE 面板/);
+  assert.match(legacyIdeGoal, /手机端不是压缩 PC 多栏/);
+  assert.match(legacyIdeGoal, /不再作为当前权威[\s\S]*整体目标\.md[\s\S]*Workspace目标\.md/);
+  assert.doesNotMatch(legacyIdeGoal, /Superseded by `Workspace目标\.md`/);
+  assert.doesNotMatch(legacyIdeGoal, /以后实现、设计和验收以以下文档为准：[\s\S]*整体目标\.md/);
+  assert.doesNotMatch(legacyIdeGoal, /Workspace-first/);
+});
+
 test("legacy Workspace target doc is downgraded behind the IDE-first blueprint", () => {
   const target = readRoot("docs/Workspace目标.md");
   assert.match(target, /状态：Superseded reference/);
