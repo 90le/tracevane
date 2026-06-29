@@ -284,3 +284,100 @@ function normalizeBoolean(value: string | boolean | null | undefined, fallback: 
     "IDE provider enabled flag must be boolean-like.",
   );
 }
+
+export interface WorkspaceIdeProviderLaunchPlan {
+  session: WorkspaceIdeProviderSession;
+  command: string[];
+  env: Record<string, string>;
+  cwd: string;
+}
+
+export interface WorkspaceIdeProviderProcessHandle {
+  pid?: number;
+  stop: () => Promise<void> | void;
+}
+
+export interface WorkspaceIdeProviderProcessRunner {
+  start: (plan: WorkspaceIdeProviderLaunchPlan) => Promise<WorkspaceIdeProviderProcessHandle> | WorkspaceIdeProviderProcessHandle;
+}
+
+export class WorkspaceIdeProviderLifecycleController {
+  readonly #handles = new Map<string, WorkspaceIdeProviderProcessHandle>();
+
+  constructor(
+    readonly registry: WorkspaceIdeProviderSessionRegistry,
+    readonly runner: WorkspaceIdeProviderProcessRunner,
+  ) {}
+
+  async startSession(
+    config: WorkspaceIdeProviderConfig,
+    input: CreateWorkspaceIdeProviderSessionInput,
+  ): Promise<WorkspaceIdeProviderSession> {
+    if (!config.enabled || config.kind === "native-workbench") {
+      throw new WorkspaceIdeProviderError(
+        "workspace_ide_provider_disabled",
+        "IDE provider is disabled or set to native Workbench.",
+      );
+    }
+    const session = this.registry.createSession({
+      ...input,
+      kind: config.kind,
+    });
+    const plan = createWorkspaceIdeProviderLaunchPlan(config, session);
+    try {
+      const handle = await this.runner.start(plan);
+      this.#handles.set(session.id, handle);
+      return this.registry.markReady(session.id);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return this.registry.markFailed(session.id, reason);
+    }
+  }
+
+  async stopSession(id: string): Promise<WorkspaceIdeProviderSession> {
+    const handle = this.#handles.get(id);
+    if (handle) {
+      await handle.stop();
+      this.#handles.delete(id);
+    }
+    return this.registry.stopSession(id);
+  }
+
+  hasHandle(id: string): boolean {
+    return this.#handles.has(id);
+  }
+}
+
+export function createWorkspaceIdeProviderLaunchPlan(
+  config: WorkspaceIdeProviderConfig,
+  session: WorkspaceIdeProviderSession,
+): WorkspaceIdeProviderLaunchPlan {
+  assertLoopbackProviderUrl(session.baseUrl);
+  const port = Number(new URL(session.baseUrl).port);
+  const command = buildWorkspaceIdeProviderCommand(config, session.workspaceRoot, port);
+  if (!command.length) {
+    throw new WorkspaceIdeProviderError(
+      "workspace_ide_provider_launch_command_empty",
+      "IDE provider launch command is empty.",
+    );
+  }
+  return {
+    session: { ...session },
+    command,
+    cwd: session.workspaceRoot,
+    env: createWorkspaceIdeProviderEnvironment(config),
+  };
+}
+
+export function createWorkspaceIdeProviderEnvironment(
+  config: WorkspaceIdeProviderConfig,
+): Record<string, string> {
+  const env: Record<string, string> = {
+    TRACEVANE_IDE_PROVIDER_KIND: config.kind,
+    TRACEVANE_IDE_PROVIDER_LOOPBACK_ONLY: "1",
+  };
+  if (config.token && config.kind === "code-server") {
+    env.PASSWORD = config.token;
+  }
+  return env;
+}

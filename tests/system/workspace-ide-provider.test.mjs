@@ -5,8 +5,10 @@ import path from "node:path";
 import {
   WorkspaceIdeProviderError,
   WorkspaceIdeProviderSessionRegistry,
+  WorkspaceIdeProviderLifecycleController,
   assertLoopbackProviderUrl,
   buildWorkspaceIdeProviderCommand,
+  createWorkspaceIdeProviderLaunchPlan,
   parseWorkspaceIdeProviderConfig,
 } from "../../dist/apps/api/modules/workspace-ide/provider-service.js";
 
@@ -68,4 +70,60 @@ test("workspace IDE provider session registry tracks lifecycle", () => {
 
   const stopped = registry.stopSession(created.id);
   assert.equal(stopped.status, "stopped");
+});
+
+test("workspace IDE provider launch plan keeps process loopback and token out of command", () => {
+  const registry = new WorkspaceIdeProviderSessionRegistry(39200);
+  const session = registry.createSession({ kind: "code-server", workspaceRoot: projectRoot });
+  const config = parseWorkspaceIdeProviderConfig({ kind: "code-server", token: "secret-token" });
+  const plan = createWorkspaceIdeProviderLaunchPlan(config, session);
+  assert.equal(plan.cwd, projectRoot);
+  assert.deepEqual(plan.command.slice(0, 3), ["code-server", "--bind-addr", "127.0.0.1:39200"]);
+  assert.equal(plan.command.includes("secret-token"), false);
+  assert.equal(plan.env.PASSWORD, "secret-token");
+  assert.equal(plan.env.TRACEVANE_IDE_PROVIDER_LOOPBACK_ONLY, "1");
+});
+
+test("workspace IDE provider lifecycle controller starts and stops via runner", async () => {
+  const registry = new WorkspaceIdeProviderSessionRegistry(39300);
+  const startedPlans = [];
+  const stopped = [];
+  const controller = new WorkspaceIdeProviderLifecycleController(registry, {
+    start(plan) {
+      startedPlans.push(plan);
+      return {
+        pid: 1234,
+        stop() {
+          stopped.push(plan.session.id);
+        },
+      };
+    },
+  });
+  const session = await controller.startSession(
+    parseWorkspaceIdeProviderConfig({ kind: "openvscode-server" }),
+    { kind: "openvscode-server", workspaceRoot: projectRoot },
+  );
+  assert.equal(session.status, "ready");
+  assert.equal(startedPlans.length, 1);
+  assert.equal(controller.hasHandle(session.id), true);
+
+  const stoppedSession = await controller.stopSession(session.id);
+  assert.equal(stoppedSession.status, "stopped");
+  assert.deepEqual(stopped, [session.id]);
+  assert.equal(controller.hasHandle(session.id), false);
+});
+
+test("workspace IDE provider lifecycle records launch failures", async () => {
+  const registry = new WorkspaceIdeProviderSessionRegistry(39400);
+  const controller = new WorkspaceIdeProviderLifecycleController(registry, {
+    start() {
+      throw new Error("provider missing");
+    },
+  });
+  const session = await controller.startSession(
+    parseWorkspaceIdeProviderConfig({ kind: "openvscode-server" }),
+    { kind: "openvscode-server", workspaceRoot: projectRoot },
+  );
+  assert.equal(session.status, "failed");
+  assert.equal(session.failureReason, "provider missing");
 });
