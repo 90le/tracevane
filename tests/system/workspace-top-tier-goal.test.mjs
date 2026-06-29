@@ -66,6 +66,21 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
   assert.match(stage, /data-workspace-top-tier-empty/);
 });
 
+
+test("Workspace editor tab commands collect file evidence before AI handoff", () => {
+  const tabCommands = readWeb("features/workspace/editor/editorTabCommands.tsx");
+  const tabActions = readWeb("features/workspace/editor/editorTabActions.tsx");
+  assert.match(tabCommands, /group: "证据"/);
+  assert.match(tabCommands, /编辑器：复制当前文件证据/);
+  assert.match(tabCommands, /先形成可审查证据/);
+  assert.match(tabActions, /复制当前文件证据/);
+  assert.match(tabActions, /ClipboardCheck/);
+  assert.doesNotMatch(tabCommands, /group: "AI"/);
+  assert.doesNotMatch(tabCommands, /AI：复制当前文件上下文/);
+  assert.doesNotMatch(tabActions, /复制 @file 上下文/);
+  assert.doesNotMatch(tabActions, /MessageSquarePlus/);
+});
+
 test("Workspace command system keeps the current IDE UI mainline out of preview/writing scope", () => {
   const commands = readWeb("features/workspace/workbench/workspaceCommands.tsx");
   assert.match(commands, /id: "workspace\.editor\.maximize"/);

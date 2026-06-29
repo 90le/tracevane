@@ -3,7 +3,7 @@ import {
   Columns2,
   Copy,
   FolderSearch,
-  MessageSquarePlus,
+  ClipboardCheck,
   MoveRight,
   PanelLeftClose,
   PanelRightClose,
@@ -225,10 +225,12 @@ export function createEditorTabCommands({
     },
     {
       id: "editor.tab.copyAiFileContext",
-      group: "AI",
-      label: "AI：复制当前文件上下文",
-      description: activePath ? `复制 @file ${relativePathLabel || activePath}` : "当前没有打开的文件",
-      icon: <MessageSquarePlus />,
+      group: "证据",
+      label: "编辑器：复制当前文件证据",
+      description: activePath
+        ? `复制 @file ${relativePathLabel || activePath}，先形成可审查证据`
+        : "当前没有打开的文件",
+      icon: <ClipboardCheck />,
       disabled: !activePath || !copyAiFileContext,
       run: () => activePath && copyAiFileContext?.(activePath),
     },

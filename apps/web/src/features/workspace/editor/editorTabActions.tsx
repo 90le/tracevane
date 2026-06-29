@@ -3,7 +3,7 @@ import {
   Columns2,
   Copy,
   FolderSearch,
-  MessageSquarePlus,
+  ClipboardCheck,
   MoveRight,
   PanelLeftClose,
   PanelRightClose,
@@ -192,9 +192,9 @@ export function createEditorTabActions({
     },
     {
       id: "editor.tab.copyAiFileContext",
-      label: "复制 @file 上下文",
+      label: "复制当前文件证据",
       disabled: !copyAiFileContext,
-      icon: <MessageSquarePlus />,
+      icon: <ClipboardCheck />,
       run: () => copyAiFileContext?.(path),
     },
   ];
