@@ -679,7 +679,7 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <Columns3 />,
-        disabled: !activePath,
+        disabled: !activeEditorTab(),
         run: moveActiveEditorFileToOtherGroup,
       },
       {
@@ -1655,12 +1655,35 @@ export function WorkspaceIdeShell() {
   }
 
   function moveActiveEditorFileToOtherGroup() {
-    if (!activePath) return;
+    const tab = activeEditorTab();
+    if (!tab) return;
+    const sourceGroup = activeEditorGroupId();
+    const targetGroup: EditorGroupId = sourceGroup === "primary" ? "secondary" : "primary";
     if (editorSplitMode === "single") {
-      splitEditor("vertical");
-      return;
+      setEditorSplitMode("vertical");
+      setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
     }
-    swapEditorGroups();
+    setEditorGroupTabs((current) => {
+      const nextSourceTabs = current[sourceGroup].filter((item) => item.path !== tab.path || item.rootId !== tab.rootId);
+      return {
+        ...current,
+        [sourceGroup]: nextSourceTabs,
+        [targetGroup]: upsertEditorTab(current[targetGroup], tab),
+      };
+    });
+    const fallbackSourceTab = editorGroupTabs[sourceGroup].filter((item) => item.path !== tab.path || item.rootId !== tab.rootId).at(-1);
+    if (sourceGroup === "primary") {
+      setActivePath(fallbackSourceTab?.path);
+      setActivePathRootId(fallbackSourceTab?.rootId ?? "");
+      setSecondaryPath(tab.path);
+      setSecondaryPathRootId(tab.rootId);
+    } else {
+      setSecondaryPath(fallbackSourceTab?.path);
+      setSecondaryPathRootId(fallbackSourceTab?.rootId ?? "");
+      setActivePath(tab.path);
+      setActivePathRootId(tab.rootId);
+    }
+    focusEditorGroup(targetGroup);
   }
 
   function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
