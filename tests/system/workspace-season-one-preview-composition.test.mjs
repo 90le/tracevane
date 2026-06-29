@@ -22,10 +22,13 @@ test("Season One preview composes the first-class workspace product model", () =
   assert.match(preview, /Rebuild Studio/);
   assert.match(preview, /Legacy shell replacement/);
   assert.match(preview, /Command Deck/);
-  assert.match(preview, /data-season-one-viewport-manifest/);
-  assert.match(preview, /Desktop command deck/);
-  assert.match(preview, /Tablet split studio/);
-  assert.match(preview, /Phone focus stack/);
+  assert.match(preview, /data-season-one-real-ide-stage/);
+  assert.match(preview, /data-season-one-editor-grid/);
+  assert.match(preview, /data-season-one-live-editor/);
+  assert.match(preview, /data-season-one-draft-diff-gate/);
+  assert.match(preview, /IDE Stage/);
+  assert.match(preview, /Live file preview/);
+  assert.doesNotMatch(preview, /data-season-one-viewport-manifest/);
   assert.match(preview, /data-season-one-resource-map/);
   assert.match(preview, /data-season-one-primary-workstage/);
   assert.match(preview, /data-season-one-ai-copilot/);

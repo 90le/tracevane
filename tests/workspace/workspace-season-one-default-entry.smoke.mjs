@@ -54,6 +54,15 @@ async function run() {
         hasLiveFilePreview:
           text.includes("live file preview:") ||
           text.includes("live document loaded from"),
+        hasRealIdeStage: Boolean(
+          document.querySelector("[data-season-one-real-ide-stage]"),
+        ),
+        hasEditorGrid: Boolean(
+          document.querySelector("[data-season-one-editor-grid]"),
+        ),
+        hasLiveEditor: Boolean(
+          document.querySelector("[data-season-one-live-editor]"),
+        ),
         hasOldWorkbenchOnlyTitle: text.includes("工作区 · tracevane"),
       };
     });
@@ -80,6 +89,12 @@ async function run() {
         metrics.hasCommandDeck,
         "Command Deck marker should render on /workspace",
       ],
+      [
+        metrics.hasRealIdeStage,
+        "real IDE stage should render on /workspace",
+      ],
+      [metrics.hasEditorGrid, "editor grid should render on /workspace"],
+      [metrics.hasLiveEditor, "live editor should render on /workspace"],
       [
         !metrics.hasOldWorkbenchOnlyTitle,
         "old Workbench title should not be the default entry",

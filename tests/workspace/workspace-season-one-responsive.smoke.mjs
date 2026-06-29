@@ -115,8 +115,10 @@ async function run() {
               "[data-workspace-season-one-mobile-switcher]",
             ),
             hasSeasonOneText: text.includes("Tracevane Season One"),
-            hasPrimaryStage: text.includes("Primary Stage"),
-            hasEvidence: text.includes("Evidence"),
+            hasIdeStage: normalizedText.includes("ide stage"),
+            hasEvidence: Boolean(
+              document.querySelector("[data-season-one-evidence-rail]"),
+            ),
             hasRunPanel: text.includes("Run panel"),
             hasLiveAdapterStatus: text.includes("Season One Live Adapter"),
             hasLiveFocusedPath: text.includes("DESIGN.md"),
@@ -130,15 +132,20 @@ async function run() {
               "legacy shell replacement",
             ),
             hasCommandDeck: normalizedText.includes("command deck"),
-            hasViewportManifestText:
-              text.includes("Desktop command deck") &&
-              text.includes("Tablet split studio") &&
-              text.includes("Phone focus stack"),
+            hasWorkbenchBanner: Boolean(
+              document.querySelector("[data-season-one-workbench-banner]"),
+            ),
+            hasRealIdeStage: Boolean(
+              document.querySelector("[data-season-one-real-ide-stage]"),
+            ),
+            hasEditorGrid: Boolean(
+              document.querySelector("[data-season-one-editor-grid]"),
+            ),
+            hasLiveEditor: Boolean(
+              document.querySelector("[data-season-one-live-editor]"),
+            ),
             hasRedesignManifest: Boolean(
               document.querySelector("[data-season-one-redesign-manifest]"),
-            ),
-            hasViewportManifest: Boolean(
-              document.querySelector("[data-season-one-viewport-manifest]"),
             ),
             hasCommandCenter: Boolean(
               document.querySelector("[data-season-one-command-center]"),
@@ -175,7 +182,7 @@ async function run() {
           [metrics.stageVisible, "primary stage should be visible"],
           [metrics.bottomVisible, "bottom panel should be visible"],
           [metrics.hasSeasonOneText, "Season One title should render"],
-          [metrics.hasPrimaryStage, "Primary Stage copy should render"],
+          [metrics.hasIdeStage, "IDE Stage copy should render"],
           [metrics.hasEvidence, "Evidence text should render"],
           [metrics.hasRunPanel, "Run panel text should render"],
           [metrics.hasLiveAdapterStatus, "live adapter status should render"],
@@ -195,17 +202,13 @@ async function run() {
             "legacy replacement marker should render",
           ],
           [metrics.hasCommandDeck, "command deck copy should render"],
-          [
-            metrics.hasViewportManifestText,
-            "desktop tablet phone manifest should render",
-          ],
+          [metrics.hasWorkbenchBanner, "workbench banner should render"],
+          [metrics.hasRealIdeStage, "real IDE stage region should render"],
+          [metrics.hasEditorGrid, "editor grid region should render"],
+          [metrics.hasLiveEditor, "live editor region should render"],
           [
             metrics.hasRedesignManifest,
             "redesign manifest region should render",
-          ],
-          [
-            metrics.hasViewportManifest,
-            "viewport manifest region should render",
           ],
           [metrics.hasCommandCenter, "command center region should render"],
           [metrics.hasResourceMap, "resource map region should render"],

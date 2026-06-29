@@ -29,7 +29,6 @@ import { WorkspaceSeasonOneFrame } from "./WorkspaceSeasonOneFrame";
 import {
   createWorkspaceSeasonOnePreviewModel,
   type WorkspaceSeasonOneIconKey,
-  type WorkspaceSeasonOneInsightCard,
   type WorkspaceSeasonOneProductModel,
 } from "./WorkspaceSeasonOneProductModel";
 
@@ -48,13 +47,6 @@ const iconByKey: Record<WorkspaceSeasonOneIconKey, LucideIcon> = {
   timer: TimerReset,
   writing: PenLine,
 };
-
-const insightToneClass: Record<WorkspaceSeasonOneInsightCard["tone"], string> =
-  {
-    amber: "text-amber-500",
-    cyan: "text-cyan-500",
-    violet: "text-violet-500",
-  };
 
 export interface WorkspaceSeasonOneFramePreviewProps {
   model?: WorkspaceSeasonOneProductModel;
@@ -227,167 +219,165 @@ function SeasonOnePrimaryStage({
 }) {
   return (
     <article
-      className="mx-auto grid w-full max-w-7xl gap-5 p-4 sm:p-6 lg:p-8"
+      className="grid h-full min-h-0 gap-3 p-3 sm:p-4"
       data-season-one-primary-workstage
+      data-season-one-real-ide-stage
+      data-season-one-work-canvas
     >
-      <section className="overflow-hidden rounded-[2.25rem] border border-cyan-200/20 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.18)] dark:border-cyan-200/12 dark:bg-slate-950/72">
-        <div className="border-b border-slate-200 bg-[linear-gradient(90deg,rgba(14,165,233,0.12),rgba(99,102,241,0.08),transparent)] px-5 py-3 dark:border-white/10 dark:bg-white/[0.03]">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="info">Primary Stage</Badge>
-            <Badge variant="outline">Season One Rebuild Active</Badge>
-            <Badge variant="outline">Writing + Code</Badge>
-            <Badge variant="outline">Evidence gated</Badge>
-            <Badge variant="outline">Responsive first</Badge>
-          </div>
-        </div>
-        <div className="grid gap-0 lg:grid-cols-[minmax(0,1.04fr)_minmax(360px,0.96fr)]">
-          <div className="p-5 sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-300">
-              {model.mission.eyebrow} · desktop / tablet / phone
-            </p>
-            <div
-              className="mt-4 grid gap-2 sm:grid-cols-3"
-              data-season-one-viewport-manifest
+      <section className="grid min-h-0 overflow-hidden rounded-[1.5rem] border border-cyan-200/16 bg-slate-950/82 shadow-[0_24px_80px_rgba(0,0,0,0.24)] lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+          <header className="flex min-h-11 items-center gap-2 border-b border-white/10 bg-black/28 px-3 text-xs">
+            <Badge variant="info">IDE Stage</Badge>
+            <span className="truncate font-semibold text-slate-100">
+              {model.canvas.fileName}
+            </span>
+            <Badge
+              variant="outline"
+              className="border-cyan-300/20 text-cyan-100"
             >
-              {[
-                "Desktop command deck",
-                "Tablet split studio",
-                "Phone focus stack",
-              ].map((label) => (
-                <div
-                  key={label}
-                  className="rounded-2xl border border-cyan-200/20 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900 dark:bg-cyan-300/10 dark:text-cyan-100"
-                >
-                  {label}
-                </div>
-              ))}
-            </div>
-            <h1 className="mt-4 max-w-4xl text-4xl font-black tracking-[-0.06em] text-slate-950 sm:text-5xl lg:text-6xl dark:text-white">
-              {model.mission.title}
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              {model.mission.body}
-            </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {model.phases.map((phase) => (
-                <section
-                  key={phase.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]"
-                >
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <span
-                      className={[
-                        "size-2 rounded-full",
-                        phase.status === "done"
-                          ? "bg-emerald-400"
-                          : phase.status === "active"
-                            ? "bg-cyan-400"
-                            : "bg-slate-400",
-                      ].join(" ")}
-                    />
-                    {phase.label}
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {phase.copy}
-                  </p>
-                </section>
-              ))}
-            </div>
-          </div>
-          <div className="border-t border-slate-200 bg-slate-950 p-4 text-slate-100 lg:border-l lg:border-t-0 dark:border-white/10">
-            <div
-              className="rounded-[1.75rem] border border-cyan-200/20 bg-black/62 shadow-[0_0_70px_rgba(34,211,238,0.10)]"
-              data-season-one-ai-copilot
-            >
-              <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-                <Sparkles className="size-4 text-cyan-300" aria-hidden="true" />
-                <span className="font-semibold">{model.aiPartner.title}</span>
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                  review-gated
-                </span>
-                <Badge
-                  variant="outline"
-                  className="ml-auto border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
-                >
-                  {model.aiPartner.badge}
-                </Badge>
-              </div>
-              <div className="space-y-3 p-4 text-sm leading-6 text-slate-300">
-                <p>“{model.aiPartner.quote}”</p>
-                <div className="grid gap-2 text-xs">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                    <span className="text-slate-500">
-                      {model.aiPartner.contextLabel}
-                    </span>
-                    <p className="mt-1 text-slate-200">
-                      {model.aiPartner.contextValue}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                    <span className="text-slate-500">
-                      {model.aiPartner.nextActionLabel}
-                    </span>
-                    <p className="mt-1 text-slate-200">
-                      {model.aiPartner.nextActionValue}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section
-        className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]"
-        data-season-one-work-canvas
-      >
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-cyan-200/12 dark:bg-slate-950/74">
-          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-sm dark:border-white/10">
-            <FileCode2 className="size-4 text-cyan-500" aria-hidden="true" />
-            <span className="font-semibold">{model.canvas.fileName}</span>
-            <Badge variant="outline" className="ml-auto">
               {model.canvas.badge}
             </Badge>
-          </div>
-          <div className="grid min-h-72 gap-0 md:grid-cols-[0.9fr_1.1fr]">
-            <div className="border-b border-slate-200 p-4 md:border-b-0 md:border-r dark:border-white/10">
-              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                <PenLine className="size-3.5" aria-hidden="true" />
-                {model.canvas.writingLabel}
-              </div>
-              <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-                {model.canvas.writingBody}
-              </p>
+            <div className="ml-auto hidden items-center gap-2 text-slate-500 sm:flex">
+              <span>真实文件</span>
+              <span>AI 审查</span>
+              <span>证据门禁</span>
             </div>
-            <pre className="min-h-0 overflow-auto bg-slate-950 p-4 font-mono text-xs leading-6 text-cyan-100">
-              {model.canvas.codeSample}
-            </pre>
+          </header>
+
+          <div
+            className="grid min-h-0 lg:grid-cols-[minmax(280px,0.42fr)_minmax(0,0.58fr)]"
+            data-season-one-editor-grid
+          >
+            <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-b border-white/10 bg-slate-900/72 lg:border-b-0 lg:border-r">
+              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-400">
+                <PenLine
+                  className="size-3.5 text-cyan-300"
+                  aria-hidden="true"
+                />
+                <span className="font-semibold text-slate-200">
+                  {model.canvas.writingLabel}
+                </span>
+                <span className="ml-auto rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
+                  reader
+                </span>
+              </div>
+              <div className="min-h-0 overflow-auto p-4">
+                <p className="text-sm leading-7 text-slate-300">
+                  {model.canvas.writingBody}
+                </p>
+                <div
+                  className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs leading-5 text-cyan-50"
+                  data-season-one-workbench-banner
+                >
+                  <strong>Season One is now the default IDE workbench.</strong>{" "}
+                  Product notes stay secondary; the primary surface is the live
+                  file, AI review, evidence and run state.
+                </div>
+              </div>
+            </section>
+
+            <section
+              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#050816]"
+              data-season-one-live-editor
+            >
+              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-400">
+                <FileCode2
+                  className="size-3.5 text-cyan-300"
+                  aria-hidden="true"
+                />
+                <span className="font-semibold text-slate-200">
+                  Live file preview
+                </span>
+                <span className="ml-auto rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
+                  read → draft → diff
+                </span>
+              </div>
+              <pre className="min-h-0 overflow-auto p-4 font-mono text-xs leading-6 text-cyan-100">
+                {model.canvas.codeSample}
+              </pre>
+              <div
+                className="grid gap-2 border-t border-white/10 p-3 text-xs md:grid-cols-3"
+                data-season-one-draft-diff-gate
+              >
+                <section className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-50">
+                  <div className="font-black uppercase tracking-[0.18em] text-cyan-200">
+                    Draft
+                  </div>
+                  <p className="mt-2 leading-5 text-cyan-50/80">
+                    AI changes must land as a controlled draft before touching
+                    the file.
+                  </p>
+                </section>
+                <section className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-3 text-amber-50">
+                  <div className="font-black uppercase tracking-[0.18em] text-amber-200">
+                    Diff
+                  </div>
+                  <p className="mt-2 leading-5 text-amber-50/80">
+                    Every proposal needs exact hunks, command evidence and
+                    rollback notes.
+                  </p>
+                </section>
+                <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-emerald-50">
+                  <div className="font-black uppercase tracking-[0.18em] text-emerald-200">
+                    Apply gate
+                  </div>
+                  <p className="mt-2 leading-5 text-emerald-50/80">
+                    Apply stays locked until evidence and human approval are
+                    attached.
+                  </p>
+                </section>
+              </div>
+            </section>
           </div>
         </div>
 
-        <div className="grid gap-3">
-          {model.insightCards.map((card) => {
-            const Icon = iconByKey[card.icon];
-            return (
-              <section
-                key={card.id}
-                className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/80"
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Icon
-                    className={`size-4 ${insightToneClass[card.tone]}`}
-                    aria-hidden="true"
-                  />
-                  {card.label}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {card.body}
-                </p>
-              </section>
-            );
-          })}
-        </div>
+        <aside
+          className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border-t border-white/10 bg-black/42 lg:border-l lg:border-t-0"
+          data-season-one-ai-copilot
+        >
+          <header className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+            <Sparkles className="size-4 text-cyan-300" aria-hidden="true" />
+            <span className="font-semibold text-white">
+              {model.aiPartner.title}
+            </span>
+            <Badge
+              variant="outline"
+              className="ml-auto border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+            >
+              {model.aiPartner.badge}
+            </Badge>
+          </header>
+          <div className="min-h-0 space-y-3 overflow-auto p-4 text-sm leading-6 text-slate-300">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                {model.aiPartner.contextLabel}
+              </span>
+              <p className="mt-2 text-slate-200">
+                {model.aiPartner.contextValue}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+              <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                {model.aiPartner.nextActionLabel}
+              </span>
+              <p className="mt-2 text-slate-200">
+                {model.aiPartner.nextActionValue}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-emerald-50">
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">
+                Review guard
+              </div>
+              <p className="mt-2 text-xs leading-5 text-emerald-50/80">
+                No agent write applies without selected context, diff preview,
+                command/test evidence and explicit approval.
+              </p>
+            </div>
+          </div>
+          <footer className="border-t border-white/10 p-3 text-xs text-slate-500">
+            {model.mission.resourceSummary}
+          </footer>
+        </aside>
       </section>
     </article>
   );
