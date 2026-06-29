@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   createWorkspaceSeasonOneAdapterInputFromSnapshot,
   createWorkspaceSeasonOneDemoSourceSnapshot,
+  createWorkspaceSeasonOneStoredSessionSnapshot,
 } from "../../apps/web/src/features/workspace/season-one/useWorkspaceSeasonOneLiveModel";
 
 const snapshot = createWorkspaceSeasonOneDemoSourceSnapshot();
@@ -41,3 +42,42 @@ const fallback = createWorkspaceSeasonOneAdapterInputFromSnapshot({
 assert.equal(fallback.activePath, "notes.md");
 assert.equal(fallback.terminalState, "idle");
 assert.equal(fallback.agentState, "idle");
+
+
+const stored = createWorkspaceSeasonOneStoredSessionSnapshot({
+  getItem(key) {
+    assert.equal(key, "tracevane.workspace.session.v1");
+    return JSON.stringify({
+      rootId: "project-root",
+      activePath: "docs/Stored.md",
+      gitDiffTarget: {
+        path: "docs/Stored.md",
+        staged: false,
+        untracked: false,
+        kind: "modified",
+      },
+    });
+  },
+});
+
+assert.deepEqual(stored, {
+  rootLabel: "project-root",
+  activePath: "docs/Stored.md",
+  openFiles: ["docs/Stored.md"],
+  gitChanges: 1,
+  evidenceItems: 0,
+  terminalState: "idle",
+  agentState: "idle",
+  lastRunLabel: "Workspace session restore",
+  viewportCoverage: "desktop · tablet · phone live",
+});
+
+assert.equal(
+  createWorkspaceSeasonOneStoredSessionSnapshot({ getItem: () => "not-json" }),
+  null,
+);
+assert.equal(
+  createWorkspaceSeasonOneStoredSessionSnapshot({ getItem: () => JSON.stringify({ sideOpen: true }) }),
+  null,
+);
+assert.equal(createWorkspaceSeasonOneStoredSessionSnapshot(undefined), null);

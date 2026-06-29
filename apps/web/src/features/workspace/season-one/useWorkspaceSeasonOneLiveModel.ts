@@ -18,6 +18,12 @@ export interface WorkspaceSeasonOneSourceSnapshot {
   viewportCoverage?: string;
 }
 
+interface WorkspaceSeasonOneStorageReader {
+  getItem(key: string): string | null;
+}
+
+const WORKSPACE_SESSION_STORAGE_KEY = "tracevane.workspace.session.v1";
+
 const DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT: WorkspaceSeasonOneSourceSnapshot = {
   rootLabel: "project-root",
   activePath: "docs/DESIGN.md",
@@ -42,13 +48,16 @@ export interface WorkspaceSeasonOneLiveModelState {
 }
 
 export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelState {
-  const sourceSnapshot = React.useMemo(
-    () => createWorkspaceSeasonOneDemoSourceSnapshot(),
-    [],
-  );
+  const liveState = React.useMemo(() => {
+    const storedSnapshot = createWorkspaceSeasonOneStoredSessionSnapshot();
+    return {
+      sourceSnapshot: storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
+      source: storedSnapshot ? "workspace-hooks" : "demo",
+    } as const;
+  }, []);
   const adapterInput = React.useMemo(
-    () => createWorkspaceSeasonOneAdapterInputFromSnapshot(sourceSnapshot),
-    [sourceSnapshot],
+    () => createWorkspaceSeasonOneAdapterInputFromSnapshot(liveState.sourceSnapshot),
+    [liveState.sourceSnapshot],
   );
   const model = React.useMemo(
     () => createWorkspaceSeasonOneLiveModel(adapterInput),
@@ -58,13 +67,41 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
   return {
     model,
     adapterInput,
-    sourceSnapshot,
-    source: "demo",
+    sourceSnapshot: liveState.sourceSnapshot,
+    source: liveState.source,
   };
 }
 
 export function createWorkspaceSeasonOneDemoSourceSnapshot(): WorkspaceSeasonOneSourceSnapshot {
   return cloneWorkspaceSeasonOneSourceSnapshot(DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT);
+}
+
+export function createWorkspaceSeasonOneStoredSessionSnapshot(
+  storage: WorkspaceSeasonOneStorageReader | undefined = getWorkspaceSeasonOneBrowserStorage(),
+): WorkspaceSeasonOneSourceSnapshot | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(WORKSPACE_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const rootLabel = readString(parsed.rootId);
+    const activePath = readString(parsed.activePath);
+    if (!rootLabel && !activePath) return null;
+
+    return {
+      rootLabel,
+      activePath,
+      openFiles: activePath ? [activePath] : [],
+      gitChanges: isGitDiffTarget(parsed.gitDiffTarget) ? 1 : 0,
+      evidenceItems: 0,
+      terminalState: "idle",
+      agentState: "idle",
+      lastRunLabel: "Workspace session restore",
+      viewportCoverage: "desktop · tablet · phone live",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function createWorkspaceSeasonOneDemoAdapterInput(): WorkspaceSeasonOneLiveAdapterInput {
@@ -117,4 +154,24 @@ function normalizeText(value?: string | null) {
 function normalizeCount(value?: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value ?? 0));
+}
+
+function getWorkspaceSeasonOneBrowserStorage(): WorkspaceSeasonOneStorageReader | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.localStorage;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isGitDiffTarget(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const target = value as Record<string, unknown>;
+  return (
+    typeof target.path === "string" &&
+    typeof target.staged === "boolean" &&
+    typeof target.untracked === "boolean" &&
+    typeof target.kind === "string"
+  );
 }
