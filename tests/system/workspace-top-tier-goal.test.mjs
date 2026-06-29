@@ -25,6 +25,20 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /git add.*显式列路径/);
 });
 
+test("global Tracevane goal doc is background, not current Workspace authority", () => {
+  const globalGoal = readRoot("docs/整体目标.md");
+  assert.match(globalGoal, /状态：Superseded baseline reference/);
+  assert.match(globalGoal, /Workspace 当前权威蓝图：`Workspace全球顶级AI编程IDE工作区Goal蓝图\.md`/);
+  assert.match(globalGoal, /IDE-first 本地项目工作区/);
+  assert.match(globalGoal, /当前不作为 Workspace 主线/);
+  assert.match(globalGoal, /不把“当前原型”作为实现门禁/);
+  assert.match(globalGoal, /Mobile \| 单栏任务流：Files \/ Editor \/ Terminal \/ Git \/ Search \/ Evidence 模式切换/);
+  assert.doesNotMatch(globalGoal, /状态：Active baseline/);
+  assert.doesNotMatch(globalGoal, /编辑\/运行\/预览/);
+  assert.doesNotMatch(globalGoal, /Markdown 是 Editor Stage 内的一等编辑对象/);
+  assert.doesNotMatch(globalGoal, /当前原型与用户任务优先/);
+});
+
 test("legacy Workbench IDE goal entry points at the current IDE-first authorities", () => {
   const legacyIdeGoal = readRoot("docs/工作区IDE目标.md");
   assert.match(legacyIdeGoal, /状态：Superseded compatibility entry/);
