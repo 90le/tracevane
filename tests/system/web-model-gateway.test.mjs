@@ -59,14 +59,33 @@ test("ModelGatewayPage references the exact data-view set", () => {
       `ModelGatewayPage should reference the "${view}" view`,
     );
   }
-  // And it must not reference any view key outside the contract set.
-  const componentKeys = [...page.matchAll(/^\s{2}(\w+):\s*\w+View,?$/gm)].map(
+  assert.match(page, /React\.lazy/);
+  assert.match(page, /<React\.Suspense fallback=\{<ModelGatewayViewFallback \/>\}>/);
+  assert.match(page, /import\("\.\/views\/OverviewView"\)/);
+  assert.match(page, /import\("\.\/views\/ProvidersView"\)/);
+  assert.match(page, /import\("\.\/views\/ModelsView"\)/);
+  assert.match(page, /import\("\.\/views\/UsageView"\)/);
+  assert.match(page, /from "\.\/views\/types"/);
+  assert.doesNotMatch(
+    page,
+    /import\s*\{[\s\S]*(OverviewView|ProvidersView|ModelsView|UsageView)[\s\S]*\}\s*from "\.\/views"/,
+    "ModelGatewayPage must not statically import view components through the views barrel",
+  );
+  const componentKeys = [...page.matchAll(/^\s{2}(\w+):\s*React\.lazy/gm)].map(
     (m) => m[1],
   );
-  for (const key of componentKeys) {
-    assert.ok(
-      DATA_VIEWS.includes(key),
-      `unexpected view key "${key}" in ModelGatewayPage VIEW_COMPONENTS`,
+  assert.deepEqual(componentKeys.sort(), DATA_VIEWS.toSorted());
+});
+
+test("model-gateway views barrel exports only route metadata and types", () => {
+  const barrel = read(`${VIEWS_DIR}/index.ts`);
+  assert.match(barrel, /MODEL_GATEWAY_VIEWS/);
+  for (const file of VIEW_FILES) {
+    const componentName = file.replace(/\.tsx$/, "");
+    assert.doesNotMatch(
+      barrel,
+      new RegExp(`\\b${componentName}\\b`),
+      `${componentName} should stay out of the barrel so React.lazy can split it`,
     );
   }
 });
@@ -142,10 +161,15 @@ test("Overview view can smoke each visible active route by scope", () => {
   assert.match(overview, /smokeAllActiveRoutes/);
   assert.match(overview, /for \(const route of checkableRoutes\)/);
   assert.match(overview, /routeSmokeResults/);
-  assert.match(overview, /最近通过|最近失败/);
+  assert.match(overview, /ROUTE_SMOKE_STORAGE_KEY/);
+  assert.match(overview, /readStoredRouteSmokeResults/);
+  assert.match(overview, /writeStoredRouteSmokeResults/);
+  assert.match(overview, /routeSmokeKey\(route\)/);
+  assert.match(overview, /checkedAt/);
+  assert.match(overview, /已验 \$\{lastSmoke\.latencyMs/);
   assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
   assert.match(overview, /formatModelBudgetPair/);
-  assert.match(overview, /disabled=\{!route\.resolvedProviderId \|\| smokeMutation\.isPending\}/);
+  assert.match(overview, /disabled=\{!canSmoke \|\| smokeMutation\.isPending\}/);
   assert.doesNotMatch(
     overview,
     /smokeMutation\.mutate\(undefined/,
@@ -155,22 +179,31 @@ test("Overview view can smoke each visible active route by scope", () => {
 
 test("Overview view exposes a route cockpit for route and client readiness", () => {
   const overview = read(`${VIEWS_DIR}/OverviewView.tsx`);
-  assert.match(overview, /路由 Cockpit/);
+  assert.match(overview, /模型路由总览/);
   assert.match(overview, /MODEL_GATEWAY_APP_SCOPES\.map/);
   assert.match(overview, /APP_SCOPE_LABEL/);
   assert.match(overview, /connectionForScope\(scope, appConnections\)/);
   assert.match(overview, /routeForScope\(scope, activeRoutes\)/);
   assert.match(overview, /实际路由/);
-  assert.match(overview, /客户端配置/);
+  assert.match(overview, /本地配置/);
   assert.match(overview, /客户端接入风险/);
-  assert.match(overview, /运行中状态看 CLI Agents/);
+  assert.match(overview, /运行中状态看\s*CLI Agents/);
   assert.match(overview, /appConnectionIssues/);
   assert.match(overview, /配置写入 \/ 回滚/);
-  assert.match(overview, /检查全部路由/);
+  assert.match(overview, /检查全部/);
   assert.match(overview, /检查路由/);
   assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
-  assert.match(overview, /路由详情（可展开）/);
+  assert.doesNotMatch(overview, /路由详情（可展开）/);
   assert.match(overview, /providerAttentionSummary/);
+  assert.doesNotMatch(overview, /SkeletonRow|<Skeleton/);
+  assert.match(overview, /RuntimeDiagnosticsPanel[\s\S]*enabled=\{diagnosticsEnabled\}/);
+  assert.match(overview, /DaemonServicePanel[\s\S]*enabled=\{serviceEnabled\}/);
+  assert.match(overview, /<Table className="table-fixed">/);
+  assert.match(overview, /<colgroup>/);
+  assert.match(overview, /break-words text-sm/);
+  assert.match(overview, /break-all text-xs/);
+  assert.doesNotMatch(overview, /min-w-\[260px\]/);
+  assert.doesNotMatch(overview, /min-w-\[180px\]/);
 });
 
 
@@ -212,9 +245,23 @@ test("Providers view aggregates endpoint risk and smokes every active scope for 
 
 
 
-test("Provider config create mode defaults to a simplified onboarding wizard", () => {
+test("Provider config create mode starts with user-facing add methods", () => {
   const config = read(`${VIEWS_DIR}/ProviderConfigView.tsx`);
+  const chooser = read(`${VIEWS_DIR}/ProviderOnboardingChooser.tsx`);
   assert.match(config, /type Section = "guide" \| "basic" \| "endpoint" \| "models" \| "advanced"/);
+  assert.match(config, /添加 Provider/);
+  assert.match(config, /返回添加方式/);
+  assert.match(config, /ProviderOnboardingChooser/);
+  assert.match(chooser, /快速连接 API Provider/);
+  assert.match(chooser, /从供应商目录添加/);
+  assert.match(chooser, /连接本地 \/ 自托管服务/);
+  assert.match(chooser, /账号型 Provider/);
+  assert.match(chooser, /高级手动配置/);
+  assert.match(chooser, /CLOUD_PROVIDER_SEEDS/);
+  assert.match(chooser, /LOCAL_PROVIDER_SEEDS/);
+  assert.match(chooser, /ADVANCED_PROTOCOL_SEEDS/);
+  assert.match(chooser, /OpenRouter/);
+  assert.match(chooser, /Ollama/);
   assert.match(config, /连接向导/);
   assert.match(config, /测试连接并自动识别/);
   assert.match(config, /导入推荐/);

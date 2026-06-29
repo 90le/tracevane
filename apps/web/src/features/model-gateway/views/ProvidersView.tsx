@@ -427,7 +427,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
             onClick={() => goToView("providercfg", { create: true })}
           >
             <KeyRound />
-            API Provider 新建
+            添加 Provider
           </Button>
           <Button
             variant="primary"
@@ -444,7 +444,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
       {providers.length === 0 ? (
         <EmptyState
           title="尚无 Provider"
-          description="使用上方入口新建 API Provider，或登录一个 Codex 账户。"
+          description="使用上方入口添加 API Provider、本地服务或登录一个 Codex 账户。"
         />
       ) : (
         <Table>

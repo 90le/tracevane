@@ -60,7 +60,11 @@ import {
   type DetectedCandidate,
   type ModelRow,
 } from "./ModelCatalogEditor";
-import { ProviderPresetChooser, type ProviderCreatePreset } from "./ProviderPresetChooser";
+import {
+  ProviderOnboardingChooser,
+  type ProviderOnboardingMode,
+  type ProviderSeed,
+} from "./ProviderOnboardingChooser";
 
 type Section = "guide" | "basic" | "endpoint" | "models" | "advanced";
 
@@ -130,7 +134,7 @@ function emptyForm(): FormState {
   };
 }
 
-function formFromPreset(preset: ProviderCreatePreset): FormState {
+function formFromSeed(preset: ProviderSeed): FormState {
   const base = emptyForm();
   const models: ModelRow[] = preset.modelId
     ? [{ ...newModelRow(true), id: preset.modelId, alias: preset.modelAlias ?? "" }]
@@ -508,8 +512,9 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const [showErrors, setShowErrors] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState(false);
-  // Create-mode step 1: pick a protocol preset before the segmented form.
-  const [presetChosen, setPresetChosen] = React.useState(false);
+  // Create-mode step 1: choose a user-facing onboarding path before the segmented form.
+  const [onboardingMode, setOnboardingMode] = React.useState<ProviderOnboardingMode>("quick");
+  const [onboardingChosen, setOnboardingChosen] = React.useState(false);
   // Detected-but-not-added models, surfaced as opt-in candidates.
   const [candidates, setCandidates] = React.useState<DetectedCandidate[]>([]);
 
@@ -548,17 +553,29 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // Create-mode step 1 → step 2: prefill the form from the chosen preset and
-  // reset the dirty baseline so a fresh preset isn't flagged as unsaved drift.
-  const choosePreset = (preset: ProviderCreatePreset) => {
-    const next = formFromPreset(preset);
+  const startQuickCreate = () => {
+    const next = emptyForm();
     setForm(next);
     baselineRef.current = JSON.stringify(next);
     setHydratedKey("create");
     setCandidates([]);
     setShowErrors(false);
     setSection("guide");
-    setPresetChosen(true);
+    setOnboardingMode("quick");
+    setOnboardingChosen(true);
+  };
+
+  // Create-mode step 1 → step 2: prefill from a provider catalog/local/advanced seed and
+  // reset the dirty baseline so a fresh seed isn't flagged as unsaved drift.
+  const chooseSeed = (seed: ProviderSeed) => {
+    const next = formFromSeed(seed);
+    setForm(next);
+    baselineRef.current = JSON.stringify(next);
+    setHydratedKey("create");
+    setCandidates([]);
+    setShowErrors(false);
+    setSection(seed.id.startsWith("advanced-") ? "basic" : "guide");
+    setOnboardingChosen(true);
   };
 
   const validation = React.useMemo(() => validate(form), [form]);
@@ -568,6 +585,35 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   const isDirty =
     initialized &&
     (baselineRef.current !== JSON.stringify(form) || secretDraft.trim().length > 0);
+
+  const activeRoutesForProvider = React.useMemo(() => {
+    if (!provider) return [];
+    return (providersQuery.data?.activeRoutes ?? []).filter(
+      (route) => route.resolvedProviderId === provider.id || route.selectedProviderId === provider.id,
+    );
+  }, [provider, providersQuery.data?.activeRoutes]);
+  const configWarnings = React.useMemo(() => providerConfigWarnings(provider), [provider]);
+
+  const detectedRows: ModelRow[] = React.useMemo(
+    () => candidates.map((c) => ({
+      ...newModelRow(),
+      id: c.id,
+      contextWindow: c.contextWindow,
+      maxOutput: c.maxOutput,
+      reasoning: c.reasoning,
+      vision: c.vision,
+      tools: c.tools,
+    })),
+    [candidates],
+  );
+  const importableRows = detectedRows.length ? detectedRows : form.models;
+  const capabilitySummary = modelCapabilitySummary(importableRows);
+  const maxContext = maxNumeric(importableRows, (m) => m.contextWindow);
+  const maxOutput = maxNumeric(importableRows, (m) => m.maxOutput);
+  const recommendedDefault = form.models.find((m) => m.isDefault && m.id.trim())?.id.trim()
+    ?? form.models.find((m) => m.id.trim())?.id.trim()
+    ?? candidates[0]?.id
+    ?? null;
 
   // Leave the config sub-view, guarding unsaved edits behind a confirm.
   const leaveToList = () => {
@@ -624,17 +670,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   }
 
   const saving = createMutation.isPending || updateMutation.isPending || setSecretMutation.isPending;
-  const activeRoutesForProvider = React.useMemo(() => {
-    if (!provider) return [];
-    return (providersQuery.data?.activeRoutes ?? []).filter(
-      (route) => route.resolvedProviderId === provider.id || route.selectedProviderId === provider.id,
-    );
-  }, [provider, providersQuery.data?.activeRoutes]);
-  const configWarnings = React.useMemo(() => providerConfigWarnings(provider), [provider]);
 
-  // Create-mode step 1: protocol-preset chooser, shown before the full form.
+  // Create-mode step 1: user-facing onboarding chooser, shown before the full form.
   // Edit mode skips this entirely.
-  if (isCreate && !presetChosen) {
+  if (isCreate && !onboardingChosen) {
     return (
       <div className="grid gap-4">
         <div className="flex items-start gap-3">
@@ -642,11 +681,17 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
             <ArrowLeft />
           </Button>
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-ink-strong">新建 API Provider</h2>
-            <p className="text-sm text-muted">选择一个协议预设作为起点，下一步进入分段配置。</p>
+            <h2 className="text-lg font-semibold text-ink-strong">添加 Provider</h2>
+            <p className="text-sm text-muted">先选择新建方式：快速连接、供应商目录、本地服务、账号登录或高级手动。</p>
           </div>
         </div>
-        <ProviderPresetChooser onChoose={choosePreset} />
+        <ProviderOnboardingChooser
+          selectedMode={onboardingMode}
+          onSelectMode={setOnboardingMode}
+          onChooseSeed={chooseSeed}
+          onStartQuick={startQuickCreate}
+          onStartCodexLogin={() => goToView("providers")}
+        />
       </div>
     );
   }
@@ -877,27 +922,6 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       </div>
     </CfgCard>
   ) : null;
-
-  const detectedRows: ModelRow[] = React.useMemo(
-    () => candidates.map((c) => ({
-      ...newModelRow(),
-      id: c.id,
-      contextWindow: c.contextWindow,
-      maxOutput: c.maxOutput,
-      reasoning: c.reasoning,
-      vision: c.vision,
-      tools: c.tools,
-    })),
-    [candidates],
-  );
-  const importableRows = detectedRows.length ? detectedRows : form.models;
-  const capabilitySummary = modelCapabilitySummary(importableRows);
-  const maxContext = maxNumeric(importableRows, (m) => m.contextWindow);
-  const maxOutput = maxNumeric(importableRows, (m) => m.maxOutput);
-  const recommendedDefault = form.models.find((m) => m.isDefault && m.id.trim())?.id.trim()
-    ?? form.models.find((m) => m.id.trim())?.id.trim()
-    ?? candidates[0]?.id
-    ?? null;
 
   const importRecommended = () => {
     const ids = candidates.slice(0, 20).map((c) => c.id);
@@ -1273,10 +1297,10 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
             variant="ghost"
             size="sm"
             className="ml-auto shrink-0"
-            onClick={() => setPresetChosen(false)}
+            onClick={() => setOnboardingChosen(false)}
           >
             <ArrowLeft />
-            返回选择预设
+            返回添加方式
           </Button>
         )}
       </div>
@@ -1336,7 +1360,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
           </span>
         ) : (
           <span className="text-sm text-subtle">
-            {isCreate ? "识别并导入模型后创建 Provider；也可切专家模式手动保存" : "修改后保存"}
+            {isCreate ? "快速连接可自动识别；目录/本地/高级模板都可继续编辑后保存" : "修改后保存"}
           </span>
         )}
         <span className="ml-auto flex gap-2">
