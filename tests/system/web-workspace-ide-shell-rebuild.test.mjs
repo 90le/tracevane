@@ -292,6 +292,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function activeDockPaneForPlacement/);
   assert.match(shellSource, /function dockPaneIdsForPlacement/);
   assert.match(shellSource, /function canNavigateActiveDockGroup/);
+  assert.match(shellSource, /function canFocusOppositeDockGroup/);
+  assert.match(shellSource, /function focusOppositeDockGroup/);
+  assert.match(shellSource, /activeDockFocus\.role === "primary" \? "secondary" : "primary"/);
+  assert.match(shellSource, /focusDockPane\(activeDockFocus\.placement, nextRole, nextPane\)/);
   assert.match(shellSource, /function selectAdjacentDockPane/);
   assert.match(shellSource, /selectDockPane\(activeDockFocus\.placement, activeDockFocus\.role, paneIds\[nextIndex\]\)/);
   assert.match(shellSource, /function canSwapDockSplit/);
@@ -316,6 +320,13 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.active\.split-down/);
   assert.match(shellSource, /ide\.dock\.active\.swap-groups/);
   assert.match(shellSource, /ide\.dock\.active\.close-split/);
+  assert.match(shellSource, /ide\.dock\.active\.focus-other-group/);
+  assert.match(shellSource, /切换当前 Dock 主副窗格组焦点/);
+  assert.match(shellSource, /shortcut: "⌘⌥Tab"/);
+  assert.match(shellSource, /disabled: !canFocusOppositeDockGroup\(\)/);
+  assert.match(shellSource, /run: focusOppositeDockGroup/);
+  assert.match(shellSource, /event\.key === "Tab"/);
+  assert.match(shellSource, /focusOppositeDockGroup\(\)/);
   assert.match(shellSource, /ide\.dock\.active\.next-pane/);
   assert.match(shellSource, /ide\.dock\.active\.previous-pane/);
   assert.match(shellSource, /ide\.dock\.active\.reset-ratio/);

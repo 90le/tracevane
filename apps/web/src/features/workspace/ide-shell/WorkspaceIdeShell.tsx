@@ -307,6 +307,11 @@ export function WorkspaceIdeShell() {
         return;
       }
       if (mod && event.altKey) {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          focusOppositeDockGroup();
+          return;
+        }
         if (event.shiftKey && event.key === "ArrowLeft") {
           event.preventDefault();
           moveActiveDockPaneToPlacement("left");
@@ -852,6 +857,18 @@ export function WorkspaceIdeShell() {
         },
       },
       {
+        id: "ide.dock.active.focus-other-group",
+        group: "窗格",
+        label: "切换当前 Dock 主副窗格组焦点",
+        description: activeDockFocus ? `在当前${placementLabel(activeDockFocus.placement)} Dock 的主/副拆分组之间移动焦点` : "先聚焦一个已拆分的 Dock 窗格组，再切换主/副组焦点",
+        shortcut: "⌘⌥Tab",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        disabled: !canFocusOppositeDockGroup(),
+        run: focusOppositeDockGroup,
+      },
+      {
         id: "ide.dock.active.next-pane",
         group: "窗格",
         label: "当前窗格组切到下一个 Pane",
@@ -1329,6 +1346,19 @@ export function WorkspaceIdeShell() {
 
   function canNavigateActiveDockGroup() {
     return Boolean(activeDockFocus && dockPaneIdsForPlacement(activeDockFocus.placement).length > 1);
+  }
+
+  function canFocusOppositeDockGroup() {
+    if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return false;
+    return Boolean(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role === "primary" ? "secondary" : "primary"));
+  }
+
+  function focusOppositeDockGroup() {
+    if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return;
+    const nextRole: DockPaneRole = activeDockFocus.role === "primary" ? "secondary" : "primary";
+    const nextPane = activeDockPaneForPlacement(activeDockFocus.placement, nextRole);
+    if (!nextPane) return;
+    focusDockPane(activeDockFocus.placement, nextRole, nextPane);
   }
 
   function selectAdjacentDockPane(direction: "next" | "previous") {
