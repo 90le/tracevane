@@ -194,7 +194,7 @@ export function createTracevaneConfig(
 }
 
 export function createStandaloneTracevaneConfig(overrides: Partial<TracevaneServerConfig> = {}): TracevaneServerConfig {
-  const projectRoot = resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
+  const projectRoot = path.resolve(overrides.projectRoot || resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url))));
   const tracevaneVersion = resolveTracevaneVersion(projectRoot);
   const openclawRoot = overrides.openclawRoot
     || process.env.OPENCLAW_STATE_DIR

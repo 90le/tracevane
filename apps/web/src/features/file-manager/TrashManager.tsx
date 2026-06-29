@@ -98,7 +98,7 @@ export function TrashManager({
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-ink-strong">回收站</h2>
           <p className="mt-1 text-xs text-muted">
-            {rootLabel} · 默认删除进入 <code className="rounded bg-panel-2 px-1">.tracevane-trash</code>；可恢复、按冲突策略重命名/覆盖，或永久清理。
+            {rootLabel} · 所有 root 删除项统一进入全局 <code className="rounded bg-panel-2 px-1">.openclaw/.tracevane/trash</code>；可恢复到原 root，或永久清理。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -133,9 +133,10 @@ export function TrashManager({
         <div className="rounded border border-dashed border-line bg-panel-2 px-3 py-8 text-center text-sm text-muted">回收站为空。默认删除的文件会显示在这里。</div>
       ) : (
         <div className="overflow-hidden rounded-md border border-line" data-file-manager-trash-list>
-          <div className="grid grid-cols-[44px_minmax(180px,1fr)_minmax(180px,1fr)_120px_170px_180px] border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle">
+          <div className="grid grid-cols-[44px_minmax(160px,1fr)_110px_minmax(180px,1fr)_120px_170px_180px] border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle">
             <span />
             <span>名称</span>
+            <span>来源 root</span>
             <span>原路径</span>
             <span>大小</span>
             <span>删除时间</span>
@@ -144,7 +145,7 @@ export function TrashManager({
           {items.map((item) => (
             <div
               key={item.trashPath}
-              className="grid grid-cols-[44px_minmax(180px,1fr)_minmax(180px,1fr)_120px_170px_180px] items-center border-b border-line px-3 py-2 text-sm last:border-b-0 hover:bg-panel-2"
+              className="grid grid-cols-[44px_minmax(160px,1fr)_110px_minmax(180px,1fr)_120px_170px_180px] items-center border-b border-line px-3 py-2 text-sm last:border-b-0 hover:bg-panel-2"
               data-file-manager-trash-item={item.trashPath}
               data-file-manager-trash-original-path={item.originalPath}
             >
@@ -152,6 +153,7 @@ export function TrashManager({
                 <input type="checkbox" checked={selectedPaths.has(item.trashPath)} onChange={() => toggle(item)} className="size-4 accent-primary" aria-label={`选择 ${item.name}`} />
               </label>
               <span className="min-w-0 truncate font-medium text-ink-strong" title={item.trashPath}>{item.name}</span>
+              <span className="min-w-0 truncate font-mono text-xs text-subtle" title={item.rootId}>{item.rootId}</span>
               <span className="min-w-0 truncate font-mono text-xs text-muted" title={item.originalPath}>{item.originalPath}</span>
               <span className="text-xs text-muted">{formatBytes(item.size ?? 0)}</span>
               <span className="text-xs text-muted">{new Date(item.deletedAt).toLocaleString()}</span>

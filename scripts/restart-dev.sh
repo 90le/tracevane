@@ -342,7 +342,7 @@ fi
 
 echo "Starting frontend on port $FRONTEND_PORT"
 frontend_pid=""
-start_background "env TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$BACKEND_PORT TRACEVANE_WEB_PORT=$FRONTEND_PORT npm run dev --workspace=apps/web -- --host 127.0.0.1 --port $FRONTEND_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE" frontend_pid
+start_background "env TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$BACKEND_PORT TRACEVANE_WEB_PORT=$FRONTEND_PORT npm run dev --workspace=apps/web -- --host 0.0.0.0 --port $FRONTEND_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE" frontend_pid
 wait_for_http "http://127.0.0.1:${FRONTEND_PORT}" "Frontend"
 if ! kill -0 "$frontend_pid" 2>/dev/null; then
   echo "Frontend process exited unexpectedly. See $FRONTEND_LOG_FILE" >&2

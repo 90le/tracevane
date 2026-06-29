@@ -78,7 +78,12 @@ function NavList({
                 icon={Icon ? <Icon /> : undefined}
                 count={item.status === "coming-soon" ? "…" : undefined}
               >
-                <Link to={item.path} onClick={onNavigate}>
+                <Link
+                  to={item.path}
+                  onClick={onNavigate}
+                  title={item.title}
+                  aria-label={item.label}
+                >
                   {item.label}
                 </Link>
               </SidebarItem>
@@ -118,55 +123,23 @@ function WorkspaceBrand() {
 
 function SidebarUtilities({
   collapsed,
-  onOpenCommand,
   onToggleCollapse,
+  showCollapse = true,
 }: {
   collapsed: boolean;
-  onOpenCommand: () => void;
   onToggleCollapse: () => void;
+  showCollapse?: boolean;
 }) {
+  if (!showCollapse) return null;
+
   return (
     <SidebarFooter
       className={cn(
-        "gap-2 border-t border-line pt-3",
-        collapsed && "items-center",
+        "border-t border-line pt-3",
+        collapsed && "justify-items-center",
       )}
       data-app-shell-sidebar-utilities
     >
-      <Button
-        variant="ghost"
-        size={collapsed ? "icon" : "sm"}
-        onClick={onOpenCommand}
-        className={cn(
-          "text-subtle",
-          collapsed ? "mx-auto" : "w-full justify-start gap-2",
-        )}
-        title="搜索 / 跳转（⌘K）"
-        aria-label="搜索 / 跳转"
-      >
-        <Search />
-        {!collapsed && (
-          <>
-            <span>搜索 / 跳转</span>
-            <kbd className="ml-auto rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
-              ⌘K
-            </kbd>
-          </>
-        )}
-      </Button>
-      <div
-        className={cn(
-          "flex items-center gap-1",
-          collapsed
-            ? "flex-col"
-            : "rounded-md border border-line bg-panel-2 p-1",
-        )}
-        aria-label="外观设置"
-      >
-        <PaletteToggle />
-        <ThemeToggle />
-        {!collapsed && <span className="px-1 text-xs text-muted">外观</span>}
-      </div>
       <Button
         variant="ghost"
         size={collapsed ? "icon" : "sm"}
@@ -185,7 +158,52 @@ function SidebarUtilities({
   );
 }
 
-function PaletteToggle() {
+function AppearanceControls({
+  collapsed = false,
+  compact = false,
+}: {
+  collapsed?: boolean;
+  compact?: boolean;
+}) {
+  if (collapsed) {
+    return (
+      <div className="grid justify-items-center gap-1" aria-label="外观设置">
+        <PaletteToggle />
+        <ThemeToggle />
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div
+        className="hidden items-center gap-1 rounded-full border border-line bg-[color-mix(in_srgb,var(--panel)_82%,var(--canvas))] p-1 shadow-sm sm:flex"
+        aria-label="外观设置"
+      >
+        <PaletteToggle className="rounded-full" />
+        <ThemeToggle className="rounded-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1 px-1 text-subtle"
+      aria-label="外观设置"
+    >
+      <PaletteToggle className="size-7 rounded-md" />
+      <ThemeToggle className="size-7 rounded-md" />
+    </div>
+  );
+}
+
+function PaletteToggle({
+  label,
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
   const { palette, setPalette } = useTheme();
   const cycle = () => {
     const idx = PALETTES.indexOf(palette);
@@ -194,62 +212,85 @@ function PaletteToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size={label ? "sm" : "icon"}
       onClick={cycle}
+      className={cn("text-subtle hover:text-ink", className)}
       title={`配色：${PALETTE_LABELS[palette]}`}
       aria-label="切换配色"
     >
       <Palette />
+      {label ? <span>{label}</span> : null}
     </Button>
   );
 }
 
-function ThemeToggle() {
+function ThemeToggle({
+  label,
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
   const { theme, toggleTheme } = useTheme();
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size={label ? "sm" : "icon"}
       onClick={toggleTheme}
+      className={cn("text-subtle hover:text-ink", className)}
       title={theme === "dark" ? "切换到浅色" : "切换到深色"}
       aria-label="切换主题"
     >
       {theme === "dark" ? <Sun /> : <Moon />}
+      {label ? <span>{label}</span> : null}
     </Button>
   );
 }
 
-function MobileDrawerQuickActions({
-  onOpenCommand,
-}: {
-  onOpenCommand: () => void;
-}) {
+function MobileDrawerBrand() {
   return (
-    <div
-      className="mt-3 grid gap-2 border-t border-line pt-3"
-      data-app-shell-mobile-drawer-actions
-    >
+    <div className="flex min-w-0 items-center gap-2.5">
+      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
+        T
+      </div>
+      <div className="min-w-0">
+        <SheetTitle>Tracevane</SheetTitle>
+        <div className="truncate text-xs text-subtle">
+          选择工作域或打开全局操作
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopbarActions({ onOpenCommand }: { onOpenCommand: () => void }) {
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-1.5">
       <Button
         variant="ghost"
-        className="justify-start gap-2 rounded-md border border-line bg-panel-2"
+        size="sm"
         onClick={onOpenCommand}
+        className="hidden max-w-[220px] justify-start gap-2 rounded-full border border-line bg-[color-mix(in_srgb,var(--panel)_82%,var(--canvas))] px-3 text-subtle shadow-sm hover:text-ink sm:inline-flex"
+        aria-label="搜索 / 跳转"
+        title="搜索 / 跳转（⌘K / Ctrl K）"
       >
         <Search />
-        <span>搜索 / 跳转</span>
-        <kbd className="ml-auto rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
+        <span className="min-w-0 truncate">搜索 / 跳转</span>
+        <kbd className="ml-1 rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
           ⌘K
         </kbd>
       </Button>
-      <div className="rounded-md border border-line bg-panel-2 p-2">
-        <div className="px-2 pb-2 text-2xs font-semibold uppercase tracking-[.12em] text-subtle">
-          外观
-        </div>
-        <div className="flex items-center gap-1">
-          <PaletteToggle />
-          <ThemeToggle />
-          <span className="text-xs text-muted">配色与明暗主题</span>
-        </div>
-      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onOpenCommand}
+        className="sm:hidden"
+        aria-label="搜索 / 跳转"
+        title="搜索 / 跳转"
+      >
+        <Search />
+      </Button>
+      <AppearanceControls compact />
     </div>
   );
 }
@@ -347,37 +388,41 @@ export function AppShell() {
 
   return (
     <div
-      className="grid h-dvh grid-cols-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out md:grid-cols-[var(--sidebar)_minmax(0,1fr)]"
+      className="grid h-dvh grid-cols-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[var(--sidebar)_minmax(0,1fr)]"
       style={{ ["--sidebar" as string]: collapsed ? "64px" : "248px" }}
     >
-      {/* Desktop sidebar — persistent, full-height, own scroll, collapsible */}
-      <Sidebar collapsed={collapsed} className="hidden md:grid">
+      {/* Tablet rail — keeps primary destinations available without crushing the body. */}
+      <Sidebar collapsed className="hidden md:grid xl:hidden">
+        <WorkspaceBrand />
+        <NavList pathname={pathname} search={search} />
+        <SidebarUtilities
+          collapsed
+          onToggleCollapse={toggleCollapsed}
+          showCollapse={false}
+        />
+      </Sidebar>
+
+      {/* Desktop sidebar — persistent, full-height, own scroll, collapsible. */}
+      <Sidebar collapsed={collapsed} className="hidden xl:grid">
         <WorkspaceBrand />
         <NavList pathname={pathname} search={search} />
         <SidebarUtilities
           collapsed={collapsed}
-          onOpenCommand={() => setCommandOpen(true)}
           onToggleCollapse={toggleCollapsed}
         />
       </Sidebar>
 
-      {/* Mobile drawer */}
+      {/* Compact / tablet drawer with labels and secondary utilities. */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="p-0 md:hidden">
-          <SheetHeader>
-            <SheetTitle>Tracevane</SheetTitle>
+        <SheetContent side="left" className="w-[min(360px,92vw)] p-0 xl:hidden">
+          <SheetHeader className="pr-12">
+            <MobileDrawerBrand />
           </SheetHeader>
-          <div className="overflow-auto p-[14px]">
+          <div className="min-h-0 overflow-auto p-[14px]">
             <NavList
               pathname={pathname}
               search={search}
               onNavigate={() => setMobileNavOpen(false)}
-            />
-            <MobileDrawerQuickActions
-              onOpenCommand={() => {
-                setMobileNavOpen(false);
-                setCommandOpen(true);
-              }}
             />
           </div>
         </SheetContent>
@@ -393,17 +438,17 @@ export function AppShell() {
       >
         {/* Topbar */}
         {!isChromeLessRoute && (
-          <header className="flex h-12 items-center gap-2 border-b border-line bg-panel px-3 sm:h-14 sm:px-4">
+          <header className="flex min-h-12 items-center gap-2 border-b border-line bg-panel/95 px-3 backdrop-blur sm:min-h-14 sm:px-4">
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="xl:hidden"
               onClick={() => setMobileNavOpen(true)}
               aria-label="打开导航"
             >
               <Menu />
             </Button>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 py-2">
               <div
                 className="hidden min-w-0 items-center gap-1.5 text-xs text-muted sm:flex"
                 data-app-shell-mobile-hidden-breadcrumbs
@@ -433,17 +478,20 @@ export function AppShell() {
                   </React.Fragment>
                 ))}
               </div>
-              <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
-                {pageMeta.title}
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
+                  {pageMeta.title}
+                </div>
               </div>
             </div>
+            <TopbarActions onOpenCommand={() => setCommandOpen(true)} />
           </header>
         )}
 
         {/* Routed content — the only scroll region besides the sidebar nav */}
         <main
           className={cn(
-            "min-w-0 overflow-auto",
+            "h-full min-h-0 min-w-0 overflow-auto",
             isChromeLessRoute ? "p-0" : "p-3 sm:p-5",
           )}
         >

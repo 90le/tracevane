@@ -23,6 +23,7 @@ apps/web-vue/components.d.ts
 .superpowers/
 .meta-kim/
 graphify-out/
+.tracevane-trash/
 *.log
 *.pid
 __pycache__/

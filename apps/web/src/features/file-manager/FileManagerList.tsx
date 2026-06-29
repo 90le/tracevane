@@ -1048,7 +1048,7 @@ export function FileListPanel({
   return (
     <div
       ref={panelRef}
-      className="relative overflow-hidden rounded-md border border-line bg-panel"
+      className="relative grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-md border border-line bg-panel"
       tabIndex={0}
       data-file-manager-list
       data-file-manager-keyboard-scope="list-grid"
@@ -1170,7 +1170,7 @@ export function FileListPanel({
       )}
       <div
         ref={scrollportRef}
-        className="max-h-[calc(100vh-470px)] min-h-[360px] overflow-y-auto overflow-x-hidden sm:max-h-[calc(100vh-470px)]"
+        className="min-h-0 overflow-y-auto overflow-x-hidden"
         data-file-manager-list-scrollport
         data-file-manager-marquee-selection-surface
         data-file-manager-windowing="fixed-row-overscan"

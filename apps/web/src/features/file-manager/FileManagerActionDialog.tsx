@@ -728,7 +728,7 @@ export function FileManagerActionDialog({
               <div className="mt-1 text-xs">
                 将处理 {selectedPaths.length} 项，其中 {deleteFileCount}{" "}
                 个文件、{deleteDirectoryCount} 个目录。默认移动到 root 下的
-                .tracevane-trash；勾选永久删除才会跳过回收站。
+                .openclaw/.tracevane/trash；勾选永久删除才会跳过回收站。
               </div>
             </div>
             <div
@@ -775,7 +775,7 @@ export function FileManagerActionDialog({
               />
               <span>
                 <strong className="text-red">永久删除</strong>：跳过
-                .tracevane-trash，直接从文件系统移除。
+                .openclaw/.tracevane/trash，直接从文件系统移除。
               </span>
             </label>
             <div className="text-xs text-subtle">

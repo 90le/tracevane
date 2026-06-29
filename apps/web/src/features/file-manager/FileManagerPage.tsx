@@ -1073,7 +1073,7 @@ export function FileManagerPage() {
 
   return (
     <div
-      className="relative min-h-[calc(100vh-132px)] outline-none"
+      className="relative flex h-full min-h-0 min-w-0 flex-col outline-none"
       tabIndex={0}
       data-file-manager-shell="true"
       onPaste={handleFileManagerPaste}
@@ -1094,7 +1094,7 @@ export function FileManagerPage() {
           </div>
         </div>
       ) : null}
-      <section className="min-w-0 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+      <section className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
         <header className="border-b border-line bg-panel-2">
           <FileManagerHeader
             rootId={rootId}
@@ -1188,7 +1188,7 @@ export function FileManagerPage() {
         {viewMode === "files" ? (
           <div
             className={cn(
-              "grid gap-3 p-3 sm:gap-4 sm:p-4",
+              "flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4",
               selectedList.length > 0 && "pb-32 sm:pb-4",
             )}
           >
@@ -1245,6 +1245,18 @@ export function FileManagerPage() {
               }
               onDelete={() => setDialog({ kind: "delete" })}
               onClear={clearSelection}
+            />
+            <FileManagerSecondaryDock
+              rootId={rootId}
+              directoryPath={directoryPath}
+              showHidden={showHidden}
+              counts={counts}
+              selectedCount={selectedPaths.size}
+              loadedCount={entries.length}
+              totalCount={pagination?.totalEntries ?? entries.length}
+              onRevealPath={revealOperationPath}
+              onOpenDirectory={navigateToDirectory}
+              onOpenFile={openFilePreview}
             />
             <FileListPanel
               rootId={rootId}
@@ -1306,18 +1318,6 @@ export function FileManagerPage() {
               }}
               onDropTransfer={handleDropTransfer}
               onDropUploadToDirectory={handleDropUploadToDirectory}
-            />
-            <FileManagerSecondaryDock
-              rootId={rootId}
-              directoryPath={directoryPath}
-              showHidden={showHidden}
-              counts={counts}
-              selectedCount={selectedPaths.size}
-              loadedCount={entries.length}
-              totalCount={pagination?.totalEntries ?? entries.length}
-              onRevealPath={revealOperationPath}
-              onOpenDirectory={navigateToDirectory}
-              onOpenFile={openFilePreview}
             />
             <OperationHistoryPanel
               records={operationRecords}
@@ -1666,11 +1666,11 @@ function FileManagerSecondaryDock({
 }) {
   return (
     <aside
-      className="grid gap-2 xl:fixed xl:bottom-4 xl:right-4 xl:z-20 xl:w-[360px]"
+      className="grid min-w-0 gap-2"
       data-file-manager-secondary-dock
     >
       <details
-        className="group rounded-md border border-line bg-panel-2 text-xs xl:shadow-lg"
+        className="group rounded-md border border-line bg-panel-2 text-xs"
         data-file-manager-search-and-stats-dock
       >
         <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 marker:hidden">
@@ -1686,7 +1686,7 @@ function FileManagerSecondaryDock({
           />
         </summary>
         <div
-          className="hidden gap-3 border-t border-line p-3 group-open:grid"
+          className="hidden gap-3 border-t border-line p-3 group-open:grid xl:grid-cols-[minmax(0,1fr)_280px]"
           data-file-manager-search-and-stats-body
         >
           <FileManagerSearchPanel

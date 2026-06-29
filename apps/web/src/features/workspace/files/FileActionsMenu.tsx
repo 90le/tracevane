@@ -1279,7 +1279,7 @@ function DeleteDialog({
             ))}
           </ul>
           <DialogDescription>
-            默认会移动到当前 root 的隐藏回收站 .tracevane-trash，避免误删后完全无法找回。需要永久删除时请在独立文件管理器删除弹窗中勾选永久删除。
+            默认会移动到全局回收站 .openclaw/.tracevane/trash，避免误删后完全无法找回。需要永久删除时请在独立文件管理器删除弹窗中勾选永久删除。
           </DialogDescription>
         </DialogBody>
         <DialogFooter>

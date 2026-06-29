@@ -157,11 +157,13 @@ type TerminalControlPayload = {
 const TERMINAL_SESSION_GRACE_MS = 30 * 60 * 1000;
 const TERMINAL_BUFFER_LIMIT = 256 * 1024;
 const TERMINAL_INSTALL_TIMEOUT_MS = 8 * 60 * 1000;
+const TERMINAL_BINARY_VERIFY_TIMEOUT_MS = 2_500;
 const TERMINAL_GATEWAY_LEASE_MS = 35_000;
 const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS = 1_500;
 const TERMINAL_OUTPUT_LEDGER_FLUSH_MS = 250;
 const TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT = 64;
+const TERMINAL_STATUS_CACHE_TTL_MS = 30_000;
 const TERMINAL_RECENT_SUMMARY_EVENT_LIMIT = 512;
 const TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT = 16 * 1024;
 const TERMINAL_CONTROL_BATCH_LIMIT = 32;
@@ -336,13 +338,17 @@ function normalizeTerminalDimension(value: unknown): number | null {
 
 function normalizeSkipReplay(value: unknown): boolean {
   if (typeof value === "boolean") return value;
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function normalizeResumeSession(value: unknown): boolean {
   if (typeof value === "boolean") return value;
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
@@ -389,7 +395,9 @@ async function runCommand(
   }
 }
 
-export function buildTerminalEnv(config: TracevaneServerConfig): NodeJS.ProcessEnv {
+export function buildTerminalEnv(
+  config: TracevaneServerConfig,
+): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (!env.TERM?.trim() || env.TERM.trim().toLowerCase() === "dumb") {
     env.TERM = "xterm-256color";
@@ -546,6 +554,9 @@ export function createTerminalService(
   });
   let realtimeLedgerFlushTimer: NodeJS.Timeout | null = null;
   let pendingRealtimeLedgerEvents: TerminalSessionLedgerEvent[] = [];
+  let cachedStatusPayload: TerminalStatusPayload | null = null;
+  let cachedStatusPayloadAt = 0;
+  let pendingStatusPayload: Promise<TerminalStatusPayload> | null = null;
 
   const pingTimer = setInterval(() => {
     const now = Date.now();
@@ -574,9 +585,9 @@ export function createTerminalService(
 
   function getActiveClientCount(session: TerminalSession): number {
     return (
-      session.clients.size
-      + session.gatewaySubscribers.size
-      + session.streamSubscribers.size
+      session.clients.size +
+      session.gatewaySubscribers.size +
+      session.streamSubscribers.size
     );
   }
 
@@ -585,10 +596,10 @@ export function createTerminalService(
   ): TerminalTargetKind | null {
     const normalized = String(value || "").trim();
     if (
-      normalized === "local"
-      || normalized === "ssh"
-      || normalized === "container"
-      || normalized === "kubernetes"
+      normalized === "local" ||
+      normalized === "ssh" ||
+      normalized === "container" ||
+      normalized === "kubernetes"
     ) {
       return normalized;
     }
@@ -628,7 +639,9 @@ export function createTerminalService(
       session.gatewaySubscribers.keys(),
     ).sort();
     const controllerClientId = observerClientIds[0] || null;
-    const recent = buildTerminalRecentOutputSummary(session.recentSummaryEvents);
+    const recent = buildTerminalRecentOutputSummary(
+      session.recentSummaryEvents,
+    );
 
     return {
       sessionId: session.id,
@@ -683,7 +696,9 @@ export function createTerminalService(
     event: TerminalRecentOutputSummaryEvent,
   ): void {
     session.recentSummaryEvents.push(event);
-    if (session.recentSummaryEvents.length <= TERMINAL_RECENT_SUMMARY_EVENT_LIMIT) {
+    if (
+      session.recentSummaryEvents.length <= TERMINAL_RECENT_SUMMARY_EVENT_LIMIT
+    ) {
       return;
     }
     session.recentSummaryEvents.splice(
@@ -724,14 +739,19 @@ export function createTerminalService(
     const event = buildLedgerEvent(session, type, detail, actorClientId);
     pendingRealtimeLedgerEvents.push(event);
     rememberRecentSummaryEvent(session, event);
-    if (pendingRealtimeLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT) {
+    if (
+      pendingRealtimeLedgerEvents.length >= TERMINAL_OUTPUT_LEDGER_BATCH_LIMIT
+    ) {
       flushRealtimeLedgerQueue();
       return;
     }
     scheduleRealtimeLedgerFlush();
   }
 
-  function enqueueOutputLedgerEvent(session: TerminalSession, data: string): void {
+  function enqueueOutputLedgerEvent(
+    session: TerminalSession,
+    data: string,
+  ): void {
     enqueueRealtimeLedgerEvent(session, "output", { data }, null);
   }
 
@@ -846,13 +866,13 @@ export function createTerminalService(
           escaped = false;
         } else if (char === "\\") {
           escaped = true;
-        } else if (char === "\"") {
+        } else if (char === '"') {
           inString = false;
         }
         continue;
       }
 
-      if (char === "\"") {
+      if (char === '"') {
         inString = true;
       } else if (char === "{") {
         depth += 1;
@@ -1042,10 +1062,7 @@ export function createTerminalService(
     }
   }
 
-  function detachStreamId(
-    streamId: string,
-    sessionId?: string | null,
-  ): void {
+  function detachStreamId(streamId: string, sessionId?: string | null): void {
     const targetSessionId = String(sessionId || "").trim();
     for (const session of sessions.values()) {
       if (targetSessionId && session.id !== targetSessionId) {
@@ -1233,7 +1250,10 @@ export function createTerminalService(
     }
 
     if (!skipReplay) {
-      if (session.clearedThroughSeq > 0 && lastSeq < session.clearedThroughSeq) {
+      if (
+        session.clearedThroughSeq > 0 &&
+        lastSeq < session.clearedThroughSeq
+      ) {
         events.push(buildClearEvent(session));
       }
       const replayAfterSeq = Math.max(
@@ -1346,7 +1366,10 @@ export function createTerminalService(
       );
     }
 
-    if (session.gatewayOutputQueue.data.length >= TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT) {
+    if (
+      session.gatewayOutputQueue.data.length >=
+      TERMINAL_GATEWAY_OUTPUT_BATCH_LIMIT
+    ) {
       flushGatewayOutput(session);
       return;
     }
@@ -1373,9 +1396,7 @@ export function createTerminalService(
         session.clients.delete(client);
         continue;
       }
-      if (
-        !sendEvent(client, buildOutputEvent(session, chunk))
-      ) {
+      if (!sendEvent(client, buildOutputEvent(session, chunk))) {
         session.clients.delete(client);
       }
     }
@@ -1722,7 +1743,7 @@ export function createTerminalService(
       output: string;
     }> {
       return execFileAsync(pathToBinary, verifyArgs, {
-        timeout: 10_000,
+        timeout: TERMINAL_BINARY_VERIFY_TIMEOUT_MS,
         maxBuffer: 4 * 1024 * 1024,
       })
         .then((result) => ({
@@ -1740,13 +1761,10 @@ export function createTerminalService(
       ? null
       : await verifyAt(spec.binary);
     const installed = Boolean(
-      verifyFromPath?.success || fallbackVerify?.success,
+      binaryPath || verifyFromPath?.success || fallbackVerify?.success,
     );
-    const resolvedPath = verifyFromPath?.success
-      ? binaryPath
-      : fallbackVerify?.success
-        ? spec.binary
-        : null;
+    const resolvedPath =
+      binaryPath || (fallbackVerify?.success ? spec.binary : null);
     const versionOutput = verifyFromPath?.success
       ? verifyFromPath.output
       : fallbackVerify?.output || "";
@@ -1999,6 +2017,7 @@ export function createTerminalService(
     }
 
     const failed = results.filter((item) => !item.success);
+    invalidateStatusPayloadCache();
     const statusAfter = await buildStatusPayload();
     const response: TerminalInstallResponse = {
       success: failed.length === 0,
@@ -2062,7 +2081,23 @@ export function createTerminalService(
     };
   }
 
-  async function buildStatusPayload(): Promise<TerminalStatusPayload> {
+  function withLiveTerminalStatusFields(
+    payload: TerminalStatusPayload,
+  ): TerminalStatusPayload {
+    return {
+      ...payload,
+      ptyAvailable: pty !== null,
+      sessionCount: sessions.size,
+    };
+  }
+
+  function invalidateStatusPayloadCache(): void {
+    cachedStatusPayload = null;
+    cachedStatusPayloadAt = 0;
+    pendingStatusPayload = null;
+  }
+
+  async function buildFreshStatusPayload(): Promise<TerminalStatusPayload> {
     const binaries = await Promise.all(
       Object.values(TERMINAL_CLI_SPECS).map((spec) => checkBinary(spec)),
     );
@@ -2111,26 +2146,48 @@ export function createTerminalService(
       },
       installTargets: Object.values(TERMINAL_CLI_SPECS)
         .filter((spec) => spec.installMode !== "none")
-        .map(
-          (spec): TerminalInstallTarget => ({
-            id: spec.id,
-            label: spec.label,
-            packageName: spec.packageName,
-            installHint:
-              spec.installMode === "script"
-                ? spec.installCommand || ""
-                : `${TERMINAL_PACKAGE_MANAGERS[0].installCommand(spec.packageName || "")}`,
-            category: spec.category,
-          }),
-        ),
+        .map((spec): TerminalInstallTarget => ({
+          id: spec.id,
+          label: spec.label,
+          packageName: spec.packageName,
+          installHint:
+            spec.installMode === "script"
+              ? spec.installCommand || ""
+              : `${TERMINAL_PACKAGE_MANAGERS[0].installCommand(spec.packageName || "")}`,
+          category: spec.category,
+        })),
       skills,
     };
+  }
+
+  async function buildStatusPayload(): Promise<TerminalStatusPayload> {
+    const now = Date.now();
+    if (
+      cachedStatusPayload &&
+      now - cachedStatusPayloadAt < TERMINAL_STATUS_CACHE_TTL_MS
+    ) {
+      return withLiveTerminalStatusFields(cachedStatusPayload);
+    }
+
+    pendingStatusPayload ??= buildFreshStatusPayload()
+      .then((payload) => {
+        cachedStatusPayload = payload;
+        cachedStatusPayloadAt = Date.now();
+        return payload;
+      })
+      .finally(() => {
+        pendingStatusPayload = null;
+      });
+
+    return withLiveTerminalStatusFields(await pendingStatusPayload);
   }
 
   function buildProfileCatalog(
     status: TerminalStatusPayload,
   ): TerminalProfileCatalogResponse {
-    const binaryById = new Map(status.binaries.map((binary) => [binary.id, binary]));
+    const binaryById = new Map(
+      status.binaries.map((binary) => [binary.id, binary]),
+    );
     const profileSpecs: Array<{
       id: string;
       label: string;
@@ -2213,7 +2270,8 @@ export function createTerminalService(
         id: "marketplace-skillhub",
         label: "SkillHub",
         labelZh: "SkillHub",
-        description: "Run SkillHub marketplace CLI from the terminal workbench.",
+        description:
+          "Run SkillHub marketplace CLI from the terminal workbench.",
         descriptionZh: "从终端工作台运行 SkillHub 技能市场 CLI。",
         kind: "marketplace",
         targetKind: "local",
@@ -2226,7 +2284,8 @@ export function createTerminalService(
         id: "remote-ssh",
         label: "SSH Terminal",
         labelZh: "SSH 终端",
-        description: "Reserved remote profile for cloud server terminal targets.",
+        description:
+          "Reserved remote profile for cloud server terminal targets.",
         descriptionZh: "为云服务器终端目标预留的远程 Profile。",
         kind: "remote",
         targetKind: "ssh",
@@ -2239,12 +2298,15 @@ export function createTerminalService(
 
     return {
       profiles: profileSpecs.map((profile) => {
-        const binary = profile.binaryId ? binaryById.get(profile.binaryId) : null;
-        const installed = profile.binaryId === "bash"
-          ? true
-          : profile.binaryId
-            ? Boolean(binary?.installed)
-            : false;
+        const binary = profile.binaryId
+          ? binaryById.get(profile.binaryId)
+          : null;
+        const installed =
+          profile.binaryId === "bash"
+            ? true
+            : profile.binaryId
+              ? Boolean(binary?.installed)
+              : false;
         return {
           ...profile,
           cwd: options.config.openclawRoot || null,
@@ -2322,10 +2384,12 @@ export function createTerminalService(
         markSessionActivity(session, { persist: "deferred" });
         const payload = message.toString();
 
-        if (consumeTerminalControlPayload(session, payload, {
-          actorClientId: null,
-          socket: ws,
-        })) {
+        if (
+          consumeTerminalControlPayload(session, payload, {
+            actorClientId: null,
+            socket: ws,
+          })
+        ) {
           return;
         }
 
@@ -2630,9 +2694,11 @@ export function createTerminalService(
       const session = requireActiveSession(payload.sid);
       requireGatewaySubscriber(session, runtime.connId);
       const inputData = String(payload.data || "");
-      if (consumeTerminalControlPayload(session, inputData, {
-        actorClientId: runtime.connId,
-      })) {
+      if (
+        consumeTerminalControlPayload(session, inputData, {
+          actorClientId: runtime.connId,
+        })
+      ) {
         if (payload.ackMode === "none") {
           return {
             ok: true,

@@ -94,6 +94,7 @@ interface WorkspaceEditorDockContextValue {
 
 const DEFAULT_SIDE_PANEL_WIDTH = 320;
 const MIN_SIDE_PANEL_WIDTH = 240;
+const SIDE_PANEL_DRAG_UPDATE_THRESHOLD = 1;
 const DEFAULT_MOBILE_PANEL_HEIGHT = 42;
 const MIN_MOBILE_PANEL_HEIGHT = 24;
 const MAX_MOBILE_PANEL_HEIGHT = 100;
@@ -917,6 +918,7 @@ export function WorkspaceWorkbench() {
           activeSidePanel={activeSidePanel}
           sideOpen={sideOpen}
           onOpenSide={openSidePanel}
+          onShowSide={showSidePanel}
           onDockSide={dockSidePanel}
           onFocusEditor={focusMobileEditorCanvas}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
@@ -1106,16 +1108,32 @@ function WorkspaceProjectNavigationMenu({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={menuRef}
-      className="absolute left-2 top-9 z-50 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
+      className={cn(
+        "fixed inset-x-3 bottom-[calc(var(--workspace-mobile-nav-height,0px)+0.75rem)] top-auto z-[140] overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl",
+        "sm:absolute sm:bottom-auto sm:left-2 sm:top-9 sm:w-[min(22rem,calc(100vw-1rem))] sm:rounded-xl",
+      )}
       role="menu"
       aria-label="Tracevane 项目导航"
       data-workspace-project-navigation-menu
       data-workspace-project-navigation-dismissable
+      data-workspace-project-navigation-mobile-sheet
     >
-      <div className="border-b border-line bg-panel-2 px-3 py-2 text-xs font-semibold text-ink-strong">
-        Tracevane 功能域
+      <div className="flex items-center justify-between border-b border-line bg-panel-2 px-3 py-2 text-xs font-semibold text-ink-strong">
+        <span>Tracevane 功能域</span>
+        <button
+          type="button"
+          className="grid size-7 place-items-center rounded-lg text-muted outline-none hover:bg-panel-3 hover:text-ink focus-visible:shadow-[var(--ring)]"
+          onClick={onClose}
+          aria-label="关闭 Tracevane 项目导航"
+          data-workspace-project-navigation-close
+        >
+          <X className="size-3.5" />
+        </button>
       </div>
-      <div className="max-h-[70dvh] overflow-auto p-2">
+      <div
+        className="max-h-[min(72dvh,34rem)] overflow-auto overscroll-contain p-2"
+        data-workspace-project-navigation-scrollport
+      >
         {navItemsByGroup().map((group) => (
           <div key={group.group} className="mb-2 last:mb-0">
             <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wide text-subtle">
@@ -1321,19 +1339,48 @@ function WorkbenchSidePanelResizeHandle({
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = width;
-    const move = (moveEvent: PointerEvent) => {
-      onResize(startWidth + moveEvent.clientX - startX);
+    let frame: number | null = null;
+    let pendingWidth = startWidth;
+    let lastCommittedWidth = startWidth;
+
+    const commitPendingWidth = () => {
+      frame = null;
+      if (
+        Math.abs(pendingWidth - lastCommittedWidth) <
+        SIDE_PANEL_DRAG_UPDATE_THRESHOLD
+      ) {
+        return;
+      }
+      lastCommittedWidth = pendingWidth;
+      onResize(pendingWidth);
     };
+
+    const move = (moveEvent: PointerEvent) => {
+      pendingWidth = startWidth + moveEvent.clientX - startX;
+      if (frame === null) {
+        frame = window.requestAnimationFrame(commitPendingWidth);
+      }
+    };
+
     const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+      onResize(pendingWidth);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      document.body.style.touchAction = "";
     };
+
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", move);
+    document.body.style.touchAction = "none";
+    window.addEventListener("pointermove", move, { passive: true });
     window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
   };
 
   return (
@@ -1345,6 +1392,8 @@ function WorkbenchSidePanelResizeHandle({
       style={{ left: 48 + width }}
       onPointerDown={startDrag}
       data-workspace-side-panel-resizer
+      data-workspace-side-panel-resize-mode="raf-no-max"
+      data-workspace-side-panel-width={width}
     />
   );
 }
@@ -1694,6 +1743,7 @@ function WorkbenchMobileNav({
   sideOpen,
   onOpenSide,
   onDockSide,
+  onShowSide,
   onFocusEditor,
   onOpenCommandPalette,
   onToggleTerminal,
@@ -1708,6 +1758,7 @@ function WorkbenchMobileNav({
   sideOpen: boolean;
   onOpenSide: (panel: SidePanel) => void;
   onDockSide: (panel: SidePanel) => void;
+  onShowSide: (panel: SidePanel) => void;
   onFocusEditor: () => void;
   onOpenCommandPalette: () => void;
   onToggleTerminal: () => void;
@@ -1725,9 +1776,9 @@ function WorkbenchMobileNav({
   const openMobileSidePanel = React.useCallback(
     (panel: SidePanel) => {
       closeActionMenu();
-      onOpenSide(panel);
+      onShowSide(panel);
     },
-    [closeActionMenu, onOpenSide],
+    [closeActionMenu, onShowSide],
   );
   const dockMobileSidePanel = React.useCallback(
     (panel: SidePanel) => {
@@ -1740,9 +1791,9 @@ function WorkbenchMobileNav({
     (panel: SidePanel, heightVh: number) => {
       closeActionMenu();
       onSetMobilePanelHeight(heightVh);
-      onOpenSide(panel);
+      onShowSide(panel);
     },
-    [closeActionMenu, onOpenSide, onSetMobilePanelHeight],
+    [closeActionMenu, onSetMobilePanelHeight, onShowSide],
   );
   const closeMobileSidePanel = React.useCallback(() => {
     closeActionMenu();
@@ -1792,6 +1843,12 @@ function WorkbenchMobileNav({
         expanded={sideOpen && activeSidePanel === "explorer"}
         onClick={() => onOpenSide("explorer")}
         onContextMenu={() => setActionPanel("explorer")}
+        titleOverride={
+          sideOpen && activeSidePanel === "explorer"
+            ? "收起资源管理器，长按打开操作菜单"
+            : "打开资源管理器，长按打开操作菜单"
+        }
+        dataAttr="explorer"
       />
       <MobileNavButton
         label="搜索"
@@ -1801,6 +1858,12 @@ function WorkbenchMobileNav({
         expanded={sideOpen && activeSidePanel === "search"}
         onClick={() => onOpenSide("search")}
         onContextMenu={() => setActionPanel("search")}
+        titleOverride={
+          sideOpen && activeSidePanel === "search"
+            ? "收起搜索面板，长按打开操作菜单"
+            : "打开搜索面板，长按打开操作菜单"
+        }
+        dataAttr="search"
       />
       <MobileNavButton
         label="Git"
@@ -1810,6 +1873,12 @@ function WorkbenchMobileNav({
         expanded={sideOpen && activeSidePanel === "git"}
         onClick={() => onOpenSide("git")}
         onContextMenu={() => setActionPanel("git")}
+        titleOverride={
+          sideOpen && activeSidePanel === "git"
+            ? "收起 Git 面板，长按打开操作菜单"
+            : "打开 Git 面板，长按打开操作菜单"
+        }
+        dataAttr="git"
       />
       <MobileNavButton
         label={!sideOpen && !terminalOpen ? "命令" : "编辑"}
@@ -1826,6 +1895,8 @@ function WorkbenchMobileNav({
         icon={<TerminalSquare />}
         active={terminalOpen}
         onClick={onToggleTerminal}
+        titleOverride={terminalOpen ? "收起终端" : "打开终端"}
+        dataAttr="terminal"
       />
       {actionPanel ? (
         <MobileNavActionMenu

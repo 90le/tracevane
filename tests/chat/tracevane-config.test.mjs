@@ -144,3 +144,15 @@ test('standalone-only helper keeps gateway exposure off by default', () => {
   assert.equal(config.transport.gateway.enabled, false);
   assert.equal(config.transport.preferredMode, 'standalone');
 });
+
+test('standalone helper preserves explicit project root outside openclaw state', () => {
+  const config = createStandaloneTracevaneConfig({
+    openclawRoot: '/tmp/openclaw-state',
+    openclawConfigFile: '/tmp/openclaw-state/openclaw.json',
+    projectRoot: '/opt/tracevane-extension',
+  });
+
+  assert.equal(config.openclawRoot, '/tmp/openclaw-state');
+  assert.equal(config.projectRoot, '/opt/tracevane-extension');
+  assert.equal(config.webDistDir, '/opt/tracevane-extension/apps/web/dist');
+});

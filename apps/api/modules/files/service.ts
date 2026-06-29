@@ -63,6 +63,8 @@ const MAX_INSTANT_HASH_SCAN_ENTRIES = 20_000;
 const MAX_CONTENT_INDEX_REBUILD_ENTRIES = 50_000;
 const MAX_CONTENT_INDEX_HASH_BYTES = 512 * 1024 * 1024;
 const RECYCLE_BIN_DIR_NAME = ".tracevane-trash";
+const GLOBAL_RECYCLE_BIN_DIR_NAME = "trash";
+const GLOBAL_RECYCLE_BIN_RELATIVE_PATH = `.tracevane/${GLOBAL_RECYCLE_BIN_DIR_NAME}`;
 const CONTENT_INDEX_REBUILD_SKIP_DIRS = new Set([".git", "node_modules", ".tracevane", RECYCLE_BIN_DIR_NAME]);
 const DEFAULT_SEARCH_LIMIT = 250;
 const MAX_SEARCH_LIMIT = 500;
@@ -1886,56 +1888,73 @@ function createChmodDryRun(config: TracevaneServerConfig, payload: FilesChmodPay
   };
 }
 
-function recycleBinDir(root: FileRootContext): string {
-  return path.join(root.absolutePath, RECYCLE_BIN_DIR_NAME);
+function recycleBinDir(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, ".tracevane", GLOBAL_RECYCLE_BIN_DIR_NAME);
 }
 
 function recycleMetadataPath(entryDir: string): string {
   return path.join(entryDir, "metadata.json");
 }
 
-function uniqueRecycleEntryDir(root: FileRootContext, originalRelativePath: string): string {
+function recycleDisplayPath(config: TracevaneServerConfig, absolutePath: string): string {
+  return toPortableRelativePath(path.relative(recycleBinDir(config), absolutePath));
+}
+
+function uniqueRecycleEntryDir(config: TracevaneServerConfig, originalRootId: string, originalRelativePath: string): string {
   const baseName = path.basename(originalRelativePath) || "root";
+  const safeRootId = originalRootId.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 40) || "root";
   const safeName = baseName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "item";
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   let index = 0;
   while (true) {
     const suffix = index === 0 ? "" : `-${index}`;
-    const candidate = path.join(recycleBinDir(root), `${stamp}-${safeName}${suffix}`);
+    const candidate = path.join(recycleBinDir(config), `${stamp}-${safeRootId}-${safeName}${suffix}`);
     if (!fs.existsSync(candidate)) return candidate;
     index += 1;
   }
 }
 
-function moveEntryToRecycleBin(target: ResolvedPath): string {
-  const trashEntryDir = uniqueRecycleEntryDir(target.root, target.relativePath);
+function moveEntryToRecycleBin(config: TracevaneServerConfig, target: ResolvedPath): string {
+  const trashEntryDir = uniqueRecycleEntryDir(config, target.root.id, target.relativePath);
   fs.mkdirSync(trashEntryDir, { recursive: true });
   const targetTrashPath = path.join(trashEntryDir, path.basename(target.relativePath));
   const stat = fs.statSync(target.absolutePath);
   const metadata = {
     rootId: target.root.id,
+    rootAbsolutePath: target.root.absolutePath,
     originalPath: target.relativePath,
-    trashPath: toPortableRelativePath(path.relative(target.root.absolutePath, targetTrashPath)),
+    trashPath: recycleDisplayPath(config, targetTrashPath),
     name: path.basename(target.relativePath),
     kind: stat.isDirectory() ? "directory" : "file",
     size: stat.isFile() ? stat.size : null,
     deletedAt: new Date().toISOString(),
   };
   fs.writeFileSync(recycleMetadataPath(trashEntryDir), JSON.stringify(metadata, null, 2), "utf8");
-  fs.renameSync(target.absolutePath, targetTrashPath);
+  try {
+    moveEntry(target.absolutePath, targetTrashPath, true);
+  } catch (error) {
+    try {
+      fs.rmSync(trashEntryDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup for an incomplete recycle-bin entry.
+    }
+    throw error;
+  }
   return metadata.trashPath;
 }
 
-function readTrashMetadata(root: FileRootContext, entryDirName: string): FilesTrashItem | null {
-  const entryDir = path.join(recycleBinDir(root), entryDirName);
+function readTrashMetadata(config: TracevaneServerConfig, entryDirName: string): FilesTrashItem | null {
+  const entryDir = path.join(recycleBinDir(config), entryDirName);
   const metadataPath = recycleMetadataPath(entryDir);
   try {
-    const parsed = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as Partial<FilesTrashItem>;
+    const parsed = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as Partial<FilesTrashItem> & { rootAbsolutePath?: unknown };
     const trashPath = normalizeRelativePath(parsed.trashPath || "");
-    if (!trashPath || !trashPath.startsWith(`${RECYCLE_BIN_DIR_NAME}/`)) return null;
-    const target = path.resolve(root.absolutePath, trashPath);
+    if (!trashPath) return null;
+    const target = path.resolve(recycleBinDir(config), trashPath);
+    if (!isWithinRoot(realPathOf(recycleBinDir(config)), realPathOf(path.dirname(target)))) return null;
     if (!fs.existsSync(target)) return null;
     const stat = fs.statSync(target);
+    const root = resolveRoot(config, parsed.rootId);
     return {
       id: entryDirName,
       rootId: root.id,
@@ -1945,40 +1964,57 @@ function readTrashMetadata(root: FileRootContext, entryDirName: string): FilesTr
       kind: stat.isDirectory() ? "directory" : "file",
       size: stat.isFile() ? stat.size : null,
       deletedAt: typeof parsed.deletedAt === "string" && parsed.deletedAt ? parsed.deletedAt : new Date(stat.mtimeMs).toISOString(),
-      metadataPath: toPortableRelativePath(path.relative(root.absolutePath, metadataPath)),
+      metadataPath: recycleDisplayPath(config, metadataPath),
     };
   } catch {
     return null;
   }
 }
 
-function listTrashItems(root: FileRootContext): FilesTrashItem[] {
-  const trashDir = recycleBinDir(root);
+function listTrashItems(config: TracevaneServerConfig): FilesTrashItem[] {
+  const trashDir = recycleBinDir(config);
   if (!fs.existsSync(trashDir)) return [];
   return fs
     .readdirSync(trashDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => readTrashMetadata(root, entry.name))
+    .map((entry) => readTrashMetadata(config, entry.name))
     .filter((entry): entry is FilesTrashItem => Boolean(entry))
     .sort((left, right) => Date.parse(right.deletedAt) - Date.parse(left.deletedAt));
 }
 
-function resolveTrashItem(config: TracevaneServerConfig, rootId: string | undefined, trashPath: string | undefined): ResolvedPath {
+function resolveTrashItem(config: TracevaneServerConfig, trashPath: string | undefined): ResolvedPath {
   const normalized = normalizeRelativePath(trashPath);
-  if (!normalized || normalized === RECYCLE_BIN_DIR_NAME || !normalized.startsWith(`${RECYCLE_BIN_DIR_NAME}/`)) {
+  if (!normalized) {
     throw new Error("A valid recycle-bin item path is required");
   }
-  return resolveExistingPath(config, rootId, normalized, { allowRoot: false });
+  const trashRoot: FileRootContext = {
+    id: "global-trash",
+    labelZh: "全局回收站",
+    labelEn: "Global trash",
+    descriptionZh: "Tracevane 全局回收站。",
+    descriptionEn: "Tracevane global recycle bin.",
+    absolutePath: recycleBinDir(config),
+    realPath: fs.existsSync(recycleBinDir(config)) ? realPathOf(recycleBinDir(config)) : path.resolve(recycleBinDir(config)),
+  };
+  const absolutePath = path.resolve(trashRoot.absolutePath, normalized);
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error("Recycle-bin item was not found");
+  }
+  const realPath = realPathOf(absolutePath);
+  if (!isWithinRoot(trashRoot.realPath, realPath)) {
+    throw new Error("Recycle-bin item escapes the global recycle bin");
+  }
+  return { root: trashRoot, relativePath: normalized, absolutePath };
 }
 
 function restoreTrashItem(config: TracevaneServerConfig, payload: FilesTrashRestorePayload): FilesMutationResponse {
-  const source = resolveTrashItem(config, payload.rootId, payload.trashPath);
-  const metadata = readTrashMetadata(source.root, path.basename(path.dirname(source.relativePath)));
+  const source = resolveTrashItem(config, payload.trashPath);
+  const metadata = readTrashMetadata(config, path.basename(path.dirname(source.absolutePath)));
   if (!metadata || metadata.trashPath !== source.relativePath) {
     throw new Error("Recycle-bin metadata was not found for this item");
   }
   const conflictPolicy = normalizeTransferConflictPolicy(payload.conflictPolicy);
-  let destination = resolveTargetPath(config, source.root.id, metadata.originalPath, { allowRoot: false });
+  let destination = resolveTargetPath(config, metadata.rootId, metadata.originalPath, { allowRoot: false });
   if (fs.existsSync(destination.absolutePath)) {
     if (conflictPolicy === "skip") {
       return {
@@ -1991,13 +2027,13 @@ function restoreTrashItem(config: TracevaneServerConfig, payload: FilesTrashRest
     if (conflictPolicy === "overwrite") {
       removeEntry(destination.absolutePath);
     } else if (conflictPolicy === "rename") {
-      destination = findAvailableUploadTarget(config, source.root.id, metadata.originalPath);
+      destination = findAvailableUploadTarget(config, metadata.rootId, metadata.originalPath);
     } else {
       throw new Error("Target path already exists");
     }
   }
   fs.mkdirSync(path.dirname(destination.absolutePath), { recursive: true });
-  fs.renameSync(source.absolutePath, destination.absolutePath);
+  moveEntry(source.absolutePath, destination.absolutePath, true);
   const trashEntryDir = path.dirname(source.absolutePath);
   try {
     fs.rmSync(trashEntryDir, { recursive: true, force: true });
@@ -2019,6 +2055,16 @@ function removeEntry(targetPath: string): void {
     return;
   }
   fs.rmSync(targetPath, { force: false });
+}
+
+function isPathInsideGlobalRecycleBin(config: TracevaneServerConfig, absolutePath: string): boolean {
+  const trashDir = recycleBinDir(config);
+  if (!fs.existsSync(trashDir)) return false;
+  try {
+    return isWithinRoot(realPathOf(trashDir), realPathOf(absolutePath));
+  } catch {
+    return false;
+  }
 }
 
 function moveEntry(sourcePath: string, targetPath: string, overwrite = false): void {
@@ -3148,11 +3194,11 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         const target = resolveExistingPath(config, payload.rootId, entryPath, {
           allowRoot: false,
         });
-        if (permanent || target.relativePath === RECYCLE_BIN_DIR_NAME || target.relativePath.startsWith(`${RECYCLE_BIN_DIR_NAME}/`)) {
+        if (permanent || isPathInsideGlobalRecycleBin(config, target.absolutePath)) {
           removeEntry(target.absolutePath);
           affectedPaths.push(target.relativePath);
         } else {
-          affectedPaths.push(target.relativePath, moveEntryToRecycleBin(target));
+          affectedPaths.push(target.relativePath, moveEntryToRecycleBin(config, target));
         }
       }
       return {
@@ -3170,8 +3216,8 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
       return {
         checkedAt: new Date().toISOString(),
         rootId: root.id,
-        trashDirectoryPath: RECYCLE_BIN_DIR_NAME,
-        items: listTrashItems(root),
+        trashDirectoryPath: GLOBAL_RECYCLE_BIN_RELATIVE_PATH,
+        items: listTrashItems(config),
       };
     },
 
@@ -3180,15 +3226,15 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
     },
 
     purgeTrash(payload: FilesTrashPurgePayload): FilesMutationResponse {
-      const root = resolveRoot(config, payload.rootId);
+      resolveRoot(config, payload.rootId);
       const requested = Array.isArray(payload.trashPaths) ? payload.trashPaths.map((entry) => normalizeRelativePath(entry)).filter(Boolean) : [];
-      const trashPaths = requested.length ? requested : listTrashItems(root).map((item) => item.trashPath);
+      const trashPaths = requested.length ? requested : listTrashItems(config).map((item) => item.trashPath);
       if (!trashPaths.length) {
         return { success: true, action: "purge-trash", message: "Recycle bin is already empty", affectedPaths: [] };
       }
       const affectedPaths: string[] = [];
       for (const trashPath of trashPaths) {
-        const target = resolveTrashItem(config, root.id, trashPath);
+        const target = resolveTrashItem(config, trashPath);
         const trashEntryDir = path.dirname(target.absolutePath);
         fs.rmSync(trashEntryDir, { recursive: true, force: true });
         affectedPaths.push(target.relativePath);

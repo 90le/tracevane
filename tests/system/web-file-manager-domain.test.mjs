@@ -677,7 +677,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.doesNotMatch(page, /function FileManagerActionDialog/);
   assert.match(actionDialog, /export function FileManagerActionDialog/);
   assert.match(actionDialog, /deletePermanently/);
-  assert.match(actionDialog, /\.tracevane-trash/);
+  assert.match(actionDialog, /\.openclaw\/\.tracevane\/trash/);
   assert.match(actionDialog, /永久删除/);
   assert.match(actionDialog, /permanent: deletePermanently/);
   assert.match(actionDialog, /dryRunFileTransfer/);
@@ -716,7 +716,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   );
   assert.match(actionsMenu, /label="属性"/);
   assert.match(actionsMenu, /移入回收站/);
-  assert.match(actionsMenu, /\.tracevane-trash/);
+  assert.match(actionsMenu, /\.openclaw\/\.tracevane\/trash/);
   assert.match(propertiesDialog, /export function FilePropertiesDialog/);
   assert.match(propertiesDialog, /基本信息/);
   assert.match(propertiesDialog, /复制相对路径/);

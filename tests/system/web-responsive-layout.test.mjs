@@ -12,6 +12,11 @@ test("application shell gives phones a compact main stage instead of desktop pad
 
   assert.match(shell, /<Sheet open=\{mobileNavOpen\}/);
   assert.match(shell, /SheetContent side="left"/);
+  assert.match(shell, /md:grid-cols-\[64px_minmax\(0,1fr\)\]/);
+  assert.match(shell, /xl:grid-cols-\[var\(--sidebar\)_minmax\(0,1fr\)\]/);
+  assert.match(shell, /hidden md:grid xl:hidden/);
+  assert.match(shell, /hidden xl:grid/);
+  assert.match(shell, /TopbarActions/);
   assert.match(shell, /p-3 sm:p-5/);
   assert.doesNotMatch(shell, /overflow-x-auto/);
 });
@@ -78,4 +83,26 @@ test("overview surfaces use metric rails and route tables instead of card walls"
   assert.match(cliShared, /flex min-w-0 flex-wrap items-center/);
   assert.match(cliShared, /basis-\[128px\] border-b border-line px-3 py-2\.5/);
   assert.doesNotMatch(cliShared, /grid gap-1 rounded-md border border-line bg-panel-2 p-3/);
+});
+
+test("file manager fills the routed viewport instead of using hard-coded list heights", () => {
+  const page = read("apps/web/src/features/file-manager/FileManagerPage.tsx");
+  const list = read("apps/web/src/features/file-manager/FileManagerList.tsx");
+  const chrome = read("apps/web/src/features/file-manager/FileManagerChrome.tsx");
+  const shell = read("apps/web/src/app/AppShell.tsx");
+
+  assert.match(shell, /"h-full min-h-0 min-w-0 overflow-auto"/);
+  assert.match(page, /data-file-manager-shell="true"/);
+  assert.match(page, /relative flex h-full min-h-0 min-w-0 flex-col outline-none/);
+  assert.match(page, /grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)\]/);
+  assert.match(page, /flex min-h-0 min-w-0 flex-1 flex-col gap-3/);
+  assert.match(page, /data-file-manager-secondary-dock/);
+  assert.match(page, /className="grid min-w-0 gap-2"/);
+  assert.match(page, /xl:grid-cols-\[minmax\(0,1fr\)_280px\]/);
+  assert.doesNotMatch(page, /xl:fixed xl:bottom-4 xl:right-4/);
+  assert.match(list, /data-file-manager-list/);
+  assert.match(list, /relative grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(list, /className="min-h-0 overflow-y-auto overflow-x-hidden"/);
+  assert.doesNotMatch(list, /max-h-\[calc\(100vh-470px\)\]/);
+  assert.doesNotMatch(list, /min-h-\[360px\]/);
 });

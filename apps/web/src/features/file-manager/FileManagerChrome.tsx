@@ -516,15 +516,26 @@ export function FileManagerNavigationBar({
                     )}
                   </React.Fragment>
                 ))}
+                <input
+                  readOnly
+                  value={displayPath}
+                  onFocus={enterPathEditMode}
+                  onClick={enterPathEditMode}
+                  className="ml-1 min-w-[220px] flex-1 rounded-md bg-transparent px-1.5 py-1 font-mono text-2xs text-subtle outline-none hover:bg-panel-2 hover:text-primary sm:hidden"
+                  title="点击输入路径，或按 Ctrl/⌘+L"
+                  aria-label="编辑文件夹路径，按 Enter 跳转"
+                  data-file-manager-path-input
+                  data-file-manager-mobile-path-input-proxy
+                />
                 <button
                   type="button"
                   onClick={enterPathEditMode}
-                  className="ml-1 min-w-[32px] flex-1 rounded-md px-1.5 py-1 text-left font-mono text-2xs text-subtle hover:bg-panel-2 hover:text-primary"
+                  className="ml-1 hidden min-w-[32px] flex-1 rounded-md px-1.5 py-1 text-left font-mono text-2xs text-subtle hover:bg-panel-2 hover:text-primary sm:inline-flex"
                   title="点击输入路径，或按 Ctrl/⌘+L"
                   aria-label="输入路径跳转"
                   data-file-manager-path-enter-edit
                 >
-                  <span className="hidden sm:inline">输入路径</span>
+                  输入路径
                 </button>
               </div>
             )}

@@ -207,3 +207,27 @@ npm run typecheck:web -- --pretty false
 ```bash
 node --test tests/system/workspace-evidence-basket.test.mjs
 ```
+
+### 2026-06-29 / Phase D 小步：AI Context 转 Evidence 桥接契约
+
+研究补充：VS Code UX Guidelines 将 Activity Bar、Sidebar、Editor、Panel、Status Bar 解释为可组合容器与工作对象，说明顶级工作区的 AI 上下文不应停留在单按钮状态；Accessibility 文档强调键盘导航、读屏和状态可达，要求证据对象后续能被统一面板/快捷操作访问；OpenAI Canvas 强调写作与代码项目中的上下文理解、用户控制、inline feedback 和可追踪代码变更。因此本阶段把 `AI Context Basket` 与 `Evidence Basket` 通过共享桥接模块连起来：上下文可以被提升为可审查 evidence，但仍不自动执行代码或覆盖用户文档。
+
+来源：
+
+- https://code.visualstudio.com/api/ux-guidelines/overview
+- https://code.visualstudio.com/docs/configure/accessibility/accessibility
+- https://openai.com/index/introducing-canvas/
+
+完成范围：
+
+- 新增 `WorkspaceContextEvidenceBridge.ts`，把 `WorkspaceAiContextBasketItem` 转换为 `WorkspaceEvidenceInput`。
+- 使用稳定去重 id `ai-context:${contextId}`，确保同一上下文反复加入 evidence 时更新而不是无限复制。
+- refs 保留 path、mode、editable、textLike、stats、context 和 addedAt，为后续审查面板、Agent handoff、导出 bundle 提供证据链。
+- 提供单项与批量 append API，暂不修改多人协作中的 Workbench UI 文件。
+
+验证：
+
+```bash
+node --test tests/system/workspace-context-evidence-bridge.test.mjs tests/system/workspace-ai-context-basket.test.mjs tests/system/workspace-evidence-basket.test.mjs
+npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --skipLibCheck --allowSyntheticDefaultImports apps/web/src/features/workspace/shared/WorkspaceContextEvidenceBridge.ts
+```

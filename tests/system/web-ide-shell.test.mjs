@@ -22,9 +22,10 @@ test("/workspace renders the Dockview/Monaco WorkspaceWorkbench", () => {
   const router = read("app/router.tsx");
   const page = read("features/workspace/WorkspacePage.tsx");
   assert.match(router, /path=["']\/workspace["']/);
-  assert.match(router, /import \{ WorkspacePage \} from/);
-  assert.match(router, /LazyPage><WorkspacePage/);
-  assert.doesNotMatch(router, /const WorkspacePage = React\.lazy/);
+  assert.match(router, /const WorkspacePage = React\.lazy/);
+  assert.match(router, /import\("@\/features\/workspace\/WorkspacePage"\)/);
+  assert.match(router, /<LazyPage>[\s\S]*<WorkspacePage \/>[\s\S]*<\/LazyPage>/);
+  assert.doesNotMatch(router, /import \{ WorkspacePage \} from/);
   assert.doesNotMatch(router, /path=["']\/ide["']/);
   assert.doesNotMatch(router, /path=["']\/files["']/);
   assert.match(page, /WorkspaceWorkbench/);
@@ -129,6 +130,7 @@ test("WorkspaceWorkbench imports Dockview and wires core panels", () => {
   assert.match(workbench, /tracevane\.workspace\.panel-sizes\.v1/);
   assert.match(workbench, /DEFAULT_SIDE_PANEL_WIDTH/);
   assert.match(workbench, /MIN_SIDE_PANEL_WIDTH/);
+  assert.match(workbench, /SIDE_PANEL_DRAG_UPDATE_THRESHOLD = 1/);
   assert.doesNotMatch(workbench, /MAX_SIDE_PANEL_WIDTH/);
   assert.match(workbench, /DEFAULT_MOBILE_PANEL_HEIGHT/);
   assert.match(workbench, /loadWorkspacePanelSizes/);
@@ -168,6 +170,11 @@ test("WorkspaceWorkbench imports Dockview and wires core panels", () => {
   assert.match(workbench, /data-workspace-project-navigation-trigger/);
   assert.match(workbench, /data-workspace-project-navigation-menu/);
   assert.match(workbench, /data-workspace-project-navigation-dismissable/);
+  assert.match(workbench, /data-workspace-project-navigation-mobile-sheet/);
+  assert.match(workbench, /data-workspace-project-navigation-close/);
+  assert.match(workbench, /data-workspace-project-navigation-scrollport/);
+  assert.match(workbench, /bottom-\[calc\(var\(--workspace-mobile-nav-height,0px\)\+0\.75rem\)\]/);
+  assert.match(workbench, /sm:absolute sm:bottom-auto sm:left-2 sm:top-9/);
   assert.match(
     workbench,
     /window\.addEventListener\("pointerdown", onPointerDown\)/,
@@ -246,7 +253,15 @@ test("WorkspaceWorkbench imports Dockview and wires core panels", () => {
     /label=\{!sideOpen && !terminalOpen \? "命令" : "编辑"\}/,
   );
   assert.match(workbench, /titleOverride=/);
+  assert.match(workbench, /dataAttr="explorer"/);
+  assert.match(workbench, /dataAttr="search"/);
+  assert.match(workbench, /dataAttr="git"/);
   assert.match(workbench, /dataAttr="editor-command-or-focus"/);
+  assert.match(workbench, /dataAttr="terminal"/);
+  assert.match(workbench, /收起资源管理器，长按打开操作菜单/);
+  assert.match(workbench, /打开资源管理器，长按打开操作菜单/);
+  assert.match(workbench, /收起 Git 面板，长按打开操作菜单/);
+  assert.match(workbench, /titleOverride=\{terminalOpen \? "收起终端" : "打开终端"\}/);
   assert.match(workbench, /data-workspace-mobile-nav-button=\{dataAttr\}/);
   assert.match(workbench, /data-workspace-dock-quick-button=\{dataAttr\}/);
   assert.match(workbench, /WORKSPACE_DOCK_CONTROLS_COLLAPSED_STORAGE_KEY/);
@@ -285,10 +300,18 @@ test("WorkspaceWorkbench imports Dockview and wires core panels", () => {
   assert.match(workbench, /snapMobilePanelHeight/);
   assert.match(workbench, /touch-none/);
   assert.match(workbench, /WorkbenchSidePanelResizeHandle/);
+  assert.match(workbench, /commitPendingWidth/);
+  assert.match(workbench, /lastCommittedWidth/);
+  assert.match(workbench, /pendingWidth = startWidth \+ moveEvent\.clientX - startX/);
+  assert.match(workbench, /window\.requestAnimationFrame\(commitPendingWidth\)/);
+  assert.match(workbench, /window\.cancelAnimationFrame\(frame\)/);
   assert.match(
     workbench,
-    /onResize\(startWidth \+ moveEvent\.clientX - startX\)/,
+    /window\.addEventListener\("pointercancel", stop, \{ once: true \}\)/,
   );
+  assert.match(workbench, /document\.body\.style\.touchAction = "none"/);
+  assert.match(workbench, /data-workspace-side-panel-resize-mode="raf-no-max"/);
+  assert.match(workbench, /data-workspace-side-panel-width=\{width\}/);
   assert.match(
     workbench,
     /sidePanelWidth: Math\.max\(width, MIN_SIDE_PANEL_WIDTH\)/,
@@ -601,7 +624,7 @@ test("Workspace side explorer exposes file-management toolbar capabilities", () 
   const fileActionsMenu = read("features/workspace/files/FileActionsMenu.tsx");
   assert.match(fileActionsMenu, /label="属性"/);
   assert.match(fileActionsMenu, /移入回收站/);
-  assert.match(fileActionsMenu, /\.tracevane-trash/);
+  assert.match(fileActionsMenu, /.openclaw\/.tracevane\/trash/);
   assert.match(
     fileActionsMenu,
     /onPropertiesRequest\?: \(target: FileActionsMenuTarget\) => void/,
@@ -2179,6 +2202,11 @@ test("Workspace explorer supports address-bar cwd, path copy, terminal drop, and
   );
   assert.match(workbench, /document\.exitFullscreen\(\)\.catch/);
   assert.match(workbench, /onToggleTerminal=\{toggleMobileTerminalPanel\}/);
+  assert.match(workbench, /onShowSide=\{showSidePanel\}/);
+  assert.match(workbench, /const showSidePanel = React\.useCallback/);
+  assert.match(workbench, /onShowSide\(panel\)/);
+  assert.match(workbench, /\[closeActionMenu, onShowSide\]/);
+  assert.match(workbench, /\[closeActionMenu, onSetMobilePanelHeight, onShowSide\]/);
   assert.match(workbench, /terminalOpen=\{terminalDockOpen\}/);
   assert.match(workbench, /label=\{terminalOpen \? "收起" : "终端"\}/);
   assert.match(workbench, /active=\{terminalOpen\}/);

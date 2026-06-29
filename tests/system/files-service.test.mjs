@@ -615,21 +615,36 @@ test("files service supports search, read, write, create, rename, copy, move, de
   });
   assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "archive")), false);
   assert.match(deleteResult.message, /Moved 1 item\(s\) to recycle bin/);
-  assert.equal(fs.existsSync(path.join(config.projectRoot, ".tracevane-trash")), true);
-  assert.equal(deleteResult.affectedPaths.some((entryPath) => entryPath.startsWith(".tracevane-trash/")), true);
-  const trashMetadataPath = fs.readdirSync(path.join(config.projectRoot, ".tracevane-trash"))
-    .map((entry) => path.join(config.projectRoot, ".tracevane-trash", entry, "metadata.json"))
+  const globalTrashDir = path.join(config.openclawRoot, ".tracevane", "trash");
+  assert.equal(fs.existsSync(globalTrashDir), true);
+  assert.equal(fs.existsSync(path.join(config.projectRoot, ".tracevane-trash")), false);
+  assert.equal(fs.existsSync(path.join(globalTrashDir, deleteResult.affectedPaths[1])), true);
+  assert.equal(deleteResult.affectedPaths.some((entryPath) => entryPath.includes("project-root-archive")), true);
+  const trashMetadataPath = fs.readdirSync(globalTrashDir)
+    .map((entry) => path.join(globalTrashDir, entry, "metadata.json"))
     .find((entryPath) => fs.existsSync(entryPath));
   assert.ok(trashMetadataPath);
   const trashMetadata = JSON.parse(fs.readFileSync(trashMetadataPath, "utf8"));
+  assert.equal(trashMetadata.rootId, "project-root");
   assert.equal(trashMetadata.originalPath, "docs/archive");
   const trash = service.listTrash("project-root");
-  assert.equal(trash.trashDirectoryPath, ".tracevane-trash");
-  assert.equal(trash.items.some((item) => item.originalPath === "docs/archive" && item.trashPath.startsWith(".tracevane-trash/")), true);
+  assert.equal(trash.trashDirectoryPath, ".tracevane/trash");
+  assert.equal(trash.items.some((item) => item.originalPath === "docs/archive" && item.rootId === "project-root"), true);
   const restored = service.restoreTrash({ rootId: "project-root", trashPath: trash.items[0].trashPath, conflictPolicy: "rename" });
   assert.equal(restored.action, "restore-trash");
   assert.equal(fs.existsSync(path.join(config.projectRoot, "docs", "archive")), true);
   assert.equal(service.listTrash("project-root").items.some((item) => item.originalPath === "docs/archive"), false);
+
+  service.createFile({ rootId: "openclaw-root", directoryPath: "workspace", name: "global-trash-note.txt", content: "shared trash\n" });
+  service.deletePaths({ rootId: "openclaw-root", paths: ["workspace/global-trash-note.txt"] });
+  const globalTrashFromProjectView = service.listTrash("project-root");
+  assert.equal(globalTrashFromProjectView.items.some((item) => item.rootId === "openclaw-root" && item.originalPath === "workspace/global-trash-note.txt"), true);
+  const openclawTrashItem = globalTrashFromProjectView.items.find((item) => item.rootId === "openclaw-root" && item.originalPath === "workspace/global-trash-note.txt");
+  assert.ok(openclawTrashItem);
+  const rebuiltOpenclawIndex = service.rebuildContentIndex("openclaw-root");
+  assert.equal(rebuiltOpenclawIndex.recordsPreview.some((record) => record.path.startsWith(".tracevane/trash/")), false);
+  service.restoreTrash({ rootId: "project-root", trashPath: openclawTrashItem.trashPath, conflictPolicy: "rename" });
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, "workspace", "global-trash-note.txt")), true);
 
   service.createDirectory({ rootId: "project-root", directoryPath: "docs", name: "purge-me" });
   service.deletePaths({ rootId: "project-root", paths: ["docs/purge-me"] });
