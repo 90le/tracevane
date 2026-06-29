@@ -13,6 +13,7 @@ import type { OpenClawRecoveryService } from "../modules/openclaw-recovery/servi
 import type { SkillsService } from "../modules/skills/service.js";
 import type { SystemService } from "../modules/system/service.js";
 import type { TerminalService } from "../modules/terminal/service.js";
+import type { WorkspaceIdeProviderService } from "../modules/workspace-ide/service.js";
 
 export interface TracevaneServices {
   agents: AgentsService;
@@ -28,6 +29,7 @@ export interface TracevaneServices {
   skills: SkillsService;
   system: SystemService;
   terminal: TerminalService;
+  workspaceIde: WorkspaceIdeProviderService;
 }
 
 export interface TracevaneApiContext {

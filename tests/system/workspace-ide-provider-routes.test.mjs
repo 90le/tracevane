@@ -117,3 +117,28 @@ test("workspace IDE provider routes reject provider mismatch and stop sessions",
   assert.equal(stoppedResponse.json().session.status, "stopped");
   assert.deepEqual(stopped, [id]);
 });
+
+test("main Tracevane router registers workspace IDE provider routes", async () => {
+  const { createTracevaneRouter } = await import("../../dist/apps/api/server.js");
+  const config = parseWorkspaceIdeProviderConfig({ kind: "openvscode-server" });
+  const registry = new WorkspaceIdeProviderSessionRegistry(39700);
+  const controller = new WorkspaceIdeProviderLifecycleController(registry, {
+    start() {
+      return { stop() {} };
+    },
+  });
+  const ctx = createContext();
+  ctx.services = {
+    workspaceIde: { config, controller },
+  };
+  const router = createTracevaneRouter(ctx);
+  const res = createResponse();
+  const handled = await router.handle(
+    createJsonRequest("GET", "/api/workspace/ide-providers"),
+    res,
+    ctx,
+  );
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().defaultKind, "openvscode-server");
+});
