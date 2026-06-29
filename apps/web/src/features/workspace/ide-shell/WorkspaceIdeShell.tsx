@@ -1966,6 +1966,15 @@ export function WorkspaceIdeShell() {
     }));
   }
 
+  function resizeDockSplitGroup(placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") {
+    const signedStep = direction === "grow" ? 5 : -5;
+    const roleStep = role === "primary" ? signedStep : -signedStep;
+    setDockSplitRatios((current) => ({
+      ...current,
+      [placement]: clamp(current[placement] + roleStep, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max),
+    }));
+  }
+
   function openDockPlacement(placement: PanePlacement) {
     if (placement === "top") {
       setTopOpen(true);
@@ -2377,6 +2386,7 @@ export function WorkspaceIdeShell() {
                   onToggleMaximized={toggleMaximizedPane}
                   onCloseDock={closeDockPlacement}
                   onResetSplitRatio={resetDockSplitRatio}
+                  onResizeSplitGroup={resizeDockSplitGroup}
                   onMovePaneToGroup={movePaneToPlacement}
                   onSwapGroups={swapDockSplitPanes}
                   onMergeGroups={mergeDockSplitGroups}
@@ -2512,6 +2522,7 @@ export function WorkspaceIdeShell() {
                 onToggleMaximized={toggleMaximizedPane}
                 onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
+                onResizeSplitGroup={resizeDockSplitGroup}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
@@ -2702,6 +2713,7 @@ export function WorkspaceIdeShell() {
                 onToggleMaximized={toggleMaximizedPane}
                 onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
+                onResizeSplitGroup={resizeDockSplitGroup}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
@@ -2798,6 +2810,7 @@ export function WorkspaceIdeShell() {
               onToggleMaximized={toggleMaximizedPane}
               onCloseDock={closeDockPlacement}
               onResetSplitRatio={resetDockSplitRatio}
+              onResizeSplitGroup={resizeDockSplitGroup}
               onMovePaneToGroup={movePaneToPlacement}
               onSwapGroups={swapDockSplitPanes}
               onMergeGroups={mergeDockSplitGroups}
@@ -3299,6 +3312,7 @@ function DockPaneFrame({
   onToggleMaximized,
   onCloseDock,
   onResetSplitRatio,
+  onResizeSplitGroup,
   onMovePaneToGroup,
   onSwapGroups,
   onMergeGroups,
@@ -3330,6 +3344,7 @@ function DockPaneFrame({
   onToggleMaximized: (pane: NonNullable<MaximizedPane>) => void;
   onCloseDock: (placement: PanePlacement) => void;
   onResetSplitRatio: (placement: PanePlacement) => void;
+  onResizeSplitGroup: (placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapGroups: (placement: PanePlacement) => void;
   onMergeGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
@@ -3402,6 +3417,32 @@ function DockPaneFrame({
             }}
           >
             ⇄
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            disabled={!shouldSplit}
+            aria-label={`放大${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格组`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onResizeSplitGroup(placement, role, "grow");
+            }}
+          >
+            大
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            disabled={!shouldSplit}
+            aria-label={`缩小${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格组`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onResizeSplitGroup(placement, role, "shrink");
+            }}
+          >
+            小
           </button>
           <button
             type="button"

@@ -551,6 +551,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /secondary: mergedPane === secondaryPane \? primaryPane : secondaryPane/);
   assert.match(shellSource, /focusDockPane\(placement, "primary", mergedPane\)/);
   assert.match(shellSource, /function resetDockSplitRatio/);
+  assert.match(shellSource, /function resizeDockSplitGroup\(placement: PanePlacement, role: DockPaneRole, direction: "grow" \| "shrink"\)/);
+  assert.match(shellSource, /const signedStep = direction === "grow" \? 5 : -5/);
+  assert.match(shellSource, /const roleStep = role === "primary" \? signedStep : -signedStep/);
+  assert.match(shellSource, /\[placement\]: clamp\(current\[placement\] \+ roleStep, SPLIT_RATIO_LIMITS\.min, SPLIT_RATIO_LIMITS\.max\)/);
   assert.match(shellSource, /function openDockPlacement/);
   assert.match(shellSource, /function closeDockPlacement/);
   assert.match(shellSource, /setActiveDockFocus\(\(current\) => \(current\?\.placement === placement \? null : current\)\)/);
@@ -653,6 +657,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onToggleMaximized: \(pane: NonNullable<MaximizedPane>\) => void/);
   assert.match(shellSource, /onCloseDock: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onResetSplitRatio: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /onResizeSplitGroup: \(placement: PanePlacement, role: DockPaneRole, direction: "grow" \| "shrink"\) => void/);
   assert.match(shellSource, /onMovePaneToGroup: \(paneId: PaneId, placement: PanePlacement, beforePaneId\?: PaneId, role\?: DockPaneRole\) => void/);
   assert.match(shellSource, /onSwapGroups: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onMergeGroups: \(placement: PanePlacement, preferredRole\?: DockPaneRole\) => void/);
@@ -667,6 +672,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onToggleMaximized=\{toggleMaximizedPane\}/);
   assert.match(shellSource, /onCloseDock=\{closeDockPlacement\}/);
   assert.match(shellSource, /onResetSplitRatio=\{resetDockSplitRatio\}/);
+  assert.match(shellSource, /onResizeSplitGroup=\{resizeDockSplitGroup\}/);
   assert.match(shellSource, /onMovePaneToGroup=\{movePaneToPlacement\}/);
   assert.match(shellSource, /onSwapGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeGroups=\{mergeDockSplitGroups\}/);
@@ -764,6 +770,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /aria-label=\{`聚焦\$\{placementLabel\(placement\)\} Dock 另一个窗格组`\}/);
   assert.match(shellSource, /onFocusOtherGroup\(placement, role\)/);
   assert.match(shellSource, /const oppositeRole = \(role: DockPaneRole\): DockPaneRole => \(role === "primary" \? "secondary" : "primary"\)/);
+  assert.match(shellSource, /aria-label=\{`放大\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "主" : "副"\}窗格组`\}/);
+  assert.match(shellSource, /onResizeSplitGroup\(placement, role, "grow"\)/);
+  assert.match(shellSource, /aria-label=\{`缩小\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "主" : "副"\}窗格组`\}/);
+  assert.match(shellSource, /onResizeSplitGroup\(placement, role, "shrink"\)/);
   assert.match(shellSource, /aria-label=\{`重置\$\{placementLabel\(placement\)\} Dock 拆分比例`\}/);
   assert.match(shellSource, /onResetSplitRatio\(placement\)/);
   assert.match(shellSource, /aria-label=\{`移动 \$\{paneLabel\(paneId\)\} 到\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "副" : "主"\}窗格组`\}/);
