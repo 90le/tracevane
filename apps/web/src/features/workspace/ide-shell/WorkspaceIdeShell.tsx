@@ -1296,6 +1296,9 @@ export function WorkspaceIdeShell() {
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setDockPaneSelections(DEFAULT_DOCK_PANE_SELECTIONS);
     setHiddenPanes([]);
+    setActiveDockFocus(null);
+    setMaximizedPane(null);
+    setMobilePanel("editor");
     setActivity("explorer");
     setTopPanel("output");
     setRightPanel("ai");

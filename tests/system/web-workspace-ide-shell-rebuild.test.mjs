@@ -383,6 +383,11 @@ test("new Workspace IDE shell treats empty docks as explicit layout states", () 
   assert.match(shellSource, /data-ide-empty-dock=\{placement\}/);
   assert.match(shellSource, /function resetPanePlacements/);
   assert.match(shellSource, /setPanePlacements\(DEFAULT_PANE_PLACEMENTS\)/);
+  assert.match(shellSource, /setDockPaneSelections\(DEFAULT_DOCK_PANE_SELECTIONS\)/);
+  assert.match(shellSource, /setHiddenPanes\(\[\]\)/);
+  assert.match(shellSource, /setActiveDockFocus\(null\)/);
+  assert.match(shellSource, /setMaximizedPane\(null\)/);
+  assert.match(shellSource, /setMobilePanel\("editor"\)/);
   assert.match(shellSource, /ide\.pane\.reset-placements/);
   assert.match(shellSource, /activeLeftPane = dockPaneSelection\(leftPaneIds, dockPaneSelections\.left\.primary, activity\)/);
   assert.match(shellSource, /activeRightPane = dockPaneSelection\(rightPaneIds, dockPaneSelections\.right\.primary, rightPanel\)/);
