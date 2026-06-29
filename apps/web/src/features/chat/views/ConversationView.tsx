@@ -653,13 +653,17 @@ function selectPrimaryToolIndexes(tools: ToolCardLike[]): Set<number> {
   return visible;
 }
 
+function shouldCollapseToolByDefault(tool: ToolCardLike): boolean {
+  return tool.status !== "running" && !tool.isError && tool.status !== "error";
+}
+
 function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
   if (tools.length === 0) return null;
   if (tools.length <= 2) {
     return (
       <>
         {tools.map((tool) => (
-          <ToolCallBlock key={tool.toolCallId} tool={tool} />
+          <ToolCallBlock key={tool.toolCallId} tool={tool} collapsed={shouldCollapseToolByDefault(tool)} />
         ))}
       </>
     );
@@ -682,7 +686,7 @@ function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
       </div>
 
       {primaryTools.map((tool) => (
-        <ToolCallBlock key={tool.toolCallId} tool={tool} />
+        <ToolCallBlock key={tool.toolCallId} tool={tool} collapsed={shouldCollapseToolByDefault(tool)} />
       ))}
 
       {secondaryTools.length > 0 && (
@@ -694,7 +698,7 @@ function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
           </summary>
           <div className="grid min-w-0 gap-2 border-t border-line p-2">
             {secondaryTools.map((tool) => (
-              <ToolCallBlock key={tool.toolCallId} tool={tool} />
+              <ToolCallBlock key={tool.toolCallId} tool={tool} collapsed />
             ))}
           </div>
         </details>
@@ -980,6 +984,38 @@ function ProcessBlockView({ block }: { block: ChatProcessBlock }) {
   );
 }
 
+function ProcessBlockGroup({ blocks }: { blocks: ChatProcessBlock[] }) {
+  if (blocks.length === 0) return null;
+  if (blocks.length === 1) return <ProcessBlockView block={blocks[0]} />;
+  const latest = blocks[blocks.length - 1];
+  const earlier = blocks.slice(0, -1);
+  const totalChars = blocks.reduce((total, block) => total + block.text.length, 0);
+
+  return (
+    <section className="grid min-w-0 gap-1.5 rounded-md border border-dashed border-line bg-panel-2/70 p-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 px-1 text-xs text-subtle">
+        <span className="font-semibold text-ink-strong">过程流</span>
+        <span className="min-w-0 flex-1 truncate">{blocks.length} 段 · {totalChars} 字 · 最新段已展开</span>
+      </div>
+      <ProcessBlockView block={latest} />
+      {earlier.length > 0 && (
+        <details className="group min-w-0 rounded-sm border border-line/80 bg-panel/75">
+          <summary className="flex min-w-0 cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-subtle marker:hidden">
+            <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+            <span>查看较早过程</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-normal">已折叠 {earlier.length} 段 reasoning / process，保留主线阅读。</span>
+          </summary>
+          <div className="grid min-w-0 gap-1.5 border-t border-line p-2">
+            {earlier.map((block) => (
+              <ProcessBlockView key={block.id} block={block} />
+            ))}
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
 function MessageBubble({
   message,
   onPreviewResource,
@@ -1004,9 +1040,7 @@ function MessageBubble({
 
       {processBlocks.length > 0 && (
         <div className="grid w-full max-w-[min(82ch,100%)] min-w-0 gap-1">
-          {processBlocks.map((block) => (
-            <ProcessBlockView key={block.id} block={block} />
-          ))}
+          <ProcessBlockGroup blocks={processBlocks} />
         </div>
       )}
 

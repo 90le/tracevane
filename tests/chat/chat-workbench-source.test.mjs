@@ -144,3 +144,16 @@ test('ChatWorkbenchPage accumulates native assistant deltas instead of replacing
   assert.match(source, /mergeAgentProgressText\(base\.text, incoming\)/);
   assert.match(source, /upsertAgentProgressAssistant\(base\.timeline, nextText\)/);
 });
+
+
+test('ConversationView collapses completed tools and aggregates process blocks for readable streams', () => {
+  const conversationSource = fs.readFileSync(path.join(process.cwd(), 'apps/web/src/features/chat/views/ConversationView.tsx'), 'utf8');
+  assert.match(conversationSource, /function shouldCollapseToolByDefault/);
+  assert.match(conversationSource, /collapsed=\{shouldCollapseToolByDefault\(tool\)\}/);
+  assert.match(conversationSource, /<ToolCallBlock key=\{tool\.toolCallId\} tool=\{tool\} collapsed \/>/);
+  assert.match(conversationSource, /function ProcessBlockGroup/);
+  assert.match(conversationSource, /过程流/);
+  assert.match(conversationSource, /const latest = blocks\[blocks\.length - 1\]/);
+  assert.match(conversationSource, /查看较早过程/);
+  assert.match(conversationSource, /<ProcessBlockGroup blocks=\{processBlocks\} \/>/);
+});
