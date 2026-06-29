@@ -3694,6 +3694,7 @@ function DockPaneFrame({
             value={splitRatio}
             onPointerDown={(event) => onStartSplitResize(placement, splitMode, event)}
             onKeyDown={(event) => onResizeSplitFromKeyboard(placement, splitMode, event)}
+            onDoubleClick={() => onResetSplitRatio(placement)}
           />
           {render(secondaryPane, "secondary")}
         </>
@@ -3752,12 +3753,14 @@ function DockSplitHandle({
   value,
   onPointerDown,
   onKeyDown,
+  onDoubleClick,
 }: {
   placement: PanePlacement;
   mode: DockSplitMode;
   value: number;
   onPointerDown: (event: React.PointerEvent) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
+  onDoubleClick: () => void;
 }) {
   return (
     <div
@@ -3773,6 +3776,7 @@ function DockSplitHandle({
       data-ide-dock-split-handle-placement={placement}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
+      onDoubleClick={onDoubleClick}
     />
   );
 }

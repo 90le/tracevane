@@ -775,6 +775,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /event\.dataTransfer\.dropEffect = "move"/);
   assert.match(shellSource, /onDrop=\{\(event\) => onDropPaneOnGroup\(placement, role, event\)\}/);
   assert.match(shellSource, /data-ide-dock-split-handle=\{mode\}/);
+  assert.match(shellSource, /onDoubleClick=\{\(\) => onResetSplitRatio\(placement\)\}/);
+  assert.match(shellSource, /onDoubleClick: \(\) => void/);
+  assert.match(shellSource, /onDoubleClick=\{onDoubleClick\}/);
   assert.match(shellSource, /--ide-dock-primary-size/);
   assert.match(shellSource, /aria-valuenow=\{Math\.round\(value\)\}/);
   assert.match(shellSource, /function secondaryDockPane/);
