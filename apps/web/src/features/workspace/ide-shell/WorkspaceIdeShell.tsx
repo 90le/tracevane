@@ -2397,6 +2397,8 @@ export function WorkspaceIdeShell() {
                   onDragPaneOverEdge={dragPaneOverDockEdge}
                   onLeavePaneEdge={leavePaneDockEdge}
                   onDropPaneOnEdge={dropPaneOnDockEdge}
+                  onBeginDrag={beginPaneDrag}
+                  onEndDrag={clearPaneDragState}
                   renderPane={(paneId, role) => (
                     <LeftPane
                       activity={paneId}
@@ -2556,6 +2558,8 @@ export function WorkspaceIdeShell() {
                 onDragPaneOverEdge={dragPaneOverDockEdge}
                 onLeavePaneEdge={leavePaneDockEdge}
                 onDropPaneOnEdge={dropPaneOnDockEdge}
+                onBeginDrag={beginPaneDrag}
+                onEndDrag={clearPaneDragState}
               />
               <ResizeHandle
                 pane="top"
@@ -2759,6 +2763,8 @@ export function WorkspaceIdeShell() {
                 onDragPaneOverEdge={dragPaneOverDockEdge}
                 onLeavePaneEdge={leavePaneDockEdge}
                 onDropPaneOnEdge={dropPaneOnDockEdge}
+                onBeginDrag={beginPaneDrag}
+                onEndDrag={clearPaneDragState}
               />
             </section>
           ) : null}
@@ -2868,6 +2874,8 @@ export function WorkspaceIdeShell() {
               onDragPaneOverEdge={dragPaneOverDockEdge}
               onLeavePaneEdge={leavePaneDockEdge}
               onDropPaneOnEdge={dropPaneOnDockEdge}
+              onBeginDrag={beginPaneDrag}
+              onEndDrag={clearPaneDragState}
               renderPane={(paneId) => (
                 <RightPane
                   panel={paneId}
@@ -3408,6 +3416,8 @@ function DockPaneFrame({
   onDragPaneOverEdge,
   onLeavePaneEdge,
   onDropPaneOnEdge,
+  onBeginDrag,
+  onEndDrag,
   renderPane,
 }: {
   placement: PanePlacement;
@@ -3440,6 +3450,8 @@ function DockPaneFrame({
   onDragPaneOverEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onLeavePaneEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
+  onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
+  onEndDrag: () => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} hiddenRestoreCount={hiddenRestoreCount} onRestoreHidden={onRestoreHidden} onRestore={onRestore} />;
@@ -3466,11 +3478,8 @@ function DockPaneFrame({
             event.stopPropagation();
             onFocusPane(placement, role, tabPaneId);
           }}
-          onDragStart={(event) => {
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("application/x-tracevane-pane", tabPaneId);
-            event.dataTransfer.setData("text/plain", paneLabel(tabPaneId));
-          }}
+          onDragStart={(event) => onBeginDrag(tabPaneId, event)}
+          onDragEnd={onEndDrag}
           onDragOver={(event) => {
             event.preventDefault();
             event.stopPropagation();

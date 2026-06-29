@@ -687,6 +687,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onDragPaneOverEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onLeavePaneEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onDropPaneOnEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
+  assert.match(shellSource, /onBeginDrag: \(paneId: PaneId, event: React\.DragEvent\) => void/);
+  assert.match(shellSource, /onEndDrag: \(\) => void/);
   assert.match(shellSource, /onHidePane=\{hidePane\}/);
   assert.match(shellSource, /isMaximized=\{maximizedPane === "left"\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
@@ -706,6 +708,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onDragPaneOverEdge=\{dragPaneOverDockEdge\}/);
   assert.match(shellSource, /onLeavePaneEdge=\{leavePaneDockEdge\}/);
   assert.match(shellSource, /onDropPaneOnEdge=\{dropPaneOnDockEdge\}/);
+  assert.match(shellSource, /onBeginDrag=\{beginPaneDrag\}/);
+  assert.match(shellSource, /onEndDrag=\{clearPaneDragState\}/);
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
@@ -737,7 +741,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /data-ide-dock-split-group-tab=\{tabPaneId\}/);
   assert.match(shellSource, /data-ide-dock-split-group-tab-role=\{role\}/);
   assert.match(shellSource, /onFocusPane\(placement, role, tabPaneId\)/);
-  assert.match(shellSource, /event\.dataTransfer\.setData\("application\/x-tracevane-pane", tabPaneId\)/);
+  assert.match(shellSource, /onDragStart=\{\(event\) => onBeginDrag\(tabPaneId, event\)\}/);
+  assert.match(shellSource, /onDragEnd=\{onEndDrag\}/);
+  assert.doesNotMatch(shellSource, /event\.dataTransfer\.setData\("application\/x-tracevane-pane", tabPaneId\)/);
   assert.match(shellSource, /if \(isPaneId\(droppedPaneId\)\) onMovePaneToGroup\(droppedPaneId, placement, tabPaneId, role\)/);
   assert.match(shellSource, /workspace-ide-shell__dock-split-group-tab-add/);
   assert.match(shellSource, /aria-label=\{`把 Pane 拖到\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "主" : "副"\}窗格组末尾`\}/);
