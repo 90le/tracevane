@@ -651,6 +651,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onHidePane: \(paneId: PaneId\) => void/);
   assert.match(shellSource, /onFocusOtherGroup: \(\) => void/);
   assert.match(shellSource, /onToggleMaximized: \(pane: NonNullable<MaximizedPane>\) => void/);
+  assert.match(shellSource, /onCloseDock: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onResetSplitRatio: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onMovePaneToGroup: \(paneId: PaneId, placement: PanePlacement, beforePaneId\?: PaneId, role\?: DockPaneRole\) => void/);
   assert.match(shellSource, /onSwapGroups: \(placement: PanePlacement\) => void/);
@@ -664,6 +665,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /isMaximized=\{maximizedPane === "left"\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
   assert.match(shellSource, /onToggleMaximized=\{toggleMaximizedPane\}/);
+  assert.match(shellSource, /onCloseDock=\{closeDockPlacement\}/);
   assert.match(shellSource, /onResetSplitRatio=\{resetDockSplitRatio\}/);
   assert.match(shellSource, /onMovePaneToGroup=\{movePaneToPlacement\}/);
   assert.match(shellSource, /onSwapGroups=\{swapDockSplitPanes\}/);
@@ -757,6 +759,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /const stopGroupAction = \(event: React\.SyntheticEvent\) => event\.stopPropagation\(\)/);
   assert.match(shellSource, /aria-label=\{isMaximized \? `恢复\$\{placementLabel\(placement\)\} Dock 组合布局` : `最大化\$\{placementLabel\(placement\)\} Dock`\}/);
   assert.match(shellSource, /onToggleMaximized\(placement\)/);
+  assert.match(shellSource, /aria-label=\{`收起\$\{placementLabel\(placement\)\} Dock`\}/);
+  assert.match(shellSource, /onCloseDock\(placement\)/);
   assert.match(shellSource, /aria-label=\{`聚焦\$\{placementLabel\(placement\)\} Dock 另一个窗格组`\}/);
   assert.match(shellSource, /onFocusOtherGroup\(\)/);
   assert.match(shellSource, /const oppositeRole = \(role: DockPaneRole\): DockPaneRole => \(role === "primary" \? "secondary" : "primary"\)/);

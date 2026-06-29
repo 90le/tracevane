@@ -2375,6 +2375,7 @@ export function WorkspaceIdeShell() {
                   isMaximized={maximizedPane === "left"}
                   onFocusOtherGroup={focusOppositeDockGroup}
                   onToggleMaximized={toggleMaximizedPane}
+                  onCloseDock={closeDockPlacement}
                   onResetSplitRatio={resetDockSplitRatio}
                   onMovePaneToGroup={movePaneToPlacement}
                   onSwapGroups={swapDockSplitPanes}
@@ -2509,6 +2510,7 @@ export function WorkspaceIdeShell() {
                 isMaximized={maximizedPane === "top"}
                 onFocusOtherGroup={focusOppositeDockGroup}
                 onToggleMaximized={toggleMaximizedPane}
+                onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
@@ -2698,6 +2700,7 @@ export function WorkspaceIdeShell() {
                 isMaximized={maximizedPane === "bottom"}
                 onFocusOtherGroup={focusOppositeDockGroup}
                 onToggleMaximized={toggleMaximizedPane}
+                onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
@@ -2793,6 +2796,7 @@ export function WorkspaceIdeShell() {
               isMaximized={maximizedPane === "right"}
               onFocusOtherGroup={focusOppositeDockGroup}
               onToggleMaximized={toggleMaximizedPane}
+              onCloseDock={closeDockPlacement}
               onResetSplitRatio={resetDockSplitRatio}
               onMovePaneToGroup={movePaneToPlacement}
               onSwapGroups={swapDockSplitPanes}
@@ -3293,6 +3297,7 @@ function DockPaneFrame({
   onHidePane,
   onFocusOtherGroup,
   onToggleMaximized,
+  onCloseDock,
   onResetSplitRatio,
   onMovePaneToGroup,
   onSwapGroups,
@@ -3323,6 +3328,7 @@ function DockPaneFrame({
   onHidePane: (paneId: PaneId) => void;
   onFocusOtherGroup: () => void;
   onToggleMaximized: (pane: NonNullable<MaximizedPane>) => void;
+  onCloseDock: (placement: PanePlacement) => void;
   onResetSplitRatio: (placement: PanePlacement) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapGroups: (placement: PanePlacement) => void;
@@ -3371,6 +3377,18 @@ function DockPaneFrame({
             }}
           >
             ⛶
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            aria-label={`收起${placementLabel(placement)} Dock`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCloseDock(placement);
+            }}
+          >
+            −
           </button>
           <button
             type="button"
