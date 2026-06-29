@@ -3417,11 +3417,25 @@ function dockSelectionState(selections: DockPaneSelections): string {
 
 function mergeDockPaneSelections(value: Partial<DockPaneSelections> | undefined): DockPaneSelections {
   return {
-    top: { ...DEFAULT_DOCK_PANE_SELECTIONS.top, ...value?.top },
-    left: { ...DEFAULT_DOCK_PANE_SELECTIONS.left, ...value?.left },
-    right: { ...DEFAULT_DOCK_PANE_SELECTIONS.right, ...value?.right },
-    bottom: { ...DEFAULT_DOCK_PANE_SELECTIONS.bottom, ...value?.bottom },
+    top: normalizeDockPaneSelection({ ...DEFAULT_DOCK_PANE_SELECTIONS.top, ...value?.top }, defaultPaneIdsForPlacement("top")),
+    left: normalizeDockPaneSelection({ ...DEFAULT_DOCK_PANE_SELECTIONS.left, ...value?.left }, defaultPaneIdsForPlacement("left")),
+    right: normalizeDockPaneSelection({ ...DEFAULT_DOCK_PANE_SELECTIONS.right, ...value?.right }, defaultPaneIdsForPlacement("right")),
+    bottom: normalizeDockPaneSelection({ ...DEFAULT_DOCK_PANE_SELECTIONS.bottom, ...value?.bottom }, defaultPaneIdsForPlacement("bottom")),
   };
+}
+
+function normalizeDockPaneSelection(selection: Partial<Record<DockPaneRole, PaneId>>, paneIds: PaneId[]): Partial<Record<DockPaneRole, PaneId>> {
+  if (selection.primary && selection.secondary === selection.primary) {
+    return {
+      ...selection,
+      secondary: secondaryDockPane(paneIds, selection.primary),
+    };
+  }
+  return selection;
+}
+
+function defaultPaneIdsForPlacement(placement: PanePlacement): PaneId[] {
+  return PANE_REGISTRY.filter((pane) => pane.defaultPlacement === placement).map((pane) => pane.id);
 }
 
 
@@ -3698,7 +3712,7 @@ function sanitizeDockPaneSelections(value: Partial<DockPaneSelections> | undefin
     const nextSelection: Partial<Record<DockPaneRole, PaneId>> = {};
     if (isPaneId(selection.primary ?? "")) nextSelection.primary = selection.primary;
     if (isPaneId(selection.secondary ?? "")) nextSelection.secondary = selection.secondary;
-    selections[placement] = nextSelection;
+    selections[placement] = normalizeDockPaneSelection(nextSelection, defaultPaneIdsForPlacement(placement));
   }
   return selections;
 }

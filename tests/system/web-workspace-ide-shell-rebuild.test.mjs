@@ -695,7 +695,14 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function dockPaneSelection/);
   assert.match(shellSource, /function dockSelectionState/);
   assert.match(shellSource, /function mergeDockPaneSelections/);
+  assert.match(shellSource, /top: normalizeDockPaneSelection\(\{ \.\.\.DEFAULT_DOCK_PANE_SELECTIONS\.top, \.\.\.value\?\.top \}, defaultPaneIdsForPlacement\("top"\)\)/);
+  assert.match(shellSource, /function normalizeDockPaneSelection\(selection: Partial<Record<DockPaneRole, PaneId>>, paneIds: PaneId\[\]\)/);
+  assert.match(shellSource, /if \(selection\.primary && selection\.secondary === selection\.primary\)/);
+  assert.match(shellSource, /secondary: secondaryDockPane\(paneIds, selection\.primary\)/);
+  assert.match(shellSource, /function defaultPaneIdsForPlacement\(placement: PanePlacement\): PaneId\[\]/);
+  assert.match(shellSource, /PANE_REGISTRY\.filter\(\(pane\) => pane\.defaultPlacement === placement\)\.map\(\(pane\) => pane\.id\)/);
   assert.match(shellSource, /function sanitizeDockPaneSelections/);
+  assert.match(shellSource, /selections\[placement\] = normalizeDockPaneSelection\(nextSelection, defaultPaneIdsForPlacement\(placement\)\)/);
   assert.match(shellSource, /dockPaneSelections: sanitizeDockPaneSelections\(value\.dockPaneSelections\)/);
   assert.match(shellSource, /sanitizeDockSplitModes/);
   assert.match(shellSource, /sanitizeDockSplitRatios/);
