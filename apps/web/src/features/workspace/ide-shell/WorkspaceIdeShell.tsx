@@ -391,6 +391,16 @@ export function WorkspaceIdeShell() {
           if (activeDockFocus) resetDockSize(activeDockFocus.placement);
           return;
         }
+        if (event.shiftKey && key === "a") {
+          event.preventDefault();
+          openAllDocks();
+          return;
+        }
+        if (event.shiftKey && key === "e") {
+          event.preventDefault();
+          focusEditorOnlyLayout();
+          return;
+        }
         if (event.shiftKey && event.key === "]") {
           event.preventDefault();
           moveActiveEditorFileToOtherGroup();
@@ -663,6 +673,28 @@ export function WorkspaceIdeShell() {
           setBottomOpen(true);
           toggleMaximizedPane("bottom");
         },
+      },
+      {
+        id: "ide.layout.open-all-docks",
+        group: "布局",
+        label: "打开全部核心 Dock",
+        description: "同时打开顶部、左侧、右侧和底部 Dock，恢复完整 IDE Workbench 框架",
+        shortcut: "⌘⌥⇧A",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        run: openAllDocks,
+      },
+      {
+        id: "ide.layout.focus-editor-only",
+        group: "布局",
+        label: "编辑器专注：收起全部 Dock",
+        description: "收起顶部、左侧、右侧和底部辅助 Dock，只保留编辑器工作区；窗格组合状态仍会保留",
+        shortcut: "⌘⌥⇧E",
+        risk: "safe",
+        surface: "layout",
+        icon: <Code2 />,
+        run: focusEditorOnlyLayout,
       },
       {
         id: "ide.editor.split-right",
@@ -1515,6 +1547,26 @@ export function WorkspaceIdeShell() {
           ? TERMINAL_PANE_SIZES
           : DEFAULT_PANE_SIZES,
     );
+  }
+
+  function openAllDocks() {
+    setTopOpen(true);
+    setLeftOpen(true);
+    setRightOpen(true);
+    setBottomOpen(true);
+    setMaximizedPane(null);
+    setMobilePanel("editor");
+  }
+
+  function focusEditorOnlyLayout() {
+    setTopOpen(false);
+    setLeftOpen(false);
+    setRightOpen(false);
+    setBottomOpen(false);
+    setMaximizedPane(null);
+    setActiveDockFocus(null);
+    setMobilePanel("editor");
+    focusIdeRegionNode("center");
   }
 
   function resetLayout() {
