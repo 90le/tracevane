@@ -226,12 +226,16 @@ test("Workspace Git commands separate evidence from AI generation", () => {
   assert.match(gitCommands, /group: "证据"/);
   assert.match(gitCommands, /group: "证据" as const/);
   assert.match(gitCommands, /Git：复制近期历史上下文/);
+  assert.match(gitCommands, /形成历史证据/);
+  assert.match(gitCommands, /Git：复制提交审查条目/);
+  assert.match(gitCommands, /复制提交审查条目/);
   assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
   assert.match(gitCommands, /Git：复制提交证据包/);
   assert.match(gitCommands, /id: "git\.panel\.ai\.commitMessage"[\s\S]{0,220}group: "证据"/);
   assert.doesNotMatch(gitCommands, /Git：AI 提交信息/);
   assert.doesNotMatch(gitCommands, /Git：AI 总结当前变更/);
   assert.doesNotMatch(gitCommands, /release note|changelog/i);
+  assert.doesNotMatch(gitCommands, /变更日志/);
   assert.doesNotMatch(gitCommands, /group: "AI" as const/);
 });
 

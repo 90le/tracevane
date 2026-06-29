@@ -303,7 +303,7 @@ export function createGitPanelCommands({
       label: "Git：复制近期历史上下文",
       description:
         commits.length > 0
-          ? `复制 ${Math.min(commits.length, 10)} 条近期提交，用于审查变更或生成变更日志`
+          ? `复制 ${Math.min(commits.length, 10)} 条近期提交，用于审查变更或形成历史证据`
           : "暂无近期提交历史",
       icon: <Sparkles />,
       disabled: commits.length === 0,
@@ -336,10 +336,10 @@ export function createGitPanelCommands({
       {
         id: `git.panel.commitReleaseNote.${commit.shortHash || commit.hash}`,
         group: "证据" as const,
-        label: `Git：复制变更日志条目 ${commit.shortHash}`,
+        label: `Git：复制提交审查条目 ${commit.shortHash}`,
         description: commit.subject
-          ? `复制变更日志审查条目：${commit.subject}`
-          : "复制该提交的变更日志条目",
+          ? `复制提交审查条目：${commit.subject}`
+          : "复制该提交的审查条目",
         icon: <Sparkles />,
         run: () => copyCommitReleaseNote(commit),
       },
