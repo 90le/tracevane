@@ -10,6 +10,7 @@ import {
   PanelBottom,
   PanelLeft,
   PanelRight,
+  Plus,
   RotateCcw,
   Search,
   Settings2,
@@ -2422,6 +2423,17 @@ export function WorkspaceIdeShell() {
             )}
           </section>
         ) : null}
+        {!leftOpen ? (
+          <CollapsedDockDropTarget
+            placement="left"
+            paneCount={leftPaneIds.length}
+            active={dropTarget === "left"}
+            onOpen={openDockPlacement}
+            onDragOver={dragPaneOverDock}
+            onDragLeave={leavePaneDock}
+            onDrop={dropPaneOnDock}
+          />
+        ) : null}
         {leftOpen ? (
           <ResizeHandle
             pane="left"
@@ -2436,12 +2448,23 @@ export function WorkspaceIdeShell() {
 
         <section
           ref={(node) => { centerPaneRef.current = node; }}
-          className="workspace-ide-shell__center"
+          className={cn("workspace-ide-shell__center", !topOpen && "workspace-ide-shell__center--top-closed", !bottomOpen && "workspace-ide-shell__center--bottom-closed")}
           data-testid="workspace-ide-center-pane"
           data-ide-focus-region="center"
           data-ide-pane="center"
           tabIndex={-1}
         >
+          {!topOpen ? (
+            <CollapsedDockDropTarget
+              placement="top"
+              paneCount={topPaneIds.length}
+              active={dropTarget === "top"}
+              onOpen={openDockPlacement}
+              onDragOver={dragPaneOverDock}
+              onDragLeave={leavePaneDock}
+              onDrop={dropPaneOnDock}
+            />
+          ) : null}
           {topOpen ? (
             <section
               ref={(node) => { topDockRef.current = node; }}
@@ -2624,6 +2647,17 @@ export function WorkspaceIdeShell() {
               </>
             ) : null}
           </div>
+          {!bottomOpen ? (
+            <CollapsedDockDropTarget
+              placement="bottom"
+              paneCount={bottomPaneIds.length}
+              active={dropTarget === "bottom"}
+              onOpen={openDockPlacement}
+              onDragOver={dragPaneOverDock}
+              onDragLeave={leavePaneDock}
+              onDrop={dropPaneOnDock}
+            />
+          ) : null}
           {bottomOpen ? (
             <section
               ref={(node) => { bottomDockRef.current = node; }}
@@ -2727,6 +2761,17 @@ export function WorkspaceIdeShell() {
           ) : null}
         </section>
 
+        {!rightOpen ? (
+          <CollapsedDockDropTarget
+            placement="right"
+            paneCount={rightPaneIds.length}
+            active={dropTarget === "right"}
+            onOpen={openDockPlacement}
+            onDragOver={dragPaneOverDock}
+            onDragLeave={leavePaneDock}
+            onDrop={dropPaneOnDock}
+          />
+        ) : null}
         {rightOpen ? (
           <ResizeHandle
             pane="right"
@@ -2858,6 +2903,43 @@ export function WorkspaceIdeShell() {
         commands={commands}
       />
     </main>
+  );
+}
+
+function CollapsedDockDropTarget({
+  placement,
+  paneCount,
+  active,
+  onOpen,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  placement: PanePlacement;
+  paneCount: number;
+  active: boolean;
+  onOpen: (placement: PanePlacement) => void;
+  onDragOver: (placement: PanePlacement, event: React.DragEvent) => void;
+  onDragLeave: (placement: PanePlacement, event: React.DragEvent) => void;
+  onDrop: (placement: PanePlacement, event: React.DragEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn("workspace-ide-shell__collapsed-dock-target", active && "is-drop-target")}
+      data-ide-collapsed-dock-target={placement}
+      data-ide-dock-placement={placement}
+      data-ide-collapsed-dock-pane-count={paneCount}
+      aria-label={`恢复${placementLabel(placement)} Dock，或把 Pane 拖放到这里`}
+      onClick={() => onOpen(placement)}
+      onDragOver={(event) => onDragOver(placement, event)}
+      onDragLeave={(event) => onDragLeave(placement, event)}
+      onDrop={(event) => onDrop(placement, event)}
+    >
+      <Plus className="h-3.5 w-3.5" aria-hidden={true} />
+      <span>{placementLabel(placement)} Dock</span>
+      <span>{paneCount} Pane</span>
+    </button>
   );
 }
 
