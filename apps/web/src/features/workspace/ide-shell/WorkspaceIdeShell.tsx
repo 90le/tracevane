@@ -2372,7 +2372,9 @@ export function WorkspaceIdeShell() {
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
                   onHidePane={hidePane}
+                  isMaximized={maximizedPane === "left"}
                   onFocusOtherGroup={focusOppositeDockGroup}
+                  onToggleMaximized={toggleMaximizedPane}
                   onResetSplitRatio={resetDockSplitRatio}
                   onMovePaneToGroup={movePaneToPlacement}
                   onSwapGroups={swapDockSplitPanes}
@@ -2504,7 +2506,9 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
+                isMaximized={maximizedPane === "top"}
                 onFocusOtherGroup={focusOppositeDockGroup}
+                onToggleMaximized={toggleMaximizedPane}
                 onResetSplitRatio={resetDockSplitRatio}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
@@ -2691,7 +2695,9 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
+                isMaximized={maximizedPane === "bottom"}
                 onFocusOtherGroup={focusOppositeDockGroup}
+                onToggleMaximized={toggleMaximizedPane}
                 onResetSplitRatio={resetDockSplitRatio}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
@@ -2784,7 +2790,9 @@ export function WorkspaceIdeShell() {
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
               onHidePane={hidePane}
+              isMaximized={maximizedPane === "right"}
               onFocusOtherGroup={focusOppositeDockGroup}
+              onToggleMaximized={toggleMaximizedPane}
               onResetSplitRatio={resetDockSplitRatio}
               onMovePaneToGroup={movePaneToPlacement}
               onSwapGroups={swapDockSplitPanes}
@@ -3273,6 +3281,7 @@ function DockPaneFrame({
   primaryPane,
   secondaryPane,
   activeFocus,
+  isMaximized,
   workspaceDirectory,
   onTerminalCommandsChange,
   onRestore,
@@ -3283,6 +3292,7 @@ function DockPaneFrame({
   onFocusPane,
   onHidePane,
   onFocusOtherGroup,
+  onToggleMaximized,
   onResetSplitRatio,
   onMovePaneToGroup,
   onSwapGroups,
@@ -3300,6 +3310,7 @@ function DockPaneFrame({
   primaryPane?: PaneId;
   secondaryPane?: PaneId;
   activeFocus: ActiveDockFocus;
+  isMaximized: boolean;
   edgeDropTarget: DockEdgeDropTarget;
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
@@ -3311,6 +3322,7 @@ function DockPaneFrame({
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onHidePane: (paneId: PaneId) => void;
   onFocusOtherGroup: () => void;
+  onToggleMaximized: (pane: NonNullable<MaximizedPane>) => void;
   onResetSplitRatio: (placement: PanePlacement) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapGroups: (placement: PanePlacement) => void;
@@ -3348,6 +3360,18 @@ function DockPaneFrame({
           <span className="workspace-ide-shell__dock-split-pane-badge">
             {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}
           </span>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            aria-label={isMaximized ? `恢复${placementLabel(placement)} Dock 组合布局` : `最大化${placementLabel(placement)} Dock`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleMaximized(placement);
+            }}
+          >
+            ⛶
+          </button>
           <button
             type="button"
             className="workspace-ide-shell__dock-split-pane-action"
