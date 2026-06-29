@@ -284,7 +284,20 @@ export interface FilesTrashPayload {
   rootId: string;
   scope?: "root" | "global";
   trashDirectoryPath: string;
+  offset?: number;
+  limit?: number;
+  totalItemCount?: number;
+  returnedItemCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
   items: FilesTrashItem[];
+}
+
+export interface FilesTrashListParams {
+  rootId: string;
+  offset?: number;
+  limit?: number;
+  cursor?: string;
 }
 
 export interface FilesTrashRestorePayload {
@@ -431,6 +444,7 @@ export interface FilesContentIndexRecordsParams {
   query?: string;
   offset?: number;
   limit?: number;
+  cursor?: string;
 }
 
 export interface FilesContentIndexRecordsPayload {
@@ -445,6 +459,7 @@ export interface FilesContentIndexRecordsPayload {
   totalRecordCount: number;
   returnedRecordCount: number;
   hasMore: boolean;
+  nextCursor?: string | null;
   records: FilesContentIndexRecordPreview[];
 }
 
@@ -475,11 +490,30 @@ export interface FilesContentIndexActionResponse extends FilesContentIndexStatsP
   cleanedRecordCount?: number;
 }
 
+export interface FilesSqliteMaintenancePayload {
+  checkedAt: string;
+  databasePath: string;
+  quickCheck: string;
+  walCheckpoint: string;
+  vacuumed: boolean;
+}
+
 export interface FilesContentIndexRebuildResponse extends FilesContentIndexActionResponse {
   scannedFileCount: number;
   rebuiltRecordCount: number;
   skippedFileCount: number;
   truncated: boolean;
+}
+
+export interface FilesContentIndexRebuildJobPayload {
+  jobId: string;
+  rootId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  queuedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+  result?: FilesContentIndexRebuildResponse;
 }
 
 export interface FilesMutationResponse {

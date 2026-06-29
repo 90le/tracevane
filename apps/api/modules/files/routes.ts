@@ -144,6 +144,7 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
       query: url.searchParams.get("query") || "",
       offset: readNumber(url.searchParams.get("offset")),
       limit: readNumber(url.searchParams.get("limit")),
+      cursor: url.searchParams.get("cursor") || undefined,
     };
     sendJson(res, 200, routeCtx.services.files.getContentIndexRecords(params));
   });
@@ -161,6 +162,16 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
   router.post("/api/files/content-index/rebuild", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<FilesContentIndexActionPayload>(req);
     sendJson(res, 200, routeCtx.services.files.rebuildContentIndex(payload.rootId));
+  });
+
+  router.post("/api/files/content-index/rebuild-jobs", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<FilesContentIndexActionPayload>(req);
+    sendJson(res, 202, routeCtx.services.files.startContentIndexRebuild(payload.rootId));
+  });
+
+  router.get("/api/files/content-index/rebuild-jobs", (req, res, routeCtx) => {
+    const url = readUrl(req);
+    sendJson(res, 200, routeCtx.services.files.getContentIndexRebuildJob(url.searchParams.get("jobId") || ""));
   });
 
   router.get("/api/files/download", (req, res, routeCtx) => {
@@ -293,7 +304,12 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
 
   router.get("/api/files/trash", (req, res, routeCtx) => {
     const url = readUrl(req);
-    sendJson(res, 200, routeCtx.services.files.listTrash(url.searchParams.get("rootId") || ""));
+    sendJson(res, 200, routeCtx.services.files.listTrash({
+      rootId: url.searchParams.get("rootId") || "",
+      offset: readNumber(url.searchParams.get("offset")),
+      limit: readNumber(url.searchParams.get("limit")),
+      cursor: url.searchParams.get("cursor") || undefined,
+    }));
   });
 
   router.post("/api/files/trash/restore", async (req, res, routeCtx) => {
@@ -304,6 +320,11 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
   router.delete("/api/files/trash", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<FilesTrashPurgePayload>(req);
     sendJson(res, 200, routeCtx.services.files.purgeTrash(payload));
+  });
+
+  router.post("/api/files/sqlite/maintenance", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<{ vacuum?: boolean }>(req);
+    sendJson(res, 200, routeCtx.services.files.maintainSqlite(Boolean(payload.vacuum)));
   });
 
   router.post("/api/files/upload", async (req, res, routeCtx) => {

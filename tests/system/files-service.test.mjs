@@ -649,6 +649,17 @@ test("files service supports search, read, write, create, rename, copy, move, de
 
   service.createFile({ rootId: "openclaw-root", directoryPath: "workspace", name: "global-trash-note.txt", content: "shared trash\n" });
   service.deletePaths({ rootId: "openclaw-root", paths: ["workspace/global-trash-note.txt"] });
+  service.createFile({ rootId: "project-root", directoryPath: "docs", name: "paged-trash-a.txt", content: "a\n" });
+  service.createFile({ rootId: "project-root", directoryPath: "docs", name: "paged-trash-b.txt", content: "b\n" });
+  service.deletePaths({ rootId: "project-root", paths: ["docs/paged-trash-a.txt", "docs/paged-trash-b.txt"] });
+  const firstTrashPage = service.listTrash({ rootId: "global", limit: 1 });
+  assert.equal(firstTrashPage.returnedItemCount, 1);
+  assert.equal(firstTrashPage.hasMore, true);
+  assert.ok(firstTrashPage.nextCursor);
+  const secondTrashPage = service.listTrash({ rootId: "global", limit: 1, cursor: firstTrashPage.nextCursor });
+  assert.equal(secondTrashPage.returnedItemCount, 1);
+  assert.notEqual(secondTrashPage.items[0]?.trashPath, firstTrashPage.items[0]?.trashPath);
+
   const globalTrashFromProjectView = service.listTrash("project-root");
   assert.equal(globalTrashFromProjectView.rootId, "global");
   assert.equal(globalTrashFromProjectView.scope, "global");
@@ -751,7 +762,38 @@ test("files service writes rebuilt content-index records to SQLite sorted pages"
   assert.equal(firstPage.totalRecordCount, 2);
   assert.equal(firstPage.records[0]?.path, "alpha.txt");
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
+  assert.ok(firstPage.nextCursor);
+  const cursorPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", cursor: firstPage.nextCursor, limit: 1 });
+  assert.equal(cursorPage.records[0]?.path, "zeta.txt");
+  const maintenance = service.maintainSqlite(false);
+  assert.match(maintenance.quickCheck, /ok/i);
+  assert.equal(maintenance.vacuumed, false);
+  assert.match(maintenance.databasePath, /file-manager\.sqlite/);
   assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
+});
+
+
+test("files service starts non-blocking content-index rebuild jobs", async () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  writeFile(path.join(config.projectRoot, "async.txt"), "async\n");
+  const service = createFilesService(config);
+
+  const queued = service.startContentIndexRebuild("project-root");
+  assert.equal(queued.rootId, "project-root");
+  assert.match(queued.jobId, /[a-f0-9-]+/i);
+  assert.match(queued.status, /queued|running|completed/);
+
+  let finalJob = queued;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    finalJob = service.getContentIndexRebuildJob(queued.jobId);
+    if (finalJob.status === "completed" || finalJob.status === "failed") break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  assert.equal(finalJob.status, "completed");
+  assert.equal(finalJob.result?.rebuiltRecordCount, 1);
+  assert.equal(service.getContentIndexRecords({ rootId: "project-root", status: "valid", limit: 10 }).records[0]?.path, "async.txt");
 });
 
 test("files service pages large content-index records through SQLite without approximate totals", () => {

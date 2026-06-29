@@ -37,6 +37,9 @@ test("files api binds write endpoints", () => {
     ["scanFilesContentIndex", "/api/files/content-index/scan"],
     ["cleanFilesContentIndex", "/api/files/content-index/clean"],
     ["rebuildFilesContentIndex", "/api/files/content-index/rebuild"],
+    ["getFilesContentIndexRebuildJob", "/api/files/content-index/rebuild-jobs"],
+    ["startFilesContentIndexRebuildJob", "/api/files/content-index/rebuild-jobs"],
+    ["maintainFilesSqlite", "/api/files/sqlite/maintenance"],
   ]) {
     assert.match(src, new RegExp(`export function ${fn}\\b`), `missing ${fn}`);
     assert.ok(
@@ -101,6 +104,8 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(src, /Promise<FilesMutationResponse>/);
   assert.match(types, /interface FilesTrashItem/);
   assert.match(types, /interface FilesTrashPayload/);
+  assert.match(types, /interface FilesTrashListParams/);
+  assert.match(types, /nextCursor\?: string \| null/);
   assert.match(types, /scope\?: "root" \| "global"/);
   assert.match(types, /interface FilesTrashRestorePayload/);
   assert.match(types, /interface FilesTrashPurgePayload/);
@@ -113,12 +118,16 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(types, /fastStats\?: boolean/);
   assert.match(types, /interface FilesContentIndexRecordsParams/);
   assert.match(types, /interface FilesContentIndexRecordsPayload/);
+  assert.match(types, /interface FilesSqliteMaintenancePayload/);
+  assert.match(types, /interface FilesContentIndexRebuildJobPayload/);
   assert.match(types, /recordsPreview: FilesContentIndexRecordPreview\[\]/);
   assert.match(types, /records: FilesContentIndexRecordPreview\[\]/);
   assert.match(types, /hasMore: boolean/);
   assert.match(types, /previewLimit: number/);
   assert.match(src, /Promise<FilesContentIndexStatsPayload>/);
   assert.match(src, /Promise<FilesContentIndexRecordsPayload>/);
+  assert.match(src, /Promise<import\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/types\/files"\)\.FilesSqliteMaintenancePayload>/);
+  assert.match(src, /search\.set\("cursor"/);
   assert.match(src, /search\.set\("offset"/);
   assert.match(src, /search\.set\("limit"/);
 });

@@ -10,6 +10,7 @@ import type {
   FilesContentIndexRecordsParams,
   FilesContentIndexRecordsPayload,
   FilesContentIndexRebuildResponse,
+  FilesContentIndexRebuildJobPayload,
   FilesContentIndexStatsPayload,
   FilesCreateDirectoryPayload,
   FilesCreateFilePayload,
@@ -181,6 +182,7 @@ export function getFilesContentIndexRecords(
   if (params.query) search.set("query", params.query);
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.cursor) search.set("cursor", params.cursor);
   return apiRequest<FilesContentIndexRecordsPayload>(`${BASE}/content-index/records?${search.toString()}`, { signal });
 }
 
@@ -212,6 +214,22 @@ export function rebuildFilesContentIndex(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** POST /api/files/content-index/rebuild-jobs — start a non-blocking rebuild job. */
+export function startFilesContentIndexRebuildJob(
+  payload: FilesContentIndexActionPayload,
+): Promise<FilesContentIndexRebuildJobPayload> {
+  return apiRequest<FilesContentIndexRebuildJobPayload>("/api/files/content-index/rebuild-jobs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** GET /api/files/content-index/rebuild-jobs — poll one rebuild job. */
+export function getFilesContentIndexRebuildJob(jobId: string, signal?: AbortSignal): Promise<FilesContentIndexRebuildJobPayload> {
+  const search = new URLSearchParams({ jobId });
+  return apiRequest<FilesContentIndexRebuildJobPayload>(`/api/files/content-index/rebuild-jobs?${search.toString()}`, { signal });
 }
 
 /**
@@ -362,9 +380,23 @@ export function deleteFiles(
 
 
 /** GET /api/files/trash — list recycle-bin items for one root. */
-export function getFilesTrash(rootId: string, signal?: AbortSignal): Promise<FilesTrashPayload> {
+export function getFilesTrash(
+  rootId: string,
+  signal?: AbortSignal,
+  options?: { offset?: number; limit?: number; cursor?: string },
+): Promise<FilesTrashPayload> {
   const search = new URLSearchParams({ rootId });
+  if (options?.offset != null) search.set("offset", String(options.offset));
+  if (options?.limit != null) search.set("limit", String(options.limit));
+  if (options?.cursor) search.set("cursor", options.cursor);
   return apiRequest<FilesTrashPayload>(`/api/files/trash?${search.toString()}`, { signal });
+}
+
+export function maintainFilesSqlite(payload: { vacuum?: boolean }): Promise<import("../../../../../types/files").FilesSqliteMaintenancePayload> {
+  return apiRequest<import("../../../../../types/files").FilesSqliteMaintenancePayload>("/api/files/sqlite/maintenance", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 /** POST /api/files/trash/restore — restore one recycle-bin item. */

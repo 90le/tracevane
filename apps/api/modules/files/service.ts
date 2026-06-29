@@ -16,6 +16,7 @@ import type {
   FilesContentIndexRecordsParams,
   FilesContentIndexRecordsPayload,
   FilesContentIndexRebuildResponse,
+  FilesContentIndexRebuildJobPayload,
   FilesContentIndexStatsPayload,
   FileEntryKind,
   FileEntrySummary,
@@ -37,9 +38,11 @@ import type {
   FilesVersionRestorePayload,
   FilesVersionsPayload,
   FilesTrashItem,
+  FilesTrashListParams,
   FilesTrashPayload,
   FilesTrashPurgePayload,
   FilesTrashRestorePayload,
+  FilesSqliteMaintenancePayload,
   FilesTransferDryRunPayload,
   FilesTransferDryRunResponse,
   FilesUploadCancelPayload,
@@ -347,7 +350,8 @@ export interface FilesService {
   copyPath(payload: FilesTransferPayload): FilesMutationResponse;
   movePath(payload: FilesTransferPayload): FilesMutationResponse;
   deletePaths(payload: FilesDeletePayload): FilesMutationResponse;
-  listTrash(rootId: string): FilesTrashPayload;
+  listTrash(params: string | FilesTrashListParams): FilesTrashPayload;
+  maintainSqlite(vacuum?: boolean): FilesSqliteMaintenancePayload;
   restoreTrash(payload: FilesTrashRestorePayload): FilesMutationResponse;
   purgeTrash(payload: FilesTrashPurgePayload): FilesMutationResponse;
   uploadFiles(payload: FilesUploadPayload): FilesMutationResponse;
@@ -365,6 +369,8 @@ export interface FilesService {
   scanContentIndex(rootId: string): FilesContentIndexStatsPayload;
   cleanContentIndex(rootId: string): FilesContentIndexActionResponse;
   rebuildContentIndex(rootId: string): FilesContentIndexRebuildResponse;
+  startContentIndexRebuild(rootId: string): FilesContentIndexRebuildJobPayload;
+  getContentIndexRebuildJob(jobId: string): FilesContentIndexRebuildJobPayload;
   prepareArchiveDownload(payload: FilesArchiveDownloadPayload): {
     archivePath: string;
     fileName: string;
@@ -953,6 +959,11 @@ function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase
       newest_indexed_at TEXT,
       updated_at TEXT NOT NULL
     ) STRICT;
+    CREATE VIRTUAL TABLE IF NOT EXISTS content_index_fts USING fts5(
+      root_id UNINDEXED,
+      path,
+      sha256 UNINDEXED
+    );
     CREATE TABLE IF NOT EXISTS trash_items (
       id TEXT PRIMARY KEY,
       root_id TEXT NOT NULL,
@@ -1278,6 +1289,11 @@ function upsertContentIndexRecordSql(db: FileManagerSqliteDatabase, record: Cont
       mtime_ms = excluded.mtime_ms,
       indexed_at = excluded.indexed_at
   `).run(record.rootId, record.path, record.sha256, record.size, record.mtimeMs, record.indexedAt);
+  const row = db.prepare("SELECT rowid FROM content_index_records WHERE root_id = ? AND path = ?").get(record.rootId, record.path) as { rowid?: number } | undefined;
+  if (row?.rowid != null) {
+    db.prepare("DELETE FROM content_index_fts WHERE rowid = ?").run(row.rowid);
+    db.prepare("INSERT INTO content_index_fts(rowid, root_id, path, sha256) VALUES (?, ?, ?, ?)").run(row.rowid, record.rootId, record.path, record.sha256);
+  }
 }
 
 function refreshContentIndexStatsSql(db: FileManagerSqliteDatabase, rootId: string): void {
@@ -1575,8 +1591,25 @@ function clampContentIndexRecordsLimit(value: unknown): number {
   return Math.max(1, Math.min(CONTENT_INDEX_RECORDS_MAX_LIMIT, Math.floor(parsed)));
 }
 
-function compareContentIndexListMatches(left: ContentIndexListMatch, right: ContentIndexListMatch): number {
-  return left.sortKey.localeCompare(right.sortKey, undefined, { numeric: true, sensitivity: "base" });
+
+function encodeFileManagerCursor(parts: string[]): string {
+  return Buffer.from(JSON.stringify(parts), "utf8").toString("base64url");
+}
+
+function decodeFileManagerCursor(value: string | undefined): string[] | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    return Array.isArray(parsed) && parsed.every((part) => typeof part === "string") ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function contentIndexCursorWhere(cursor: string | undefined): { sql: string; params: SqliteValue[] } {
+  const parts = decodeFileManagerCursor(cursor);
+  if (!parts || parts.length < 2) return { sql: "", params: [] };
+  return { sql: " AND (root_id > ? OR (root_id = ? AND path > ?))", params: [parts[0], parts[0], parts[1]] };
 }
 
 function listContentIndexRecords(
@@ -1592,8 +1625,9 @@ function listContentIndexRecords(
   const db = fileManagerDb(config);
   const rootWhere = contentIndexRootWhereClause(rootIds);
   const queryWhere = contentIndexQueryClause(query);
-  const whereSql = `${rootWhere.sql}${queryWhere.sql}`;
-  const whereParams = [...rootWhere.params, ...queryWhere.params];
+  const cursorWhere = contentIndexCursorWhere(params.cursor);
+  const whereSql = `${rootWhere.sql}${queryWhere.sql}${cursorWhere.sql}`;
+  const whereParams = [...rootWhere.params, ...queryWhere.params, ...cursorWhere.params];
 
   if (status === "stale") {
     const rows = db.prepare(`
@@ -1607,7 +1641,8 @@ function listContentIndexRecords(
       if (!inspected.valid) stale.push({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: "stale" });
     }
     const records = stale.slice(offset, offset + limit);
-    return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount: stale.length, returnedRecordCount: records.length, hasMore: offset + records.length < stale.length, records };
+    const lastRecord = records.at(-1);
+    return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount: stale.length, returnedRecordCount: records.length, hasMore: offset + records.length < stale.length, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
   }
 
   const totalRow = db.prepare(`SELECT COUNT(*) AS count FROM content_index_records WHERE ${whereSql}`).get(...whereParams) as { count?: number } | undefined;
@@ -1618,13 +1653,66 @@ function listContentIndexRecords(
     ORDER BY root_id ASC, path ASC LIMIT ? OFFSET ?
   `).all(...whereParams, limit, offset) as SqlContentIndexRow[];
   const records = rows.map((row) => ({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: Number(row.size) || 0, indexedAt: row.indexed_at || null, status: "valid" as const }));
-  return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount, returnedRecordCount: records.length, hasMore: offset + records.length < totalRecordCount, records };
+  const lastRecord = records.at(-1);
+  return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount, returnedRecordCount: records.length, hasMore: offset + records.length < totalRecordCount, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
 }
 
 function shouldSkipContentIndexRebuildDirectory(relativePath: string, dirName: string): boolean {
   if (CONTENT_INDEX_REBUILD_SKIP_DIRS.has(dirName)) return true;
   const normalized = normalizeRelativePath(path.join(relativePath, dirName));
   return normalized === ".openclaw/.tracevane/file-content-index" || normalized.startsWith(".openclaw/.tracevane/file-content-index/");
+}
+
+const contentIndexRebuildJobs = new Map<string, FilesContentIndexRebuildJobPayload>();
+const MAX_CONTENT_INDEX_REBUILD_JOBS = 50;
+
+function trimContentIndexRebuildJobs(): void {
+  if (contentIndexRebuildJobs.size <= MAX_CONTENT_INDEX_REBUILD_JOBS) return;
+  const removable = Array.from(contentIndexRebuildJobs.values())
+    .filter((job) => job.status === "completed" || job.status === "failed")
+    .sort((left, right) => (left.finishedAt || left.queuedAt).localeCompare(right.finishedAt || right.queuedAt));
+  for (const job of removable) {
+    if (contentIndexRebuildJobs.size <= MAX_CONTENT_INDEX_REBUILD_JOBS) break;
+    contentIndexRebuildJobs.delete(job.jobId);
+  }
+}
+
+function startContentIndexRebuildJob(config: TracevaneServerConfig, rootId: string): FilesContentIndexRebuildJobPayload {
+  if (isGlobalContentIndexRoot(rootId)) {
+    throw new Error("Global content-index rebuild is intentionally disabled; rebuild one root at a time to avoid scanning every configured filesystem root.");
+  }
+  resolveRoot(config, rootId);
+  const now = new Date().toISOString();
+  const job: FilesContentIndexRebuildJobPayload = {
+    jobId: crypto.randomUUID(),
+    rootId,
+    status: "queued",
+    queuedAt: now,
+  };
+  contentIndexRebuildJobs.set(job.jobId, job);
+  trimContentIndexRebuildJobs();
+  setImmediate(() => {
+    const current = contentIndexRebuildJobs.get(job.jobId);
+    if (!current) return;
+    current.status = "running";
+    current.startedAt = new Date().toISOString();
+    try {
+      current.result = rebuildContentIndexForRoot(config, rootId);
+      current.status = "completed";
+    } catch (error) {
+      current.status = "failed";
+      current.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      current.finishedAt = new Date().toISOString();
+    }
+  });
+  return { ...job };
+}
+
+function getContentIndexRebuildJob(jobId: string): FilesContentIndexRebuildJobPayload {
+  const job = contentIndexRebuildJobs.get(jobId);
+  if (!job) throw new Error(`Content-index rebuild job not found: ${jobId}`);
+  return { ...job };
 }
 
 function rebuildContentIndexForRoot(
@@ -2294,12 +2382,33 @@ function readTrashMetadataFile(config: TracevaneServerConfig, entryDirName: stri
   }
 }
 
-function listTrashItems(config: TracevaneServerConfig): FilesTrashItem[] {
+function normalizeTrashListParams(params: string | FilesTrashListParams): Required<Pick<FilesTrashListParams, "rootId">> & { offset: number; limit: number; cursor?: string } {
+  if (typeof params === "string") return { rootId: params, offset: 0, limit: 200 };
+  return {
+    rootId: params.rootId || "",
+    offset: clampContentIndexRecordsOffset(params.offset),
+    limit: clampContentIndexRecordsLimit(params.limit ?? 200),
+    cursor: params.cursor,
+  };
+}
+
+function trashCursorWhere(cursor: string | undefined): { sql: string; params: SqliteValue[] } {
+  const parts = decodeFileManagerCursor(cursor);
+  if (!parts || parts.length < 2) return { sql: "", params: [] };
+  return { sql: " WHERE (deleted_at < ? OR (deleted_at = ? AND id < ?))", params: [parts[0], parts[0], parts[1]] };
+}
+
+function listTrashItems(config: TracevaneServerConfig, params: string | FilesTrashListParams = ""): FilesTrashPayload {
+  const normalized = normalizeTrashListParams(params);
   const db = fileManagerDb(config);
+  const cursorWhere = trashCursorWhere(normalized.cursor);
+  const totalRow = db.prepare("SELECT COUNT(*) AS count FROM trash_items").get() as { count?: number } | undefined;
   const rows = db.prepare(`
     SELECT id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path
-    FROM trash_items ORDER BY deleted_at DESC, id DESC
-  `).all() as SqlTrashRow[];
+    FROM trash_items${cursorWhere.sql}
+    ORDER BY deleted_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(...cursorWhere.params, normalized.limit, normalized.offset) as SqlTrashRow[];
   const items: FilesTrashItem[] = [];
   const staleTrashPaths: string[] = [];
   for (const row of rows) {
@@ -2311,7 +2420,20 @@ function listTrashItems(config: TracevaneServerConfig): FilesTrashItem[] {
     const statement = db.prepare("DELETE FROM trash_items WHERE trash_path = ?");
     for (const trashPath of staleTrashPaths) statement.run(trashPath);
   });
-  return items;
+  const totalItemCount = Number(totalRow?.count) || 0;
+  return {
+    checkedAt: new Date().toISOString(),
+    rootId: GLOBAL_CONTENT_INDEX_ROOT_ID,
+    scope: "global",
+    trashDirectoryPath: GLOBAL_RECYCLE_BIN_RELATIVE_PATH,
+    offset: normalized.offset,
+    limit: normalized.limit,
+    totalItemCount,
+    returnedItemCount: items.length,
+    hasMore: normalized.offset + items.length < totalItemCount,
+    nextCursor: items.length ? encodeFileManagerCursor([items.at(-1)?.deletedAt || "", items.at(-1)?.id || ""]) : null,
+    items,
+  };
 }
 
 function resolveTrashItem(config: TracevaneServerConfig, trashPath: string | undefined): ResolvedPath {
@@ -2988,6 +3110,21 @@ function readFileVersionContent(config: TracevaneServerConfig, meta: StoredFileV
 }
 
 
+function maintainFileManagerSqlite(config: TracevaneServerConfig, vacuum = false): FilesSqliteMaintenancePayload {
+  const db = fileManagerDb(config);
+  const quick = db.prepare("PRAGMA quick_check").get() as Record<string, string> | undefined;
+  const quickCheck = Object.values(quick || { quick_check: "unknown" })[0] || "unknown";
+  const checkpointRows = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").all() as Array<Record<string, SqliteValue>>;
+  if (vacuum) db.exec("VACUUM");
+  return {
+    checkedAt: new Date().toISOString(),
+    databasePath: fileManagerSqlitePath(config),
+    quickCheck,
+    walCheckpoint: JSON.stringify(checkpointRows),
+    vacuumed: vacuum,
+  };
+}
+
 export function createFilesService(config: TracevaneServerConfig): FilesService {
   return {
     getSummary(): FilesSummaryPayload {
@@ -3547,14 +3684,12 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
 
 
 
-    listTrash(_rootId: string): FilesTrashPayload {
-      return {
-        checkedAt: new Date().toISOString(),
-        rootId: GLOBAL_CONTENT_INDEX_ROOT_ID,
-        scope: "global",
-        trashDirectoryPath: GLOBAL_RECYCLE_BIN_RELATIVE_PATH,
-        items: listTrashItems(config),
-      };
+    listTrash(params: string | FilesTrashListParams): FilesTrashPayload {
+      return listTrashItems(config, params);
+    },
+
+    maintainSqlite(vacuum = false): FilesSqliteMaintenancePayload {
+      return maintainFileManagerSqlite(config, vacuum);
     },
 
     restoreTrash(payload: FilesTrashRestorePayload): FilesMutationResponse {
@@ -3564,7 +3699,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
     purgeTrash(payload: FilesTrashPurgePayload): FilesMutationResponse {
       if (payload.rootId && !isGlobalContentIndexRoot(payload.rootId)) resolveRoot(config, payload.rootId);
       const requested = Array.isArray(payload.trashPaths) ? payload.trashPaths.map((entry) => normalizeRelativePath(entry)).filter(Boolean) : [];
-      const trashPaths = requested.length ? requested : listTrashItems(config).map((item) => item.trashPath);
+      const trashPaths = requested.length ? requested : listTrashItems(config).items.map((item) => item.trashPath);
       if (!trashPaths.length) {
         return { success: true, action: "purge-trash", message: "Recycle bin is already empty", affectedPaths: [] };
       }
@@ -3863,6 +3998,14 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         throw new Error("Global content-index rebuild is intentionally disabled; rebuild one root at a time to avoid scanning every configured filesystem root.");
       }
       return rebuildContentIndexForRoot(config, rootId);
+    },
+
+    startContentIndexRebuild(rootId: string): FilesContentIndexRebuildJobPayload {
+      return startContentIndexRebuildJob(config, rootId);
+    },
+
+    getContentIndexRebuildJob(jobId: string): FilesContentIndexRebuildJobPayload {
+      return getContentIndexRebuildJob(jobId);
     },
 
     prepareArchiveDownload(payload: FilesArchiveDownloadPayload) {
