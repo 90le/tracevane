@@ -37,7 +37,7 @@ A real local-first AI IDE for code + writing, with evidence-gated agent changes.
 
 明确禁止的错误方向：
 
-- 禁止把默认 Workspace 做成“第一季重构说明页”“设计愿景页”“巨大标语页”“卡片墙”或“静态产品宣传页”。
+- 禁止把默认 Workspace 做成“重构说明页”“设计愿景页”“巨大标语页”“卡片墙”或“静态产品宣传页”。
 - 禁止用漂亮 mock 替代真实文件、编辑器、终端、Git、AI 和 evidence 交互。
 - 禁止为了规避旧框架复杂度而交付一个不能编辑、不能运行、不能审查、不能应用变更的壳。
 - 禁止把用户正在工作的 IDE 入口变成需要滚动阅读的文档页面。
@@ -47,7 +47,7 @@ A real local-first AI IDE for code + writing, with evidence-gated agent changes.
 - `/workspace` 首屏必须看起来像可工作的 IDE/AI 写作工作区。
 - 首屏中“真实工作对象”面积必须大于“说明/宣言/营销文案”面积。
 - 至少应同时可见：文件/资源导航、当前文件编辑或阅读区域、AI/证据区、运行/终端区、状态信息。
-- 如果需要解释 Season One，可放在小型 onboarding banner、帮助入口或空状态，不得主导主工作台。
+- 如果需要解释架构方向，可放在小型 onboarding banner、帮助入口或空状态，不得主导主工作台。
 
 ## 2. 研究记录（2026-06-29）
 
@@ -174,7 +174,7 @@ npm run typecheck:web -- --pretty false
 
 本 Goal 当前不再把“创建 goal 文档、空状态北极星、AI Context Basket 基础契约、Evidence Basket 基础契约、Context→Evidence 桥接、Evidence Handoff Packet、侧边面板无上限高性能拖拽、移动面板置于终端前面”等已完成事项列为待办。当前剩余只跟踪以下可验证缺口：
 
-0. **纠正默认入口方向**：`/workspace` 必须从概念说明页回到真实 IDE/AI 写作工作区形态；保留 Season One 的新架构，但首屏必须以文件、编辑器、AI/证据、终端/Git 等真实生产对象为主。
+0. **纠正默认入口方向**：`/workspace` 必须从概念说明页回到真实 IDE/AI 写作工作区形态；当前先退回既有 Workbench，后续只能在经过技术路线评审后重建，不再沿用概念说明页式重构。
 
 1. **Workspace 框架美学与布局**：PC/手机/平板统一视觉语言，减少重复标题、重复工具条和堆叠按钮；窗口模块可上下/左右组合、局部全屏、浏览器真实全屏。
 2. **编辑器与终端标签管理**：补齐右键/长按菜单、关闭/关闭其他/拆分/移动/复制路径/终止终端/重命名等操作；终端结束会话可彻底关闭删除。
