@@ -431,15 +431,20 @@ test("Workspace command palette is framed as an IDE command center", () => {
   assert.match(palette, /文件、搜索、Git、终端、布局的统一动作入口/);
   assert.match(palette, /输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作/);
   assert.match(palette, /enabledCommandCount/);
+  assert.match(palette, /commandGroups/);
   assert.match(palette, /所有命令必须映射到真实 IDE 操作/);
+  assert.match(palette, /证据\/自动化扩展动作不会直接写入文件或执行命令/);
   assert.match(palette, /不可用动作会被禁用/);
   assert.match(palette, /data-workspace-command-palette-summary/);
+  assert.match(palette, /data-workspace-command-palette-groups/);
   assert.match(palette, /data-workspace-keybinding-conflicts="header-alert"/);
   assert.match(palette, /data-workspace-command-palette-header="ide-command-console"/);
   assert.match(palette, /data-workspace-command-palette-surface="ide-command-center"/);
   assert.match(palette, /没有匹配的 IDE 命令/);
-  assert.match(palette, /index < WORKSPACE_COMMAND_GROUPS\.length - 1/);
+  assert.match(palette, /index < commandGroups\.length - 1/);
+  assert.doesNotMatch(palette, /index < WORKSPACE_COMMAND_GROUPS\.length - 1/);
   assert.doesNotMatch(palette, /group !== "AI"/);
+  assert.doesNotMatch(palette, /证据\/AI 扩展动作/);
   assert.doesNotMatch(palette, /AI 上下文…/);
 });
 

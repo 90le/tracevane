@@ -35,6 +35,14 @@ export function WorkspaceCommandPalette({
     [commands],
   );
   const totalCommandCount = commands.length;
+  const commandGroups = React.useMemo(
+    () =>
+      WORKSPACE_COMMAND_GROUPS.map((group) => ({
+        group,
+        commands: commands.filter((command) => command.group === group),
+      })).filter(({ commands: groupCommands }) => groupCommands.length > 0),
+    [commands],
+  );
 
   const runCommand = React.useCallback(
     (command: WorkspaceCommand) => {
@@ -93,7 +101,7 @@ export function WorkspaceCommandPalette({
           className="mt-2 text-2xs leading-5 text-subtle"
           data-workspace-command-palette-summary
         >
-          所有命令必须映射到真实 IDE 操作；不可用动作会被禁用，证据/AI 扩展动作不会直接写入文件或执行命令。
+          所有命令必须映射到真实 IDE 操作；不可用动作会被禁用，证据/自动化扩展动作不会直接写入文件或执行命令。
         </p>
         {keybindingConflicts.length ? (
           <div
@@ -114,37 +122,36 @@ export function WorkspaceCommandPalette({
       <CommandList
         className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
         data-workspace-command-palette
+        data-workspace-command-palette-groups={commandGroups.length}
         data-workspace-command-palette-surface="ide-command-center"
         data-workspace-command-palette-mobile-sheet
       >
         <CommandEmpty>没有匹配的 IDE 命令</CommandEmpty>
-        {WORKSPACE_COMMAND_GROUPS.map((group, index) => (
+        {commandGroups.map(({ group, commands: groupCommands }, index) => (
           <CommandGroup key={group} heading={group}>
-            {commands
-              .filter((command) => command.group === group)
-              .map((command) => (
-                <CommandItem
-                  key={command.id}
-                  value={`${command.label} ${command.description}`}
-                  onSelect={() => runCommand(command)}
-                  disabled={command.disabled}
-                  data-workspace-command={command.id}
-                >
-                  {command.icon}
-                  <span className="grid min-w-0 flex-1 gap-0.5">
-                    <span className="truncate font-medium">
-                      {command.label}
-                    </span>
-                    <span className="truncate text-xs text-muted">
-                      {command.description}
-                    </span>
+            {groupCommands.map((command) => (
+              <CommandItem
+                key={command.id}
+                value={`${command.label} ${command.description}`}
+                onSelect={() => runCommand(command)}
+                disabled={command.disabled}
+                data-workspace-command={command.id}
+              >
+                {command.icon}
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate font-medium">
+                    {command.label}
                   </span>
-                  {command.shortcut ? (
-                    <CommandShortcut>{command.shortcut}</CommandShortcut>
-                  ) : null}
-                </CommandItem>
-              ))}
-            {index < WORKSPACE_COMMAND_GROUPS.length - 1 ? <CommandSeparator /> : null}
+                  <span className="truncate text-xs text-muted">
+                    {command.description}
+                  </span>
+                </span>
+                {command.shortcut ? (
+                  <CommandShortcut>{command.shortcut}</CommandShortcut>
+                ) : null}
+              </CommandItem>
+            ))}
+            {index < commandGroups.length - 1 ? <CommandSeparator /> : null}
           </CommandGroup>
         ))}
       </CommandList>
