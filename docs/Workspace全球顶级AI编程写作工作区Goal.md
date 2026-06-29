@@ -190,3 +190,20 @@ npm run typecheck:web -- --pretty false
 node --test tests/system/workspace-ai-context-basket.test.mjs
 npm run typecheck:web -- --pretty false
 ```
+
+### 2026-06-29 / Phase D 小步：Evidence Basket 前端契约
+
+为推进“证据/审批闭环”，本阶段新增 `WorkspaceEvidenceBasket.ts` 共享契约。它不替代后端事实源，而是先定义前端可复用的证据对象：来源、类型、标题、摘要、引用、时间戳，以及 append/remove/clear/replace/subscribe/export 基础能力。这样后续 Git Diff、终端命令、验证结果、AI 上下文、Agent 输出都可以先落到同一证据篮模型，再迁移为 workspace-facing 后端 evidence 服务。
+
+完成范围：
+
+- 新增 Evidence source/kind/action 类型和 `WorkspaceEvidenceRecord`。
+- 新增本地草案 storage key `tracevane.workspace.evidence-basket.v1` 与更新事件 `tracevane:workspace-evidence-basket-updated`。
+- 提供 append/remove/clear/replace/read/write/subscribe/export/type guard。
+- 结构测试覆盖证据源、动作、事件、导出和 80 项上限。
+
+验证：
+
+```bash
+node --test tests/system/workspace-evidence-basket.test.mjs
+```
