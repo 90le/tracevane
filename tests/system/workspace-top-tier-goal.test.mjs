@@ -289,6 +289,21 @@ test("Workspace file action menu exposes legacy preview as IDE inspection", () =
   assert.doesNotMatch(actionsMenu, /preview\/edit entry point used by full file-manager surfaces/);
 });
 
+test("Workspace file transfer and unarchive dialogs use dry-run preflight language", () => {
+  const actionsMenu = readWeb("features/workspace/files/FileActionsMenu.tsx");
+  assert.match(actionsMenu, /const \[dryRun, setDryRun\]/);
+  assert.match(actionsMenu, /const \[dryRunBusy, setDryRunBusy\]/);
+  assert.match(actionsMenu, /UnarchiveDryRunSummary dryRun=\{dryRun\}/);
+  assert.match(actionsMenu, /TransferDryRunSummary dryRun=\{dryRun\}/);
+  assert.match(actionsMenu, /data-file-actions-transfer-dry-run-summary/);
+  assert.match(actionsMenu, /预检归档内容/);
+  assert.match(actionsMenu, /dry-run 预检目标是否存在/);
+  assert.doesNotMatch(actionsMenu, /TransferDryRunSummary preview=/);
+  assert.doesNotMatch(actionsMenu, /UnarchiveDryRunSummary preview=/);
+  assert.doesNotMatch(actionsMenu, /setPreviewBusy/);
+  assert.doesNotMatch(actionsMenu, /previewBusy/);
+});
+
 test("Workspace explorer presents file inspection instead of preview as the IDE action", () => {
   const explorer = readWeb("features/workspace/files/WorkspaceExplorer.tsx");
   assert.match(explorer, /label="检查文件"/);

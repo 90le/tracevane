@@ -796,16 +796,16 @@ function UnarchiveDialog({
   const [destinationDirectoryPath, setDestinationDirectoryPath] = React.useState(defaultDirectory);
   const [conflictPolicy, setConflictPolicy] = React.useState<"fail" | "overwrite" | "skip" | "rename">("fail");
   const [overwriteConfirm, setOverwriteConfirm] = React.useState("");
-  const [preview, setPreview] = React.useState<FilesUnarchiveDryRunResponse | null>(null);
-  const [previewBusy, setPreviewBusy] = React.useState(false);
+  const [dryRun, setDryRun] = React.useState<FilesUnarchiveDryRunResponse | null>(null);
+  const [dryRunBusy, setDryRunBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const overwriteRequired = Boolean(preview?.counts.overwrite);
+  const overwriteRequired = Boolean(dryRun?.counts.overwrite);
   const overwriteConfirmed = !overwriteRequired || overwriteConfirm.trim() === "OVERWRITE";
 
   React.useEffect(() => {
     if (!archivePath) return;
     let cancelled = false;
-    setPreviewBusy(true);
+    setDryRunBusy(true);
     const timer = window.setTimeout(() => {
       void dryRunUnarchiveFile({
         rootId,
@@ -815,13 +815,13 @@ function UnarchiveDialog({
         conflictPolicy,
       })
         .then((result) => {
-          if (!cancelled) setPreview(result);
+          if (!cancelled) setDryRun(result);
         })
         .catch(() => {
-          if (!cancelled) setPreview(null);
+          if (!cancelled) setDryRun(null);
         })
         .finally(() => {
-          if (!cancelled) setPreviewBusy(false);
+          if (!cancelled) setDryRunBusy(false);
         });
     }, 180);
     return () => {
@@ -873,10 +873,10 @@ function UnarchiveDialog({
               <option value="rename">同名文件自动重命名</option>
             </select>
           </label>
-          <UnarchiveDryRunSummary preview={preview} busy={previewBusy} />
+          <UnarchiveDryRunSummary dryRun={dryRun} busy={dryRunBusy} />
           {overwriteRequired ? (
             <label className="grid gap-1 rounded border border-amber/30 bg-amber-soft p-2 text-xs text-amber">
-              覆盖会替换 {preview?.counts.overwrite ?? 0} 个同名目标。请输入 OVERWRITE 确认。
+              覆盖会替换 {dryRun?.counts.overwrite ?? 0} 个同名目标。请输入 OVERWRITE 确认。
               <Input
                 value={overwriteConfirm}
                 onChange={(event) => setOverwriteConfirm(event.target.value)}
@@ -892,10 +892,10 @@ function UnarchiveDialog({
             onClick={() => void submit()}
             disabled={
               busy ||
-              !preview ||
-              previewBusy ||
+              !dryRun ||
+              dryRunBusy ||
               !overwriteConfirmed ||
-              Boolean(preview?.counts.conflicts || preview?.counts.errors)
+              Boolean(dryRun?.counts.conflicts || dryRun?.counts.errors)
             }
           >
             {busy ? "解压中…" : "解压"}
@@ -907,17 +907,17 @@ function UnarchiveDialog({
 }
 
 function UnarchiveDryRunSummary({
-  preview,
+  dryRun,
   busy,
 }: {
-  preview: FilesUnarchiveDryRunResponse | null;
+  dryRun: FilesUnarchiveDryRunResponse | null;
   busy: boolean;
 }) {
   if (busy) return <div className="rounded border border-line bg-panel-2 px-2 py-1 text-xs text-muted">正在预检归档内容…</div>;
-  if (!preview) return <div className="rounded border border-line bg-panel-2 px-2 py-1 text-xs text-muted">将读取归档目录并预检解压冲突。</div>;
-  const counts = preview.counts;
+  if (!dryRun) return <div className="rounded border border-line bg-panel-2 px-2 py-1 text-xs text-muted">将读取归档目录并预检解压冲突。</div>;
+  const counts = dryRun.counts;
   const risky = counts.conflicts + counts.overwrite + counts.errors;
-  const visible = preview.items.filter((item) => item.status !== "ready").slice(0, 5);
+  const visible = dryRun.items.filter((item) => item.status !== "ready").slice(0, 5);
   return (
     <div className="grid gap-2 rounded border border-line bg-panel-2 p-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
@@ -994,34 +994,34 @@ function TransferDialog({
   const [conflictPolicy, setConflictPolicy] =
     React.useState<FilesTransferConflictPolicy>("fail");
   const [overwriteConfirm, setOverwriteConfirm] = React.useState("");
-  const [preview, setPreview] =
+  const [dryRun, setDryRun] =
     React.useState<FilesTransferDryRunResponse | null>(null);
-  const [previewError, setPreviewError] = React.useState<string | null>(null);
-  const [previewBusy, setPreviewBusy] = React.useState(false);
+  const [dryRunError, setDryRunError] = React.useState<string | null>(null);
+  const [dryRunBusy, setDryRunBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const overwriteRequired = Boolean(preview?.counts.overwrite);
+  const overwriteRequired = Boolean(dryRun?.counts.overwrite);
   const overwriteConfirmed =
     !overwriteRequired || overwriteConfirm.trim() === "OVERWRITE";
   const disabled = Boolean(
     busy ||
       !destRoot.trim() ||
-      previewBusy ||
-      !preview ||
-      preview.counts.conflicts ||
-      preview.counts.errors ||
+      dryRunBusy ||
+      !dryRun ||
+      dryRun.counts.conflicts ||
+      dryRun.counts.errors ||
       !overwriteConfirmed,
   );
 
   React.useEffect(() => {
     if (!sourcePath || !destRoot.trim()) {
-      setPreview(null);
-      setPreviewError(null);
-      setPreviewBusy(false);
+      setDryRun(null);
+      setDryRunError(null);
+      setDryRunBusy(false);
       return;
     }
     let cancelled = false;
-    setPreviewBusy(true);
-    setPreviewError(null);
+    setDryRunBusy(true);
+    setDryRunError(null);
     const timer = window.setTimeout(() => {
       void dryRunFileTransfer({
         operation,
@@ -1033,16 +1033,16 @@ function TransferDialog({
         conflictPolicy,
       })
         .then((result) => {
-          if (!cancelled) setPreview(result);
+          if (!cancelled) setDryRun(result);
         })
         .catch((error) => {
           if (!cancelled) {
-            setPreview(null);
-            setPreviewError(error instanceof Error ? error.message : String(error));
+            setDryRun(null);
+            setDryRunError(error instanceof Error ? error.message : String(error));
           }
         })
         .finally(() => {
-          if (!cancelled) setPreviewBusy(false);
+          if (!cancelled) setDryRunBusy(false);
         });
     }, 180);
     return () => {
@@ -1117,10 +1117,10 @@ function TransferDialog({
               <option value="overwrite">覆盖同名目标</option>
             </select>
           </label>
-          <TransferDryRunSummary preview={preview} busy={previewBusy} errorMessage={previewError} />
+          <TransferDryRunSummary dryRun={dryRun} busy={dryRunBusy} errorMessage={dryRunError} />
           {overwriteRequired ? (
             <label className="grid gap-1 rounded border border-amber/30 bg-amber-soft p-2 text-xs text-amber">
-              覆盖会替换 {preview?.counts.overwrite ?? 0} 个目标。请输入 OVERWRITE 确认。
+              覆盖会替换 {dryRun?.counts.overwrite ?? 0} 个目标。请输入 OVERWRITE 确认。
               <Input
                 value={overwriteConfirm}
                 onChange={(event) => setOverwriteConfirm(event.target.value)}
@@ -1147,11 +1147,11 @@ function TransferDialog({
 }
 
 function TransferDryRunSummary({
-  preview,
+  dryRun,
   busy,
   errorMessage,
 }: {
-  preview: FilesTransferDryRunResponse | null;
+  dryRun: FilesTransferDryRunResponse | null;
   busy: boolean;
   errorMessage: string | null;
 }) {
@@ -1169,15 +1169,15 @@ function TransferDryRunSummary({
       </div>
     );
   }
-  if (!preview) {
+  if (!dryRun) {
     return (
       <div className="rounded border border-line bg-panel-2 px-2 py-1 text-xs text-muted">
         执行前会先 dry-run 预检目标是否存在、是否会覆盖或跳过。
       </div>
     );
   }
-  const item = preview.items[0];
-  const risky = preview.counts.conflicts + preview.counts.overwrite + preview.counts.errors;
+  const item = dryRun.items[0];
+  const risky = dryRun.counts.conflicts + dryRun.counts.overwrite + dryRun.counts.errors;
   return (
     <div
       className="grid gap-2 rounded border border-line bg-panel-2 p-2 text-xs"
@@ -1186,16 +1186,16 @@ function TransferDryRunSummary({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink-strong">转移预检</span>
         <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">
-          {preview.counts.ready} 就绪
+          {dryRun.counts.ready} 就绪
         </span>
-        {preview.counts.rename ? (
+        {dryRun.counts.rename ? (
           <span className="rounded-full bg-primary-soft px-2 py-0.5 text-primary">
-            {preview.counts.rename} 重命名
+            {dryRun.counts.rename} 重命名
           </span>
         ) : null}
-        {preview.counts.skip ? (
+        {dryRun.counts.skip ? (
           <span className="rounded-full bg-panel px-2 py-0.5 text-muted">
-            {preview.counts.skip} 跳过
+            {dryRun.counts.skip} 跳过
           </span>
         ) : null}
         {risky ? (
@@ -1215,7 +1215,7 @@ function TransferDryRunSummary({
           </span>
         </div>
       ) : null}
-      {preview.counts.conflicts || preview.counts.errors ? (
+      {dryRun.counts.conflicts || dryRun.counts.errors ? (
         <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
           存在阻塞冲突或无效来源，不能执行。
         </div>
