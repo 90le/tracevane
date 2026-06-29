@@ -1,7 +1,7 @@
 export const WORKSPACE_OWNERS = [
   "files",
   "editor",
-  "preview",
+  "inspect",
   "terminal",
   "git",
 ] as const;
@@ -9,7 +9,7 @@ export const WORKSPACE_OWNERS = [
 export type WorkspaceOwner = (typeof WORKSPACE_OWNERS)[number];
 
 export type WorkspaceActivity = "files" | "search" | "git" | "terminal";
-export type WorkspaceMobileMode = "files" | "edit" | "terminal" | "preview";
+export type WorkspaceMobileMode = "files" | "edit" | "terminal" | "inspect";
 export type WorkspaceModeParam = WorkspaceActivity | WorkspaceMobileMode;
 
 export interface WorkspaceOwnerBoundaryRule {
@@ -31,13 +31,13 @@ export const WORKSPACE_OWNER_BOUNDARIES: WorkspaceOwnerBoundaryRule[] = [
   },
   {
     owner: "editor",
-    owns: ["tabs", "buffers", "dirty state", "save/revert", "diff/markdown modes"],
+    owns: ["tabs", "buffers", "dirty state", "save/revert", "diff/review modes"],
     mustNotOwn: ["batch file lifecycle", "terminal sessions"],
   },
   {
-    owner: "preview",
-    owns: ["rendered view", "preview adapters", "console/screenshot evidence refs"],
-    mustNotOwn: ["editor dirty state", "file batch operations"],
+    owner: "inspect",
+    owns: ["file inspection", "readonly adapters", "metadata/evidence refs"],
+    mustNotOwn: ["editor dirty state", "file batch operations", "rich rendering policy"],
   },
   {
     owner: "git",

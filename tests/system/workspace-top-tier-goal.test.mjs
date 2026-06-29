@@ -181,6 +181,21 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace owner boundaries replace preview with IDE inspection", () => {
+  const owners = readWeb("features/workspace/shared/workspaceOwners.ts");
+  assert.match(owners, /"inspect"/);
+  assert.match(owners, /WorkspaceMobileMode = "files" \| "edit" \| "terminal" \| "inspect"/);
+  assert.match(owners, /owner: "inspect"/);
+  assert.match(owners, /"file inspection"/);
+  assert.match(owners, /"readonly adapters"/);
+  assert.match(owners, /"rich rendering policy"/);
+  assert.match(owners, /"diff\/review modes"/);
+  assert.doesNotMatch(owners, /"preview",/);
+  assert.doesNotMatch(owners, /owner: "preview"/);
+  assert.doesNotMatch(owners, /"rendered view"/);
+  assert.doesNotMatch(owners, /"diff\/markdown modes"/);
+});
+
 test("Workspace file action menu exposes legacy preview as IDE inspection", () => {
   const actionsMenu = readWeb("features/workspace/files/FileActionsMenu.tsx");
   assert.match(actionsMenu, /legacy preview hook exposed as an IDE file inspection action/);
