@@ -183,8 +183,8 @@ export function createWorkspaceCommandRegistry({
     {
       id: "workspace.editor.maximize",
       group: "布局",
-      label: "最大化编辑/预览区",
-      description: "临时收起干扰，把文件编辑、预览或所见即所得画布全屏化",
+      label: "最大化编辑器工作区",
+      description: "临时收起干扰，把当前代码编辑器和 IDE 主舞台全屏化",
       icon: <Maximize2 />,
       run: () => toggleMaximizedDockPanel?.("editor"),
     },

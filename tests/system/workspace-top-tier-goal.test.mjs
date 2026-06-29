@@ -47,3 +47,12 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
   assert.doesNotMatch(stage, /全球顶级 AI 编程与写作工作区/);
   assert.match(stage, /data-workspace-top-tier-empty/);
 });
+
+test("Workspace command system keeps the current IDE UI mainline out of preview/writing scope", () => {
+  const commands = readWeb("features/workspace/workbench/workspaceCommands.tsx");
+  assert.match(commands, /id: "workspace\.editor\.maximize"/);
+  assert.match(commands, /最大化编辑器工作区/);
+  assert.match(commands, /当前代码编辑器和 IDE 主舞台/);
+  assert.doesNotMatch(commands, /最大化编辑\/预览区/);
+  assert.doesNotMatch(commands, /所见即所得画布全屏化/);
+});
