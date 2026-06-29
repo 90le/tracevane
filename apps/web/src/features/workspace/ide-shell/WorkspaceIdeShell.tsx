@@ -328,6 +328,19 @@ export function WorkspaceIdeShell() {
           resizeActiveDockPlacement(-KEYBOARD_RESIZE_LARGE_STEP);
           return;
         }
+        if (!event.shiftKey && event.key === "[") {
+          event.preventDefault();
+          setActiveEditorGroup("primary");
+          focusIdeRegion("center");
+          return;
+        }
+        if (!event.shiftKey && event.key === "]") {
+          event.preventDefault();
+          if (editorSplitMode === "single") splitEditor("vertical");
+          setActiveEditorGroup("secondary");
+          focusIdeRegion("center");
+          return;
+        }
         if (event.shiftKey && event.key === "ArrowLeft") {
           event.preventDefault();
           moveActiveDockPaneToPlacement("left");
@@ -577,6 +590,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "聚焦主编辑器组",
         description: "后续打开文件进入主编辑器组",
+        shortcut: "⌘⌥[",
         risk: "safe",
         surface: "layout",
         icon: <Code2 />,
@@ -587,6 +601,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "聚焦副编辑器组",
         description: "后续打开文件进入副编辑器组；未拆分时先向右拆分",
+        shortcut: "⌘⌥]",
         risk: "safe",
         surface: "layout",
         icon: <Code2 />,

@@ -169,6 +169,14 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /ide\.editor\.close-split/);
   assert.match(shellSource, /ide\.editor\.focus-primary/);
   assert.match(shellSource, /ide\.editor\.focus-secondary/);
+  assert.match(shellSource, /shortcut: "⌘⌥\["/);
+  assert.match(shellSource, /shortcut: "⌘⌥\]"/);
+  assert.match(shellSource, /event\.key === "\["/);
+  assert.match(shellSource, /setActiveEditorGroup\("primary"\)/);
+  assert.match(shellSource, /event\.key === "\]"/);
+  assert.match(shellSource, /if \(editorSplitMode === "single"\) splitEditor\("vertical"\)/);
+  assert.match(shellSource, /setActiveEditorGroup\("secondary"\)/);
+  assert.match(shellSource, /focusIdeRegion\("center"\)/);
   assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="vertical"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="horizontal"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-split-handle/);
