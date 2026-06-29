@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Columns2, FileCode } from "lucide-react";
+import { Bot, Columns2, FileCode, PenLine, ShieldCheck } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
@@ -206,10 +206,12 @@ export function DocumentWorkbench({
       actualMode === "split" ||
       actualMode === "preview");
   const showInlineSearchButton = canSearchReplace && showModeSwitcher;
+  const showAiWritingGuide = !compact && !splitPane && showModeSwitcher;
   const showWorkbenchToolbar =
     (showModeSwitcher && modes.length > 1) ||
     showInlineSearchButton ||
     showSplitToggle ||
+    showAiWritingGuide ||
     (!compact && !splitPane && showModeSwitcher);
 
   const setMode = React.useCallback(
@@ -380,11 +382,20 @@ export function DocumentWorkbench({
       {showWorkbenchToolbar ? (
         <div
           className={cn(
-            "flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto border-b border-line bg-panel-2 px-2 py-1 text-xs sm:flex-wrap sm:gap-2",
+            "grid min-w-0 gap-1 border-b border-line bg-panel-2 px-2 py-1 text-xs",
             compact && "px-0 py-0 border-b-0 bg-transparent",
           )}
           data-document-workbench-toolbar
         >
+          {showAiWritingGuide ? (
+            <DocumentAiWritingGuide
+              path={path}
+              mode={actualMode}
+              textLike={textLike}
+              editable={editable}
+            />
+          ) : null}
+          <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto sm:flex-wrap sm:gap-2">
           {showModeSwitcher && modes.length > 1 ? (
             <>
               <label
@@ -463,6 +474,7 @@ export function DocumentWorkbench({
               {split ? "关闭分屏" : "分屏"}
             </Button>
           ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -553,6 +565,54 @@ export function DocumentWorkbench({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+function DocumentAiWritingGuide({
+  path,
+  mode,
+  textLike,
+  editable,
+}: {
+  path: string;
+  mode: DocumentWorkbenchMode;
+  textLike: boolean;
+  editable: boolean;
+}) {
+  const name = path.split("/").pop() || path;
+  const tone = textLike ? "可编辑上下文" : "只读上下文";
+  const modeLabel =
+    mode === "source"
+      ? "源码"
+      : mode === "preview"
+        ? "预览"
+        : mode === "split"
+          ? "边写边预览"
+          : "预览时编辑";
+  return (
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-primary-line bg-primary-soft/70 px-2.5 py-2 text-2xs text-muted"
+      data-document-ai-writing-guide
+      data-document-ai-writing-mode={mode}
+      data-document-ai-writing-editable={editable ? "true" : "false"}
+    >
+      <span className="inline-flex items-center gap-1 rounded-full bg-panel px-2 py-0.5 font-medium text-primary shadow-sm">
+        <Bot className="size-3.5" />
+        AI 工作上下文
+      </span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-panel/80 px-2 py-0.5 text-ink-strong">
+        <PenLine className="size-3.5" />
+        {modeLabel}
+      </span>
+      <span className="min-w-0 flex-1 truncate">
+        {name} · {tone}；选中文本可复制 @selection，标签菜单可复制 @file，所有改动先留在当前文件 buffer。
+      </span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-panel/80 px-2 py-0.5 text-subtle">
+        <ShieldCheck className="size-3.5" />
+        保存 / Git Diff / 终端验证后形成审查证据
+      </span>
     </div>
   );
 }
