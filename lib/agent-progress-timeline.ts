@@ -71,8 +71,11 @@ export function upsertAgentProgressAssistant(
   limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT,
 ): AgentProgressTimelineItem[] {
   if (!text) return items;
-  const id = 'assistant-live';
-  const existing = items.findIndex((item) => item.kind === 'assistant' && item.id === id);
+  const last = items[items.length - 1] || null;
+  const existing = last?.kind === 'assistant' ? items.length - 1 : -1;
+  const id = existing >= 0
+    ? (last as Extract<AgentProgressTimelineItem, { kind: 'assistant' }>).id
+    : `assistant-live-${items.filter((item) => item.kind === 'assistant').length + 1}`;
   const entry: AgentProgressTimelineItem = { kind: 'assistant', id, text };
   return trimTimeline(existing >= 0
     ? items.map((item, index) => (index === existing ? entry : item))
