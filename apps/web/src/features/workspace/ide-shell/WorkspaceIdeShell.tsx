@@ -2180,7 +2180,7 @@ function PaneDockControls({
   placement: PanePlacement;
   compact?: boolean;
   splitMode?: DockSplitMode;
-  onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
+  onMovePane: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
   onSwapDockGroups?: (placement: PanePlacement) => void;
   onFocusOtherGroup?: () => void;
@@ -2190,6 +2190,8 @@ function PaneDockControls({
   onEndDrag: () => void;
   onCloseDock: () => void;
 }) {
+  const canAssignToSplitGroup = splitMode && splitMode !== "single";
+
   return (
     <div
       className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
@@ -2210,6 +2212,23 @@ function PaneDockControls({
           {placementShortLabel(target)}
         </button>
       ))}
+      <button
+        type="button"
+        data-ide-pane-assign-primary-group={paneId}
+        aria-label={`把 ${paneLabel(paneId)} 放入${placementLabel(placement)} Dock 主窗格组`}
+        onClick={() => onMovePane(paneId, placement, undefined, "primary")}
+      >
+        主组
+      </button>
+      <button
+        type="button"
+        data-ide-pane-assign-secondary-group={paneId}
+        disabled={!canAssignToSplitGroup}
+        aria-label={`把 ${paneLabel(paneId)} 放入${placementLabel(placement)} Dock 副窗格组`}
+        onClick={() => onMovePane(paneId, placement, undefined, "secondary")}
+      >
+        副组
+      </button>
       {onSetDockSplitMode ? (
         <>
           <button type="button" data-active={splitMode === "single"} aria-label={`取消${placementLabel(placement)} Dock 拆分`} onClick={() => onSetDockSplitMode(placement, "single")}>单</button>

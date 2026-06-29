@@ -180,6 +180,14 @@ test("new Workspace IDE shell exposes direct dock controls for pane movement", (
   assert.match(shellSource, /data-ide-pane-dock-controls=\{paneId\}/);
   assert.match(shellSource, /placementShortLabel/);
   assert.match(shellSource, /移动 \$\{paneLabel\(paneId\)\} 到\$\{placementLabel\(target\)\}/);
+  assert.match(shellSource, /const canAssignToSplitGroup = splitMode && splitMode !== "single"/);
+  assert.match(shellSource, /data-ide-pane-assign-primary-group=\{paneId\}/);
+  assert.match(shellSource, /data-ide-pane-assign-secondary-group=\{paneId\}/);
+  assert.match(shellSource, /把 \$\{paneLabel\(paneId\)\} 放入\$\{placementLabel\(placement\)\} Dock 主窗格组/);
+  assert.match(shellSource, /把 \$\{paneLabel\(paneId\)\} 放入\$\{placementLabel\(placement\)\} Dock 副窗格组/);
+  assert.match(shellSource, /onMovePane\(paneId, placement, undefined, "primary"\)/);
+  assert.match(shellSource, /onMovePane\(paneId, placement, undefined, "secondary"\)/);
+  assert.match(shellSource, /disabled=\{!canAssignToSplitGroup\}/);
   assert.match(shellSource, /关闭\$\{placementLabel\(placement\)\} Dock/);
   assert.match(shellSource, /onMovePane\(paneId, target\)/);
   assert.match(shellSource, /onFocusOtherGroup\?: \(\) => void/);
