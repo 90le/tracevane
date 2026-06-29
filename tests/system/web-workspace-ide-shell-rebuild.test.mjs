@@ -178,8 +178,26 @@ test("new Workspace IDE shell supports drag and drop pane docking", () => {
   assert.match(shellSource, /data-ide-pane-draggable=\{paneId\}/);
   assert.match(shellSource, /draggable/);
   assert.match(shellSource, /isPaneId/);
-  assert.match(shellSource, /movePaneToPlacement\(paneId, placement\)/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, placement, beforePaneId\)/);
   assert.match(cssSource, /workspace-ide-shell__body--dragging-pane/);
   assert.match(cssSource, /is-drop-target/);
   assert.match(cssSource, /cursor: grab/);
+});
+
+
+test("new Workspace IDE shell persists pane order and supports tab reorder drops", () => {
+  assert.match(shellSource, /type PaneOrder = Record<PanePlacement, PaneId\[\]>/);
+  assert.match(shellSource, /DEFAULT_PANE_ORDER/);
+  assert.match(shellSource, /paneOrder/);
+  assert.match(shellSource, /setPaneOrder/);
+  assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder\)/);
+  assert.match(shellSource, /function reorderPane/);
+  assert.match(shellSource, /beforePaneId\?: PaneId/);
+  assert.match(shellSource, /dropPaneOnDock\("left", event, item\.id\)/);
+  assert.match(shellSource, /dropPaneOnDock\("bottom", event, paneId\)/);
+  assert.match(shellSource, /dropPaneOnDock\("right", event, paneId\)/);
+  assert.match(shellSource, /function sanitizePaneOrder/);
+  assert.match(shellSource, /function sanitizePaneOrderGroup/);
+  assert.match(shellSource, /paneOrder: sanitizePaneOrder\(value\.paneOrder\)/);
+  assert.match(shellSource, /顺序: \{leftPaneIds\.join\("\|"\)/);
 });

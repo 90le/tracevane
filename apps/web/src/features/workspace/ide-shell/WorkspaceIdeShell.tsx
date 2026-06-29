@@ -71,11 +71,20 @@ const PANE_REGISTRY: PaneDescriptor[] = [
 ];
 
 type IdePanePlacements = Record<PaneId, PanePlacement>;
+type PaneOrder = Record<PanePlacement, PaneId[]>;
 
 const DEFAULT_PANE_PLACEMENTS = PANE_REGISTRY.reduce((placements, pane) => {
   placements[pane.id] = pane.defaultPlacement;
   return placements;
 }, {} as IdePanePlacements);
+
+const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
+  (order, pane) => {
+    order[pane.defaultPlacement].push(pane.id);
+    return order;
+  },
+  { left: [], right: [], bottom: [] } as PaneOrder,
+);
 
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 
@@ -102,6 +111,7 @@ interface IdeLayoutState {
   editorSplitMode?: EditorSplitMode;
   editorSplitRatio?: number;
   panePlacements?: Partial<IdePanePlacements>;
+  paneOrder?: Partial<PaneOrder>;
 }
 
 const LazyWorkspaceTerminal = React.lazy(() =>
@@ -130,6 +140,11 @@ export function WorkspaceIdeShell() {
   const [panePlacements, setPanePlacements] = React.useState<IdePanePlacements>(() => ({
     ...DEFAULT_PANE_PLACEMENTS,
     ...layoutState.panePlacements,
+  }));
+  const [paneOrder, setPaneOrder] = React.useState<PaneOrder>(() => ({
+    left: layoutState.paneOrder?.left ?? DEFAULT_PANE_ORDER.left,
+    right: layoutState.paneOrder?.right ?? DEFAULT_PANE_ORDER.right,
+    bottom: layoutState.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
   }));
   const [leftOpen, setLeftOpen] = React.useState(layoutState.leftOpen ?? true);
   const [rightOpen, setRightOpen] = React.useState(layoutState.rightOpen ?? true);
@@ -162,7 +177,7 @@ export function WorkspaceIdeShell() {
   const [dropTarget, setDropTarget] = React.useState<PanePlacement | null>(null);
   const searchSignalRef = React.useRef(0);
 
-  const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements), [panePlacements]);
+  const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder), [paneOrder, panePlacements]);
   const leftPaneIds = panesByPlacement.left;
   const rightPaneIds = panesByPlacement.right;
   const bottomPaneIds = panesByPlacement.bottom;
@@ -197,8 +212,9 @@ export function WorkspaceIdeShell() {
       editorSplitMode,
       editorSplitRatio,
       panePlacements,
+      paneOrder,
     });
-  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, panePlacements, paneSizes, rightOpen]);
+  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -503,6 +519,7 @@ export function WorkspaceIdeShell() {
 
   function resetPanePlacements() {
     setPanePlacements(DEFAULT_PANE_PLACEMENTS);
+    setPaneOrder(DEFAULT_PANE_ORDER);
     setActivity("explorer");
     setRightPanel("ai");
     setBottomPanel("terminal");
@@ -598,8 +615,9 @@ export function WorkspaceIdeShell() {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
-  function movePaneToPlacement(paneId: PaneId, placement: PanePlacement) {
+  function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId) {
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
+    setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
     if (placement === "left") {
       setActivity(paneId);
       setLeftOpen(true);
@@ -638,11 +656,11 @@ export function WorkspaceIdeShell() {
     setDropTarget((current) => (current === placement ? null : current));
   }
 
-  function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent) {
+  function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent, beforePaneId?: PaneId) {
     event.preventDefault();
     const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
     if (isPaneId(paneId)) {
-      movePaneToPlacement(paneId, placement);
+      movePaneToPlacement(paneId, placement, beforePaneId);
     }
     clearPaneDragState();
   }
@@ -732,6 +750,15 @@ export function WorkspaceIdeShell() {
                 className={cn("workspace-ide-shell__activity-button", activeLeftPane === item.id && "is-active")}
                 onClick={() => activateActivity(item.id)}
                 title={`${item.label} ${item.shortcut ?? ""}`}
+                data-ide-pane-draggable={item.id}
+                draggable
+                onDragStart={(event) => beginPaneDrag(item.id, event)}
+                onDragEnd={clearPaneDragState}
+                onDragOver={(event) => dragPaneOverDock("left", event)}
+                onDrop={(event) => {
+                  event.stopPropagation();
+                  dropPaneOnDock("left", event, item.id);
+                }}
               >
                 <Icon className="h-5 w-5" aria-hidden={true} />
                 <span>{item.label}</span>
@@ -897,6 +924,11 @@ export function WorkspaceIdeShell() {
                     draggable
                     onDragStart={(event) => beginPaneDrag(paneId, event)}
                     onDragEnd={clearPaneDragState}
+                    onDragOver={(event) => dragPaneOverDock("bottom", event)}
+                    onDrop={(event) => {
+                      event.stopPropagation();
+                      dropPaneOnDock("bottom", event, paneId);
+                    }}
                   >
                     <button type="button" className="workspace-ide-shell__panel-tab" onClick={() => setBottomPanel(paneId)}>
                       {paneLabel(paneId)}
@@ -965,6 +997,11 @@ export function WorkspaceIdeShell() {
                   draggable
                   onDragStart={(event) => beginPaneDrag(paneId, event)}
                   onDragEnd={clearPaneDragState}
+                  onDragOver={(event) => dragPaneOverDock("right", event)}
+                  onDrop={(event) => {
+                    event.stopPropagation();
+                    dropPaneOnDock("right", event, paneId);
+                  }}
                 >
                   <button type="button" className="workspace-ide-shell__right-tab" onClick={() => setRightPanel(paneId)}>
                     {paneLabel(paneId)}
@@ -1006,6 +1043,7 @@ export function WorkspaceIdeShell() {
         <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
         <span>窗格: L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
+        <span>顺序: {leftPaneIds.join("|") || "-"}/{rightPaneIds.join("|") || "-"}/{bottomPaneIds.join("|") || "-"}</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
       </footer>
 
@@ -1380,14 +1418,44 @@ function activityByShortcut(key: string): PaneId | null {
   return PANE_REGISTRY.find((pane) => pane.shortcut?.endsWith(key))?.id ?? null;
 }
 
-function groupPanesByPlacement(placements: IdePanePlacements): Record<PanePlacement, PaneId[]> {
-  return PANE_REGISTRY.reduce(
-    (groups, pane) => {
-      groups[placements[pane.id] ?? pane.defaultPlacement].push(pane.id);
-      return groups;
+function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder): PaneOrder {
+  const groups = PANE_REGISTRY.reduce(
+    (nextGroups, pane) => {
+      nextGroups[placements[pane.id] ?? pane.defaultPlacement].push(pane.id);
+      return nextGroups;
     },
-    { left: [], right: [], bottom: [] } as Record<PanePlacement, PaneId[]>,
+    { left: [], right: [], bottom: [] } as PaneOrder,
   );
+  return {
+    left: orderPaneGroup(groups.left, order.left),
+    right: orderPaneGroup(groups.right, order.right),
+    bottom: orderPaneGroup(groups.bottom, order.bottom),
+  };
+}
+
+function orderPaneGroup(panes: PaneId[], preferredOrder: PaneId[]): PaneId[] {
+  const paneSet = new Set(panes);
+  return [
+    ...preferredOrder.filter((paneId) => paneSet.has(paneId)),
+    ...panes.filter((paneId) => !preferredOrder.includes(paneId)),
+  ];
+}
+
+function reorderPane(current: PaneOrder, paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId): PaneOrder {
+  const next: PaneOrder = {
+    left: current.left.filter((id) => id !== paneId),
+    right: current.right.filter((id) => id !== paneId),
+    bottom: current.bottom.filter((id) => id !== paneId),
+  };
+  const target = [...next[placement]];
+  const targetIndex = beforePaneId ? target.indexOf(beforePaneId) : -1;
+  if (targetIndex >= 0 && beforePaneId !== paneId) {
+    target.splice(targetIndex, 0, paneId);
+  } else {
+    target.push(paneId);
+  }
+  next[placement] = target;
+  return next;
 }
 
 function placementLabel(placement: PanePlacement): string {
@@ -1473,7 +1541,22 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     editorSplitMode: isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined,
     editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
     panePlacements: sanitizePanePlacements(value.panePlacements),
+    paneOrder: sanitizePaneOrder(value.paneOrder),
   };
+}
+
+function sanitizePaneOrder(value: Partial<PaneOrder> | undefined): Partial<PaneOrder> | undefined {
+  if (!value) return undefined;
+  return {
+    left: sanitizePaneOrderGroup(value.left),
+    right: sanitizePaneOrderGroup(value.right),
+    bottom: sanitizePaneOrderGroup(value.bottom),
+  };
+}
+
+function sanitizePaneOrderGroup(value: PaneId[] | undefined): PaneId[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((paneId, index, order) => isPaneId(paneId) && order.indexOf(paneId) === index);
 }
 
 function sanitizePanePlacements(value: Partial<IdePanePlacements> | undefined): Partial<IdePanePlacements> | undefined {
