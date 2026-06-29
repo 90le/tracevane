@@ -260,12 +260,16 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /type DockSplitMode = "single" \| "vertical" \| "horizontal"/);
   assert.match(shellSource, /type DockSplitModes = Record<PanePlacement, DockSplitMode>/);
   assert.match(shellSource, /type DockSplitRatios = Record<PanePlacement, number>/);
+  assert.match(shellSource, /type DockPaneRole = "primary" \| "secondary"/);
+  assert.match(shellSource, /type ActiveDockFocus = \{ placement: PanePlacement; role: DockPaneRole; paneId: PaneId \} \| null/);
   assert.match(shellSource, /const DOCK_PLACEMENTS = \["top", "left", "right", "bottom"\]/);
   assert.match(shellSource, /DEFAULT_DOCK_SPLIT_MODES/);
   assert.match(shellSource, /DEFAULT_DOCK_SPLIT_RATIOS/);
   assert.match(shellSource, /dockSplitModes/);
   assert.match(shellSource, /dockSplitRatios/);
+  assert.match(shellSource, /activeDockFocus/);
   assert.match(shellSource, /function setDockSplitMode/);
+  assert.match(shellSource, /function focusDockPane/);
   assert.match(shellSource, /function resetDockSplitRatio/);
   assert.match(shellSource, /function openDockPlacement/);
   assert.match(shellSource, /function startDockSplitResize/);
@@ -278,6 +282,12 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /\.\.\.dockSplitCommands/);
   assert.match(shellSource, /function DockPaneFrame/);
   assert.match(shellSource, /function DockSplitHandle/);
+  assert.match(shellSource, /activeFocus: ActiveDockFocus/);
+  assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
+  assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
+  assert.match(shellSource, /tabIndex=\{0\}/);
+  assert.match(shellSource, /workspace-ide-shell__dock-split-pane-badge/);
+  assert.match(shellSource, /聚焦窗格: \{activeDockFocus \? `\$\{placementShortLabel\(activeDockFocus\.placement\)\}:\$\{activeDockFocus\.role\}:\$\{activeDockFocus\.paneId\}` : "无"\}/);
   assert.match(shellSource, /secondaryLeftPane/);
   assert.match(shellSource, /splitMode=\{dockSplitModes\.left\}/);
   assert.match(shellSource, /splitRatio=\{dockSplitRatios\.left\}/);
@@ -300,6 +310,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(cssSource, /data-ide-dock-split="horizontal"/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-divider/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-pane/);
+  assert.match(cssSource, /data-ide-dock-split-active="true"/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split-pane-badge/);
   assert.match(cssSource, /--ide-dock-primary-size/);
   assert.match(cssSource, /data-ide-dock-split-handle="vertical"/);
   assert.match(cssSource, /data-ide-dock-split-handle="horizontal"/);

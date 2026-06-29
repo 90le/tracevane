@@ -46,6 +46,8 @@ type EditorSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
+type DockPaneRole = "primary" | "secondary";
+type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
 const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
@@ -213,6 +215,7 @@ export function WorkspaceIdeShell() {
   const [terminalCommands, setTerminalCommands] = React.useState<WorkspaceCommand[]>([]);
   const [draggingPane, setDraggingPane] = React.useState<PaneId | null>(null);
   const [dropTarget, setDropTarget] = React.useState<PanePlacement | null>(null);
+  const [activeDockFocus, setActiveDockFocus] = React.useState<ActiveDockFocus>(null);
   const searchSignalRef = React.useRef(0);
 
   const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder), [paneOrder, panePlacements]);
@@ -864,6 +867,10 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function focusDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
+    setActiveDockFocus({ placement, role, paneId });
+  }
+
   function resetDockSplitRatio(placement: PanePlacement) {
     setDockSplitRatios((current) => ({
       ...current,
@@ -903,6 +910,7 @@ export function WorkspaceIdeShell() {
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId) {
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
+    focusDockPane(placement, "primary", paneId);
     if (placement === "top") {
       setTopPanel(paneId);
       setTopOpen(true);
@@ -965,22 +973,26 @@ export function WorkspaceIdeShell() {
       setTopPanel(nextActivity);
       setTopOpen(true);
       setMobilePanel("top");
+      focusDockPane("top", "primary", nextActivity);
       return;
     }
     if (placement === "bottom") {
       setBottomPanel(nextActivity);
       setBottomOpen(true);
       setMobilePanel("bottom");
+      focusDockPane("bottom", "primary", nextActivity);
       return;
     }
     if (placement === "right") {
       setRightPanel(nextActivity);
       setRightOpen(true);
       setMobilePanel("right");
+      focusDockPane("right", "primary", nextActivity);
       return;
     }
     setLeftOpen(true);
     setMobilePanel("left");
+    focusDockPane("left", "primary", nextActivity);
   }
 
   return (
@@ -1162,11 +1174,13 @@ export function WorkspaceIdeShell() {
                   splitRatio={dockSplitRatios.left}
                   primaryPane={activeLeftPane}
                   secondaryPane={secondaryLeftPane}
+                  activeFocus={activeDockFocus}
                   workspaceDirectory={workspaceDirectory}
                   onTerminalCommandsChange={setTerminalCommands}
                   onRestore={resetPanePlacements}
                   onStartSplitResize={startDockSplitResize}
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
+                  onFocusPane={focusDockPane}
                   renderPane={(paneId, role) => (
                     <LeftPane
                       activity={paneId}
@@ -1264,11 +1278,13 @@ export function WorkspaceIdeShell() {
                 splitRatio={dockSplitRatios.top}
                 primaryPane={activeTopPane}
                 secondaryPane={secondaryTopPane}
+                activeFocus={activeDockFocus}
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
+                onFocusPane={focusDockPane}
               />
               <ResizeHandle
                 pane="top"
@@ -1414,11 +1430,13 @@ export function WorkspaceIdeShell() {
                 splitRatio={dockSplitRatios.bottom}
                 primaryPane={activeBottomPane}
                 secondaryPane={secondaryBottomPane}
+                activeFocus={activeDockFocus}
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
                 onRestore={resetPanePlacements}
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
+                onFocusPane={focusDockPane}
               />
             </section>
           ) : null}
@@ -1484,11 +1502,13 @@ export function WorkspaceIdeShell() {
               splitRatio={dockSplitRatios.right}
               primaryPane={activeRightPane}
               secondaryPane={secondaryRightPane}
+              activeFocus={activeDockFocus}
               workspaceDirectory={workspaceDirectory}
               onTerminalCommandsChange={setTerminalCommands}
               onRestore={resetPanePlacements}
               onStartSplitResize={startDockSplitResize}
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
+              onFocusPane={focusDockPane}
               renderPane={(paneId) => (
                 <RightPane
                   panel={paneId}
@@ -1514,6 +1534,9 @@ export function WorkspaceIdeShell() {
         <span>移动面板: {mobilePanel}</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
+        <span>
+          聚焦窗格: {activeDockFocus ? `${placementShortLabel(activeDockFocus.placement)}:${activeDockFocus.role}:${activeDockFocus.paneId}` : "无"}
+        </span>
         <span>窗格: T{topPaneIds.length}/L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
         <span>顺序: {topPaneIds.join("|") || "-"}/{leftPaneIds.join("|") || "-"}/{rightPaneIds.join("|") || "-"}/{bottomPaneIds.join("|") || "-"}</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
@@ -1837,11 +1860,13 @@ function DockPaneFrame({
   splitRatio,
   primaryPane,
   secondaryPane,
+  activeFocus,
   workspaceDirectory,
   onTerminalCommandsChange,
   onRestore,
   onStartSplitResize,
   onResizeSplitFromKeyboard,
+  onFocusPane,
   renderPane,
 }: {
   placement: PanePlacement;
@@ -1849,25 +1874,42 @@ function DockPaneFrame({
   splitRatio: number;
   primaryPane?: PaneId;
   secondaryPane?: PaneId;
+  activeFocus: ActiveDockFocus;
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
   onRestore: () => void;
   onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
+  onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
   const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
-  const render = (paneId: PaneId, role: "primary" | "secondary") => (
-    <section className="workspace-ide-shell__dock-split-pane" data-ide-dock-split-pane={role} data-ide-dock-split-placement={placement}>
-      {renderPane ? (
-        renderPane(paneId, role)
-      ) : (
-        <DockPaneContent panel={paneId} workspaceDirectory={workspaceDirectory} onTerminalCommandsChange={onTerminalCommandsChange} />
-      )}
-    </section>
-  );
+  const render = (paneId: PaneId, role: DockPaneRole) => {
+    const isFocused = activeFocus?.placement === placement && activeFocus.role === role && activeFocus.paneId === paneId;
+    return (
+      <section
+        className="workspace-ide-shell__dock-split-pane"
+        data-ide-dock-split-pane={role}
+        data-ide-dock-split-placement={placement}
+        data-ide-dock-split-active={isFocused ? "true" : "false"}
+        tabIndex={0}
+        aria-label={`${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格：${paneLabel(paneId)}`}
+        onPointerDown={() => onFocusPane(placement, role, paneId)}
+        onFocus={() => onFocusPane(placement, role, paneId)}
+      >
+        <div className="workspace-ide-shell__dock-split-pane-badge" aria-hidden={true}>
+          {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}
+        </div>
+        {renderPane ? (
+          renderPane(paneId, role)
+        ) : (
+          <DockPaneContent panel={paneId} workspaceDirectory={workspaceDirectory} onTerminalCommandsChange={onTerminalCommandsChange} />
+        )}
+      </section>
+    );
+  };
 
   return (
     <div
