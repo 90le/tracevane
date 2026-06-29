@@ -256,7 +256,7 @@ test("new Workspace IDE shell persists pane order and supports tab reorder drops
   assert.match(shellSource, /DEFAULT_PANE_ORDER/);
   assert.match(shellSource, /paneOrder/);
   assert.match(shellSource, /setPaneOrder/);
-  assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder\)/);
+  assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder, hiddenPanes\)/);
   assert.match(shellSource, /function reorderPane/);
   assert.match(shellSource, /beforePaneId\?: PaneId/);
   assert.match(shellSource, /dropPaneOnDock\("top", event, paneId\)/);
@@ -400,6 +400,33 @@ test("new Workspace IDE shell supports split dock groups", () => {
 
 
 
+
+
+
+test("new Workspace IDE shell supports hide and restore pane visibility", () => {
+  assert.match(shellSource, /hiddenPanes\?: PaneId\[\]/);
+  assert.match(shellSource, /hiddenPanes, setHiddenPanes/);
+  assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder, hiddenPanes\)/);
+  assert.match(shellSource, /hiddenPanes,\n\s+\};/);
+  assert.match(shellSource, /hiddenPanes: sanitizeHiddenPanes\(value\.hiddenPanes\)/);
+  assert.match(shellSource, /function sanitizeHiddenPanes\(value: PaneId\[\] \| undefined\)/);
+  assert.match(shellSource, /const paneVisibilityCommands = React\.useMemo<WorkspaceCommand\[\]>/);
+  assert.match(shellSource, /ide\.pane\.\$\{hidden \? "show" : "hide"\}\.\$\{pane\.id\}/);
+  assert.match(shellSource, /label: `\$\{hidden \? "恢复" : "隐藏"\} \$\{pane\.label\} Pane`/);
+  assert.match(shellSource, /run: \(\) => \(hidden \? restorePane\(pane\.id\) : hidePane\(pane\.id\)\)/);
+  assert.match(shellSource, /\.\.\.paneVisibilityCommands/);
+  assert.match(shellSource, /function hidePane\(paneId: PaneId\)/);
+  assert.match(shellSource, /setHiddenPanes\(\(current\) => \(current\.includes\(paneId\) \? current : \[\.\.\.current, paneId\]\)\)/);
+  assert.match(shellSource, /function restorePane\(paneId: PaneId\)/);
+  assert.match(shellSource, /setHiddenPanes\(\(current\) => current\.filter\(\(hiddenPane\) => hiddenPane !== paneId\)\)/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, panePlacements\[paneId\] \?\? paneDescriptor\(paneId\)\.defaultPlacement\)/);
+  assert.match(shellSource, /onHidePane=\{hidePane\}/);
+  assert.match(shellSource, /aria-label=\{`隐藏 \$\{paneLabel\(paneId\)\} Pane`\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onHidePane\(paneId\)\}/);
+  assert.match(shellSource, /const hiddenPaneSet = new Set\(hiddenPanes\)/);
+  assert.match(shellSource, /if \(hiddenPaneSet\.has\(pane\.id\)\) return nextGroups/);
+  assert.match(shellSource, /sanitizeHiddenPanes/);
+});
 
 test("new Workspace IDE shell can move the focused pane between dock regions", () => {
   assert.match(shellSource, /const activeDockMoveCommands = React\.useMemo<WorkspaceCommand\[\]>/);

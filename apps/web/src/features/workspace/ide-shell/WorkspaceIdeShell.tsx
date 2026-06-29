@@ -134,6 +134,7 @@ interface IdeLayoutState {
   dockPaneSelections?: Partial<DockPaneSelections>;
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
+  hiddenPanes?: PaneId[];
 }
 
 interface IdeLayoutSnapshot {
@@ -201,6 +202,7 @@ export function WorkspaceIdeShell() {
   }));
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [dockPaneSelections, setDockPaneSelections] = React.useState<DockPaneSelections>(() => mergeDockPaneSelections(layoutState.dockPaneSelections));
+  const [hiddenPanes, setHiddenPanes] = React.useState<PaneId[]>(layoutState.hiddenPanes ?? []);
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
@@ -228,7 +230,7 @@ export function WorkspaceIdeShell() {
   const rightDockRef = React.useRef<HTMLElement | null>(null);
   const bottomDockRef = React.useRef<HTMLElement | null>(null);
 
-  const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder), [paneOrder, panePlacements]);
+  const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder, hiddenPanes), [hiddenPanes, paneOrder, panePlacements]);
   const topPaneIds = panesByPlacement.top;
   const leftPaneIds = panesByPlacement.left;
   const rightPaneIds = panesByPlacement.right;
@@ -274,8 +276,9 @@ export function WorkspaceIdeShell() {
       dockSplitModes,
       dockSplitRatios,
       dockPaneSelections,
+      hiddenPanes,
     });
-  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -620,6 +623,26 @@ export function WorkspaceIdeShell() {
     [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
+  const paneVisibilityCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      PANE_REGISTRY.flatMap((pane) => {
+        const hidden = hiddenPanes.includes(pane.id);
+        return [
+          {
+            id: `ide.pane.${hidden ? "show" : "hide"}.${pane.id}`,
+            group: "窗格" as const,
+            label: `${hidden ? "恢复" : "隐藏"} ${pane.label} Pane`,
+            description: hidden ? `把 ${pane.label} Pane 恢复到${placementLabel(panePlacements[pane.id])} Dock` : `从当前 IDE 布局中隐藏 ${pane.label} Pane，可随时从命令面板恢复`,
+            risk: "safe" as const,
+            surface: "layout" as const,
+            icon: React.createElement(pane.icon),
+            run: () => (hidden ? restorePane(pane.id) : hidePane(pane.id)),
+          },
+        ];
+      }),
+    [hiddenPanes, panePlacements],
+  );
+
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
     () =>
       PANE_REGISTRY.flatMap((pane) =>
@@ -959,8 +982,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -996,6 +1019,7 @@ export function WorkspaceIdeShell() {
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setDockPaneSelections(DEFAULT_DOCK_PANE_SELECTIONS);
+    setHiddenPanes([]);
     setActivity("explorer");
     setTopPanel("output");
     setRightPanel("ai");
@@ -1022,6 +1046,7 @@ export function WorkspaceIdeShell() {
       dockSplitModes,
       dockSplitRatios,
       dockPaneSelections,
+      hiddenPanes,
     };
   }
 
@@ -1057,12 +1082,14 @@ export function WorkspaceIdeShell() {
       right: sanitized.paneOrder?.right ?? DEFAULT_PANE_ORDER.right,
       bottom: sanitized.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
     };
-    const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder);
+    const nextHiddenPanes = sanitized.hiddenPanes ?? [];
+    const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder, nextHiddenPanes);
     setPanePlacements(nextPanePlacements);
     setPaneOrder(nextPaneOrder);
     setDockSplitModes({ ...DEFAULT_DOCK_SPLIT_MODES, ...sanitized.dockSplitModes });
     setDockSplitRatios({ ...DEFAULT_DOCK_SPLIT_RATIOS, ...sanitized.dockSplitRatios });
     setDockPaneSelections(mergeDockPaneSelections(sanitized.dockPaneSelections));
+    setHiddenPanes(nextHiddenPanes);
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
@@ -1352,6 +1379,16 @@ export function WorkspaceIdeShell() {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
+  function hidePane(paneId: PaneId) {
+    setHiddenPanes((current) => (current.includes(paneId) ? current : [...current, paneId]));
+    setActiveDockFocus((current) => (current?.paneId === paneId ? null : current));
+  }
+
+  function restorePane(paneId: PaneId) {
+    setHiddenPanes((current) => current.filter((hiddenPane) => hiddenPane !== paneId));
+    movePaneToPlacement(paneId, panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement);
+  }
+
   function moveActiveDockPaneToPlacement(placement: PanePlacement) {
     if (!activeDockFocus) return;
     const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
@@ -1632,6 +1669,7 @@ export function WorkspaceIdeShell() {
                   onSwapDockGroups={swapDockSplitPanes}
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
+                  onHidePane={hidePane}
                   onCloseDock={() => setLeftOpen(false)}
                 />
                 <DockPaneFrame
@@ -1737,6 +1775,7 @@ export function WorkspaceIdeShell() {
                       onSwapDockGroups={swapDockSplitPanes}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
+                      onHidePane={hidePane}
                       onCloseDock={() => setTopOpen(false)}
                     />
                   </div>
@@ -1894,6 +1933,7 @@ export function WorkspaceIdeShell() {
                       onSwapDockGroups={swapDockSplitPanes}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
+                      onHidePane={hidePane}
                       onCloseDock={() => setBottomOpen(false)}
                     />
                   </div>
@@ -1979,6 +2019,7 @@ export function WorkspaceIdeShell() {
                     onSwapDockGroups={swapDockSplitPanes}
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
+                    onHidePane={hidePane}
                     onCloseDock={() => setRightOpen(false)}
                   />
                 </div>
@@ -2048,6 +2089,7 @@ function PaneDockControls({
   onMovePane,
   onSetDockSplitMode,
   onSwapDockGroups,
+  onHidePane,
   onBeginDrag,
   onEndDrag,
   onCloseDock,
@@ -2059,6 +2101,7 @@ function PaneDockControls({
   onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
   onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
   onSwapDockGroups?: (placement: PanePlacement) => void;
+  onHidePane: (paneId: PaneId) => void;
   onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
   onEndDrag: () => void;
   onCloseDock: () => void;
@@ -2101,6 +2144,9 @@ function PaneDockControls({
           ) : null}
         </>
       ) : null}
+      <button type="button" aria-label={`隐藏 ${paneLabel(paneId)} Pane`} onClick={() => onHidePane(paneId)}>
+        隐
+      </button>
       <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
         ×
       </button>
@@ -2574,9 +2620,11 @@ function mergeDockPaneSelections(value: Partial<DockPaneSelections> | undefined)
 }
 
 
-function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder): PaneOrder {
+function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder, hiddenPanes: PaneId[] = []): PaneOrder {
+  const hiddenPaneSet = new Set(hiddenPanes);
   const groups = PANE_REGISTRY.reduce(
     (nextGroups, pane) => {
+      if (hiddenPaneSet.has(pane.id)) return nextGroups;
       nextGroups[placements[pane.id] ?? pane.defaultPlacement].push(pane.id);
       return nextGroups;
     },
@@ -2749,9 +2797,15 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     dockSplitModes: sanitizeDockSplitModes(value.dockSplitModes),
     dockSplitRatios: sanitizeDockSplitRatios(value.dockSplitRatios),
     dockPaneSelections: sanitizeDockPaneSelections(value.dockPaneSelections),
+    hiddenPanes: sanitizeHiddenPanes(value.hiddenPanes),
   };
 }
 
+
+function sanitizeHiddenPanes(value: PaneId[] | undefined): PaneId[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((paneId, index, hidden) => isPaneId(paneId) && hidden.indexOf(paneId) === index);
+}
 
 function sanitizeDockPaneSelections(value: Partial<DockPaneSelections> | undefined): Partial<DockPaneSelections> | undefined {
   if (!value) return undefined;
