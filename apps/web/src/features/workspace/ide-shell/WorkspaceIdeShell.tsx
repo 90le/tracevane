@@ -1635,11 +1635,19 @@ export function WorkspaceIdeShell() {
   }
 
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
+    const nextSecondaryPath = secondaryPath ?? activePath;
+    const nextSecondaryRootId = secondaryPathRootId || activePathRootId || rootId;
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
-    setSecondaryPath((current) => current ?? activePath);
-    setSecondaryPathRootId((current) => current || activePathRootId || rootId);
-    setActiveEditorGroup("secondary");
+    setSecondaryPath(nextSecondaryPath);
+    setSecondaryPathRootId(nextSecondaryRootId);
+    if (nextSecondaryPath && nextSecondaryRootId) {
+      setEditorGroupTabs((current) => ({
+        ...current,
+        secondary: upsertEditorTab(current.secondary, { path: nextSecondaryPath, rootId: nextSecondaryRootId }),
+      }));
+    }
+    focusEditorGroup("secondary");
   }
 
   function swapEditorGroups() {

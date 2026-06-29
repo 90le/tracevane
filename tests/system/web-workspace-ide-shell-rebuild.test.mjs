@@ -278,6 +278,11 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /ide\.editor\.split-right/);
   assert.match(shellSource, /ide\.editor\.split-down/);
   assert.match(shellSource, /ide\.editor\.close-split/);
+  assert.match(shellSource, /function splitEditor\(mode: Exclude<EditorSplitMode, "single">\)/);
+  assert.match(shellSource, /const nextSecondaryPath = secondaryPath \?\? activePath/);
+  assert.match(shellSource, /const nextSecondaryRootId = secondaryPathRootId \|\| activePathRootId \|\| rootId/);
+  assert.match(shellSource, /secondary: upsertEditorTab\(current\.secondary, \{ path: nextSecondaryPath, rootId: nextSecondaryRootId \}\)/);
+  assert.match(shellSource, /focusEditorGroup\("secondary"\)/);
   assert.match(shellSource, /ide\.editor\.swap-groups/);
   assert.match(shellSource, /ide\.editor\.move-active-other-group/);
   assert.match(shellSource, /交换主副编辑器组/);
