@@ -163,3 +163,23 @@ test("new Workspace IDE shell treats empty docks as explicit layout states", () 
   assert.doesNotMatch(shellSource, /bottomPaneIds\[0\] \?\? "terminal"/);
   assert.match(cssSource, /workspace-ide-shell__empty-dock/);
 });
+
+test("new Workspace IDE shell supports drag and drop pane docking", () => {
+  assert.match(shellSource, /draggingPane/);
+  assert.match(shellSource, /dropTarget/);
+  assert.match(shellSource, /function beginPaneDrag/);
+  assert.match(shellSource, /application\/x-tracevane-pane/);
+  assert.match(shellSource, /function dragPaneOverDock/);
+  assert.match(shellSource, /function dropPaneOnDock/);
+  assert.match(shellSource, /function leavePaneDock/);
+  assert.match(shellSource, /data-ide-dock-placement="left"/);
+  assert.match(shellSource, /data-ide-dock-placement="right"/);
+  assert.match(shellSource, /data-ide-dock-placement="bottom"/);
+  assert.match(shellSource, /data-ide-pane-draggable=\{paneId\}/);
+  assert.match(shellSource, /draggable/);
+  assert.match(shellSource, /isPaneId/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, placement\)/);
+  assert.match(cssSource, /workspace-ide-shell__body--dragging-pane/);
+  assert.match(cssSource, /is-drop-target/);
+  assert.match(cssSource, /cursor: grab/);
+});

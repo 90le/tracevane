@@ -158,6 +158,8 @@ export function WorkspaceIdeShell() {
   const [searchCommands, setSearchCommands] = React.useState<WorkspaceCommand[]>([]);
   const [gitCommands, setGitCommands] = React.useState<WorkspaceCommand[]>([]);
   const [terminalCommands, setTerminalCommands] = React.useState<WorkspaceCommand[]>([]);
+  const [draggingPane, setDraggingPane] = React.useState<PaneId | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<PanePlacement | null>(null);
   const searchSignalRef = React.useRef(0);
 
   const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements), [panePlacements]);
@@ -612,6 +614,39 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function beginPaneDrag(paneId: PaneId, event: React.DragEvent) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-tracevane-pane", paneId);
+    event.dataTransfer.setData("text/plain", paneLabel(paneId));
+    setDraggingPane(paneId);
+  }
+
+  function clearPaneDragState() {
+    setDraggingPane(null);
+    setDropTarget(null);
+  }
+
+  function dragPaneOverDock(placement: PanePlacement, event: React.DragEvent) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget(placement);
+  }
+
+  function leavePaneDock(placement: PanePlacement, event: React.DragEvent) {
+    const nextTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+    if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+    setDropTarget((current) => (current === placement ? null : current));
+  }
+
+  function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent) {
+    event.preventDefault();
+    const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
+    if (isPaneId(paneId)) {
+      movePaneToPlacement(paneId, placement);
+    }
+    clearPaneDragState();
+  }
+
   function activateActivity(nextActivity: PaneId) {
     setActivity(nextActivity);
     const placement = panePlacements[nextActivity];
@@ -636,6 +671,8 @@ export function WorkspaceIdeShell() {
       data-ide-maximized-pane={maximizedPane ?? ""}
       data-ide-pane-size-state={`${paneSizes.left}:${paneSizes.right}:${paneSizes.bottom}`}
       data-ide-editor-split={editorSplitMode}
+      data-ide-dragging-pane={draggingPane ?? ""}
+      data-ide-drop-target={dropTarget ?? ""}
       style={{
         "--ide-left-width": `${paneSizes.left}px`,
         "--ide-right-width": `${paneSizes.right}px`,
@@ -681,6 +718,7 @@ export function WorkspaceIdeShell() {
           !leftOpen && "workspace-ide-shell__body--left-closed",
           !rightOpen && "workspace-ide-shell__body--right-closed",
           maximizedPane && `workspace-ide-shell__body--max-${maximizedPane}`,
+          draggingPane && "workspace-ide-shell__body--dragging-pane",
         )}
       >
         <aside className="workspace-ide-shell__activity" aria-label="IDE activity rail">
@@ -707,7 +745,14 @@ export function WorkspaceIdeShell() {
         </aside>
 
         {leftOpen ? (
-          <section className="workspace-ide-shell__left-pane" data-testid="workspace-ide-left-pane">
+          <section
+            className={cn("workspace-ide-shell__left-pane", dropTarget === "left" && "is-drop-target")}
+            data-testid="workspace-ide-left-pane"
+            data-ide-dock-placement="left"
+            onDragOver={(event) => dragPaneOverDock("left", event)}
+            onDragLeave={(event) => leavePaneDock("left", event)}
+            onDrop={(event) => dropPaneOnDock("left", event)}
+          >
             {activeLeftPane ? (
               <>
                 <PaneHeader title={paneLabel(activeLeftPane)} subtitle={leftPaneSubtitle(activeLeftPane)} />
@@ -715,6 +760,8 @@ export function WorkspaceIdeShell() {
                   paneId={activeLeftPane}
                   placement="left"
                   onMovePane={movePaneToPlacement}
+                  onBeginDrag={beginPaneDrag}
+                  onEndDrag={clearPaneDragState}
                   onCloseDock={() => setLeftOpen(false)}
                 />
                 <LeftPane
@@ -822,7 +869,15 @@ export function WorkspaceIdeShell() {
             ) : null}
           </div>
           {bottomOpen ? (
-            <section className="workspace-ide-shell__bottom" data-testid="workspace-ide-bottom-pane" data-ide-pane="bottom">
+            <section
+              className={cn("workspace-ide-shell__bottom", dropTarget === "bottom" && "is-drop-target")}
+              data-testid="workspace-ide-bottom-pane"
+              data-ide-pane="bottom"
+              data-ide-dock-placement="bottom"
+              onDragOver={(event) => dragPaneOverDock("bottom", event)}
+              onDragLeave={(event) => leavePaneDock("bottom", event)}
+              onDrop={(event) => dropPaneOnDock("bottom", event)}
+            >
               <ResizeHandle
                 pane="bottom"
                 label="调整底部 Dock 高度"
@@ -838,6 +893,10 @@ export function WorkspaceIdeShell() {
                     key={paneId}
                     className={cn("workspace-ide-shell__dock-tab", activeBottomPane === paneId && "is-active")}
                     data-ide-dock-tab={paneId}
+                    data-ide-pane-draggable={paneId}
+                    draggable
+                    onDragStart={(event) => beginPaneDrag(paneId, event)}
+                    onDragEnd={clearPaneDragState}
                   >
                     <button type="button" className="workspace-ide-shell__panel-tab" onClick={() => setBottomPanel(paneId)}>
                       {paneLabel(paneId)}
@@ -847,6 +906,8 @@ export function WorkspaceIdeShell() {
                       placement="bottom"
                       compact
                       onMovePane={movePaneToPlacement}
+                      onBeginDrag={beginPaneDrag}
+                      onEndDrag={clearPaneDragState}
                       onCloseDock={() => setBottomOpen(false)}
                     />
                   </div>
@@ -885,13 +946,25 @@ export function WorkspaceIdeShell() {
           />
         ) : null}
         {rightOpen ? (
-          <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane" data-ide-pane="right">
+          <aside
+            className={cn("workspace-ide-shell__right-pane", dropTarget === "right" && "is-drop-target")}
+            data-testid="workspace-ide-right-pane"
+            data-ide-pane="right"
+            data-ide-dock-placement="right"
+            onDragOver={(event) => dragPaneOverDock("right", event)}
+            onDragLeave={(event) => leavePaneDock("right", event)}
+            onDrop={(event) => dropPaneOnDock("right", event)}
+          >
             <div className="workspace-ide-shell__right-tabs">
               {rightPaneIds.map((paneId) => (
                 <div
                   key={paneId}
                   className={cn("workspace-ide-shell__dock-tab", activeRightPane === paneId && "is-active")}
                   data-ide-dock-tab={paneId}
+                  data-ide-pane-draggable={paneId}
+                  draggable
+                  onDragStart={(event) => beginPaneDrag(paneId, event)}
+                  onDragEnd={clearPaneDragState}
                 >
                   <button type="button" className="workspace-ide-shell__right-tab" onClick={() => setRightPanel(paneId)}>
                     {paneLabel(paneId)}
@@ -901,6 +974,8 @@ export function WorkspaceIdeShell() {
                     placement="right"
                     compact
                     onMovePane={movePaneToPlacement}
+                    onBeginDrag={beginPaneDrag}
+                    onEndDrag={clearPaneDragState}
                     onCloseDock={() => setRightOpen(false)}
                   />
                 </div>
@@ -948,12 +1023,16 @@ function PaneDockControls({
   placement,
   compact = false,
   onMovePane,
+  onBeginDrag,
+  onEndDrag,
   onCloseDock,
 }: {
   paneId: PaneId;
   placement: PanePlacement;
   compact?: boolean;
   onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
+  onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
+  onEndDrag: () => void;
   onCloseDock: () => void;
 }) {
   const targets: PanePlacement[] = ["left", "right", "bottom"];
@@ -961,6 +1040,10 @@ function PaneDockControls({
     <div
       className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
       data-ide-pane-dock-controls={paneId}
+      data-ide-pane-draggable={paneId}
+      draggable
+      onDragStart={(event) => onBeginDrag(paneId, event)}
+      onDragEnd={onEndDrag}
     >
       {targets.map((target) => (
         <button
@@ -1270,6 +1353,10 @@ function CodePane({ title, lines, compact = false }: { title: string; lines: str
       </pre>
     </div>
   );
+}
+
+function isPaneId(value: string): value is PaneId {
+  return PANE_REGISTRY.some((pane) => pane.id === value);
 }
 
 function paneDescriptor(paneId: PaneId): PaneDescriptor {
