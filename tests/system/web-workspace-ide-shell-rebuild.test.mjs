@@ -647,11 +647,13 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function DockSplitHandle/);
   assert.match(shellSource, /activeFocus: ActiveDockFocus/);
   assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
+  assert.match(shellSource, /onHidePane: \(paneId: PaneId\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /edgeDropTarget: DockEdgeDropTarget/);
   assert.match(shellSource, /onDragPaneOverEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onLeavePaneEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onDropPaneOnEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
+  assert.match(shellSource, /onHidePane=\{hidePane\}/);
   assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
   assert.match(shellSource, /edgeDropTarget=\{edgeDropTarget\}/);
   assert.match(shellSource, /onDragPaneOverEdge=\{dragPaneOverDockEdge\}/);
@@ -733,7 +735,13 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(cssSource, /workspace-ide-shell__dock-split-divider/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-pane/);
   assert.match(cssSource, /data-ide-dock-split-active="true"/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split-pane-toolbar/);
   assert.match(cssSource, /workspace-ide-shell__dock-split-pane-badge/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split-pane-action/);
+  assert.match(shellSource, /data-ide-dock-split-pane-toolbar=\{role\}/);
+  assert.match(shellSource, /aria-label=\{`隐藏\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "主" : "副"\}窗格组的 \$\{paneLabel\(paneId\)\} Pane`\}/);
+  assert.match(shellSource, /onPointerDown=\{\(event\) => event\.stopPropagation\(\)\}/);
+  assert.match(shellSource, /onHidePane\(paneId\)/);
   assert.match(cssSource, /--ide-dock-primary-size/);
   assert.match(cssSource, /data-ide-dock-split-handle="vertical"/);
   assert.match(cssSource, /data-ide-dock-split-handle="horizontal"/);

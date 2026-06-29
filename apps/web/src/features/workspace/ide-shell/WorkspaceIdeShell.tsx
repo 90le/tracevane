@@ -2371,6 +2371,7 @@ export function WorkspaceIdeShell() {
                   onStartSplitResize={startDockSplitResize}
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
+                  onHidePane={hidePane}
                   onDropPaneOnGroup={dropPaneOnDockGroup}
                   edgeDropTarget={edgeDropTarget}
                   onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2497,6 +2498,7 @@ export function WorkspaceIdeShell() {
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
+                onHidePane={hidePane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
                 edgeDropTarget={edgeDropTarget}
                 onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2678,6 +2680,7 @@ export function WorkspaceIdeShell() {
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
+                onHidePane={hidePane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
                 edgeDropTarget={edgeDropTarget}
                 onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2765,6 +2768,7 @@ export function WorkspaceIdeShell() {
               onStartSplitResize={startDockSplitResize}
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
+              onHidePane={hidePane}
               onDropPaneOnGroup={dropPaneOnDockGroup}
               edgeDropTarget={edgeDropTarget}
               onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -3257,6 +3261,7 @@ function DockPaneFrame({
   onStartSplitResize,
   onResizeSplitFromKeyboard,
   onFocusPane,
+  onHidePane,
   edgeDropTarget,
   onDropPaneOnGroup,
   onDragPaneOverEdge,
@@ -3279,6 +3284,7 @@ function DockPaneFrame({
   onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
+  onHidePane: (paneId: PaneId) => void;
   onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
   onDragPaneOverEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onLeavePaneEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
@@ -3306,8 +3312,22 @@ function DockPaneFrame({
         }}
         onDrop={(event) => onDropPaneOnGroup(placement, role, event)}
       >
-        <div className="workspace-ide-shell__dock-split-pane-badge" aria-hidden={true}>
-          {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}
+        <div className="workspace-ide-shell__dock-split-pane-toolbar" data-ide-dock-split-pane-toolbar={role}>
+          <span className="workspace-ide-shell__dock-split-pane-badge">
+            {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}
+          </span>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            aria-label={`隐藏${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格组的 ${paneLabel(paneId)} Pane`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onHidePane(paneId);
+            }}
+          >
+            ×
+          </button>
         </div>
         {renderPane ? (
           renderPane(paneId, role)
