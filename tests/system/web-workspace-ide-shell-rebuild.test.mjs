@@ -1383,3 +1383,38 @@ test("new Workspace IDE shell supports editor group layout snapshots", () => {
   assert.match(shellSource, /data-ide-editor-group-snapshot-delete=\{snapshot\.id\}/);
   assert.match(shellSource, /编辑器组: \{editorGroupSnapshots\.length\}/);
 });
+
+test("new Workspace IDE shell exposes a visual pane layout manager", () => {
+  assert.match(shellSource, /function DockLayoutManager\(\{/);
+  assert.match(shellSource, /aria-label="IDE Pane 布局管理器"/);
+  assert.match(shellSource, /data-ide-pane-layout-manager/);
+  assert.match(shellSource, /panesByPlacement=\{panesByPlacement\}/);
+  assert.match(shellSource, /open=\{\{ top: topOpen, left: leftOpen, right: rightOpen, bottom: bottomOpen \}\}/);
+  assert.match(shellSource, /splitModes=\{dockSplitModes\}/);
+  assert.match(shellSource, /splitRatios=\{dockSplitRatios\}/);
+  assert.match(shellSource, /dockPaneSelections=\{dockPaneSelections\}/);
+  assert.match(shellSource, /onToggleDockOpen=\{\(placement\) => setDockOpen\(placement, !isDockOpen\(placement\)\)\}/);
+  assert.match(shellSource, /onSetDockSplitMode=\{setDockSplitMode\}/);
+  assert.match(shellSource, /onSetSplitRatioPreset=\{setDockSplitRatioPreset\}/);
+  assert.match(shellSource, /onMovePaneToGroup=\{movePaneToPlacement\}/);
+  assert.match(shellSource, /onFocusRegion=\{focusIdeRegion\}/);
+  assert.match(shellSource, /data-ide-pane-layout-card=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-open=\{open\[placement\] \? "true" : "false"\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split=\{splitModes\[placement\]\}/);
+  assert.match(shellSource, /data-ide-pane-layout-toggle-open=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-mode=\{mode\}/);
+  assert.match(shellSource, /dataAttribute=\{`manager-\$\{placement\}`\}/);
+  assert.match(shellSource, /data-ide-pane-layout-groups=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-group=\{role\}/);
+  assert.match(shellSource, /data-ide-pane-layout-assign=\{paneId\}/);
+  assert.match(shellSource, /data-ide-pane-layout-assign-placement=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-assign-role=\{role\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-manager/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-manager-grid/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-card/);
+  assert.match(cssSource, /data-ide-pane-layout-open="false"/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-groups/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-group/);
+  assert.match(cssSource, /@media \(max-width: 1200px\)/);
+  assert.match(cssSource, /@media \(max-width: 760px\)/);
+});

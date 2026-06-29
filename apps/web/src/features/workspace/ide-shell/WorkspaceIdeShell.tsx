@@ -3524,6 +3524,20 @@ export function WorkspaceIdeShell() {
             </span>
           ))}
         </div>
+        <DockLayoutManager
+          panesByPlacement={panesByPlacement}
+          open={{ top: topOpen, left: leftOpen, right: rightOpen, bottom: bottomOpen }}
+          splitModes={dockSplitModes}
+          splitRatios={dockSplitRatios}
+          dockPaneSelections={dockPaneSelections}
+          pinnedPanes={pinnedPanes}
+          layoutLocked={layoutLocked}
+          onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
+          onSetDockSplitMode={setDockSplitMode}
+          onSetSplitRatioPreset={setDockSplitRatioPreset}
+          onMovePaneToGroup={movePaneToPlacement}
+          onFocusRegion={focusIdeRegion}
+        />
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
             <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}
@@ -4307,6 +4321,113 @@ function CollapsedDockDropTarget({
       <span>{placementLabel(placement)} Dock</span>
       <span>{paneCount} Pane</span>
     </button>
+  );
+}
+
+function DockLayoutManager({
+  panesByPlacement,
+  open,
+  splitModes,
+  splitRatios,
+  dockPaneSelections,
+  pinnedPanes,
+  layoutLocked,
+  onToggleDockOpen,
+  onSetDockSplitMode,
+  onSetSplitRatioPreset,
+  onMovePaneToGroup,
+  onFocusRegion,
+}: {
+  panesByPlacement: PaneOrder;
+  open: Record<PanePlacement, boolean>;
+  splitModes: DockSplitModes;
+  splitRatios: DockSplitRatios;
+  dockPaneSelections: DockPaneSelections;
+  pinnedPanes: PaneId[];
+  layoutLocked: boolean;
+  onToggleDockOpen: (placement: PanePlacement) => void;
+  onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
+  onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
+  onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
+  onFocusRegion: (region: IdeFocusRegion) => void;
+}) {
+  return (
+    <section className="workspace-ide-shell__dock-layout-manager" aria-label="IDE Pane 布局管理器" data-ide-pane-layout-manager>
+      <div className="workspace-ide-shell__dock-layout-manager-head">
+        <span>Pane 布局管理器</span>
+        <span>开合 · 拆分 · 比例 · 主/副组</span>
+      </div>
+      <div className="workspace-ide-shell__dock-layout-manager-grid">
+        {DOCK_PLACEMENTS.map((placement) => {
+          const paneIds = panesByPlacement[placement];
+          return (
+            <article
+              key={placement}
+              className="workspace-ide-shell__dock-layout-card"
+              data-ide-pane-layout-card={placement}
+              data-ide-pane-layout-open={open[placement] ? "true" : "false"}
+              data-ide-pane-layout-split={splitModes[placement]}
+            >
+              <header>
+                <button type="button" onClick={() => onFocusRegion(placement)} data-ide-pane-layout-focus={placement}>
+                  {placementLabel(placement)} Dock
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onToggleDockOpen(placement)} data-ide-pane-layout-toggle-open={placement}>
+                  {open[placement] ? "收起" : "打开"}
+                </button>
+              </header>
+              <div className="workspace-ide-shell__dock-layout-modes" data-ide-pane-layout-modes={placement}>
+                {(["single", "vertical", "horizontal"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={layoutLocked}
+                    data-ide-pane-layout-mode={mode}
+                    data-active={splitModes[placement] === mode ? "true" : "false"}
+                    onClick={() => onSetDockSplitMode(placement, mode)}
+                  >
+                    {mode === "single" ? "单组" : mode === "vertical" ? "左右" : "上下"}
+                  </button>
+                ))}
+              </div>
+              <SplitRatioPresetStrip
+                label={`${placementLabel(placement)} Dock 拆分比例`}
+                value={splitRatios[placement]}
+                disabled={layoutLocked || splitModes[placement] === "single"}
+                onSelect={(ratio) => onSetSplitRatioPreset(placement, ratio)}
+                dataAttribute={`manager-${placement}`}
+              />
+              <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
+                {(["primary", "secondary"] as const).map((role) => (
+                  <div key={role} className="workspace-ide-shell__dock-layout-group" data-ide-pane-layout-group={role}>
+                    <span>{role === "primary" ? "主组" : "副组"}</span>
+                    {paneIds.map((paneId) => {
+                      const selected = dockPaneSelections[placement][role] === paneId;
+                      const pinned = pinnedPanes.includes(paneId);
+                      return (
+                        <button
+                          key={`${role}-${paneId}`}
+                          type="button"
+                          disabled={layoutLocked || pinned || (role === "secondary" && splitModes[placement] === "single")}
+                          data-ide-pane-layout-assign={paneId}
+                          data-ide-pane-layout-assign-placement={placement}
+                          data-ide-pane-layout-assign-role={role}
+                          data-active={selected ? "true" : "false"}
+                          onClick={() => onMovePaneToGroup(paneId, placement, undefined, role)}
+                        >
+                          {paneLabel(paneId)}{pinned ? " · 固定" : ""}
+                        </button>
+                      );
+                    })}
+                    {paneIds.length === 0 ? <em>空 Dock</em> : null}
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
