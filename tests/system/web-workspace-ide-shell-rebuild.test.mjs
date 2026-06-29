@@ -321,6 +321,8 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /const fallbackSourceTab = editorGroupTabs\[sourceGroup\]\.filter/);
   assert.match(shellSource, /focusEditorGroup\(targetGroup\)/);
   assert.match(shellSource, /data-ide-editor-split-handle=\{mode\}/);
+  assert.match(shellSource, /onDoubleClick=\{\(\) => setEditorSplitRatio\(DEFAULT_EDITOR_SPLIT_RATIO\)\}/);
+  assert.match(shellSource, /onDoubleClick: \(\) => void/);
   assert.match(shellSource, /startEditorSplitResize/);
   assert.match(shellSource, /resizeEditorSplitFromKeyboard/);
   assert.match(shellSource, /ide\.editor\.split-right/);

@@ -2613,6 +2613,7 @@ export function WorkspaceIdeShell() {
                   value={editorSplitRatio}
                   onPointerDown={startEditorSplitResize}
                   onKeyDown={resizeEditorSplitFromKeyboard}
+                  onDoubleClick={() => setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO)}
                 />
                 <EditorGroupFrame
                   group="secondary"
@@ -3212,11 +3213,13 @@ function EditorSplitHandle({
   value,
   onPointerDown,
   onKeyDown,
+  onDoubleClick,
 }: {
   mode: Exclude<EditorSplitMode, "single">;
   value: number;
   onPointerDown: (event: React.PointerEvent) => void;
   onKeyDown: (event: React.KeyboardEvent) => void;
+  onDoubleClick: () => void;
 }) {
   return (
     <div
@@ -3231,6 +3234,7 @@ function EditorSplitHandle({
       data-ide-editor-split-handle={mode}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
+      onDoubleClick={onDoubleClick}
     />
   );
 }
