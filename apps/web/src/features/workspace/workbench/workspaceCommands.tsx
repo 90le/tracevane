@@ -94,7 +94,7 @@ export function createWorkspaceCommandRegistry({
       id: "workspace.git.focus",
       group: "导航",
       label: "打开 Git",
-      description: "查看变更、Diff、暂存和 AI Diff 入口",
+      description: "查看变更、Diff、暂存和审查证据入口",
       shortcut: "Alt 3",
       icon: <GitBranch />,
       run: () => openSidePanel("git"),

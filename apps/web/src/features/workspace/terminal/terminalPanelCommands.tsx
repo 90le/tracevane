@@ -348,8 +348,8 @@ export function createTerminalPanelCommands({
     {
       id: "terminal.panel.ai.diagnose",
       group: "终端",
-      label: "终端：AI 诊断当前输出",
-      description: "预留 @terminal output / cwd / session 上下文入口",
+      label: "终端：生成诊断证据摘要",
+      description: "基于 @terminal output / cwd / session 形成可审查诊断上下文",
       icon: <TerminalSquare />,
       run: diagnoseOutput,
     },

@@ -75,7 +75,7 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <CommandEmpty>没有匹配的 IDE 命令</CommandEmpty>
-        {WORKSPACE_COMMAND_GROUPS.map((group) => (
+        {WORKSPACE_COMMAND_GROUPS.map((group, index) => (
           <CommandGroup key={group} heading={group}>
             {commands
               .filter((command) => command.group === group)
@@ -101,7 +101,7 @@ export function WorkspaceCommandPalette({
                   ) : null}
                 </CommandItem>
               ))}
-            {group !== "AI" ? <CommandSeparator /> : null}
+            {index < WORKSPACE_COMMAND_GROUPS.length - 1 ? <CommandSeparator /> : null}
           </CommandGroup>
         ))}
       </CommandList>

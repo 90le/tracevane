@@ -67,6 +67,8 @@ test("Workspace command system keeps the current IDE UI mainline out of preview/
   assert.match(commands, /id: "workspace\.editor\.maximize"/);
   assert.match(commands, /最大化编辑器工作区/);
   assert.match(commands, /当前代码编辑器和 IDE 主舞台/);
+  assert.match(commands, /审查证据入口/);
+  assert.doesNotMatch(commands, /AI Diff 入口/);
   assert.doesNotMatch(commands, /最大化编辑\/预览区/);
   assert.doesNotMatch(commands, /所见即所得画布全屏化/);
 });
@@ -76,6 +78,8 @@ test("Workspace command palette is framed as an IDE command center", () => {
   assert.match(palette, /输入命令：文件、搜索、Git、终端、布局/);
   assert.match(palette, /data-workspace-command-palette-surface="ide-command-center"/);
   assert.match(palette, /没有匹配的 IDE 命令/);
+  assert.match(palette, /index < WORKSPACE_COMMAND_GROUPS\.length - 1/);
+  assert.doesNotMatch(palette, /group !== "AI"/);
   assert.doesNotMatch(palette, /AI 上下文…/);
 });
 
@@ -95,8 +99,11 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
   assert.match(panelCommands, /一等 IDE 面板参与工作区布局/);
   assert.match(panelCommands, /终端：复制上下文证据/);
   assert.match(panelCommands, /可审查终端证据/);
+  assert.match(panelCommands, /终端：生成诊断证据摘要/);
+  assert.match(panelCommands, /可审查诊断上下文/);
   assert.match(sessionActions, /停靠到 IDE 主工作区/);
   assert.doesNotMatch(panelCommands, /AI：复制当前终端上下文/);
+  assert.doesNotMatch(panelCommands, /终端：AI 诊断当前输出/);
   assert.doesNotMatch(panelCommands, /预留终端编辑器标签能力/);
   assert.doesNotMatch(sessionActions, /移动到编辑区域/);
 });
