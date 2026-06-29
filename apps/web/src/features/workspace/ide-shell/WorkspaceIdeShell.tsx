@@ -1017,6 +1017,16 @@ export function WorkspaceIdeShell() {
           icon: <RotateCcw />,
           run: () => resetDockSize(placement),
         },
+        {
+          id: `ide.dock.reset-composition.${placement}`,
+          group: "窗格" as const,
+          label: `恢复${placementLabel(placement)} Dock 默认组合`,
+          description: `只恢复${placementLabel(placement)} Dock 的默认 Pane、顺序、主副选择和拆分状态，不影响其他 Dock 的用户布局`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <RotateCcw />,
+          run: () => resetDockComposition(placement),
+        },
       ]),
     [],
   );
@@ -1481,6 +1491,30 @@ export function WorkspaceIdeShell() {
   function resetDockSize(placement: PanePlacement) {
     setPaneSizes((current) => ({ ...current, [placement]: DEFAULT_PANE_SIZES[placement] }));
     setLayoutPreset("balanced");
+  }
+
+  function resetDockComposition(placement: PanePlacement) {
+    const defaultPaneIds = defaultPaneIdsForPlacement(placement);
+    setPanePlacements((current) => {
+      const next = { ...current };
+      for (const paneId of defaultPaneIds) next[paneId] = placement;
+      return next;
+    });
+    setPaneOrder((current) => ({ ...current, [placement]: defaultPaneIds }));
+    setDockSplitModes((current) => ({ ...current, [placement]: DEFAULT_DOCK_SPLIT_MODES[placement] }));
+    setDockSplitRatios((current) => ({ ...current, [placement]: DEFAULT_DOCK_SPLIT_RATIOS[placement] }));
+    setDockPaneSelections((current) => ({
+      ...current,
+      [placement]: normalizeDockPaneSelection({ ...DEFAULT_DOCK_PANE_SELECTIONS[placement] }, defaultPaneIds),
+    }));
+    setHiddenPanes((current) => current.filter((paneId) => !defaultPaneIds.includes(paneId)));
+    setMaximizedPane((current) => (current === placement ? null : current));
+    const firstPane = defaultPaneIds[0];
+    if (firstPane) {
+      setPrimaryDockPanel(placement, firstPane);
+      openDockPlacement(placement);
+      focusDockPane(placement, "primary", firstPane);
+    }
   }
 
   function resetPanePlacements() {
@@ -3265,15 +3299,15 @@ function EmptyDockPane({ placement, hiddenRestoreCount, onRestoreHidden, onResto
         {placementShortLabel(placement)}
       </div>
       <h2>{placementLabel(placement)} Dock 为空</h2>
-      <p>当前没有窗格停靠在这里。你可以恢复隐藏在该 Dock 的 Pane，或一键恢复默认 IDE 窗格组合。</p>
+      <p>当前没有窗格停靠在这里。你可以恢复隐藏在该 Dock 的 Pane，或只恢复这个 Dock 的默认 IDE 窗格组合。</p>
       <div className="workspace-ide-shell__empty-dock-actions">
         <Button size="sm" variant="outline" disabled={hiddenRestoreCount === 0} onClick={onRestoreHidden} data-ide-restore-hidden-dock={placement}>
           <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
           恢复本 Dock 隐藏 Pane{hiddenRestoreCount > 0 ? ` · ${hiddenRestoreCount}` : ""}
         </Button>
-        <Button size="sm" onClick={onRestore}>
+        <Button size="sm" onClick={onRestore} data-ide-reset-dock-composition={placement}>
           <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
-          恢复默认窗格布局
+          恢复本 Dock 默认组合
         </Button>
       </div>
     </div>

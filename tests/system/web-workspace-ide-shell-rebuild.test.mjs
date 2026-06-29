@@ -699,11 +699,25 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /最大化\$\{placementLabel\(placement\)\} Dock/);
   assert.match(shellSource, /ide\.dock\.reset-size\.\$\{placement\}/);
   assert.match(shellSource, /重置\$\{placementLabel\(placement\)\} Dock 尺寸/);
+  assert.match(shellSource, /ide\.dock\.reset-composition\.\$\{placement\}/);
+  assert.match(shellSource, /恢复\$\{placementLabel\(placement\)\} Dock 默认组合/);
+  assert.match(shellSource, /只恢复\$\{placementLabel\(placement\)\} Dock 的默认 Pane、顺序、主副选择和拆分状态，不影响其他 Dock 的用户布局/);
   assert.match(shellSource, /run: \(\) => focusIdeRegion\(placement\)/);
   assert.match(shellSource, /run: \(\) => closeDockPlacement\(placement\)/);
   assert.match(shellSource, /run: \(\) => resetDockSize\(placement\)/);
+  assert.match(shellSource, /run: \(\) => resetDockComposition\(placement\)/);
   assert.match(shellSource, /function resetDockSize\(placement: PanePlacement\)/);
   assert.match(shellSource, /\[placement\]: DEFAULT_PANE_SIZES\[placement\]/);
+  assert.match(shellSource, /function resetDockComposition\(placement: PanePlacement\)/);
+  assert.match(shellSource, /const defaultPaneIds = defaultPaneIdsForPlacement\(placement\)/);
+  assert.match(shellSource, /for \(const paneId of defaultPaneIds\) next\[paneId\] = placement/);
+  assert.match(shellSource, /setPaneOrder\(\(current\) => \(\{ \.\.\.current, \[placement\]: defaultPaneIds \}\)\)/);
+  assert.match(shellSource, /\[placement\]: DEFAULT_DOCK_SPLIT_MODES\[placement\]/);
+  assert.match(shellSource, /\[placement\]: DEFAULT_DOCK_SPLIT_RATIOS\[placement\]/);
+  assert.match(shellSource, /normalizeDockPaneSelection\(\{ \.\.\.DEFAULT_DOCK_PANE_SELECTIONS\[placement\] \}, defaultPaneIds\)/);
+  assert.match(shellSource, /setHiddenPanes\(\(current\) => current\.filter\(\(paneId\) => !defaultPaneIds\.includes\(paneId\)\)\)/);
+  assert.match(shellSource, /setMaximizedPane\(\(current\) => \(current === placement \? null : current\)\)/);
+  assert.match(shellSource, /focusDockPane\(placement, "primary", firstPane\)/);
   assert.match(shellSource, /function dockPlacementIcon\(placement: PanePlacement\)/);
   assert.match(shellSource, /if \(placement === "left"\) return <PanelLeft \/>/);
   assert.match(shellSource, /if \(placement === "right"\) return <PanelRight \/>/);
@@ -956,6 +970,8 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /onRestoreHidden=\{\(\) => restoreHiddenPanesForPlacement\("left"\)\}/);
   assert.match(shellSource, /function EmptyDockPane\(\{ placement, hiddenRestoreCount, onRestoreHidden, onRestore \}/);
   assert.match(shellSource, /data-ide-restore-hidden-dock=\{placement\}/);
+  assert.match(shellSource, /data-ide-reset-dock-composition=\{placement\}/);
+  assert.match(shellSource, /恢复本 Dock 默认组合/);
   assert.match(cssSource, /workspace-ide-shell__empty-dock-actions/);
 });
 
