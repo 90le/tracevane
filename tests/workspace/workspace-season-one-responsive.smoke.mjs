@@ -67,11 +67,12 @@ async function run() {
 
       try {
         await page.goto(`${BASE_URL}/#/workspace/season-one`, {
-          waitUntil: "networkidle",
+          waitUntil: "domcontentloaded",
         });
         await page.waitForSelector("[data-workspace-season-one-frame]", {
           timeout: 30_000,
         });
+        await page.waitForTimeout(250);
 
         const metrics = await page.evaluate(() => {
           const visible = (selector) => {
@@ -89,6 +90,7 @@ async function run() {
           const doc = document.documentElement;
           const body = document.body;
           const text = body.innerText;
+          const normalizedText = text.toLowerCase();
           return {
             title: document.title,
             scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth),
@@ -111,14 +113,45 @@ async function run() {
             hasLiveFocusedPath: text.includes("docs/DESIGN.md"),
             hasLiveEvidenceCount: text.includes("3 evidence items"),
             hasLiveTerminalRun: text.includes("Season One browser smoke"),
-            hasCommandCenter: Boolean(document.querySelector("[data-season-one-command-center]")),
-            hasResourceMap: Boolean(document.querySelector("[data-season-one-resource-map]")),
-            hasPrimaryWorkstage: Boolean(document.querySelector("[data-season-one-primary-workstage]")),
-            hasAiCopilot: Boolean(document.querySelector("[data-season-one-ai-copilot]")),
-            hasWorkCanvas: Boolean(document.querySelector("[data-season-one-work-canvas]")),
-            hasEvidenceRail: Boolean(document.querySelector("[data-season-one-evidence-rail]")),
-            hasRunPanelRegion: Boolean(document.querySelector("[data-season-one-run-panel]")),
-            hasMobileNavigation: Boolean(document.querySelector("[data-season-one-mobile-navigation]")),
+            hasRebuildStudio: normalizedText.includes("rebuild studio"),
+            hasLegacyReplacement: normalizedText.includes(
+              "legacy shell replacement",
+            ),
+            hasCommandDeck: normalizedText.includes("command deck"),
+            hasViewportManifestText:
+              text.includes("Desktop command deck") &&
+              text.includes("Tablet split studio") &&
+              text.includes("Phone focus stack"),
+            hasRedesignManifest: Boolean(
+              document.querySelector("[data-season-one-redesign-manifest]"),
+            ),
+            hasViewportManifest: Boolean(
+              document.querySelector("[data-season-one-viewport-manifest]"),
+            ),
+            hasCommandCenter: Boolean(
+              document.querySelector("[data-season-one-command-center]"),
+            ),
+            hasResourceMap: Boolean(
+              document.querySelector("[data-season-one-resource-map]"),
+            ),
+            hasPrimaryWorkstage: Boolean(
+              document.querySelector("[data-season-one-primary-workstage]"),
+            ),
+            hasAiCopilot: Boolean(
+              document.querySelector("[data-season-one-ai-copilot]"),
+            ),
+            hasWorkCanvas: Boolean(
+              document.querySelector("[data-season-one-work-canvas]"),
+            ),
+            hasEvidenceRail: Boolean(
+              document.querySelector("[data-season-one-evidence-rail]"),
+            ),
+            hasRunPanelRegion: Boolean(
+              document.querySelector("[data-season-one-run-panel]"),
+            ),
+            hasMobileNavigation: Boolean(
+              document.querySelector("[data-season-one-mobile-navigation]"),
+            ),
             pageErrors: [],
           };
         });
@@ -137,20 +170,65 @@ async function run() {
           [metrics.hasLiveFocusedPath, "live focused path should render"],
           [metrics.hasLiveEvidenceCount, "live evidence count should render"],
           [metrics.hasLiveTerminalRun, "live terminal run should render"],
+          [
+            metrics.hasRebuildStudio,
+            "visible rebuild studio marker should render",
+          ],
+          [
+            metrics.hasLegacyReplacement,
+            "legacy replacement marker should render",
+          ],
+          [metrics.hasCommandDeck, "command deck copy should render"],
+          [
+            metrics.hasViewportManifestText,
+            "desktop tablet phone manifest should render",
+          ],
+          [
+            metrics.hasRedesignManifest,
+            "redesign manifest region should render",
+          ],
+          [
+            metrics.hasViewportManifest,
+            "viewport manifest region should render",
+          ],
           [metrics.hasCommandCenter, "command center region should render"],
           [metrics.hasResourceMap, "resource map region should render"],
-          [metrics.hasPrimaryWorkstage, "primary workstage region should render"],
+          [
+            metrics.hasPrimaryWorkstage,
+            "primary workstage region should render",
+          ],
           [metrics.hasAiCopilot, "AI copilot region should render"],
           [metrics.hasWorkCanvas, "work canvas region should render"],
           [metrics.hasEvidenceRail, "evidence rail region should render"],
           [metrics.hasRunPanelRegion, "run panel region should render"],
-          [metrics.hasMobileNavigation, "mobile navigation region should render"],
-          [metrics.scrollWidth <= metrics.innerWidth + 24, "no horizontal overflow"],
-          [metrics.activityVisible === expected.activityVisible, "activity visibility matches viewport"],
-          [metrics.resourcesVisible === expected.resourcesVisible, "resources visibility matches viewport"],
-          [metrics.contextVisible === expected.contextVisible, "context visibility matches viewport"],
-          [metrics.mobileSwitcherVisible === expected.mobileSwitcherVisible, "mobile switcher visibility matches viewport"],
-          [!logs.some((line) => line.includes("[pageerror]")), "no page errors"],
+          [
+            metrics.hasMobileNavigation,
+            "mobile navigation region should render",
+          ],
+          [
+            metrics.scrollWidth <= metrics.innerWidth + 24,
+            "no horizontal overflow",
+          ],
+          [
+            metrics.activityVisible === expected.activityVisible,
+            "activity visibility matches viewport",
+          ],
+          [
+            metrics.resourcesVisible === expected.resourcesVisible,
+            "resources visibility matches viewport",
+          ],
+          [
+            metrics.contextVisible === expected.contextVisible,
+            "context visibility matches viewport",
+          ],
+          [
+            metrics.mobileSwitcherVisible === expected.mobileSwitcherVisible,
+            "mobile switcher visibility matches viewport",
+          ],
+          [
+            !logs.some((line) => line.includes("[pageerror]")),
+            "no page errors",
+          ],
         ];
         const failed = checks.filter(([ok]) => !ok).map(([, label]) => label);
         if (failed.length) {

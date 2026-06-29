@@ -29,13 +29,13 @@ export function WorkspaceSeasonOneFrame({
     <section
       aria-label="Tracevane Workspace Season One Frame"
       className={cn(
-        "grid h-dvh min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-slate-950 text-slate-100",
+        "relative grid h-dvh min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_32%),radial-gradient(circle_at_82%_12%,rgba(99,102,241,0.18),transparent_28%),linear-gradient(135deg,#020617_0%,#08111f_42%,#0f172a_100%)] text-slate-100",
         className,
       )}
       data-workspace-season-one-frame
     >
       <header
-        className="z-20 border-b border-white/10 bg-slate-950/92 backdrop-blur"
+        className="z-20 border-b border-cyan-200/10 bg-slate-950/72 shadow-[0_18px_80px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
         data-workspace-season-one-topbar
       >
         {topbar}
@@ -45,14 +45,14 @@ export function WorkspaceSeasonOneFrame({
         className={cn(
           "grid min-h-0 min-w-0 overflow-hidden",
           "grid-cols-1",
-          "md:grid-cols-[56px_minmax(220px,280px)_minmax(0,1fr)]",
-          "xl:grid-cols-[64px_minmax(248px,320px)_minmax(0,1fr)_minmax(280px,360px)]",
+          "md:grid-cols-[64px_minmax(248px,312px)_minmax(0,1fr)]",
+          "xl:grid-cols-[72px_minmax(272px,340px)_minmax(0,1fr)_minmax(304px,384px)]",
         )}
         data-workspace-season-one-body
       >
         <nav
           aria-label="Workspace activity"
-          className="hidden min-h-0 border-r border-white/10 bg-slate-950/90 md:block"
+          className="hidden min-h-0 border-r border-cyan-200/10 bg-black/20 md:block"
           data-workspace-season-one-activity
         >
           {activityRail}
@@ -60,7 +60,7 @@ export function WorkspaceSeasonOneFrame({
 
         <aside
           aria-label="Workspace resources"
-          className="hidden min-h-0 overflow-hidden border-r border-white/10 bg-slate-900/70 md:block"
+          className="hidden min-h-0 overflow-hidden border-r border-cyan-200/10 bg-white/[0.045] backdrop-blur-xl md:block"
           data-workspace-season-one-resources
         >
           {resources}
@@ -68,15 +68,18 @@ export function WorkspaceSeasonOneFrame({
 
         <main
           aria-label="Workspace primary stage"
-          className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-50"
+          className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-slate-100 text-slate-950 dark:bg-transparent dark:text-slate-50"
           data-workspace-season-one-stage
         >
-          <div className="min-h-0 min-w-0 overflow-auto" data-workspace-season-one-stage-content>
+          <div
+            className="min-h-0 min-w-0 overflow-auto"
+            data-workspace-season-one-stage-content
+          >
             {stage}
           </div>
           <section
             aria-label="Workspace bottom panel"
-            className="min-h-0 border-t border-slate-200 bg-black text-slate-50 dark:border-white/10"
+            className="min-h-0 border-t border-cyan-200/10 bg-black/88 text-slate-50 shadow-[0_-24px_80px_rgba(0,0,0,0.32)] dark:border-white/10"
             data-workspace-season-one-bottom-panel
           >
             {bottomPanel}
@@ -85,7 +88,7 @@ export function WorkspaceSeasonOneFrame({
 
         <aside
           aria-label="Workspace context and evidence"
-          className="hidden min-h-0 overflow-hidden border-l border-white/10 bg-slate-950/88 xl:block"
+          className="hidden min-h-0 overflow-hidden border-l border-cyan-200/10 bg-black/24 backdrop-blur-xl xl:block"
           data-workspace-season-one-context
         >
           {contextRail}
@@ -96,7 +99,7 @@ export function WorkspaceSeasonOneFrame({
         {mobileSwitcher}
       </div>
       <footer
-        className="border-t border-white/10 bg-blue-600 text-white"
+        className="border-t border-cyan-200/10 bg-cyan-400 text-slate-950"
         data-workspace-season-one-status
       >
         {statusBar}
