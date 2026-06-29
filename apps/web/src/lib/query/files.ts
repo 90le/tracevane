@@ -146,6 +146,8 @@ export function useFilesSummaryQuery(options?: QueryOpts<FilesSummaryPayload>) {
   return useQuery<FilesSummaryPayload, ApiError>({
     queryKey: filesKeys.summary(),
     queryFn: ({ signal }) => getFilesSummary(signal),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     ...options,
   });
 }
@@ -165,7 +167,9 @@ export function useFilesBrowseQuery(
       sortKey: params?.sortKey,
       sortDirection: params?.sortDirection,
     }),
-    staleTime: 5_000,
+    staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
     queryFn: ({ signal }) => browseFiles(params as FilesBrowseParams, signal),
     enabled: Boolean(params?.rootId) && (options?.enabled ?? true),
     ...options,
@@ -265,7 +269,8 @@ export function useFilesContentIndexQuery(
   >({
     queryKey: filesKeys.contentIndex(scopeRootId),
     queryFn: ({ signal }) => getFilesContentIndexStats(scopeRootId, signal),
-    staleTime: 60_000,
+    staleTime: 2 * 60_000,
+    refetchOnWindowFocus: false,
     enabled: options?.enabled ?? true,
     ...options,
   });
@@ -298,7 +303,9 @@ export function useFilesContentIndexRecordsQuery(
         scopedParams as FilesContentIndexRecordsParams,
         signal,
       ),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
     enabled: Boolean(scopedParams?.rootId) && (options?.enabled ?? true),
     ...options,
   });
@@ -319,7 +326,9 @@ export function useFilesTrashQuery(
   return useQuery<FilesTrashPayload, ApiError>({
     queryKey: filesKeys.trash(scopeRootId),
     queryFn: ({ signal }) => getFilesTrash(scopeRootId, signal),
-    staleTime: 30_000,
+    staleTime: 2 * 60_000,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
     enabled: options?.enabled ?? true,
     ...options,
   });

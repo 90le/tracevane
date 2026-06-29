@@ -100,7 +100,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   );
 
   assert.match(router, /path="\/file-manager"/);
-  assert.match(navigation, /label: "文件管理器"/);
+  assert.match(navigation, /label: "文件库"/);
 
   assert.match(page, /FileManagerHeader/);
   assert.match(page, /FileManagerNavigationBar/);
@@ -260,8 +260,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(page, /FILE_MANAGER_SESSION_STORAGE_KEY/);
   assert.match(page, /loadFileManagerSessionState/);
   assert.match(page, /storeFileManagerSessionState/);
-  assert.match(page, /FilePreviewDialog/);
-  assert.doesNotMatch(page, /LazyFilePreviewDialog/);
+  assert.match(page, /LazyFilePreviewDialog/);
+  assert.match(page, /import\("\.\/FilePreviewPanel"\)/);
   assert.match(page, /FileListPanel/);
   assert.match(page, /data-file-manager-stats/);
   assert.match(page, /data-file-manager-secondary-dock/);
@@ -319,7 +319,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(list, /data-file-manager-entry-checkbox-affordance/);
   assert.match(list, /opacity-0 transition-opacity/);
   assert.match(list, /group-hover\/file-row:opacity-100/);
-  assert.match(list, /entries\.slice\(0, 3\)/);
+  assert.match(list, /\.slice\(0, 3\)/);
   assert.match(list, /等 \$\{entries\.length\} 项/);
   assert.doesNotMatch(
     list,
@@ -340,9 +340,11 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(list, /列表设置/);
   assert.match(list, /桌面列/);
   assert.match(list, /group-open:grid/);
-  assert.match(list, /const LazyFileTypeIcon = React\.lazy/);
+  assert.match(list, /const LazyRichFileTypeIcon = React\.lazy/);
   assert.match(list, /import\("\.\/FileTypeIcon"\)/);
-  assert.match(list, /data-file-manager-file-type-icon="loading"/);
+  assert.match(list, /useFullFileTypeIcons/);
+  assert.match(list, /requestIdleCallback/);
+  assert.match(list, /data-file-manager-file-type-icon="native"/);
   assert.doesNotMatch(list, /@react-symbols\/icons\/utils/);
   assert.doesNotMatch(fileTypeIcon, /@react-symbols\/icons/);
   assert.match(fileTypeIcon, /pretty-file-icons\/index\.json/);
@@ -502,11 +504,11 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(list, /event\.key === "Escape"/);
   assert.match(
     list,
-    /focusEntryAtIndex\(currentIndex < 0 \? 0 : currentIndex \+ 1, event\.shiftKey\)/,
+    /focusEntryAtIndex\([\s\S]*currentIndex < 0 \? 0 : currentIndex \+ 1,[\s\S]*event\.shiftKey/,
   );
   assert.match(
     list,
-    /focusEntryAtIndex\(currentIndex < 0 \? 0 : currentIndex - 1, event\.shiftKey\)/,
+    /focusEntryAtIndex\([\s\S]*currentIndex < 0 \? 0 : currentIndex - 1,[\s\S]*event\.shiftKey/,
   );
   assert.match(list, /onSelect\(entry, \{ range: true \}\)/);
   assert.match(list, /event\.shiftKey/);
@@ -580,7 +582,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(page, /回到根目录/);
   assert.match(page, /复制失败路径/);
   assert.match(page, /失败路径已复制/);
-  assert.match(page, /PAGE_SIZE = 500/);
+  assert.match(page, /PAGE_SIZE = 240/);
   assert.match(chrome, />\s*新建文件\s*</);
   assert.match(chrome, />\s*新建目录\s*</);
   assert.match(chrome, /上传到当前目录/);
@@ -691,19 +693,19 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(actionDialog, /输入 DELETE 确认删除/);
   assert.match(actionDialog, /transferConflictPolicy/);
   assert.match(actionDialog, /export type FileManagerDialog/);
-  assert.match(
+  assert.doesNotMatch(
     page,
     /import \{ FilePreviewDialog \} from "\.\/FilePreviewPanel"/,
   );
-  assert.doesNotMatch(page, /const LazyFilePreviewDialog = React\.lazy/);
-  assert.doesNotMatch(page, /LazyFilePreviewDialog/);
+  assert.match(page, /const LazyFilePreviewDialog = React\.lazy/);
+  assert.match(page, /LazyFilePreviewDialog/);
   assert.match(previewPanel, /class FilePreviewErrorBoundary/);
   assert.match(previewPanel, /data-file-preview-error-boundary/);
   assert.match(previewPanel, /componentDidCatch/);
   assert.match(previewPanel, /已阻止页面整体空白/);
   assert.match(page, /FileManagerModalLoading/);
   assert.match(page, /data-file-manager-modal-loading/);
-  assert.match(page, /import \{ FilePreviewDialog \} from/);
+  assert.doesNotMatch(page, /import \{ FilePreviewDialog \} from/);
   assert.match(page, /FilePropertiesDialog/);
   assert.match(page, /@\/features\/workspace\/shared\/FilePropertiesDialog/);
   assert.doesNotMatch(page, /\.\/FilePropertiesDialog/);
@@ -1594,14 +1596,14 @@ test("file manager owns content index management view instead of placing it in W
   assert.match(page, /FileManagerLazyPanelLoading/);
   assert.match(page, /内容索引管理加载中/);
   assert.doesNotMatch(page, /import \{ ContentIndexManager \} from/);
-  assert.match(contentIndex, /内容索引管理/);
+  assert.match(contentIndex, /全局内容索引/);
   assert.match(contentIndex, /useFilesContentIndexQuery/);
   assert.match(contentIndex, /useFilesContentIndexRecordsQuery/);
   assert.match(contentIndex, /CONTENT_INDEX_RECORDS_PAGE_SIZE/);
   assert.match(contentIndex, /useScanFilesContentIndexMutation/);
   assert.match(contentIndex, /useCleanFilesContentIndexMutation/);
   assert.match(contentIndex, /useRebuildFilesContentIndexMutation/);
-  assert.match(contentIndex, /全局汇总所有入口的内容索引/);
+  assert.match(contentIndex, /全局内容索引/);
   assert.match(contentIndex, /FILES_GLOBAL_SCOPE_ID/);
   assert.match(contentIndex, /rootId: indexScopeRootId/);
   assert.match(contentIndex, /fastStats/);
@@ -1610,29 +1612,29 @@ test("file manager owns content index management view instead of placing it in W
   assert.match(contentIndex, /清理失效/);
   assert.match(contentIndex, /复制诊断/);
   assert.match(contentIndex, /deriveContentIndexHealth/);
-  assert.match(contentIndex, /IndexHealthPanel/);
-  assert.match(contentIndex, /索引健康状态/);
-  assert.match(contentIndex, /分页管理/);
-  assert.match(contentIndex, /记录列表通过后端分页查询管理大索引/);
+  assert.match(contentIndex, /data-content-index-overview-strip/);
+  assert.match(contentIndex, /data-content-index-toolbar/);
+  assert.match(contentIndex, /分页/);
+  assert.match(contentIndex, /后端分页/);
   assert.doesNotMatch(contentIndex, /后续可升级分页 API/);
   assert.doesNotMatch(contentIndex, /后续可切到分页 API/);
   assert.doesNotMatch(contentIndex, /预览已截断/);
-  assert.match(contentIndex, /维护事件/);
-  assert.match(contentIndex, /失效率/);
+  assert.match(contentIndex, /maintenanceEvents/);
+  assert.match(contentIndex, /staleRatio/);
   assert.match(contentIndex, /copyContentIndexDiagnostics/);
   assert.match(contentIndex, /索引诊断已复制/);
   assert.match(contentIndex, /ContentIndexMaintenanceEvent/);
   assert.match(contentIndex, /appendMaintenanceEvent/);
-  assert.match(contentIndex, /后端分页查询/);
+  assert.match(contentIndex, /后端分页/);
   assert.match(contentIndex, /上一页/);
   assert.match(contentIndex, /下一页/);
   assert.match(contentIndex, /returnedRecordCount/);
   assert.match(contentIndex, /hasMore/);
-  assert.match(contentIndex, /file-content-index/);
+  assert.match(contentIndex, /data-file-manager-index-manager/);
   assert.match(contentIndex, /IndexRecordsPanel/);
   assert.doesNotMatch(contentIndex, /filterContentIndexRecords/);
   assert.match(contentIndex, /recordsPreview/);
-  assert.match(contentIndex, /previewLimit/);
+  assert.match(contentIndex, /CONTENT_INDEX_RECORDS_PAGE_SIZE/);
   assert.match(contentIndex, /索引记录/);
   assert.match(contentIndex, /搜索索引记录/);
   assert.match(contentIndex, /queryDraft/);
@@ -1644,7 +1646,7 @@ test("file manager owns content index management view instead of placing it in W
   assert.match(contentIndex, /索引状态筛选/);
   assert.match(contentIndex, /复制IndexRecord|copyIndexRecord/);
   assert.match(contentIndex, /索引记录已复制/);
-  assert.match(contentIndex, /导出本页 CSV/);
+  assert.match(contentIndex, /导出本页/);
   assert.match(contentIndex, /exportIndexRecordsCsv/);
   assert.match(contentIndex, /escapeCsvCell/);
   assert.match(contentIndex, /索引记录 CSV 已导出/);
@@ -1664,9 +1666,9 @@ test("file manager owns content index management view instead of placing it in W
     contentIndex,
     /onOpenFile\(contentIndexRecordToFileEntry\(record\), record\.rootId\)/,
   );
-  assert.match(contentIndex, /预览 \/ 编辑/);
+  assert.match(contentIndex, /预览/);
   assert.match(contentIndex, /data-content-index-export-current-page/);
-  assert.match(contentIndex, /导出本页 CSV/);
+  assert.match(contentIndex, /导出本页/);
   assert.match(contentIndex, /disabled=\{loading \|\| !records\.length\}/);
   assert.match(contentIndex, /new Blob\(\["\\ufeff", csv\]/);
   assert.match(contentIndex, /anchor\.download = fileName/);
@@ -1676,20 +1678,17 @@ test("file manager owns content index management view instead of placing it in W
   );
   assert.match(contentIndex, /safeExportName/);
   assert.doesNotMatch(contentIndex, /key=\{status\}[\s\S]*key=\{status\}/);
-  assert.match(contentIndex, /data-content-index-records-mobile-list/);
+  assert.doesNotMatch(contentIndex, /data-content-index-records-mobile-list/);
   assert.match(contentIndex, /data-content-index-record-card/);
-  assert.match(contentIndex, /function IndexRecordActions/);
   assert.match(contentIndex, /data-content-index-record-actions/);
-  assert.match(contentIndex, /md:hidden/);
-  assert.match(contentIndex, /hidden max-h-\[420px\][\s\S]*md:block/);
+  assert.match(contentIndex, /data-content-index-record-actions/);
+  assert.doesNotMatch(contentIndex, /md:hidden/);
+  assert.doesNotMatch(contentIndex, /hidden max-h-\[420px\]/);
   assert.match(contentIndex, /data-content-index-records-scrollport/);
   assert.match(contentIndex, /data-content-index-records-table/);
-  assert.match(contentIndex, /min-w-\[760px\]/);
+  assert.doesNotMatch(contentIndex, /min-w-\[760px\]/);
   assert.match(contentIndex, /overflow-auto overscroll-contain/);
-  assert.match(
-    contentIndex,
-    /grid-cols-\[92px_minmax\(220px,1fr\)_120px_136px_160px\]/,
-  );
+  assert.match(contentIndex, /grid-rows-\[auto_minmax\(0,1fr\)\]/);
   assert.doesNotMatch(
     contentIndex,
     /aria-label="索引状态筛选">\s*<div className="ml-auto inline-flex rounded border border-line bg-panel p-0\.5" aria-label="索引状态筛选"/,
@@ -1697,22 +1696,23 @@ test("file manager owns content index management view instead of placing it in W
   assert.match(packageJson, /smoke:file-manager:content-index/);
   assert.match(
     contentIndexSmoke,
-    /api\('\/api\/files\/content-index\/rebuild'/,
+    /api\("\/api\/files\/content-index\/rebuild"/,
   );
   assert.match(
     contentIndexSmoke,
-    /api\(`\/api\/files\/content-index\/records\?\$\{recordSearch\.toString\(\)\}`\)/,
+    /api\([\s\S]*`\/api\/files\/content-index\/records\?\$\{recordSearch\.toString\(\)\}`/,
   );
   assert.match(
     contentIndexSmoke,
-    /getByLabel\('搜索索引记录'\)\.fill\(smokeDir\)/,
+    /getByLabel\("搜索索引记录"\)\.fill\(smokeDir\)/,
   );
-  assert.match(contentIndexSmoke, /waitForEvent\('download'\)/);
+  assert.match(contentIndexSmoke, /waitForEvent\("download"\)/);
   assert.match(contentIndexSmoke, /data-content-index-export-current-page/);
-  assert.match(contentIndexSmoke, /data-content-index-records-mobile-list/);
+  assert.match(contentIndexSmoke, /data-content-index-records-scrollport/);
   assert.match(contentIndexSmoke, /data-content-index-record-card/);
   assert.match(contentIndexSmoke, /scrollWidth > metrics\.innerWidth \+ 24/);
-  assert.match(contentIndexSmoke, /oversized\.length/);
+  assert.match(contentIndexSmoke, /recordsScrollport/);
+  assert.match(contentIndexSmoke, /全局内容索引/);
 
   assert.match(
     workspaceArchitecture,

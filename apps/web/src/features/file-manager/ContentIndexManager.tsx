@@ -1,17 +1,27 @@
 import * as React from "react";
-import { Database, Download } from "lucide-react";
+import {
+  Activity,
+  Database,
+  Download,
+  FileSearch,
+  HardDrive,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
 import { toast } from "@/design/ui/sonner";
 import {
+  FILES_GLOBAL_SCOPE_ID,
   useCleanFilesContentIndexMutation,
   useFilesContentIndexRecordsQuery,
   useFilesContentIndexQuery,
   useRebuildFilesContentIndexMutation,
   useScanFilesContentIndexMutation,
-  FILES_GLOBAL_SCOPE_ID,
 } from "@/lib/query/files";
 import { ErrorState } from "@/shared/states/ErrorState";
 import type {
@@ -59,13 +69,16 @@ export function ContentIndexManager({
   const data = stats.data;
   const busy =
     stats.isFetching || scan.isPending || clean.isPending || rebuild.isPending;
-  const recordsPage = useFilesContentIndexRecordsQuery({
-    rootId: indexScopeRootId,
-    status: statusFilter,
-    query,
-    offset: (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE,
-    limit: CONTENT_INDEX_RECORDS_PAGE_SIZE,
-  });
+  const recordsPage = useFilesContentIndexRecordsQuery(
+    {
+      rootId: indexScopeRootId,
+      status: statusFilter,
+      query,
+      offset: (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE,
+      limit: CONTENT_INDEX_RECORDS_PAGE_SIZE,
+    },
+    { enabled: Boolean(data) },
+  );
   const records = recordsPage.data?.records ?? data?.recordsPreview ?? [];
   const health = React.useMemo(
     () => deriveContentIndexHealth(data, busy),
@@ -91,7 +104,7 @@ export function ContentIndexManager({
             at: new Date().toISOString(),
           },
           ...previous,
-        ].slice(0, 8),
+        ].slice(0, 5),
       );
     },
     [],
@@ -104,7 +117,7 @@ export function ContentIndexManager({
       appendMaintenanceEvent({
         action: "scan",
         status: "success",
-        summary: "完成失效扫描，统计已刷新",
+        summary: "完成全局失效扫描",
       });
       toast.success("索引扫描完成");
     } catch (error) {
@@ -151,9 +164,9 @@ export function ContentIndexManager({
       appendMaintenanceEvent({
         action: "rebuild",
         status: "success",
-        summary: `扫描 ${result.scannedFileCount} 个文件，写入 ${result.rebuiltRecordCount} 条记录${result.truncated ? "；达到安全上限" : ""}`,
+        summary: `当前入口扫描 ${result.scannedFileCount} 个文件，写入 ${result.rebuiltRecordCount} 条`,
       });
-      toast.success("索引重建完成", {
+      toast.success("当前入口索引已重建", {
         description: `扫描 ${result.scannedFileCount} 个文件，写入 ${result.rebuiltRecordCount} 条记录${result.truncated ? "；已达到安全上限" : ""}`,
       });
     } catch (error) {
@@ -169,165 +182,248 @@ export function ContentIndexManager({
   }, [appendMaintenanceEvent, rebuild, recordsPage, rootId]);
 
   return (
-    <div className="p-4">
-      <section className="overflow-hidden rounded-md border border-line bg-panel">
-        <div className="grid gap-3 border-b border-line bg-panel-2 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Database className="size-4 text-primary" />
-              <h2 className="text-base font-semibold text-ink-strong">
-                内容索引管理
-              </h2>
-              <span className="rounded-full bg-primary-soft px-2 py-0.5 text-2xs font-medium text-primary">
-                全局 · {data?.rootCount ?? "所有"} 个入口
-              </span>
-            </div>
-            <p className="mt-1 truncate text-xs text-muted">
-              全局汇总所有入口的内容索引；默认使用快速元数据统计，扫描失效时再做精确文件校验。
-            </p>
-          </div>
+    <section
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-panel"
+      data-file-manager-index-manager
+    >
+      <header className="grid gap-3 border-b border-line bg-panel-2 px-3 py-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <Database className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold text-ink-strong">
+              全局内容索引
+            </h2>
+            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-2xs font-medium text-primary">
+              {data?.rootCount ?? "所有"} 个入口
+            </span>
+            {data?.fastStats ? (
+              <span className="rounded-full border border-line bg-panel px-2 py-0.5 text-2xs text-subtle">
+                快速统计
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 truncate text-2xs text-muted">
+            按需校验，默认只读索引元数据，避免进入页面就扫描整个文件系统。
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => void stats.refetch()}
+            disabled={busy}
+          >
+            <RefreshCw className="size-3.5" />
+            刷新
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => copyContentIndexDiagnostics(data, health)}
+            disabled={!data}
+          >
+            复制诊断
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => void runScan()}
+            disabled={busy}
+          >
+            <ShieldCheck className="size-3.5" />
+            扫描失效
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => void runRebuild()}
+            disabled={busy}
+            title="全局重建会扫描所有 root，风险太高；此按钮只重建当前入口。"
+          >
+            <Wrench className="size-3.5" />
+            重建当前入口
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => void runClean()}
+            disabled={busy || !data?.staleRecordCount}
+          >
+            清理失效
+          </Button>
+        </div>
+      </header>
+
+      {stats.error ? (
+        <ErrorState
+          className="px-4 py-10"
+          title="无法读取内容索引"
+          description={stats.error.message}
+          action={
             <Button
               variant="outline"
               size="sm"
               onClick={() => void stats.refetch()}
-              disabled={busy}
             >
-              刷新统计
+              重试
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => copyContentIndexDiagnostics(data, health)}
-              disabled={!data}
-            >
-              复制诊断
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void runScan()}
-              disabled={busy}
-            >
-              扫描失效
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void runRebuild()}
-              disabled={busy}
-              title="为避免全局扫描整个文件系统，重建仍限定为当前入口；全局视图会立即汇总所有入口已有索引。"
-            >
-              {rebuild.isPending ? "重建中..." : "重建当前入口"}
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => void runClean()}
-              disabled={busy || !data?.staleRecordCount}
-            >
-              清理失效
-            </Button>
+          }
+        />
+      ) : (
+        <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
+          <IndexOverviewStrip data={data} health={health} busy={busy} />
+          <IndexToolbar
+            query={queryDraft}
+            statusFilter={statusFilter}
+            recordsPage={recordsPage.data}
+            maintenanceEvents={maintenanceEvents}
+            onQueryChange={setQueryDraft}
+            onStatusFilterChange={setStatusFilter}
+          />
+          <IndexRecordsPanel
+            records={records}
+            recordsPage={recordsPage.data}
+            loading={recordsPage.isFetching || stats.isLoading}
+            statusFilter={statusFilter}
+            query={queryDraft}
+            page={page}
+            totalRecordCount={
+              recordsPage.data?.totalRecordCount ?? data?.recordCount ?? 0
+            }
+            onPageChange={setPage}
+            onRevealPath={onRevealPath}
+            onOpenFile={onOpenFile}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function IndexOverviewStrip({
+  data,
+  health,
+  busy,
+}: {
+  data?: FilesContentIndexStatsPayload;
+  health: ContentIndexHealth;
+  busy: boolean;
+}) {
+  const cards = [
+    {
+      icon: Database,
+      label: "记录",
+      value: data?.recordCount ?? "—",
+      hint: data?.scope === "global" ? "全局" : (data?.rootId ?? "—"),
+    },
+    {
+      icon: HardDrive,
+      label: "容量",
+      value: formatBytes(data?.indexedBytes ?? 0),
+      hint: `${data?.shardCount ?? "—"} shards`,
+    },
+    {
+      icon: Activity,
+      label: "状态",
+      value: health.label,
+      hint: busy ? "读取中" : health.description,
+    },
+    {
+      icon: FileSearch,
+      label: "失效",
+      value: data?.fastStats ? "待扫描" : (data?.staleRecordCount ?? "—"),
+      hint: data?.fastStats
+        ? "按需校验"
+        : `${formatBytes(data?.staleBytes ?? 0)}`,
+    },
+  ];
+  return (
+    <div
+      className="grid gap-px border-b border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
+      data-content-index-overview-strip
+    >
+      {cards.map((card) => (
+        <div key={card.label} className="min-w-0 bg-panel px-3 py-2">
+          <div className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-subtle">
+            <card.icon className="size-3.5" />
+            {card.label}
+          </div>
+          <div className="mt-1 truncate text-lg font-semibold text-ink-strong">
+            {card.value}
+          </div>
+          <div
+            className="mt-0.5 truncate text-2xs text-muted"
+            title={card.hint}
+          >
+            {card.hint}
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
 
-        {stats.error ? (
-          <ErrorState
-            className="px-4 py-10"
-            title="无法读取内容索引"
-            description={stats.error.message}
-            action={
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void stats.refetch()}
-              >
-                重试
-              </Button>
-            }
-          />
-        ) : (
-          <>
-            <IndexHealthPanel
-              health={health}
-              data={data}
-              maintenanceEvents={maintenanceEvents}
-            />
-            <div className="grid gap-0 divide-y divide-line text-sm lg:grid-cols-4 lg:divide-x lg:divide-y-0">
-              <IndexCapabilityCard
-                title="分片"
-                value={data?.shardCount ?? "—"}
-                description="索引 shard 文件数量。"
-              />
-              <IndexCapabilityCard
-                title="Hash"
-                value={data?.hashCount ?? "—"}
-                description="已记录的 SHA-256 key 数。"
-              />
-              <IndexCapabilityCard
-                title="快速有效"
-                value={data?.validRecordCount ?? "—"}
-                description={
-                  data?.fastStats
-                    ? "快速统计按索引元数据估算；扫描失效会精确校验。"
-                    : "已通过文件系统校验的有效记录。"
-                }
-              />
-              <IndexCapabilityCard
-                title="失效记录"
-                value={
-                  data?.fastStats ? "待扫描" : (data?.staleRecordCount ?? "—")
-                }
-                description="文件删除/修改后待清理记录；快速模式不会逐文件 stat。"
-              />
-            </div>
-            <div className="grid gap-0 border-t border-line text-sm lg:grid-cols-3 lg:divide-x lg:divide-line">
-              <IndexCapabilityCard
-                title="索引容量"
-                value={formatBytes(data?.indexedBytes ?? 0)}
-                description="有效索引记录累计文件大小。"
-              />
-              <IndexCapabilityCard
-                title="失效容量"
-                value={formatBytes(data?.staleBytes ?? 0)}
-                description="失效记录对应的历史文件大小。"
-              />
-              <IndexCapabilityCard
-                title="最近写入"
-                value={
-                  data?.newestIndexedAt
-                    ? new Date(data.newestIndexedAt).toLocaleString()
-                    : "—"
-                }
-                description="最近一次索引记录时间。"
-              />
-            </div>
-            <IndexRecordsPanel
-              records={records}
-              recordsPage={recordsPage.data}
-              loading={recordsPage.isFetching}
-              statusFilter={statusFilter}
-              query={queryDraft}
-              page={page}
-              previewLimit={data?.previewLimit ?? 0}
-              totalRecordCount={
-                recordsPage.data?.totalRecordCount ?? data?.recordCount ?? 0
-              }
-              onStatusFilterChange={setStatusFilter}
-              onQueryChange={setQueryDraft}
-              onPageChange={setPage}
-              onRevealPath={onRevealPath}
-              onOpenFile={onOpenFile}
-            />
-            <div className="border-t border-line px-4 py-3">
-              <code className="block overflow-x-auto rounded bg-panel-2 px-2 py-1 text-xs text-muted">
-                {data?.storageDirectory ??
-                  `.openclaw/.tracevane/file-content-index`}
-              </code>
-            </div>
-          </>
-        )}
-      </section>
+function IndexToolbar({
+  query,
+  statusFilter,
+  recordsPage,
+  maintenanceEvents,
+  onQueryChange,
+  onStatusFilterChange,
+}: {
+  query: string;
+  statusFilter: ContentIndexRecordStatusFilter;
+  recordsPage?: FilesContentIndexRecordsPayload;
+  maintenanceEvents: ContentIndexMaintenanceEvent[];
+  onQueryChange: (value: string) => void;
+  onStatusFilterChange: (value: ContentIndexRecordStatusFilter) => void;
+}) {
+  return (
+    <div
+      className="grid gap-2 border-b border-line bg-panel-2 px-3 py-2 lg:grid-cols-[minmax(260px,420px)_auto_minmax(0,1fr)] lg:items-center"
+      data-content-index-toolbar
+    >
+      <label className="relative block min-w-0">
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
+        <Input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="搜索路径 / SHA / root"
+          aria-label="搜索索引记录"
+          className="h-8 pl-7 text-xs"
+        />
+      </label>
+      <div
+        className="inline-flex w-fit rounded border border-line bg-panel p-0.5"
+        aria-label="索引状态筛选"
+      >
+        {(["all", "valid", "stale"] as const).map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => onStatusFilterChange(status)}
+            className={cn(
+              "rounded px-2.5 py-1 text-2xs text-muted hover:text-ink-strong",
+              statusFilter === status && "bg-primary-soft text-primary",
+            )}
+          >
+            {status === "all" ? "全部" : status === "valid" ? "有效" : "失效"}
+          </button>
+        ))}
+      </div>
+      <div className="min-w-0 truncate text-2xs text-muted">
+        {recordsPage
+          ? `后端分页 · ${recordsPage.returnedRecordCount}/${recordsPage.totalRecordCount} 条`
+          : "等待统计加载"}
+        {maintenanceEvents[0]
+          ? ` · 最近：${actionLabel(maintenanceEvents[0].action)} ${maintenanceEvents[0].summary}`
+          : ""}
+      </div>
     </div>
   );
 }
@@ -339,10 +435,7 @@ function IndexRecordsPanel({
   statusFilter,
   query,
   page,
-  previewLimit,
   totalRecordCount,
-  onStatusFilterChange,
-  onQueryChange,
   onPageChange,
   onRevealPath,
   onOpenFile,
@@ -353,20 +446,11 @@ function IndexRecordsPanel({
   statusFilter: ContentIndexRecordStatusFilter;
   query: string;
   page: number;
-  previewLimit: number;
   totalRecordCount: number;
-  onStatusFilterChange: (value: ContentIndexRecordStatusFilter) => void;
-  onQueryChange: (value: string) => void;
   onPageChange: (value: number) => void;
   onRevealPath?: (path: string, rootId?: string) => void;
   onOpenFile?: (entry: FileEntrySummary, rootId?: string) => void;
 }) {
-  const validCount = records.filter(
-    (record) => record.status === "valid",
-  ).length;
-  const staleCount = records.filter(
-    (record) => record.status === "stale",
-  ).length;
   const offset =
     recordsPage?.offset ?? (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE;
   const limit = recordsPage?.limit ?? CONTENT_INDEX_RECORDS_PAGE_SIZE;
@@ -375,260 +459,160 @@ function IndexRecordsPanel({
   const visibleStart = totalRecordCount > 0 ? offset + 1 : 0;
   const visibleEnd = Math.min(offset + records.length, totalRecordCount);
   return (
-    <div className="border-t border-line">
-      <div className="flex flex-wrap items-center gap-2 bg-panel-2 px-4 py-3 text-xs">
-        <span className="font-semibold text-ink-strong">索引记录</span>
-        <span className="rounded border border-line bg-panel px-2 py-1 text-subtle">
-          分页 {visibleStart}-{visibleEnd}/{totalRecordCount} · 本页有效{" "}
-          {validCount} · 失效 {staleCount}
-        </span>
-        <Input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="搜索路径 / SHA"
-          aria-label="搜索索引记录"
-          className="h-8 w-full min-w-52 max-w-sm text-xs md:w-72"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 px-2 text-xs"
-          disabled={loading || !records.length}
-          onClick={() =>
-            exportIndexRecordsCsv(records, {
-              statusFilter,
-              query,
-              page,
-              totalRecordCount,
-            })
-          }
-          title="只导出当前筛选条件下已经加载的这一页记录"
-          data-content-index-export-current-page
-        >
-          <Download className="size-3.5" />
-          导出本页 CSV
-        </Button>
-        <div
-          className="ml-auto inline-flex rounded border border-line bg-panel p-0.5"
-          aria-label="索引状态筛选"
-        >
-          {(["all", "valid", "stale"] as const).map((status) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() => onStatusFilterChange(status)}
-              className={cn(
-                "rounded px-2 py-1 text-2xs text-muted hover:text-ink-strong",
-                statusFilter === status && "bg-primary-soft text-primary",
-              )}
-            >
-              {status === "all" ? "全部" : status === "valid" ? "有效" : "失效"}
-            </button>
-          ))}
-        </div>
-      </div>
-      {recordsPage ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-4 py-2 text-xs text-muted">
-          <span>
-            后端分页查询 · 本页 {recordsPage.returnedRecordCount} 条 / 每页{" "}
-            {limit} 条 · 状态{" "}
-            {recordsPage.status === "all"
-              ? "全部"
-              : recordsPage.status === "valid"
-                ? "有效"
-                : "失效"}
-            {recordsPage.query ? ` · 查询 ${recordsPage.query}` : ""}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              disabled={!hasPrevious || loading}
-              onClick={() => onPageChange(Math.max(1, page - 1))}
-            >
-              上一页
-            </Button>
-            <span className="rounded border border-line bg-panel-2 px-2 py-1 text-2xs">
-              第 {page} 页
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              disabled={!hasNext || loading}
-              onClick={() => onPageChange(page + 1)}
-            >
-              下一页
-            </Button>
+    <div
+      className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
+      data-content-index-records-panel
+    >
+      <div
+        className="min-h-0 overflow-auto overscroll-contain"
+        data-content-index-records-scrollport
+      >
+        {loading && !records.length ? (
+          <div className="px-4 py-8 text-center text-xs text-muted">
+            正在加载索引记录…
           </div>
-        </div>
-      ) : previewLimit && totalRecordCount > previewLimit ? (
-        <div className="border-t border-line bg-primary-soft px-4 py-2 text-xs text-primary">
-          当前使用兼容预览数据；新环境会通过后端分页查询管理大索引，避免一次性拉取过多记录。
-        </div>
-      ) : null}
-      {loading && !records.length ? (
-        <div className="px-4 py-6 text-center text-xs text-muted">
-          正在加载索引记录…
-        </div>
-      ) : records.length ? (
-        <>
+        ) : records.length ? (
           <div
-            className="grid gap-2 p-3 md:hidden"
-            data-content-index-records-mobile-list
-            aria-label="内容索引记录移动端列表"
+            className="divide-y divide-line"
+            data-content-index-records-table
           >
             {records.map((record) => (
-              <article
-                key={`${record.sha256}:${record.path}:${record.status}:card`}
-                className="grid gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs"
-                data-content-index-record-card
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5",
-                      record.status === "valid"
-                        ? "bg-green-soft text-green"
-                        : "bg-amber-soft text-amber",
-                    )}
-                  >
-                    {record.status === "valid" ? "有效" : "失效"}
-                  </span>
-                  <span
-                    className="min-w-0 flex-1 truncate font-mono text-ink-strong"
-                    title={record.path}
-                  >
-                    {record.path}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-2xs text-muted">
-                  <span className="rounded bg-panel-2 px-2 py-1">
-                    大小 {formatBytes(record.size)}
-                  </span>
-                  <span
-                    className="truncate rounded bg-panel-2 px-2 py-1 font-mono"
-                    title={record.sha256}
-                  >
-                    SHA {record.sha256.slice(0, 12)}…
-                  </span>
-                </div>
-                <IndexRecordActions
-                  record={record}
-                  onRevealPath={onRevealPath}
-                  onOpenFile={onOpenFile}
-                  className="justify-end"
-                />
-              </article>
+              <IndexRecordRow
+                key={`${record.rootId}:${record.sha256}:${record.path}:${record.status}`}
+                record={record}
+                onRevealPath={onRevealPath}
+                onOpenFile={onOpenFile}
+              />
             ))}
           </div>
-          <div
-            className="hidden max-h-[420px] min-w-0 overflow-auto overscroll-contain md:block"
-            data-content-index-records-scrollport
-            aria-label="内容索引记录表格，可横向滚动查看完整路径、SHA 和操作"
-          >
-            <div className="min-w-[760px]" data-content-index-records-table>
-              <div className="grid grid-cols-[92px_minmax(220px,1fr)_120px_136px_160px] border-y border-line bg-panel-2 px-4 py-2 text-2xs font-medium uppercase tracking-wide text-subtle">
-                <span>状态</span>
-                <span>路径</span>
-                <span>大小</span>
-                <span>SHA-256</span>
-                <span className="text-right">操作</span>
-              </div>
-              {records.map((record) => (
-                <div
-                  key={`${record.sha256}:${record.path}:${record.status}`}
-                  className="grid grid-cols-[92px_minmax(220px,1fr)_120px_136px_160px] items-center border-b border-line px-4 py-2 text-xs last:border-b-0"
-                >
-                  <span
-                    className={cn(
-                      "w-fit rounded-full px-2 py-0.5",
-                      record.status === "valid"
-                        ? "bg-green-soft text-green"
-                        : "bg-amber-soft text-amber",
-                    )}
-                  >
-                    {record.status === "valid" ? "有效" : "失效"}
-                  </span>
-                  <span
-                    className="min-w-0 truncate font-mono text-ink-strong"
-                    title={record.path}
-                  >
-                    {record.path}
-                  </span>
-                  <span className="text-muted">{formatBytes(record.size)}</span>
-                  <span className="font-mono text-subtle" title={record.sha256}>
-                    {record.sha256.slice(0, 12)}…
-                  </span>
-                  <IndexRecordActions
-                    record={record}
-                    onRevealPath={onRevealPath}
-                    onOpenFile={onOpenFile}
-                    className="justify-end"
-                  />
-                </div>
-              ))}
-            </div>
+        ) : (
+          <div className="px-4 py-8 text-center text-xs text-muted">
+            当前筛选没有索引记录。
           </div>
-        </>
-      ) : (
-        <div className="px-4 py-6 text-center text-xs text-muted">
-          当前筛选没有索引记录。
+        )}
+      </div>
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 py-2 text-xs text-muted">
+        <span>
+          {visibleStart}-{visibleEnd}/{totalRecordCount} · 第 {page} 页
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={loading || !records.length}
+            onClick={() =>
+              exportIndexRecordsCsv(records, {
+                statusFilter,
+                query,
+                page,
+                totalRecordCount,
+              })
+            }
+            data-content-index-export-current-page
+          >
+            <Download className="size-3.5" />
+            导出本页
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={!hasPrevious || loading}
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+          >
+            上一页
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={!hasNext || loading}
+            onClick={() => onPageChange(page + 1)}
+          >
+            下一页
+          </Button>
         </div>
-      )}
+      </footer>
     </div>
   );
 }
 
-function IndexRecordActions({
+function IndexRecordRow({
   record,
   onRevealPath,
   onOpenFile,
-  className,
 }: {
   record: FilesContentIndexRecordPreview;
   onRevealPath?: (path: string, rootId?: string) => void;
   onOpenFile?: (entry: FileEntrySummary, rootId?: string) => void;
-  className?: string;
 }) {
   return (
-    <span
-      className={cn("flex flex-wrap gap-1", className)}
-      data-content-index-record-actions
+    <div
+      className="grid gap-2 px-3 py-2 text-xs hover:bg-panel-2 md:grid-cols-[92px_120px_minmax(220px,1fr)_92px_120px] md:items-center"
+      data-content-index-record-row
+      data-content-index-record-card
     >
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2 text-xs"
-        onClick={() => copyIndexRecord(record)}
+      <span
+        className={cn(
+          "w-fit rounded-full px-2 py-0.5",
+          record.status === "valid"
+            ? "bg-green-soft text-green"
+            : "bg-amber-soft text-amber",
+        )}
       >
-        复制
-      </Button>
-      {onRevealPath && record.status === "valid" ? (
+        {record.status === "valid" ? "有效" : "失效"}
+      </span>
+      <span
+        className="min-w-0 truncate font-mono text-2xs text-subtle"
+        title={record.rootId}
+      >
+        {record.rootId ?? "—"}
+      </span>
+      <span
+        className="min-w-0 truncate font-mono text-ink-strong"
+        title={record.path}
+      >
+        {record.path}
+      </span>
+      <span className="text-muted">{formatBytes(record.size)}</span>
+      <span
+        className="flex flex-wrap justify-start gap-1 md:justify-end"
+        data-content-index-record-actions
+      >
         <Button
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-xs"
-          onClick={() => onRevealPath(record.path, record.rootId)}
+          onClick={() => copyIndexRecord(record)}
         >
-          定位
+          复制
         </Button>
-      ) : null}
-      {onOpenFile && record.status === "valid" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => {
-            onRevealPath?.(record.path, record.rootId);
-            onOpenFile(contentIndexRecordToFileEntry(record), record.rootId);
-          }}
-        >
-          预览 / 编辑
-        </Button>
-      ) : null}
-    </span>
+        {onRevealPath && record.status === "valid" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onRevealPath(record.path, record.rootId)}
+          >
+            定位
+          </Button>
+        ) : null}
+        {onOpenFile && record.status === "valid" ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => {
+              onRevealPath?.(record.path, record.rootId);
+              onOpenFile(contentIndexRecordToFileEntry(record), record.rootId);
+            }}
+          >
+            预览
+          </Button>
+        ) : null}
+      </span>
+    </div>
   );
 }
 
@@ -673,162 +657,41 @@ export function deriveContentIndexHealth(
   data: FilesContentIndexStatsPayload | undefined,
   busy = false,
 ): ContentIndexHealth {
-  if (busy) {
+  if (busy)
     return {
       level: "checking",
       label: "检查中",
-      description: "正在读取或维护内容索引，完成后会刷新健康状态。",
+      description: "读取中",
       staleRatio: 0,
     };
-  }
-  if (!data || data.recordCount === 0) {
+  if (!data || data.recordCount === 0)
     return {
       level: "empty",
       label: "未建立",
-      description: "全局内容索引暂时没有记录；上传文件或重建某个入口后会生成。",
+      description: "暂无索引记录",
       staleRatio: 0,
     };
-  }
   const staleRatio = data.staleRecordCount / Math.max(data.recordCount, 1);
-  if (data.staleRecordCount > 0) {
+  if (data.staleRecordCount > 0)
     return {
       level: "stale",
-      label: staleRatio > 0.2 ? "需要维护" : "有失效项",
-      description: `${data.staleRecordCount} 条记录已失效，建议清理或按入口重建。`,
+      label: staleRatio > 0.2 ? "需维护" : "有失效",
+      description: `${data.staleRecordCount} 条失效`,
       staleRatio,
     };
-  }
-  if (data.recordCount > data.previewLimit) {
+  if (data.fastStats)
     return {
-      level: "large-preview",
-      label: "分页管理",
-      description:
-        "索引统计健康；记录列表通过后端分页查询管理大索引，避免一次性拉取过多数据。",
+      level: "healthy",
+      label: "快速",
+      description: "元数据统计",
       staleRatio: 0,
     };
-  }
   return {
     level: "healthy",
-    label: data.fastStats ? "快速统计" : "健康",
-    description: data.fastStats
-      ? "已快速读取全局索引元数据；需要精确失效数时点击“扫描失效”。"
-      : "有效记录与文件系统一致，可用于同内容复用和后续高性能搜索。",
+    label: "健康",
+    description: "已校验",
     staleRatio: 0,
   };
-}
-
-function IndexHealthPanel({
-  health,
-  data,
-  maintenanceEvents,
-}: {
-  health: ContentIndexHealth;
-  data: FilesContentIndexStatsPayload | undefined;
-  maintenanceEvents: ContentIndexMaintenanceEvent[];
-}) {
-  const levelClassName =
-    health.level === "healthy"
-      ? "border-green/20 bg-green-soft text-green"
-      : health.level === "stale"
-        ? "border-amber/20 bg-amber-soft text-amber"
-        : health.level === "checking"
-          ? "border-primary-line bg-primary-soft text-primary"
-          : "border-line bg-panel-2 text-muted";
-  return (
-    <div className="grid gap-3 border-b border-line px-4 py-3 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-      <div className={cn("rounded-md border p-3", levelClassName)}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-panel/70 px-2 py-0.5 text-2xs font-semibold">
-            {health.label}
-          </span>
-          <span className="text-xs">索引健康状态</span>
-        </div>
-        <p className="mt-2 text-sm font-medium">{health.description}</p>
-        <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
-          <span className="rounded bg-panel/70 px-2 py-1">
-            总记录 {data?.recordCount ?? 0}
-          </span>
-          <span className="rounded bg-panel/70 px-2 py-1">
-            范围{" "}
-            {data?.scope === "global"
-              ? `全局 ${data.rootCount ?? 0} 入口`
-              : (data?.rootId ?? "—")}
-          </span>
-          <span className="rounded bg-panel/70 px-2 py-1">
-            失效率{" "}
-            {data?.fastStats
-              ? "待扫描"
-              : `${(health.staleRatio * 100).toFixed(1)}%`}
-          </span>
-          <span className="rounded bg-panel/70 px-2 py-1">
-            检查{" "}
-            {data?.checkedAt ? new Date(data.checkedAt).toLocaleString() : "—"}
-          </span>
-        </div>
-      </div>
-      <div className="rounded-md border border-line bg-panel-2 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-ink-strong">
-            维护事件
-          </span>
-          <span className="text-2xs text-subtle">
-            本会话最近 {maintenanceEvents.length} 条
-          </span>
-        </div>
-        {maintenanceEvents.length ? (
-          <div className="grid max-h-32 gap-1 overflow-auto">
-            {maintenanceEvents.map((event) => (
-              <div
-                key={event.id}
-                className="grid grid-cols-[72px_minmax(0,1fr)] gap-2 rounded border border-line bg-panel px-2 py-1 text-2xs"
-              >
-                <span
-                  className={cn(
-                    "font-semibold",
-                    event.status === "success" ? "text-green" : "text-red",
-                  )}
-                >
-                  {actionLabel(event.action)}
-                </span>
-                <span
-                  className="min-w-0 truncate text-muted"
-                  title={event.summary}
-                >
-                  {new Date(event.at).toLocaleTimeString()} · {event.summary}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded border border-line bg-panel px-2 py-3 text-center text-xs text-muted">
-            暂无维护事件；执行扫描、清理或重建后会留下本会话证据。
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function IndexCapabilityCard({
-  title,
-  value,
-  description,
-}: {
-  title: string;
-  value: React.ReactNode;
-  description: string;
-}) {
-  return (
-    <div className="px-4 py-3">
-      <div className="text-2xs font-medium uppercase tracking-wide text-subtle">
-        {title}
-      </div>
-      <div className="mt-1 text-base font-semibold text-ink-strong">
-        {value}
-      </div>
-      <p className="mt-1 text-xs text-muted">{description}</p>
-    </div>
-  );
 }
 
 function copyIndexRecord(record: FilesContentIndexRecordPreview): void {
@@ -904,7 +767,6 @@ function exportIndexRecordsCsv(
       context.query ? safeExportName(context.query) : "all",
       `page-${context.page}`,
     ].join("-") + ".csv";
-
   if (
     typeof document !== "undefined" &&
     typeof URL !== "undefined" &&
@@ -924,7 +786,6 @@ function exportIndexRecordsCsv(
     });
     return;
   }
-
   if (typeof navigator !== "undefined" && navigator.clipboard) {
     void navigator.clipboard
       .writeText(csv)
@@ -937,7 +798,6 @@ function exportIndexRecordsCsv(
 function escapeCsvCell(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
-
 function safeExportName(value: string): string {
   return (
     value
@@ -946,13 +806,9 @@ function safeExportName(value: string): string {
       .slice(0, 48) || "query"
   );
 }
-
 function actionLabel(action: ContentIndexMaintenanceEvent["action"]): string {
-  if (action === "scan") return "扫描";
-  if (action === "clean") return "清理";
-  return "重建";
+  return action === "scan" ? "扫描" : action === "clean" ? "清理" : "重建";
 }
-
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];

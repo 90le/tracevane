@@ -1,8 +1,12 @@
 import * as React from "react";
 import {
   ArchiveRestore,
+  Code2,
   Download,
   File,
+  FileArchive,
+  FileImage,
+  FileText,
   Folder,
   FolderInput,
   Grid2X2,
@@ -22,20 +26,11 @@ import type { useFilesBrowseQuery } from "@/lib/query/files";
 import type { FileEntrySummary } from "@/features/workspace/files";
 
 export type FileManagerSortKey =
-  | "name"
-  | "size"
-  | "modified"
-  | "type"
-  | "permissions"
-  | "owner";
+  "name" | "size" | "modified" | "type" | "permissions" | "owner";
 export type FileManagerSortDirection = "asc" | "desc";
 export type FileManagerListDensity = "comfortable" | "compact";
 export type FileManagerListColumn =
-  | "size"
-  | "modified"
-  | "type"
-  | "permissions"
-  | "owner";
+  "size" | "modified" | "type" | "permissions" | "owner";
 export type FileManagerDisplayMode = "list" | "grid";
 export type FileManagerResizableColumn = "name" | FileManagerListColumn;
 export type FileManagerColumnWidths = Partial<
@@ -101,7 +96,52 @@ const FILE_MANAGER_ROW_HEIGHT: Record<FileManagerListDensity, number> = {
   compact: 44,
 };
 
-const LazyFileTypeIcon = React.lazy(() => import("./FileTypeIcon"));
+let fileManagerRichIconReady = false;
+const fileManagerRichIconSubscribers = new Set<() => void>();
+const LazyRichFileTypeIcon = React.lazy(() => import("./FileTypeIcon"));
+
+function useFullFileTypeIcons(): boolean {
+  const [ready, setReady] = React.useState(fileManagerRichIconReady);
+
+  React.useEffect(() => {
+    if (fileManagerRichIconReady) return;
+
+    const notify = () => setReady(true);
+    fileManagerRichIconSubscribers.add(notify);
+
+    const load = () => {
+      if (fileManagerRichIconReady) return;
+      fileManagerRichIconReady = true;
+      void import("./FileTypeIcon");
+      fileManagerRichIconSubscribers.forEach((subscriber) => subscriber());
+      fileManagerRichIconSubscribers.clear();
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    let cleanup: () => void;
+    if (typeof win.requestIdleCallback === "function") {
+      const id = win.requestIdleCallback(load, { timeout: 900 });
+      cleanup = () => win.cancelIdleCallback?.(id);
+    } else {
+      const id = window.setTimeout(load, 600);
+      cleanup = () => window.clearTimeout(id);
+    }
+
+    return () => {
+      fileManagerRichIconSubscribers.delete(notify);
+      cleanup();
+    };
+  }, []);
+
+  return ready;
+}
 
 function FileTypeIcon({
   entry,
@@ -110,21 +150,117 @@ function FileTypeIcon({
   entry: FileEntrySummary;
   size: "sm" | "lg";
 }) {
+  const fullIconsReady = useFullFileTypeIcons();
+  if (fullIconsReady) {
+    return (
+      <React.Suspense
+        fallback={<NativeFileTypeIcon entry={entry} size={size} />}
+      >
+        <LazyRichFileTypeIcon entry={entry} size={size} />
+      </React.Suspense>
+    );
+  }
+
+  return <NativeFileTypeIcon entry={entry} size={size} />;
+}
+
+function NativeFileTypeIcon({
+  entry,
+  size,
+}: {
+  entry: FileEntrySummary;
+  size: "sm" | "lg";
+}) {
+  const className = cn(
+    "inline-flex items-center justify-center text-primary",
+    size === "lg" ? "size-8" : "size-4 shrink-0",
+  );
+  const iconClassName = "size-full";
+
+  if (entry.kind === "directory") {
+    return (
+      <span
+        aria-hidden="true"
+        className={className}
+        data-file-manager-file-type-icon="folder"
+      >
+        <Folder className={iconClassName} />
+      </span>
+    );
+  }
+
+  const ext = (entry.ext || "").toLowerCase();
+  const Icon = imageLikeExt(ext)
+    ? FileImage
+    : archiveLikeExt(ext)
+      ? FileArchive
+      : codeLikeExt(ext)
+        ? Code2
+        : textLikeExt(ext)
+          ? FileText
+          : File;
+
   return (
-    <React.Suspense
-      fallback={
-        <span
-          className={cn(size === "lg" ? "size-8" : "size-4 shrink-0")}
-          aria-hidden="true"
-          data-file-manager-file-type-icon="loading"
-        />
-      }
+    <span
+      aria-hidden="true"
+      className={className}
+      data-file-manager-file-type-icon="native"
     >
-      <LazyFileTypeIcon entry={entry} size={size} />
-    </React.Suspense>
+      <Icon className={iconClassName} />
+    </span>
   );
 }
 
+function imageLikeExt(ext: string): boolean {
+  return [
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "svg",
+    "avif",
+    "bmp",
+    "ico",
+  ].includes(ext);
+}
+
+function archiveLikeExt(ext: string): boolean {
+  return ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "zst"].includes(
+    ext,
+  );
+}
+
+function codeLikeExt(ext: string): boolean {
+  return [
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "vue",
+    "py",
+    "go",
+    "rs",
+    "java",
+    "kt",
+    "css",
+    "scss",
+    "html",
+    "xml",
+    "json",
+    "yaml",
+    "yml",
+    "toml",
+    "sh",
+    "sql",
+  ].includes(ext);
+}
+
+function textLikeExt(ext: string): boolean {
+  return ["txt", "md", "markdown", "log", "csv", "ini", "env"].includes(ext);
+}
 
 export interface BulkActionBarProps {
   selectedEntries: FileEntrySummary[];
@@ -166,7 +302,12 @@ export function BulkActionBar({
     (total, entry) => total + (entry.kind === "file" ? (entry.size ?? 0) : 0),
     0,
   );
-  const selectionSummary = summarizeBulkSelection(selectedEntries, fileCount, directoryCount, selectedBytes);
+  const selectionSummary = summarizeBulkSelection(
+    selectedEntries,
+    fileCount,
+    directoryCount,
+    selectedBytes,
+  );
   return (
     <>
       <div
@@ -201,9 +342,7 @@ export function BulkActionBar({
           className="flex min-w-0 flex-nowrap items-center gap-2 border-t border-primary-line/40 pt-2"
           data-file-manager-bulk-command-bar
         >
-          <span className="mr-1 shrink-0 font-medium text-muted">
-            批量操作
-          </span>
+          <span className="mr-1 shrink-0 font-medium text-muted">批量操作</span>
           {canRename ? (
             <Button
               variant="outline"
@@ -400,13 +539,29 @@ function BulkOverflowMenu({
         data-file-manager-bulk-overflow-menu
       >
         {canRename ? (
-          <BulkOverflowAction icon={<File className="size-4" />} label="重命名" onClick={onRename} />
+          <BulkOverflowAction
+            icon={<File className="size-4" />}
+            label="重命名"
+            onClick={onRename}
+          />
         ) : null}
-        <BulkOverflowAction icon={<Package className="size-4" />} label="打包" onClick={onArchive} />
+        <BulkOverflowAction
+          icon={<Package className="size-4" />}
+          label="打包"
+          onClick={onArchive}
+        />
         {canUnarchive ? (
-          <BulkOverflowAction icon={<ArchiveRestore className="size-4" />} label="解压" onClick={onUnarchive} />
+          <BulkOverflowAction
+            icon={<ArchiveRestore className="size-4" />}
+            label="解压"
+            onClick={onUnarchive}
+          />
         ) : null}
-        <BulkOverflowAction icon={<File className="size-4" />} label="权限" onClick={onChmod} />
+        <BulkOverflowAction
+          icon={<File className="size-4" />}
+          label="权限"
+          onClick={onChmod}
+        />
       </div>
     </details>
   );
@@ -485,10 +640,7 @@ export interface FileListPanelProps {
     entry: FileEntrySummary,
     options?: { range?: boolean; additive?: boolean },
   ) => void;
-  onMarqueeSelect: (
-    paths: string[],
-    options?: { additive?: boolean },
-  ) => void;
+  onMarqueeSelect: (paths: string[], options?: { additive?: boolean }) => void;
   onTogglePath: (path: string) => void;
   onClearSelection: () => void;
   onFocusRelative: (delta: number) => void;
@@ -689,7 +841,9 @@ export function FileListPanel({
 
   React.useEffect(() => {
     if (!selectedPath || !virtualListEnabled) return;
-    const index = filteredEntries.findIndex((entry) => entry.path === selectedPath);
+    const index = filteredEntries.findIndex(
+      (entry) => entry.path === selectedPath,
+    );
     if (index >= 0) scrollIndexIntoVirtualWindow(index);
   }, [
     filteredEntries,
@@ -939,7 +1093,10 @@ export function FileListPanel({
   const focusEntryAtIndex = React.useCallback(
     (index: number, range = false) => {
       if (!filteredEntries.length) return;
-      const nextIndex = Math.max(0, Math.min(filteredEntries.length - 1, index));
+      const nextIndex = Math.max(
+        0,
+        Math.min(filteredEntries.length - 1, index),
+      );
       const entry = filteredEntries[nextIndex];
       scrollIndexIntoVirtualWindow(nextIndex);
       if (range) {
@@ -967,12 +1124,18 @@ export function FileListPanel({
         : -1;
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        focusEntryAtIndex(currentIndex < 0 ? 0 : currentIndex + 1, event.shiftKey);
+        focusEntryAtIndex(
+          currentIndex < 0 ? 0 : currentIndex + 1,
+          event.shiftKey,
+        );
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        focusEntryAtIndex(currentIndex < 0 ? 0 : currentIndex - 1, event.shiftKey);
+        focusEntryAtIndex(
+          currentIndex < 0 ? 0 : currentIndex - 1,
+          event.shiftKey,
+        );
         return;
       }
       if (event.key === "Home") {
@@ -987,12 +1150,18 @@ export function FileListPanel({
       }
       if (event.key === "PageDown") {
         event.preventDefault();
-        focusEntryAtIndex(currentIndex < 0 ? 0 : currentIndex + 10, event.shiftKey);
+        focusEntryAtIndex(
+          currentIndex < 0 ? 0 : currentIndex + 10,
+          event.shiftKey,
+        );
         return;
       }
       if (event.key === "PageUp") {
         event.preventDefault();
-        focusEntryAtIndex(currentIndex < 0 ? 0 : currentIndex - 10, event.shiftKey);
+        focusEntryAtIndex(
+          currentIndex < 0 ? 0 : currentIndex - 10,
+          event.shiftKey,
+        );
         return;
       }
       if (event.key === "Enter") {
@@ -1276,7 +1445,9 @@ export function FileListPanel({
                 dropOperation={
                   dropTarget?.path === entry.path ? dropTarget.operation : null
                 }
-                onDragOverDirectory={(event) => highlightDropTarget(event, entry)}
+                onDragOverDirectory={(event) =>
+                  highlightDropTarget(event, entry)
+                }
                 onDragLeaveDirectory={() => clearDropTarget(entry)}
                 onDropOnDirectory={(event) => dropOnDirectory(event, entry)}
               />
@@ -1657,7 +1828,9 @@ export function summarizeFileManagerSelection(
   const selectedEntries = entries.filter((entry) =>
     selectedPaths.has(entry.path),
   );
-  const fileCount = selectedEntries.filter((entry) => entry.kind === "file").length;
+  const fileCount = selectedEntries.filter(
+    (entry) => entry.kind === "file",
+  ).length;
   const directoryCount = selectedEntries.filter(
     (entry) => entry.kind === "directory",
   ).length;
@@ -1685,7 +1858,10 @@ function summarizeBulkSelection(
   directoryCount: number,
   selectedBytes: number,
 ): string {
-  const firstNames = entries.slice(0, 3).map((entry) => entry.name).join("、");
+  const firstNames = entries
+    .slice(0, 3)
+    .map((entry) => entry.name)
+    .join("、");
   const moreCount = Math.max(0, entries.length - 3);
   const sample = firstNames
     ? moreCount > 0
@@ -2103,21 +2279,30 @@ function FileRowColumn({
 }) {
   if (column === "size") {
     return (
-      <span className="hidden text-muted sm:block" data-file-manager-column="size">
+      <span
+        className="hidden text-muted sm:block"
+        data-file-manager-column="size"
+      >
         {entry.kind === "file" ? formatBytes(entry.size ?? 0) : "—"}
       </span>
     );
   }
   if (column === "modified") {
     return (
-      <span className="hidden truncate text-muted sm:block" data-file-manager-column="modified">
+      <span
+        className="hidden truncate text-muted sm:block"
+        data-file-manager-column="modified"
+      >
         {entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : "—"}
       </span>
     );
   }
   if (column === "type")
     return (
-      <span className="hidden text-muted sm:block" data-file-manager-column="type">
+      <span
+        className="hidden text-muted sm:block"
+        data-file-manager-column="type"
+      >
         {entry.kind === "directory" ? "目录" : entry.ext || "文件"}
       </span>
     );
@@ -2132,7 +2317,10 @@ function FileRowColumn({
       </span>
     );
   return (
-    <span className="hidden font-mono text-2xs text-muted sm:block" data-file-manager-column="owner">
+    <span
+      className="hidden font-mono text-2xs text-muted sm:block"
+      data-file-manager-column="owner"
+    >
       {entry.uid != null || entry.gid != null
         ? `${entry.uid ?? "—"}:${entry.gid ?? "—"}`
         : "—"}

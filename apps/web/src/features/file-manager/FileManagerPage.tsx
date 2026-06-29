@@ -43,7 +43,6 @@ import {
   type FileManagerViewMode,
 } from "./FileManagerChrome";
 import { FilePropertiesDialog } from "@/features/workspace/shared/FilePropertiesDialog";
-import { FilePreviewDialog } from "./FilePreviewPanel";
 import type { FileManagerDialog } from "./FileManagerActionDialog";
 import { FileManagerSearchPanel } from "./FileManagerSearchPanel";
 import type { FileSearchResult } from "../../../../../types/files";
@@ -55,6 +54,11 @@ const LazyContentIndexManager = React.lazy(() =>
 );
 const LazyTrashManager = React.lazy(() =>
   import("./TrashManager").then((module) => ({ default: module.TrashManager })),
+);
+const LazyFilePreviewDialog = React.lazy(() =>
+  import("./FilePreviewPanel").then((module) => ({
+    default: module.FilePreviewDialog,
+  })),
 );
 const LazyUploadManagerDialog = React.lazy(() =>
   import("@/features/workspace/files/UploadManagerDialog").then((module) => ({
@@ -89,7 +93,7 @@ import type {
   FilesUploadConflictPolicy,
 } from "@/features/workspace/files/types";
 
-const PAGE_SIZE = 500;
+const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
 const FAVORITE_PATHS_STORAGE_KEY = "tracevane:file-manager:favorite-paths";
 const VIEW_PREFERENCES_STORAGE_KEY = "tracevane:file-manager:view-preferences";
@@ -137,7 +141,7 @@ export function FileManagerPage() {
     loadFileManagerSessionState(),
   );
   const [rootId, setRootId] = React.useState(
-    () => sessionStateLoaded.rootId ?? defaultRootId,
+    () => (sessionStateLoaded.rootId ?? defaultRootId) || "openclaw-root",
   );
   const [directoryPath, setDirectoryPath] = React.useState(
     () => sessionStateLoaded.directoryPath ?? "",
@@ -1403,7 +1407,7 @@ export function FileManagerPage() {
           <React.Suspense
             fallback={<FileManagerModalLoading label="文件预览加载中…" />}
           >
-            <FilePreviewDialog
+            <LazyFilePreviewDialog
               rootId={activePreviewRootId}
               entry={previewEntry}
               readQuery={previewFileRead}
