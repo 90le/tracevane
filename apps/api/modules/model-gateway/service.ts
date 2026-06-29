@@ -1252,6 +1252,7 @@ function modelItemCapabilitySources(item: Record<string, unknown>): Record<strin
     isRecord(item.features) ? item.features : null,
     isRecord(item.capabilities) ? item.capabilities : null,
     isRecord(item.supports) ? item.supports : null,
+    isRecord(item.modalities) ? item.modalities : null,
   ].filter((source): source is Record<string, unknown> => source !== null);
 }
 
@@ -1278,6 +1279,7 @@ function modelItemExplicitVisionCapability(item: Record<string, unknown>): boole
     "inputModalities",
     "input_modes",
     "inputModes",
+    "input",
     "modalities",
     "supported_modalities",
     "supportedModalities",
@@ -1318,12 +1320,14 @@ function modelItemExplicitAudioCapability(
     ? [
       "output_modalities",
       "outputModalities",
+      "output",
       "supported_output_modalities",
       "supportedOutputModalities",
     ]
     : [
       "input_modalities",
       "inputModalities",
+      "input",
       "supported_modalities",
       "supportedModalities",
       "modalities",
@@ -1333,6 +1337,53 @@ function modelItemExplicitAudioCapability(
   return modelItemHasSignal(haystack, [/^audio$/, /audio[_ -]?(?:input|output)/])
     ? true
     : null;
+}
+
+
+function modelItemLimitObject(item: Record<string, unknown>): Record<string, unknown> | null {
+  return isRecord(item.limit) ? item.limit : null;
+}
+
+function modelItemPricingNumber(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function modelItemPricing(item: Record<string, unknown>): ModelGatewayProviderModelPricing | undefined {
+  const cost = isRecord(item.cost) ? item.cost : null;
+  if (!cost) return normalizeModelPricing(item.pricing);
+  const pricing: ModelGatewayProviderModelPricing = {
+    currency: "USD",
+  };
+  const input = modelItemPricingNumber(cost.input);
+  const output = modelItemPricingNumber(cost.output);
+  const cacheRead = modelItemPricingNumber(cost.cache_read ?? cost.cacheRead);
+  const cacheWrite = modelItemPricingNumber(cost.cache_write ?? cost.cacheWrite);
+  const inputAudio = modelItemPricingNumber(cost.input_audio ?? cost.inputAudio);
+  const outputAudio = modelItemPricingNumber(cost.output_audio ?? cost.outputAudio);
+  if (input !== null && input >= 0) pricing.inputPer1M = input;
+  if (output !== null && output >= 0) pricing.outputPer1M = output;
+  if (cacheRead !== null && cacheRead >= 0) pricing.cacheReadPer1M = cacheRead;
+  if (cacheWrite !== null && cacheWrite >= 0) pricing.cacheCreationPer1M = cacheWrite;
+  if (inputAudio !== null && inputAudio >= 0) pricing.audioInputPerRequest = inputAudio;
+  if (outputAudio !== null && outputAudio >= 0) pricing.audioOutputPerRequest = outputAudio;
+  const tiers = Array.isArray(cost.tiers) ? cost.tiers.filter(isRecord) : [];
+  const contextTier = tiers
+    .map((tier) => ({
+      threshold: isRecord(tier.tier) ? positiveIntegerOrNull(tier.tier.size) : null,
+      input: modelItemPricingNumber(tier.input),
+      output: modelItemPricingNumber(tier.output),
+    }))
+    .filter((tier) => tier.threshold !== null)
+    .sort((left, right) => (left.threshold || 0) - (right.threshold || 0))[0];
+  if (contextTier?.threshold) pricing.longContextInputThreshold = contextTier.threshold;
+  if (contextTier?.input !== null && contextTier?.input !== undefined && input && input > 0) {
+    pricing.longContextInputMultiplier = contextTier.input / input;
+  }
+  if (contextTier?.output !== null && contextTier?.output !== undefined && output && output > 0) {
+    pricing.longContextOutputMultiplier = contextTier.output / output;
+  }
+  return Object.keys(pricing).length > 1 ? pricing : normalizeModelPricing(item.pricing);
 }
 
 function inferModelFeatures(modelId: string, item?: Record<string, unknown>): ModelGatewayModelFeatures {
@@ -1345,11 +1396,11 @@ function inferModelFeatures(modelId: string, item?: Record<string, unknown>): Mo
     text: modelItemBooleanCapability(item || {}, ["text", "textInput", "text_input"])
       ?? (imageGeneration ? false : true),
     vision: modelItemExplicitVisionCapability(item || {}) ?? (imageGeneration ? true : false),
-    tools: modelItemBooleanCapability(item || {}, ["tools", "toolUse", "tool_use", "functionCalling", "function_calling", "functions"])
+    tools: modelItemBooleanCapability(item || {}, ["tools", "tool_call", "toolCall", "toolUse", "tool_use", "functionCalling", "function_calling", "functions"])
       ?? (modelItemHasSignal(signals, [/tool/, /function[_ -]?calling/, /function[_ -]?call/, /code[_ -]?execution/]) ? true : known.tools),
     reasoning: modelItemBooleanCapability(item || {}, ["reasoning", "thinking", "cot", "chainOfThought", "chain_of_thought"])
       ?? (modelItemHasSignal(signals, [/reasoning/, /thinking/, /\bcot\b/, /reasoning_effort/]) ? true : known.reasoning),
-    responses: modelItemBooleanCapability(item || {}, ["responses", "responseApi", "response_api"])
+    responses: modelItemBooleanCapability(item || {}, ["responses", "responseApi", "response_api", "structured_output", "structuredOutput"])
       ?? (modelItemHasSignal(signals, [/responses/, /response_api/, /structured[_ -]?outputs?/]) ? true : known.responses)
       ?? true,
     streaming: modelItemBooleanCapability(item || {}, ["streaming", "stream"])
@@ -3423,6 +3474,7 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         || normalizeString(item.label)
         || normalizeString(item.name);
       const known = knownModelDefaults(id);
+      const limit = modelItemLimitObject(item);
       const contextWindow = firstPositiveInteger(
         item.contextWindow,
         item.context_window,
@@ -3432,6 +3484,8 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         item.maxContextLength,
         item.max_input_tokens,
         item.maxInputTokens,
+        limit?.context,
+        limit?.input,
         known.contextWindow,
       );
       const maxOutputTokens = firstPositiveInteger(
@@ -3441,14 +3495,17 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         item.maxCompletionTokens,
         item.output_token_limit,
         item.outputTokenLimit,
+        limit?.output,
         known.maxOutputTokens,
       );
+      const pricing = modelItemPricing(item);
       return {
         id,
         ...(label && label !== id ? { label } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(maxOutputTokens ? { maxOutputTokens } : {}),
         features: inferModelFeatures(id, item),
+        ...(pricing ? { pricing } : {}),
       } satisfies ModelGatewayProviderModel;
     })
     .filter((item): item is ModelGatewayProviderModel => Boolean(item));
@@ -8791,7 +8848,10 @@ export function createModelGatewayService(
         const entry = modelCatalogEntryForAppConnectionModel(modelId);
         return [modelId, {
           ...entry,
-          contextWindow: mergeAppConnectionBudget(normalized.contextWindow, entry.contextWindow),
+          contextWindow: safeAppConnectionContextWindow(
+            mergeAppConnectionBudget(normalized.contextWindow, entry.contextWindow),
+            normalized.contextWindow ? "profile" : "model",
+          ),
           maxOutputTokens: mergeAppConnectionBudget(normalized.maxOutputTokens, entry.maxOutputTokens),
         }] as const;
       }));
@@ -8802,15 +8862,27 @@ export function createModelGatewayService(
     return profileValue || modelValue || null;
   }
 
+  function safeAppConnectionContextWindow(
+    contextWindow: number | null,
+    source: "profile" | "model" | "fallback",
+  ): number | null {
+    if (!contextWindow) return null;
+    if (source === "profile") return contextWindow;
+    return Math.max(1_024, Math.floor(contextWindow * 0.9));
+  }
+
   function deriveCodexAutoCompactTokenLimit(contextWindow: number | null): number | null {
     if (!contextWindow) return null;
-    return Math.max(1_024, Math.floor(contextWindow * 0.95));
+    return Math.max(1_024, Math.floor(contextWindow * 0.9));
   }
 
   function withResolvedAppConnectionBudget(profile: ModelGatewayAppConnectionProfile): ModelGatewayAppConnectionProfile {
     const normalized = normalizeAppConnectionProfile(profile);
     const budget = modelBudgetForAppConnectionModel(normalized.model);
-    const contextWindow = mergeAppConnectionBudget(normalized.contextWindow, budget.contextWindow)
+    const contextSource = normalized.contextWindow ? "profile" : budget.contextWindow ? "model" : "fallback";
+    const rawContextWindow = mergeAppConnectionBudget(normalized.contextWindow, budget.contextWindow)
+      ?? DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW;
+    const contextWindow = safeAppConnectionContextWindow(rawContextWindow, contextSource)
       ?? DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW;
     const maxOutputTokens = mergeAppConnectionBudget(normalized.maxOutputTokens, budget.maxOutputTokens)
       ?? DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS;

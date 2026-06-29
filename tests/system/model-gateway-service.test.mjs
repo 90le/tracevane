@@ -3720,6 +3720,17 @@ test("model gateway detects provider protocols without persisting probe secrets"
             endpoints: ["/v1/responses"],
           },
           { id: "model-b", contextWindow: "256000", maxOutputTokens: "16384" },
+          {
+            id: "models-dev-shape",
+            name: "Models.dev Shape",
+            attachment: true,
+            reasoning: true,
+            tool_call: true,
+            structured_output: true,
+            modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+            limit: { context: 200000, output: 100000 },
+            cost: { input: 2, output: 8, cache_read: 0.5, cache_write: 2 },
+          },
           { id: "gpt-5.4-mini" },
           { id: "glm-5.2" },
           { id: "glm-5.2[1m]" },
@@ -3788,10 +3799,11 @@ test("model gateway detects provider protocols without persisting probe secrets"
 
       assert.equal(response.status, 200);
       assert.equal(response.body.ok, true);
-      assert.equal(response.body.models.length, 7);
+      assert.equal(response.body.models.length, 8);
       assert.deepEqual(response.body.models.map((model) => model.id), [
         "model-a",
         "model-b",
+        "models-dev-shape",
         "gpt-5.4-mini",
         "glm-5.2",
         "glm-5.2[1m]",
@@ -3800,7 +3812,7 @@ test("model gateway detects provider protocols without persisting probe secrets"
       ]);
       assert.deepEqual(
         response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
-        [[128000, 8192], [256000, 16384], [400000, 128000], [1000000, 128000], [1000000, 128000], [1000000, 64000], [64000, 8000]],
+        [[128000, 8192], [256000, 16384], [200000, 100000], [400000, 128000], [1000000, 128000], [1000000, 128000], [1000000, 64000], [64000, 8000]],
       );
       assert.deepEqual(response.body.models[0].features, {
         text: true,
@@ -3814,9 +3826,16 @@ test("model gateway detects provider protocols without persisting probe secrets"
         text: true,
         streaming: true,
         tools: true,
-        vision: false,
+        vision: true,
         reasoning: true,
         responses: true,
+      });
+      assert.deepEqual(response.body.models[2].pricing, {
+        currency: "USD",
+        inputPer1M: 2,
+        outputPer1M: 8,
+        cacheReadPer1M: 0.5,
+        cacheCreationPer1M: 2,
       });
       assert.deepEqual(response.body.models[3].features, {
         text: true,
@@ -3843,6 +3862,14 @@ test("model gateway detects provider protocols without persisting probe secrets"
         responses: true,
       });
       assert.deepEqual(response.body.models[6].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[7].features, {
         text: true,
         streaming: true,
         tools: false,
@@ -6421,7 +6448,7 @@ test("model gateway app connections resolve budgets from each selected app model
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-small"/);
   assert.match(codexConfig, /^model_context_window = 64000$/m);
-  assert.match(codexConfig, /^model_auto_compact_token_limit = 60800$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 57600$/m);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
@@ -6484,8 +6511,8 @@ test("model gateway app connections derive Codex auto compact from selected Code
   service.applyAppConnection(undefined, { appId: "codex" });
   let codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-5\.5"/);
-  assert.match(codexConfig, /^model_context_window = 272000$/m);
-  assert.match(codexConfig, /^model_auto_compact_token_limit = 258400$/m);
+  assert.match(codexConfig, /^model_context_window = 244800$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 220320$/m);
 
   service.updateAppConnectionProfile(undefined, {
     profile: {
@@ -6498,8 +6525,8 @@ test("model gateway app connections derive Codex auto compact from selected Code
   service.applyAppConnection(undefined, { appId: "codex" });
   codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-5\.4"/);
-  assert.match(codexConfig, /^model_context_window = 1000000$/m);
-  assert.match(codexConfig, /^model_auto_compact_token_limit = 950000$/m);
+  assert.match(codexConfig, /^model_context_window = 900000$/m);
+  assert.match(codexConfig, /^model_auto_compact_token_limit = 810000$/m);
 });
 
 test("model gateway app connections keep per-model catalog budgets for mixed agent models", () => {
@@ -6552,12 +6579,12 @@ test("model gateway app connections keep per-model catalog budgets for mixed age
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
   const opencodeModels = opencodeConfig.provider["tracevane-gateway"].models;
-  assert.equal(opencodeModels["gpt-5.5"].contextWindow, 1050000);
+  assert.equal(opencodeModels["gpt-5.5"].contextWindow, 945000);
   assert.equal(opencodeModels["gpt-5.5"].maxOutputTokens, 128000);
   assert.equal(opencodeModels["gpt-5.5"].reasoning, true);
-  assert.equal(opencodeModels["gpt-5.4-mini"].contextWindow, 400000);
+  assert.equal(opencodeModels["gpt-5.4-mini"].contextWindow, 360000);
   assert.equal(opencodeModels["gpt-5.4-mini"].maxOutputTokens, 128000);
-  assert.equal(opencodeModels["local-small"].contextWindow, 64000);
+  assert.equal(opencodeModels["local-small"].contextWindow, 57600);
   assert.equal(opencodeModels["local-small"].maxOutputTokens, 8192);
   assert.equal(opencodeModels["local-small"].reasoning, false);
 
@@ -6567,14 +6594,14 @@ test("model gateway app connections keep per-model catalog budgets for mixed age
   const gpt55 = openclawModels.find((model) => model.id === "gpt-5.5");
   const gpt54Mini = openclawModels.find((model) => model.id === "gpt-5.4-mini");
   const localSmall = openclawModels.find((model) => model.id === "local-small");
-  assert.equal(gpt55.contextWindow, 1050000);
+  assert.equal(gpt55.contextWindow, 945000);
   assert.equal(gpt55.maxTokens, 128000);
   assert.deepEqual(gpt55.input, ["text", "image"]);
   assert.equal(gpt55.reasoning, true);
-  assert.equal(gpt54Mini.contextWindow, 400000);
+  assert.equal(gpt54Mini.contextWindow, 360000);
   assert.equal(gpt54Mini.maxTokens, 128000);
   assert.deepEqual(gpt54Mini.input, ["text", "image"]);
-  assert.equal(localSmall.contextWindow, 64000);
+  assert.equal(localSmall.contextWindow, 57600);
   assert.equal(localSmall.maxTokens, 8192);
   assert.deepEqual(localSmall.input, ["text"]);
   assert.equal(localSmall.reasoning, false);
