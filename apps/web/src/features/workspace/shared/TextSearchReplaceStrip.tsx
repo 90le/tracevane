@@ -223,14 +223,14 @@ export function TextSearchReplaceStrip({
           onClick={() => setReplacePreviewOpen((value) => !value)}
           disabled={!editable || !query || matchResult.count === 0}
         >
-          预览全部
+          审查全部
         </Button>
         <Button
           variant="primary"
           size="sm"
           onClick={confirmReplaceAll}
           disabled={!editable || !replacePreviewOpen || !query || matchResult.count === 0}
-          title="先预览差异，再确认替换当前文件内全部匹配"
+          title="先审查差异，再确认替换当前文件内全部匹配"
         >
           确认全部替换
         </Button>
@@ -238,7 +238,7 @@ export function TextSearchReplaceStrip({
       {replacePreviewOpen ? (
         <div className="grid gap-2 border-t border-line pt-2" data-text-replace-preview>
           <div className="flex flex-wrap items-center gap-2 text-2xs text-muted">
-            <span className="font-medium text-ink-strong">替换前预览</span>
+            <span className="font-medium text-ink-strong">替换前审查</span>
             <span>将替换当前文件内 {matchResult.count} 处匹配；下方最多展示前 8 行差异。</span>
             <span className="ml-auto">确认后进入未保存状态，仍需保存文件写回磁盘。</span>
           </div>

@@ -242,6 +242,17 @@ test("Workspace markdown preview package is compatibility-only, not the IDE main
   assert.doesNotMatch(previewIndex, /Active preview package/);
 });
 
+test("Workspace text replace flow uses review language instead of preview copy", () => {
+  const replaceStrip = readWeb("features/workspace/shared/TextSearchReplaceStrip.tsx");
+  assert.match(replaceStrip, /审查全部/);
+  assert.match(replaceStrip, /先审查差异，再确认替换当前文件内全部匹配/);
+  assert.match(replaceStrip, /替换前审查/);
+  assert.match(replaceStrip, /ReplaceDiffPreview/);
+  assert.doesNotMatch(replaceStrip, /预览全部/);
+  assert.doesNotMatch(replaceStrip, /先预览差异/);
+  assert.doesNotMatch(replaceStrip, /替换前预览/);
+});
+
 test("Workspace file inspection adapters avoid preview-facing labels", () => {
   const archive = readWeb("features/workspace/shared/ArchivePreview.tsx");
   const textSlice = readWeb("features/workspace/shared/TextSlicePreview.tsx");
