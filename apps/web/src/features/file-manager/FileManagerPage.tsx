@@ -174,6 +174,9 @@ export function FileManagerPage() {
   const [previewTarget, setPreviewTarget] = React.useState<
     FileEntrySummary | undefined
   >();
+  const [previewRootId, setPreviewRootId] = React.useState<
+    string | undefined
+  >();
   const [propertiesTarget, setPropertiesTarget] = React.useState<
     FileEntrySummary | undefined
   >();
@@ -482,11 +485,15 @@ export function FileManagerPage() {
     copyPathToClipboard(displayPath);
   }, [copyPathToClipboard, displayPath]);
 
-  const openFilePreview = React.useCallback((entry: FileEntrySummary) => {
-    setSelectedPath(entry.path);
-    setPreviewPath(entry.path);
-    setPreviewTarget(entry);
-  }, []);
+  const openFilePreview = React.useCallback(
+    (entry: FileEntrySummary, targetRootId?: string) => {
+      setSelectedPath(entry.path);
+      setPreviewPath(entry.path);
+      setPreviewTarget(entry);
+      setPreviewRootId(targetRootId);
+    },
+    [],
+  );
 
   const openFileProperties = React.useCallback((entry: FileEntrySummary) => {
     setSelectedPath(entry.path);
@@ -787,8 +794,11 @@ export function FileManagerPage() {
       ? previewTarget
       : undefined;
   }, [entries, previewPath, previewTarget]);
+  const activePreviewRootId = previewRootId ?? rootId;
   const previewFileRead = useFileReadQuery(
-    previewEntry?.kind === "file" ? { rootId, path: previewEntry.path } : null,
+    previewEntry?.kind === "file"
+      ? { rootId: activePreviewRootId, path: previewEntry.path }
+      : null,
     { enabled: previewEntry?.kind === "file" },
   );
 
@@ -803,7 +813,8 @@ export function FileManagerPage() {
   );
 
   const revealOperationPath = React.useCallback(
-    (path: string) => {
+    (path: string, targetRootId?: string) => {
+      if (targetRootId && targetRootId !== rootId) setRootId(targetRootId);
       const cleanPath = normalizeOperationPath(path);
       const maybeEntry = entries.find((entry) => entry.path === cleanPath);
       if (maybeEntry?.kind === "directory") {
@@ -816,7 +827,7 @@ export function FileManagerPage() {
       setSelectedPaths(new Set([cleanPath]));
       setLastSelectedPath(cleanPath);
     },
-    [directoryPath, entries, navigateToDirectory],
+    [directoryPath, entries, navigateToDirectory, rootId],
   );
 
   const handleFileManagerPaste = React.useCallback(
@@ -1380,25 +1391,27 @@ export function FileManagerPage() {
 
       {previewPath ? (
         <FileManagerModalErrorBoundary
-          resetKey={`${rootId}:${previewPath}`}
+          resetKey={`${activePreviewRootId}:${previewPath}`}
           title="文件预览加载失败"
           description="预览弹窗代码或文件渲染组件加载异常，已阻止前端进入空白页。请关闭后重试，或直接下载文件。"
           onDismiss={() => {
             setPreviewPath(undefined);
             setPreviewTarget(undefined);
+            setPreviewRootId(undefined);
           }}
         >
           <React.Suspense
             fallback={<FileManagerModalLoading label="文件预览加载中…" />}
           >
             <FilePreviewDialog
-              rootId={rootId}
+              rootId={activePreviewRootId}
               entry={previewEntry}
               readQuery={previewFileRead}
               onOpenChange={(open) => {
                 if (!open) {
                   setPreviewPath(undefined);
                   setPreviewTarget(undefined);
+                  setPreviewRootId(undefined);
                 }
               }}
             />
@@ -1665,10 +1678,7 @@ function FileManagerSecondaryDock({
   onOpenFile: (entry: FileSearchResult) => void;
 }) {
   return (
-    <aside
-      className="grid min-w-0"
-      data-file-manager-secondary-dock
-    >
+    <aside className="grid min-w-0" data-file-manager-secondary-dock>
       <details
         className="group border-b border-line bg-panel text-xs"
         data-file-manager-search-and-stats-dock

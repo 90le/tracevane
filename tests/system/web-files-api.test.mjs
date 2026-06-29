@@ -76,7 +76,7 @@ test("files version history API exposes server-side version contract", () => {
   assert.match(routes, /router\.post\("\/api\/files\/versions\/restore"/);
   assert.match(routes, /router\.delete\("\/api\/files\/versions"/);
   assert.match(service, /listVersions\(rootId: string, filePath: string\): FilesVersionsPayload/);
-  assert.match(service, /readVersion\(rootId: string, filePath: string, versionId: string\): FilesVersionReadPayload/);
+  assert.match(service, /readVersion\(\s*rootId: string,\s*filePath: string,\s*versionId: string,?\s*\): FilesVersionReadPayload/s);
   assert.match(service, /restoreVersion\(payload: FilesVersionRestorePayload\): FilesMutationResponse/);
   assert.match(service, /deleteVersion\(payload: FilesVersionDeletePayload\): FilesMutationResponse/);
   assert.match(service, /MAX_FILE_VERSIONS_PER_FILE = 20/);
@@ -101,6 +101,7 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(src, /Promise<FilesMutationResponse>/);
   assert.match(types, /interface FilesTrashItem/);
   assert.match(types, /interface FilesTrashPayload/);
+  assert.match(types, /scope\?: "root" \| "global"/);
   assert.match(types, /interface FilesTrashRestorePayload/);
   assert.match(types, /interface FilesTrashPurgePayload/);
   assert.match(types, /trashPath: string/);
@@ -108,6 +109,8 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(src, /restoreFilesTrash/);
   assert.match(src, /purgeFilesTrash/);
   assert.match(types, /interface FilesContentIndexRecordPreview/);
+  assert.match(types, /rootId\?: string/);
+  assert.match(types, /fastStats\?: boolean/);
   assert.match(types, /interface FilesContentIndexRecordsParams/);
   assert.match(types, /interface FilesContentIndexRecordsPayload/);
   assert.match(types, /recordsPreview: FilesContentIndexRecordPreview\[\]/);

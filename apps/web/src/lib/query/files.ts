@@ -65,10 +65,20 @@ import type {
  * invalidates its own keys separately.
  */
 
+export const FILES_GLOBAL_SCOPE_ID = "global";
+
 export const filesKeys = {
   all: ["files"] as const,
   summary: () => ["files", "summary"] as const,
-  browse: (params: { rootId: string; path?: string; hidden?: boolean; page?: number; pageSize?: number; sortKey?: string; sortDirection?: string }) =>
+  browse: (params: {
+    rootId: string;
+    path?: string;
+    hidden?: boolean;
+    page?: number;
+    pageSize?: number;
+    sortKey?: string;
+    sortDirection?: string;
+  }) =>
     [
       "files",
       "browse",
@@ -80,11 +90,26 @@ export const filesKeys = {
       params.sortKey ?? "name",
       params.sortDirection ?? "asc",
     ] as const,
-  read: (rootId: string, path: string, offset?: number | null, limit?: number | null) =>
-    ["files", "read", rootId, path, offset ?? 0, limit ?? null] as const,
-  versions: (rootId: string, path: string) => ["files", "versions", rootId, path] as const,
-  versionRead: (rootId: string, path: string, versionId: string) => ["files", "versions", "read", rootId, path, versionId] as const,
-  search: (params: { rootId: string; path?: string; query: string; recursive?: boolean; hidden?: boolean; caseSensitive?: boolean; regex?: boolean; limit?: number }) =>
+  read: (
+    rootId: string,
+    path: string,
+    offset?: number | null,
+    limit?: number | null,
+  ) => ["files", "read", rootId, path, offset ?? 0, limit ?? null] as const,
+  versions: (rootId: string, path: string) =>
+    ["files", "versions", rootId, path] as const,
+  versionRead: (rootId: string, path: string, versionId: string) =>
+    ["files", "versions", "read", rootId, path, versionId] as const,
+  search: (params: {
+    rootId: string;
+    path?: string;
+    query: string;
+    recursive?: boolean;
+    hidden?: boolean;
+    caseSensitive?: boolean;
+    regex?: boolean;
+    limit?: number;
+  }) =>
     [
       "files",
       "search",
@@ -99,15 +124,16 @@ export const filesKeys = {
     ] as const,
   contentIndex: (rootId: string) => ["files", "content-index", rootId] as const,
   trash: (rootId: string) => ["files", "trash", rootId] as const,
-  contentIndexRecords: (params: FilesContentIndexRecordsParams) => [
-    "files",
-    "content-index-records",
-    params.rootId,
-    params.status ?? "all",
-    params.query ?? "",
-    params.offset ?? 0,
-    params.limit ?? null,
-  ] as const,
+  contentIndexRecords: (params: FilesContentIndexRecordsParams) =>
+    [
+      "files",
+      "content-index-records",
+      params.rootId,
+      params.status ?? "all",
+      params.query ?? "",
+      params.offset ?? 0,
+      params.limit ?? null,
+    ] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -152,7 +178,12 @@ export function useFileReadQuery(
   options?: QueryOpts<FilesReadPayload>,
 ) {
   return useQuery<FilesReadPayload, ApiError>({
-    queryKey: filesKeys.read(params?.rootId ?? "", params?.path ?? "", params?.offset, params?.limit),
+    queryKey: filesKeys.read(
+      params?.rootId ?? "",
+      params?.path ?? "",
+      params?.offset,
+      params?.limit,
+    ),
     queryFn: ({ signal }) => readFile(params as FilesReadParams, signal),
     enabled:
       Boolean(params?.rootId && params?.path) && (options?.enabled ?? true),
@@ -161,20 +192,36 @@ export function useFileReadQuery(
 }
 
 /** Server-side historical versions for one editable file. */
-export function useFileVersionsQuery(rootId: string | null, path: string | null, options?: QueryOpts<FilesVersionsPayload>) {
+export function useFileVersionsQuery(
+  rootId: string | null,
+  path: string | null,
+  options?: QueryOpts<FilesVersionsPayload>,
+) {
   return useQuery<FilesVersionsPayload, ApiError>({
     queryKey: filesKeys.versions(rootId ?? "", path ?? ""),
-    queryFn: ({ signal }) => getFileVersions(rootId as string, path as string, signal),
+    queryFn: ({ signal }) =>
+      getFileVersions(rootId as string, path as string, signal),
     enabled: Boolean(rootId && path) && (options?.enabled ?? true),
     ...options,
   });
 }
 
 /** Read one server-side historical version content. */
-export function useFileVersionReadQuery(rootId: string | null, path: string | null, versionId: string | null, options?: QueryOpts<FilesVersionReadPayload>) {
+export function useFileVersionReadQuery(
+  rootId: string | null,
+  path: string | null,
+  versionId: string | null,
+  options?: QueryOpts<FilesVersionReadPayload>,
+) {
   return useQuery<FilesVersionReadPayload, ApiError>({
     queryKey: filesKeys.versionRead(rootId ?? "", path ?? "", versionId ?? ""),
-    queryFn: ({ signal }) => readFileVersion(rootId as string, path as string, versionId as string, signal),
+    queryFn: ({ signal }) =>
+      readFileVersion(
+        rootId as string,
+        path as string,
+        versionId as string,
+        signal,
+      ),
     enabled: Boolean(rootId && path && versionId) && (options?.enabled ?? true),
     ...options,
   });
@@ -204,13 +251,22 @@ export function useFilesSearchQuery(
   });
 }
 
-
 /** Content index stats for one root (`/api/files/content-index`). */
-export function useFilesContentIndexQuery(rootId: string | null, options?: QueryOpts<import("../../../../../types/files").FilesContentIndexStatsPayload>) {
-  return useQuery<import("../../../../../types/files").FilesContentIndexStatsPayload, ApiError>({
-    queryKey: filesKeys.contentIndex(rootId ?? ""),
-    queryFn: ({ signal }) => getFilesContentIndexStats(rootId as string, signal),
-    enabled: Boolean(rootId) && (options?.enabled ?? true),
+export function useFilesContentIndexQuery(
+  rootId: string | null,
+  options?: QueryOpts<
+    import("../../../../../types/files").FilesContentIndexStatsPayload
+  >,
+) {
+  const scopeRootId = rootId || FILES_GLOBAL_SCOPE_ID;
+  return useQuery<
+    import("../../../../../types/files").FilesContentIndexStatsPayload,
+    ApiError
+  >({
+    queryKey: filesKeys.contentIndex(scopeRootId),
+    queryFn: ({ signal }) => getFilesContentIndexStats(scopeRootId, signal),
+    staleTime: 60_000,
+    enabled: options?.enabled ?? true,
     ...options,
   });
 }
@@ -218,12 +274,32 @@ export function useFilesContentIndexQuery(rootId: string | null, options?: Query
 /** Paged content index records for one root (`/api/files/content-index/records`). */
 export function useFilesContentIndexRecordsQuery(
   params: FilesContentIndexRecordsParams | null,
-  options?: QueryOpts<import("../../../../../types/files").FilesContentIndexRecordsPayload>,
+  options?: QueryOpts<
+    import("../../../../../types/files").FilesContentIndexRecordsPayload
+  >,
 ) {
-  return useQuery<import("../../../../../types/files").FilesContentIndexRecordsPayload, ApiError>({
-    queryKey: filesKeys.contentIndexRecords(params ?? { rootId: "", status: "all", query: "", offset: 0 }),
-    queryFn: ({ signal }) => getFilesContentIndexRecords(params as FilesContentIndexRecordsParams, signal),
-    enabled: Boolean(params?.rootId) && (options?.enabled ?? true),
+  const scopedParams = params
+    ? { ...params, rootId: params.rootId || FILES_GLOBAL_SCOPE_ID }
+    : null;
+  return useQuery<
+    import("../../../../../types/files").FilesContentIndexRecordsPayload,
+    ApiError
+  >({
+    queryKey: filesKeys.contentIndexRecords(
+      scopedParams ?? {
+        rootId: FILES_GLOBAL_SCOPE_ID,
+        status: "all",
+        query: "",
+        offset: 0,
+      },
+    ),
+    queryFn: ({ signal }) =>
+      getFilesContentIndexRecords(
+        scopedParams as FilesContentIndexRecordsParams,
+        signal,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(scopedParams?.rootId) && (options?.enabled ?? true),
     ...options,
   });
 }
@@ -234,13 +310,17 @@ export function useFilesContentIndexRecordsQuery(
 // `filesKeys` tree on success so browse/summary/search/read refresh.
 // ---------------------------------------------------------------------------
 
-
 /** Recycle-bin items for one root (`/api/files/trash`). */
-export function useFilesTrashQuery(rootId: string | null, options?: QueryOpts<FilesTrashPayload>) {
+export function useFilesTrashQuery(
+  rootId: string | null,
+  options?: QueryOpts<FilesTrashPayload>,
+) {
+  const scopeRootId = rootId || FILES_GLOBAL_SCOPE_ID;
   return useQuery<FilesTrashPayload, ApiError>({
-    queryKey: filesKeys.trash(rootId ?? ""),
-    queryFn: ({ signal }) => getFilesTrash(rootId as string, signal),
-    enabled: Boolean(rootId) && (options?.enabled ?? true),
+    queryKey: filesKeys.trash(scopeRootId),
+    queryFn: ({ signal }) => getFilesTrash(scopeRootId, signal),
+    staleTime: 30_000,
+    enabled: options?.enabled ?? true,
     ...options,
   });
 }
@@ -299,7 +379,6 @@ export function useRenameFileMutation() {
   });
 }
 
-
 /** POST /api/files/chmod — change POSIX permissions. */
 export function useChmodFilesMutation() {
   const qc = useQueryClient();
@@ -344,7 +423,6 @@ export function useDeleteFilesMutation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: filesKeys.all }),
   });
 }
-
 
 /** POST /api/files/trash/restore — restore one recycle-bin item. */
 export function useRestoreFilesTrashMutation() {
@@ -397,7 +475,9 @@ export function useScanFilesContentIndexMutation() {
   return useMutation({
     mutationFn: scanFilesContentIndex,
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: filesKeys.contentIndex(data.rootId) });
+      void qc.invalidateQueries({
+        queryKey: filesKeys.contentIndex(data.rootId),
+      });
       void qc.invalidateQueries({ queryKey: filesKeys.all });
     },
   });
@@ -409,7 +489,9 @@ export function useCleanFilesContentIndexMutation() {
   return useMutation({
     mutationFn: cleanFilesContentIndex,
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: filesKeys.contentIndex(data.rootId) });
+      void qc.invalidateQueries({
+        queryKey: filesKeys.contentIndex(data.rootId),
+      });
       void qc.invalidateQueries({ queryKey: filesKeys.all });
     },
   });
@@ -421,7 +503,9 @@ export function useRebuildFilesContentIndexMutation() {
   return useMutation({
     mutationFn: rebuildFilesContentIndex,
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: filesKeys.contentIndex(data.rootId) });
+      void qc.invalidateQueries({
+        queryKey: filesKeys.contentIndex(data.rootId),
+      });
       void qc.invalidateQueries({ queryKey: filesKeys.all });
     },
   });

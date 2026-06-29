@@ -493,12 +493,16 @@ test("files service supports search, read, write, create, rename, copy, move, de
   assert.equal(indexShard[realHash].some((record) => record.path === "docs/global-hash-copy.txt"), true);
   const indexStats = service.getContentIndexStats("project-root");
   assert.equal(indexStats.rootId, "project-root");
+  assert.equal(indexStats.scope, "root");
+  assert.equal(indexStats.rootCount, 1);
+  assert.equal(indexStats.fastStats, true);
   assert.equal(indexStats.shardCount >= 1, true);
   assert.equal(indexStats.validRecordCount >= 1, true);
   assert.equal(indexStats.staleRecordCount, 0);
-  assert.equal(indexStats.previewLimit, 200);
+  assert.equal(indexStats.previewLimit, 20);
   assert.equal(Array.isArray(indexStats.recordsPreview), true);
   const globalPreview = indexStats.recordsPreview.find((record) => record.path === "docs/global-hash-copy.txt");
+  assert.equal(globalPreview?.rootId, "project-root");
   assert.equal(globalPreview?.status, "valid");
   assert.equal(globalPreview?.sha256, realHash);
   assert.equal(globalPreview?.size, chunked.length);
@@ -514,6 +518,9 @@ test("files service supports search, read, write, create, rename, copy, move, de
   assert.equal(indexRecordsPage.query, "global-hash");
   assert.equal(indexRecordsPage.limit, 1);
   assert.equal(indexRecordsPage.returnedRecordCount, 1);
+  assert.equal(indexRecordsPage.scope, "root");
+  assert.equal(indexRecordsPage.rootCount, 1);
+  assert.equal(indexRecordsPage.records[0]?.rootId, "project-root");
   assert.equal(indexRecordsPage.records[0]?.path, "docs/global-hash-copy.txt");
   assert.equal(indexRecordsPage.records[0]?.sha256, realHash);
   fs.rmSync(path.join(config.projectRoot, "docs", "global-hash-copy.txt"), { force: true });
@@ -533,7 +540,7 @@ test("files service supports search, read, write, create, rename, copy, move, de
   const cleanedIndexStats = service.cleanContentIndex("project-root");
   assert.equal((cleanedIndexStats.cleanedRecordCount ?? 0) >= 1, true);
   assert.equal(cleanedIndexStats.staleRecordCount, 0);
-  assert.equal(cleanedIndexStats.previewLimit, 200);
+  assert.equal(cleanedIndexStats.previewLimit, 20);
   assert.equal(cleanedIndexStats.recordsPreview.some((record) => record.path === "docs/global-hash-copy.txt"), false);
   assert.equal(cleanedIndexStats.recordsPreview.every((record) => record.status === "valid"), true);
 
@@ -544,7 +551,7 @@ test("files service supports search, read, write, create, rename, copy, move, de
   assert.equal(typeof rebuiltIndexStats.skippedFileCount, "number");
   assert.equal(rebuiltIndexStats.truncated, false);
   assert.equal(rebuiltIndexStats.validRecordCount >= 1, true);
-  assert.equal(rebuiltIndexStats.previewLimit, 200);
+  assert.equal(rebuiltIndexStats.previewLimit, 20);
   assert.equal(rebuiltIndexStats.recordsPreview.some((record) => record.status === "valid"), true);
   const indexedSearch = service.search("project-root", "", "updated body", true, true);
   assert.equal(indexedSearch.index?.used, true);
@@ -638,19 +645,21 @@ test("files service supports search, read, write, create, rename, copy, move, de
   service.createFile({ rootId: "openclaw-root", directoryPath: "workspace", name: "global-trash-note.txt", content: "shared trash\n" });
   service.deletePaths({ rootId: "openclaw-root", paths: ["workspace/global-trash-note.txt"] });
   const globalTrashFromProjectView = service.listTrash("project-root");
+  assert.equal(globalTrashFromProjectView.rootId, "global");
+  assert.equal(globalTrashFromProjectView.scope, "global");
   assert.equal(globalTrashFromProjectView.items.some((item) => item.rootId === "openclaw-root" && item.originalPath === "workspace/global-trash-note.txt"), true);
   const openclawTrashItem = globalTrashFromProjectView.items.find((item) => item.rootId === "openclaw-root" && item.originalPath === "workspace/global-trash-note.txt");
   assert.ok(openclawTrashItem);
   const rebuiltOpenclawIndex = service.rebuildContentIndex("openclaw-root");
   assert.equal(rebuiltOpenclawIndex.recordsPreview.some((record) => record.path.startsWith(".tracevane/trash/")), false);
-  service.restoreTrash({ rootId: "project-root", trashPath: openclawTrashItem.trashPath, conflictPolicy: "rename" });
+  service.restoreTrash({ rootId: "global", trashPath: openclawTrashItem.trashPath, conflictPolicy: "rename" });
   assert.equal(fs.existsSync(path.join(config.openclawRoot, "workspace", "global-trash-note.txt")), true);
 
   service.createDirectory({ rootId: "project-root", directoryPath: "docs", name: "purge-me" });
   service.deletePaths({ rootId: "project-root", paths: ["docs/purge-me"] });
   const purgeTarget = service.listTrash("project-root").items.find((item) => item.originalPath === "docs/purge-me");
   assert.ok(purgeTarget);
-  const purged = service.purgeTrash({ rootId: "project-root", trashPaths: [purgeTarget.trashPath] });
+  const purged = service.purgeTrash({ rootId: "global", trashPaths: [purgeTarget.trashPath] });
   assert.equal(purged.action, "purge-trash");
   assert.equal(service.listTrash("project-root").items.some((item) => item.originalPath === "docs/purge-me"), false);
 
@@ -772,6 +781,44 @@ test("files service returns content-index records in stable sorted pages", () =>
   assert.equal(secondPage.hasMore, false);
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
 });
+
+test("files service exposes content index as a global aggregate scope", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  const service = createFilesService(config);
+  writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
+  writeFile(path.join(config.openclawRoot, "workspace", "beta.txt"), "beta\n");
+
+  const records = [
+    { rootId: "project-root", basePath: config.projectRoot, relativePath: "alpha.txt", sha: "a".repeat(64) },
+    { rootId: "openclaw-root", basePath: config.openclawRoot, relativePath: "workspace/beta.txt", sha: "b".repeat(64) },
+  ];
+  for (const record of records) {
+    const stat = fs.statSync(path.join(record.basePath, record.relativePath));
+    const indexDir = path.join(config.openclawRoot, ".tracevane", "file-content-index", record.rootId);
+    fs.mkdirSync(indexDir, { recursive: true });
+    fs.writeFileSync(path.join(indexDir, `${record.sha.slice(0, 2)}.json`), JSON.stringify({
+      [record.sha]: [{ path: record.relativePath, size: stat.size, mtimeMs: stat.mtimeMs, indexedAt: "2026-06-29T00:00:00.000Z" }],
+    }), "utf8");
+  }
+
+  const stats = service.getContentIndexStats("global");
+  assert.equal(stats.rootId, "global");
+  assert.equal(stats.scope, "global");
+  assert.equal(stats.fastStats, true);
+  assert.equal(stats.rootCount >= 2, true);
+  assert.equal(stats.recordCount, 2);
+  assert.deepEqual(stats.recordsPreview.map((record) => `${record.rootId}:${record.path}`).sort(), ["openclaw-root:workspace/beta.txt", "project-root:alpha.txt"]);
+
+  const page = service.getContentIndexRecords({ rootId: "global", status: "all", query: "beta", offset: 0, limit: 10 });
+  assert.equal(page.rootId, "global");
+  assert.equal(page.scope, "global");
+  assert.equal(page.rootCount >= 2, true);
+  assert.equal(page.returnedRecordCount, 1);
+  assert.equal(page.records[0]?.rootId, "openclaw-root");
+  assert.equal(page.records[0]?.path, "workspace/beta.txt");
+});
+
 
 test("files service can archive and unarchive zip and tar bundles", () => {
   const root = makeTempRoot();

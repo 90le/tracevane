@@ -182,7 +182,6 @@ export interface FilesVersionDeletePayload {
   versionId: string;
 }
 
-
 export interface FilesTransferPayload {
   sourceRootId: string;
   sourcePath: string;
@@ -192,7 +191,8 @@ export interface FilesTransferPayload {
   overwrite?: boolean;
 }
 
-export type FilesTransferConflictPolicy = "fail" | "overwrite" | "skip" | "rename";
+export type FilesTransferConflictPolicy =
+  "fail" | "overwrite" | "skip" | "rename";
 
 export interface FilesTransferDryRunPayload {
   operation: "copy" | "move";
@@ -239,8 +239,6 @@ export interface FilesDeletePayload {
   permanent?: boolean;
 }
 
-
-
 export interface FilesChmodPayload {
   rootId: string;
   paths: string[];
@@ -284,6 +282,7 @@ export interface FilesTrashItem {
 export interface FilesTrashPayload {
   checkedAt: string;
   rootId: string;
+  scope?: "root" | "global";
   trashDirectoryPath: string;
   items: FilesTrashItem[];
 }
@@ -312,7 +311,8 @@ export interface FilesUploadPayload {
   files: FilesUploadItemPayload[];
 }
 
-export type FilesUploadConflictPolicy = "fail" | "overwrite" | "skip" | "rename";
+export type FilesUploadConflictPolicy =
+  "fail" | "overwrite" | "skip" | "rename";
 
 export interface FilesUploadInitPayload {
   rootId: string;
@@ -416,16 +416,14 @@ export interface FilesArchiveDownloadPayload {
   name?: string;
 }
 
-
-
 export interface FilesContentIndexRecordPreview {
+  rootId?: string;
   path: string;
   sha256: string;
   size: number;
   indexedAt: string | null;
   status: "valid" | "stale";
 }
-
 
 export interface FilesContentIndexRecordsParams {
   rootId: string;
@@ -438,6 +436,8 @@ export interface FilesContentIndexRecordsParams {
 export interface FilesContentIndexRecordsPayload {
   checkedAt: string;
   rootId: string;
+  scope?: "root" | "global";
+  rootCount?: number;
   status: "all" | "valid" | "stale";
   query: string;
   offset: number;
@@ -451,6 +451,9 @@ export interface FilesContentIndexRecordsPayload {
 export interface FilesContentIndexStatsPayload {
   checkedAt: string;
   rootId: string;
+  scope?: "root" | "global";
+  rootCount?: number;
+  fastStats?: boolean;
   shardCount: number;
   hashCount: number;
   recordCount: number;

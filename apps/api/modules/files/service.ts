@@ -868,6 +868,16 @@ interface ContentIndexRecord {
 
 type ContentIndexShard = Record<string, ContentIndexRecord[]>;
 
+type ContentIndexScopeRoot = Pick<FileRootContext, "id" | "absolutePath" | "realPath">;
+
+const GLOBAL_CONTENT_INDEX_ROOT_ID = "global";
+const CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT = 20;
+
+interface ContentIndexShardSource {
+  root: ContentIndexScopeRoot;
+  shardPath: string;
+}
+
 function uploadBaseDir(): string {
   return path.join(os.tmpdir(), "tracevane-files-uploads");
 }
@@ -1041,6 +1051,31 @@ function listContentIndexShardFiles(config: TracevaneServerConfig, rootId: strin
     .map((name) => path.join(dir, name));
 }
 
+function isGlobalContentIndexRoot(rootId: string | undefined): boolean {
+  const normalized = String(rootId || "").trim().toLowerCase();
+  return !normalized || normalized === GLOBAL_CONTENT_INDEX_ROOT_ID || normalized === "all" || normalized === "system";
+}
+
+function contentIndexScopeRoots(config: TracevaneServerConfig, rootId: string | undefined): ContentIndexScopeRoot[] {
+  if (isGlobalContentIndexRoot(rootId)) return buildRootContexts(config);
+  return [resolveRoot(config, rootId)];
+}
+
+function contentIndexPayloadRootId(rootId: string | undefined): string {
+  return isGlobalContentIndexRoot(rootId) ? GLOBAL_CONTENT_INDEX_ROOT_ID : String(rootId || "");
+}
+
+function contentIndexPayloadStorageDirectory(config: TracevaneServerConfig, rootId: string | undefined): string {
+  if (isGlobalContentIndexRoot(rootId)) return path.join(config.openclawRoot, ".tracevane", "file-content-index");
+  return contentIndexRootDir(config, rootId || "");
+}
+
+function listContentIndexShardSources(config: TracevaneServerConfig, rootId: string | undefined): ContentIndexShardSource[] {
+  return contentIndexScopeRoots(config, rootId).flatMap((root) =>
+    listContentIndexShardFiles(config, root.id).map((shardPath) => ({ root, shardPath })),
+  );
+}
+
 function readContentIndexShardFile(filePath: string): ContentIndexShard {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as ContentIndexShard;
@@ -1161,10 +1196,10 @@ function inspectContentIndexRecord(
 function computeContentIndexStats(
   config: TracevaneServerConfig,
   rootId: string,
-  options: { cleanStale?: boolean } = {},
+  options: { cleanStale?: boolean; validateRecords?: boolean } = {},
 ): FilesContentIndexActionResponse {
-  resolveRoot(config, rootId);
-  const shardFiles = listContentIndexShardFiles(config, rootId);
+  const scopeRoots = contentIndexScopeRoots(config, rootId);
+  const shardSources = listContentIndexShardSources(config, rootId);
   let hashCount = 0;
   let recordCount = 0;
   let validRecordCount = 0;
@@ -1174,8 +1209,9 @@ function computeContentIndexStats(
   let staleBytes = 0;
   let newestIndexedAt: string | null = null;
   const recordsPreview: FilesContentIndexRecordPreview[] = [];
+  const validateRecords = Boolean(options.cleanStale || options.validateRecords);
 
-  for (const shardPath of shardFiles) {
+  for (const { root, shardPath } of shardSources) {
     const shard = readContentIndexShardFile(shardPath);
     const nextShard: ContentIndexShard = {};
     for (const [sha256, records] of Object.entries(shard)) {
@@ -1184,10 +1220,13 @@ function computeContentIndexStats(
       const survivors: ContentIndexRecord[] = [];
       for (const record of records) {
         recordCount += 1;
-        const inspected = inspectContentIndexRecord(config, rootId, record);
+        const inspected = validateRecords
+          ? inspectContentIndexRecord(config, root.id, record)
+          : { valid: true, size: Number(record.size) || 0, indexedAt: record.indexedAt || null };
         if (inspected.indexedAt && (!newestIndexedAt || inspected.indexedAt > newestIndexedAt)) newestIndexedAt = inspected.indexedAt;
-        if (recordsPreview.length < CONTENT_INDEX_PREVIEW_LIMIT) {
+        if (recordsPreview.length < CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT) {
           recordsPreview.push({
+            rootId: root.id,
             path: record.path,
             sha256,
             size: inspected.size,
@@ -1216,18 +1255,21 @@ function computeContentIndexStats(
 
   return {
     checkedAt: new Date().toISOString(),
-    rootId,
-    shardCount: options.cleanStale ? listContentIndexShardFiles(config, rootId).length : shardFiles.length,
+    rootId: contentIndexPayloadRootId(rootId),
+    scope: isGlobalContentIndexRoot(rootId) ? "global" : "root",
+    rootCount: scopeRoots.length,
+    shardCount: options.cleanStale ? listContentIndexShardSources(config, rootId).length : shardSources.length,
     hashCount,
     recordCount,
     validRecordCount,
-    staleRecordCount: options.cleanStale ? 0 : staleRecordCount,
+    staleRecordCount: validateRecords && !options.cleanStale ? staleRecordCount : 0,
     indexedBytes,
-    staleBytes: options.cleanStale ? 0 : staleBytes,
+    staleBytes: validateRecords && !options.cleanStale ? staleBytes : 0,
     newestIndexedAt,
-    storageDirectory: contentIndexRootDir(config, rootId),
-    previewLimit: CONTENT_INDEX_PREVIEW_LIMIT,
+    storageDirectory: contentIndexPayloadStorageDirectory(config, rootId),
+    previewLimit: CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT,
     recordsPreview: options.cleanStale ? recordsPreview.filter((record) => record.status === "valid") : recordsPreview,
+    fastStats: !validateRecords,
     ...(options.cleanStale ? { cleanedRecordCount } : {}),
   };
 }
@@ -1252,36 +1294,33 @@ function listContentIndexRecords(
   config: TracevaneServerConfig,
   params: FilesContentIndexRecordsParams,
 ): FilesContentIndexRecordsPayload {
-  const root = resolveRoot(config, params.rootId);
   const status = normalizeContentIndexStatusFilter(params.status);
   const query = (params.query || "").trim().toLowerCase();
   const offset = clampContentIndexRecordsOffset(params.offset);
   const limit = clampContentIndexRecordsLimit(params.limit);
   const matchingRecords: FilesContentIndexRecordPreview[] = [];
+  const scopeRoots = contentIndexScopeRoots(config, params.rootId);
+  const validateRecords = status === "stale";
 
-  for (const shardPath of listContentIndexShardFiles(config, root.id)) {
+  for (const { root, shardPath } of listContentIndexShardSources(config, params.rootId)) {
     const shard = readContentIndexShardFile(shardPath);
     for (const [sha256, shardRecords] of Object.entries(shard)) {
       if (!/^[a-f0-9]{64}$/.test(sha256) || !Array.isArray(shardRecords)) continue;
       for (const record of shardRecords) {
-        const inspected = inspectContentIndexRecord(config, root.id, record);
+        const inspected = validateRecords
+          ? inspectContentIndexRecord(config, root.id, record)
+          : { valid: true, size: Number(record.size) || 0, indexedAt: record.indexedAt || null };
         const recordStatus = inspected.valid ? "valid" : "stale";
         if (status !== "all" && recordStatus !== status) continue;
-        if (query && !record.path.toLowerCase().includes(query) && !sha256.toLowerCase().includes(query)) continue;
-        matchingRecords.push({
-          path: record.path,
-          sha256,
-          size: inspected.size,
-          indexedAt: inspected.indexedAt,
-          status: recordStatus,
-        });
+        if (query && !record.path.toLowerCase().includes(query) && !sha256.toLowerCase().includes(query) && !root.id.toLowerCase().includes(query)) continue;
+        matchingRecords.push({ rootId: root.id, path: record.path, sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: recordStatus });
       }
     }
   }
 
   matchingRecords.sort((left, right) => {
-    const statusCompare = left.status.localeCompare(right.status);
-    if (statusCompare !== 0) return statusCompare;
+    const rootCompare = (left.rootId || "").localeCompare(right.rootId || "", undefined, { numeric: true, sensitivity: "base" });
+    if (rootCompare !== 0) return rootCompare;
     const pathCompare = left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" });
     if (pathCompare !== 0) return pathCompare;
     return left.sha256.localeCompare(right.sha256);
@@ -1291,7 +1330,9 @@ function listContentIndexRecords(
 
   return {
     checkedAt: new Date().toISOString(),
-    rootId: root.id,
+    rootId: contentIndexPayloadRootId(params.rootId),
+    scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root",
+    rootCount: scopeRoots.length,
     status,
     query,
     offset,
@@ -3211,11 +3252,11 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
 
 
 
-    listTrash(rootId: string): FilesTrashPayload {
-      const root = resolveRoot(config, rootId);
+    listTrash(_rootId: string): FilesTrashPayload {
       return {
         checkedAt: new Date().toISOString(),
-        rootId: root.id,
+        rootId: GLOBAL_CONTENT_INDEX_ROOT_ID,
+        scope: "global",
         trashDirectoryPath: GLOBAL_RECYCLE_BIN_RELATIVE_PATH,
         items: listTrashItems(config),
       };
@@ -3226,7 +3267,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
     },
 
     purgeTrash(payload: FilesTrashPurgePayload): FilesMutationResponse {
-      resolveRoot(config, payload.rootId);
+      if (payload.rootId && !isGlobalContentIndexRoot(payload.rootId)) resolveRoot(config, payload.rootId);
       const requested = Array.isArray(payload.trashPaths) ? payload.trashPaths.map((entry) => normalizeRelativePath(entry)).filter(Boolean) : [];
       const trashPaths = requested.length ? requested : listTrashItems(config).map((item) => item.trashPath);
       if (!trashPaths.length) {
@@ -3514,7 +3555,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
     },
 
     scanContentIndex(rootId: string): FilesContentIndexStatsPayload {
-      return computeContentIndexStats(config, rootId);
+      return computeContentIndexStats(config, rootId, { validateRecords: true });
     },
 
     cleanContentIndex(rootId: string): FilesContentIndexActionResponse {
@@ -3522,6 +3563,9 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
     },
 
     rebuildContentIndex(rootId: string): FilesContentIndexRebuildResponse {
+      if (isGlobalContentIndexRoot(rootId)) {
+        throw new Error("Global content-index rebuild is intentionally disabled; rebuild one root at a time to avoid scanning every configured filesystem root.");
+      }
       return rebuildContentIndexForRoot(config, rootId);
     },
 
