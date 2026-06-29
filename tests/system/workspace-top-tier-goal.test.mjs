@@ -741,3 +741,17 @@ test("Workspace editor tab actions classify lifecycle layout clipboard terminal 
   assert.match(tabCommands, /id: "editor\.tab\.saveActive"[\s\S]{0,220}risk: "mutating"[\s\S]{0,120}surface: "file-write"/);
   assert.match(tabCommands, /id: "editor\.tab\.copyFileEvidence"[\s\S]{0,220}surface: "evidence"/);
 });
+
+test("Workspace root command registry declares IDE command surfaces for command-center grouping", () => {
+  const workspaceCommands = readWeb("features/workspace/workbench/workspaceCommands.tsx");
+  assert.match(workspaceCommands, /WorkspaceCommandRisk = "safe" \| "mutating" \| "destructive"/);
+  assert.match(workspaceCommands, /WorkspaceCommandSurface =/);
+  assert.match(workspaceCommands, /risk\?: WorkspaceCommandRisk/);
+  assert.match(workspaceCommands, /surface\?: WorkspaceCommandSurface/);
+  assert.match(workspaceCommands, /id: "workspace\.files\.focus"[\s\S]{0,220}surface: "files"/);
+  assert.match(workspaceCommands, /id: "workspace\.search\.focus"[\s\S]{0,220}surface: "search"/);
+  assert.match(workspaceCommands, /id: "workspace\.git\.focus"[\s\S]{0,220}surface: "git"/);
+  assert.match(workspaceCommands, /id: "workspace\.terminal\.open"[\s\S]{0,220}surface: "terminal"/);
+  assert.match(workspaceCommands, /id: "workspace\.layout\.reset"[\s\S]{0,220}surface: "layout"/);
+  assert.match(workspaceCommands, /id: "workspace\.evidence\.context"[\s\S]{0,240}surface: "ai-handoff"/);
+});
