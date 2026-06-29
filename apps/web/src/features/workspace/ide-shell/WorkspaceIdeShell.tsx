@@ -2373,6 +2373,7 @@ export function WorkspaceIdeShell() {
                   onFocusPane={focusDockPane}
                   onHidePane={hidePane}
                   onFocusOtherGroup={focusOppositeDockGroup}
+                  onMovePaneToGroup={movePaneToPlacement}
                   onSwapGroups={swapDockSplitPanes}
                   onMergeGroups={mergeDockSplitGroups}
                   onDropPaneOnGroup={dropPaneOnDockGroup}
@@ -2503,6 +2504,7 @@ export function WorkspaceIdeShell() {
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
                 onFocusOtherGroup={focusOppositeDockGroup}
+                onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
@@ -2688,6 +2690,7 @@ export function WorkspaceIdeShell() {
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
                 onFocusOtherGroup={focusOppositeDockGroup}
+                onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
@@ -2779,6 +2782,7 @@ export function WorkspaceIdeShell() {
               onFocusPane={focusDockPane}
               onHidePane={hidePane}
               onFocusOtherGroup={focusOppositeDockGroup}
+              onMovePaneToGroup={movePaneToPlacement}
               onSwapGroups={swapDockSplitPanes}
               onMergeGroups={mergeDockSplitGroups}
               onDropPaneOnGroup={dropPaneOnDockGroup}
@@ -3275,6 +3279,7 @@ function DockPaneFrame({
   onFocusPane,
   onHidePane,
   onFocusOtherGroup,
+  onMovePaneToGroup,
   onSwapGroups,
   onMergeGroups,
   edgeDropTarget,
@@ -3301,6 +3306,7 @@ function DockPaneFrame({
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onHidePane: (paneId: PaneId) => void;
   onFocusOtherGroup: () => void;
+  onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapGroups: (placement: PanePlacement) => void;
   onMergeGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
   onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
@@ -3313,6 +3319,7 @@ function DockPaneFrame({
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
   const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
   const stopGroupAction = (event: React.SyntheticEvent) => event.stopPropagation();
+  const oppositeRole = (role: DockPaneRole): DockPaneRole => (role === "primary" ? "secondary" : "primary");
   const render = (paneId: PaneId, role: DockPaneRole) => {
     const isFocused = activeFocus?.placement === placement && activeFocus.role === role && activeFocus.paneId === paneId;
     return (
@@ -3347,6 +3354,19 @@ function DockPaneFrame({
             }}
           >
             ⇄
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            disabled={!shouldSplit}
+            aria-label={`移动 ${paneLabel(paneId)} 到${placementLabel(placement)} Dock ${role === "primary" ? "副" : "主"}窗格组`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMovePaneToGroup(paneId, placement, undefined, oppositeRole(role));
+            }}
+          >
+            移
           </button>
           <button
             type="button"

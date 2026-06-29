@@ -649,6 +649,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
   assert.match(shellSource, /onHidePane: \(paneId: PaneId\) => void/);
   assert.match(shellSource, /onFocusOtherGroup: \(\) => void/);
+  assert.match(shellSource, /onMovePaneToGroup: \(paneId: PaneId, placement: PanePlacement, beforePaneId\?: PaneId, role\?: DockPaneRole\) => void/);
   assert.match(shellSource, /onSwapGroups: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onMergeGroups: \(placement: PanePlacement, preferredRole\?: DockPaneRole\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
@@ -658,6 +659,7 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onDropPaneOnEdge: \(placement: PanePlacement, edge: DockDropEdge, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onHidePane=\{hidePane\}/);
   assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
+  assert.match(shellSource, /onMovePaneToGroup=\{movePaneToPlacement\}/);
   assert.match(shellSource, /onSwapGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeGroups=\{mergeDockSplitGroups\}/);
   assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
@@ -749,6 +751,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /const stopGroupAction = \(event: React\.SyntheticEvent\) => event\.stopPropagation\(\)/);
   assert.match(shellSource, /aria-label=\{`聚焦\$\{placementLabel\(placement\)\} Dock 另一个窗格组`\}/);
   assert.match(shellSource, /onFocusOtherGroup\(\)/);
+  assert.match(shellSource, /const oppositeRole = \(role: DockPaneRole\): DockPaneRole => \(role === "primary" \? "secondary" : "primary"\)/);
+  assert.match(shellSource, /aria-label=\{`移动 \$\{paneLabel\(paneId\)\} 到\$\{placementLabel\(placement\)\} Dock \$\{role === "primary" \? "副" : "主"\}窗格组`\}/);
+  assert.match(shellSource, /onMovePaneToGroup\(paneId, placement, undefined, oppositeRole\(role\)\)/);
   assert.match(shellSource, /aria-label=\{`交换\$\{placementLabel\(placement\)\} Dock 主副窗格组`\}/);
   assert.match(shellSource, /onSwapGroups\(placement\)/);
   assert.match(shellSource, /aria-label=\{`合并\$\{placementLabel\(placement\)\} Dock，并保留\$\{role === "primary" \? "主" : "副"\}窗格组`\}/);
