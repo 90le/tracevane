@@ -341,6 +341,11 @@ export function WorkspaceIdeShell() {
           focusIdeRegion("center");
           return;
         }
+        if (!event.shiftKey && key === "s") {
+          event.preventDefault();
+          swapEditorGroups();
+          return;
+        }
         if (event.shiftKey && event.key === "ArrowLeft") {
           event.preventDefault();
           moveActiveDockPaneToPlacement("left");
@@ -584,6 +589,18 @@ export function WorkspaceIdeShell() {
         surface: "layout",
         icon: <RotateCcw />,
         run: closeEditorSplit,
+      },
+      {
+        id: "ide.editor.swap-groups",
+        group: "布局",
+        label: "交换主副编辑器组",
+        description: "交换主编辑器和副编辑器组中打开的文件，保留当前拆分方向和比例",
+        shortcut: "⌘⌥S",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        disabled: editorSplitMode === "single",
+        run: swapEditorGroups,
       },
       {
         id: "ide.editor.focus-primary",
@@ -1418,6 +1435,17 @@ export function WorkspaceIdeShell() {
     setSecondaryPath((current) => current ?? activePath);
     setSecondaryPathRootId((current) => current || activePathRootId || rootId);
     setActiveEditorGroup("secondary");
+  }
+
+  function swapEditorGroups() {
+    if (editorSplitMode === "single") return;
+    const nextPrimaryPath = secondaryPath ?? activePath;
+    const nextPrimaryRootId = secondaryPathRootId || activePathRootId || rootId;
+    setSecondaryPath(activePath);
+    setSecondaryPathRootId(activePathRootId || rootId);
+    setActivePath(nextPrimaryPath);
+    setActivePathRootId(nextPrimaryRootId);
+    setActiveEditorGroup((group) => (group === "primary" ? "secondary" : "primary"));
   }
 
   function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
