@@ -182,6 +182,12 @@ test("new Workspace IDE shell exposes direct dock controls for pane movement", (
   assert.match(shellSource, /移动 \$\{paneLabel\(paneId\)\} 到\$\{placementLabel\(target\)\}/);
   assert.match(shellSource, /关闭\$\{placementLabel\(placement\)\} Dock/);
   assert.match(shellSource, /onMovePane\(paneId, target\)/);
+  assert.match(shellSource, /onFocusOtherGroup\?: \(\) => void/);
+  assert.match(shellSource, /canFocusOtherGroup\?: boolean/);
+  assert.match(shellSource, /data-ide-dock-focus-other-group=\{placement\}/);
+  assert.match(shellSource, /切换\$\{placementLabel\(placement\)\} Dock 主副窗格组焦点/);
+  assert.match(shellSource, /disabled=\{!canFocusOtherGroup\}/);
+  assert.match(shellSource, /onClick=\{onFocusOtherGroup\}/);
   assert.match(shellSource, /onCloseDock=\{\(\) => setLeftOpen\(false\)\}/);
   assert.match(shellSource, /onCloseDock=\{\(\) => setRightOpen\(false\)\}/);
   assert.match(shellSource, /onCloseDock=\{\(\) => setBottomOpen\(false\)\}/);
@@ -360,8 +366,15 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
+  assert.match(shellSource, /onFocusOtherGroup=\{focusOppositeDockGroup\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "left"\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "top"\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "right"\}/);
+  assert.match(shellSource, /canFocusOtherGroup=\{canFocusOppositeDockGroup\(\) && activeDockFocus\?\.placement === "bottom"\}/);
   assert.match(shellSource, /data-ide-dock-swap-groups=\{placement\}/);
+  assert.match(shellSource, /data-ide-dock-focus-other-group=\{placement\}/);
   assert.match(shellSource, /交换\$\{placementLabel\(placement\)\} Dock 主副窗格组/);
+  assert.match(shellSource, /切换\$\{placementLabel\(placement\)\} Dock 主副窗格组焦点/);
   assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-dock-selection-state=\{dockSelectionState\(dockPaneSelections\)\}/);
   assert.match(shellSource, /tabIndex=\{0\}/);

@@ -1739,6 +1739,8 @@ export function WorkspaceIdeShell() {
                   onMovePane={movePaneToPlacement}
                   onSetDockSplitMode={setDockSplitMode}
                   onSwapDockGroups={swapDockSplitPanes}
+                  onFocusOtherGroup={focusOppositeDockGroup}
+                  canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "left"}
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
                   onHidePane={hidePane}
@@ -1845,6 +1847,8 @@ export function WorkspaceIdeShell() {
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
                       onSwapDockGroups={swapDockSplitPanes}
+                      onFocusOtherGroup={focusOppositeDockGroup}
+                      canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "top"}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
@@ -2003,6 +2007,8 @@ export function WorkspaceIdeShell() {
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
                       onSwapDockGroups={swapDockSplitPanes}
+                      onFocusOtherGroup={focusOppositeDockGroup}
+                      canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "bottom"}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onHidePane={hidePane}
@@ -2089,6 +2095,8 @@ export function WorkspaceIdeShell() {
                     onMovePane={movePaneToPlacement}
                     onSetDockSplitMode={setDockSplitMode}
                     onSwapDockGroups={swapDockSplitPanes}
+                    onFocusOtherGroup={focusOppositeDockGroup}
+                    canFocusOtherGroup={canFocusOppositeDockGroup() && activeDockFocus?.placement === "right"}
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
                     onHidePane={hidePane}
@@ -2161,6 +2169,8 @@ function PaneDockControls({
   onMovePane,
   onSetDockSplitMode,
   onSwapDockGroups,
+  onFocusOtherGroup,
+  canFocusOtherGroup = false,
   onHidePane,
   onBeginDrag,
   onEndDrag,
@@ -2173,6 +2183,8 @@ function PaneDockControls({
   onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
   onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
   onSwapDockGroups?: (placement: PanePlacement) => void;
+  onFocusOtherGroup?: () => void;
+  canFocusOtherGroup?: boolean;
   onHidePane: (paneId: PaneId) => void;
   onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
   onEndDrag: () => void;
@@ -2204,15 +2216,28 @@ function PaneDockControls({
           <button type="button" data-active={splitMode === "vertical"} aria-label={`${placementLabel(placement)} Dock 左右拆分`} onClick={() => onSetDockSplitMode(placement, "vertical")}>↔</button>
           <button type="button" data-active={splitMode === "horizontal"} aria-label={`${placementLabel(placement)} Dock 上下拆分`} onClick={() => onSetDockSplitMode(placement, "horizontal")}>↕</button>
           {onSwapDockGroups ? (
-            <button
-              type="button"
-              data-ide-dock-swap-groups={placement}
-              disabled={splitMode === "single"}
-              aria-label={`交换${placementLabel(placement)} Dock 主副窗格组`}
-              onClick={() => onSwapDockGroups(placement)}
-            >
-              ⇄组
-            </button>
+            <>
+              <button
+                type="button"
+                data-ide-dock-swap-groups={placement}
+                disabled={splitMode === "single"}
+                aria-label={`交换${placementLabel(placement)} Dock 主副窗格组`}
+                onClick={() => onSwapDockGroups(placement)}
+              >
+                ⇄组
+              </button>
+              {onFocusOtherGroup ? (
+                <button
+                  type="button"
+                  data-ide-dock-focus-other-group={placement}
+                  disabled={!canFocusOtherGroup}
+                  aria-label={`切换${placementLabel(placement)} Dock 主副窗格组焦点`}
+                  onClick={onFocusOtherGroup}
+                >
+                  焦组
+                </button>
+              ) : null}
+            </>
           ) : null}
         </>
       ) : null}
