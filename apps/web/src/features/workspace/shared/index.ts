@@ -20,3 +20,4 @@ export * from "./WorkspaceEvidenceReviewSurface";
 export * from "./WorkspaceEvidenceMobileSheet";
 export * from "./WorkspaceEvidenceResponsiveLauncher";
 export * from "./WorkspaceSeasonOneFrame";
+export * from "./WorkspaceSeasonOneFramePreview";
