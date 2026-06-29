@@ -716,8 +716,8 @@ function selectPrimaryToolIndexes(tools: ToolCardLike[]): Set<number> {
   return visible;
 }
 
-function shouldCollapseToolByDefault(tool: ToolCardLike): boolean {
-  return tool.status !== "running" && !tool.isError && tool.status !== "error";
+function shouldCollapseToolByDefault(_tool: ToolCardLike): boolean {
+  return true;
 }
 
 function ToolCallGroup({ tools }: { tools: ToolCardLike[] }) {
@@ -822,12 +822,12 @@ function ToolCallBlock({
           </div>
         </div>
       </div>
-      {collapsed && !running && !tool.isError ? (
+      {collapsed ? (
         <details className="group min-w-0 rounded-sm border border-line/80 bg-panel/70">
           <summary className="flex min-w-0 cursor-pointer select-none items-center gap-2 px-2.5 py-1.5 text-xs text-subtle marker:hidden">
             <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" />
             <span className="font-medium">展开工具详情</span>
-            <span className="min-w-0 flex-1 truncate">{tool.resultPreview ? previewLabel(tool.resultPreview) : "输入、输出和产物默认折叠"}</span>
+            <span className="min-w-0 flex-1 truncate">{tool.resultPreview ? previewLabel(tool.resultPreview) : running ? "工具仍在流式执行，输入、输出和产物默认折叠" : "输入、输出和产物默认折叠"}</span>
           </summary>
           <div className="grid min-w-0 gap-2 border-t border-line/70 p-2">
             {content}

@@ -412,16 +412,27 @@ export function ChatWorkbenchPage() {
         }
         case "final": {
           if (activeRun && runId && runId !== activeRun) return;
-          setLiveTurn((prev) => ({
-            ...(prev ?? EMPTY_TURN),
-            done: true,
-            finalMessage: event.message,
-          }));
-          setStreamEnabled(false);
-          activeRunIdRef.current = null;
-          // Refetch authoritative history, then drop the transient turn.
-          refetchSelected();
-          window.setTimeout(() => setLiveTurn(null), 400);
+          const runtimeTerminal = isTerminalRuntimeState(event.runtime?.state);
+          setLiveTurn((prev) => {
+            const base = prev ?? EMPTY_TURN;
+            const finalText = event.message?.text || "";
+            const nextText = finalText ? mergeAgentProgressText(base.text, finalText) : base.text;
+            return {
+              ...base,
+              runId: runId ?? base.runId ?? null,
+              text: nextText,
+              timeline: finalText ? upsertAgentProgressAssistant(base.timeline, nextText) : base.timeline,
+              done: runtimeTerminal,
+              finalMessage: event.message,
+            };
+          });
+          if (runtimeTerminal) {
+            setStreamEnabled(false);
+            activeRunIdRef.current = null;
+            // Refetch authoritative history, then drop the transient turn.
+            refetchSelected();
+            window.setTimeout(() => setLiveTurn(null), 400);
+          }
           break;
         }
         case "aborted": {

@@ -146,9 +146,10 @@ test('ChatWorkbenchPage accumulates native assistant deltas instead of replacing
 });
 
 
-test('ConversationView collapses completed tools and aggregates process blocks for readable streams', () => {
+test('ConversationView collapses all tool cards and aggregates process blocks for readable streams', () => {
   const conversationSource = fs.readFileSync(path.join(process.cwd(), 'apps/web/src/features/chat/views/ConversationView.tsx'), 'utf8');
   assert.match(conversationSource, /function shouldCollapseToolByDefault/);
+  assert.match(conversationSource, /return true/);
   assert.match(conversationSource, /collapsed=\{shouldCollapseToolByDefault\(tool\)\}/);
   assert.match(conversationSource, /<ToolCallBlock key=\{tool\.toolCallId\} tool=\{tool\} collapsed \/>/);
   assert.match(conversationSource, /function ProcessBlockGroup/);
@@ -172,4 +173,13 @@ test('ConversationView opens a slash command palette from the composer draft', (
   assert.match(conversationSource, /applySlashSuggestion/);
   assert.match(conversationSource, /输入消息… 输入 \/ 查看命令/);
   assert.match(source, /runtimeTarget=\{runtimeTarget\}/);
+});
+
+
+test('ChatWorkbenchPage keeps non-terminal final messages in the live stream', () => {
+  assert.match(source, /case "final"/);
+  assert.match(source, /const runtimeTerminal = isTerminalRuntimeState\(event\.runtime\?\.state\)/);
+  assert.match(source, /done: runtimeTerminal/);
+  assert.match(source, /if \(runtimeTerminal\) \{/);
+  assert.match(source, /upsertAgentProgressAssistant\(base\.timeline, nextText\)/);
 });
