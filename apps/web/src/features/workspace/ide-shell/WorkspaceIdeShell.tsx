@@ -1464,6 +1464,19 @@ export function WorkspaceIdeShell() {
     }));
   }
 
+  function selectEditorTab(group: EditorGroupId, tab: EditorTab) {
+    if (group === "primary") {
+      setActivePath(tab.path);
+      setActivePathRootId(tab.rootId);
+    } else {
+      if (editorSplitMode === "single") splitEditor("vertical");
+      setSecondaryPath(tab.path);
+      setSecondaryPathRootId(tab.rootId);
+    }
+    setActiveEditorGroup(group);
+    focusIdeRegion("center");
+  }
+
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
@@ -2128,6 +2141,7 @@ export function WorkspaceIdeShell() {
               filePath={activePath}
               tabs={editorGroupTabs.primary}
               splitMode={editorSplitMode}
+              onSelectTab={selectEditorTab}
               onFocus={() => setActiveEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
               onSplitDown={() => splitEditor("horizontal")}
@@ -2160,6 +2174,7 @@ export function WorkspaceIdeShell() {
                   filePath={secondaryPath ?? activePath}
                   tabs={editorGroupTabs.secondary}
                   splitMode={editorSplitMode}
+                  onSelectTab={selectEditorTab}
                   onFocus={() => setActiveEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
@@ -2523,6 +2538,7 @@ function EditorGroupFrame({
   tabs,
   splitMode,
   children,
+  onSelectTab,
   onFocus,
   onSplitRight,
   onSplitDown,
@@ -2535,6 +2551,7 @@ function EditorGroupFrame({
   tabs: EditorTab[];
   splitMode: EditorSplitMode;
   children: React.ReactNode;
+  onSelectTab: (group: EditorGroupId, tab: EditorTab) => void;
   onFocus: () => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
@@ -2554,9 +2571,16 @@ function EditorGroupFrame({
         </button>
         <div className="workspace-ide-shell__editor-tabs" data-ide-editor-tabs={group}>
           {tabs.map((tab) => (
-            <span key={`${tab.rootId}:${tab.path}`} className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")} data-ide-editor-tab={tab.path} title={tab.path}>
+            <button
+              key={`${tab.rootId}:${tab.path}`}
+              type="button"
+              className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")}
+              data-ide-editor-tab={tab.path}
+              title={tab.path}
+              onClick={() => onSelectTab(group, tab)}
+            >
               {editorTabLabel(tab.path)}
-            </span>
+            </button>
           ))}
         </div>
         <button type="button" onClick={onSplitRight} aria-label="向右拆分编辑器">

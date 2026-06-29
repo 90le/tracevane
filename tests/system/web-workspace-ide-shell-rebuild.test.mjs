@@ -172,6 +172,13 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /function editorTabLabel\(path: string\)/);
   assert.match(shellSource, /data-ide-editor-tabs=\{group\}/);
   assert.match(shellSource, /data-ide-editor-tab=\{tab\.path\}/);
+  assert.match(shellSource, /function selectEditorTab\(group: EditorGroupId, tab: EditorTab\)/);
+  assert.match(shellSource, /setActivePath\(tab\.path\)/);
+  assert.match(shellSource, /setSecondaryPath\(tab\.path\)/);
+  assert.match(shellSource, /setActiveEditorGroup\(group\)/);
+  assert.match(shellSource, /onSelectTab=\{selectEditorTab\}/);
+  assert.match(shellSource, /onSelectTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
+  assert.match(shellSource, /onClick=\{\(\) => onSelectTab\(group, tab\)\}/);
   assert.match(shellSource, /tabs=\{editorGroupTabs\.primary\}/);
   assert.match(shellSource, /tabs=\{editorGroupTabs\.secondary\}/);
   assert.match(shellSource, /setEditorGroupTabs\(\(current\) => \(\{ primary: current\.secondary, secondary: current\.primary \}\)\)/);
