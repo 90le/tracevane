@@ -71,9 +71,9 @@ export interface EditorTabsProps {
  *  - dirty dot (unsaved changes) / saving spinner text
  *  - close button (clicking calls onClose; parent runs the dirty guard)
  *
- * Source, preview, split preview and visual edit are same-tab modes for the
- * active document; this component only exposes the mode switcher and never
- * creates a second preview tab/window.
+ * Code, diff, and review are same-tab IDE modes for the active file; rich
+ * preview or visual document editing belongs to document-engine adapters, not
+ * the current editor tab contract.
  */
 export function EditorTabs({
   tabs,

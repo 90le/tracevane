@@ -325,6 +325,15 @@ test("Workspace evidence review copy stays IDE-coding first", () => {
   assert.doesNotMatch(reviewPanel, /AI writing and coding handoff/);
 });
 
+test("Workspace editor tabs describe IDE modes, not preview or visual editing", () => {
+  const tabs = readWeb("features/workspace/editor/EditorTabs.tsx");
+  assert.match(tabs, /Code, diff, and review are same-tab IDE modes/);
+  assert.match(tabs, /document-engine adapters/);
+  assert.match(tabs, /current editor tab contract/);
+  assert.doesNotMatch(tabs, /Source, preview, split preview and visual edit/);
+  assert.doesNotMatch(tabs, /second preview tab\/window/);
+});
+
 test("Workspace editor tab commands collect file evidence before AI handoff", () => {
   const tabCommands = readWeb("features/workspace/editor/editorTabCommands.tsx");
   const tabActions = readWeb("features/workspace/editor/editorTabActions.tsx");
