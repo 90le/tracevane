@@ -5,7 +5,7 @@ import {
   type WorkspaceEvidenceInput,
 } from "./WorkspaceEvidenceBasket";
 
-export interface WorkspaceAiContextEvidenceRef {
+export interface WorkspaceAiContextEvidenceRef extends Record<string, unknown> {
   contextId: string;
   path: string;
   title: string;
