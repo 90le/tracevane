@@ -37,15 +37,16 @@ import type { WorkspaceCommand } from "./ideCommands";
 import "./workspace-ide-shell.css";
 
 type PaneId = "explorer" | "search" | "git" | "terminal" | "ai" | "outline" | "extensions" | "problems" | "output";
-type PanePlacement = "left" | "right" | "bottom";
+type PanePlacement = "top" | "left" | "right" | "bottom";
 type SaveState = "idle" | "dirty" | "saving" | "saved";
-type MaximizedPane = "left" | "center" | "right" | "bottom" | null;
+type MaximizedPane = "top" | "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
 type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
-type MobilePanel = "editor" | "left" | "right" | "bottom";
+type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
 interface IdePaneSizes {
+  top: number;
   left: number;
   right: number;
   bottom: number;
@@ -84,17 +85,18 @@ const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
     order[pane.defaultPlacement].push(pane.id);
     return order;
   },
-  { left: [], right: [], bottom: [] } as PaneOrder,
+  { top: [], left: [], right: [], bottom: [] } as PaneOrder,
 );
 
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 const IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.snapshots.v1";
 const MAX_LAYOUT_SNAPSHOTS = 8;
 
-const DEFAULT_PANE_SIZES: IdePaneSizes = { left: 320, right: 340, bottom: 260 };
-const CODE_PANE_SIZES: IdePaneSizes = { left: 280, right: 300, bottom: 190 };
-const TERMINAL_PANE_SIZES: IdePaneSizes = { left: 300, right: 300, bottom: 380 };
+const DEFAULT_PANE_SIZES: IdePaneSizes = { top: 170, left: 320, right: 340, bottom: 260 };
+const CODE_PANE_SIZES: IdePaneSizes = { top: 140, left: 280, right: 300, bottom: 190 };
+const TERMINAL_PANE_SIZES: IdePaneSizes = { top: 170, left: 300, right: 300, bottom: 380 };
 const PANE_SIZE_LIMITS: Record<keyof IdePaneSizes, { min: number; max: number }> = {
+  top: { min: 120, max: 360 },
   left: { min: 220, max: 560 },
   right: { min: 240, max: 560 },
   bottom: { min: 160, max: 520 },
@@ -105,6 +107,7 @@ const DEFAULT_EDITOR_SPLIT_RATIO = 50;
 const EDITOR_SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 
 interface IdeLayoutState {
+  topOpen?: boolean;
   leftOpen?: boolean;
   rightOpen?: boolean;
   bottomOpen?: boolean;
@@ -146,6 +149,7 @@ export function WorkspaceIdeShell() {
   const [layoutState] = React.useState(() => loadIdeLayoutState());
   const [layoutSnapshots, setLayoutSnapshots] = React.useState<IdeLayoutSnapshot[]>(() => loadIdeLayoutSnapshots());
   const [activity, setActivity] = React.useState<PaneId>("explorer");
+  const [topPanel, setTopPanel] = React.useState<PaneId>("output");
   const [rightPanel, setRightPanel] = React.useState<PaneId>("ai");
   const [bottomPanel, setBottomPanel] = React.useState<PaneId>("terminal");
   const [panePlacements, setPanePlacements] = React.useState<IdePanePlacements>(() => ({
@@ -153,10 +157,12 @@ export function WorkspaceIdeShell() {
     ...layoutState.panePlacements,
   }));
   const [paneOrder, setPaneOrder] = React.useState<PaneOrder>(() => ({
+    top: layoutState.paneOrder?.top ?? DEFAULT_PANE_ORDER.top,
     left: layoutState.paneOrder?.left ?? DEFAULT_PANE_ORDER.left,
     right: layoutState.paneOrder?.right ?? DEFAULT_PANE_ORDER.right,
     bottom: layoutState.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
   }));
+  const [topOpen, setTopOpen] = React.useState(layoutState.topOpen ?? false);
   const [leftOpen, setLeftOpen] = React.useState(layoutState.leftOpen ?? true);
   const [rightOpen, setRightOpen] = React.useState(layoutState.rightOpen ?? true);
   const [bottomOpen, setBottomOpen] = React.useState(layoutState.bottomOpen ?? true);
@@ -190,9 +196,11 @@ export function WorkspaceIdeShell() {
   const searchSignalRef = React.useRef(0);
 
   const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements, paneOrder), [paneOrder, panePlacements]);
+  const topPaneIds = panesByPlacement.top;
   const leftPaneIds = panesByPlacement.left;
   const rightPaneIds = panesByPlacement.right;
   const bottomPaneIds = panesByPlacement.bottom;
+  const activeTopPane = topPaneIds.includes(topPanel) ? topPanel : topPaneIds[0];
   const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0];
   const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0];
   const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0];
@@ -215,6 +223,7 @@ export function WorkspaceIdeShell() {
 
   React.useEffect(() => {
     storeIdeLayoutState({
+      topOpen,
       leftOpen,
       rightOpen,
       bottomOpen,
@@ -226,7 +235,7 @@ export function WorkspaceIdeShell() {
       panePlacements,
       paneOrder,
     });
-  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen]);
+  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -295,6 +304,16 @@ export function WorkspaceIdeShell() {
 
   const layoutCommands = React.useMemo<WorkspaceCommand[]>(
     () => [
+      {
+        id: "ide.layout.toggle-top",
+        group: "布局",
+        label: topOpen ? "收起顶部 Dock" : "打开顶部 Dock",
+        description: "切换可停靠在编辑器上方的顶部 IDE Dock",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => setTopOpen((open) => !open),
+      },
       {
         id: "ide.layout.toggle-left",
         group: "布局",
@@ -481,13 +500,13 @@ export function WorkspaceIdeShell() {
         run: resetPanePlacements,
       },
     ],
-    [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen],
+    [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
     () =>
       PANE_REGISTRY.flatMap((pane) =>
-        (["left", "right", "bottom"] as PanePlacement[]).map((placement) => ({
+        (["top", "left", "right", "bottom"] as PanePlacement[]).map((placement) => ({
           id: `ide.pane.move.${pane.id}.${placement}`,
           group: "窗格",
           label: `移动 ${pane.label} 到${placementLabel(placement)}`,
@@ -524,7 +543,7 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
     ],
-    [layoutSnapshots, bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen],
+    [layoutSnapshots, bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
   const commands = React.useMemo(
@@ -535,6 +554,7 @@ export function WorkspaceIdeShell() {
   function applyLayoutPreset(preset: LayoutPreset) {
     setLayoutPreset(preset);
     setMaximizedPane(null);
+    setTopOpen(preset === "terminal");
     setLeftOpen(true);
     setRightOpen(true);
     setBottomOpen(true);
@@ -559,8 +579,10 @@ export function WorkspaceIdeShell() {
     setPanePlacements(DEFAULT_PANE_PLACEMENTS);
     setPaneOrder(DEFAULT_PANE_ORDER);
     setActivity("explorer");
+    setTopPanel("output");
     setRightPanel("ai");
     setBottomPanel("terminal");
+    setTopOpen(false);
     setLeftOpen(true);
     setRightOpen(true);
     setBottomOpen(true);
@@ -568,6 +590,7 @@ export function WorkspaceIdeShell() {
 
   function currentIdeLayoutState(): IdeLayoutState {
     return {
+      topOpen,
       leftOpen,
       rightOpen,
       bottomOpen,
@@ -608,6 +631,7 @@ export function WorkspaceIdeShell() {
     const sanitized = sanitizeIdeLayoutState(state);
     const nextPanePlacements = { ...DEFAULT_PANE_PLACEMENTS, ...sanitized.panePlacements };
     const nextPaneOrder = {
+      top: sanitized.paneOrder?.top ?? DEFAULT_PANE_ORDER.top,
       left: sanitized.paneOrder?.left ?? DEFAULT_PANE_ORDER.left,
       right: sanitized.paneOrder?.right ?? DEFAULT_PANE_ORDER.right,
       bottom: sanitized.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
@@ -615,6 +639,7 @@ export function WorkspaceIdeShell() {
     const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder);
     setPanePlacements(nextPanePlacements);
     setPaneOrder(nextPaneOrder);
+    setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
     setBottomOpen(sanitized.bottomOpen ?? true);
@@ -623,6 +648,7 @@ export function WorkspaceIdeShell() {
     setPaneSizes({ ...DEFAULT_PANE_SIZES, ...sanitized.paneSizes });
     setEditorSplitMode(sanitized.editorSplitMode ?? "single");
     setEditorSplitRatio(sanitized.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
+    setTopPanel(nextGroups.top[0] ?? "output");
     setActivity(nextGroups.left[0] ?? "explorer");
     setRightPanel(nextGroups.right[0] ?? "ai");
     setBottomPanel(nextGroups.bottom[0] ?? "terminal");
@@ -634,7 +660,7 @@ export function WorkspaceIdeShell() {
     const startY = event.clientY;
     const startSize = paneSizes[pane];
     const onPointerMove = (moveEvent: PointerEvent) => {
-      const delta = pane === "bottom" ? startY - moveEvent.clientY : moveEvent.clientX - startX;
+      const delta = pane === "bottom" ? startY - moveEvent.clientY : pane === "top" ? moveEvent.clientY - startY : moveEvent.clientX - startX;
       const signedDelta = pane === "right" ? -delta : delta;
       const { min, max } = getPaneSizeLimits(pane);
       const next = clamp(startSize + signedDelta, min, max);
@@ -718,6 +744,11 @@ export function WorkspaceIdeShell() {
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId) {
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
+    if (placement === "top") {
+      setTopPanel(paneId);
+      setTopOpen(true);
+      setMobilePanel("top");
+    }
     if (placement === "left") {
       setActivity(paneId);
       setLeftOpen(true);
@@ -771,6 +802,12 @@ export function WorkspaceIdeShell() {
   function activateActivity(nextActivity: PaneId) {
     setActivity(nextActivity);
     const placement = panePlacements[nextActivity];
+    if (placement === "top") {
+      setTopPanel(nextActivity);
+      setTopOpen(true);
+      setMobilePanel("top");
+      return;
+    }
     if (placement === "bottom") {
       setBottomPanel(nextActivity);
       setBottomOpen(true);
@@ -793,12 +830,13 @@ export function WorkspaceIdeShell() {
       data-testid="workspace-ide-shell"
       data-ide-layout-preset={layoutPreset}
       data-ide-maximized-pane={maximizedPane ?? ""}
-      data-ide-pane-size-state={`${paneSizes.left}:${paneSizes.right}:${paneSizes.bottom}`}
+      data-ide-pane-size-state={`${paneSizes.top}:${paneSizes.left}:${paneSizes.right}:${paneSizes.bottom}`}
       data-ide-editor-split={editorSplitMode}
       data-ide-dragging-pane={draggingPane ?? ""}
       data-ide-drop-target={dropTarget ?? ""}
       data-ide-mobile-panel={mobilePanel}
       style={{
+        "--ide-top-height": `${paneSizes.top}px`,
         "--ide-left-width": `${paneSizes.left}px`,
         "--ide-right-width": `${paneSizes.right}px`,
         "--ide-bottom-height": `${paneSizes.bottom}px`,
@@ -838,6 +876,9 @@ export function WorkspaceIdeShell() {
           ))}
         </div>
         <div className="workspace-ide-shell__top-actions">
+          <Button size="sm" variant="ghost" onClick={() => setTopOpen((value) => !value)}>
+            <PanelBottom className="mr-2 h-4 w-4 rotate-180" />顶部
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setLeftOpen((value) => !value)}>
             <PanelLeft className="mr-2 h-4 w-4" />左栏
           </Button>
@@ -850,6 +891,16 @@ export function WorkspaceIdeShell() {
         </div>
         <div className="workspace-ide-shell__mobile-switcher" aria-label="手机工作区面板切换">
           <button type="button" data-active={mobilePanel === "editor"} onClick={() => setMobilePanel("editor")}>编辑</button>
+          <button
+            type="button"
+            data-active={mobilePanel === "top"}
+            onClick={() => {
+              setTopOpen(true);
+              setMobilePanel("top");
+            }}
+          >
+            顶部
+          </button>
           <button
             type="button"
             data-active={mobilePanel === "left"}
@@ -981,6 +1032,75 @@ export function WorkspaceIdeShell() {
         ) : null}
 
         <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane" data-ide-pane="center">
+          {topOpen ? (
+            <section
+              className={cn("workspace-ide-shell__top-dock", dropTarget === "top" && "is-drop-target")}
+              data-testid="workspace-ide-top-pane"
+              data-ide-pane="top"
+              data-ide-dock-placement="top"
+              onDragOver={(event) => dragPaneOverDock("top", event)}
+              onDragLeave={(event) => leavePaneDock("top", event)}
+              onDrop={(event) => dropPaneOnDock("top", event)}
+            >
+              <div className="workspace-ide-shell__top-tabs">
+                {topPaneIds.map((paneId) => (
+                  <div
+                    key={paneId}
+                    className={cn("workspace-ide-shell__dock-tab", activeTopPane === paneId && "is-active")}
+                    data-ide-dock-tab={paneId}
+                    data-ide-pane-draggable={paneId}
+                    draggable
+                    onDragStart={(event) => beginPaneDrag(paneId, event)}
+                    onDragEnd={clearPaneDragState}
+                    onDragOver={(event) => dragPaneOverDock("top", event)}
+                    onDrop={(event) => {
+                      event.stopPropagation();
+                      dropPaneOnDock("top", event, paneId);
+                    }}
+                  >
+                    <button type="button" className="workspace-ide-shell__top-tab" onClick={() => setTopPanel(paneId)}>
+                      {paneLabel(paneId)}
+                    </button>
+                    <PaneDockControls
+                      paneId={paneId}
+                      placement="top"
+                      compact
+                      onMovePane={movePaneToPlacement}
+                      onBeginDrag={beginPaneDrag}
+                      onEndDrag={clearPaneDragState}
+                      onCloseDock={() => setTopOpen(false)}
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="workspace-ide-shell__panel-icon"
+                  title={maximizedPane === "top" ? "恢复顶部 Dock" : "最大化顶部 Dock"}
+                  onClick={() => toggleMaximizedPane("top")}
+                >
+                  <Maximize2 className="h-4 w-4" aria-hidden={true} />
+                </button>
+              </div>
+              {activeTopPane ? (
+                <DockPaneContent
+                  panel={activeTopPane}
+                  workspaceDirectory={workspaceDirectory}
+                  onTerminalCommandsChange={setTerminalCommands}
+                />
+              ) : (
+                <EmptyDockPane placement="top" onRestore={resetPanePlacements} />
+              )}
+              <ResizeHandle
+                pane="top"
+                label="调整顶部 Dock 高度"
+                orientation="horizontal"
+                value={paneSizes.top}
+                limits={getPaneSizeLimits("top")}
+                onPointerDown={(event) => startPaneResize("top", event)}
+                onKeyDown={(event) => resizePaneFromKeyboard("top", event)}
+              />
+            </section>
+          ) : null}
           <div
             className="workspace-ide-shell__editor-grid"
             data-ide-editor-split={editorSplitMode}
@@ -1107,7 +1227,7 @@ export function WorkspaceIdeShell() {
                 </button>
               </div>
               {activeBottomPane ? (
-                <BottomPane
+                <DockPaneContent
                   panel={activeBottomPane}
                   workspaceDirectory={workspaceDirectory}
                   onTerminalCommandsChange={setTerminalCommands}
@@ -1195,10 +1315,10 @@ export function WorkspaceIdeShell() {
         <span>布局: {layoutPreset}</span>
         <span>快照: {layoutSnapshots.length}</span>
         <span>移动面板: {mobilePanel}</span>
-        <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
+        <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
-        <span>窗格: L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
-        <span>顺序: {leftPaneIds.join("|") || "-"}/{rightPaneIds.join("|") || "-"}/{bottomPaneIds.join("|") || "-"}</span>
+        <span>窗格: T{topPaneIds.length}/L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
+        <span>顺序: {topPaneIds.join("|") || "-"}/{leftPaneIds.join("|") || "-"}/{rightPaneIds.join("|") || "-"}/{bottomPaneIds.join("|") || "-"}</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
       </footer>
 
@@ -1228,7 +1348,7 @@ function PaneDockControls({
   onEndDrag: () => void;
   onCloseDock: () => void;
 }) {
-  const targets: PanePlacement[] = ["left", "right", "bottom"];
+  const targets: PanePlacement[] = ["top", "left", "right", "bottom"];
   return (
     <div
       className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
@@ -1503,7 +1623,7 @@ function RightPane({
   );
 }
 
-function BottomPane({
+function DockPaneContent({
   panel,
   workspaceDirectory,
   onTerminalCommandsChange,
@@ -1521,7 +1641,7 @@ function BottomPane({
   }
   if (panel === "problems") return <CodePane title="Problems" lines={["0 errors", "0 warnings", "真实诊断面板将在 LSP 接入后替换此占位。"]} compact />;
   if (panel === "output") return <CodePane title="Output" lines={["Tracevane IDE shell mounted", "Explorer/Search/Git/Editor/Terminal are live components", "Provider route: /#/workspace?provider=ide"]} compact />;
-  return <TreeList title={`${paneLabel(panel)} Dock`} items={["该窗格已移动到底部 Dock", "命令面板可再次移动到左侧或右侧", "后续插件窗格可复用同一 placement contract"]} />;
+  return <TreeList title={`${paneLabel(panel)} Dock`} items={["该窗格已移动到当前 Dock", "命令面板可再次移动到顶部、左侧、右侧或底部", "后续插件窗格可复用同一 placement contract"]} />;
 }
 
 function TreeList({ title, items }: { title: string; items: string[] }) {
@@ -1579,9 +1699,10 @@ function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder):
       nextGroups[placements[pane.id] ?? pane.defaultPlacement].push(pane.id);
       return nextGroups;
     },
-    { left: [], right: [], bottom: [] } as PaneOrder,
+    { top: [], left: [], right: [], bottom: [] } as PaneOrder,
   );
   return {
+    top: orderPaneGroup(groups.top, order.top),
     left: orderPaneGroup(groups.left, order.left),
     right: orderPaneGroup(groups.right, order.right),
     bottom: orderPaneGroup(groups.bottom, order.bottom),
@@ -1598,6 +1719,7 @@ function orderPaneGroup(panes: PaneId[], preferredOrder: PaneId[]): PaneId[] {
 
 function reorderPane(current: PaneOrder, paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId): PaneOrder {
   const next: PaneOrder = {
+    top: current.top.filter((id) => id !== paneId),
     left: current.left.filter((id) => id !== paneId),
     right: current.right.filter((id) => id !== paneId),
     bottom: current.bottom.filter((id) => id !== paneId),
@@ -1614,12 +1736,14 @@ function reorderPane(current: PaneOrder, paneId: PaneId, placement: PanePlacemen
 }
 
 function placementLabel(placement: PanePlacement): string {
+  if (placement === "top") return "顶部";
   if (placement === "left") return "左侧";
   if (placement === "right") return "右侧";
   return "底部";
 }
 
 function placementShortLabel(placement: PanePlacement): string {
+  if (placement === "top") return "T";
   if (placement === "left") return "L";
   if (placement === "right") return "R";
   return "B";
@@ -1644,6 +1768,11 @@ function keyboardResizeDelta(pane: keyof IdePaneSizes, key: string, step: number
     if (key === "ArrowDown") return -step;
     return 0;
   }
+  if (pane === "top") {
+    if (key === "ArrowDown") return step;
+    if (key === "ArrowUp") return -step;
+    return 0;
+  }
   if (pane === "left") {
     if (key === "ArrowRight") return step;
     if (key === "ArrowLeft") return -step;
@@ -1655,10 +1784,10 @@ function keyboardResizeDelta(pane: keyof IdePaneSizes, key: string, step: number
 }
 
 function getPaneSizeLimits(pane: keyof IdePaneSizes): { min: number; max: number } {
-  if (pane === "bottom" && typeof window !== "undefined") {
+  if ((pane === "bottom" || pane === "top") && typeof window !== "undefined") {
     return {
-      min: PANE_SIZE_LIMITS.bottom.min,
-      max: Math.min(PANE_SIZE_LIMITS.bottom.max, Math.round(window.innerHeight * 0.64)),
+      min: PANE_SIZE_LIMITS[pane].min,
+      max: Math.min(PANE_SIZE_LIMITS[pane].max, Math.round(window.innerHeight * 0.5)),
     };
   }
   return PANE_SIZE_LIMITS[pane];
@@ -1721,6 +1850,7 @@ function sanitizeIdeLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
 
 function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
   return {
+    topOpen: typeof value.topOpen === "boolean" ? value.topOpen : undefined,
     leftOpen: typeof value.leftOpen === "boolean" ? value.leftOpen : undefined,
     rightOpen: typeof value.rightOpen === "boolean" ? value.rightOpen : undefined,
     bottomOpen: typeof value.bottomOpen === "boolean" ? value.bottomOpen : undefined,
@@ -1737,6 +1867,7 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
 function sanitizePaneOrder(value: Partial<PaneOrder> | undefined): Partial<PaneOrder> | undefined {
   if (!value) return undefined;
   return {
+    top: sanitizePaneOrderGroup(value.top),
     left: sanitizePaneOrderGroup(value.left),
     right: sanitizePaneOrderGroup(value.right),
     bottom: sanitizePaneOrderGroup(value.bottom),
@@ -1760,9 +1891,11 @@ function sanitizePanePlacements(value: Partial<IdePanePlacements> | undefined): 
 function sanitizePaneSizes(value: Partial<IdePaneSizes> | undefined): Partial<IdePaneSizes> | undefined {
   if (!value) return undefined;
   const sizes: Partial<IdePaneSizes> = {};
+  const top = sanitizePaneSize("top", value.top);
   const left = sanitizePaneSize("left", value.left);
   const right = sanitizePaneSize("right", value.right);
   const bottom = sanitizePaneSize("bottom", value.bottom);
+  if (top !== undefined) sizes.top = top;
   if (left !== undefined) sizes.left = left;
   if (right !== undefined) sizes.right = right;
   if (bottom !== undefined) sizes.bottom = bottom;
@@ -1776,7 +1909,7 @@ function sanitizePaneSize(pane: keyof IdePaneSizes, value: number | undefined): 
 }
 
 function isPanePlacement(value: unknown): value is PanePlacement {
-  return value === "left" || value === "right" || value === "bottom";
+  return value === "top" || value === "left" || value === "right" || value === "bottom";
 }
 
 function sanitizeEditorSplitRatio(value: number | undefined): number | undefined {
@@ -1793,7 +1926,7 @@ function isLayoutPreset(value: unknown): value is LayoutPreset {
 }
 
 function isMaximizedPane(value: unknown): value is MaximizedPane {
-  return value === null || value === "left" || value === "center" || value === "right" || value === "bottom";
+  return value === null || value === "top" || value === "left" || value === "center" || value === "right" || value === "bottom";
 }
 
 function formatSnapshotTime(value: string): string {

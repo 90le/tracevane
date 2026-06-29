@@ -25,7 +25,7 @@ test("new Workspace IDE shell models pane/plugin composition", () => {
   }
   assert.match(shellSource, /PANE_REGISTRY/);
   assert.match(shellSource, /DEFAULT_PANE_PLACEMENTS/);
-  assert.match(shellSource, /type PanePlacement = "left" \| "right" \| "bottom"/);
+  assert.match(shellSource, /type PanePlacement = "top" \| "left" \| "right" \| "bottom"/);
   assert.match(shellSource, /WorkspaceExplorer/);
   assert.match(shellSource, /WorkspaceSearchPanel/);
   assert.match(shellSource, /WorkspaceGitPanel/);
@@ -51,16 +51,18 @@ test("new Workspace IDE shell is responsive for desktop tablet and phone", () =>
 
 
 test("new Workspace IDE shell has explicit mobile panel switching", () => {
-  assert.match(shellSource, /type MobilePanel = "editor" \| "left" \| "right" \| "bottom"/);
+  assert.match(shellSource, /type MobilePanel = "editor" \| "top" \| "left" \| "right" \| "bottom"/);
   assert.match(shellSource, /mobilePanel/);
   assert.match(shellSource, /data-ide-mobile-panel=\{mobilePanel\}/);
   assert.match(shellSource, /workspace-ide-shell__mobile-switcher/);
   assert.match(shellSource, /手机工作区面板切换/);
+  assert.match(shellSource, /setTopOpen\(true\);\n\s+setMobilePanel\("top"\)/);
   assert.match(shellSource, /setLeftOpen\(true\);\n\s+setMobilePanel\("left"\)/);
   assert.match(shellSource, /setRightOpen\(true\);\n\s+setMobilePanel\("right"\)/);
   assert.match(shellSource, /setBottomOpen\(true\);\n\s+setMobilePanel\("bottom"\)/);
   assert.match(shellSource, /移动面板: \{mobilePanel\}/);
   assert.match(cssSource, /workspace-ide-shell__mobile-switcher/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="top"\] \.workspace-ide-shell__center/);
   assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="left"\] \.workspace-ide-shell__left-pane/);
   assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="right"\] \.workspace-ide-shell__right-pane/);
   assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="bottom"\] \.workspace-ide-shell__center/);
@@ -99,6 +101,7 @@ test("new Workspace IDE shell supports real pane layout controls", () => {
   assert.match(shellSource, /applyLayoutPreset\("balanced"\)/);
   assert.match(shellSource, /applyLayoutPreset\("code"\)/);
   assert.match(shellSource, /applyLayoutPreset\("terminal"\)/);
+  assert.match(cssSource, /--ide-top-height/);
   assert.match(cssSource, /--ide-left-width/);
   assert.match(cssSource, /--ide-right-width/);
   assert.match(cssSource, /--ide-bottom-height/);
@@ -153,11 +156,12 @@ test("new Workspace IDE shell supports movable pane registry placements", () => 
   assert.match(shellSource, /panePlacements/);
   assert.match(shellSource, /groupPanesByPlacement/);
   assert.match(shellSource, /movePaneToPlacement/);
+  assert.match(shellSource, /\["top", "left", "right", "bottom"\] as PanePlacement\[\]/);
   assert.match(shellSource, /ide\.pane\.move\.\$\{pane\.id\}\.\$\{placement\}/);
   assert.match(shellSource, /placementLabel/);
   assert.match(shellSource, /sanitizePanePlacements/);
   assert.match(shellSource, /isPanePlacement/);
-  assert.match(shellSource, /窗格: L\{leftPaneIds\.length\}\/R\{rightPaneIds\.length\}\/B\{bottomPaneIds\.length\}/);
+  assert.match(shellSource, /窗格: T\{topPaneIds\.length\}\/L\{leftPaneIds\.length\}\/R\{rightPaneIds\.length\}\/B\{bottomPaneIds\.length\}/);
 });
 
 test("new Workspace IDE shell exposes direct dock controls for pane movement", () => {
@@ -197,6 +201,7 @@ test("new Workspace IDE shell supports drag and drop pane docking", () => {
   assert.match(shellSource, /function dragPaneOverDock/);
   assert.match(shellSource, /function dropPaneOnDock/);
   assert.match(shellSource, /function leavePaneDock/);
+  assert.match(shellSource, /data-ide-dock-placement="top"/);
   assert.match(shellSource, /data-ide-dock-placement="left"/);
   assert.match(shellSource, /data-ide-dock-placement="right"/);
   assert.match(shellSource, /data-ide-dock-placement="bottom"/);
@@ -210,21 +215,44 @@ test("new Workspace IDE shell supports drag and drop pane docking", () => {
 });
 
 
+
+test("new Workspace IDE shell supports top dock pane placement", () => {
+  assert.match(shellSource, /topOpen/);
+  assert.match(shellSource, /topPanel/);
+  assert.match(shellSource, /topPaneIds/);
+  assert.match(shellSource, /activeTopPane/);
+  assert.match(shellSource, /data-testid="workspace-ide-top-pane"/);
+  assert.match(shellSource, /data-ide-dock-placement="top"/);
+  assert.match(shellSource, /placement="top"/);
+  assert.match(shellSource, /setTopOpen\(true\)/);
+  assert.match(shellSource, /toggleMaximizedPane\("top"\)/);
+  assert.match(shellSource, /ResizeHandle[\s\S]*pane="top"/);
+  assert.match(shellSource, /T\{topPaneIds\.length\}/);
+  assert.match(cssSource, /--ide-top-height/);
+  assert.match(cssSource, /workspace-ide-shell__top-dock/);
+  assert.match(cssSource, /workspace-ide-shell__top-tabs/);
+  assert.match(cssSource, /workspace-ide-shell__top-tab/);
+  assert.match(cssSource, /workspace-ide-shell__body--max-top/);
+  assert.match(cssSource, /data-ide-resize-handle="top"/);
+});
+
 test("new Workspace IDE shell persists pane order and supports tab reorder drops", () => {
   assert.match(shellSource, /type PaneOrder = Record<PanePlacement, PaneId\[\]>/);
+  assert.match(shellSource, /topPaneIds/);
   assert.match(shellSource, /DEFAULT_PANE_ORDER/);
   assert.match(shellSource, /paneOrder/);
   assert.match(shellSource, /setPaneOrder/);
   assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder\)/);
   assert.match(shellSource, /function reorderPane/);
   assert.match(shellSource, /beforePaneId\?: PaneId/);
+  assert.match(shellSource, /dropPaneOnDock\("top", event, paneId\)/);
   assert.match(shellSource, /dropPaneOnDock\("left", event, item\.id\)/);
   assert.match(shellSource, /dropPaneOnDock\("bottom", event, paneId\)/);
   assert.match(shellSource, /dropPaneOnDock\("right", event, paneId\)/);
   assert.match(shellSource, /function sanitizePaneOrder/);
   assert.match(shellSource, /function sanitizePaneOrderGroup/);
   assert.match(shellSource, /paneOrder: sanitizePaneOrder\(value\.paneOrder\)/);
-  assert.match(shellSource, /顺序: \{leftPaneIds\.join\("\|"\)/);
+  assert.match(shellSource, /顺序: \{topPaneIds\.join\("\|"\)/);
 });
 
 test("new Workspace IDE shell supports named local layout snapshots", () => {
