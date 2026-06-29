@@ -10,11 +10,15 @@ import {
   subscribeWorkspaceEvidenceBasket,
   type WorkspaceEvidenceRecord,
 } from "./WorkspaceEvidenceBasket";
-import { WorkspaceEvidenceReviewPanel } from "./WorkspaceEvidenceReviewPanel";
+import {
+  WorkspaceEvidenceReviewPanel,
+  type WorkspaceEvidenceReviewDensity,
+} from "./WorkspaceEvidenceReviewPanel";
 
 export interface WorkspaceEvidenceReviewSurfaceProps {
   objective?: string;
   className?: string;
+  density?: WorkspaceEvidenceReviewDensity;
   initialRecords?: WorkspaceEvidenceRecord[];
   onCopyHandoff?: (handoff: string) => void;
   onRecordsChange?: (records: WorkspaceEvidenceRecord[]) => void;
@@ -23,6 +27,7 @@ export interface WorkspaceEvidenceReviewSurfaceProps {
 export function WorkspaceEvidenceReviewSurface({
   objective,
   className,
+  density = "comfortable",
   initialRecords,
   onCopyHandoff,
   onRecordsChange,
@@ -63,8 +68,15 @@ export function WorkspaceEvidenceReviewSurface({
   }, [onCopyHandoff]);
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
+    <div
+      className={cn("space-y-3", className)}
+      aria-live="polite"
+      data-workspace-evidence-review-density={density}
+    >
+      <div className={cn(
+          "flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-950/70 text-xs text-slate-300",
+          density === "compact" ? "px-2.5 py-2" : "px-3 py-2",
+        )}>
         <div className="flex items-center gap-2">
           <span className="size-2 rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.8)]" aria-hidden="true" />
           Live evidence basket · {records.length} records
@@ -90,6 +102,7 @@ export function WorkspaceEvidenceReviewSurface({
       <WorkspaceEvidenceReviewPanel
         records={records}
         objective={objective}
+        density={density}
         onCopyHandoff={handleCopy}
         onClearEvidence={handleClear}
       />

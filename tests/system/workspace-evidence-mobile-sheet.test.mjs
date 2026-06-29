@@ -16,6 +16,7 @@ test("Workspace Evidence Mobile Sheet provides a responsive review entry point",
   assert.match(sheet, /WorkspaceEvidenceReviewSurface/);
   assert.match(sheet, /w-\[min\(720px,96vw\)\]/);
   assert.match(sheet, /sm:w-\[min\(760px,94vw\)\]/);
+  assert.match(sheet, /density="compact"/);
   assert.match(sheet, /initialRecords=\{initialRecords\}/);
   assert.match(sheet, /onCopyHandoff=\{onCopyHandoff\}/);
   assert.match(sheet, /onRecordsChange=\{onRecordsChange\}/);

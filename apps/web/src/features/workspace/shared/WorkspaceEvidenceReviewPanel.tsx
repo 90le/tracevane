@@ -19,10 +19,13 @@ import {
   WORKSPACE_EVIDENCE_HANDOFF_RECORD_LIMIT,
 } from "./WorkspaceEvidenceHandoff";
 
+export type WorkspaceEvidenceReviewDensity = "comfortable" | "compact";
+
 export interface WorkspaceEvidenceReviewPanelProps {
   records: WorkspaceEvidenceRecord[];
   objective?: string;
   className?: string;
+  density?: WorkspaceEvidenceReviewDensity;
   onCopyHandoff?: (handoff: string) => void;
   onClearEvidence?: () => void;
 }
@@ -31,6 +34,7 @@ export function WorkspaceEvidenceReviewPanel({
   records,
   objective,
   className,
+  density = "comfortable",
   onCopyHandoff,
   onClearEvidence,
 }: WorkspaceEvidenceReviewPanelProps) {
@@ -55,13 +59,24 @@ export function WorkspaceEvidenceReviewPanel({
     <section
       aria-label="Workspace evidence review"
       className={cn(
-        "relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] p-4 text-slate-100 shadow-2xl shadow-black/30 sm:p-5",
+        "relative overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] text-slate-100 shadow-2xl shadow-black/30",
+        density === "compact" ? "rounded-2xl p-3" : "rounded-3xl p-4 sm:p-5",
         className,
       )}
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <header className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl">
+      <div
+        className={cn(
+          "grid gap-4",
+          density === "compact" ? "grid-cols-1" : "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]",
+        )}
+      >
+        <header
+          className={cn(
+            "space-y-4 rounded-2xl border border-white/10 bg-white/[0.045] backdrop-blur-xl",
+            density === "compact" ? "p-3" : "p-4",
+          )}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
               <Badge variant="outline" className="border-cyan-300/30 bg-cyan-300/10 text-cyan-100">
@@ -72,7 +87,12 @@ export function WorkspaceEvidenceReviewPanel({
                 <h2 className="text-xl font-semibold tracking-[-0.02em] text-white">
                   Evidence handoff
                 </h2>
-                <p className="mt-1 max-w-prose text-sm leading-6 text-slate-300">
+                <p
+                  className={cn(
+                    "mt-1 max-w-prose text-sm leading-6 text-slate-300",
+                    density === "compact" && "line-clamp-2",
+                  )}
+                >
                   Package selected context, diffs, commands, and verification records into a bounded read-only packet before AI coding or writing work proceeds.
                 </p>
               </div>
@@ -104,7 +124,12 @@ export function WorkspaceEvidenceReviewPanel({
             </div>
           </div>
 
-          <dl className="grid grid-cols-3 gap-2 text-sm">
+          <dl
+            className={cn(
+              "grid gap-2 text-sm",
+              density === "compact" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-3",
+            )}
+          >
             <EvidenceMetric label="Records" value={packet.records.length} />
             <EvidenceMetric label="Limit" value={WORKSPACE_EVIDENCE_HANDOFF_RECORD_LIMIT} />
             <EvidenceMetric label="Schema" value={`v${packet.schemaVersion}`} />
@@ -119,12 +144,20 @@ export function WorkspaceEvidenceReviewPanel({
           </div>
         </header>
 
-        <div className="grid min-h-[18rem] gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 sm:grid-cols-2">
+        <div
+          className={cn(
+            "grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-3",
+            density === "compact" ? "max-h-[min(56dvh,520px)] overflow-y-auto" : "min-h-[18rem] sm:grid-cols-2",
+          )}
+        >
           {packet.records.length ? (
             packet.records.map((record) => (
               <article
                 key={record.id}
-                className="group flex min-h-36 flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.055] p-3 transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-white/[0.075]"
+                className={cn(
+                  "group flex flex-col justify-between rounded-2xl border border-white/10 bg-white/[0.055] p-3 transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-white/[0.075]",
+                  density === "compact" ? "min-h-28" : "min-h-36",
+                )}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
@@ -137,7 +170,12 @@ export function WorkspaceEvidenceReviewPanel({
                     <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-white">
                       {record.title}
                     </h3>
-                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">
+                    <p
+                      className={cn(
+                        "mt-2 text-xs leading-5 text-slate-300",
+                        density === "compact" ? "line-clamp-2" : "line-clamp-3",
+                      )}
+                    >
                       {record.summary}
                     </p>
                   </div>
@@ -148,7 +186,12 @@ export function WorkspaceEvidenceReviewPanel({
               </article>
             ))
           ) : (
-            <div className="col-span-full flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.035] p-8 text-center">
+            <div
+              className={cn(
+                "col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.035] text-center",
+                density === "compact" ? "min-h-44 p-5" : "min-h-64 p-8",
+              )}
+            >
               <Layers3 className="mb-3 size-8 text-cyan-200/80" aria-hidden="true" />
               <h3 className="text-base font-semibold text-white">No evidence selected</h3>
               <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">

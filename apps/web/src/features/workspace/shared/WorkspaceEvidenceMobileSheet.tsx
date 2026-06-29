@@ -59,6 +59,7 @@ export function WorkspaceEvidenceMobileSheet({
         <SheetBody className="bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.14),transparent_34%),#020617] p-3 sm:p-4">
           <WorkspaceEvidenceReviewSurface
             objective={objective}
+            density="compact"
             initialRecords={initialRecords}
             onCopyHandoff={onCopyHandoff}
             onRecordsChange={onRecordsChange}

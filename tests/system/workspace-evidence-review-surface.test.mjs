@@ -14,11 +14,17 @@ test("Workspace Evidence Review Surface wires the cockpit to the live basket", (
   assert.match(surface, /readWorkspaceEvidenceBasket/);
   assert.match(surface, /subscribeWorkspaceEvidenceBasket/);
   assert.match(surface, /clearWorkspaceEvidenceBasket/);
+  assert.match(surface, /WorkspaceEvidenceReviewDensity/);
   assert.match(surface, /WorkspaceEvidenceReviewPanel/);
   assert.match(surface, /Live evidence basket/);
   assert.match(surface, /aria-label="Refresh workspace evidence records"/);
+  assert.match(surface, /aria-live="polite"/);
+  assert.match(surface, /data-workspace-evidence-review-density=\{density\}/);
   assert.match(surface, /onRecordsChange\?\.\(nextRecords\)/);
+  assert.match(surface, /density=\{density\}/);
   assert.match(surface, /onClearEvidence=\{handleClear\}/);
+  assert.match(panel, /export type WorkspaceEvidenceReviewDensity = "comfortable" \| "compact"/);
+  assert.match(panel, /density\?: WorkspaceEvidenceReviewDensity/);
   assert.match(panel, /onClearEvidence\?: \(\) => void/);
   assert.match(panel, /aria-label="Clear workspace evidence records"/);
   assert.match(panel, /disabled=\{!packet\.records\.length\}/);
