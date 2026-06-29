@@ -11,6 +11,7 @@ test("Season One responsive contract covers desktop tablet and phone explicitly"
   const doc = readRoot("docs/Workspace第一季前端推翻重构总纲.md");
   const frame = readWeb("features/workspace/shared/WorkspaceSeasonOneFrame.tsx");
   const preview = readWeb("features/workspace/shared/WorkspaceSeasonOneFramePreview.tsx");
+  const model = readWeb("features/workspace/shared/WorkspaceSeasonOneProductModel.ts");
   const router = readWeb("app/router.tsx");
 
   assert.match(doc, /Desktop ≥ 1280/);
@@ -22,10 +23,10 @@ test("Season One responsive contract covers desktop tablet and phone explicitly"
   assert.match(frame, /className="md:hidden"/);
   assert.match(frame, /data-workspace-season-one-mobile-switcher/);
   assert.match(preview, /Workspace mobile task switcher/);
-  assert.match(preview, /[\[\{]\s*[\"']Files[\"'],?\s*(?:icon:\s*)?FileText/);
-  assert.match(preview, /[\[\{]\s*[\"']Stage[\"'],?\s*(?:icon:\s*)?Braces/);
-  assert.match(preview, /[\[\{]\s*[\"']AI[\"'],?\s*(?:icon:\s*)?Bot/);
-  assert.match(preview, /[\[\{]\s*[\"']Evidence[\"'],?\s*(?:icon:\s*)?ShieldCheck/);
-  assert.match(preview, /[\[\{]\s*[\"']Run[\"'],?\s*(?:icon:\s*)?Play/);
+  assert.match(model, /id: "files", label: "Files", icon: "files"/);
+  assert.match(model, /id: "stage", label: "Stage", icon: "code"/);
+  assert.match(model, /id: "ai", label: "AI", icon: "ai"/);
+  assert.match(model, /id: "evidence", label: "Evidence", icon: "evidence"/);
+  assert.match(model, /id: "run", label: "Run", icon: "run"/);
   assert.match(router, /path="\/workspace\/season-one"/);
 });

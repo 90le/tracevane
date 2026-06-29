@@ -19,6 +19,7 @@ import {
   Sparkles,
   Terminal,
   TimerReset,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
@@ -26,72 +27,72 @@ import { Button } from "@/design/ui/button";
 
 import { WorkspaceEvidenceResponsiveLauncher } from "./WorkspaceEvidenceResponsiveLauncher";
 import { WorkspaceSeasonOneFrame } from "./WorkspaceSeasonOneFrame";
+import {
+  createWorkspaceSeasonOnePreviewModel,
+  type WorkspaceSeasonOneIconKey,
+  type WorkspaceSeasonOneInsightCard,
+  type WorkspaceSeasonOneProductModel,
+} from "./WorkspaceSeasonOneProductModel";
 
-const activityItems = [
-  { label: "Files", icon: FileText, active: true },
-  { label: "Search", icon: Search },
-  { label: "Git", icon: GitBranch },
-  { label: "Run", icon: Terminal },
-  { label: "Evidence", icon: ShieldCheck },
-];
+const iconByKey: Record<WorkspaceSeasonOneIconKey, LucideIcon> = {
+  ai: Bot,
+  code: Braces,
+  command: Command,
+  evidence: ShieldCheck,
+  files: FileText,
+  git: GitBranch,
+  panel: PanelBottom,
+  run: Play,
+  search: Search,
+  stage: FileCode2,
+  terminal: Terminal,
+  timer: TimerReset,
+  writing: PenLine,
+};
 
-const resources = [
-  { label: "DESIGN.md", meta: "design contract", state: "open" },
-  { label: "apps/web/workspace", meta: "frontend shell", state: "active" },
-  { label: "Season One acceptance", meta: "desktop · tablet · phone", state: "locked" },
-  { label: "Evidence packet", meta: "tests · screenshots · diff", state: "ready" },
-  { label: "Terminal run", meta: "smoke verified", state: "clean" },
-];
+const insightToneClass: Record<WorkspaceSeasonOneInsightCard["tone"], string> = {
+  amber: "text-amber-500",
+  cyan: "text-cyan-500",
+  violet: "text-violet-500",
+};
 
-const phases = [
-  {
-    label: "Frame",
-    status: "done",
-    copy: "Topbar, rails, stage, panel, status and mobile switcher are separated as replaceable slots.",
-  },
-  {
-    label: "Work stage",
-    status: "active",
-    copy: "Coding, writing, preview and AI review converge around one visible task artifact.",
-  },
-  {
-    label: "Evidence",
-    status: "next",
-    copy: "Every AI handoff must attach files, commands, tests and approval state before apply.",
-  },
-];
+export interface WorkspaceSeasonOneFramePreviewProps {
+  model?: WorkspaceSeasonOneProductModel;
+}
 
-export function WorkspaceSeasonOneFramePreview() {
+export function WorkspaceSeasonOneFramePreview({
+  model = createWorkspaceSeasonOnePreviewModel(),
+}: WorkspaceSeasonOneFramePreviewProps) {
   return (
     <WorkspaceSeasonOneFrame
-      topbar={<SeasonOneTopbar />}
-      activityRail={<SeasonOneActivityRail />}
-      resources={<SeasonOneResources />}
-      stage={<SeasonOnePrimaryStage />}
-      contextRail={<SeasonOneContextRail />}
-      bottomPanel={<SeasonOneBottomPanel />}
-      statusBar={<SeasonOneStatusBar />}
-      mobileSwitcher={<SeasonOneMobileSwitcher />}
+      topbar={<SeasonOneTopbar model={model} />}
+      activityRail={<SeasonOneActivityRail model={model} />}
+      resources={<SeasonOneResources model={model} />}
+      stage={<SeasonOnePrimaryStage model={model} />}
+      contextRail={<SeasonOneContextRail model={model} />}
+      bottomPanel={<SeasonOneBottomPanel model={model} />}
+      statusBar={<SeasonOneStatusBar model={model} />}
+      mobileSwitcher={<SeasonOneMobileSwitcher model={model} />}
     />
   );
 }
 
-function SeasonOneTopbar() {
+function SeasonOneTopbar({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="flex min-h-12 items-center gap-3 px-3 text-sm" data-season-one-command-center>
       <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 shadow-[0_0_40px_rgba(34,211,238,0.08)]">
         <Boxes className="size-4 text-cyan-200" aria-hidden="true" />
-        <span className="font-semibold text-white">Tracevane Season One</span>
+        <span className="font-semibold text-white">{model.identity.title}</span>
       </div>
       <div className="hidden min-w-0 items-center gap-2 text-slate-400 md:flex">
-        <span>project-root</span>
+        <span>{model.identity.rootLabel}</span>
         <ChevronRight className="size-3.5" aria-hidden="true" />
-        <span className="text-cyan-200">AI coding + writing studio</span>
+        <span className="text-cyan-200">{model.identity.modeLabel}</span>
       </div>
       <div className="hidden min-w-0 flex-1 justify-center lg:flex">
         <div className="flex w-full max-w-xl items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-slate-400">
           <Command className="size-4 text-slate-500" aria-hidden="true" />
-          <span className="truncate">Ask, search, run, cite evidence, or open any workspace command</span>
+          <span className="truncate">{model.identity.commandPlaceholder}</span>
           <kbd className="ml-auto rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</kbd>
         </div>
       </div>
@@ -102,37 +103,40 @@ function SeasonOneTopbar() {
         </Button>
         <Button size="sm" variant="primary" aria-label="Start AI handoff">
           <Bot aria-hidden="true" />
-          <span className="hidden sm:inline">AI Handoff</span>
+          <span className="hidden sm:inline">{model.identity.primaryActionLabel}</span>
         </Button>
       </div>
     </div>
   );
 }
 
-function SeasonOneActivityRail() {
+function SeasonOneActivityRail({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="grid justify-items-center gap-3 p-2 text-slate-400">
-      {activityItems.map(({ label, icon: Icon, active }) => (
-        <button
-          key={label}
-          type="button"
-          className={[
-            "grid size-10 place-items-center rounded-2xl border transition",
-            active
-              ? "border-cyan-300/45 bg-cyan-300/15 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
-              : "border-white/10 bg-white/[0.04] hover:border-cyan-300/40 hover:text-cyan-100",
-          ].join(" ")}
-          aria-label={`Workspace activity: ${label}`}
-          aria-current={active ? "page" : undefined}
-        >
-          <Icon className="size-4" aria-hidden="true" />
-        </button>
-      ))}
+      {model.activityItems.map((item) => {
+        const Icon = iconByKey[item.icon];
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={[
+              "grid size-10 place-items-center rounded-2xl border transition",
+              item.active
+                ? "border-cyan-300/45 bg-cyan-300/15 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+                : "border-white/10 bg-white/[0.04] hover:border-cyan-300/40 hover:text-cyan-100",
+            ].join(" ")}
+            aria-label={`Workspace activity: ${item.label}`}
+            aria-current={item.active ? "page" : undefined}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function SeasonOneResources() {
+function SeasonOneResources({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] text-sm" data-season-one-resource-map>
       <header className="border-b border-white/10 p-3">
@@ -148,13 +152,13 @@ function SeasonOneResources() {
         <div className="mb-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-amber-50">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">
             <CircleDot className="size-3" aria-hidden="true" />
-            Current mission
+            {model.mission.currentLabel}
           </div>
-          <p className="mt-2 text-sm leading-5">Replace the IDE shell with a focused AI work surface.</p>
+          <p className="mt-2 text-sm leading-5">{model.mission.currentBody}</p>
         </div>
-        {resources.map((item) => (
+        {model.resources.map((item) => (
           <div
-            key={item.label}
+            key={item.id}
             className="mb-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-slate-200"
           >
             <div className="flex items-center gap-2">
@@ -167,13 +171,13 @@ function SeasonOneResources() {
         ))}
       </div>
       <footer className="border-t border-white/10 p-3 text-xs text-slate-400">
-        <span className="text-cyan-200">5</span> artifacts attached to this task stage
+        {model.mission.resourceSummary}
       </footer>
     </div>
   );
 }
 
-function SeasonOnePrimaryStage() {
+function SeasonOnePrimaryStage({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <article className="mx-auto grid w-full max-w-6xl gap-5 p-4 sm:p-6 lg:p-8" data-season-one-primary-workstage>
       <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
@@ -188,19 +192,18 @@ function SeasonOnePrimaryStage() {
         <div className="grid gap-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="p-5 sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-300">
-              First season rebuild
+              {model.mission.eyebrow}
             </p>
             <h1 className="mt-3 max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-4xl dark:text-white">
-              Redesign the Workspace around one live task artifact.
+              {model.mission.title}
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              The new frame makes the editor or writing canvas dominant. Files, terminal, Git, AI,
-              previews and evidence become task context instead of competing page chrome.
+              {model.mission.body}
             </p>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {phases.map((phase) => (
+              {model.phases.map((phase) => (
                 <section
-                  key={phase.label}
+                  key={phase.id}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]"
                 >
                   <div className="flex items-center gap-2 text-sm font-semibold">
@@ -225,24 +228,21 @@ function SeasonOnePrimaryStage() {
             <div className="rounded-2xl border border-white/10 bg-black/50" data-season-one-ai-copilot>
               <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
                 <Sparkles className="size-4 text-cyan-300" aria-hidden="true" />
-                <span className="font-semibold">AI Work Partner</span>
+                <span className="font-semibold">{model.aiPartner.title}</span>
                 <Badge variant="outline" className="ml-auto border-emerald-300/25 bg-emerald-300/10 text-emerald-100">
-                  cited
+                  {model.aiPartner.badge}
                 </Badge>
               </div>
               <div className="space-y-3 p-4 text-sm leading-6 text-slate-300">
-                <p>
-                  “I can propose a workspace shell change, but I must show attached files, affected tests,
-                  viewport coverage and rollback notes before apply.”
-                </p>
+                <p>“{model.aiPartner.quote}”</p>
                 <div className="grid gap-2 text-xs">
                   <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                    <span className="text-slate-500">Context</span>
-                    <p className="mt-1 text-slate-200">DESIGN.md · Season One plan · browser smoke</p>
+                    <span className="text-slate-500">{model.aiPartner.contextLabel}</span>
+                    <p className="mt-1 text-slate-200">{model.aiPartner.contextValue}</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                    <span className="text-slate-500">Next action</span>
-                    <p className="mt-1 text-slate-200">Promote preview slots into live Workspace adapters.</p>
+                    <span className="text-slate-500">{model.aiPartner.nextActionLabel}</span>
+                    <p className="mt-1 text-slate-200">{model.aiPartner.nextActionValue}</p>
                   </div>
                 </div>
               </div>
@@ -255,68 +255,58 @@ function SeasonOnePrimaryStage() {
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/80">
           <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-sm dark:border-white/10">
             <FileCode2 className="size-4 text-cyan-500" aria-hidden="true" />
-            <span className="font-semibold">WorkspaceShell.tsx</span>
-            <Badge variant="outline" className="ml-auto">live draft</Badge>
+            <span className="font-semibold">{model.canvas.fileName}</span>
+            <Badge variant="outline" className="ml-auto">{model.canvas.badge}</Badge>
           </div>
           <div className="grid min-h-64 gap-0 md:grid-cols-2">
             <div className="border-b border-slate-200 p-4 md:border-b-0 md:border-r dark:border-white/10">
               <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <PenLine className="size-3.5" aria-hidden="true" />
-                Writing brief
+                {model.canvas.writingLabel}
               </div>
               <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-                Season One is not a page refresh. It is a new interaction model: task-first,
-                evidence-aware, keyboard-native, and readable on every viewport.
+                {model.canvas.writingBody}
               </p>
             </div>
             <pre className="min-h-0 overflow-auto bg-slate-950 p-4 font-mono text-xs leading-6 text-cyan-100">
-{`<WorkspaceSeasonOneFrame
-  topbar={<CommandCenter />}
-  resources={<TaskContext />}
-  stage={<EditorAndDraft />}
-  contextRail={<EvidenceRail />}
-  bottomPanel={<RunPanel />}
-/>`}
+              {model.canvas.codeSample}
             </pre>
           </div>
         </div>
 
         <div className="grid gap-3">
-          <section className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/80">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <MessageSquareText className="size-4 text-violet-500" aria-hidden="true" />
-              Review loop
-            </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Human notes, AI proposals and evidence review stay beside the work instead of hiding in another page.
-            </p>
-          </section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/80">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <TimerReset className="size-4 text-amber-500" aria-hidden="true" />
-              Recovery model
-            </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Layout reset, staged apply and rollback affordances are designed into the shell from day one.
-            </p>
-          </section>
+          {model.insightCards.map((card) => {
+            const Icon = iconByKey[card.icon];
+            return (
+              <section
+                key={card.id}
+                className="rounded-3xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/80"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Icon className={`size-4 ${insightToneClass[card.tone]}`} aria-hidden="true" />
+                  {card.label}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {card.body}
+                </p>
+              </section>
+            );
+          })}
         </div>
       </section>
     </article>
   );
 }
 
-function SeasonOneContextRail() {
+function SeasonOneContextRail({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden" data-season-one-evidence-rail>
       <header className="border-b border-white/10 p-3">
         <Badge variant="outline" className="border-emerald-300/25 bg-emerald-300/10 text-emerald-100">
-          Evidence
+          {model.evidence.badge}
         </Badge>
-        <h2 className="mt-2 font-semibold text-white">Approval cockpit</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-400">
-          The right rail is for proof, risk and handoff state—not another decorative sidebar.
-        </p>
+        <h2 className="mt-2 font-semibold text-white">{model.evidence.title}</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-400">{model.evidence.body}</p>
       </header>
       <div className="min-h-0 overflow-auto p-3">
         <WorkspaceEvidenceResponsiveLauncher />
@@ -325,59 +315,50 @@ function SeasonOneContextRail() {
   );
 }
 
-function SeasonOneBottomPanel() {
+function SeasonOneBottomPanel({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="grid min-h-40 grid-rows-[auto_minmax(0,1fr)] text-sm" data-season-one-run-panel>
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-slate-300">
         <PanelBottom className="size-4 text-slate-500" aria-hidden="true" />
-        <span className="font-medium text-slate-200">Run panel</span>
+        <span className="font-medium text-slate-200">{model.runPanel.title}</span>
         <Badge variant="outline" className="border-emerald-300/25 bg-emerald-300/10 text-emerald-100">
-          verified
+          {model.runPanel.badge}
         </Badge>
-        <span className="ml-auto hidden text-xs text-slate-500 sm:inline">terminal · tests · agent runs</span>
+        <span className="ml-auto hidden text-xs text-slate-500 sm:inline">{model.runPanel.subtitle}</span>
       </div>
       <pre className="min-h-0 overflow-auto p-3 font-mono text-xs leading-6 text-emerald-300">
-{`binbin@tracevane:~/workspace$ npm run verify:workspace-season-one
-✓ desktop frame: command center, resource map, evidence rail
-✓ tablet frame: two-column task shell
-✓ phone frame: single-stage with mobile task switcher`}
+        {model.runPanel.transcript}
       </pre>
     </div>
   );
 }
 
-function SeasonOneStatusBar() {
+function SeasonOneStatusBar({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <div className="flex min-h-7 items-center gap-3 px-3 text-xs">
       <GitBranch className="size-3.5" aria-hidden="true" />
-      <span>main</span>
+      <span>{model.status.branch}</span>
       <CheckCircle2 className="size-3.5" aria-hidden="true" />
-      <span>evidence ready</span>
-      <span className="hidden sm:inline">desktop · tablet · phone</span>
-      <span className="ml-auto">Season One Frame Preview</span>
+      <span>{model.status.health}</span>
+      <span className="hidden sm:inline">{model.status.viewportCoverage}</span>
+      <span className="ml-auto">{model.status.label}</span>
     </div>
   );
 }
 
-function SeasonOneMobileSwitcher() {
+function SeasonOneMobileSwitcher({ model }: { model: WorkspaceSeasonOneProductModel }) {
   return (
     <nav
       aria-label="Workspace mobile task switcher"
       className="grid grid-cols-5 border-t border-white/10 bg-slate-950 text-[11px] text-slate-300"
       data-season-one-mobile-navigation
     >
-      {[
-        ["Files", FileText],
-        ["Stage", Braces],
-        ["AI", Bot],
-        ["Evidence", ShieldCheck],
-        ["Run", Play],
-      ].map(([label, Icon]) => {
-        const TaskIcon = Icon as React.ComponentType<{ className?: string }>;
+      {model.mobileTasks.map((task) => {
+        const TaskIcon = iconByKey[task.icon];
         return (
-          <button key={label as string} type="button" className="grid justify-items-center gap-1 px-1 py-2">
+          <button key={task.id} type="button" className="grid justify-items-center gap-1 px-1 py-2">
             <TaskIcon className="size-4" aria-hidden="true" />
-            <span>{label as string}</span>
+            <span>{task.label}</span>
           </button>
         );
       })}

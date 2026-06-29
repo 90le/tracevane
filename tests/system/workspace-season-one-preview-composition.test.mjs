@@ -7,6 +7,8 @@ const readWeb = (rel) =>
 
 test("Season One preview composes the first-class workspace product model", () => {
   const preview = readWeb("features/workspace/shared/WorkspaceSeasonOneFramePreview.tsx");
+  const model = readWeb("features/workspace/shared/WorkspaceSeasonOneProductModel.ts");
+  const barrel = readWeb("features/workspace/shared/index.ts");
 
   assert.match(preview, /data-season-one-command-center/);
   assert.match(preview, /data-season-one-resource-map/);
@@ -17,13 +19,18 @@ test("Season One preview composes the first-class workspace product model", () =
   assert.match(preview, /data-season-one-run-panel/);
   assert.match(preview, /data-season-one-mobile-navigation/);
 
-  assert.match(preview, /AI coding \+ writing studio/);
-  assert.match(preview, /Current mission/);
-  assert.match(preview, /Replace the IDE shell with a focused AI work surface/);
-  assert.match(preview, /AI Work Partner/);
-  assert.match(preview, /WorkspaceShell\.tsx/);
-  assert.match(preview, /Writing brief/);
-  assert.match(preview, /Review loop/);
-  assert.match(preview, /Recovery model/);
-  assert.match(preview, /desktop · tablet · phone/);
+  assert.match(preview, /model = createWorkspaceSeasonOnePreviewModel\(\)/);
+  assert.match(preview, /WorkspaceSeasonOneProductModel/);
+
+  assert.match(model, /interface WorkspaceSeasonOneProductModel/);
+  assert.match(model, /Current mission/);
+  assert.match(model, /AI coding \+ writing studio/);
+  assert.match(model, /Replace the IDE shell with a focused AI work surface/);
+  assert.match(model, /AI Work Partner/);
+  assert.match(model, /WorkspaceShell\.tsx/);
+  assert.match(model, /Writing brief/);
+  assert.match(model, /Review loop/);
+  assert.match(model, /Recovery model/);
+  assert.match(model, /desktop · tablet · phone/);
+  assert.match(barrel, /WorkspaceSeasonOneProductModel/);
 });
