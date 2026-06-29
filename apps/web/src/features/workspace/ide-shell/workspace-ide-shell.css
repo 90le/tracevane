@@ -554,3 +554,56 @@
 .workspace-ide-shell__editor-split-handle[data-ide-editor-split-handle="horizontal"] {
   cursor: row-resize;
 }
+
+.workspace-ide-shell__dock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.workspace-ide-shell__dock-tab.is-active {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.workspace-ide-shell__dock-tab.is-active .workspace-ide-shell__panel-tab,
+.workspace-ide-shell__dock-tab.is-active .workspace-ide-shell__right-tab {
+  background: transparent;
+  color: var(--ide-text);
+}
+
+.workspace-ide-shell__pane-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-top: 1px solid var(--ide-border);
+  background: rgba(2, 6, 23, 0.36);
+  padding: 6px 10px;
+}
+
+.workspace-ide-shell__pane-dock-controls.is-compact {
+  border-top: 0;
+  background: transparent;
+  padding: 0 4px 0 0;
+}
+
+.workspace-ide-shell__pane-dock-controls button {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  color: var(--ide-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.workspace-ide-shell__pane-dock-controls button:hover:not(:disabled),
+.workspace-ide-shell__pane-dock-controls button:focus-visible:not(:disabled) {
+  background: rgba(34, 211, 238, 0.16);
+  color: #cffafe;
+}
+
+.workspace-ide-shell__pane-dock-controls button:disabled {
+  opacity: 0.36;
+}

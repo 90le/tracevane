@@ -134,3 +134,17 @@ test("new Workspace IDE shell supports movable pane registry placements", () => 
   assert.match(shellSource, /isPanePlacement/);
   assert.match(shellSource, /窗格: L\{leftPaneIds\.length\}\/R\{rightPaneIds\.length\}\/B\{bottomPaneIds\.length\}/);
 });
+
+test("new Workspace IDE shell exposes direct dock controls for pane movement", () => {
+  assert.match(shellSource, /function PaneDockControls/);
+  assert.match(shellSource, /data-ide-pane-dock-controls=\{paneId\}/);
+  assert.match(shellSource, /placementShortLabel/);
+  assert.match(shellSource, /移动 \$\{paneLabel\(paneId\)\} 到\$\{placementLabel\(target\)\}/);
+  assert.match(shellSource, /关闭\$\{placementLabel\(placement\)\} Dock/);
+  assert.match(shellSource, /onMovePane\(paneId, target\)/);
+  assert.match(shellSource, /onCloseDock=\{\(\) => setLeftOpen\(false\)\}/);
+  assert.match(shellSource, /onCloseDock=\{\(\) => setRightOpen\(false\)\}/);
+  assert.match(shellSource, /onCloseDock=\{\(\) => setBottomOpen\(false\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__pane-dock-controls/);
+  assert.match(cssSource, /workspace-ide-shell__dock-tab/);
+});

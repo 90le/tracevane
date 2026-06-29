@@ -691,6 +691,12 @@ export function WorkspaceIdeShell() {
         {leftOpen ? (
           <section className="workspace-ide-shell__left-pane" data-testid="workspace-ide-left-pane">
             <PaneHeader title={paneLabel(activeLeftPane)} subtitle={leftPaneSubtitle(activeLeftPane)} />
+            <PaneDockControls
+              paneId={activeLeftPane}
+              placement="left"
+              onMovePane={movePaneToPlacement}
+              onCloseDock={() => setLeftOpen(false)}
+            />
             <LeftPane
               activity={activeLeftPane}
               rootId={rootId}
@@ -804,14 +810,22 @@ export function WorkspaceIdeShell() {
               />
               <div className="workspace-ide-shell__panel-tabs">
                 {bottomPaneIds.map((paneId) => (
-                  <button
+                  <div
                     key={paneId}
-                    type="button"
-                    className={cn("workspace-ide-shell__panel-tab", activeBottomPane === paneId && "is-active")}
-                    onClick={() => setBottomPanel(paneId)}
+                    className={cn("workspace-ide-shell__dock-tab", activeBottomPane === paneId && "is-active")}
+                    data-ide-dock-tab={paneId}
                   >
-                    {paneLabel(paneId)}
-                  </button>
+                    <button type="button" className="workspace-ide-shell__panel-tab" onClick={() => setBottomPanel(paneId)}>
+                      {paneLabel(paneId)}
+                    </button>
+                    <PaneDockControls
+                      paneId={paneId}
+                      placement="bottom"
+                      compact
+                      onMovePane={movePaneToPlacement}
+                      onCloseDock={() => setBottomOpen(false)}
+                    />
+                  </div>
                 ))}
                 <button
                   type="button"
@@ -846,14 +860,22 @@ export function WorkspaceIdeShell() {
           <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane" data-ide-pane="right">
             <div className="workspace-ide-shell__right-tabs">
               {rightPaneIds.map((paneId) => (
-                <button
+                <div
                   key={paneId}
-                  type="button"
-                  className={cn("workspace-ide-shell__right-tab", activeRightPane === paneId && "is-active")}
-                  onClick={() => setRightPanel(paneId)}
+                  className={cn("workspace-ide-shell__dock-tab", activeRightPane === paneId && "is-active")}
+                  data-ide-dock-tab={paneId}
                 >
-                  {paneLabel(paneId)}
-                </button>
+                  <button type="button" className="workspace-ide-shell__right-tab" onClick={() => setRightPanel(paneId)}>
+                    {paneLabel(paneId)}
+                  </button>
+                  <PaneDockControls
+                    paneId={paneId}
+                    placement="right"
+                    compact
+                    onMovePane={movePaneToPlacement}
+                    onCloseDock={() => setRightOpen(false)}
+                  />
+                </div>
               ))}
             </div>
             <RightPane
@@ -886,6 +908,43 @@ export function WorkspaceIdeShell() {
         commands={commands}
       />
     </main>
+  );
+}
+
+function PaneDockControls({
+  paneId,
+  placement,
+  compact = false,
+  onMovePane,
+  onCloseDock,
+}: {
+  paneId: PaneId;
+  placement: PanePlacement;
+  compact?: boolean;
+  onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
+  onCloseDock: () => void;
+}) {
+  const targets: PanePlacement[] = ["left", "right", "bottom"];
+  return (
+    <div
+      className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
+      data-ide-pane-dock-controls={paneId}
+    >
+      {targets.map((target) => (
+        <button
+          key={target}
+          type="button"
+          disabled={target === placement}
+          aria-label={`移动 ${paneLabel(paneId)} 到${placementLabel(target)}`}
+          onClick={() => onMovePane(paneId, target)}
+        >
+          {placementShortLabel(target)}
+        </button>
+      ))}
+      <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
+        ×
+      </button>
+    </div>
   );
 }
 
@@ -1200,6 +1259,12 @@ function placementLabel(placement: PanePlacement): string {
   if (placement === "left") return "左侧";
   if (placement === "right") return "右侧";
   return "底部";
+}
+
+function placementShortLabel(placement: PanePlacement): string {
+  if (placement === "left") return "L";
+  if (placement === "right") return "R";
+  return "B";
 }
 
 function editorSplitKeyboardDelta(mode: EditorSplitMode, key: string, step: number): number {
