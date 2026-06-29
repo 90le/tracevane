@@ -77,8 +77,8 @@ export function ContentIndexManager({
       rootId: indexScopeRootId,
       status: statusFilter,
       query,
-      offset: (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE,
-      limit: CONTENT_INDEX_RECORDS_PAGE_SIZE,
+      page,
+      pageSize: CONTENT_INDEX_RECORDS_PAGE_SIZE,
     },
     { enabled: Boolean(data) && recordsQueryReady },
   );
@@ -291,7 +291,9 @@ export function ContentIndexManager({
           <IndexRecordsPanel
             records={records}
             recordsPage={recordsPage.data}
-            loading={recordsPage.isFetching || stats.isLoading || !recordsQueryReady}
+            loading={
+              recordsPage.isFetching || stats.isLoading || !recordsQueryReady
+            }
             statusFilter={statusFilter}
             query={queryDraft}
             page={page}
@@ -454,10 +456,24 @@ function IndexRecordsPanel({
   onRevealPath?: (path: string, rootId?: string) => void;
   onOpenFile?: (entry: FileEntrySummary, rootId?: string) => void;
 }) {
-  const offset =
-    recordsPage?.offset ?? (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE;
-  const hasPrevious = offset > 0;
-  const hasNext = Boolean(recordsPage?.hasMore);
+  const resolvedPage = recordsPage?.page ?? page;
+  const pageSize = recordsPage?.pageSize ?? CONTENT_INDEX_RECORDS_PAGE_SIZE;
+  const totalPages = recordsPage?.totalPages ?? Math.max(1, Math.ceil(totalRecordCount / pageSize));
+  const offset = recordsPage?.offset ?? (resolvedPage - 1) * pageSize;
+  const hasPrevious = resolvedPage > 1;
+  const hasNext = resolvedPage < totalPages || Boolean(recordsPage?.hasMore);
+  const [jumpDraft, setJumpDraft] = React.useState(String(resolvedPage));
+  React.useEffect(() => {
+    setJumpDraft(String(resolvedPage));
+  }, [resolvedPage]);
+  const commitJump = React.useCallback(() => {
+    const next = Number(jumpDraft);
+    if (!Number.isFinite(next)) {
+      setJumpDraft(String(resolvedPage));
+      return;
+    }
+    onPageChange(Math.min(totalPages, Math.max(1, Math.floor(next))));
+  }, [jumpDraft, onPageChange, resolvedPage, totalPages]);
   const visibleStart = totalRecordCount > 0 ? offset + 1 : 0;
   const visibleEnd = Math.min(offset + records.length, totalRecordCount);
   const virtual = useVirtualRows(records, {
@@ -506,13 +522,13 @@ function IndexRecordsPanel({
         )}
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 py-2 text-xs text-muted">
-        <span>
-          {visibleStart}-{visibleEnd}/{totalRecordCount} · 第 {page} 页
+        <span className="min-w-0 truncate">
+          {visibleStart}-{visibleEnd}/{totalRecordCount} · 第 {resolvedPage}/{totalPages} 页
           {records.length > virtual.items.length
             ? ` · 已渲染 ${virtual.items.length}/${records.length}`
             : ""}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -536,16 +552,31 @@ function IndexRecordsPanel({
             size="sm"
             className="h-7 px-2 text-xs"
             disabled={!hasPrevious || loading}
-            onClick={() => onPageChange(Math.max(1, page - 1))}
+            onClick={() => onPageChange(Math.max(1, resolvedPage - 1))}
           >
             上一页
           </Button>
+          <label className="flex items-center gap-1 text-xs text-muted" data-content-index-page-jump>
+            跳至
+            <input
+              value={jumpDraft}
+              onChange={(event) => setJumpDraft(event.target.value)}
+              onBlur={commitJump}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitJump();
+              }}
+              inputMode="numeric"
+              className="h-7 w-14 rounded-md border border-line bg-panel px-2 text-center text-xs text-ink-strong outline-none focus:border-primary"
+              aria-label="跳转索引页码"
+            />
+            页
+          </label>
           <Button
             variant="outline"
             size="sm"
             className="h-7 px-2 text-xs"
             disabled={!hasNext || loading}
-            onClick={() => onPageChange(page + 1)}
+            onClick={() => onPageChange(Math.min(totalPages, resolvedPage + 1))}
           >
             下一页
           </Button>

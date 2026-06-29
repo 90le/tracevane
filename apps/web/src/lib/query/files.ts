@@ -40,7 +40,7 @@ import type {
   FilesReadParams,
   FilesSearchParams,
 } from "../api/files";
-import type { FilesContentIndexRecordsParams } from "../../../../../types/files";
+import type { FilesContentIndexRecordsParams, FilesTrashListParams } from "../../../../../types/files";
 import type { ApiError } from "../api/errors";
 import type {
   FilesDirectoryPayload,
@@ -123,7 +123,7 @@ export const filesKeys = {
       params.limit ?? null,
     ] as const,
   contentIndex: (rootId: string) => ["files", "content-index", rootId] as const,
-  trash: (rootId: string) => ["files", "trash", rootId] as const,
+  trash: (params: FilesTrashListParams) => ["files", "trash", params.rootId, params.page ?? 1, params.pageSize ?? null, params.offset ?? 0, params.limit ?? null, params.cursor ?? ""] as const,
   contentIndexRecords: (params: FilesContentIndexRecordsParams) =>
     [
       "files",
@@ -131,8 +131,11 @@ export const filesKeys = {
       params.rootId,
       params.status ?? "all",
       params.query ?? "",
+      params.page ?? null,
+      params.pageSize ?? null,
       params.offset ?? 0,
       params.limit ?? null,
+      params.cursor ?? "",
     ] as const,
 };
 
@@ -319,13 +322,15 @@ export function useFilesContentIndexRecordsQuery(
 
 /** Recycle-bin items for one root (`/api/files/trash`). */
 export function useFilesTrashQuery(
-  rootId: string | null,
+  params: string | FilesTrashListParams | null,
   options?: QueryOpts<FilesTrashPayload>,
 ) {
-  const scopeRootId = rootId || FILES_GLOBAL_SCOPE_ID;
+  const scopedParams: FilesTrashListParams = typeof params === "string" || !params
+    ? { rootId: params || FILES_GLOBAL_SCOPE_ID }
+    : { ...params, rootId: params.rootId || FILES_GLOBAL_SCOPE_ID };
   return useQuery<FilesTrashPayload, ApiError>({
-    queryKey: filesKeys.trash(scopeRootId),
-    queryFn: ({ signal }) => getFilesTrash(scopeRootId, signal),
+    queryKey: filesKeys.trash(scopedParams),
+    queryFn: ({ signal }) => getFilesTrash(scopedParams.rootId, signal, scopedParams),
     staleTime: 2 * 60_000,
     placeholderData: (previousData) => previousData,
     refetchOnWindowFocus: false,

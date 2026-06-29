@@ -26,6 +26,8 @@ import type {
 import type { FileOperationRecord } from "./OperationHistoryPanel";
 import { createOperationRecord } from "./OperationHistoryPanel";
 
+const TRASH_PAGE_SIZE = 50;
+
 export function TrashManager({
   onRevealPath,
   onRecord,
@@ -37,9 +39,11 @@ export function TrashManager({
 }) {
   const trashScopeRootId = FILES_GLOBAL_SCOPE_ID;
   const trashQueryReady = useIdleReady(120);
-  const trash = useFilesTrashQuery(trashScopeRootId, {
-    enabled: trashQueryReady,
-  });
+  const [page, setPage] = React.useState(1);
+  const trash = useFilesTrashQuery(
+    { rootId: trashScopeRootId, page, pageSize: TRASH_PAGE_SIZE },
+    { enabled: trashQueryReady },
+  );
   const restoreMutation = useRestoreFilesTrashMutation();
   const purgeMutation = usePurgeFilesTrashMutation();
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(
@@ -68,6 +72,16 @@ export function TrashManager({
     [items, selectedPaths],
   );
   const summary = React.useMemo(() => summarizeTrash(items), [items]);
+  const totalItems = trash.data?.totalItemCount ?? items.length;
+  const totalPages = trash.data?.totalPages ?? Math.max(1, Math.ceil(totalItems / TRASH_PAGE_SIZE));
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [category, deferredQuery]);
+
+  React.useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   React.useEffect(() => {
     setSelectedPaths(
@@ -164,21 +178,21 @@ export function TrashManager({
 
   return (
     <section
-      className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-panel"
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel"
       data-file-manager-trash-manager
     >
-      <header className="flex min-h-0 flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
+      <header className="grid gap-3 border-b border-line px-3 py-2 md:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">
             <Trash2 className="size-4" />
           </span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
               <h2 className="text-sm font-semibold text-ink-strong">
                 全局回收站
               </h2>
               <span className="rounded-full border border-line bg-panel-2 px-2 py-0.5 text-[11px] text-muted">
-                {items.length} 项 · {selectedItems.length} 已选
+                {totalItems} 项 · {selectedItems.length} 已选
               </span>
             </div>
             <p className="mt-0.5 truncate text-xs text-muted">
@@ -187,7 +201,7 @@ export function TrashManager({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
           <Button
             variant="outline"
             size="sm"
@@ -213,14 +227,15 @@ export function TrashManager({
         </div>
       </header>
 
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
       <div
-        className="grid gap-3 border-b border-line bg-panel-2/70 px-4 py-3 md:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] md:px-5"
+        className="grid gap-2 border-b border-line bg-panel-2/70 px-3 py-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] lg:px-4"
         data-file-manager-trash-overview
       >
         <TrashMetric
           icon={<ArchiveRestore className="size-4" />}
           label="全部项目"
-          value={`${items.length}`}
+          value={`${totalItems}`}
           hint={`${summary.rootCount} 个 root`}
         />
         <TrashMetric
@@ -253,7 +268,7 @@ export function TrashManager({
         </label>
       </div>
 
-      <div className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] px-4 py-3 md:px-5 lg:grid-cols-[150px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-3">
+      <div className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-2 sm:p-3 lg:grid-cols-[132px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-3">
         <TrashCategoryRail
           category={category}
           counts={categoryItems.counts}
@@ -261,7 +276,7 @@ export function TrashManager({
         />
         <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
           <div
-            className="flex flex-wrap items-center justify-between gap-2 rounded-t-xl border border-b-0 border-line bg-panel-2 px-3 py-2 text-xs text-muted"
+            className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-t-lg border border-b-0 border-line bg-panel-2 px-2 py-2 text-xs text-muted sm:px-3"
             data-file-manager-trash-toolbar
           >
             <label className="flex items-center gap-2">
@@ -307,7 +322,7 @@ export function TrashManager({
             </div>
           ) : (
             <div
-              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-b-xl border border-line bg-panel"
+              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-b-lg border border-line bg-panel"
               data-file-manager-trash-list
             >
               <div className="sticky top-0 z-10 hidden grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] gap-3 border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle lg:grid">
@@ -328,9 +343,18 @@ export function TrashManager({
                 onRestore={restoreItem}
                 onPurge={(item) => void purgeItems([item])}
               />
+              <TrashPagination
+                page={trash.data?.page ?? page}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                pageItems={visibleItems.length}
+                loading={trash.isFetching}
+                onPageChange={setPage}
+              />
             </div>
           )}
         </div>
+      </div>
       </div>
     </section>
   );
@@ -356,7 +380,7 @@ function TrashCategoryRail({
   ];
   return (
     <nav
-      className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-line bg-panel-2 p-1 text-xs lg:mb-0 lg:block lg:p-0"
+      className="mb-2 grid max-w-full grid-cols-3 gap-1 overflow-x-auto rounded-lg border border-line bg-panel-2 p-1 text-xs sm:grid-cols-5 lg:mb-0 lg:block lg:overflow-visible lg:p-0"
       aria-label="回收站分类"
       data-file-manager-trash-category-rail
     >
@@ -413,7 +437,7 @@ function TrashVirtualRows({
           {virtual.items.map((item) => (
             <article
               key={item.trashPath}
-              className="grid min-h-[68px] gap-2 border-b border-line px-3 py-2 [content-visibility:auto] [contain-intrinsic-size:68px] last:border-b-0 hover:bg-panel-2/70 lg:grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] lg:items-center lg:gap-3"
+              className="grid min-h-[68px] max-w-full gap-2 border-b border-line px-2 py-2 [content-visibility:auto] [contain-intrinsic-size:68px] last:border-b-0 hover:bg-panel-2/70 sm:px-3 lg:grid-cols-[42px_minmax(140px,1.1fr)_minmax(120px,0.65fr)_minmax(180px,1.4fr)_90px_142px] lg:items-center lg:gap-3"
               data-file-manager-trash-item={item.trashPath}
               data-file-manager-trash-root-id={item.rootId}
               data-file-manager-trash-original-path={item.originalPath}
@@ -457,7 +481,7 @@ function TrashVirtualRows({
               <span className="hidden text-xs text-muted lg:block">
                 {formatBytes(item.size ?? 0)}
               </span>
-              <span className="flex justify-end gap-1">
+              <span className="flex flex-wrap justify-end gap-1">
                 <Button
                   variant="outline"
                   size="sm"
@@ -485,6 +509,55 @@ function TrashVirtualRows({
         </div>
       </div>
     </div>
+  );
+}
+
+function TrashPagination({
+  page,
+  totalPages,
+  totalItems,
+  pageItems,
+  loading,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageItems: number;
+  loading: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  const [draft, setDraft] = React.useState(String(page));
+  React.useEffect(() => setDraft(String(page)), [page]);
+  const commit = React.useCallback(() => {
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(page));
+      return;
+    }
+    onPageChange(Math.min(totalPages, Math.max(1, Math.floor(parsed))));
+  }, [draft, onPageChange, page, totalPages]);
+  return (
+    <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-2 py-2 text-xs text-muted sm:px-3" data-file-manager-trash-pagination>
+      <span className="min-w-0 truncate">第 {page}/{totalPages} 页 · 本页 {pageItems} 项 · 共 {totalItems} 项</span>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={loading || page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>上一页</Button>
+        <label className="flex items-center gap-1">
+          跳至
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => { if (event.key === "Enter") commit(); }}
+            inputMode="numeric"
+            className="h-7 w-14 rounded-md border border-line bg-panel px-2 text-center text-xs text-ink-strong outline-none focus:border-primary"
+            aria-label="跳转回收站页码"
+          />
+          页
+        </label>
+        <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={loading || page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>下一页</Button>
+      </div>
+    </footer>
   );
 }
 
