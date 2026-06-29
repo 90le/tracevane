@@ -156,11 +156,25 @@ test("new Workspace IDE shell persists and exposes accessible pane sizing", () =
 
 test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /type EditorGroupId = "primary" \| "secondary"/);
+  assert.match(shellSource, /interface EditorTab/);
+  assert.match(shellSource, /type EditorGroupTabs = Record<EditorGroupId, EditorTab\[\]>/);
   assert.match(shellSource, /type EditorSplitMode = "single" \| "vertical" \| "horizontal"/);
   assert.match(shellSource, /editorSplitMode/);
   assert.match(shellSource, /editorSplitRatio/);
   assert.match(shellSource, /data-ide-editor-split=\{editorSplitMode\}/);
   assert.match(shellSource, /data-ide-editor-group=\{group\}/);
+  assert.match(shellSource, /editorGroupTabs/);
+  assert.match(shellSource, /rememberEditorTab\("primary", path, targetRootId\)/);
+  assert.match(shellSource, /rememberEditorTab\("secondary", path, targetRootId\)/);
+  assert.match(shellSource, /function rememberEditorTab\(group: EditorGroupId, path: string, tabRootId: string\)/);
+  assert.match(shellSource, /upsertEditorTab\(current\[group\], \{ path, rootId: tabRootId \}\)/);
+  assert.match(shellSource, /function upsertEditorTab\(tabs: EditorTab\[\], tab: EditorTab\): EditorTab\[\]/);
+  assert.match(shellSource, /function editorTabLabel\(path: string\)/);
+  assert.match(shellSource, /data-ide-editor-tabs=\{group\}/);
+  assert.match(shellSource, /data-ide-editor-tab=\{tab\.path\}/);
+  assert.match(shellSource, /tabs=\{editorGroupTabs\.primary\}/);
+  assert.match(shellSource, /tabs=\{editorGroupTabs\.secondary\}/);
+  assert.match(shellSource, /setEditorGroupTabs\(\(current\) => \(\{ primary: current\.secondary, secondary: current\.primary \}\)\)/);
   assert.match(shellSource, /data-ide-editor-split-handle=\{mode\}/);
   assert.match(shellSource, /startEditorSplitResize/);
   assert.match(shellSource, /resizeEditorSplitFromKeyboard/);

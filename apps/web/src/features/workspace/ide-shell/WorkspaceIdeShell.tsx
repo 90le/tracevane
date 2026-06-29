@@ -44,6 +44,11 @@ type MaximizedPane = "top" | "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
 type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
+interface EditorTab {
+  path: string;
+  rootId: string;
+}
+type EditorGroupTabs = Record<EditorGroupId, EditorTab[]>;
 type DockSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
@@ -212,6 +217,7 @@ export function WorkspaceIdeShell() {
   const [activePathRootId, setActivePathRootId] = React.useState("");
   const [secondaryPath, setSecondaryPath] = React.useState<string | undefined>();
   const [secondaryPathRootId, setSecondaryPathRootId] = React.useState("");
+  const [editorGroupTabs, setEditorGroupTabs] = React.useState<EditorGroupTabs>({ primary: [], secondary: [] });
   const [gitDiffTarget, setGitDiffTarget] = React.useState<WorkspaceGitDiffTarget | null>(null);
   const [searchRequest, setSearchRequest] = React.useState<WorkspaceEditorSearchRequest | null>(null);
   const [workspaceDirectory, setWorkspaceDirectory] = React.useState<WorkspaceDirectoryContext | null>(null);
@@ -432,9 +438,11 @@ export function WorkspaceIdeShell() {
       if (activeEditorGroup === "secondary" && editorSplitMode !== "single") {
         setSecondaryPath(path);
         setSecondaryPathRootId(targetRootId);
+        rememberEditorTab("secondary", path, targetRootId);
       } else {
         setActivePath(path);
         setActivePathRootId(targetRootId);
+        rememberEditorTab("primary", path, targetRootId);
       }
       if (options?.initialSearch?.query) {
         setSearchRequest({
@@ -466,11 +474,13 @@ export function WorkspaceIdeShell() {
 
   const syncActiveEditorFile = React.useCallback((path: string | null, tabRootId?: string) => {
     if (!path) return;
+    const nextRootId = tabRootId || activePathRootId || rootId;
     setActivePath((current) => (current === path ? current : path));
     if (tabRootId) {
       setActivePathRootId((current) => (current === tabRootId ? current : tabRootId));
     }
-  }, []);
+    rememberEditorTab("primary", path, nextRootId);
+  }, [activePathRootId, rootId]);
 
   const layoutCommands = React.useMemo<WorkspaceCommand[]>(
     () => [
@@ -1447,6 +1457,13 @@ export function WorkspaceIdeShell() {
     }));
   }
 
+  function rememberEditorTab(group: EditorGroupId, path: string, tabRootId: string) {
+    setEditorGroupTabs((current) => ({
+      ...current,
+      [group]: upsertEditorTab(current[group], { path, rootId: tabRootId }),
+    }));
+  }
+
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
@@ -1463,6 +1480,7 @@ export function WorkspaceIdeShell() {
     setSecondaryPathRootId(activePathRootId || rootId);
     setActivePath(nextPrimaryPath);
     setActivePathRootId(nextPrimaryRootId);
+    setEditorGroupTabs((current) => ({ primary: current.secondary, secondary: current.primary }));
     setActiveEditorGroup((group) => (group === "primary" ? "secondary" : "primary"));
   }
 
@@ -2108,6 +2126,7 @@ export function WorkspaceIdeShell() {
               title="主编辑器组"
               active={activeEditorGroup === "primary"}
               filePath={activePath}
+              tabs={editorGroupTabs.primary}
               splitMode={editorSplitMode}
               onFocus={() => setActiveEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
@@ -2139,6 +2158,7 @@ export function WorkspaceIdeShell() {
                   title="副编辑器组"
                   active={activeEditorGroup === "secondary"}
                   filePath={secondaryPath ?? activePath}
+                  tabs={editorGroupTabs.secondary}
                   splitMode={editorSplitMode}
                   onFocus={() => setActiveEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
@@ -2157,8 +2177,10 @@ export function WorkspaceIdeShell() {
                     onRevealInExplorer={revealInExplorer}
                     onActiveFileChange={(path, tabRootId) => {
                       if (!path) return;
+                      const nextRootId = tabRootId || secondaryPathRootId || activePathRootId || rootId;
                       setSecondaryPath(path);
                       if (tabRootId) setSecondaryPathRootId(tabRootId);
+                      rememberEditorTab("secondary", path, nextRootId);
                     }}
                   />
                 </EditorGroupFrame>
@@ -2498,6 +2520,7 @@ function EditorGroupFrame({
   title,
   active,
   filePath,
+  tabs,
   splitMode,
   children,
   onFocus,
@@ -2509,6 +2532,7 @@ function EditorGroupFrame({
   title: string;
   active: boolean;
   filePath?: string;
+  tabs: EditorTab[];
   splitMode: EditorSplitMode;
   children: React.ReactNode;
   onFocus: () => void;
@@ -2528,6 +2552,13 @@ function EditorGroupFrame({
           <span>{title}</span>
           <small>{filePath || "未打开文件"}</small>
         </button>
+        <div className="workspace-ide-shell__editor-tabs" data-ide-editor-tabs={group}>
+          {tabs.map((tab) => (
+            <span key={`${tab.rootId}:${tab.path}`} className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")} data-ide-editor-tab={tab.path} title={tab.path}>
+              {editorTabLabel(tab.path)}
+            </span>
+          ))}
+        </div>
         <button type="button" onClick={onSplitRight} aria-label="向右拆分编辑器">
           右拆
         </button>
@@ -2999,6 +3030,15 @@ function placementShortLabel(placement: PanePlacement): string {
   if (placement === "left") return "L";
   if (placement === "right") return "R";
   return "B";
+}
+
+function upsertEditorTab(tabs: EditorTab[], tab: EditorTab): EditorTab[] {
+  const withoutDuplicate = tabs.filter((item) => item.path !== tab.path || item.rootId !== tab.rootId);
+  return [...withoutDuplicate, tab].slice(-8);
+}
+
+function editorTabLabel(path: string) {
+  return path.split(/[\\\/]/).filter(Boolean).pop() ?? path;
 }
 
 function editorSplitKeyboardDelta(mode: EditorSplitMode, key: string, step: number): number {
