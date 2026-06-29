@@ -1477,6 +1477,22 @@ export function WorkspaceIdeShell() {
     focusIdeRegion("center");
   }
 
+  function closeEditorTab(group: EditorGroupId, tab: EditorTab) {
+    const currentTabs = editorGroupTabs[group];
+    const nextTabs = currentTabs.filter((item) => item.path !== tab.path || item.rootId !== tab.rootId);
+    setEditorGroupTabs((current) => ({ ...current, [group]: nextTabs }));
+    const isActiveTab = group === "primary" ? activePath === tab.path && (activePathRootId || rootId) === tab.rootId : (secondaryPath ?? activePath) === tab.path && (secondaryPathRootId || activePathRootId || rootId) === tab.rootId;
+    if (!isActiveTab) return;
+    const nextActiveTab = nextTabs.at(-1);
+    if (group === "primary") {
+      setActivePath(nextActiveTab?.path);
+      setActivePathRootId(nextActiveTab?.rootId ?? "");
+    } else {
+      setSecondaryPath(nextActiveTab?.path);
+      setSecondaryPathRootId(nextActiveTab?.rootId ?? "");
+    }
+  }
+
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
     setEditorSplitMode(mode);
     setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO);
@@ -2142,6 +2158,7 @@ export function WorkspaceIdeShell() {
               tabs={editorGroupTabs.primary}
               splitMode={editorSplitMode}
               onSelectTab={selectEditorTab}
+              onCloseTab={closeEditorTab}
               onFocus={() => setActiveEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
               onSplitDown={() => splitEditor("horizontal")}
@@ -2175,6 +2192,7 @@ export function WorkspaceIdeShell() {
                   tabs={editorGroupTabs.secondary}
                   splitMode={editorSplitMode}
                   onSelectTab={selectEditorTab}
+                  onCloseTab={closeEditorTab}
                   onFocus={() => setActiveEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
@@ -2539,6 +2557,7 @@ function EditorGroupFrame({
   splitMode,
   children,
   onSelectTab,
+  onCloseTab,
   onFocus,
   onSplitRight,
   onSplitDown,
@@ -2552,6 +2571,7 @@ function EditorGroupFrame({
   splitMode: EditorSplitMode;
   children: React.ReactNode;
   onSelectTab: (group: EditorGroupId, tab: EditorTab) => void;
+  onCloseTab: (group: EditorGroupId, tab: EditorTab) => void;
   onFocus: () => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
@@ -2571,16 +2591,23 @@ function EditorGroupFrame({
         </button>
         <div className="workspace-ide-shell__editor-tabs" data-ide-editor-tabs={group}>
           {tabs.map((tab) => (
-            <button
-              key={`${tab.rootId}:${tab.path}`}
-              type="button"
-              className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")}
-              data-ide-editor-tab={tab.path}
-              title={tab.path}
-              onClick={() => onSelectTab(group, tab)}
-            >
-              {editorTabLabel(tab.path)}
-            </button>
+            <span key={`${tab.rootId}:${tab.path}`} className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")} data-ide-editor-tab={tab.path} title={tab.path}>
+              <button type="button" className="workspace-ide-shell__editor-tab-label" onClick={() => onSelectTab(group, tab)}>
+                {editorTabLabel(tab.path)}
+              </button>
+              <button
+                type="button"
+                className="workspace-ide-shell__editor-tab-close"
+                data-ide-editor-tab-close={tab.path}
+                aria-label={`关闭 ${editorTabLabel(tab.path)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseTab(group, tab);
+                }}
+              >
+                ×
+              </button>
+            </span>
           ))}
         </div>
         <button type="button" onClick={onSplitRight} aria-label="向右拆分编辑器">
