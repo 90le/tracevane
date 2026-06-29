@@ -1,6 +1,6 @@
 # Tracevane Docs
 
-> 更新：2026-06-25
+> 更新：2026-06-29
 > 当前权威方向：Workspace-first。本目录只保留当前产品目标、架构、设计合同和仍有效领域文档；阶段性旧计划应删除或降级为参考。
 
 ## 1. 必读入口
@@ -9,7 +9,7 @@
 
 1. `整体目标.md` — Tracevane 当前最高目标和领域边界。
 2. `产品需求.md` — 产品需求、核心域与近期优先级。
-3. `Tracevane前端重设计原型.md` — 统一 Agent 工作台、非三栏 Domain Console、Agent 会话和各域页面原型。
+3. `Tracevane前端重设计原型.md` — 统一 Agent 工作台、非三栏 Domain Console 和各域页面原型；其中自研 Web Chat/Agent 会话内容已废弃。
 4. `Workspace重设计总纲.md` — 本轮推翻半成品设计后的 Workspace 重设计总纲、分区和红线。
 5. `WorkspaceWebIDE布局研究.md` — 对 VS Code/Theia/Codespaces/Gitpod/Fleet/Zed/StackBlitz 等 Web IDE 布局能力的研究和 Tracevane DockTree 方向。
 6. `Workspace目标.md` — Workspace 的产品目标与分期。
@@ -29,7 +29,7 @@
 - `IM渠道目标与设计.md` / `IM渠道前端设计契约.md` — IM 平台账号、bot、绑定路由、投递会话。
 - `平台域目标与设计.md` — 第三方平台域，OpenClaw 为第一个平台。
 - `自愈守护进程目标.md` / `自愈守护进程进度.md` — OpenClaw 平台 guard 参考。
-- Agent 会话相关：`聊天设计方案.md`、`聊天契约.md`、`聊天会话策略.md`、`聊天开放门槛.md`、`聊天官方对齐.md`；命名仍沿用部分历史文件名，但产品含义是统一 Agent 会话。
+- 自研 Web Chat/Agent 会话域已删除；IM/第三方渠道对话以 `IM渠道目标与设计.md`、`IM渠道前端设计契约.md` 和 Channel Connectors 实现为准，历史聊天文档不再作为实现目标。
 - 渲染相关：`混合渲染方案.md`、`富消息使用说明.md`。
 - UI 总规则：`界面设计守则.md`。
 
@@ -39,8 +39,7 @@
 | --- | --- | --- |
 | Workspace | 文件管理、编辑器、预览、终端、Git。 | CLI Agent runtime 配置、Provider secret、IM bot token、OpenClaw 平台原生 CRUD。 |
 | Terminal | shell session、命令输入输出、tasks、logs、ports、terminal evidence。 | Codex/Claude/OpenCode runtime readiness 或 Agent Run 生命周期。 |
-| CLI Agents | CLI Agent 安装/版本/配置/readiness、Gateway 连接状态、Agent Run 生命周期、Agent 结果证据。 | 普通 PTY、terminal tabs、shell 输入、terminal split/delete/rename、聊天 UI。 |
-| Agent 会话 | Web / IM / CLI / OpenClaw / 未来平台触发的统一人机对话、上下文、工具事件、审批和证据。 | OpenClaw 专属聊天、IM 投递配置、CLI runtime 安装、Provider secret。 |
+| CLI Agents | CLI Agent 安装/版本/配置/readiness、Gateway 连接状态、Agent Run 生命周期、Agent 结果证据。 | 普通 PTY、terminal tabs、shell 输入、terminal split/delete/rename、自研聊天 UI。 |
 | Model Gateway | Provider、模型、协议、账号池、客户端接入、用量与路由证据。 | IM 账号、terminal、Agent Run UI。 |
 | IM Channels | IM 账号、bot 凭据、绑定路由、投递会话、守护诊断。 | Provider 路由、terminal、Workspace 文件写入。 |
 | Platform | 第三方平台目录与平台原生管理。 | Workspace 文件/终端、Gateway provider 写入、IM 投递路由。 |
