@@ -8,13 +8,15 @@ const readWeb = (rel) =>
 test("Season One route renders the live adapter demo instead of the preview fallback", () => {
   const page = readWeb("features/workspace/season-one/WorkspaceSeasonOnePreviewPage.tsx");
 
-  assert.match(page, /createWorkspaceSeasonOneLiveModel/);
-  assert.match(page, /seasonOneLiveDemoModel/);
+  const hook = readWeb("features/workspace/season-one/useWorkspaceSeasonOneLiveModel.ts");
+
+  assert.match(page, /useWorkspaceSeasonOneLiveModel/);
   assert.match(page, /data-workspace-season-one-live-page/);
-  assert.match(page, /WorkspaceSeasonOneFramePreview model=\{seasonOneLiveDemoModel\}/);
+  assert.match(page, /WorkspaceSeasonOneFramePreview model=\{model\}/);
   assert.match(page, /Workspace Season One Live · Tracevane/);
-  assert.match(page, /activePath: "docs\/DESIGN\.md"/);
-  assert.match(page, /evidenceItems: 3/);
-  assert.match(page, /terminalState: "passed"/);
+  assert.match(hook, /createWorkspaceSeasonOneLiveModel/);
+  assert.match(hook, /activePath: "docs\/DESIGN\.md"/);
+  assert.match(hook, /evidenceItems: 3/);
+  assert.match(hook, /terminalState: "passed"/);
   assert.doesNotMatch(page, /<WorkspaceSeasonOneFramePreview \/>/);
 });
