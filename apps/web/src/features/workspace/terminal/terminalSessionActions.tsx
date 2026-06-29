@@ -24,7 +24,7 @@ export type TerminalSessionActionId =
   | "terminal.session.moveToEditor"
   | "terminal.session.clear"
   | "terminal.session.copyOutput"
-  | "terminal.session.copyAiContext"
+  | "terminal.session.copyEvidenceContext"
   | "terminal.session.end"
   | "terminal.session.delete"
   | "terminal.session.insertCwd"
@@ -148,8 +148,8 @@ export function createTerminalSessionActions({
       run: () => copyOutput(session.sessionId),
     },
     {
-      id: "terminal.session.copyAiContext",
-      label: "复制 @terminal 上下文",
+      id: "terminal.session.copyEvidenceContext",
+      label: "复制上下文证据",
       icon: <MessageSquarePlus />,
       run: () => copyAiContext(session),
     },
@@ -170,7 +170,7 @@ export function createTerminalSessionActions({
     },
     {
       id: "terminal.session.copyCwd",
-      label: "复制 cwd",
+      label: "复制 cwd 证据",
       disabled: !cwd,
       separatorBefore: true,
       icon: <Clipboard />,
@@ -178,7 +178,7 @@ export function createTerminalSessionActions({
     },
     {
       id: "terminal.session.insertCwd",
-      label: "插入 cwd 到终端",
+      label: "插入 cwd 到输入行",
       disabled: !cwd || !session.canResume,
       icon: <Clipboard />,
       run: () => insertCwd(session.sessionId, cwd),

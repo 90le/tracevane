@@ -328,8 +328,8 @@ export function createTerminalPanelCommands({
     {
       id: "terminal.panel.copyCwd",
       group: "终端",
-      label: "终端：复制当前 cwd",
-      description: cwd || "当前终端没有 cwd",
+      label: "终端：复制当前 cwd 证据",
+      description: cwd ? `复制当前工作目录：${cwd}` : "当前终端没有 cwd",
       icon: <Clipboard />,
       disabled: !cwd,
       run: () => copyCwd(cwd),
@@ -337,8 +337,10 @@ export function createTerminalPanelCommands({
     {
       id: "terminal.panel.insertCwd",
       group: "终端",
-      label: "终端：插入当前 cwd",
-      description: cwd || "当前终端没有 cwd",
+      label: "终端：插入当前 cwd 到输入行",
+      description: cwd
+        ? `只把 ${cwd} 插入终端输入行，不自动执行命令`
+        : "当前终端没有 cwd",
       icon: <Clipboard />,
       disabled: !activeSession?.canResume || !cwd,
       run: () => {

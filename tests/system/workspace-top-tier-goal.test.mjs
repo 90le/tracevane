@@ -111,7 +111,13 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
   assert.match(panelCommands, /可审查终端证据/);
   assert.match(panelCommands, /终端：生成诊断证据摘要/);
   assert.match(panelCommands, /可审查诊断上下文/);
+  assert.match(panelCommands, /终端：复制当前 cwd 证据/);
+  assert.match(panelCommands, /终端：插入当前 cwd 到输入行/);
+  assert.match(panelCommands, /不自动执行命令/);
   assert.match(sessionActions, /停靠到 IDE 主工作区/);
+  assert.match(sessionActions, /复制上下文证据/);
+  assert.match(sessionActions, /插入 cwd 到输入行/);
+  assert.doesNotMatch(sessionActions, /terminal\.session\.copyAiContext/);
   assert.doesNotMatch(panelCommands, /AI：复制当前终端上下文/);
   assert.doesNotMatch(panelCommands, /终端：AI 诊断当前输出/);
   assert.doesNotMatch(panelCommands, /预留终端编辑器标签能力/);
