@@ -426,6 +426,23 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /const hiddenPaneSet = new Set\(hiddenPanes\)/);
   assert.match(shellSource, /if \(hiddenPaneSet\.has\(pane\.id\)\) return nextGroups/);
   assert.match(shellSource, /sanitizeHiddenPanes/);
+  assert.match(shellSource, /ide\.pane\.hide-active/);
+  assert.match(shellSource, /ide\.pane\.restore-all-hidden/);
+  assert.match(shellSource, /label: "隐藏当前聚焦 Pane"/);
+  assert.match(shellSource, /label: "恢复全部隐藏 Pane"/);
+  assert.match(shellSource, /shortcut: "⌘W"/);
+  assert.match(shellSource, /disabled: !activeDockFocus/);
+  assert.match(shellSource, /disabled: hiddenPanes\.length === 0/);
+  assert.match(shellSource, /run: hideActiveDockPane/);
+  assert.match(shellSource, /run: restoreAllHiddenPanes/);
+  assert.match(shellSource, /function hideActiveDockPane\(\)/);
+  assert.match(shellSource, /hidePane\(activeDockPaneForPlacement\(activeDockFocus\.placement, activeDockFocus\.role\) \?\? activeDockFocus\.paneId\)/);
+  assert.match(shellSource, /function restoreAllHiddenPanes\(\)/);
+  assert.match(shellSource, /const panesToRestore = hiddenPanes/);
+  assert.match(shellSource, /setHiddenPanes\(\[\]\)/);
+  assert.match(shellSource, /for \(const paneId of panesToRestore\)/);
+  assert.match(shellSource, /if \(!event\.shiftKey && key === "w"\)/);
+  assert.match(shellSource, /hideActiveDockPane\(\)/);
 });
 
 test("new Workspace IDE shell can move the focused pane between dock regions", () => {

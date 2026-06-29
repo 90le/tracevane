@@ -354,6 +354,11 @@ export function WorkspaceIdeShell() {
         }
       }
       if (!mod || event.altKey) return;
+      if (!event.shiftKey && key === "w") {
+        event.preventDefault();
+        hideActiveDockPane();
+        return;
+      }
       if (!event.shiftKey && key === "b") {
         event.preventDefault();
         setLeftOpen((open) => !open);
@@ -624,8 +629,31 @@ export function WorkspaceIdeShell() {
   );
 
   const paneVisibilityCommands = React.useMemo<WorkspaceCommand[]>(
-    () =>
-      PANE_REGISTRY.flatMap((pane) => {
+    () => [
+      {
+        id: "ide.pane.hide-active",
+        group: "窗格" as const,
+        label: "隐藏当前聚焦 Pane",
+        description: activeDockFocus ? `隐藏当前聚焦的 ${paneLabel(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId)} Pane` : "先聚焦一个 Dock Pane，再隐藏它",
+        shortcut: "⌘W",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: hideActiveDockPane,
+      },
+      {
+        id: "ide.pane.restore-all-hidden",
+        group: "窗格" as const,
+        label: "恢复全部隐藏 Pane",
+        description: hiddenPanes.length > 0 ? `恢复 ${hiddenPanes.length} 个隐藏 Pane 到各自 Dock` : "当前没有隐藏 Pane",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: hiddenPanes.length === 0,
+        run: restoreAllHiddenPanes,
+      },
+      ...PANE_REGISTRY.flatMap((pane) => {
         const hidden = hiddenPanes.includes(pane.id);
         return [
           {
@@ -640,7 +668,8 @@ export function WorkspaceIdeShell() {
           },
         ];
       }),
-    [hiddenPanes, panePlacements],
+    ],
+    [activeDockFocus, hiddenPanes, panePlacements],
   );
 
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
@@ -1382,6 +1411,19 @@ export function WorkspaceIdeShell() {
   function hidePane(paneId: PaneId) {
     setHiddenPanes((current) => (current.includes(paneId) ? current : [...current, paneId]));
     setActiveDockFocus((current) => (current?.paneId === paneId ? null : current));
+  }
+
+  function hideActiveDockPane() {
+    if (!activeDockFocus) return;
+    hidePane(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId);
+  }
+
+  function restoreAllHiddenPanes() {
+    const panesToRestore = hiddenPanes;
+    setHiddenPanes([]);
+    for (const paneId of panesToRestore) {
+      movePaneToPlacement(paneId, panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement);
+    }
   }
 
   function restorePane(paneId: PaneId) {
