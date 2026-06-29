@@ -354,14 +354,14 @@ export function WorkspaceIdeShell() {
         }
         if (!event.shiftKey && event.key === "[") {
           event.preventDefault();
-          setActiveEditorGroup("primary");
+          focusEditorGroup("primary");
           focusIdeRegion("center");
           return;
         }
         if (!event.shiftKey && event.key === "]") {
           event.preventDefault();
           if (editorSplitMode === "single") splitEditor("vertical");
-          setActiveEditorGroup("secondary");
+          focusEditorGroup("secondary");
           focusIdeRegion("center");
           return;
         }
@@ -691,7 +691,7 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <Code2 />,
-        run: () => setActiveEditorGroup("primary"),
+        run: () => focusEditorGroup("primary"),
       },
       {
         id: "ide.editor.focus-secondary",
@@ -704,7 +704,7 @@ export function WorkspaceIdeShell() {
         icon: <Code2 />,
         run: () => {
           if (editorSplitMode === "single") splitEditor("vertical");
-          setActiveEditorGroup("secondary");
+          focusEditorGroup("secondary");
         },
       },
       {
