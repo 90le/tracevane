@@ -1735,13 +1735,24 @@ export function WorkspaceIdeShell() {
   }
 
   function selectDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
-    setDockPaneSelections((current) => ({
-      ...current,
-      [placement]: {
-        ...current[placement],
+    const oppositeRole: DockPaneRole = role === "primary" ? "secondary" : "primary";
+    setDockPaneSelections((current) => {
+      const currentSelection = current[placement];
+      const nextSelection = {
+        ...currentSelection,
         [role]: paneId,
-      },
-    }));
+      };
+      if (nextSelection[oppositeRole] === paneId) {
+        const previousRolePane = currentSelection[role];
+        nextSelection[oppositeRole] = previousRolePane && previousRolePane !== paneId
+          ? previousRolePane
+          : secondaryDockPane(dockPaneIdsForPlacement(placement), paneId);
+      }
+      return {
+        ...current,
+        [placement]: nextSelection,
+      };
+    });
     if (role === "primary") setPrimaryDockPanel(placement, paneId);
     openDockPlacement(placement);
     focusDockPane(placement, role, paneId);

@@ -510,6 +510,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /activeDockFocus/);
   assert.match(shellSource, /function setDockSplitMode/);
   assert.match(shellSource, /function selectDockPane/);
+  assert.match(shellSource, /const oppositeRole: DockPaneRole = role === "primary" \? "secondary" : "primary"/);
+  assert.match(shellSource, /if \(nextSelection\[oppositeRole\] === paneId\)/);
+  assert.match(shellSource, /const previousRolePane = currentSelection\[role\]/);
+  assert.match(shellSource, /secondaryDockPane\(dockPaneIdsForPlacement\(placement\), paneId\)/);
   assert.match(shellSource, /function selectDockTab/);
   assert.match(shellSource, /function setPrimaryDockPanel/);
   assert.match(shellSource, /function focusDockPane/);
