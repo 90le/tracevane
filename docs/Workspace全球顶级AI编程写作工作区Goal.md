@@ -277,3 +277,21 @@ npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResoluti
 node --test tests/system/workspace-evidence-review-panel.test.mjs tests/system/workspace-evidence-handoff.test.mjs tests/system/workspace-evidence-basket.test.mjs
 (cd apps/web && npx tsc --noEmit --pretty false -p tsconfig.workspace-evidence-review-panel.tmp.json)
 ```
+
+### 2026-06-29 / Phase E 小步：Live Evidence Review Surface
+
+研究补充：VS Code Sidebars/Views 指南要求相关视图聚合且命名明确，避免把任务上下文散落在多个不可发现入口；Accessibility 文档强调键盘、读屏、可见状态和可恢复操作；OpenAI Canvas 的产品方向强调协作界面需要保留用户控制、上下文理解与可审查输出。因此本阶段把静态 Evidence Review Panel 包成 live surface：它直接订阅本地 Evidence Basket，显示实时记录数，支持 refresh、clear 和 copy handoff 状态反馈，为后续接入 Workspace 右栏或移动 sheet 准备稳定入口。
+
+完成范围：
+
+- 新增 `WorkspaceEvidenceReviewSurface.tsx`，订阅 `subscribeWorkspaceEvidenceBasket` 并读取/刷新/清空本地 evidence records。
+- `WorkspaceEvidenceReviewPanel` 增加可选 clear action，空 evidence 时自动 disabled，避免误清空。
+- Surface 显示 live record count 与 copy 时间反馈，保留 `onRecordsChange`/`onCopyHandoff` 扩展点。
+- 更新 shared barrel export，继续避免修改当前多人协作中的 AppShell、Workbench、chat、file-manager 文件。
+
+验证：
+
+```bash
+node --test tests/system/workspace-evidence-review-surface.test.mjs tests/system/workspace-evidence-review-panel.test.mjs tests/system/workspace-evidence-handoff.test.mjs tests/system/workspace-evidence-basket.test.mjs
+(cd apps/web && npx tsc --noEmit --pretty false -p tsconfig.workspace-evidence-review-surface.tmp.json)
+```

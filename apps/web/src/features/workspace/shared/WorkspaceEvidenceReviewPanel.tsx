@@ -5,6 +5,7 @@ import {
   Layers3,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -23,6 +24,7 @@ export interface WorkspaceEvidenceReviewPanelProps {
   objective?: string;
   className?: string;
   onCopyHandoff?: (handoff: string) => void;
+  onClearEvidence?: () => void;
 }
 
 export function WorkspaceEvidenceReviewPanel({
@@ -30,6 +32,7 @@ export function WorkspaceEvidenceReviewPanel({
   objective,
   className,
   onCopyHandoff,
+  onClearEvidence,
 }: WorkspaceEvidenceReviewPanelProps) {
   const packet = React.useMemo(
     () => buildWorkspaceEvidenceHandoffPacket({ records, objective }),
@@ -74,16 +77,31 @@ export function WorkspaceEvidenceReviewPanel({
                 </p>
               </div>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              onClick={handleCopy}
-              aria-label="Copy evidence handoff for AI review"
-            >
-              <ClipboardCheck aria-hidden="true" />
-              Copy handoff
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {onClearEvidence ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onClearEvidence}
+                  disabled={!packet.records.length}
+                  aria-label="Clear workspace evidence records"
+                >
+                  <Trash2 aria-hidden="true" />
+                  Clear
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={handleCopy}
+                aria-label="Copy evidence handoff for AI review"
+              >
+                <ClipboardCheck aria-hidden="true" />
+                Copy handoff
+              </Button>
+            </div>
           </div>
 
           <dl className="grid grid-cols-3 gap-2 text-sm">
