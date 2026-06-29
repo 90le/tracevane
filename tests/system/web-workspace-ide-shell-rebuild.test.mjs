@@ -52,6 +52,8 @@ test("new Workspace IDE shell is responsive for desktop tablet and phone", () =>
 
 test("new Workspace IDE shell has explicit mobile panel switching", () => {
   assert.match(shellSource, /type MobilePanel = "editor" \| "top" \| "left" \| "right" \| "bottom"/);
+  assert.match(shellSource, /type MobilePanelDirection = "next" \| "previous"/);
+  assert.match(shellSource, /MOBILE_PANEL_ORDER/);
   assert.match(shellSource, /mobilePanel/);
   assert.match(shellSource, /data-ide-mobile-panel=\{mobilePanel\}/);
   assert.match(shellSource, /workspace-ide-shell__mobile-switcher/);
@@ -62,20 +64,34 @@ test("new Workspace IDE shell has explicit mobile panel switching", () => {
   assert.match(shellSource, /if \(panel === "right"\) setRightOpen\(true\)/);
   assert.match(shellSource, /if \(panel === "bottom"\) setBottomOpen\(true\)/);
   assert.match(shellSource, /setMobilePanel\(panel\)/);
+  assert.match(shellSource, /function cycleMobilePanel\(direction: MobilePanelDirection\)/);
+  assert.match(shellSource, /MOBILE_PANEL_ORDER\.indexOf\(mobilePanel\)/);
+  assert.match(shellSource, /showMobilePanel\(MOBILE_PANEL_ORDER\[nextIndex\]\)/);
   assert.match(shellSource, /const mobilePanelCommands = React\.useMemo<WorkspaceCommand\[\]>/);
   assert.match(shellSource, /ide\.mobile\.panel\.editor/);
   assert.match(shellSource, /ide\.mobile\.panel\.top/);
   assert.match(shellSource, /ide\.mobile\.panel\.left/);
   assert.match(shellSource, /ide\.mobile\.panel\.right/);
   assert.match(shellSource, /ide\.mobile\.panel\.bottom/);
+  assert.match(shellSource, /ide\.mobile\.panel\.next/);
+  assert.match(shellSource, /ide\.mobile\.panel\.previous/);
   assert.match(shellSource, /手机面板：底部终端 Dock/);
+  assert.match(shellSource, /手机面板：下一个 IDE 区域/);
+  assert.match(shellSource, /手机面板：上一个 IDE 区域/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧PageDown"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧PageUp"/);
   assert.match(shellSource, /\.\.\.mobilePanelCommands/);
   assert.match(shellSource, /onClick=\{\(\) => showMobilePanel\("editor"\)\}/);
   assert.match(shellSource, /onClick=\{\(\) => showMobilePanel\("top"\)\}/);
   assert.match(shellSource, /onClick=\{\(\) => showMobilePanel\("left"\)\}/);
   assert.match(shellSource, /onClick=\{\(\) => showMobilePanel\("right"\)\}/);
   assert.match(shellSource, /onClick=\{\(\) => showMobilePanel\("bottom"\)\}/);
-  assert.match(shellSource, /移动面板: \{mobilePanel\}/);
+  assert.match(shellSource, /data-ide-mobile-panel-order=\{MOBILE_PANEL_ORDER\.join\("\|"\)\}/);
+  assert.match(shellSource, /data-ide-mobile-panel-cycle="previous"/);
+  assert.match(shellSource, /data-ide-mobile-panel-cycle="next"/);
+  assert.match(shellSource, /cycleMobilePanel\("previous"\)/);
+  assert.match(shellSource, /cycleMobilePanel\("next"\)/);
+  assert.match(shellSource, /移动面板: \{mobilePanel\} \(\{MOBILE_PANEL_ORDER\.indexOf\(mobilePanel\) \+ 1\}\/\{MOBILE_PANEL_ORDER\.length\}\)/);
   assert.match(cssSource, /workspace-ide-shell__mobile-switcher/);
   assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="top"\] \.workspace-ide-shell__center/);
   assert.match(cssSource, /workspace-ide-shell\[data-ide-mobile-panel="left"\] \.workspace-ide-shell__left-pane/);

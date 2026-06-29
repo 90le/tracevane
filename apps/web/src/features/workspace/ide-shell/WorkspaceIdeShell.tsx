@@ -60,9 +60,11 @@ type DockEdgeDropTarget = { placement: PanePlacement; edge: DockDropEdge } | nul
 type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
 type DockPaneSelections = Record<PanePlacement, Partial<Record<DockPaneRole, PaneId>>>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
+type MobilePanelDirection = "next" | "previous";
 type IdeFocusRegion = "top" | "left" | "center" | "right" | "bottom";
 
 const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
+const MOBILE_PANEL_ORDER = ["editor", "top", "left", "right", "bottom"] as const satisfies readonly MobilePanel[];
 
 interface IdePaneSizes {
   top: number;
@@ -557,6 +559,16 @@ export function WorkspaceIdeShell() {
           event.preventDefault();
           const recipe = WORKBENCH_LAYOUT_RECIPES.find((item) => item.shortcut?.endsWith(key));
           if (recipe) applyWorkbenchRecipe(recipe.id);
+          return;
+        }
+        if (event.shiftKey && event.key === "PageDown") {
+          event.preventDefault();
+          cycleMobilePanel("next");
+          return;
+        }
+        if (event.shiftKey && event.key === "PageUp") {
+          event.preventDefault();
+          cycleMobilePanel("previous");
           return;
         }
         if (event.shiftKey && event.key === "]") {
@@ -1377,8 +1389,30 @@ export function WorkspaceIdeShell() {
         icon: <TerminalSquare />,
         run: () => showMobilePanel("bottom"),
       },
+      {
+        id: "ide.mobile.panel.next",
+        group: "布局",
+        label: "手机面板：下一个 IDE 区域",
+        description: "在编辑器、顶部、左侧、右侧和底部 Dock 之间循环，适合手机端单手切换真实 IDE 区域",
+        shortcut: "⌘⌥⇧PageDown",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelRight />,
+        run: () => cycleMobilePanel("next"),
+      },
+      {
+        id: "ide.mobile.panel.previous",
+        group: "布局",
+        label: "手机面板：上一个 IDE 区域",
+        description: "反向循环手机端 IDE 区域，保留每个 Dock 的窗格组合与拆分状态",
+        shortcut: "⌘⌥⇧PageUp",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelLeft />,
+        run: () => cycleMobilePanel("previous"),
+      },
     ],
-    [],
+    [mobilePanel],
   );
 
   const activeDockLayoutCommands = React.useMemo<WorkspaceCommand[]>(
@@ -1909,6 +1943,13 @@ export function WorkspaceIdeShell() {
     if (panel === "right") setRightOpen(true);
     if (panel === "bottom") setBottomOpen(true);
     setMobilePanel(panel);
+  }
+
+  function cycleMobilePanel(direction: MobilePanelDirection) {
+    const currentIndex = Math.max(0, MOBILE_PANEL_ORDER.indexOf(mobilePanel));
+    const offset = direction === "next" ? 1 : -1;
+    const nextIndex = (currentIndex + offset + MOBILE_PANEL_ORDER.length) % MOBILE_PANEL_ORDER.length;
+    showMobilePanel(MOBILE_PANEL_ORDER[nextIndex]);
   }
 
   function currentIdeLayoutState(): IdeLayoutState {
@@ -2865,7 +2906,8 @@ export function WorkspaceIdeShell() {
             <PanelRight className="mr-2 h-4 w-4" />插件
           </Button>
         </div>
-        <div className="workspace-ide-shell__mobile-switcher" aria-label="手机工作区面板切换">
+        <div className="workspace-ide-shell__mobile-switcher" aria-label="手机工作区面板切换" data-ide-mobile-panel-order={MOBILE_PANEL_ORDER.join("|")}>
+          <button type="button" aria-label="上一个手机 IDE 面板" onClick={() => cycleMobilePanel("previous")} data-ide-mobile-panel-cycle="previous">‹</button>
           <button type="button" data-active={mobilePanel === "editor"} onClick={() => showMobilePanel("editor")}>编辑</button>
           <button
             type="button"
@@ -2895,6 +2937,7 @@ export function WorkspaceIdeShell() {
           >
             终端
           </button>
+          <button type="button" aria-label="下一个手机 IDE 面板" onClick={() => cycleMobilePanel("next")} data-ide-mobile-panel-cycle="next">›</button>
         </div>
       </header>
 
@@ -3502,7 +3545,7 @@ export function WorkspaceIdeShell() {
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
         <span>快照: {layoutSnapshots.length}</span>
-        <span>移动面板: {mobilePanel}</span>
+        <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
         <div className="workspace-ide-shell__dock-status-strip" aria-label="IDE Dock 布局状态">
