@@ -3,6 +3,7 @@
 > 状态：Active Codex Goal Blueprint
 > 创建：2026-06-29
 > 当前阶段：Phase 0/1 — 先清理不恰当代码与文档，并把后续重建范围锁定到 IDE Core UI/UX
+> 当前 repo-native Goal 任务书：`.omx/plans/goal-tracevane-workspace-ide-first.md`
 > 当前适用范围：Tracevane Workspace IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status、布局持久化、桌面/平板/手机响应式 UI/UX，以及支撑这些能力的最小后端契约；写作、渲染、预览增强仅作为未来扩展，不是当前主线
 > 执行原则：先 IDE，后 AI；先终端/Git/搜索/文件/编辑器真实能力，后视觉装饰；先删除错误方向，后建设长期平台。
 
@@ -10,7 +11,7 @@
 
 ## 0. 本蓝图与 Codex Goal 的关系
 
-本文件是当前 Codex Goal 的详细执行宪章。Codex Goal 工具已经创建总目标，但工具不支持直接改写已创建目标正文；因此，后续所有推进、清理、提交、验收与阶段复盘均以本蓝图为更详细的目标说明。
+本文件是当前 Codex Goal 的详细执行宪章。Codex Goal 工具已经创建总目标，但工具不支持直接改写已创建目标正文；因此，后续所有推进、清理、提交、验收与阶段复盘均以本蓝图为更详细的目标说明。repo-native 的可执行任务书已经补回到 `.omx/plans/goal-tracevane-workspace-ide-first.md`，后续任务拆解、阶段队列与完成定义以该文件和本蓝图共同为准。
 
 当前 Codex Goal 的核心含义被展开为：
 
