@@ -1160,6 +1160,12 @@ test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /secondaryPath,/);
   assert.match(shellSource, /secondaryPathRootId,/);
   assert.match(shellSource, /function restoreLayoutSnapshot/);
+  assert.match(shellSource, /function updateLayoutSnapshot\(snapshotId: string\)/);
+  assert.match(shellSource, /state: currentIdeLayoutState\(\)/);
+  assert.match(shellSource, /ide\.layout\.snapshot\.update\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /用当前布局覆盖快照：\$\{snapshot\.name\}/);
+  assert.match(shellSource, /data-ide-layout-snapshot-update=\{snapshot\.id\}/);
+  assert.match(shellSource, /aria-label=\{`用当前布局覆盖快照 \$\{snapshot\.name\}`\}/);
   assert.match(shellSource, /function renameLayoutSnapshot\(snapshotId: string\)/);
   assert.match(shellSource, /window\.prompt\("重命名 IDE 布局快照", snapshot\.name\)/);
   assert.match(shellSource, /sanitizeSnapshotName\(requestedName, snapshot\.name\)/);

@@ -1706,6 +1706,16 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
       ...layoutSnapshots.map((snapshot) => ({
+        id: `ide.layout.snapshot.update.${snapshot.id}`,
+        group: "布局" as const,
+        label: `用当前布局覆盖快照：${snapshot.name}`,
+        description: `把当前 Dock 开合、尺寸、拆分、Pane 停靠和标签状态写回 ${snapshot.name}，作为可维护的自定义 IDE 组合`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        run: () => updateLayoutSnapshot(snapshot.id),
+      })),
+      ...layoutSnapshots.map((snapshot) => ({
         id: `ide.layout.snapshot.rename.${snapshot.id}`,
         group: "布局" as const,
         label: `重命名布局快照：${snapshot.name}`,
@@ -1917,6 +1927,16 @@ export function WorkspaceIdeShell() {
       state: currentIdeLayoutState(),
     };
     const nextSnapshots = [snapshot, ...layoutSnapshots].slice(0, MAX_LAYOUT_SNAPSHOTS);
+    setLayoutSnapshots(nextSnapshots);
+    storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function updateLayoutSnapshot(snapshotId: string) {
+    const nextSnapshots = layoutSnapshots.map((snapshot) => (
+      snapshot.id === snapshotId
+        ? { ...snapshot, createdAt: new Date().toISOString(), state: currentIdeLayoutState() }
+        : snapshot
+    ));
     setLayoutSnapshots(nextSnapshots);
     storeIdeLayoutSnapshots(nextSnapshots);
   }
@@ -2765,6 +2785,9 @@ export function WorkspaceIdeShell() {
             <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-layout-snapshot={snapshot.id}>
               <button type="button" onClick={() => restoreLayoutSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
                 {snapshot.name}
+              </button>
+              <button type="button" aria-label={`用当前布局覆盖快照 ${snapshot.name}`} onClick={() => updateLayoutSnapshot(snapshot.id)} data-ide-layout-snapshot-update={snapshot.id}>
+                ↻
               </button>
               <button type="button" aria-label={`重命名布局快照 ${snapshot.name}`} onClick={() => renameLayoutSnapshot(snapshot.id)} data-ide-layout-snapshot-rename={snapshot.id}>
                 ✎
