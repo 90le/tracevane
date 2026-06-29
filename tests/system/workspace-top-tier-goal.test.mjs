@@ -92,6 +92,21 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
 });
 
+test("Workspace architecture reference keeps preview and rendering out of the current core", () => {
+  const architecture = readRoot("docs/Workspace架构.md");
+  assert.match(architecture, /状态：IDE-first architecture reference/);
+  assert.match(architecture, /files \/ git \/ terminal \/ search \/ evidence \/ agent-handoff services/);
+  assert.match(architecture, /Future extension boundary:[\s\S]*preview \/ rendering \/ writing providers/);
+  assert.match(architecture, /不在当前主线领域表中列 Preview\/Rendering\/Writing/);
+  assert.match(architecture, /Search replace 必须先形成可审查计划/);
+  assert.doesNotMatch(architecture, /状态：Active architecture/);
+  assert.doesNotMatch(architecture, /串联文件、编辑、预览、终端/);
+  assert.doesNotMatch(architecture, /files \/ git \/ terminal \/ preview \/ evidence/);
+  assert.doesNotMatch(architecture, /local web preview/);
+  assert.doesNotMatch(architecture, /Preview inspector/);
+  assert.doesNotMatch(architecture, /Preview iframe 不能接触 secrets/);
+});
+
 test("legacy Workspace design doc is downgraded behind the IDE-first UI contract", () => {
   const designDoc = readRoot("docs/Workspace设计文档.md");
   assert.match(designDoc, /状态：Superseded design reference/);
