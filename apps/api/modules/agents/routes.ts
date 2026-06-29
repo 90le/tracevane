@@ -48,10 +48,9 @@ export function registerAgentsRoutes(
 
   router.get("/api/agents/runs", async (_req, res, routeCtx) => {
     try {
-      const [terminalSessions, channelSessions, chatBootstrap] = await Promise.all([
+      const [terminalSessions, channelSessions] = await Promise.all([
         routeCtx.services.terminal.listPersistedSessions(),
         routeCtx.services.channelConnectors.getAgentSessions(),
-        routeCtx.services.chat.getBootstrap({ recentLimit: 24, historyLimit: 0 }),
       ]);
       sendJson(
         res,
@@ -59,7 +58,6 @@ export function registerAgentsRoutes(
         buildAgentRuntimeRunsPayload({
           terminalSessions,
           channelSessions,
-          chatBootstrap,
         }),
       );
     } catch (error) {

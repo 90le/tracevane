@@ -9,7 +9,7 @@
  * Reused contracts from other feature modules (NOT re-exported here):
  *  - Model Gateway status   → `@/features/model-gateway/types`
  *  - Channel Connectors     → `@/features/channel-connectors/types`
- *  - Chat bootstrap / terminal status → `@/features/dashboard/types`
+ *  - Terminal status → `@/features/dashboard/types`
  */
 
 // --- Agents (legacy profile contracts; not a primary CLI Agents view) -------
@@ -53,7 +53,7 @@ export type {
 
 /**
  * The `data-view` set for the workbench, driven from the URL (`?view=`):
- *  - runs      — primary Agent Run table across terminal / IM / chat sources
+ *  - runs      — primary Agent Run table across terminal / IM sources
  *  - cli       — Codex / Claude Code / OpenCode readiness, install repair and launch handoff
  */
 export const CLI_AGENTS_VIEWS = ["runs", "cli"] as const;

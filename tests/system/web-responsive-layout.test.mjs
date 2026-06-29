@@ -4,8 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => fs.readFileSync(path.join(rootDir, relativePath), "utf8");
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const read = (relativePath) =>
+  fs.readFileSync(path.join(rootDir, relativePath), "utf8");
 
 test("application shell gives phones a compact main stage instead of desktop padding", () => {
   const shell = read("apps/web/src/app/AppShell.tsx");
@@ -39,14 +43,21 @@ test("shared data tables stack on phones and keep desktop table scrolling only f
 });
 
 test("core feature viewbars use mobile selectors and desktop tabs", () => {
-  const modelGateway = read("apps/web/src/features/model-gateway/ModelGatewayPage.tsx");
-  const channels = read("apps/web/src/features/channel-connectors/ChannelConnectorsPage.tsx");
+  const modelGateway = read(
+    "apps/web/src/features/model-gateway/ModelGatewayPage.tsx",
+  );
+  const channels = read(
+    "apps/web/src/features/channel-connectors/ChannelConnectorsPage.tsx",
+  );
   const cliAgents = read("apps/web/src/features/cli-agents/CliAgentsPage.tsx");
 
   for (const source of [modelGateway, channels, cliAgents]) {
     assert.match(source, /sm:hidden/);
     assert.match(source, /<select/);
-    assert.match(source, /hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex/);
+    assert.match(
+      source,
+      /hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex/,
+    );
   }
 
   assert.match(modelGateway, /model-gateway-mobile-view/);
@@ -56,47 +67,88 @@ test("core feature viewbars use mobile selectors and desktop tabs", () => {
 
 test("CLI operational queues can shrink on phones without forcing page-wide drag", () => {
   const runs = read("apps/web/src/features/cli-agents/views/RunsView.tsx");
-  const runtime = read("apps/web/src/features/cli-agents/views/CliRuntimeView.tsx");
+  const runtime = read(
+    "apps/web/src/features/cli-agents/views/CliRuntimeView.tsx",
+  );
 
   assert.match(runs, /min-w-0 flex-1 basis-\[220px\]/);
   assert.doesNotMatch(runs, /min-w-\[240px\] flex-1 sm:max-w-\[420px\]/);
-  assert.equal((runtime.match(/min-w-0 flex-1 basis-\[180px\]/g) || []).length, 3);
+  assert.equal(
+    (runtime.match(/min-w-0 flex-1 basis-\[180px\]/g) || []).length,
+    3,
+  );
   assert.doesNotMatch(runtime, /min-w-\[220px\] flex-1/);
 });
 
 test("overview surfaces use metric rails and route tables instead of card walls", () => {
-  const gatewayOverview = read("apps/web/src/features/model-gateway/views/OverviewView.tsx");
-  const channelOverview = read("apps/web/src/features/channel-connectors/views/OverviewView.tsx");
+  const gatewayOverview = read(
+    "apps/web/src/features/model-gateway/views/OverviewView.tsx",
+  );
+  const channelOverview = read(
+    "apps/web/src/features/channel-connectors/views/OverviewView.tsx",
+  );
   const cliShared = read("apps/web/src/features/cli-agents/views/_shared.tsx");
   const cliRuns = read("apps/web/src/features/cli-agents/views/RunsView.tsx");
 
-  assert.match(gatewayOverview, /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-3">/);
+  assert.match(
+    gatewayOverview,
+    /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-3">/,
+  );
   assert.match(gatewayOverview, /<Table>/);
   assert.doesNotMatch(gatewayOverview, /md:grid-cols-2 xl:grid-cols-4/);
-  assert.doesNotMatch(gatewayOverview, /grid min-w-0 gap-3 rounded-md border border-line bg-panel p-3 shadow-sm/);
-  assert.match(channelOverview, /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">/);
-  assert.doesNotMatch(channelOverview, /mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4/);
-  assert.match(cliRuns, /flex flex-wrap overflow-hidden border-b border-line bg-panel-2\/40/);
-  assert.match(cliRuns, /role="table" aria-label="Agent Runs"/);
-  assert.match(cliRuns, /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(84px,\.45fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)_minmax\(0,\.8fr\)_minmax\(150px,\.8fr\)\]/);
-  assert.match(cliShared, /min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm/);
+  assert.doesNotMatch(
+    gatewayOverview,
+    /grid min-w-0 gap-3 rounded-md border border-line bg-panel p-3 shadow-sm/,
+  );
+  assert.match(
+    channelOverview,
+    /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">/,
+  );
+  assert.doesNotMatch(
+    channelOverview,
+    /mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4/,
+  );
+  assert.match(
+    cliRuns,
+    /flex flex-wrap overflow-hidden border-b border-line bg-panel-2\/40/,
+  );
+  assert.match(cliRuns, /role="table"[\s\S]*aria-label="Agent Runs"/);
+  assert.match(
+    cliRuns,
+    /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(84px,\.45fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)_minmax\(0,\.8fr\)_minmax\(150px,\.8fr\)\]/,
+  );
+  assert.match(
+    cliShared,
+    /min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm/,
+  );
   assert.match(cliShared, /flex min-w-0 flex-wrap items-center/);
   assert.match(cliShared, /basis-\[128px\] border-b border-line px-3 py-2\.5/);
-  assert.doesNotMatch(cliShared, /grid gap-1 rounded-md border border-line bg-panel-2 p-3/);
+  assert.doesNotMatch(
+    cliShared,
+    /grid gap-1 rounded-md border border-line bg-panel-2 p-3/,
+  );
 });
 
 test("file manager fills the routed viewport instead of using hard-coded list heights", () => {
   const page = read("apps/web/src/features/file-manager/FileManagerPage.tsx");
   const list = read("apps/web/src/features/file-manager/FileManagerList.tsx");
-  const chrome = read("apps/web/src/features/file-manager/FileManagerChrome.tsx");
+  const chrome = read(
+    "apps/web/src/features/file-manager/FileManagerChrome.tsx",
+  );
   const shell = read("apps/web/src/app/AppShell.tsx");
 
-  assert.match(shell, /const isChromeLessRoute = pathname === "\/chat"/);
+  assert.match(shell, /const isChromeLessRoute = false/);
   assert.doesNotMatch(shell, /pathname === "\/file-manager"/);
   assert.match(shell, /"h-full min-h-0 min-w-0 overflow-auto"/);
   assert.match(page, /data-file-manager-shell="true"/);
-  assert.match(page, /relative flex h-full min-h-0 min-w-0 flex-col outline-none/);
-  assert.match(page, /grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)\] overflow-hidden bg-panel/);
+  assert.match(
+    page,
+    /relative flex h-full min-h-0 min-w-0 flex-col outline-none/,
+  );
+  assert.match(
+    page,
+    /grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)\] overflow-hidden bg-panel/,
+  );
   assert.doesNotMatch(page, /rounded-lg border border-line bg-panel shadow-sm/);
   assert.match(page, /flex min-h-0 min-w-0 flex-1 flex-col/);
   assert.doesNotMatch(page, /sm:gap-4 sm:p-4/);
@@ -108,7 +160,10 @@ test("file manager fills the routed viewport instead of using hard-coded list he
   assert.match(chrome, /data-file-manager-command-bar/);
   assert.match(chrome, /border-b border-line px-3 py-1\.5/);
   assert.match(list, /data-file-manager-list/);
-  assert.match(list, /relative grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)_auto\] overflow-hidden border-y border-line bg-panel/);
+  assert.match(
+    list,
+    /relative grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)_auto\] overflow-hidden border-y border-line bg-panel/,
+  );
   assert.match(list, /className="min-h-0 overflow-y-auto overflow-x-hidden"/);
   assert.doesNotMatch(list, /max-h-\[calc\(100vh-470px\)\]/);
   assert.doesNotMatch(list, /min-h-\[360px\]/);

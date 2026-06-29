@@ -13,11 +13,6 @@
 export type { DashboardSummaryPayload } from "../../../../../types/dashboard";
 export type { SystemHealthPayload } from "../../../../../types/system";
 export type {
-  ChatBootstrapPayload,
-  ChatSessionRow,
-  ChatRunState,
-} from "../../../../../types/chat";
-export type {
   TerminalStatusPayload,
   TerminalBinaryStatus,
 } from "../../../../../types/terminal";
@@ -53,12 +48,7 @@ export interface AttentionItem {
 }
 
 export type AttentionIconKey =
-  | "gateway"
-  | "channel"
-  | "recovery"
-  | "system"
-  | "session"
-  | "bootstrap";
+  "gateway" | "channel" | "recovery" | "system" | "bootstrap";
 
 /** Overall "can the operator work right now?" readiness rollup. */
 export interface ReadinessSummary {
@@ -84,7 +74,7 @@ export interface ActiveWorkItem {
   id: string;
   title: string;
   detail: string;
-  source: "channel-agent" | "chat";
+  source: "channel-agent";
   to: string;
 }
 
@@ -102,7 +92,7 @@ export interface QuickLaunchEntry {
   id: string;
   label: string;
   detail: string;
-  icon: AttentionIconKey | "chat" | "ide";
+  icon: AttentionIconKey | "ide";
   to: string;
 }
 

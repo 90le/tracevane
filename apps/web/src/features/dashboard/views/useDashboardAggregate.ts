@@ -6,7 +6,6 @@ import {
   useChannelConnectorsStatusQuery,
 } from "@/lib/query/channel-connectors";
 import {
-  useChatBootstrapQuery,
   useDashboardSummaryQuery,
   useOpenClawRecoveryStatusQuery,
   useSystemHealthQuery,
@@ -44,8 +43,9 @@ export function useDashboardAggregate() {
   const healthQuery = useSystemHealthQuery({ retry: false });
   const gatewayQuery = useModelGatewayStatusQuery({ retry: false });
   const channelStatusQuery = useChannelConnectorsStatusQuery({ retry: false });
-  const channelSessionsQuery = useChannelConnectorsAgentSessionsQuery({ retry: false });
-  const chatQuery = useChatBootstrapQuery({ retry: false });
+  const channelSessionsQuery = useChannelConnectorsAgentSessionsQuery({
+    retry: false,
+  });
   const terminalQuery = useTerminalStatusQuery({ retry: false });
   const recoveryQuery = useOpenClawRecoveryStatusQuery({ retry: false });
 
@@ -55,7 +55,6 @@ export function useDashboardAggregate() {
     gatewayQuery,
     channelStatusQuery,
     channelSessionsQuery,
-    chatQuery,
     terminalQuery,
     recoveryQuery,
   ] as const;
@@ -67,7 +66,6 @@ export function useDashboardAggregate() {
       gateway: gatewayQuery.data,
       channelStatus: channelStatusQuery.data,
       channelSessions: channelSessionsQuery.data,
-      chat: chatQuery.data,
       terminal: terminalQuery.data,
       recovery: recoveryQuery.data,
     }),
@@ -77,7 +75,6 @@ export function useDashboardAggregate() {
       gatewayQuery.data,
       channelStatusQuery.data,
       channelSessionsQuery.data,
-      chatQuery.data,
       terminalQuery.data,
       recoveryQuery.data,
     ],
@@ -114,7 +111,6 @@ export function useDashboardAggregate() {
     void gatewayQuery.refetch();
     void channelStatusQuery.refetch();
     void channelSessionsQuery.refetch();
-    void chatQuery.refetch();
     void terminalQuery.refetch();
     void recoveryQuery.refetch();
   }, [
@@ -123,7 +119,6 @@ export function useDashboardAggregate() {
     gatewayQuery,
     channelStatusQuery,
     channelSessionsQuery,
-    chatQuery,
     terminalQuery,
     recoveryQuery,
   ]);
@@ -148,7 +143,6 @@ export function useDashboardAggregate() {
       gateway: gatewayQuery,
       channelStatus: channelStatusQuery,
       channelSessions: channelSessionsQuery,
-      chat: chatQuery,
       terminal: terminalQuery,
       recovery: recoveryQuery,
     },

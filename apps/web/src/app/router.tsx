@@ -19,11 +19,6 @@ const DashboardPage = React.lazy(() =>
     default: module.DashboardPage,
   })),
 );
-const ChatWorkbenchPage = React.lazy(() =>
-  import("@/features/chat/ChatWorkbenchPage").then((module) => ({
-    default: module.ChatWorkbenchPage,
-  })),
-);
 const ModelGatewayPage = React.lazy(() =>
   import("@/features/model-gateway/ModelGatewayPage").then((module) => ({
     default: module.ModelGatewayPage,
@@ -82,14 +77,6 @@ export function AppRouter() {
             element={
               <LazyPage>
                 <FileManagerPage />
-              </LazyPage>
-            }
-          />
-          <Route
-            path="/chat"
-            element={
-              <LazyPage>
-                <ChatWorkbenchPage />
               </LazyPage>
             }
           />
@@ -209,13 +196,12 @@ function useLegacyPathRedirect() {
     const normalizedPath = pathname.replace(/\/+$/g, "") || "/";
     let nextHash: string | null = null;
 
-    if (normalizedPath === "/chat" || normalizedPath === "/chat/workbench") {
-      nextHash = `/chat${search || ""}`;
-    } else if (normalizedPath.startsWith("/chat/s/")) {
-      const sessionRef = normalizedPath.split("/").filter(Boolean).pop() || "";
-      const query = new URLSearchParams(search);
-      if (sessionRef) query.set("sessionRef", sessionRef);
-      nextHash = `/chat${query.toString() ? `?${query.toString()}` : ""}`;
+    if (
+      normalizedPath === "/chat" ||
+      normalizedPath === "/chat/workbench" ||
+      normalizedPath.startsWith("/chat/s/")
+    ) {
+      nextHash = `/im-channels${search || ""}`;
     }
 
     if (!nextHash) return;

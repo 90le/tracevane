@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   CircleDot,
   LifeBuoy,
-  MessageSquare,
   Network,
   Plug,
   RadioTower,
@@ -51,7 +50,6 @@ const ATTENTION_ICON: Record<
   channel: Network,
   recovery: LifeBuoy,
   system: Server,
-  session: MessageSquare,
   bootstrap: Wrench,
 };
 
@@ -63,9 +61,7 @@ const QUICK_LAUNCH_ICON: Record<
   channel: RadioTower,
   recovery: LifeBuoy,
   system: Server,
-  session: MessageSquare,
   bootstrap: Wrench,
-  chat: MessageSquare,
   ide: Boxes,
 };
 
@@ -79,13 +75,6 @@ const SEVERITY_BADGE: Record<
 };
 
 const QUICK_LAUNCH: QuickLaunchEntry[] = [
-  {
-    id: "chat",
-    label: "Agent 会话",
-    detail: "继续或开始统一 Agent 会话",
-    icon: "chat",
-    to: ROUTES.chat,
-  },
   {
     id: "model-gateway",
     label: "模型网关",
@@ -112,7 +101,7 @@ const QUICK_LAUNCH: QuickLaunchEntry[] = [
 /**
  * Dashboard — a task-first live operations cockpit. It aggregates live runtime
  * state from across the owning domains (model gateway, IM channels, recovery,
- * chat, terminal, system) into one screen that answers "can the operator work
+ * terminal, system) into one screen that answers "can the operator work
  * right now, and what's the next step?" — then DEEP-LINKS to the owning domain
  * for every action. The cockpit itself is read-only: it never writes.
  *
@@ -302,23 +291,21 @@ export function DashboardPage() {
         <Panel>
           <PanelHead
             title="正在进行"
-            sub="活跃 Agent 会话与任务监督（只读）"
+            sub="活跃 IM Agent 会话与任务监督（只读）"
             action={<Badge variant="mute">{activeWork.length}</Badge>}
           />
           {activeWork.length === 0 ? (
             <EmptyState
               icon={<Activity />}
               title="暂无进行中的工作"
-              description="没有活跃的渠道 Agent 会话或运行中的对话。"
+              description="没有活跃的渠道 Agent 会话。"
             />
           ) : (
             <div className="py-1.5">
               {activeWork.map((item) => (
                 <Row
                   key={item.id}
-                  icon={
-                    item.source === "chat" ? <MessageSquare /> : <Terminal />
-                  }
+                  icon={<Terminal />}
                   iconClass="bg-primary-soft text-primary"
                   title={item.title}
                   subtitle={item.detail}

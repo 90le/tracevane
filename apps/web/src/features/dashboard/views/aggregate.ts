@@ -8,7 +8,6 @@ import type {
   ActiveWorkItem,
   AttentionItem,
   AttentionSeverity,
-  ChatBootstrapPayload,
   DashboardSummaryPayload,
   OpenClawRecoveryStatusPayload,
   ReadinessPillar,
@@ -25,7 +24,6 @@ export const ROUTES = {
   imChannels: "/im-channels",
   recovery: "/platforms/openclaw/guard",
   platforms: "/platforms",
-  chat: "/chat",
   cliAgents: "/cli-agents",
   workspace: "/workspace",
 } as const;
@@ -37,7 +35,6 @@ export interface DashboardSources {
   gateway: ModelGatewayStatusResponse | undefined;
   channelStatus: ChannelConnectorsStatusResponse | undefined;
   channelSessions: ChannelConnectorAgentSessionDriverStatusResponse | undefined;
-  chat: ChatBootstrapPayload | undefined;
   terminal: TerminalStatusPayload | undefined;
   recovery: OpenClawRecoveryStatusPayload | undefined;
 }
@@ -71,7 +68,9 @@ function worseTone(a: ReadinessTone, b: ReadinessTone): ReadinessTone {
  * an item appears only when its source reports a concrete problem. Sorted by
  * severity (high first).
  */
-export function buildAttentionItems(sources: DashboardSources): AttentionItem[] {
+export function buildAttentionItems(
+  sources: DashboardSources,
+): AttentionItem[] {
   const items: AttentionItem[] = [];
 
   // 1. Gateway degraded / circuit-open providers → /model-gateway.
@@ -143,7 +142,11 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
       to: ROUTES.recovery,
       actionLabel: "查看平台守护",
     });
-  } else if (recovery && recovery.lastRepair && recovery.lastRepair.ok === false) {
+  } else if (
+    recovery &&
+    recovery.lastRepair &&
+    recovery.lastRepair.ok === false
+  ) {
     items.push({
       id: "recovery-last-repair-failed",
       title: "上次平台守护修复失败",
@@ -157,10 +160,14 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
 
   // 5. Bootstrap errors / fixable issues → /platforms (system surface).
   const bootstrap = sources.summary?.bootstrap;
-  if (bootstrap && (bootstrap.errors > 0 || (!bootstrap.ready && bootstrap.fixable > 0))) {
+  if (
+    bootstrap &&
+    (bootstrap.errors > 0 || (!bootstrap.ready && bootstrap.fixable > 0))
+  ) {
     items.push({
       id: "bootstrap-issues",
-      title: bootstrap.errors > 0 ? "Bootstrap 存在阻断错误" : "Bootstrap 未就绪",
+      title:
+        bootstrap.errors > 0 ? "Bootstrap 存在阻断错误" : "Bootstrap 未就绪",
       detail: `${bootstrap.errors} 个错误 · ${bootstrap.warnings} 个警告 · ${bootstrap.fixable} 个可修复`,
       severity: bootstrap.errors > 0 ? "high" : "medium",
       icon: "bootstrap",
@@ -196,28 +203,10 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
     });
   }
 
-  // 8. Failed / errored chat sessions → /chat.
-  const erroredChat = (sources.chat?.sessions ?? []).filter(
-    (s) => s.runtime.state === "error" || s.runtime.lastErrorMessage,
-  );
-  if (erroredChat.length > 0) {
-    const first = erroredChat[0];
-    items.push({
-      id: "chat-errors",
-      title: `${erroredChat.length} 个会话存在错误`,
-      detail:
-        first.runtime.lastErrorMessage ?? `会话 ${first.label} 处于错误状态。`,
-      severity: "medium",
-      icon: "session",
-      to: ROUTES.chat,
-      actionLabel: "查看对话",
-    });
-  }
-
-  // 9. Channel agent sessions with a last error → /im-channels.
-  const erroredSessions = (sources.channelSessions?.activeSessions ?? []).filter(
-    (s) => Boolean(s.lastError),
-  );
+  // 8. Channel agent sessions with a last error → /im-channels.
+  const erroredSessions = (
+    sources.channelSessions?.activeSessions ?? []
+  ).filter((s) => Boolean(s.lastError));
   if (erroredSessions.length > 0) {
     items.push({
       id: "channel-session-errors",
@@ -230,7 +219,9 @@ export function buildAttentionItems(sources: DashboardSources): AttentionItem[] 
     });
   }
 
-  return items.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  return items.sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +236,8 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   const gateway = sources.gateway;
   const health = gateway?.healthSummary;
   if (gateway) {
-    const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
+    const degraded =
+      (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
     const listener = gateway.listener;
     pillars.push({
       id: "gateway",
@@ -273,7 +265,8 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   if (channelRuntime) {
     const reachable = channelRuntime.reachable === true;
     const conns =
-      (channelRuntime.feishuConnections ?? 0) + (channelRuntime.octoConnections ?? 0);
+      (channelRuntime.feishuConnections ?? 0) +
+      (channelRuntime.octoConnections ?? 0);
     pillars.push({
       id: "channel",
       label: "IM 渠道",
@@ -333,7 +326,8 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   // System runtime pillar.
   const healthSnap = sources.health;
   if (healthSnap) {
-    const ok = healthSnap.gateway === "online" && healthSnap.serviceState === "active";
+    const ok =
+      healthSnap.gateway === "online" && healthSnap.serviceState === "active";
     pillars.push({
       id: "system",
       label: "系统运行时",
@@ -404,21 +398,6 @@ export function buildActiveWork(sources: DashboardSources): ActiveWorkItem[] {
     });
   }
 
-  const runningChat = (sources.chat?.sessions ?? []).filter(
-    (s) => s.runtime.state === "running" || s.runtime.state === "streaming",
-  );
-  for (const session of runningChat) {
-    items.push({
-      id: `chat-${session.key}`,
-      title: session.derivedTitle || session.label,
-      detail: `${session.runtime.state}${
-        session.lastMessagePreview ? ` · ${session.lastMessagePreview}` : ""
-      }`,
-      source: "chat",
-      to: ROUTES.chat,
-    });
-  }
-
   return items;
 }
 
@@ -426,7 +405,9 @@ export function buildActiveWork(sources: DashboardSources): ActiveWorkItem[] {
  * Recent activity stream synthesized from the recovery event log + the
  * server-derived event summary. Newest first; capped by the caller's view.
  */
-export function buildRecentActivity(sources: DashboardSources): RecentActivityItem[] {
+export function buildRecentActivity(
+  sources: DashboardSources,
+): RecentActivityItem[] {
   const items: RecentActivityItem[] = [];
 
   const lastRepair = sources.recovery?.lastRepair;
@@ -474,13 +455,14 @@ export function buildRecentActivity(sources: DashboardSources): RecentActivityIt
   }
 
   // Recent channel-driver runtime events (turn lifecycle).
-  for (const event of (sources.channelSessions?.recentEvents ?? []).slice(0, 4)) {
+  for (const event of (sources.channelSessions?.recentEvents ?? []).slice(
+    0,
+    4,
+  )) {
     items.push({
       id: `channel-event-${event.checkedAt}-${event.type}-${event.sessionId ?? event.bindingId}`,
       title: `渠道：${event.type}`,
-      detail: event.error
-        ? event.error
-        : `${event.agent} · ${event.bindingId}`,
+      detail: event.error ? event.error : `${event.agent} · ${event.bindingId}`,
       occurredAt: event.checkedAt,
       tone: event.error || event.type === "turn.failed" ? "bad" : "info",
     });

@@ -1,7 +1,6 @@
 import { apiRequest } from "./client";
 import type { DashboardSummaryPayload } from "../../../../../types/dashboard";
 import type { SystemHealthPayload } from "../../../../../types/system";
-import type { ChatBootstrapPayload } from "../../../../../types/chat";
 import type { TerminalStatusPayload } from "../../../../../types/terminal";
 import type { OpenClawRecoveryStatusPayload } from "../../../../../types/openclaw-recovery";
 
@@ -18,7 +17,6 @@ import type { OpenClawRecoveryStatusPayload } from "../../../../../types/opencla
  * Bound here (everything else the cockpit reads):
  *  - GET /api/dashboard/summary           → server-derived task/runtime summary
  *  - GET /api/system/health               → runtime health (version, gateway, service)
- *  - GET /api/chat/bootstrap              → conversation sessions + runtime states
  *  - GET /api/terminal/status            → CLI binaries / agent install state
  *  - GET /api/openclaw-recovery/status   → self-heal daemon / probe / repair state
  *
@@ -30,24 +28,16 @@ import type { OpenClawRecoveryStatusPayload } from "../../../../../types/opencla
 export function getDashboardSummary(
   signal?: AbortSignal,
 ): Promise<DashboardSummaryPayload> {
-  return apiRequest<DashboardSummaryPayload>("/api/dashboard/summary", { signal });
+  return apiRequest<DashboardSummaryPayload>("/api/dashboard/summary", {
+    signal,
+  });
 }
 
 /** GET /api/system/health — runtime health snapshot. */
-export function getSystemHealth(signal?: AbortSignal): Promise<SystemHealthPayload> {
+export function getSystemHealth(
+  signal?: AbortSignal,
+): Promise<SystemHealthPayload> {
   return apiRequest<SystemHealthPayload>("/api/system/health", { signal });
-}
-
-/**
- * GET /api/chat/bootstrap — conversation sessions + per-session runtime state.
- * The cockpit only needs the recent session list, so it requests a small
- * recent window and minimal history.
- */
-export function getChatBootstrap(signal?: AbortSignal): Promise<ChatBootstrapPayload> {
-  return apiRequest<ChatBootstrapPayload>(
-    "/api/chat/bootstrap?recentLimit=12&historyLimit=1",
-    { signal },
-  );
 }
 
 /** GET /api/terminal/status — CLI binaries / agent install state. */

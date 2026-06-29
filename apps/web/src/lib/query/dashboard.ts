@@ -1,7 +1,6 @@
 import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
 import {
-  getChatBootstrap,
   getDashboardSummary,
   getOpenClawRecoveryStatus,
   getSystemHealth,
@@ -9,7 +8,6 @@ import {
 } from "../api/dashboard";
 import type { ApiError } from "../api/errors";
 import type {
-  ChatBootstrapPayload,
   DashboardSummaryPayload,
   OpenClawRecoveryStatusPayload,
   SystemHealthPayload,
@@ -32,7 +30,6 @@ export const dashboardKeys = {
   all: ["dashboard"] as const,
   summary: () => ["dashboard", "summary"] as const,
   systemHealth: () => ["dashboard", "system-health"] as const,
-  chatBootstrap: () => ["dashboard", "chat-bootstrap"] as const,
   terminalStatus: () => ["dashboard", "terminal-status"] as const,
   recoveryStatus: () => ["dashboard", "recovery-status"] as const,
 };
@@ -58,15 +55,6 @@ export function useSystemHealthQuery(options?: QueryOpts<SystemHealthPayload>) {
   return useQuery<SystemHealthPayload, ApiError>({
     queryKey: dashboardKeys.systemHealth(),
     queryFn: ({ signal }) => getSystemHealth(signal),
-    ...options,
-  });
-}
-
-/** Conversation sessions + per-session runtime state (`/api/chat/bootstrap`). */
-export function useChatBootstrapQuery(options?: QueryOpts<ChatBootstrapPayload>) {
-  return useQuery<ChatBootstrapPayload, ApiError>({
-    queryKey: dashboardKeys.chatBootstrap(),
-    queryFn: ({ signal }) => getChatBootstrap(signal),
     ...options,
   });
 }

@@ -1,10 +1,5 @@
 import * as React from "react";
-import {
-  ExternalLink,
-  History,
-  MessageSquare,
-  RadioTower,
-} from "lucide-react";
+import { ExternalLink, History, RadioTower } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
@@ -12,7 +7,6 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import { useChannelConnectorsAgentSessionsQuery } from "@/lib/query/channel-connectors";
-import { useChatBootstrapQuery } from "@/lib/query/dashboard";
 
 import type { CliAgentsViewProps } from "../types";
 import {
@@ -51,27 +45,33 @@ function eventLabel(type: string): string {
   }
 }
 
-function platformPeerLabel(platform: string | null | undefined, peerKind: string | null | undefined): string {
+function platformPeerLabel(
+  platform: string | null | undefined,
+  peerKind: string | null | undefined,
+): string {
   const platformLabel = platform === "feishu" ? "飞书" : platform || "IM";
-  const peerLabel = peerKind === "user" ? "私聊" : peerKind === "group" ? "群聊" : "会话";
+  const peerLabel =
+    peerKind === "user" ? "私聊" : peerKind === "group" ? "群聊" : "会话";
   return `${platformLabel}${peerLabel}`;
 }
 
 /**
  * Async agent-session evidence — read-only. IM channel agent-sessions (active +
- * recent events) come from the Channel Connectors session driver; chat sessions
- * come from chat bootstrap. kill / reap controls live in their owning domains;
- * here we only surface trace + deep-link to `/im-channels` and `/chat`.
+ * recent events) come from the Channel Connectors session driver. kill / reap
+ * controls live in their owning domains; here we only surface trace + deep-link
+ * to `/im-channels`.
  */
 export function EvidenceView(_props: CliAgentsViewProps) {
   const channel = useChannelConnectorsAgentSessionsQuery();
-  const chat = useChatBootstrapQuery();
 
   const activeSessions = channel.data?.activeSessions ?? [];
   const recentEvents = channel.data?.recentEvents ?? [];
-  const bindingsById = new Map((channel.data?.bindings ?? []).map((binding) => [binding.bindingId, binding] as const));
+  const bindingsById = new Map(
+    (channel.data?.bindings ?? []).map(
+      (binding) => [binding.bindingId, binding] as const,
+    ),
+  );
   const policy = channel.data?.policy;
-  const chatSessions = chat.data?.sessions ?? [];
 
   return (
     <div className="grid gap-4">
@@ -84,7 +84,9 @@ export function EvidenceView(_props: CliAgentsViewProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => (window.location.hash = "#/im-channels?view=sessions")}
+              onClick={() =>
+                (window.location.hash = "#/im-channels?view=sessions")
+              }
             >
               IM 渠道
               <ExternalLink />
@@ -95,7 +97,9 @@ export function EvidenceView(_props: CliAgentsViewProps) {
           <dl className="grid grid-cols-2 gap-2.5 border-b border-line p-4 sm:grid-cols-3">
             <Fact label="活跃会话">{activeSessions.length}</Fact>
             <Fact label="最大会话">{policy.maxSessions}</Fact>
-            <Fact label="空闲超时">{Math.round(policy.idleTimeoutMs / 1000)}s</Fact>
+            <Fact label="空闲超时">
+              {Math.round(policy.idleTimeoutMs / 1000)}s
+            </Fact>
           </dl>
         )}
         <div className="grid gap-0.5 p-1">
@@ -109,7 +113,11 @@ export function EvidenceView(_props: CliAgentsViewProps) {
               title="IM 代理会话不可用"
               description={channel.error.message}
               action={
-                <Button variant="outline" size="sm" onClick={() => void channel.refetch()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void channel.refetch()}
+                >
                   重试
                 </Button>
               }
@@ -122,18 +130,25 @@ export function EvidenceView(_props: CliAgentsViewProps) {
           ) : (
             activeSessions.map((s) => {
               const binding = bindingsById.get(s.bindingId);
-              const source = platformPeerLabel(binding?.platform, binding?.peerKind);
+              const source = platformPeerLabel(
+                binding?.platform,
+                binding?.peerKind,
+              );
               const activeModel = s.sessionControl?.model || s.model || "—";
               const activeWorkDir = s.sessionControl?.workDir || s.workDir;
               return (
                 <Row
                   key={s.poolKey || s.sessionId}
                   icon={<RadioTower />}
-                  iconClass={toneIconClass(s.lastError ? "bad" : s.running > 0 ? "ok" : "mute")}
+                  iconClass={toneIconClass(
+                    s.lastError ? "bad" : s.running > 0 ? "ok" : "mute",
+                  )}
                   title={`${source} · ${s.agent}`}
                   subtitle={`${activeModel} · ${activeWorkDir} · ${formatIdle(s.idleMs)}`}
                   trailing={
-                    <ToneBadge tone={s.lastError ? "bad" : s.running > 0 ? "ok" : "mute"}>
+                    <ToneBadge
+                      tone={s.lastError ? "bad" : s.running > 0 ? "ok" : "mute"}
+                    >
                       {s.lastError ? "错误" : s.running > 0 ? "运行中" : "空闲"}
                     </ToneBadge>
                   }
@@ -153,12 +168,16 @@ export function EvidenceView(_props: CliAgentsViewProps) {
               <SkeletonRow />
             </div>
           ) : channel.error ? (
-            <ErrorState title="事件不可用" description={channel.error.message} />
+            <ErrorState
+              title="事件不可用"
+              description={channel.error.message}
+            />
           ) : recentEvents.length === 0 ? (
             <EmptyState title="暂无最近事件" />
           ) : (
             recentEvents.slice(0, 12).map((event, i) => {
-              const failed = Boolean(event.error) || event.type.endsWith(".failed");
+              const failed =
+                Boolean(event.error) || event.type.endsWith(".failed");
               return (
                 <Row
                   key={`${event.checkedAt}-${i}`}
@@ -171,60 +190,6 @@ export function EvidenceView(_props: CliAgentsViewProps) {
                       {event.error ?? event.reason ?? "ok"}
                     </ToneBadge>
                   }
-                />
-              );
-            })
-          )}
-        </div>
-      </Panel>
-
-      {/* Chat sessions */}
-      <Panel>
-        <PanelHead
-          title="对话会话"
-          sub="Tracevane chat bootstrap 的最近会话（只读）。"
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => (window.location.hash = "#/chat")}
-            >
-              对话
-              <ExternalLink />
-            </Button>
-          }
-        />
-        <div className="grid gap-0.5 p-1">
-          {chat.isLoading ? (
-            <div className="p-3">
-              <SkeletonRow />
-              <SkeletonRow />
-            </div>
-          ) : chat.error ? (
-            <ErrorState
-              title="对话会话不可用"
-              description={chat.error.message}
-              action={
-                <Button variant="outline" size="sm" onClick={() => void chat.refetch()}>
-                  重试
-                </Button>
-              }
-            />
-          ) : chatSessions.length === 0 ? (
-            <EmptyState title="暂无对话会话" icon={<MessageSquare />} />
-          ) : (
-            chatSessions.slice(0, 12).map((s) => {
-              const connected = s.runtime.gatewayConnected;
-              const state = s.runtime.state;
-              const tone = state === "error" ? "bad" : connected ? "ok" : "mute";
-              return (
-                <Row
-                  key={s.key}
-                  icon={<MessageSquare />}
-                  iconClass={toneIconClass(tone)}
-                  title={s.derivedTitle || s.label || s.sessionId || s.key}
-                  subtitle={`${s.agentId} · ${s.source.channel ?? s.source.source} · ${formatTime(s.updatedAt)}`}
-                  trailing={<ToneBadge tone={tone}>{state}</ToneBadge>}
                 />
               );
             })

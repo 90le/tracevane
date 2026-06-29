@@ -4,7 +4,6 @@ import {
   Boxes,
   FolderCog,
   LayoutDashboard,
-  MessageSquare,
   Network,
   Plug,
   Terminal,
@@ -62,16 +61,6 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle: "系统级文件管理、上传、归档、内容索引库管理入口。",
     group: "工作",
     icon: FolderCog,
-    status: "ready",
-  },
-  {
-    path: "/chat",
-    label: "Agent 会话",
-    title: "Agent 会话",
-    subtitle:
-      "统一承载 Web、IM、CLI、OpenClaw 与未来平台触发的所有 Agent 对话。",
-    group: "工作",
-    icon: MessageSquare,
     status: "ready",
   },
   {

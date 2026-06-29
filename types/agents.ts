@@ -185,7 +185,6 @@ export interface AgentDetailPayload {
   recentSessions: AgentSessionSummary[];
 }
 
-
 export interface AgentsSummaryPayload {
   checkedAt: string;
   count: number;
@@ -194,8 +193,7 @@ export interface AgentsSummaryPayload {
   agents: AgentSummary[];
 }
 
-
-export type AgentRuntimeRunSource = "terminal" | "im-channel" | "chat";
+export type AgentRuntimeRunSource = "terminal" | "im-channel";
 
 export type AgentRuntimeRunStatus =
   | "running"
@@ -208,7 +206,7 @@ export type AgentRuntimeRunStatus =
   | "unknown";
 
 export interface AgentRuntimeRunEvidenceRef {
-  kind: "terminal-session" | "im-session" | "chat-session" | "event";
+  kind: "terminal-session" | "im-session" | "event";
   label: string;
   href: string | null;
 }
@@ -255,7 +253,6 @@ export interface AgentRuntimeRunsResponse {
     failed: number;
     terminal: number;
     imChannel: number;
-    chat: number;
   };
 }
 
