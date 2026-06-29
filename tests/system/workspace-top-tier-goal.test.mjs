@@ -154,6 +154,21 @@ test("legacy Workspace design doc is downgraded behind the IDE-first UI contract
   assert.doesNotMatch(designDoc, /Preview[\s\S]{0,80}File Info/);
 });
 
+test("Workspace IDE rebuild backlog sequences the full redesign around IDE core", () => {
+  const backlog = readRoot("docs/WorkspaceIDE重建设计执行Backlog.md");
+  assert.match(backlog, /Active Execution Backlog/);
+  assert.match(backlog, /Phase B  Shell Architecture/);
+  assert.match(backlog, /Phase C  Terminal First/);
+  assert.match(backlog, /Phase E  Search Core/);
+  assert.match(backlog, /Phase F  Git Core/);
+  assert.match(backlog, /Global App Top Bar  <- 必须保留/);
+  assert.match(backlog, /Terminal 是第一优先级 IDE 能力/);
+  assert.match(backlog, /Search 是项目级定位与审查入口/);
+  assert.match(backlog, /Git 是代码审查与提交工作流/);
+  assert.match(backlog, /不推进写作、渲染、预览增强/);
+  assert.doesNotMatch(backlog, /Phase B[\s\S]{0,240}预览增强/);
+});
+
 test("Workspace UI/UX contract locks the redesign to IDE core capabilities", () => {
   const contract = readRoot("docs/WorkspaceIDE-UIUX重设计验收.md");
   assert.match(contract, /当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor,? Command Palette|当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette/);
