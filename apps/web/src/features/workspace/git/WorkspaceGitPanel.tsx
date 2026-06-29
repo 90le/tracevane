@@ -577,14 +577,14 @@ export function WorkspaceGitPanel({
   const explainStatus = React.useCallback(() => {
     void navigator.clipboard.writeText(gitStatusContext).then(
       () =>
-        toast.success("已复制 Git AI 上下文", {
+        toast.success("已复制 Git 审查上下文", {
           description:
-            "当前先生成 @git status 摘要；后续接入 Gateway 后可直接作为 AI 总结输入。",
+            "当前先生成 @git status 摘要；后续接入 Gateway 后可作为可审查证据输入。",
         }),
       () =>
-        toast.info("AI Git 总结入口已预留", {
+        toast.info("Git 审查上下文入口已预留", {
           description:
-            "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git status / @git diff context。",
+            "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git status / @git diff context 证据包。",
         }),
     );
   }, [gitStatusContext]);
@@ -3052,8 +3052,8 @@ function GitQuickActions({
           size="icon"
           className="size-7 shrink-0"
           onClick={() => onExplainStatus()}
-          title="复制 Git AI 上下文"
-          aria-label="复制 Git AI 上下文"
+          title="复制 Git 审查上下文"
+          aria-label="复制 Git 审查上下文"
           data-workspace-git-explain-status
         >
           <Sparkles className="size-3.5" />
@@ -3146,7 +3146,7 @@ function GitQuickActions({
               />
               <GitQuickMenuButton
                 icon={<Sparkles className="size-3.5" />}
-                label="复制 Git AI 上下文"
+                label="复制 Git 审查上下文"
                 onClick={() => runFromMenu(onExplainStatus)}
                 dataAttr="explain-status"
               />

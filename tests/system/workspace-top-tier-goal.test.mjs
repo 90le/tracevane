@@ -89,21 +89,35 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
 
 test("Workspace search commands frame replace as reviewable IDE plans", () => {
   const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
+  const searchPanel = readWeb("features/workspace/files/WorkspaceSearchPanel.tsx");
   assert.match(searchCommands, /搜索：审查跨文件替换计划/);
   assert.match(searchCommands, /可审查替换计划/);
   assert.match(searchCommands, /搜索：应用本次替换计划/);
+  assert.match(searchPanel, /审查跨文件替换计划/);
+  assert.match(searchPanel, /审查替换计划/);
+  assert.match(searchPanel, /全选本次计划/);
+  assert.match(searchPanel, /复制上下文证据/);
   assert.doesNotMatch(searchCommands, /搜索：预览跨文件替换/);
   assert.doesNotMatch(searchCommands, /确认本次替换预览/);
+  assert.doesNotMatch(searchPanel, /预览跨文件替换/);
+  assert.doesNotMatch(searchPanel, /预览替换/);
+  assert.doesNotMatch(searchPanel, /全选本次预览/);
+  assert.doesNotMatch(searchPanel, /复制 AI 上下文/);
 });
 
 test("Workspace Git commands prioritize review evidence over generic AI copy", () => {
   const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
+  const gitPanel = readWeb("features/workspace/git/WorkspaceGitPanel.tsx");
   assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
   assert.match(gitCommands, /Diff 审查上下文/);
   assert.match(gitCommands, /Git：复制提交证据包/);
   assert.match(gitCommands, /审查证据包/);
+  assert.match(gitPanel, /复制 Git 审查上下文/);
+  assert.match(gitPanel, /已复制 Git 审查上下文/);
   assert.doesNotMatch(gitCommands, /Diff AI 上下文/);
   assert.doesNotMatch(gitCommands, /复制该提交的 AI 上下文/);
+  assert.doesNotMatch(gitPanel, /复制 Git AI 上下文/);
+  assert.doesNotMatch(gitPanel, /已复制 Git AI 上下文/);
 });
 
 test("Workspace context commands collect reviewable evidence before AI handoff", () => {

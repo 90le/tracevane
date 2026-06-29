@@ -665,12 +665,12 @@ test("Workspace side explorer exposes file-management toolbar capabilities", () 
   assert.match(searchPanel, /ReplacePreviewDialog/);
   assert.match(searchPanel, /ReplaceUndoPackage/);
   assert.match(searchPanel, /ReplaceUndoStrip/);
-  assert.match(searchPanel, /预览跨文件替换/);
+  assert.match(searchPanel, /审查跨文件替换计划/);
   assert.match(searchPanel, /replaceSelection/);
   assert.match(searchPanel, /selectedReplaceItems/);
   assert.match(searchPanel, /toggleReplacePreviewItem/);
   assert.match(searchPanel, /selectAllReplacePreviewItems/);
-  assert.match(searchPanel, /全选本次预览/);
+  assert.match(searchPanel, /全选本次计划/);
   assert.match(searchPanel, /包含隐藏文件/);
   assert.match(searchPanel, /hidden: includeHidden/);
   assert.match(searchPanel, /indexStats/);
@@ -2481,7 +2481,7 @@ test("Workspace explorer supports address-bar cwd, path copy, terminal drop, and
   assert.match(gitPanel, /max-h-\[min\(72dvh,22rem\)\]/);
   assert.match(gitPanel, /function GitQuickMenuButton/);
   assert.match(gitPanel, /data-workspace-git-quick-menu-action/);
-  assert.match(gitPanel, /复制 Git AI 上下文/);
+  assert.match(gitPanel, /复制 Git 审查上下文/);
   assert.match(gitPanel, /aria-haspopup="menu"/);
   assert.match(gitPanel, /aria-expanded=\{menuOpen\}/);
   assert.match(gitPanel, /setMenuOpen\(false\)/);
@@ -2504,7 +2504,7 @@ test("Workspace explorer supports address-bar cwd, path copy, terminal drop, and
   assert.match(gitPanel, /"@git diff"/);
   assert.match(gitPanel, /navigator\.clipboard\.writeText\(gitStatusContext\)/);
   assert.match(gitPanel, /navigator\.clipboard\.writeText\(context\)/);
-  assert.match(gitPanel, /已复制 Git AI 上下文/);
+  assert.match(gitPanel, /已复制 Git 审查上下文/);
   assert.match(gitPanel, /已复制 Git Diff 上下文/);
   assert.match(gitPanel, /items\.slice\(0, 12\)/);
   assert.match(gitPanel, /items\.length > 12/);

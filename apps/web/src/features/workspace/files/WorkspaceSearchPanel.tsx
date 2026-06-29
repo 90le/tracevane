@@ -170,10 +170,10 @@ export function WorkspaceSearchPanel({
     }
     void navigator.clipboard.writeText(searchContext).then(
       () =>
-        toast.success("已复制搜索 AI 上下文", {
+        toast.success("已复制搜索上下文证据", {
           description: searchTruncated
-            ? "结果已按后端上限截断，建议收窄关键词后再交给 AI。"
-            : "可用于 AI 总结命中范围、生成修改计划或批量替换建议。",
+            ? "结果已按后端上限截断，建议收窄关键词后再形成证据包。"
+            : "可用于审查命中范围、生成修改计划或批量替换建议。",
         }),
       () =>
         toast.error("复制搜索上下文失败", {
@@ -237,7 +237,7 @@ export function WorkspaceSearchPanel({
       setReplacePreview(previewItems);
       setReplaceSelection(new Set(previewItems.map((item) => item.path)));
       if (failedReads)
-        toast.error("替换预览部分失败", {
+        toast.error("替换计划部分生成失败", {
           description: `${failedReads} 个文件无法读取，已跳过。`,
         });
       if (!previewItems.length)
@@ -462,7 +462,7 @@ export function WorkspaceSearchPanel({
           </label>
           <span>
             结果上限 {searchLimit}{" "}
-            条由后端保护；批量替换前必须预览并可逐文件排除。
+            条由后端保护；批量替换前必须审查计划并可逐文件排除。
           </span>
           <label className="inline-flex items-center gap-1.5">
             <input
@@ -501,14 +501,14 @@ export function WorkspaceSearchPanel({
             data-workspace-search-copy-ai-context
           >
             <Sparkles className="size-3.5" />
-            复制 AI 上下文
+            复制上下文证据
           </Button>
         </div>
         <div className="grid gap-2 rounded border border-line bg-panel-2 p-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-medium text-ink-strong">跨文件替换</span>
             <span className="text-subtle">
-              当前结果内批量替换；支持大小写、正则、预览确认和撤销。
+              当前结果内批量替换；支持大小写、正则、审查确认和撤销。
             </span>
           </div>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -526,14 +526,14 @@ export function WorkspaceSearchPanel({
             >
               {replaceBusy
                 ? "分析中..."
-                : `预览替换 ${replaceTargets.length} 个文件`}
+                : `审查替换计划 ${replaceTargets.length} 个文件`}
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
             <span>
               替换沿用当前搜索模式：
               {searchCaseSensitive ? "区分大小写" : "不区分大小写"}
-              {searchRegex ? " · 正则替换" : ""}；只写入本次预览勾选的文本文件。
+              {searchRegex ? " · 正则替换" : ""}；只写入本次计划勾选的文本文件。
             </span>
           </div>
         </div>
@@ -852,12 +852,12 @@ function SearchResultContextMenu({
     },
     {
       id: "copyResultContext",
-      label: "复制单条 AI 上下文",
+      label: "复制单条上下文证据",
       icon: <Sparkles />,
       run: () =>
         onCopy(
           formatSingleSearchResultAiContext({ rootId, query, result }),
-          "已复制单条搜索 AI 上下文",
+          "已复制单条搜索上下文证据",
         ),
     },
     {
@@ -1068,7 +1068,7 @@ function ReplacePreviewDialog({
     >
       <DialogContent className="w-[min(760px,94vw)]">
         <DialogHeader>
-          <DialogTitle>预览跨文件替换</DialogTitle>
+          <DialogTitle>审查跨文件替换计划</DialogTitle>
         </DialogHeader>
         <DialogBody className="grid gap-3 text-sm">
           <div className="rounded border border-line bg-panel-2 p-3 text-xs">
@@ -1084,7 +1084,7 @@ function ReplacePreviewDialog({
                   className="size-3 accent-primary"
                   disabled={!items?.length || busy}
                 />
-                全选本次预览
+                全选本次计划
               </label>
             </div>
             <div className="mt-1 text-muted">
