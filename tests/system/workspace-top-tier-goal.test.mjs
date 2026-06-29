@@ -25,6 +25,19 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /git add.*显式列路径/);
 });
 
+test("legacy Workspace target doc is downgraded behind the IDE-first blueprint", () => {
+  const target = readRoot("docs/Workspace目标.md");
+  assert.match(target, /状态：Superseded reference/);
+  assert.match(target, /当前权威蓝图：`Workspace全球顶级AI编程IDE工作区Goal蓝图\.md`/);
+  assert.match(target, /IDE-first \/ AI-native 编程工作区/);
+  assert.match(target, /不建设独立写作工作区/);
+  assert.match(target, /不以“当前原型设计”为实现门禁/);
+  assert.match(target, /Terminal、Diff、Git、Search 是一等 IDE 面板/);
+  assert.doesNotMatch(target, /状态：Active target/);
+  assert.doesNotMatch(target, /新能力必须先进入当前原型设计/);
+  assert.doesNotMatch(target, /Markdown 实时预览是 P0/);
+});
+
 test("legacy Workspace writing-goal document is downgraded behind the IDE-first blueprint", () => {
   assert.equal(
     fs.existsSync(new URL("../../docs/Workspace全球顶级AI编程写作工作区Goal.md", import.meta.url)),
