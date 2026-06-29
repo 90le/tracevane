@@ -1440,3 +1440,19 @@ test("new Workspace IDE shell supports drag assignment in the pane layout manage
   assert.match(cssSource, /button\[draggable="true"\]/);
   assert.match(cssSource, /cursor: grab/);
 });
+
+test("new Workspace IDE shell exposes pane group swap and merge in the layout manager", () => {
+  assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
+  assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);
+  assert.match(shellSource, /onSwapDockGroups: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /onMergeDockGroups: \(placement: PanePlacement, preferredRole\?: DockPaneRole\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-combine=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSwapDockGroups\(placement\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-swap-groups=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMergeDockGroups\(placement, "primary"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-merge-primary=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMergeDockGroups\(placement, "secondary"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-merge-secondary=\{placement\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| splitModes\[placement\] === "single"\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-combine/);
+});

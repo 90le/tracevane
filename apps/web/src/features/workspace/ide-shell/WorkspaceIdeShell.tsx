@@ -3536,6 +3536,8 @@ export function WorkspaceIdeShell() {
           onSetDockSplitMode={setDockSplitMode}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
           onMovePaneToGroup={movePaneToPlacement}
+          onSwapDockGroups={swapDockSplitPanes}
+          onMergeDockGroups={mergeDockSplitGroups}
           onFocusRegion={focusIdeRegion}
         />
         <div className="workspace-ide-shell__top-actions">
@@ -4336,6 +4338,8 @@ function DockLayoutManager({
   onSetDockSplitMode,
   onSetSplitRatioPreset,
   onMovePaneToGroup,
+  onSwapDockGroups,
+  onMergeDockGroups,
   onFocusRegion,
 }: {
   panesByPlacement: PaneOrder;
@@ -4349,6 +4353,8 @@ function DockLayoutManager({
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
+  onSwapDockGroups: (placement: PanePlacement) => void;
+  onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
   onFocusRegion: (region: IdeFocusRegion) => void;
 }) {
   const [dragTarget, setDragTarget] = React.useState<{ placement: PanePlacement; role: DockPaneRole } | null>(null);
@@ -4426,6 +4432,17 @@ function DockLayoutManager({
                 onSelect={(ratio) => onSetSplitRatioPreset(placement, ratio)}
                 dataAttribute={`manager-${placement}`}
               />
+              <div className="workspace-ide-shell__dock-layout-combine" data-ide-pane-layout-combine={placement}>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onSwapDockGroups(placement)} data-ide-pane-layout-swap-groups={placement}>
+                  交换主副
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onMergeDockGroups(placement, "primary")} data-ide-pane-layout-merge-primary={placement}>
+                  合到主组
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onMergeDockGroups(placement, "secondary")} data-ide-pane-layout-merge-secondary={placement}>
+                  合到副组
+                </button>
+              </div>
               <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
                 {(["primary", "secondary"] as const).map((role) => (
                   <div

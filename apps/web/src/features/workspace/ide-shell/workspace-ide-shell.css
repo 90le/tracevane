@@ -1358,3 +1358,14 @@
 .workspace-ide-shell__dock-layout-group button[draggable="true"]:active {
   cursor: grabbing;
 }
+
+.workspace-ide-shell__dock-layout-combine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.workspace-ide-shell__dock-layout-combine button {
+  border-color: rgba(45, 212, 191, 0.18);
+}
