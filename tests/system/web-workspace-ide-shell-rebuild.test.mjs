@@ -201,3 +201,24 @@ test("new Workspace IDE shell persists pane order and supports tab reorder drops
   assert.match(shellSource, /paneOrder: sanitizePaneOrder\(value\.paneOrder\)/);
   assert.match(shellSource, /顺序: \{leftPaneIds\.join\("\|"\)/);
 });
+
+test("new Workspace IDE shell supports named local layout snapshots", () => {
+  assert.match(shellSource, /IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY/);
+  assert.match(shellSource, /interface IdeLayoutSnapshot/);
+  assert.match(shellSource, /MAX_LAYOUT_SNAPSHOTS/);
+  assert.match(shellSource, /layoutSnapshots/);
+  assert.match(shellSource, /function saveLayoutSnapshot/);
+  assert.match(shellSource, /function restoreLayoutSnapshot/);
+  assert.match(shellSource, /function deleteLayoutSnapshot/);
+  assert.match(shellSource, /function applyIdeLayoutState/);
+  assert.match(shellSource, /function loadIdeLayoutSnapshots/);
+  assert.match(shellSource, /function storeIdeLayoutSnapshots/);
+  assert.match(shellSource, /function sanitizeIdeLayoutSnapshots/);
+  assert.match(shellSource, /ide\.layout\.snapshot\.save/);
+  assert.match(shellSource, /ide\.layout\.snapshot\.restore\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-layout-snapshot-save/);
+  assert.match(shellSource, /data-ide-layout-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /快照: \{layoutSnapshots\.length\}/);
+  assert.match(cssSource, /workspace-ide-shell__layout-snapshots/);
+  assert.match(cssSource, /workspace-ide-shell__layout-snapshot/);
+});

@@ -87,6 +87,8 @@ const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
 );
 
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
+const IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.snapshots.v1";
+const MAX_LAYOUT_SNAPSHOTS = 8;
 
 const DEFAULT_PANE_SIZES: IdePaneSizes = { left: 320, right: 340, bottom: 260 };
 const CODE_PANE_SIZES: IdePaneSizes = { left: 280, right: 300, bottom: 190 };
@@ -114,6 +116,13 @@ interface IdeLayoutState {
   paneOrder?: Partial<PaneOrder>;
 }
 
+interface IdeLayoutSnapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  state: IdeLayoutState;
+}
+
 const LazyWorkspaceTerminal = React.lazy(() =>
   import("../terminal/WorkspaceTerminal").then((module) => ({
     default: module.WorkspaceTerminal,
@@ -134,6 +143,7 @@ export function WorkspaceIdeShell() {
   }, [filesSummary.data?.defaultRootId, roots]);
 
   const [layoutState] = React.useState(() => loadIdeLayoutState());
+  const [layoutSnapshots, setLayoutSnapshots] = React.useState<IdeLayoutSnapshot[]>(() => loadIdeLayoutSnapshots());
   const [activity, setActivity] = React.useState<PaneId>("explorer");
   const [rightPanel, setRightPanel] = React.useState<PaneId>("ai");
   const [bottomPanel, setBottomPanel] = React.useState<PaneId>("terminal");
@@ -489,9 +499,35 @@ export function WorkspaceIdeShell() {
     [],
   );
 
+  const layoutSnapshotCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.layout.snapshot.save",
+        group: "布局",
+        label: "保存当前 IDE 布局快照",
+        description: "保存当前窗格开合、尺寸、拆分、停靠位置和顺序，便于稍后恢复",
+        risk: "safe",
+        surface: "layout",
+        icon: <Settings2 />,
+        run: saveLayoutSnapshot,
+      },
+      ...layoutSnapshots.map((snapshot) => ({
+        id: `ide.layout.snapshot.restore.${snapshot.id}`,
+        group: "布局" as const,
+        label: `恢复布局快照：${snapshot.name}`,
+        description: `恢复 ${formatSnapshotTime(snapshot.createdAt)} 保存的 IDE 布局快照`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        run: () => restoreLayoutSnapshot(snapshot),
+      })),
+    ],
+    [layoutSnapshots, bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen],
+  );
+
   const commands = React.useMemo(
-    () => [...layoutCommands, ...panePlacementCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [editorCommands, gitCommands, layoutCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -526,6 +562,68 @@ export function WorkspaceIdeShell() {
     setLeftOpen(true);
     setRightOpen(true);
     setBottomOpen(true);
+  }
+
+  function currentIdeLayoutState(): IdeLayoutState {
+    return {
+      leftOpen,
+      rightOpen,
+      bottomOpen,
+      maximizedPane,
+      layoutPreset,
+      paneSizes,
+      editorSplitMode,
+      editorSplitRatio,
+      panePlacements,
+      paneOrder,
+    };
+  }
+
+  function saveLayoutSnapshot() {
+    const createdAt = new Date().toISOString();
+    const snapshot: IdeLayoutSnapshot = {
+      id: `layout-${Date.now()}`,
+      name: `工作台布局 ${layoutSnapshots.length + 1}`,
+      createdAt,
+      state: currentIdeLayoutState(),
+    };
+    const nextSnapshots = [snapshot, ...layoutSnapshots].slice(0, MAX_LAYOUT_SNAPSHOTS);
+    setLayoutSnapshots(nextSnapshots);
+    storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function restoreLayoutSnapshot(snapshot: IdeLayoutSnapshot) {
+    applyIdeLayoutState(snapshot.state);
+  }
+
+  function deleteLayoutSnapshot(snapshotId: string) {
+    const nextSnapshots = layoutSnapshots.filter((snapshot) => snapshot.id !== snapshotId);
+    setLayoutSnapshots(nextSnapshots);
+    storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function applyIdeLayoutState(state: IdeLayoutState) {
+    const sanitized = sanitizeIdeLayoutState(state);
+    const nextPanePlacements = { ...DEFAULT_PANE_PLACEMENTS, ...sanitized.panePlacements };
+    const nextPaneOrder = {
+      left: sanitized.paneOrder?.left ?? DEFAULT_PANE_ORDER.left,
+      right: sanitized.paneOrder?.right ?? DEFAULT_PANE_ORDER.right,
+      bottom: sanitized.paneOrder?.bottom ?? DEFAULT_PANE_ORDER.bottom,
+    };
+    const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder);
+    setPanePlacements(nextPanePlacements);
+    setPaneOrder(nextPaneOrder);
+    setLeftOpen(sanitized.leftOpen ?? true);
+    setRightOpen(sanitized.rightOpen ?? true);
+    setBottomOpen(sanitized.bottomOpen ?? true);
+    setMaximizedPane(sanitized.maximizedPane ?? null);
+    setLayoutPreset(sanitized.layoutPreset ?? "balanced");
+    setPaneSizes({ ...DEFAULT_PANE_SIZES, ...sanitized.paneSizes });
+    setEditorSplitMode(sanitized.editorSplitMode ?? "single");
+    setEditorSplitRatio(sanitized.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
+    setActivity(nextGroups.left[0] ?? "explorer");
+    setRightPanel(nextGroups.right[0] ?? "ai");
+    setBottomPanel(nextGroups.bottom[0] ?? "terminal");
   }
 
   function startPaneResize(pane: keyof IdePaneSizes, event: React.PointerEvent) {
@@ -716,6 +814,19 @@ export function WorkspaceIdeShell() {
           <button type="button" data-active={layoutPreset === "balanced"} onClick={() => applyLayoutPreset("balanced")}>平衡</button>
           <button type="button" data-active={layoutPreset === "code"} onClick={() => applyLayoutPreset("code")}>代码</button>
           <button type="button" data-active={layoutPreset === "terminal"} onClick={() => applyLayoutPreset("terminal")}>终端</button>
+        </div>
+        <div className="workspace-ide-shell__layout-snapshots" aria-label="IDE 布局快照">
+          <button type="button" onClick={saveLayoutSnapshot} data-ide-layout-snapshot-save>保存布局</button>
+          {layoutSnapshots.slice(0, 3).map((snapshot) => (
+            <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-layout-snapshot={snapshot.id}>
+              <button type="button" onClick={() => restoreLayoutSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
+                {snapshot.name}
+              </button>
+              <button type="button" aria-label={`删除布局快照 ${snapshot.name}`} onClick={() => deleteLayoutSnapshot(snapshot.id)}>
+                ×
+              </button>
+            </span>
+          ))}
         </div>
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant="ghost" onClick={() => setLeftOpen((value) => !value)}>
@@ -1040,6 +1151,7 @@ export function WorkspaceIdeShell() {
         <span>保存: {saveState}</span>
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
+        <span>快照: {layoutSnapshots.length}</span>
         <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
         <span>窗格: L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
@@ -1521,6 +1633,27 @@ function loadIdeLayoutState(): IdeLayoutState {
   }
 }
 
+function loadIdeLayoutSnapshots(): IdeLayoutSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY);
+    if (!raw) return [];
+    const value = JSON.parse(raw) as IdeLayoutSnapshot[];
+    return sanitizeIdeLayoutSnapshots(value);
+  } catch {
+    return [];
+  }
+}
+
+function storeIdeLayoutSnapshots(snapshots: IdeLayoutSnapshot[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY, JSON.stringify(sanitizeIdeLayoutSnapshots(snapshots)));
+  } catch {
+    // Layout snapshots are local preferences; storage denial must not break the IDE shell.
+  }
+}
+
 function storeIdeLayoutState(state: Required<IdeLayoutState>) {
   if (typeof window === "undefined") return;
   try {
@@ -1528,6 +1661,19 @@ function storeIdeLayoutState(state: Required<IdeLayoutState>) {
   } catch {
     // Layout persistence is best-effort; private mode/storage denial must not break the IDE shell.
   }
+}
+
+function sanitizeIdeLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((snapshot): snapshot is IdeLayoutSnapshot => Boolean(snapshot) && typeof snapshot === "object")
+    .map((snapshot) => ({
+      id: typeof snapshot.id === "string" ? snapshot.id : `layout-${Date.now()}`,
+      name: typeof snapshot.name === "string" ? snapshot.name.slice(0, 48) : "工作台布局",
+      createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : new Date().toISOString(),
+      state: sanitizeIdeLayoutState(snapshot.state ?? {}),
+    }))
+    .slice(0, MAX_LAYOUT_SNAPSHOTS);
 }
 
 function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
@@ -1605,6 +1751,12 @@ function isLayoutPreset(value: unknown): value is LayoutPreset {
 
 function isMaximizedPane(value: unknown): value is MaximizedPane {
   return value === null || value === "left" || value === "center" || value === "right" || value === "bottom";
+}
+
+function formatSnapshotTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知时间";
+  return date.toLocaleString();
 }
 
 function clamp(value: number, min: number, max: number): number {

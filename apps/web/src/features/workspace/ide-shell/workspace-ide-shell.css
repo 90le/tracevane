@@ -669,3 +669,42 @@
 .workspace-ide-shell__pane-dock-controls[draggable="true"]:active {
   cursor: grabbing;
 }
+
+.workspace-ide-shell__layout-snapshots {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.workspace-ide-shell__layout-snapshots > button,
+.workspace-ide-shell__layout-snapshot {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ide-border);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--ide-muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.workspace-ide-shell__layout-snapshots > button,
+.workspace-ide-shell__layout-snapshot button {
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.workspace-ide-shell__layout-snapshot button:first-child {
+  max-width: 118px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-ide-shell__layout-snapshots button:hover,
+.workspace-ide-shell__layout-snapshots button:focus-visible {
+  color: var(--ide-text);
+  background: rgba(34, 211, 238, 0.14);
+}
