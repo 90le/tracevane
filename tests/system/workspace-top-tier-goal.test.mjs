@@ -170,6 +170,20 @@ test("Workspace workbench immersive CSS preserves the global app shell contract"
   assert.doesNotMatch(css, /global AppShell top bar[\s\S]{0,160}display: none !important/);
 });
 
+test("Workspace layout controller models desktop, tablet, and mobile IDE flows explicitly", () => {
+  const layoutController = readWeb("features/workspace/workbench/workbenchLayoutController.ts");
+  assert.match(layoutController, /WorkspaceFormFactor = "desktop" \| "tablet" \| "mobile"/);
+  assert.match(layoutController, /WorkspacePrimaryInteraction = "mouse-keyboard" \| "touch-keyboard"/);
+  assert.match(layoutController, /WorkspaceSingleTaskSurface/);
+  assert.match(layoutController, /mobile must collapse into a single-task flow/);
+  assert.match(layoutController, /workspaceFormFactor: "mobile"/);
+  assert.match(layoutController, /workspaceFormFactor: isTabletWorkbench \? "tablet" : "desktop"/);
+  assert.match(layoutController, /primaryInteraction: isTabletWorkbench \? "touch-keyboard" : "mouse-keyboard"/);
+  assert.match(layoutController, /keyboardSafeTerminalRequired: terminalFocused/);
+  assert.match(layoutController, /singleTaskSurface: terminalFocused[\s\S]*"terminal"/);
+  assert.doesNotMatch(layoutController, /mobile must.*desktop columns/);
+});
+
 test("Workspace IDE rebuild backlog sequences the full redesign around IDE core", () => {
   const backlog = readRoot("docs/WorkspaceIDE重建设计执行Backlog.md");
   assert.match(backlog, /Active Execution Backlog/);
