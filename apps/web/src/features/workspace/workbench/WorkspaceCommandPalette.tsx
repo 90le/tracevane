@@ -53,10 +53,11 @@ export function WorkspaceCommandPalette({
       >
         <span className="h-1 w-10 rounded-full bg-line-2" />
       </div>
-      <CommandInput placeholder="搜索 Workspace 命令、面板、AI 上下文…" />
+      <CommandInput placeholder="输入命令：文件、搜索、Git、终端、布局…" />
       <CommandList
         className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
         data-workspace-command-palette
+        data-workspace-command-palette-surface="ide-command-center"
         data-workspace-command-palette-mobile-sheet
       >
         {keybindingConflicts.length ? (
@@ -73,7 +74,7 @@ export function WorkspaceCommandPalette({
               .join("；")}
           </div>
         ) : null}
-        <CommandEmpty>没有匹配的 Workspace 命令</CommandEmpty>
+        <CommandEmpty>没有匹配的 IDE 命令</CommandEmpty>
         {WORKSPACE_COMMAND_GROUPS.map((group) => (
           <CommandGroup key={group} heading={group}>
             {commands

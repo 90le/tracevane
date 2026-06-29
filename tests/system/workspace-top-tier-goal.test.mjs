@@ -56,3 +56,20 @@ test("Workspace command system keeps the current IDE UI mainline out of preview/
   assert.doesNotMatch(commands, /最大化编辑\/预览区/);
   assert.doesNotMatch(commands, /所见即所得画布全屏化/);
 });
+
+test("Workspace command palette is framed as an IDE command center", () => {
+  const palette = readWeb("features/workspace/workbench/WorkspaceCommandPalette.tsx");
+  assert.match(palette, /输入命令：文件、搜索、Git、终端、布局/);
+  assert.match(palette, /data-workspace-command-palette-surface="ide-command-center"/);
+  assert.match(palette, /没有匹配的 IDE 命令/);
+  assert.doesNotMatch(palette, /AI 上下文…/);
+});
+
+test("Workspace command palette has IDE command-center styling hooks", () => {
+  const css = readWeb("features/workspace/workbench/workspace-workbench.css");
+  assert.match(css, /data-workspace-command-palette-surface="ide-command-center"/);
+  assert.match(css, /--workspace-command-hit-target: 2\.75rem/);
+  assert.match(css, /--workspace-command-hit-target: 3\.25rem/);
+  assert.match(css, /data-workspace-command-palette-mobile-sheet/);
+  assert.match(css, /generic AI prompt box/);
+});
