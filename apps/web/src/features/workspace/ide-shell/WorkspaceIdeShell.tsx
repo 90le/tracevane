@@ -373,14 +373,22 @@ export function WorkspaceIdeShell() {
           focusIdeRegion("center");
           return;
         }
-        if (!event.shiftKey && event.key === "PageDown") {
+        if (event.key === "PageDown") {
           event.preventDefault();
-          selectAdjacentEditorTab("next");
+          if (event.shiftKey) {
+            selectAdjacentDockPane("next");
+          } else {
+            selectAdjacentEditorTab("next");
+          }
           return;
         }
-        if (!event.shiftKey && event.key === "PageUp") {
+        if (event.key === "PageUp") {
           event.preventDefault();
-          selectAdjacentEditorTab("previous");
+          if (event.shiftKey) {
+            selectAdjacentDockPane("previous");
+          } else {
+            selectAdjacentEditorTab("previous");
+          }
           return;
         }
         if (!event.shiftKey && event.key === "[") {
@@ -1103,6 +1111,7 @@ export function WorkspaceIdeShell() {
         group: "窗格",
         label: "当前窗格组切到下一个 Pane",
         description: activeDockFocus ? `在当前聚焦的${placementLabel(activeDockFocus.placement)} Dock ${activeDockFocus.role === "primary" ? "主" : "副"}组内切换到下一个 Pane` : "先聚焦一个 Dock 主/副窗格组，再切换组内 Pane",
+        shortcut: "⌘⌥⇧PageDown",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <PanelRight />,
@@ -1114,6 +1123,7 @@ export function WorkspaceIdeShell() {
         group: "窗格",
         label: "当前窗格组切到上一个 Pane",
         description: activeDockFocus ? `在当前聚焦的${placementLabel(activeDockFocus.placement)} Dock ${activeDockFocus.role === "primary" ? "主" : "副"}组内切换到上一个 Pane` : "先聚焦一个 Dock 主/副窗格组，再切换组内 Pane",
+        shortcut: "⌘⌥⇧PageUp",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <PanelLeft />,

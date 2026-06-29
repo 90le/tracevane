@@ -591,7 +591,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /event\.key === "Tab"/);
   assert.match(shellSource, /focusOppositeDockGroup\(\)/);
   assert.match(shellSource, /ide\.dock\.active\.next-pane/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧PageDown"/);
   assert.match(shellSource, /ide\.dock\.active\.previous-pane/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧PageUp"/);
   assert.match(shellSource, /ide\.dock\.active\.reset-ratio/);
   assert.match(shellSource, /ide\.dock\.active\.grow/);
   assert.match(shellSource, /ide\.dock\.active\.shrink/);
@@ -615,6 +617,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "horizontal"\)/);
   assert.match(shellSource, /swapDockSplitPanes\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /disabled: !canNavigateActiveDockGroup\(\)/);
+  assert.match(shellSource, /if \(event\.shiftKey\) \{\n            selectAdjacentDockPane\("next"\)/);
+  assert.match(shellSource, /if \(event\.shiftKey\) \{\n            selectAdjacentDockPane\("previous"\)/);
   assert.match(shellSource, /selectAdjacentDockPane\("next"\)/);
   assert.match(shellSource, /selectAdjacentDockPane\("previous"\)/);
   assert.match(shellSource, /resetDockSplitRatio\(activeDockFocus\.placement\)/);
