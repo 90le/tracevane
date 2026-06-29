@@ -54,6 +54,7 @@ type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
 type DockPaneRole = "primary" | "secondary";
 type DockDropEdge = "top" | "right" | "bottom" | "left";
+type DockEdgeDropTarget = { placement: PanePlacement; edge: DockDropEdge } | null;
 type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
 type DockPaneSelections = Record<PanePlacement, Partial<Record<DockPaneRole, PaneId>>>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
@@ -236,6 +237,7 @@ export function WorkspaceIdeShell() {
   const [terminalCommands, setTerminalCommands] = React.useState<WorkspaceCommand[]>([]);
   const [draggingPane, setDraggingPane] = React.useState<PaneId | null>(null);
   const [dropTarget, setDropTarget] = React.useState<PanePlacement | null>(null);
+  const [edgeDropTarget, setEdgeDropTarget] = React.useState<DockEdgeDropTarget>(null);
   const [activeDockFocus, setActiveDockFocus] = React.useState<ActiveDockFocus>(null);
   const searchSignalRef = React.useRef(0);
   const topDockRef = React.useRef<HTMLElement | null>(null);
@@ -1997,6 +1999,7 @@ export function WorkspaceIdeShell() {
   function clearPaneDragState() {
     setDraggingPane(null);
     setDropTarget(null);
+    setEdgeDropTarget(null);
   }
 
   function dragPaneOverDock(placement: PanePlacement, event: React.DragEvent) {
@@ -2028,6 +2031,20 @@ export function WorkspaceIdeShell() {
       movePaneToPlacement(paneId, placement, undefined, role);
     }
     clearPaneDragState();
+  }
+
+  function dragPaneOverDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget(placement);
+    setEdgeDropTarget({ placement, edge });
+  }
+
+  function leavePaneDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
+    const nextTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+    if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+    setEdgeDropTarget((current) => (current?.placement === placement && current.edge === edge ? null : current));
   }
 
   function dropPaneOnDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
@@ -2082,6 +2099,7 @@ export function WorkspaceIdeShell() {
       data-ide-editor-split={editorSplitMode}
       data-ide-dragging-pane={draggingPane ?? ""}
       data-ide-drop-target={dropTarget ?? ""}
+      data-ide-edge-drop-target={edgeDropTarget ? `${edgeDropTarget.placement}:${edgeDropTarget.edge}` : ""}
       data-ide-mobile-panel={mobilePanel}
       data-ide-dock-selection-state={dockSelectionState(dockPaneSelections)}
       style={{
@@ -2256,6 +2274,9 @@ export function WorkspaceIdeShell() {
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
                   onDropPaneOnGroup={dropPaneOnDockGroup}
+                  edgeDropTarget={edgeDropTarget}
+                  onDragPaneOverEdge={dragPaneOverDockEdge}
+                  onLeavePaneEdge={leavePaneDockEdge}
                   onDropPaneOnEdge={dropPaneOnDockEdge}
                   renderPane={(paneId, role) => (
                     <LeftPane
@@ -2377,6 +2398,9 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
+                edgeDropTarget={edgeDropTarget}
+                onDragPaneOverEdge={dragPaneOverDockEdge}
+                onLeavePaneEdge={leavePaneDockEdge}
                 onDropPaneOnEdge={dropPaneOnDockEdge}
               />
               <ResizeHandle
@@ -2553,6 +2577,9 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
+                edgeDropTarget={edgeDropTarget}
+                onDragPaneOverEdge={dragPaneOverDockEdge}
+                onLeavePaneEdge={leavePaneDockEdge}
                 onDropPaneOnEdge={dropPaneOnDockEdge}
               />
             </section>
@@ -2635,6 +2662,9 @@ export function WorkspaceIdeShell() {
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
               onDropPaneOnGroup={dropPaneOnDockGroup}
+              edgeDropTarget={edgeDropTarget}
+              onDragPaneOverEdge={dragPaneOverDockEdge}
+              onLeavePaneEdge={leavePaneDockEdge}
               onDropPaneOnEdge={dropPaneOnDockEdge}
               renderPane={(paneId) => (
                 <RightPane
@@ -3115,7 +3145,10 @@ function DockPaneFrame({
   onStartSplitResize,
   onResizeSplitFromKeyboard,
   onFocusPane,
+  edgeDropTarget,
   onDropPaneOnGroup,
+  onDragPaneOverEdge,
+  onLeavePaneEdge,
   onDropPaneOnEdge,
   renderPane,
 }: {
@@ -3125,6 +3158,7 @@ function DockPaneFrame({
   primaryPane?: PaneId;
   secondaryPane?: PaneId;
   activeFocus: ActiveDockFocus;
+  edgeDropTarget: DockEdgeDropTarget;
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
   onRestore: () => void;
@@ -3132,6 +3166,8 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
+  onDragPaneOverEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
+  onLeavePaneEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
@@ -3175,7 +3211,13 @@ function DockPaneFrame({
       data-ide-dock-split-placement={placement}
       style={style}
     >
-      <DockEdgeDropZones placement={placement} onDropPaneOnEdge={onDropPaneOnEdge} />
+      <DockEdgeDropZones
+        placement={placement}
+        edgeDropTarget={edgeDropTarget}
+        onDragPaneOverEdge={onDragPaneOverEdge}
+        onLeavePaneEdge={onLeavePaneEdge}
+        onDropPaneOnEdge={onDropPaneOnEdge}
+      />
       {render(primaryPane, "primary")}
       {shouldSplit && secondaryPane ? (
         <>
@@ -3196,29 +3238,36 @@ function DockPaneFrame({
 
 function DockEdgeDropZones({
   placement,
+  edgeDropTarget,
+  onDragPaneOverEdge,
+  onLeavePaneEdge,
   onDropPaneOnEdge,
 }: {
   placement: PanePlacement;
+  edgeDropTarget: DockEdgeDropTarget;
+  onDragPaneOverEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
+  onLeavePaneEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
 }) {
   const edges: DockDropEdge[] = ["top", "right", "bottom", "left"];
   return (
     <>
-      {edges.map((edge) => (
-        <div
-          key={edge}
-          className="workspace-ide-shell__dock-edge-drop-zone"
-          data-ide-dock-edge-drop-zone={edge}
-          data-ide-dock-edge-placement={placement}
-          aria-label={`${placementLabel(placement)} Dock ${dockDropEdgeLabel(edge)}拆分落点`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            event.dataTransfer.dropEffect = "move";
-          }}
-          onDrop={(event) => onDropPaneOnEdge(placement, edge, event)}
-        />
-      ))}
+      {edges.map((edge) => {
+        const active = edgeDropTarget?.placement === placement && edgeDropTarget.edge === edge;
+        return (
+          <div
+            key={edge}
+            className="workspace-ide-shell__dock-edge-drop-zone"
+            data-ide-dock-edge-drop-zone={edge}
+            data-ide-dock-edge-placement={placement}
+            data-ide-dock-edge-drop-active={active ? "true" : "false"}
+            aria-label={`${placementLabel(placement)} Dock ${dockDropEdgeLabel(edge)}拆分落点`}
+            onDragOver={(event) => onDragPaneOverEdge(placement, edge, event)}
+            onDragLeave={(event) => onLeavePaneEdge(placement, edge, event)}
+            onDrop={(event) => onDropPaneOnEdge(placement, edge, event)}
+          />
+        );
+      })}
     </>
   );
 }

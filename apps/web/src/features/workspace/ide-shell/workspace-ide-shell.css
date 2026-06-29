@@ -906,7 +906,8 @@
 }
 
 .workspace-ide-shell__dock-edge-drop-zone:hover,
-.workspace-ide-shell__dock-edge-drop-zone:focus-visible {
+.workspace-ide-shell__dock-edge-drop-zone:focus-visible,
+.workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-active="true"] {
   opacity: 1;
   border-color: rgba(34, 211, 238, 0.72);
   background: rgba(34, 211, 238, 0.16);
