@@ -176,11 +176,15 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /React\.useState<string \| undefined>\(layoutState\.secondaryPath\)/);
   assert.match(shellSource, /React\.useState\(layoutState\.secondaryPathRootId \?\? ""\)/);
   assert.match(shellSource, /sanitizeEditorGroupTabs\(layoutState\.editorGroupTabs\)/);
-  assert.match(shellSource, /activeEditorGroup: isEditorGroupId\(value\.activeEditorGroup\) \? value\.activeEditorGroup : undefined/);
+  assert.match(shellSource, /const editorSplitMode = isEditorSplitMode\(value\.editorSplitMode\) \? value\.editorSplitMode : undefined/);
+  assert.match(shellSource, /const splitEditorActive = editorSplitMode === "vertical" \|\| editorSplitMode === "horizontal"/);
+  assert.match(shellSource, /const activeEditorGroup = splitEditorActive && isEditorGroupId\(value\.activeEditorGroup\) \? value\.activeEditorGroup : "primary"/);
+  assert.match(shellSource, /activeEditorGroup,/);
   assert.match(shellSource, /activePath: sanitizeLayoutPath\(value\.activePath\)/);
   assert.match(shellSource, /activePathRootId: sanitizeLayoutPath\(value\.activePathRootId\)/);
-  assert.match(shellSource, /secondaryPath: sanitizeLayoutPath\(value\.secondaryPath\)/);
-  assert.match(shellSource, /secondaryPathRootId: sanitizeLayoutPath\(value\.secondaryPathRootId\)/);
+  assert.match(shellSource, /secondaryPath: splitEditorActive \? sanitizeLayoutPath\(value\.secondaryPath\) : undefined/);
+  assert.match(shellSource, /secondaryPathRootId: splitEditorActive \? sanitizeLayoutPath\(value\.secondaryPathRootId\) : undefined/);
+  assert.match(shellSource, /editorSplitMode,/);
   assert.match(shellSource, /editorGroupTabs: sanitizeEditorGroupTabs\(value\.editorGroupTabs\)/);
   assert.match(shellSource, /setActivePath\(sanitized\.activePath\)/);
   assert.match(shellSource, /setActivePathRootId\(sanitized\.activePathRootId \?\? ""\)/);

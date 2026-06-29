@@ -3462,6 +3462,9 @@ function sanitizeIdeLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
 }
 
 function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
+  const editorSplitMode = isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined;
+  const splitEditorActive = editorSplitMode === "vertical" || editorSplitMode === "horizontal";
+  const activeEditorGroup = splitEditorActive && isEditorGroupId(value.activeEditorGroup) ? value.activeEditorGroup : "primary";
   return {
     topOpen: typeof value.topOpen === "boolean" ? value.topOpen : undefined,
     leftOpen: typeof value.leftOpen === "boolean" ? value.leftOpen : undefined,
@@ -3469,13 +3472,13 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     bottomOpen: typeof value.bottomOpen === "boolean" ? value.bottomOpen : undefined,
     maximizedPane: isMaximizedPane(value.maximizedPane) ? value.maximizedPane : undefined,
     layoutPreset: isLayoutPreset(value.layoutPreset) ? value.layoutPreset : undefined,
-    activeEditorGroup: isEditorGroupId(value.activeEditorGroup) ? value.activeEditorGroup : undefined,
+    activeEditorGroup,
     activePath: sanitizeLayoutPath(value.activePath),
     activePathRootId: sanitizeLayoutPath(value.activePathRootId),
-    secondaryPath: sanitizeLayoutPath(value.secondaryPath),
-    secondaryPathRootId: sanitizeLayoutPath(value.secondaryPathRootId),
+    secondaryPath: splitEditorActive ? sanitizeLayoutPath(value.secondaryPath) : undefined,
+    secondaryPathRootId: splitEditorActive ? sanitizeLayoutPath(value.secondaryPathRootId) : undefined,
     paneSizes: sanitizePaneSizes(value.paneSizes),
-    editorSplitMode: isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined,
+    editorSplitMode,
     editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
     panePlacements: sanitizePanePlacements(value.panePlacements),
     paneOrder: sanitizePaneOrder(value.paneOrder),
