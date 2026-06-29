@@ -126,6 +126,11 @@ const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
 
 interface IdeLayoutState {
+  activeEditorGroup?: EditorGroupId;
+  activePath?: string;
+  activePathRootId?: string;
+  secondaryPath?: string;
+  secondaryPathRootId?: string;
   editorGroupTabs?: EditorGroupTabs;
   topOpen?: boolean;
   leftOpen?: boolean;
@@ -210,14 +215,14 @@ export function WorkspaceIdeShell() {
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [dockPaneSelections, setDockPaneSelections] = React.useState<DockPaneSelections>(() => mergeDockPaneSelections(layoutState.dockPaneSelections));
   const [hiddenPanes, setHiddenPanes] = React.useState<PaneId[]>(layoutState.hiddenPanes ?? []);
-  const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
+  const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>(layoutState.activeEditorGroup ?? "primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
   const [rootId, setRootId] = React.useState(defaultRootId);
-  const [activePath, setActivePath] = React.useState<string | undefined>();
-  const [activePathRootId, setActivePathRootId] = React.useState("");
-  const [secondaryPath, setSecondaryPath] = React.useState<string | undefined>();
-  const [secondaryPathRootId, setSecondaryPathRootId] = React.useState("");
+  const [activePath, setActivePath] = React.useState<string | undefined>(layoutState.activePath);
+  const [activePathRootId, setActivePathRootId] = React.useState(layoutState.activePathRootId ?? "");
+  const [secondaryPath, setSecondaryPath] = React.useState<string | undefined>(layoutState.secondaryPath);
+  const [secondaryPathRootId, setSecondaryPathRootId] = React.useState(layoutState.secondaryPathRootId ?? "");
   const [editorGroupTabs, setEditorGroupTabs] = React.useState<EditorGroupTabs>(() => sanitizeEditorGroupTabs(layoutState.editorGroupTabs));
   const [gitDiffTarget, setGitDiffTarget] = React.useState<WorkspaceGitDiffTarget | null>(null);
   const [searchRequest, setSearchRequest] = React.useState<WorkspaceEditorSearchRequest | null>(null);
@@ -277,6 +282,11 @@ export function WorkspaceIdeShell() {
       maximizedPane,
       layoutPreset,
       paneSizes,
+      activeEditorGroup,
+      activePath,
+      activePathRootId: activePathRootId || "",
+      secondaryPath,
+      secondaryPathRootId: secondaryPathRootId || "",
       editorSplitMode,
       editorSplitRatio,
       panePlacements,
@@ -287,7 +297,7 @@ export function WorkspaceIdeShell() {
       editorGroupTabs,
       hiddenPanes,
     });
-  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1326,6 +1336,11 @@ export function WorkspaceIdeShell() {
       maximizedPane,
       layoutPreset,
       paneSizes,
+      activeEditorGroup,
+      activePath,
+      activePathRootId: activePathRootId || "",
+      secondaryPath,
+      secondaryPathRootId: secondaryPathRootId || "",
       editorSplitMode,
       editorSplitRatio,
       panePlacements,
@@ -1385,6 +1400,11 @@ export function WorkspaceIdeShell() {
     setMaximizedPane(sanitized.maximizedPane ?? null);
     setLayoutPreset(sanitized.layoutPreset ?? "balanced");
     setPaneSizes({ ...DEFAULT_PANE_SIZES, ...sanitized.paneSizes });
+    setActivePath(sanitized.activePath);
+    setActivePathRootId(sanitized.activePathRootId ?? "");
+    setSecondaryPath(sanitized.secondaryPath);
+    setSecondaryPathRootId(sanitized.secondaryPathRootId ?? "");
+    setActiveEditorGroup(sanitized.activeEditorGroup ?? "primary");
     setEditorSplitMode(sanitized.editorSplitMode ?? "single");
     setEditorSplitRatio(sanitized.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
     setEditorGroupTabs(sanitizeEditorGroupTabs(sanitized.editorGroupTabs));
@@ -3419,7 +3439,7 @@ function storeIdeLayoutSnapshots(snapshots: IdeLayoutSnapshot[]) {
   }
 }
 
-function storeIdeLayoutState(state: Required<IdeLayoutState>) {
+function storeIdeLayoutState(state: IdeLayoutState) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(IDE_LAYOUT_STORAGE_KEY, JSON.stringify(sanitizeIdeLayoutState(state)));
@@ -3449,6 +3469,11 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     bottomOpen: typeof value.bottomOpen === "boolean" ? value.bottomOpen : undefined,
     maximizedPane: isMaximizedPane(value.maximizedPane) ? value.maximizedPane : undefined,
     layoutPreset: isLayoutPreset(value.layoutPreset) ? value.layoutPreset : undefined,
+    activeEditorGroup: isEditorGroupId(value.activeEditorGroup) ? value.activeEditorGroup : undefined,
+    activePath: sanitizeLayoutPath(value.activePath),
+    activePathRootId: sanitizeLayoutPath(value.activePathRootId),
+    secondaryPath: sanitizeLayoutPath(value.secondaryPath),
+    secondaryPathRootId: sanitizeLayoutPath(value.secondaryPathRootId),
     paneSizes: sanitizePaneSizes(value.paneSizes),
     editorSplitMode: isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined,
     editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
@@ -3460,6 +3485,14 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     editorGroupTabs: sanitizeEditorGroupTabs(value.editorGroupTabs),
     hiddenPanes: sanitizeHiddenPanes(value.hiddenPanes),
   };
+}
+
+function sanitizeLayoutPath(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function isEditorGroupId(value: unknown): value is EditorGroupId {
+  return value === "primary" || value === "secondary";
 }
 
 function sanitizeEditorGroupTabs(value: unknown): EditorGroupTabs {
