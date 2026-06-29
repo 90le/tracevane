@@ -52,7 +52,7 @@ export function WorkspaceEvidenceMobileSheet({
           <div>
             <SheetTitle className="text-white">Workspace evidence review</SheetTitle>
             <SheetDescription className="text-slate-400">
-              Review, refresh, clear, and copy AI handoff evidence without leaving the current coding or writing flow.
+              Review, refresh, clear, and copy AI handoff evidence without leaving the current IDE coding flow.
             </SheetDescription>
           </div>
         </SheetHeader>

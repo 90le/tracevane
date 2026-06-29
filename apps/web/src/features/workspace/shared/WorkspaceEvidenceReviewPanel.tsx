@@ -93,7 +93,7 @@ export function WorkspaceEvidenceReviewPanel({
                     density === "compact" && "line-clamp-2",
                   )}
                 >
-                  Package selected context, diffs, commands, and verification records into a bounded read-only packet before AI coding or writing work proceeds.
+                  Package selected context, diffs, commands, and verification records into a bounded read-only packet before AI coding work proceeds.
                 </p>
               </div>
             </div>
@@ -195,7 +195,7 @@ export function WorkspaceEvidenceReviewPanel({
               <Layers3 className="mb-3 size-8 text-cyan-200/80" aria-hidden="true" />
               <h3 className="text-base font-semibold text-white">No evidence selected</h3>
               <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">
-                Add document context, diffs, commands, or verification records to prepare a trustworthy AI writing and coding handoff.
+                Add files, diffs, terminal commands, Git changes, or verification records to prepare a trustworthy AI coding handoff.
               </p>
             </div>
           )}

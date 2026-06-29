@@ -181,6 +181,19 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace evidence review copy stays IDE-coding first", () => {
+  const mobileSheet = readWeb("features/workspace/shared/WorkspaceEvidenceMobileSheet.tsx");
+  const reviewPanel = readWeb("features/workspace/shared/WorkspaceEvidenceReviewPanel.tsx");
+
+  assert.match(mobileSheet, /current IDE coding flow/);
+  assert.match(reviewPanel, /AI coding work proceeds/);
+  assert.match(reviewPanel, /files, diffs, terminal commands, Git changes, or verification records/);
+  assert.match(reviewPanel, /AI coding handoff/);
+  assert.doesNotMatch(mobileSheet, /coding or writing flow/);
+  assert.doesNotMatch(reviewPanel, /AI coding or writing work proceeds/);
+  assert.doesNotMatch(reviewPanel, /AI writing and coding handoff/);
+});
+
 test("Workspace editor tab commands collect file evidence before AI handoff", () => {
   const tabCommands = readWeb("features/workspace/editor/editorTabCommands.tsx");
   const tabActions = readWeb("features/workspace/editor/editorTabActions.tsx");
