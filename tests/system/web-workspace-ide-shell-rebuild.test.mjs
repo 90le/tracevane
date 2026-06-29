@@ -612,6 +612,13 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /run: \(\) => resizeActiveDockPlacement\(-KEYBOARD_RESIZE_LARGE_STEP\)/);
   assert.match(shellSource, /ide\.dock\.active\.maximize/);
   assert.match(shellSource, /ide\.dock\.active\.collapse/);
+  assert.match(shellSource, /shortcut: "⌘⌥M"/);
+  assert.match(shellSource, /shortcut: "⌘⌥H"/);
+  assert.match(shellSource, /if \(!event\.shiftKey && key === "m"\)/);
+  assert.match(shellSource, /openDockPlacement\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /toggleMaximizedPane\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /if \(!event\.shiftKey && key === "h"\)/);
+  assert.match(shellSource, /closeDockPlacement\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /disabled: !activeDockFocus \|\| !canSwapDockSplit\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "vertical"\)/);
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "horizontal"\)/);

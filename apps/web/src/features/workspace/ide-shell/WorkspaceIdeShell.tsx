@@ -367,6 +367,19 @@ export function WorkspaceIdeShell() {
           resizeActiveDockPlacement(-KEYBOARD_RESIZE_LARGE_STEP);
           return;
         }
+        if (!event.shiftKey && key === "m") {
+          event.preventDefault();
+          if (activeDockFocus) {
+            openDockPlacement(activeDockFocus.placement);
+            toggleMaximizedPane(activeDockFocus.placement);
+          }
+          return;
+        }
+        if (!event.shiftKey && key === "h") {
+          event.preventDefault();
+          if (activeDockFocus) closeDockPlacement(activeDockFocus.placement);
+          return;
+        }
         if (event.shiftKey && event.key === "]") {
           event.preventDefault();
           moveActiveEditorFileToOtherGroup();
@@ -1173,6 +1186,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "最大化当前 Dock",
         description: activeDockFocus ? `最大化当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock 窗格组，再最大化它所属的 Dock",
+        shortcut: "⌘⌥M",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <Maximize2 />,
@@ -1188,6 +1202,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "收起当前 Dock",
         description: activeDockFocus ? `收起当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock 窗格组，再收起它所属的 Dock",
+        shortcut: "⌘⌥H",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <RotateCcw />,
