@@ -9,6 +9,11 @@ const WorkspacePage = React.lazy(() =>
     default: module.WorkspacePage,
   })),
 );
+const WorkspaceSeasonOnePreviewPage = React.lazy(() =>
+  import("@/features/workspace/season-one").then((module) => ({
+    default: module.WorkspaceSeasonOnePreviewPage,
+  })),
+);
 const FileManagerPage = React.lazy(() =>
   import("@/features/file-manager/FileManagerPage").then((module) => ({
     default: module.FileManagerPage,
@@ -54,6 +59,14 @@ export function AppRouter() {
       <Routes>
         {/* Full-bleed Workspace shell — renders OUTSIDE AppShell so the local
             project workbench can use the whole viewport. */}
+        <Route
+          path="/workspace/season-one"
+          element={
+            <LazyPage>
+              <WorkspaceSeasonOnePreviewPage />
+            </LazyPage>
+          }
+        />
         <Route
           path="/workspace"
           element={
