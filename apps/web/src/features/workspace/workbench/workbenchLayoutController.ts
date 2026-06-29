@@ -7,10 +7,12 @@ export type WorkspaceShellMode =
 
 export type WorkspaceFormFactor = "desktop" | "tablet" | "mobile";
 export type WorkspacePrimaryInteraction = "mouse-keyboard" | "touch-keyboard";
+export type WorkspaceMobileTaskSurface = "files" | "search" | "git";
 export type WorkspaceSingleTaskSurface =
   | "none"
   | "editor"
   | "terminal"
+  | WorkspaceMobileTaskSurface
   | "side-panel";
 
 export interface WorkspaceLayoutMode {
@@ -35,12 +37,14 @@ export interface WorkspaceLayoutMode {
 }
 
 export function deriveWorkspaceLayoutMode({
+  activeSidePanel,
   browserFullscreenPanel,
   isMobileWorkbench,
   isTabletWorkbench = false,
   maximizedDockPanel,
   mobilePanelFullscreen,
 }: {
+  activeSidePanel?: WorkspaceMobileTaskSurface | null;
   browserFullscreenPanel: string | null;
   isMobileWorkbench: boolean;
   isTabletWorkbench?: boolean;
@@ -63,9 +67,11 @@ export function deriveWorkspaceLayoutMode({
       primaryInteraction: "touch-keyboard",
       singleTaskSurface: terminalFocused
         ? "terminal"
-        : mobilePanelFullscreen || dockImmersive
-          ? "side-panel"
-          : "editor",
+        : activeSidePanel && (mobilePanelFullscreen || dockImmersive)
+          ? activeSidePanel
+          : mobilePanelFullscreen || dockImmersive
+            ? "side-panel"
+            : "editor",
       keyboardSafeTerminalRequired: terminalFocused,
       shellImmersive: false,
       mobileBrowserFullscreen: browserFullscreen,

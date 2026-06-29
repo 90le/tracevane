@@ -174,13 +174,16 @@ test("Workspace layout controller models desktop, tablet, and mobile IDE flows e
   const layoutController = readWeb("features/workspace/workbench/workbenchLayoutController.ts");
   assert.match(layoutController, /WorkspaceFormFactor = "desktop" \| "tablet" \| "mobile"/);
   assert.match(layoutController, /WorkspacePrimaryInteraction = "mouse-keyboard" \| "touch-keyboard"/);
+  assert.match(layoutController, /WorkspaceMobileTaskSurface = "files" \| "search" \| "git"/);
   assert.match(layoutController, /WorkspaceSingleTaskSurface/);
+  assert.match(layoutController, /activeSidePanel\?: WorkspaceMobileTaskSurface \| null/);
   assert.match(layoutController, /mobile must collapse into a single-task flow/);
   assert.match(layoutController, /workspaceFormFactor: "mobile"/);
   assert.match(layoutController, /workspaceFormFactor: isTabletWorkbench \? "tablet" : "desktop"/);
   assert.match(layoutController, /primaryInteraction: isTabletWorkbench \? "touch-keyboard" : "mouse-keyboard"/);
   assert.match(layoutController, /keyboardSafeTerminalRequired: terminalFocused/);
   assert.match(layoutController, /singleTaskSurface: terminalFocused[\s\S]*"terminal"/);
+  assert.match(layoutController, /activeSidePanel && \(mobilePanelFullscreen \|\| dockImmersive\)[\s\S]*activeSidePanel/);
   assert.doesNotMatch(layoutController, /mobile must.*desktop columns/);
 });
 
