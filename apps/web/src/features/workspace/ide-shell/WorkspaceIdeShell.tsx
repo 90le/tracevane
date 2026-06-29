@@ -342,6 +342,16 @@ export function WorkspaceIdeShell() {
           focusIdeRegion("center");
           return;
         }
+        if (!event.shiftKey && event.key === "PageDown") {
+          event.preventDefault();
+          selectAdjacentEditorTab("next");
+          return;
+        }
+        if (!event.shiftKey && event.key === "PageUp") {
+          event.preventDefault();
+          selectAdjacentEditorTab("previous");
+          return;
+        }
         if (!event.shiftKey && event.key === "[") {
           event.preventDefault();
           setActiveEditorGroup("primary");
@@ -635,6 +645,30 @@ export function WorkspaceIdeShell() {
         icon: <Trash2 />,
         disabled: !activeEditorTab(),
         run: closeActiveEditorTab,
+      },
+      {
+        id: "ide.editor.next-tab",
+        group: "编辑器",
+        label: "切到下一个编辑器标签",
+        description: "在当前编辑器组内循环切到下一个已打开文件标签",
+        shortcut: "⌘⌥PageDown",
+        risk: "safe",
+        surface: "tab-lifecycle",
+        icon: <PanelRight />,
+        disabled: !canNavigateEditorTabs(),
+        run: () => selectAdjacentEditorTab("next"),
+      },
+      {
+        id: "ide.editor.previous-tab",
+        group: "编辑器",
+        label: "切到上一个编辑器标签",
+        description: "在当前编辑器组内循环切到上一个已打开文件标签",
+        shortcut: "⌘⌥PageUp",
+        risk: "safe",
+        surface: "tab-lifecycle",
+        icon: <PanelLeft />,
+        disabled: !canNavigateEditorTabs(),
+        run: () => selectAdjacentEditorTab("previous"),
       },
       {
         id: "ide.editor.move-active-other-group",
@@ -1490,6 +1524,10 @@ export function WorkspaceIdeShell() {
     setMobilePanel("editor");
   }
 
+  function activeEditorGroupId(): EditorGroupId {
+    return activeEditorGroup === "secondary" && editorSplitMode !== "single" ? "secondary" : "primary";
+  }
+
   function activeEditorTab(): EditorTab | null {
     if (activeEditorGroup === "secondary" && editorSplitMode !== "single" && secondaryPath) {
       return { path: secondaryPath, rootId: secondaryPathRootId || activePathRootId || rootId };
@@ -1501,7 +1539,21 @@ export function WorkspaceIdeShell() {
   function closeActiveEditorTab() {
     const tab = activeEditorTab();
     if (!tab) return;
-    closeEditorTab(activeEditorGroup === "secondary" && editorSplitMode !== "single" ? "secondary" : "primary", tab);
+    closeEditorTab(activeEditorGroupId(), tab);
+  }
+
+  function canNavigateEditorTabs() {
+    return editorGroupTabs[activeEditorGroupId()].length > 1;
+  }
+
+  function selectAdjacentEditorTab(direction: "next" | "previous") {
+    const group = activeEditorGroupId();
+    const tabs = editorGroupTabs[group];
+    if (tabs.length < 2) return;
+    const currentTab = activeEditorTab();
+    const currentIndex = Math.max(0, tabs.findIndex((tab) => currentTab && tab.path === currentTab.path && tab.rootId === currentTab.rootId));
+    const nextIndex = direction === "next" ? (currentIndex + 1) % tabs.length : (currentIndex - 1 + tabs.length) % tabs.length;
+    selectEditorTab(group, tabs[nextIndex]);
   }
 
   function selectEditorTab(group: EditorGroupId, tab: EditorTab) {
