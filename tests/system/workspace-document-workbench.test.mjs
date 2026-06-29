@@ -17,6 +17,14 @@ test("DocumentWorkbench exposes AI writing context without creating a second doc
   assert.match(workbench, /data-document-ai-writing-mode=\{mode\}/);
   assert.match(workbench, /data-document-writing-stats/);
   assert.match(workbench, /data-document-copy-ai-context/);
+  assert.match(workbench, /data-document-add-ai-context/);
+  assert.match(workbench, /加入上下文篮/);
+  assert.match(workbench, /WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY/);
+  assert.match(workbench, /tracevane\.workspace\.ai-context-basket\.v1/);
+  assert.match(workbench, /TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT/);
+  assert.match(workbench, /tracevane:workspace-ai-context-basket-updated/);
+  assert.match(workbench, /function addDocumentToAiContextBasket/);
+  assert.match(workbench, /function readWorkspaceAiContextBasket/);
   assert.match(workbench, /function summarizeDocumentForAi/);
   assert.match(workbench, /function formatDocumentAiContext/);
   assert.match(workbench, /@document/);

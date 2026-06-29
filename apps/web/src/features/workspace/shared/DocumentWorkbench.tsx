@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Bot, Columns2, Copy, FileCode, PenLine, ShieldCheck } from "lucide-react";
+import { Bot, Columns2, Copy, FileCode, PenLine, PlusCircle, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/design/lib/utils";
@@ -646,11 +646,119 @@ function DocumentAiWritingGuide({
         <Copy className="size-3.5" />
         复制文档上下文
       </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 shrink-0 border border-primary-line bg-panel/80 px-2 text-2xs text-primary hover:bg-panel"
+        onClick={() => addDocumentToAiContextBasket({ path, mode, editable, textLike, stats })}
+        data-document-add-ai-context
+      >
+        <PlusCircle className="size-3.5" />
+        加入上下文篮
+      </Button>
       <span className="inline-flex items-center gap-1 rounded-full bg-panel/80 px-2 py-0.5 text-subtle">
         <ShieldCheck className="size-3.5" />
         保存 / Git Diff / 终端验证后形成审查证据
       </span>
     </div>
+  );
+}
+
+
+const WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY =
+  "tracevane.workspace.ai-context-basket.v1";
+const TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT =
+  "tracevane:workspace-ai-context-basket-updated";
+
+interface WorkspaceAiContextBasketItem {
+  id: string;
+  kind: "document";
+  path: string;
+  title: string;
+  mode: DocumentWorkbenchMode;
+  editable: boolean;
+  textLike: boolean;
+  stats: { lines: number; words: number; characters: number; readingMinutes: number };
+  context: string;
+  addedAt: string;
+}
+
+function addDocumentToAiContextBasket({
+  path,
+  mode,
+  editable,
+  textLike,
+  stats,
+}: {
+  path: string;
+  mode: DocumentWorkbenchMode;
+  editable: boolean;
+  textLike: boolean;
+  stats: { lines: number; words: number; characters: number; readingMinutes: number };
+}): void {
+  if (typeof window === "undefined") return;
+  const title = path.split("/").pop() || path;
+  const nextItem: WorkspaceAiContextBasketItem = {
+    id: `document:${path}`,
+    kind: "document",
+    path,
+    title,
+    mode,
+    editable,
+    textLike,
+    stats,
+    context: formatDocumentAiContext({ path, mode, editable, textLike, stats }),
+    addedAt: new Date().toISOString(),
+  };
+  const items = readWorkspaceAiContextBasket().filter(
+    (item) => item.id !== nextItem.id,
+  );
+  const next = [nextItem, ...items].slice(0, 24);
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY,
+      JSON.stringify(next),
+    );
+    window.dispatchEvent(
+      new CustomEvent(TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT, {
+        detail: { items: next, added: nextItem },
+      }),
+    );
+    toast.success("已加入 AI 上下文篮", {
+      description: `${title} · ${next.length} 项上下文`,
+    });
+  } catch {
+    toast.error("加入 AI 上下文篮失败", { description: title });
+  }
+}
+
+function readWorkspaceAiContextBasket(): WorkspaceAiContextBasketItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY) ||
+        "[]",
+    ) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isWorkspaceAiContextBasketItem);
+  } catch {
+    return [];
+  }
+}
+
+function isWorkspaceAiContextBasketItem(
+  value: unknown,
+): value is WorkspaceAiContextBasketItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<WorkspaceAiContextBasketItem>;
+  return (
+    item.kind === "document" &&
+    typeof item.id === "string" &&
+    typeof item.path === "string" &&
+    typeof item.title === "string" &&
+    typeof item.context === "string" &&
+    typeof item.addedAt === "string"
   );
 }
 

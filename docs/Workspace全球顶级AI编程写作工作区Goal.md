@@ -138,3 +138,20 @@ npm run typecheck:web -- --pretty false
 node --test tests/system/workspace-document-workbench.test.mjs
 npm run typecheck:web -- --pretty false
 ```
+
+### 2026-06-29 / Phase D 草案小步：本地 AI Context Basket 基础层
+
+研究补充：VS Code 的 Explorer/Editor/Panel/Timeline 模型说明专业工作区需要可恢复的工作对象，而不是一次性剪贴板动作；VS Code Accessibility 要求关键动作可键盘和读屏到达；Monaco 继续作为源码选择与编辑底座；OpenAI Canvas 的写作/代码协作方向要求用户保留文档控制权。基于这些约束，本阶段先在 `DocumentWorkbench` 内把 `@document` 推进为本地 context basket 项：写入 localStorage、广播更新事件、去重并限制最近 24 项，为后续 Workspace 级 Context Basket UI、Agent handoff 和 Evidence basket 预留明确契约。
+
+完成范围：
+
+- 增加“加入上下文篮”动作，保存当前文档的 `@document` 上下文、模式、可编辑性和统计信息。
+- 使用 `tracevane.workspace.ai-context-basket.v1` 作为本地草案存储 key，后续可迁移到后端事实源。
+- 广播 `tracevane:workspace-ai-context-basket-updated`，避免当前阶段改动已有多人协作中的 `WorkspaceWorkbench.tsx`。
+
+验证：
+
+```bash
+node --test tests/system/workspace-document-workbench.test.mjs tests/system/workspace-ai-context-basket.test.mjs
+npm run typecheck:web -- --pretty false
+```
