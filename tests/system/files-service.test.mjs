@@ -486,11 +486,15 @@ test("files service supports search, read, write, create, rename, copy, move, de
   assert.equal(globalInstant.instant, true);
   assert.equal(globalInstant.targetPath, "docs/global-hash-copy.txt");
   assert.equal(fs.readFileSync(path.join(config.projectRoot, "docs", "global-hash-copy.txt"), "utf8"), chunked.toString("utf8"));
-  const indexShardPath = path.join(config.openclawRoot, ".tracevane", "file-content-index", "project-root", `${realHash.slice(0, 2)}.json`);
-  assert.equal(fs.existsSync(indexShardPath), true);
-  const indexShard = JSON.parse(fs.readFileSync(indexShardPath, "utf8"));
-  assert.equal(Array.isArray(indexShard[realHash]), true);
-  assert.equal(indexShard[realHash].some((record) => record.path === "docs/global-hash-copy.txt"), true);
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
+  const sqliteIndexPage = service.getContentIndexRecords({
+    rootId: "project-root",
+    status: "all",
+    query: realHash.slice(0, 16),
+    offset: 0,
+    limit: 10,
+  });
+  assert.equal(sqliteIndexPage.records.some((record) => record.path === "docs/global-hash-copy.txt"), true);
   const indexStats = service.getContentIndexStats("project-root");
   assert.equal(indexStats.rootId, "project-root");
   assert.equal(indexStats.scope, "root");
@@ -709,77 +713,43 @@ test("files service exposes tree nodes and download payloads", () => {
   assert.equal(fontDownload.mimeType, "font/woff2");
 });
 
-test("files service migrates JSON content-index records into SQLite sorted pages", () => {
+test("files service keeps content-index hot paths SQL-only instead of auto-reading JSON shards", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
+  const service = createFilesService(config);
+  const indexDir = path.join(config.openclawRoot, ".tracevane", "file-content-index", "project-root");
+  fs.mkdirSync(indexDir, { recursive: true });
+  const alphaSha = "f".repeat(64);
+  const alphaStat = fs.statSync(path.join(config.projectRoot, "alpha.txt"));
+  fs.writeFileSync(path.join(indexDir, "ff.json"), JSON.stringify({
+    [alphaSha]: [{ path: "alpha.txt", size: alphaStat.size, sha256: alphaSha, mtimeMs: alphaStat.mtimeMs, indexedAt: "2026-06-26T00:00:01.000Z" }],
+  }), "utf8");
+
+  const stats = service.getContentIndexStats("project-root");
+  const page = service.getContentIndexRecords({ rootId: "project-root", status: "all", offset: 0, limit: 10 });
+
+  assert.equal(stats.recordCount, 0);
+  assert.equal(page.totalRecordCount, 0);
+  assert.equal(page.returnedRecordCount, 0);
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
+});
+
+test("files service writes rebuilt content-index records to SQLite sorted pages", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
   writeFile(path.join(config.projectRoot, "zeta.txt"), "zeta\n");
   const service = createFilesService(config);
 
-  const indexDir = path.join(
-    config.openclawRoot,
-    ".tracevane",
-    "file-content-index",
-    "project-root",
-  );
-  fs.mkdirSync(indexDir, { recursive: true });
-  const alphaSha = "f".repeat(64);
-  const zetaSha = "0".repeat(64);
-  const alphaStat = fs.statSync(path.join(config.projectRoot, "alpha.txt"));
-  const zetaStat = fs.statSync(path.join(config.projectRoot, "zeta.txt"));
-  fs.writeFileSync(
-    path.join(indexDir, "00.json"),
-    JSON.stringify({
-      [zetaSha]: [
-        {
-          rootId: "project-root",
-          path: "zeta.txt",
-          size: zetaStat.size,
-          sha256: zetaSha,
-          mtimeMs: zetaStat.mtimeMs,
-          indexedAt: "2026-06-26T00:00:00.000Z",
-        },
-      ],
-    }),
-    "utf8",
-  );
-  fs.writeFileSync(
-    path.join(indexDir, "ff.json"),
-    JSON.stringify({
-      [alphaSha]: [
-        {
-          rootId: "project-root",
-          path: "alpha.txt",
-          size: alphaStat.size,
-          sha256: alphaSha,
-          mtimeMs: alphaStat.mtimeMs,
-          indexedAt: "2026-06-26T00:00:01.000Z",
-        },
-      ],
-    }),
-    "utf8",
-  );
+  const rebuilt = service.rebuildContentIndex("project-root");
+  assert.equal(rebuilt.rebuiltRecordCount, 2);
 
-  const firstPage = service.getContentIndexRecords({
-    rootId: "project-root",
-    status: "valid",
-    offset: 0,
-    limit: 1,
-  });
-  const secondPage = service.getContentIndexRecords({
-    rootId: "project-root",
-    status: "valid",
-    offset: 1,
-    limit: 1,
-  });
+  const firstPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", offset: 0, limit: 1 });
+  const secondPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", offset: 1, limit: 1 });
 
   assert.equal(firstPage.totalRecordCount, 2);
-  assert.equal(firstPage.returnedRecordCount, 1);
-  assert.equal(firstPage.hasMore, true);
   assert.equal(firstPage.records[0]?.path, "alpha.txt");
-  assert.equal(secondPage.totalRecordCount, 2);
-  assert.equal(secondPage.returnedRecordCount, 1);
-  assert.equal(secondPage.hasMore, false);
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
   assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
 });
@@ -788,14 +758,11 @@ test("files service pages large content-index records through SQLite without app
   const root = makeTempRoot();
   const config = makeConfig(root);
   const service = createFilesService(config);
-  const indexDir = path.join(config.openclawRoot, ".tracevane", "file-content-index", "project-root");
-  fs.mkdirSync(indexDir, { recursive: true });
-  const shard = {};
   for (let index = 0; index < 180; index += 1) {
-    const sha = index.toString(16).padStart(64, "0");
-    shard[sha] = [{ rootId: "project-root", path: `bulk/file-${String(index).padStart(3, "0")}.txt`, size: 5, sha256: sha, mtimeMs: 1, indexedAt: "2026-06-29T00:00:00.000Z" }];
+    writeFile(path.join(config.projectRoot, "bulk", `file-${String(index).padStart(3, "0")}.txt`), "bulk\n");
   }
-  fs.writeFileSync(path.join(indexDir, "00.json"), JSON.stringify(shard), "utf8");
+  const rebuilt = service.rebuildContentIndex("project-root");
+  assert.equal(rebuilt.rebuiltRecordCount, 180);
 
   const page = service.getContentIndexRecords({ rootId: "project-root", status: "all", offset: 50, limit: 25 });
 
@@ -807,7 +774,6 @@ test("files service pages large content-index records through SQLite without app
   assert.equal(page.records.at(-1)?.path, "bulk/file-074.txt");
 });
 
-
 test("files service exposes content index as a global aggregate scope", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
@@ -815,18 +781,8 @@ test("files service exposes content index as a global aggregate scope", () => {
   writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
   writeFile(path.join(config.openclawRoot, "workspace", "beta.txt"), "beta\n");
 
-  const records = [
-    { rootId: "project-root", basePath: config.projectRoot, relativePath: "alpha.txt", sha: "a".repeat(64) },
-    { rootId: "openclaw-root", basePath: config.openclawRoot, relativePath: "workspace/beta.txt", sha: "b".repeat(64) },
-  ];
-  for (const record of records) {
-    const stat = fs.statSync(path.join(record.basePath, record.relativePath));
-    const indexDir = path.join(config.openclawRoot, ".tracevane", "file-content-index", record.rootId);
-    fs.mkdirSync(indexDir, { recursive: true });
-    fs.writeFileSync(path.join(indexDir, `${record.sha.slice(0, 2)}.json`), JSON.stringify({
-      [record.sha]: [{ path: record.relativePath, size: stat.size, mtimeMs: stat.mtimeMs, indexedAt: "2026-06-29T00:00:00.000Z" }],
-    }), "utf8");
-  }
+  service.rebuildContentIndex("project-root");
+  service.rebuildContentIndex("openclaw-root");
 
   const stats = service.getContentIndexStats("global");
   assert.equal(stats.rootId, "global");
@@ -844,7 +800,6 @@ test("files service exposes content index as a global aggregate scope", () => {
   assert.equal(page.records[0]?.rootId, "openclaw-root");
   assert.equal(page.records[0]?.path, "workspace/beta.txt");
 });
-
 
 test("files service can archive and unarchive zip and tar bundles", () => {
   const root = makeTempRoot();

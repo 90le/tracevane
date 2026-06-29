@@ -944,6 +944,15 @@ function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase
     CREATE INDEX IF NOT EXISTS idx_content_index_sha ON content_index_records(sha256);
     CREATE INDEX IF NOT EXISTS idx_content_index_root_path ON content_index_records(root_id, path);
     CREATE INDEX IF NOT EXISTS idx_content_index_indexed_at ON content_index_records(indexed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_content_index_path_lower ON content_index_records(root_id, path COLLATE NOCASE);
+    CREATE TABLE IF NOT EXISTS content_index_stats (
+      root_id TEXT PRIMARY KEY,
+      record_count INTEGER NOT NULL DEFAULT 0,
+      hash_count INTEGER NOT NULL DEFAULT 0,
+      indexed_bytes INTEGER NOT NULL DEFAULT 0,
+      newest_indexed_at TEXT,
+      updated_at TEXT NOT NULL
+    ) STRICT;
     CREATE TABLE IF NOT EXISTS trash_items (
       id TEXT PRIMARY KEY,
       root_id TEXT NOT NULL,
@@ -1030,29 +1039,27 @@ function upsertTrashItemSql(config: TracevaneServerConfig, item: FilesTrashItem,
   `).run(item.id, item.rootId, rootAbsolutePath || null, item.originalPath, item.trashPath, item.name, item.kind, item.size, item.deletedAt, entryDirName, item.metadataPath);
 }
 
-function migrateTrashToSqlite(config: TracevaneServerConfig): void {
+function migrateTrashToSqlite(_config: TracevaneServerConfig): void {
+  // Legacy metadata.json import is intentionally not automatic on hot paths.
+}
+
+function importLegacyTrashMetadata(config: TracevaneServerConfig): number {
   const key = fileManagerSqlitePath(config);
-  if (migratedTrashStores.has(key)) return;
+  if (migratedTrashStores.has(key)) return 0;
   migratedTrashStores.add(key);
   const trashDir = recycleBinDir(config);
-  if (!fs.existsSync(trashDir)) return;
+  if (!fs.existsSync(trashDir)) return 0;
+  let imported = 0;
   for (const entry of fs.readdirSync(trashDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const migrated = readTrashMetadataFile(config, entry.name);
-    if (migrated) upsertTrashItemSql(config, migrated.item, entry.name, migrated.rootAbsolutePath);
+    if (!migrated) continue;
+    upsertTrashItemSql(config, migrated.item, entry.name, migrated.rootAbsolutePath);
+    imported += 1;
   }
+  return imported;
 }
 
-interface ContentIndexListMatch {
-  record: FilesContentIndexRecordPreview;
-  sortKey: string;
-}
-
-interface ContentIndexListCounts {
-  all: number;
-  valid: number;
-  stale: number;
-}
 
 function uploadBaseDir(): string {
   return path.join(os.tmpdir(), "tracevane-files-uploads");
@@ -1273,13 +1280,44 @@ function upsertContentIndexRecordSql(db: FileManagerSqliteDatabase, record: Cont
   `).run(record.rootId, record.path, record.sha256, record.size, record.mtimeMs, record.indexedAt);
 }
 
-function migrateContentIndexRootToSqlite(config: TracevaneServerConfig, rootId: string): void {
-  const key = `${fileManagerSqlitePath(config)}:${rootId}`;
-  if (migratedContentIndexRoots.has(key)) return;
-  migratedContentIndexRoots.add(key);
-  const shardFiles = listContentIndexShardFiles(config, rootId);
-  if (!shardFiles.length) return;
+function refreshContentIndexStatsSql(db: FileManagerSqliteDatabase, rootId: string): void {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS recordCount,
+           COUNT(DISTINCT sha256) AS hashCount,
+           COALESCE(SUM(size), 0) AS indexedBytes,
+           MAX(indexed_at) AS newestIndexedAt
+    FROM content_index_records
+    WHERE root_id = ?
+  `).get(rootId) as { recordCount?: number; hashCount?: number; indexedBytes?: number; newestIndexedAt?: string | null } | undefined;
+  db.prepare(`
+    INSERT INTO content_index_stats (root_id, record_count, hash_count, indexed_bytes, newest_indexed_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(root_id) DO UPDATE SET
+      record_count = excluded.record_count,
+      hash_count = excluded.hash_count,
+      indexed_bytes = excluded.indexed_bytes,
+      newest_indexed_at = excluded.newest_indexed_at,
+      updated_at = excluded.updated_at
+  `).run(
+    rootId,
+    Number(row?.recordCount) || 0,
+    Number(row?.hashCount) || 0,
+    Number(row?.indexedBytes) || 0,
+    row?.newestIndexedAt || null,
+    new Date().toISOString(),
+  );
+}
+
+function refreshContentIndexStatsForRoots(config: TracevaneServerConfig, rootIds: string[]): void {
   const db = fileManagerDb(config);
+  for (const rootId of rootIds) refreshContentIndexStatsSql(db, rootId);
+}
+
+function importLegacyContentIndexRoot(config: TracevaneServerConfig, rootId: string): number {
+  const shardFiles = listContentIndexShardFiles(config, rootId);
+  if (!shardFiles.length) return 0;
+  const db = fileManagerDb(config);
+  let imported = 0;
   runSqlTransaction(db, () => {
     for (const shardPath of shardFiles) {
       const shard = readContentIndexShardFile(shardPath);
@@ -1295,15 +1333,24 @@ function migrateContentIndexRootToSqlite(config: TracevaneServerConfig, rootId: 
             mtimeMs: Number(record.mtimeMs) || 0,
             indexedAt: record.indexedAt || new Date().toISOString(),
           });
+          imported += 1;
         }
       }
     }
+    refreshContentIndexStatsSql(db, rootId);
   });
+  return imported;
 }
 
-function ensureContentIndexSqliteMigrated(config: TracevaneServerConfig, rootId: string | undefined): void {
-  for (const root of contentIndexScopeRoots(config, rootId)) migrateContentIndexRootToSqlite(config, root.id);
+function migrateContentIndexRootToSqlite(_config: TracevaneServerConfig, _rootId: string): void {
+  // Legacy JSON shard import is intentionally not automatic on hot paths.
 }
+
+
+function ensureContentIndexSqliteMigrated(_config: TracevaneServerConfig, _rootId: string | undefined): void {
+  // Hot paths must stay SQL-only; callers can use importLegacyContentIndexRoot explicitly.
+}
+
 
 function contentIndexRootWhereClause(rootIds: string[]): { sql: string; params: SqliteValue[] } {
   if (!rootIds.length) return { sql: "1 = 0", params: [] };
@@ -1382,7 +1429,6 @@ function searchContentIndex(
   seenPaths: Set<string>,
   limit: number,
 ): { candidateCount: number; results: FilesSearchPayload["results"] } {
-  ensureContentIndexSqliteMigrated(config, rootId);
   const results: FilesSearchPayload["results"] = [];
   let candidateCount = 0;
   const rows = fileManagerDb(config).prepare(`
@@ -1435,7 +1481,6 @@ function computeContentIndexStats(
   rootId: string,
   options: { cleanStale?: boolean; validateRecords?: boolean } = {},
 ): FilesContentIndexActionResponse {
-  ensureContentIndexSqliteMigrated(config, rootId);
   const scopeRoots = contentIndexScopeRoots(config, rootId);
   const rootIds = scopeRoots.map((root) => root.id);
   const db = fileManagerDb(config);
@@ -1452,17 +1497,16 @@ function computeContentIndexStats(
   const recordsPreview: FilesContentIndexRecordPreview[] = [];
 
   if (!validateRecords) {
-    const counts = db.prepare(`
-      SELECT COUNT(*) AS recordCount, COUNT(DISTINCT sha256) AS hashCount,
-             COUNT(DISTINCT root_id || ':' || substr(sha256, 1, 2)) AS shardCount,
-             COALESCE(SUM(size), 0) AS indexedBytes, MAX(indexed_at) AS newestIndexedAt
-      FROM content_index_records WHERE ${rootWhere.sql}
-    `).get(...rootWhere.params) as { recordCount?: number; hashCount?: number; shardCount?: number; indexedBytes?: number; newestIndexedAt?: string | null } | undefined;
-    recordCount = Number(counts?.recordCount) || 0;
+    const rows = db.prepare(`
+      SELECT root_id, record_count, hash_count, indexed_bytes, newest_indexed_at
+      FROM content_index_stats
+      WHERE root_id IN (${rootIds.map(() => "?").join(", ")})
+    `).all(...rootIds) as Array<{ root_id: string; record_count: number; hash_count: number; indexed_bytes: number; newest_indexed_at: string | null }>;
+    recordCount = rows.reduce((sum, row) => sum + Number(row.record_count || 0), 0);
     validRecordCount = recordCount;
-    hashCount = Number(counts?.hashCount) || 0;
-    indexedBytes = Number(counts?.indexedBytes) || 0;
-    newestIndexedAt = counts?.newestIndexedAt || null;
+    hashCount = rows.reduce((sum, row) => sum + Number(row.hash_count || 0), 0);
+    indexedBytes = rows.reduce((sum, row) => sum + Number(row.indexed_bytes || 0), 0);
+    newestIndexedAt = rows.map((row) => row.newest_indexed_at).filter(Boolean).sort().at(-1) ?? null;
     const previewRows = db.prepare(`
       SELECT root_id, path, sha256, size, mtime_ms, indexed_at
       FROM content_index_records WHERE ${rootWhere.sql}
@@ -1471,7 +1515,7 @@ function computeContentIndexStats(
     for (const row of previewRows) recordsPreview.push({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: Number(row.size) || 0, indexedAt: row.indexed_at || null, status: "valid" });
     return {
       checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(rootId), scope: isGlobalContentIndexRoot(rootId) ? "global" : "root", rootCount: scopeRoots.length,
-      shardCount: Number(counts?.shardCount) || 0, hashCount, recordCount, validRecordCount, staleRecordCount: 0, indexedBytes, staleBytes: 0, newestIndexedAt,
+      shardCount: rows.length, hashCount, recordCount, validRecordCount, staleRecordCount: 0, indexedBytes, staleBytes: 0, newestIndexedAt,
       storageDirectory: fileManagerSqlitePath(config), previewLimit: CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT, recordsPreview, fastStats: true,
     };
   }
@@ -1499,6 +1543,7 @@ function computeContentIndexStats(
       for (const [rowRootId, rowPath] of staleKeys) statement.run(rowRootId, rowPath);
     });
     cleanedRecordCount = staleKeys.length;
+    refreshContentIndexStatsForRoots(config, rootIds);
     recordCount = validRecordCount;
     staleRecordCount = 0;
     staleBytes = 0;
@@ -1538,7 +1583,6 @@ function listContentIndexRecords(
   config: TracevaneServerConfig,
   params: FilesContentIndexRecordsParams,
 ): FilesContentIndexRecordsPayload {
-  ensureContentIndexSqliteMigrated(config, params.rootId);
   const status = normalizeContentIndexStatusFilter(params.status);
   const query = (params.query || "").trim().toLowerCase();
   const offset = clampContentIndexRecordsOffset(params.offset);
@@ -1662,6 +1706,8 @@ function rebuildContentIndexForRoot(
     if (truncated) break;
   }
 
+  refreshContentIndexStatsSql(fileManagerDb(config), root.id);
+
   return {
     ...computeContentIndexStats(config, root.id),
     scannedFileCount,
@@ -1696,7 +1742,9 @@ function recordContentIndex(
   let stat: fs.Stats;
   try { stat = fs.statSync(target.absolutePath); } catch { return; }
   if (!stat.isFile() || stat.size !== size) return;
-  upsertContentIndexRecordSql(fileManagerDb(config), { rootId, path: target.relativePath, size, sha256, mtimeMs: stat.mtimeMs, indexedAt: new Date().toISOString() });
+  const db = fileManagerDb(config);
+  upsertContentIndexRecordSql(db, { rootId, path: target.relativePath, size, sha256, mtimeMs: stat.mtimeMs, indexedAt: new Date().toISOString() });
+  refreshContentIndexStatsSql(db, rootId);
 }
 
 function lookupContentIndex(
@@ -1707,7 +1755,6 @@ function lookupContentIndex(
   excludePath: string,
 ): string | null {
   if (!sha256) return null;
-  ensureContentIndexSqliteMigrated(config, rootId);
   const db = fileManagerDb(config);
   const rows = db.prepare(`
     SELECT root_id, path, sha256, size, mtime_ms, indexed_at
@@ -2248,7 +2295,6 @@ function readTrashMetadataFile(config: TracevaneServerConfig, entryDirName: stri
 }
 
 function listTrashItems(config: TracevaneServerConfig): FilesTrashItem[] {
-  migrateTrashToSqlite(config);
   const db = fileManagerDb(config);
   const rows = db.prepare(`
     SELECT id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path
@@ -2295,7 +2341,6 @@ function resolveTrashItem(config: TracevaneServerConfig, trashPath: string | und
 
 function restoreTrashItem(config: TracevaneServerConfig, payload: FilesTrashRestorePayload): FilesMutationResponse {
   const source = resolveTrashItem(config, payload.trashPath);
-  migrateTrashToSqlite(config);
   const metadataRow = fileManagerDb(config).prepare(
     "SELECT id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path FROM trash_items WHERE trash_path = ?",
   ).get(source.relativePath) as SqlTrashRow | undefined;
