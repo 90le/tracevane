@@ -4,7 +4,12 @@ import {
   Copy,
   FileCode,
   FileText,
+  GitBranch,
+  PenLine,
   Search,
+  ShieldCheck,
+  Sparkles,
+  TerminalSquare,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -773,13 +778,7 @@ export function WorkspaceEditorStage({
       />
 
       {showEmpty ? (
-        <div className="grid min-h-0 place-items-center p-8 text-center">
-          <EmptyState
-            title="未打开文件"
-            description="在左侧资源管理器中选择文件以打开"
-            icon={<FileCode />}
-          />
-        </div>
+        <WorkspaceTopTierEmptyState />
       ) : (
         <div className="relative grid min-h-0 min-w-0 overflow-hidden">
           <WorkspaceDocumentFloatingToolbar
@@ -846,6 +845,96 @@ export function WorkspaceEditorStage({
         {fileName ?? "未打开文件"} · {activeRootId ?? "—"}
       </span>
     </section>
+  );
+}
+
+
+function WorkspaceTopTierEmptyState() {
+  const pillars = [
+    {
+      icon: <FileCode />,
+      title: "代码",
+      description: "打开文件后进入 Monaco 源码、Diff、查找替换和保存闭环。",
+    },
+    {
+      icon: <PenLine />,
+      title: "写作",
+      description: "Markdown / HTML / 长文在同一标签页内切换源码、预览和可视编辑。",
+    },
+    {
+      icon: <Sparkles />,
+      title: "AI 上下文",
+      description: "复制 @file / @selection 上下文，让 Agent 明确知道要修改什么。",
+    },
+    {
+      icon: <TerminalSquare />,
+      title: "终端",
+      description: "运行构建、测试和验证命令，并把输出沉淀为审查线索。",
+    },
+    {
+      icon: <GitBranch />,
+      title: "Git",
+      description: "查看变更、Diff、暂存与提交，守住可审查的发布边界。",
+    },
+    {
+      icon: <ShieldCheck />,
+      title: "证据",
+      description: "每次重要修改都要能追溯到文件、Diff、命令或验证结果。",
+    },
+  ];
+
+  return (
+    <div
+      className="relative grid min-h-0 overflow-auto bg-[radial-gradient(circle_at_20%_10%,var(--aurora-1),transparent_30%),radial-gradient(circle_at_80%_0%,var(--aurora-2),transparent_26%),linear-gradient(180deg,var(--canvas),var(--panel-2))] p-4 sm:p-8"
+      data-workspace-top-tier-empty
+    >
+      <div className="mx-auto grid w-full max-w-5xl content-center gap-6 py-6 sm:py-10">
+        <div className="grid gap-4 rounded-[28px] border border-line bg-panel/82 p-5 shadow-lg backdrop-blur sm:p-8">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary-line bg-primary-soft px-3 py-1 text-xs font-medium text-primary">
+            <Sparkles className="size-3.5" />
+            全球顶级 AI 编程与写作工作区
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
+            <div className="grid gap-3">
+              <h1 className="max-w-3xl text-balance text-2xl font-semibold tracking-[-0.03em] text-ink-strong sm:text-4xl">
+                从文件开始，把代码、写作、Agent、终端、Git 和证据放进同一个审查闭环。
+              </h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted sm:text-base">
+                在左侧打开项目文件；当前文件标签页会成为唯一工作对象。源码、预览、编辑+预览、预览时编辑、AI 上下文和 Diff 都围绕同一个文件展开，不再制造重复窗口。
+              </p>
+            </div>
+            <div className="grid gap-2 rounded-2xl border border-line bg-canvas/78 p-4 text-xs text-muted">
+              <div className="font-medium text-ink-strong">推荐起步</div>
+              <ol className="grid gap-2 pl-4 [list-style:decimal]">
+                <li>从 Explorer 打开代码或 Markdown 文件。</li>
+                <li>用 Ctrl/⌘+F 查找，或复制 @selection 交给 AI。</li>
+                <li>运行终端验证，再用 Git/Diff 审查结果。</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {pillars.map((item) => (
+            <div
+              key={item.title}
+              className="group rounded-2xl border border-line bg-panel/74 p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-primary-line hover:bg-panel"
+              data-workspace-top-tier-pillar={item.title}
+            >
+              <div className="mb-3 grid size-9 place-items-center rounded-xl bg-primary-soft text-primary transition group-hover:scale-105">
+                {item.icon}
+              </div>
+              <div className="text-sm font-semibold text-ink-strong">
+                {item.title}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                {item.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
