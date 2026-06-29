@@ -17,7 +17,7 @@
 
 > 把 Tracevane Workspace 重新确立为 **IDE-first、AI-native、可无限扩展的全球顶级 AI 编程 IDE 工作区**。第一阶段先暂停视觉概念推进，清理当前前后端 IDE 工作区里不恰当、误导性、重复、半成品或偏离 IDE-first 方向的代码与文档；随后在清理后的基础上建立可执行的长期产品/架构路线，优先恢复并巩固 IDE 核心能力、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status、工作区前后端契约、基础布局、桌面/平板/手机响应式 UI/UX 与可扩展边界。
 
-**Codex Goal 文本修正声明：** 当前 Codex 工具内的 active goal 是早期超大目标，残留了“写作、预览、渲染”等宽泛表述；工具只允许标记 complete/blocked，不能原地改写 objective。因此本蓝图覆盖旧 objective 的歧义：当前执行目标只推进 IDE 工作区本体和 UI/UX，包括 IDE 主体框架、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、布局持久化、桌面/平板/手机适配与支撑这些能力的最小前后端契约。写作、渲染、预览增强不是 Phase 0/1/2 的目标，也不是当前代码清理或前端重设计的验收范围。
+**Codex Goal 文本修正声明：** 当前 Codex 工具内的 active goal 是早期超大目标，残留了“写作、预览、渲染”等宽泛表述；工具只允许标记 complete/blocked，不能原地改写 objective。因此本蓝图覆盖旧 objective 的歧义：当前执行目标只推进 IDE 工作区本体和 UI/UX，包括 IDE 主体框架、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、真实窗格编排系统、布局持久化、桌面/平板/手机适配与支撑这些能力的最小前后端契约。写作、渲染、预览增强不是 Phase 0/1/2 的目标，也不是当前代码清理或前端重设计的验收范围。
 
 本蓝图不是一次 UI 美化任务，也不是继续在旧框架上“补几个按钮”。它是一次面向长期产品的重新定向：**Tracevane 首先必须成为可靠、可扩展、专业的 Web IDE 工作区；AI、证据、Agent、IM、平台集成只能作为 IDE 平台上的扩展层；写作、渲染、预览增强暂时只作为未来可选扩展，而不能反过来破坏 IDE 基础心智。**
 
@@ -25,7 +25,7 @@
 
 用户已经明确否定当前工作区前端：它不像 IDE，像说明文档页、概念展示页或临时拼装页面。后续执行必须承认这一点，并按以下口径推进：
 
-- **要重建的是 IDE 前端框架本身**：Workspace Shell、Activity Rail、Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar、Command Palette 和响应式 mode system。
+- **要重建的是 IDE 前端框架本身**：Workspace Shell、Activity Rail、Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar、Command Palette、Pane Layout System 和响应式 mode system。
 - **不是给旧页面换皮肤**：禁止继续在旧卡片、旧说明页、旧 AI 展示面板上追加按钮或渐变色来伪装“重构完成”。
 - **优先真实前端能力**：Terminal、Git、Search、Files、Editor 这些用户每天工作的能力，必须先有清楚 owner、状态、错误、命令、快捷入口和移动端交互。
 - **手机端是主线，不是附属**：AI 时代用户会在手机端阅读、搜索、跑终端、审查 Git、轻量编辑；手机必须是单任务 IDE 控制台，而不是桌面三栏缩小版。
@@ -75,7 +75,7 @@ Project Workspace
 
 1. **IDE 基础能力**：Files、Editor、Terminal、Git、Search、Command Palette、Status Bar、布局恢复。
 2. **Terminal / Git / Search 前端可用性**：终端会话、输入、移动端键盘、Git 审查、Search 跳转必须成为第一批真实工作流，而不是装饰面板。
-3. **工作台架构**：可扩展的 shell、pane、panel、command、context、layout、state。
+3. **工作台架构**：可扩展的 shell、pane、panel、command、context、layout、state。这里的 layout 不是静态 CSS 网格，而是 IDE 级窗格编排系统：打开/收起、左右上下拆分、窗格组合、标签组、拖动停靠、大小调整、最大化/恢复、布局快照和跨设备恢复都必须可测试。
 4. **响应式体验**：桌面、平板、手机分别是不同交互范式，不是简单压缩；手机端也必须能完成终端、Git 审查、搜索跳转和轻编辑。
 5. **AI 编程层**：上下文收集、代码建议、diff、命令执行审批、证据交接。
 6. **工作区 UI/UX**：桌面端信息密度、手机端单任务流、终端输入体验、面板切换与状态反馈。
@@ -185,7 +185,7 @@ IDE Core 是 Workspace 的底座，必须长期稳定。
 - Git：分支、变更、diff、stage、commit、history、冲突提示。
 - Search：文件名与内容搜索，结果可打开、可投递上下文。
 - Command Palette：所有重要动作必须可命令化。
-- Layout：桌面可拖拽/拆分/恢复；平板可双栏；手机单任务流。
+- Layout / Pane System：桌面必须支持真实 IDE 窗格编排，而不只是“看起来像 IDE”。至少包括 pane registry、dock 区域、打开/收起、左右上下拆分、窗格组合/标签组、跨 dock 移动、拖放停靠、大小拖动、最大化/恢复、空 dock 状态、布局 preset、命名快照和本地持久化；平板支持双栏/滑出面板；手机支持明确的单任务 panel mode 与底部/全屏切换。
 - Status Bar：分支、保存、编码、运行、终端、AI/证据状态。
 - Keymap：核心快捷键、可配置、跨平台。
 - Persistence：打开文件、布局、终端会话、工作区根目录恢复。
@@ -415,6 +415,7 @@ Mobile < 768px
 
 ### 7.2 下一阶段必须做
 
+0. 当前 Workbench 不能只继续像 IDE；必须优先补齐 Pane Layout System 硬门槛：open/collapse、split left/right/top/bottom、group tabs、drag/drop docking、tab reorder、resize、maximize/restore、empty dock、layout preset、snapshot、command entry、persistence、mobile panel mode。
 1. 当前 Workbench 能力审计。
 2. 前端代码分层图：IDE Core、Terminal/Workspace Backend Boundary、Extension Layer、AI/Evidence Layer。
 3. 后端能力分层图：Workspace fs、terminal、git、search、agent/evidence；preview/rendering 暂不推进。
@@ -542,7 +543,7 @@ Future Extension Placeholders (not Phase 0/1/2 scope)
 
 当前前端重设计的硬范围：
 
-- Workspace Shell：全局顶栏/项目栏、Activity Rail、Primary Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar。
+- Workspace Shell：全局顶栏/项目栏、Activity Rail、Primary Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar、Pane Layout System。
 - Terminal UX：session roster、active cwd、stream/input/resize 状态、移动端 keyboard inset、copy/clear/insert-command、fullscreen/dock/sheet。
 - Git UX：branch、changes、diff review、stage/unstage/commit-confirm、mobile review flow。
 - Search UX：file/content search、result grouping、open-to-editor、reviewable replace plan、mobile jump flow。

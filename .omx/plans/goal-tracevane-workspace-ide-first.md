@@ -36,7 +36,7 @@ Workspace IDE
   + Git / Changes / Diff / Stage / Commit / Branch Status
   + Search / File Search / Content Search / Jump
   + Command Palette / Keybindings / Quick Actions
-  + Layout / Panels / Status Bar / Responsive Modes
+  + Pane Layout System / Panels / Status Bar / Responsive Modes
   + Provider Layer / Native Workbench or VS Code Web Provider
   + AI Extension Layer / Context / Approval / Evidence / Handoff
 ```
@@ -90,7 +90,8 @@ AI 很重要，但 AI 必须生长在 IDE 平台上；AI 不能替代 IDE 主体
 5. Git：变更审查、diff、stage、commit、branch 状态必须真实可见。
 6. Search：搜索结果必须能跳转，能作为 AI 上下文，能在手机上审查。
 7. Command Palette：统一命令入口，不能散落按钮山。
-8. Layout State：布局、面板、session 恢复必须可靠。
+8. Pane Layout System：布局不是固定外观，必须支持打开/收起、组合、拆分、左右上下停靠、跨区域拖放、tab reorder、大小拖动、最大化/恢复、空 dock、layout preset、snapshot、命令入口和恢复。
+9. Layout State：布局、面板、session 恢复必须可靠。
 
 ---
 
@@ -173,7 +174,8 @@ Native Workbench 保留为 Tracevane 外壳/移动端/AI 扩展层
 3. 完成 provider lifecycle：配置、启动、session registry、stop、failure。
 4. 完成 provider proxy：HTTP proxy、WebSocket proxy、auth/session guard、audit。
 5. 完成 provider iframe POC：Tracevane 顶栏保留，中央区域加载 provider，失败态/停止/重试明确。
-6. 完成 native workbench 的 UI/UX 重新设计：Files、Editor、Terminal、Git、Search、Command、Status、Layout。
+6. 完成 native workbench 的 UI/UX 重新设计：Files、Editor、Terminal、Git、Search、Command、Status、Pane Layout System。
+6a. Pane Layout System 是硬门槛：不能只做“像 IDE 的三栏页面”；必须有窗格打开/收起、左右上下拆分、组合、拖放、resize、maximize、snapshot、persistence 和 mobile panel mode。
 7. 完成手机端 IDE 任务流：Terminal、Search、Git、File navigation、AI approval 至少可用。
 8. 写清楚每个阶段的验证命令和失败原因。
 9. 每次阶段性修改后提交代码。
@@ -300,6 +302,7 @@ git diff --check -- <changed-files>
 - [ ] Files/editor tabs redesign。
 - [ ] Command/status redesign。
 - [ ] Desktop/tablet/mobile mode system。
+- [ ] IDE Pane Layout System：open/collapse、split left/right/top/bottom、group tabs、drag/drop docking、resize、maximize/restore、empty dock、layout preset、snapshot、mobile panel mode。
 
 ---
 
@@ -311,10 +314,11 @@ git diff --check -- <changed-files>
 2. Workspace 默认入口看起来和工作方式都像真实 IDE。
 3. Terminal、Git、Search、Files、Editor、Command、Status 都有真实可用的 UI/UX。
 4. 手机端不是坏掉的桌面，而是可用任务流。
-5. OpenVSCode/code-server provider POC 至少完成安全启动、proxy、iframe、停止、失败态。
-6. 是否继续 Theia 或 provider 方案有基于证据的结论。
-7. 验证通过或所有失败都被明确归因。
-8. 每个阶段有小而清楚的 git commit。
+5. IDE 窗格系统不是静态布局截图，而是可组合、可拆分、可拖动、可恢复的工作台能力。
+6. OpenVSCode/code-server provider POC 至少完成安全启动、proxy、iframe、停止、失败态。
+7. 是否继续 Theia 或 provider 方案有基于证据的结论。
+8. 验证通过或所有失败都被明确归因。
+9. 每个阶段有小而清楚的 git commit。
 
 ---
 

@@ -14,6 +14,7 @@ Use **Industrial Studio / Local Ops IDE**:
 - calm but professional;
 - dense without clutter;
 - clear panes, rows, tables, editors and inspectors;
+- real IDE pane layout behavior: open/collapse, split, group, dock left/right/bottom, drag between docks, resize, maximize/restore, persist layouts, and expose equivalent mobile panel modes;
 - strong responsive behavior for PC and mobile;
 - minimal decorative glass in information-dense zones;
 - no card walls or explanation-heavy half-built pages;
@@ -53,6 +54,7 @@ Desktop:
 ```text
 Activity | Explorer | Editor Stage | Inspector
          |          | Bottom Panel
+         |          | Pane Layout System: split/group/dock/resize/snapshot
 ```
 
 Mobile:

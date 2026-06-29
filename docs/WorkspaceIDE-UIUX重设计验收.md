@@ -4,7 +4,7 @@
 > 创建：2026-06-29
 > 上位目标：`Workspace全球顶级AI编程IDE工作区Goal蓝图.md`
 > 前置审计：`WorkspaceIDE工作区现状审计与下一步清理计划.md`
-> 当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、布局持久化、电脑端、平板端、手机端。
+> 当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、真实窗格编排系统、布局持久化、电脑端、平板端、手机端。
 > 当前不做：写作产品线、渲染增强、预览增强、富媒体阅读体验。
 
 ---
@@ -58,6 +58,7 @@ Tracevane Workspace 必须成为一个 **严肃、高密度、可长期扩展的
 必须整体重新设计并最终落地：
 
 1. **IDE 主体框架**：全局顶栏必须保留，Workspace 内部再有项目栏、Activity Rail、Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar；不能再出现没有顶栏或像说明文档页的工作区。
+1a. **真实窗格编排系统**：不能只做像 IDE 的三栏截图；必须支持 pane registry、open/collapse、dock、左右上下拆分、组合为 tab group、跨区域拖放、tab reorder、resize、maximize/restore、layout preset、layout snapshot、empty dock、命令入口和本地恢复。
 2. **Terminal 前端能力**：终端是第一优先级 IDE 面板，必须覆盖 session、cwd、stream/input/resize、错误、移动端键盘、copy/clear/insert-command、dock/fullscreen/sheet。
 3. **Git 前端能力**：Git 是审查与提交工作流，不是统计卡片；必须覆盖 branch、changes、diff、stage、commit confirmation、mobile review。
 4. **Search 前端能力**：Search 是项目级定位和可审查替换工作流；必须覆盖 file/content search、result grouping、open-to-editor、replace review plan、mobile jump flow。
@@ -94,6 +95,7 @@ Global App Shell
 - Command Palette 是所有低频动作入口，避免顶栏按钮爆炸。
 - Status Bar 显示当前工作状态，而不是装饰色条。
 - Layout 可恢复：打开文件、活动侧栏、终端状态、面板尺寸必须持久。
+- Pane Layout 可操作：用户能打开/收起任意 dock，把 Search/Git/AI/Terminal 等窗格移动到左/右/底部，调整左右宽度和底部高度，最大化编辑器或终端，并保存/恢复命名布局。
 - 面板标题、空状态、按钮文案必须像工具，不像宣传页。
 
 ### 3.3 桌面端禁止
@@ -143,6 +145,7 @@ Mobile Workspace
 - 禁止 terminal 输入被底栏或键盘遮挡。
 - 禁止把 Git/Search/Files 都塞进同一个拥挤面板。
 - 禁止把 AI 对话作为手机端默认首屏。
+- 禁止桌面端支持的核心窗格在手机端变成不可达；手机必须提供明确 panel mode 或 sheet/fullscreen 入口。
 
 ---
 
@@ -294,6 +297,7 @@ Terminal 是当前最重要的 IDE 能力之一。
 等关键 dirty 文件可安全修改后，第一批代码应按顺序做：
 
 1. **Workspace shell 分层**：保留全局顶栏，从 `WorkspaceWorkbench.tsx` 拆出 project bar、activity rail、side panel shell、editor stage shell、terminal dock shell、status bar、mobile mode shell。
+1a. **Pane Layout System 分层**：抽出 pane registry、placement/order store、drag/drop docking、resize controller、maximize controller、layout preset/snapshot storage、mobile panel router；不要把窗格行为散落在 JSX 条件和临时 CSS 中。
 2. **Terminal UX 第一轮**：session roster、active cwd、mobile keyboard/input、stream/input/resize error state、copy/clear/insert-command/fullscreen/sheet actions。
 3. **Git 面板重建**：branch、changes、diff review、stage/unstage、commit confirmation、mobile review flow。
 4. **Search 面板重建**：file/content search、result grouping、open-to-editor、replace review plan、mobile jump flow。
