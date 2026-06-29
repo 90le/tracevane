@@ -768,3 +768,19 @@ test("Workspace command palette exposes command risk and surface for IDE UX hier
   assert.match(palette, /data-workspace-command-risk-badge/);
   assert.match(palette, /command\.risk === "destructive" \? "危险" : "写入"/);
 });
+
+test("Workspace IDE shell has a visible coding-workbench visual contract", () => {
+  const css = readWeb("features/workspace/workbench/workspace-workbench.css");
+  assert.match(css, /IDE shell redesign v1/);
+  assert.match(css, /--workspace-ide-bg/);
+  assert.match(css, /--workspace-ide-panel/);
+  assert.match(css, /data-workspace-responsive-shell\] > header/);
+  assert.match(css, /data-workspace-command-palette-trigger\]::after/);
+  assert.match(css, /输入命令、搜索文件、运行任务/);
+  assert.match(css, /data-workspace-main-stage\] > nav\[aria-label="Workspace 活动"\]/);
+  assert.match(css, /\.tracevane-dockview \.dv-groupview/);
+  assert.match(css, /data-workspace-responsive-shell\] > footer/);
+  assert.match(css, /data-workspace-mobile="true"\] > header/);
+  assert.match(css, /data-workspace-mobile-nav\]/);
+  assert.match(css, /data-workspace-mobile-panel-dock\]/);
+});
