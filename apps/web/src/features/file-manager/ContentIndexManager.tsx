@@ -33,7 +33,7 @@ import type { FileEntrySummary } from "@/features/workspace/files";
 
 export type ContentIndexRecordStatusFilter = "all" | "valid" | "stale";
 type ContentIndexMaintenanceStatus = "success" | "error";
-const CONTENT_INDEX_RECORDS_PAGE_SIZE = 100;
+const CONTENT_INDEX_RECORDS_PAGE_SIZE = 50;
 const CONTENT_INDEX_RECORD_ROW_HEIGHT = 64;
 const CONTENT_INDEX_RECORD_OVERSCAN = 8;
 
@@ -71,6 +71,7 @@ export function ContentIndexManager({
   const data = stats.data;
   const busy =
     stats.isFetching || scan.isPending || clean.isPending || rebuild.isPending;
+  const cleanAvailable = Boolean(data?.fastStats || data?.staleRecordCount);
   const recordsQueryReady = useIdleReady(140);
   const recordsPage = useFilesContentIndexRecordsQuery(
     {
@@ -255,7 +256,7 @@ export function ContentIndexManager({
             size="sm"
             className="h-8 px-2 text-xs"
             onClick={() => void runClean()}
-            disabled={busy || !data?.staleRecordCount}
+            disabled={busy || !data || !cleanAvailable}
           >
             清理失效
           </Button>
@@ -291,7 +292,7 @@ export function ContentIndexManager({
           <IndexRecordsPanel
             records={records}
             recordsPage={recordsPage.data}
-            loading={recordsPage.isFetching || stats.isLoading}
+            loading={recordsPage.isFetching || stats.isLoading || !recordsQueryReady}
             statusFilter={statusFilter}
             query={queryDraft}
             page={page}

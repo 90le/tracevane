@@ -782,6 +782,30 @@ test("files service returns content-index records in stable sorted pages", () =>
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
 });
 
+test("files service pages large content-index records without materializing full result rows", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  const service = createFilesService(config);
+  const indexDir = path.join(config.openclawRoot, ".tracevane", "file-content-index", "project-root");
+  fs.mkdirSync(indexDir, { recursive: true });
+  const shard = {};
+  for (let index = 0; index < 180; index += 1) {
+    const sha = index.toString(16).padStart(64, "0");
+    shard[sha] = [{ rootId: "project-root", path: `bulk/file-${String(index).padStart(3, "0")}.txt`, size: 5, sha256: sha, mtimeMs: 1, indexedAt: "2026-06-29T00:00:00.000Z" }];
+  }
+  fs.writeFileSync(path.join(indexDir, "00.json"), JSON.stringify(shard), "utf8");
+
+  const page = service.getContentIndexRecords({ rootId: "project-root", status: "all", offset: 50, limit: 25 });
+
+  assert.equal(page.totalRecordCount, 180);
+  assert.equal(page.returnedRecordCount, 25);
+  assert.equal(page.records.length, 25);
+  assert.equal(page.hasMore, true);
+  assert.equal(page.records[0]?.path, "bulk/file-050.txt");
+  assert.equal(page.records.at(-1)?.path, "bulk/file-074.txt");
+});
+
+
 test("files service exposes content index as a global aggregate scope", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);

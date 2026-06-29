@@ -878,6 +878,17 @@ interface ContentIndexShardSource {
   shardPath: string;
 }
 
+interface ContentIndexListMatch {
+  record: FilesContentIndexRecordPreview;
+  sortKey: string;
+}
+
+interface ContentIndexListCounts {
+  all: number;
+  valid: number;
+  stale: number;
+}
+
 function uploadBaseDir(): string {
   return path.join(os.tmpdir(), "tracevane-files-uploads");
 }
@@ -1290,6 +1301,10 @@ function clampContentIndexRecordsLimit(value: unknown): number {
   return Math.max(1, Math.min(CONTENT_INDEX_RECORDS_MAX_LIMIT, Math.floor(parsed)));
 }
 
+function compareContentIndexListMatches(left: ContentIndexListMatch, right: ContentIndexListMatch): number {
+  return left.sortKey.localeCompare(right.sortKey, undefined, { numeric: true, sensitivity: "base" });
+}
+
 function listContentIndexRecords(
   config: TracevaneServerConfig,
   params: FilesContentIndexRecordsParams,
@@ -1298,35 +1313,49 @@ function listContentIndexRecords(
   const query = (params.query || "").trim().toLowerCase();
   const offset = clampContentIndexRecordsOffset(params.offset);
   const limit = clampContentIndexRecordsLimit(params.limit);
-  const matchingRecords: FilesContentIndexRecordPreview[] = [];
+  const matches: ContentIndexListMatch[] = [];
   const scopeRoots = contentIndexScopeRoots(config, params.rootId);
   const validateRecords = status === "stale";
+  const counts: ContentIndexListCounts = { all: 0, valid: 0, stale: 0 };
+  let visitedAfterMatches = 0;
+  let hasMore = false;
 
   for (const { root, shardPath } of listContentIndexShardSources(config, params.rootId)) {
     const shard = readContentIndexShardFile(shardPath);
     for (const [sha256, shardRecords] of Object.entries(shard)) {
       if (!/^[a-f0-9]{64}$/.test(sha256) || !Array.isArray(shardRecords)) continue;
       for (const record of shardRecords) {
+        if (!record?.path) continue;
+        if (query && !record.path.toLowerCase().includes(query) && !sha256.toLowerCase().includes(query) && !root.id.toLowerCase().includes(query)) continue;
         const inspected = validateRecords
           ? inspectContentIndexRecord(config, root.id, record)
           : { valid: true, size: Number(record.size) || 0, indexedAt: record.indexedAt || null };
         const recordStatus = inspected.valid ? "valid" : "stale";
+        counts.all += 1;
+        counts[recordStatus] += 1;
         if (status !== "all" && recordStatus !== status) continue;
-        if (query && !record.path.toLowerCase().includes(query) && !sha256.toLowerCase().includes(query) && !root.id.toLowerCase().includes(query)) continue;
-        matchingRecords.push({ rootId: root.id, path: record.path, sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: recordStatus });
+        visitedAfterMatches += 1;
+        hasMore = visitedAfterMatches > offset + limit;
+        const candidate: ContentIndexListMatch = {
+          record: { rootId: root.id, path: record.path, sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: recordStatus },
+          sortKey: `${root.id}|||${record.path}|||${sha256}`.toLowerCase(),
+        };
+        if (matches.length < offset + limit) {
+          matches.push(candidate);
+          continue;
+        }
+        let largestIndex = 0;
+        for (let index = 1; index < matches.length; index += 1) {
+          if (compareContentIndexListMatches(matches[index], matches[largestIndex]) > 0) largestIndex = index;
+        }
+        if (compareContentIndexListMatches(candidate, matches[largestIndex]) < 0) matches[largestIndex] = candidate;
       }
     }
   }
 
-  matchingRecords.sort((left, right) => {
-    const rootCompare = (left.rootId || "").localeCompare(right.rootId || "", undefined, { numeric: true, sensitivity: "base" });
-    if (rootCompare !== 0) return rootCompare;
-    const pathCompare = left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" });
-    if (pathCompare !== 0) return pathCompare;
-    return left.sha256.localeCompare(right.sha256);
-  });
-  const totalRecordCount = matchingRecords.length;
-  const records = matchingRecords.slice(offset, offset + limit);
+  matches.sort(compareContentIndexListMatches);
+  const totalRecordCount = validateRecords || query || status === "all" ? visitedAfterMatches : counts[status];
+  const records = matches.slice(offset, offset + limit).map((match) => match.record);
 
   return {
     checkedAt: new Date().toISOString(),
@@ -1339,10 +1368,11 @@ function listContentIndexRecords(
     limit,
     totalRecordCount,
     returnedRecordCount: records.length,
-    hasMore: offset + records.length < totalRecordCount,
+    hasMore,
     records,
   };
 }
+
 
 function shouldSkipContentIndexRebuildDirectory(relativePath: string, dirName: string): boolean {
   if (CONTENT_INDEX_REBUILD_SKIP_DIRS.has(dirName)) return true;
