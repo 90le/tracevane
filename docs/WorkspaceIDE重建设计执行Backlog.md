@@ -18,6 +18,22 @@
 - 每个阶段都有明确 owner、交付物、不要做、验收。
 - 每个阶段都必须保留全局顶栏，不再出现说明页式 Workspace。
 - 每个阶段都必须只提交本代理改动。
+- 第一季不是视觉皮肤季，而是 **IDE 前端框架重建季**：先把 Terminal、Git、Search、Files、Editor 和响应式 shell 的结构做对，再谈品牌化细节。
+- 每个代码阶段都必须能回答“用户现在能多完成哪一个真实 IDE 工作？”；如果答案只是“看起来更酷”，该阶段不合格。
+
+## 0.1 第一季重建范围声明
+
+第一季必须围绕以下真实 IDE 前端能力重建，不允许再偏移到说明页、写作页、预览页或营销页：
+
+1. **IDE Shell**：全局顶栏保留；Workspace 内部重建项目栏、活动栏、主侧栏、编辑主舞台、底部终端、状态栏、命令中心。
+2. **Terminal First**：终端输入、输出、会话、cwd、resize、移动端键盘、命令插入、安全边界都必须可用。
+3. **Files / Editor**：文件树、tabs、dirty/save、code/diff/review、定位、危险操作确认是核心，不是附属。
+4. **Search**：项目搜索必须支持输入、结果分组、打开定位、替换审查计划、手机端返回搜索流。
+5. **Git**：Git 必须支持 branch、changes、diff review、stage/unstage、commit confirm、手机审查流。
+6. **Command / Status**：命令入口和状态栏必须连接真实工作状态，不能是装饰。
+7. **Responsive**：桌面高密度、平板双态、手机单任务流；手机 Terminal/Git/Search 是一等用户路径。
+
+因此，任何“继续小改旧 UI”“先做漂亮文档页”“先强化预览/写作/渲染”的任务都不进入当前 Backlog。
 
 ---
 

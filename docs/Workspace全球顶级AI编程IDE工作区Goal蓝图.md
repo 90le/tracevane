@@ -20,6 +20,17 @@
 
 本蓝图不是一次 UI 美化任务，也不是继续在旧框架上“补几个按钮”。它是一次面向长期产品的重新定向：**Tracevane 首先必须成为可靠、可扩展、专业的 Web IDE 工作区；AI、证据、Agent、IM、平台集成只能作为 IDE 平台上的扩展层；写作、渲染、预览增强暂时只作为未来可选扩展，而不能反过来破坏 IDE 基础心智。**
 
+### 0.1 当前重建口径：推翻旧前端壳，而不是修补旧页面
+
+用户已经明确否定当前工作区前端：它不像 IDE，像说明文档页、概念展示页或临时拼装页面。后续执行必须承认这一点，并按以下口径推进：
+
+- **要重建的是 IDE 前端框架本身**：Workspace Shell、Activity Rail、Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar、Command Palette 和响应式 mode system。
+- **不是给旧页面换皮肤**：禁止继续在旧卡片、旧说明页、旧 AI 展示面板上追加按钮或渐变色来伪装“重构完成”。
+- **优先真实前端能力**：Terminal、Git、Search、Files、Editor 这些用户每天工作的能力，必须先有清楚 owner、状态、错误、命令、快捷入口和移动端交互。
+- **手机端是主线，不是附属**：AI 时代用户会在手机端阅读、搜索、跑终端、审查 Git、轻量编辑；手机必须是单任务 IDE 控制台，而不是桌面三栏缩小版。
+- **AI 只能作为 IDE 上的增强层**：AI 面板、证据、Agent handoff 不能替代 IDE 主体，也不能抢走 Terminal/Git/Search/Editor 的默认视觉重心。
+- **阶段验收看可工作能力，不看概念图**：如果没有更好的终端输入、搜索跳转、Git 审查、文件编辑、布局恢复和移动端任务流，就不能称为完成重构。
+
 ---
 
 ## 1. 最高产品目标
@@ -86,6 +97,14 @@ Project Workspace
 8. **并行开发污染风险**：当前工作区有大量其他人未提交改动，任何清理和提交都必须严格只处理本代理修改的文件。
 
 本 Goal 的第一动作不是继续开发新说明页或新视觉概念，而是 **停止错误增量、建立边界、清理不恰当残留**；下一步重建也必须围绕 IDE 主体、Terminal、Git、Search、Files、Editor 和移动端真实工作流，而不是围绕预览/写作/渲染。
+
+第一季最重要的产品任务是 **Workspace IDE 前端全面重建**：
+
+1. 删除或隔离不恰当的前后端 IDE 工作区代码、文档、测试残留。
+2. 把 `/workspace` 从“说明页式/卡片式/AI 展示式页面”重新变成 IDE shell。
+3. 按 Terminal First、Files/Editor Core、Search Core、Git Core、Command/Status、Responsive Hardening 的顺序做真实能力。
+4. 所有 UI/UX 设计必须服务于工作效率、信息密度、可恢复布局、移动端可操作性和扩展边界。
+5. 任何不能增强 IDE 主体能力的视觉方案，都必须推迟或删除。
 
 本 Goal 当前也不是渲染/预览/写作增强任务：
 

@@ -19,6 +19,10 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /先 IDE，后 AI/);
   assert.match(doc, /不做预览增强/);
   assert.match(doc, /禁止再做“看起来很酷但不能工作”的说明页式 Workspace/);
+  assert.match(doc, /推翻旧前端壳，而不是修补旧页面/);
+  assert.match(doc, /要重建的是 IDE 前端框架本身/);
+  assert.match(doc, /手机端是主线，不是附属/);
+  assert.match(doc, /第一季最重要的产品任务是 \*\*Workspace IDE 前端全面重建\*\*/);
   assert.match(doc, /路线 B：基于 Eclipse Theia/);
   assert.match(doc, /路线 C：集成 code-server \/ OpenVSCode Server/);
   assert.match(doc, /手机端不是缩小版桌面 IDE/);
@@ -178,6 +182,10 @@ test("Workspace IDE rebuild backlog sequences the full redesign around IDE core"
   assert.match(backlog, /Search 是项目级定位与审查入口/);
   assert.match(backlog, /Git 是代码审查与提交工作流/);
   assert.match(backlog, /不推进写作、渲染、预览增强/);
+  assert.match(backlog, /IDE 前端框架重建季/);
+  assert.match(backlog, /用户现在能多完成哪一个真实 IDE 工作/);
+  assert.match(backlog, /第一季重建范围声明/);
+  assert.match(backlog, /手机 Terminal\/Git\/Search 是一等用户路径/);
   assert.doesNotMatch(backlog, /Phase B[\s\S]{0,240}预览增强/);
 });
 
@@ -192,6 +200,10 @@ test("Workspace UI/UX contract locks the redesign to IDE core capabilities", () 
   assert.match(contract, /Files \/ Editor 前端能力/);
   assert.match(contract, /不删除全局顶栏/);
   assert.match(contract, /Terminal 不被底栏\/键盘遮挡/);
+  assert.match(contract, /旧前端壳已经被判定为不合格/);
+  assert.match(contract, /旧前端判废标准/);
+  assert.match(contract, /工作区中心是一张设计海报、说明文档或大段愿景文案/);
+  assert.match(contract, /手机端只是桌面三栏压缩/);
   assert.doesNotMatch(contract, /写作产品线、渲染增强、预览增强[\s\S]{0,80}必须整体重新设计/);
 });
 
