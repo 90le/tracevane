@@ -255,6 +255,28 @@ test("new Workspace IDE shell persists pane order and supports tab reorder drops
   assert.match(shellSource, /顺序: \{topPaneIds\.join\("\|"\)/);
 });
 
+
+test("new Workspace IDE shell supports split dock groups", () => {
+  assert.match(shellSource, /type DockSplitMode = "single" \| "vertical" \| "horizontal"/);
+  assert.match(shellSource, /type DockSplitModes = Record<PanePlacement, DockSplitMode>/);
+  assert.match(shellSource, /DEFAULT_DOCK_SPLIT_MODES/);
+  assert.match(shellSource, /dockSplitModes/);
+  assert.match(shellSource, /function setDockSplitMode/);
+  assert.match(shellSource, /function DockPaneFrame/);
+  assert.match(shellSource, /data-ide-dock-split=\{shouldSplit \? splitMode : "single"\}/);
+  assert.match(shellSource, /data-ide-dock-split-pane=\{role\}/);
+  assert.match(shellSource, /function secondaryDockPane/);
+  assert.match(shellSource, /sanitizeDockSplitModes/);
+  assert.match(shellSource, /isDockSplitMode/);
+  assert.match(shellSource, /aria-label=\{`\$\{placementLabel\(placement\)\} Dock 左右拆分`\}/);
+  assert.match(shellSource, /aria-label=\{`\$\{placementLabel\(placement\)\} Dock 上下拆分`\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split/);
+  assert.match(cssSource, /data-ide-dock-split="vertical"/);
+  assert.match(cssSource, /data-ide-dock-split="horizontal"/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split-divider/);
+  assert.match(cssSource, /workspace-ide-shell__dock-split-pane/);
+});
+
 test("new Workspace IDE shell supports named local layout snapshots", () => {
   assert.match(shellSource, /IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY/);
   assert.match(shellSource, /interface IdeLayoutSnapshot/);

@@ -852,3 +852,42 @@
   color: var(--ide-text);
   background: rgba(34, 211, 238, 0.14);
 }
+
+.workspace-ide-shell__dock-split {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-ide-shell__dock-split[data-ide-dock-split="single"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-ide-shell__dock-split[data-ide-dock-split="vertical"] {
+  grid-template-columns: minmax(0, 1fr) 6px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-ide-shell__dock-split[data-ide-dock-split="horizontal"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 6px minmax(0, 1fr);
+}
+
+.workspace-ide-shell__dock-split-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(2, 6, 23, 0.32);
+}
+
+.workspace-ide-shell__dock-split-divider {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.workspace-ide-shell__pane-dock-controls button[data-active="true"] {
+  background: rgba(34, 211, 238, 0.2);
+  color: #cffafe;
+}

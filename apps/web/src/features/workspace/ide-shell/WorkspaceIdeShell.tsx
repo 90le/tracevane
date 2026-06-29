@@ -43,6 +43,8 @@ type MaximizedPane = "top" | "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
 type EditorGroupId = "primary" | "secondary";
 type EditorSplitMode = "single" | "vertical" | "horizontal";
+type DockSplitMode = "single" | "vertical" | "horizontal";
+type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
 interface IdePaneSizes {
@@ -103,6 +105,7 @@ const PANE_SIZE_LIMITS: Record<keyof IdePaneSizes, { min: number; max: number }>
 };
 const KEYBOARD_RESIZE_STEP = 16;
 const KEYBOARD_RESIZE_LARGE_STEP = 40;
+const DEFAULT_DOCK_SPLIT_MODES: DockSplitModes = { top: "single", left: "single", right: "single", bottom: "single" };
 const DEFAULT_EDITOR_SPLIT_RATIO = 50;
 const EDITOR_SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 
@@ -116,6 +119,7 @@ interface IdeLayoutState {
   paneSizes?: Partial<IdePaneSizes>;
   editorSplitMode?: EditorSplitMode;
   editorSplitRatio?: number;
+  dockSplitModes?: Partial<DockSplitModes>;
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
 }
@@ -173,6 +177,10 @@ export function WorkspaceIdeShell() {
     ...layoutState.paneSizes,
   }));
   const [editorSplitMode, setEditorSplitMode] = React.useState<EditorSplitMode>(layoutState.editorSplitMode ?? "single");
+  const [dockSplitModes, setDockSplitModes] = React.useState<DockSplitModes>(() => ({
+    ...DEFAULT_DOCK_SPLIT_MODES,
+    ...layoutState.dockSplitModes,
+  }));
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
@@ -204,6 +212,9 @@ export function WorkspaceIdeShell() {
   const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0];
   const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0];
   const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0];
+  const secondaryTopPane = secondaryDockPane(topPaneIds, activeTopPane);
+  const secondaryRightPane = secondaryDockPane(rightPaneIds, activeRightPane);
+  const secondaryBottomPane = secondaryDockPane(bottomPaneIds, activeBottomPane);
 
   React.useEffect(() => {
     if (!rootId && defaultRootId) {
@@ -234,8 +245,9 @@ export function WorkspaceIdeShell() {
       editorSplitRatio,
       panePlacements,
       paneOrder,
+      dockSplitModes,
     });
-  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [bottomOpen, dockSplitModes, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -500,7 +512,7 @@ export function WorkspaceIdeShell() {
         run: resetPanePlacements,
       },
     ],
-    [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
+    [bottomOpen, dockSplitModes, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
@@ -543,7 +555,7 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
     ],
-    [layoutSnapshots, bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
+    [layoutSnapshots, bottomOpen, dockSplitModes, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
   const commands = React.useMemo(
@@ -570,6 +582,7 @@ export function WorkspaceIdeShell() {
   function resetLayout() {
     setLayoutPreset("balanced");
     setPaneSizes(DEFAULT_PANE_SIZES);
+    setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setMaximizedPane(null);
     closeEditorSplit();
     resetPanePlacements();
@@ -578,6 +591,7 @@ export function WorkspaceIdeShell() {
   function resetPanePlacements() {
     setPanePlacements(DEFAULT_PANE_PLACEMENTS);
     setPaneOrder(DEFAULT_PANE_ORDER);
+    setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setActivity("explorer");
     setTopPanel("output");
     setRightPanel("ai");
@@ -601,6 +615,7 @@ export function WorkspaceIdeShell() {
       editorSplitRatio,
       panePlacements,
       paneOrder,
+      dockSplitModes,
     };
   }
 
@@ -639,6 +654,7 @@ export function WorkspaceIdeShell() {
     const nextGroups = groupPanesByPlacement(nextPanePlacements, nextPaneOrder);
     setPanePlacements(nextPanePlacements);
     setPaneOrder(nextPaneOrder);
+    setDockSplitModes({ ...DEFAULT_DOCK_SPLIT_MODES, ...sanitized.dockSplitModes });
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
@@ -729,6 +745,10 @@ export function WorkspaceIdeShell() {
     setSecondaryPath((current) => current ?? activePath);
     setSecondaryPathRootId((current) => current || activePathRootId || rootId);
     setActiveEditorGroup("secondary");
+  }
+
+  function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
+    setDockSplitModes((current) => ({ ...current, [placement]: mode }));
   }
 
   function closeEditorSplit() {
@@ -1065,7 +1085,9 @@ export function WorkspaceIdeShell() {
                       paneId={paneId}
                       placement="top"
                       compact
+                      splitMode={dockSplitModes.top}
                       onMovePane={movePaneToPlacement}
+                      onSetDockSplitMode={setDockSplitMode}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onCloseDock={() => setTopOpen(false)}
@@ -1081,15 +1103,15 @@ export function WorkspaceIdeShell() {
                   <Maximize2 className="h-4 w-4" aria-hidden={true} />
                 </button>
               </div>
-              {activeTopPane ? (
-                <DockPaneContent
-                  panel={activeTopPane}
-                  workspaceDirectory={workspaceDirectory}
-                  onTerminalCommandsChange={setTerminalCommands}
-                />
-              ) : (
-                <EmptyDockPane placement="top" onRestore={resetPanePlacements} />
-              )}
+              <DockPaneFrame
+                placement="top"
+                splitMode={dockSplitModes.top}
+                primaryPane={activeTopPane}
+                secondaryPane={secondaryTopPane}
+                workspaceDirectory={workspaceDirectory}
+                onTerminalCommandsChange={setTerminalCommands}
+                onRestore={resetPanePlacements}
+              />
               <ResizeHandle
                 pane="top"
                 label="调整顶部 Dock 高度"
@@ -1210,7 +1232,9 @@ export function WorkspaceIdeShell() {
                       paneId={paneId}
                       placement="bottom"
                       compact
+                      splitMode={dockSplitModes.bottom}
                       onMovePane={movePaneToPlacement}
+                      onSetDockSplitMode={setDockSplitMode}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onCloseDock={() => setBottomOpen(false)}
@@ -1226,15 +1250,15 @@ export function WorkspaceIdeShell() {
                   <Maximize2 className="h-4 w-4" aria-hidden={true} />
                 </button>
               </div>
-              {activeBottomPane ? (
-                <DockPaneContent
-                  panel={activeBottomPane}
-                  workspaceDirectory={workspaceDirectory}
-                  onTerminalCommandsChange={setTerminalCommands}
-                />
-              ) : (
-                <EmptyDockPane placement="bottom" onRestore={resetPanePlacements} />
-              )}
+              <DockPaneFrame
+                placement="bottom"
+                splitMode={dockSplitModes.bottom}
+                primaryPane={activeBottomPane}
+                secondaryPane={secondaryBottomPane}
+                workspaceDirectory={workspaceDirectory}
+                onTerminalCommandsChange={setTerminalCommands}
+                onRestore={resetPanePlacements}
+              />
             </section>
           ) : null}
         </section>
@@ -1283,7 +1307,9 @@ export function WorkspaceIdeShell() {
                     paneId={paneId}
                     placement="right"
                     compact
+                    splitMode={dockSplitModes.right}
                     onMovePane={movePaneToPlacement}
+                    onSetDockSplitMode={setDockSplitMode}
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
                     onCloseDock={() => setRightOpen(false)}
@@ -1291,18 +1317,25 @@ export function WorkspaceIdeShell() {
                 </div>
               ))}
             </div>
-            {activeRightPane ? (
-              <RightPane
-                panel={activeRightPane}
-                rootId={rootId}
-                activePath={activePath}
-                saveState={saveState}
-                gitDiffTarget={gitDiffTarget}
-                commandCount={commands.length}
-              />
-            ) : (
-              <EmptyDockPane placement="right" onRestore={resetPanePlacements} />
-            )}
+            <DockPaneFrame
+              placement="right"
+              splitMode={dockSplitModes.right}
+              primaryPane={activeRightPane}
+              secondaryPane={secondaryRightPane}
+              workspaceDirectory={workspaceDirectory}
+              onTerminalCommandsChange={setTerminalCommands}
+              onRestore={resetPanePlacements}
+              renderPane={(paneId) => (
+                <RightPane
+                  panel={paneId}
+                  rootId={rootId}
+                  activePath={activePath}
+                  saveState={saveState}
+                  gitDiffTarget={gitDiffTarget}
+                  commandCount={commands.length}
+                />
+              )}
+            />
           </aside>
         ) : null}
       </div>
@@ -1335,7 +1368,9 @@ function PaneDockControls({
   paneId,
   placement,
   compact = false,
+  splitMode,
   onMovePane,
+  onSetDockSplitMode,
   onBeginDrag,
   onEndDrag,
   onCloseDock,
@@ -1343,7 +1378,9 @@ function PaneDockControls({
   paneId: PaneId;
   placement: PanePlacement;
   compact?: boolean;
+  splitMode?: DockSplitMode;
   onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
+  onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
   onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
   onEndDrag: () => void;
   onCloseDock: () => void;
@@ -1369,6 +1406,13 @@ function PaneDockControls({
           {placementShortLabel(target)}
         </button>
       ))}
+      {onSetDockSplitMode ? (
+        <>
+          <button type="button" data-active={splitMode === "single"} aria-label={`取消${placementLabel(placement)} Dock 拆分`} onClick={() => onSetDockSplitMode(placement, "single")}>单</button>
+          <button type="button" data-active={splitMode === "vertical"} aria-label={`${placementLabel(placement)} Dock 左右拆分`} onClick={() => onSetDockSplitMode(placement, "vertical")}>↔</button>
+          <button type="button" data-active={splitMode === "horizontal"} aria-label={`${placementLabel(placement)} Dock 上下拆分`} onClick={() => onSetDockSplitMode(placement, "horizontal")}>↕</button>
+        </>
+      ) : null}
       <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
         ×
       </button>
@@ -1623,6 +1667,55 @@ function RightPane({
   );
 }
 
+
+function DockPaneFrame({
+  placement,
+  splitMode,
+  primaryPane,
+  secondaryPane,
+  workspaceDirectory,
+  onTerminalCommandsChange,
+  onRestore,
+  renderPane,
+}: {
+  placement: PanePlacement;
+  splitMode: DockSplitMode;
+  primaryPane?: PaneId;
+  secondaryPane?: PaneId;
+  workspaceDirectory: WorkspaceDirectoryContext | null;
+  onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
+  onRestore: () => void;
+  renderPane?: (paneId: PaneId) => React.ReactNode;
+}) {
+  if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
+  const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
+  const render = (paneId: PaneId, role: "primary" | "secondary") => (
+    <section className="workspace-ide-shell__dock-split-pane" data-ide-dock-split-pane={role} data-ide-dock-split-placement={placement}>
+      {renderPane ? (
+        renderPane(paneId)
+      ) : (
+        <DockPaneContent panel={paneId} workspaceDirectory={workspaceDirectory} onTerminalCommandsChange={onTerminalCommandsChange} />
+      )}
+    </section>
+  );
+
+  return (
+    <div
+      className="workspace-ide-shell__dock-split"
+      data-ide-dock-split={shouldSplit ? splitMode : "single"}
+      data-ide-dock-split-placement={placement}
+    >
+      {render(primaryPane, "primary")}
+      {shouldSplit && secondaryPane ? (
+        <>
+          <div className="workspace-ide-shell__dock-split-divider" aria-hidden={true} />
+          {render(secondaryPane, "secondary")}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function DockPaneContent({
   panel,
   workspaceDirectory,
@@ -1691,6 +1784,12 @@ function leftPaneSubtitle(activity: PaneId): string {
 
 function activityByShortcut(key: string): PaneId | null {
   return PANE_REGISTRY.find((pane) => pane.shortcut?.endsWith(key))?.id ?? null;
+}
+
+
+function secondaryDockPane(panes: PaneId[], primaryPane?: PaneId): PaneId | undefined {
+  if (!primaryPane) return panes[1];
+  return panes.find((paneId) => paneId !== primaryPane);
 }
 
 function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder): PaneOrder {
@@ -1861,7 +1960,22 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
     panePlacements: sanitizePanePlacements(value.panePlacements),
     paneOrder: sanitizePaneOrder(value.paneOrder),
+    dockSplitModes: sanitizeDockSplitModes(value.dockSplitModes),
   };
+}
+
+
+function sanitizeDockSplitModes(value: Partial<DockSplitModes> | undefined): Partial<DockSplitModes> | undefined {
+  if (!value) return undefined;
+  const modes: Partial<DockSplitModes> = {};
+  for (const placement of ["top", "left", "right", "bottom"] as PanePlacement[]) {
+    if (isDockSplitMode(value[placement])) modes[placement] = value[placement];
+  }
+  return modes;
+}
+
+function isDockSplitMode(value: unknown): value is DockSplitMode {
+  return value === "single" || value === "vertical" || value === "horizontal";
 }
 
 function sanitizePaneOrder(value: Partial<PaneOrder> | undefined): Partial<PaneOrder> | undefined {
@@ -1873,6 +1987,7 @@ function sanitizePaneOrder(value: Partial<PaneOrder> | undefined): Partial<PaneO
     bottom: sanitizePaneOrderGroup(value.bottom),
   };
 }
+
 
 function sanitizePaneOrderGroup(value: PaneId[] | undefined): PaneId[] | undefined {
   if (!Array.isArray(value)) return undefined;
