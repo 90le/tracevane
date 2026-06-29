@@ -2368,6 +2368,7 @@ export function WorkspaceIdeShell() {
                 />
                 <DockPaneFrame
                   placement="left"
+                  paneIds={leftPaneIds}
                   splitMode={dockSplitModes.left}
                   splitRatio={dockSplitRatios.left}
                   primaryPane={activeLeftPane}
@@ -2526,6 +2527,7 @@ export function WorkspaceIdeShell() {
               </div>
               <DockPaneFrame
                 placement="top"
+                paneIds={topPaneIds}
                 splitMode={dockSplitModes.top}
                 splitRatio={dockSplitRatios.top}
                 primaryPane={activeTopPane}
@@ -2728,6 +2730,7 @@ export function WorkspaceIdeShell() {
               </div>
               <DockPaneFrame
                 placement="bottom"
+                paneIds={bottomPaneIds}
                 splitMode={dockSplitModes.bottom}
                 splitRatio={dockSplitRatios.bottom}
                 primaryPane={activeBottomPane}
@@ -2836,6 +2839,7 @@ export function WorkspaceIdeShell() {
             </div>
             <DockPaneFrame
               placement="right"
+              paneIds={rightPaneIds}
               splitMode={dockSplitModes.right}
               splitRatio={dockSplitRatios.right}
               primaryPane={activeRightPane}
@@ -3375,6 +3379,7 @@ function RightPane({
 
 function DockPaneFrame({
   placement,
+  paneIds,
   splitMode,
   splitRatio,
   primaryPane,
@@ -3406,6 +3411,7 @@ function DockPaneFrame({
   renderPane,
 }: {
   placement: PanePlacement;
+  paneIds: PaneId[];
   splitMode: DockSplitMode;
   splitRatio: number;
   primaryPane?: PaneId;
@@ -3441,6 +3447,61 @@ function DockPaneFrame({
   const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
   const stopGroupAction = (event: React.SyntheticEvent) => event.stopPropagation();
   const oppositeRole = (role: DockPaneRole): DockPaneRole => (role === "primary" ? "secondary" : "primary");
+  const groupPaneIds = (role: DockPaneRole) => {
+    const selectedPane = role === "primary" ? primaryPane : secondaryPane;
+    return selectedPane ? [selectedPane, ...paneIds.filter((paneId) => paneId !== selectedPane)] : paneIds;
+  };
+  const renderGroupTabs = (role: DockPaneRole, selectedPane: PaneId) => (
+    <div className="workspace-ide-shell__dock-split-group-tabs" data-ide-dock-split-group-tabs={role}>
+      {groupPaneIds(role).map((tabPaneId) => (
+        <button
+          key={tabPaneId}
+          type="button"
+          className={cn("workspace-ide-shell__dock-split-group-tab", tabPaneId === selectedPane && "is-active")}
+          data-ide-dock-split-group-tab={tabPaneId}
+          data-ide-dock-split-group-tab-role={role}
+          draggable
+          onPointerDown={stopGroupAction}
+          onClick={(event) => {
+            event.stopPropagation();
+            onFocusPane(placement, role, tabPaneId);
+          }}
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("application/x-tracevane-pane", tabPaneId);
+            event.dataTransfer.setData("text/plain", paneLabel(tabPaneId));
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const droppedPaneId = event.dataTransfer.getData("application/x-tracevane-pane");
+            if (isPaneId(droppedPaneId)) onMovePaneToGroup(droppedPaneId, placement, tabPaneId, role);
+          }}
+        >
+          {paneLabel(tabPaneId)}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="workspace-ide-shell__dock-split-group-tab-add"
+        aria-label={`把 Pane 拖到${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格组末尾`}
+        onPointerDown={stopGroupAction}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(event) => onDropPaneOnGroup(placement, role, event)}
+      >
+        +
+      </button>
+    </div>
+  );
   const render = (paneId: PaneId, role: DockPaneRole) => {
     const isFocused = activeFocus?.placement === placement && activeFocus.role === role && activeFocus.paneId === paneId;
     return (
@@ -3459,6 +3520,7 @@ function DockPaneFrame({
         }}
         onDrop={(event) => onDropPaneOnGroup(placement, role, event)}
       >
+        {renderGroupTabs(role, paneId)}
         <div className="workspace-ide-shell__dock-split-pane-toolbar" data-ide-dock-split-pane-toolbar={role}>
           <span className="workspace-ide-shell__dock-split-pane-badge">
             {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}

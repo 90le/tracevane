@@ -1004,6 +1004,69 @@
   background: rgba(2, 6, 23, 0.32);
 }
 
+.workspace-ide-shell__dock-split-group-tabs {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  max-width: calc(100% - 200px);
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.workspace-ide-shell__dock-split-group-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.workspace-ide-shell__dock-split-group-tab,
+.workspace-ide-shell__dock-split-group-tab-add {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 112px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.74);
+  color: var(--ide-muted);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.workspace-ide-shell__dock-split-group-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.workspace-ide-shell__dock-split-group-tab[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.workspace-ide-shell__dock-split-group-tab.is-active {
+  border-color: rgba(34, 211, 238, 0.62);
+  background: rgba(34, 211, 238, 0.18);
+  color: #ecfeff;
+}
+
+.workspace-ide-shell__dock-split-group-tab:hover,
+.workspace-ide-shell__dock-split-group-tab:focus-visible,
+.workspace-ide-shell__dock-split-group-tab-add:hover,
+.workspace-ide-shell__dock-split-group-tab-add:focus-visible {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.72);
+  color: #cffafe;
+}
+
 .workspace-ide-shell__dock-split-pane:focus-visible,
 .workspace-ide-shell__dock-split-pane[data-ide-dock-split-active="true"] {
   outline: none;
