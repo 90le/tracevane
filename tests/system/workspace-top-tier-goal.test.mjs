@@ -181,6 +181,21 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace document view registry is quarantined as a future adapter boundary", () => {
+  const registry = readWeb("features/workspace/shared/DocumentViewRegistry.ts");
+  assert.match(registry, /Legacy Workspace document-view registry/);
+  assert.match(registry, /Current Workspace work is IDE-first/);
+  assert.match(registry, /future `\/document-engine` boundary/);
+  assert.match(registry, /Markdown legacy adapter/);
+  assert.match(registry, /HTML legacy adapter/);
+  assert.match(registry, /Markdown future document-engine adapter/);
+  assert.match(registry, /HTML future document-engine adapter/);
+  assert.doesNotMatch(registry, /label: "Markdown 渲染预览"/);
+  assert.doesNotMatch(registry, /label: "HTML 沙箱预览"/);
+  assert.doesNotMatch(registry, /label: "Markdown 预览时编辑"/);
+  assert.doesNotMatch(registry, /label: "HTML 预览时编辑"/);
+});
+
 test("Workspace evidence review copy stays IDE-coding first", () => {
   const mobileSheet = readWeb("features/workspace/shared/WorkspaceEvidenceMobileSheet.tsx");
   const reviewPanel = readWeb("features/workspace/shared/WorkspaceEvidenceReviewPanel.tsx");

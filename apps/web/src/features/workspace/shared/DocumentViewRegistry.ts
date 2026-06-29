@@ -1,3 +1,11 @@
+/**
+ * Legacy Workspace document-view registry.
+ *
+ * Current Workspace work is IDE-first: files, code editor, terminal, Git,
+ * search, evidence, and review. Rich Markdown/HTML rendering and visual
+ * editing belong to the future `/document-engine` boundary, so labels here
+ * must not present preview/editing as the active Workspace mainline.
+ */
 export type DocumentPreviewKind = "markdown" | "html" | "json" | "csv" | "image" | "video" | "audio" | "pdf" | "archive" | "text" | "binary";
 export type DocumentVisualEditorKind = "markdown" | "html";
 
@@ -51,14 +59,14 @@ const archiveSuffixes = [
 export const DOCUMENT_VIEWERS: readonly DocumentViewerDescriptor[] = [
   {
     id: "markdown",
-    label: "Markdown 渲染预览",
+    label: "Markdown legacy adapter",
     extensions: markdownExtensions,
     requiresText: true,
     match: (path) => hasDocumentExtension(path, markdownExtensions),
   },
   {
     id: "html",
-    label: "HTML 沙箱预览",
+    label: "HTML legacy adapter",
     extensions: htmlExtensions,
     requiresText: true,
     match: (path) => hasDocumentExtension(path, htmlExtensions),
@@ -130,14 +138,14 @@ export const DOCUMENT_VIEWERS: readonly DocumentViewerDescriptor[] = [
 export const DOCUMENT_VISUAL_EDITORS: readonly DocumentVisualEditorDescriptor[] = [
   {
     id: "markdown",
-    label: "Markdown 预览时编辑",
+    label: "Markdown future document-engine adapter",
     extensions: markdownExtensions,
     requiresText: true,
     match: (path, context) => Boolean(context?.textLike) && hasDocumentExtension(path, markdownExtensions),
   },
   {
     id: "html",
-    label: "HTML 预览时编辑",
+    label: "HTML future document-engine adapter",
     extensions: htmlExtensions,
     requiresText: true,
     match: (path, context) => Boolean(context?.textLike) && hasDocumentExtension(path, htmlExtensions),
