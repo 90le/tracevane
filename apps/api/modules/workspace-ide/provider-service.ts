@@ -1,3 +1,4 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import crypto from "node:crypto";
 import path from "node:path";
 
@@ -380,4 +381,69 @@ export function createWorkspaceIdeProviderEnvironment(
     env.PASSWORD = config.token;
   }
   return env;
+}
+
+
+export interface WorkspaceIdeProviderSpawnOptions {
+  spawnImpl?: typeof spawn;
+  killSignal?: NodeJS.Signals;
+  killTimeoutMs?: number;
+}
+
+export function createWorkspaceIdeProviderSpawnRunner(
+  options: WorkspaceIdeProviderSpawnOptions = {},
+): WorkspaceIdeProviderProcessRunner {
+  const spawnImpl = options.spawnImpl ?? spawn;
+  const killSignal = options.killSignal ?? "SIGTERM";
+  const killTimeoutMs = options.killTimeoutMs ?? 5000;
+  return {
+    start(plan) {
+      const [command, ...args] = plan.command;
+      if (!command) {
+        throw new WorkspaceIdeProviderError(
+          "workspace_ide_provider_launch_command_empty",
+          "IDE provider launch command is empty.",
+        );
+      }
+      const child = spawnImpl(command, args, {
+        cwd: plan.cwd,
+        env: { ...process.env, ...plan.env },
+        stdio: "pipe",
+        windowsHide: true,
+      }) as ChildProcessWithoutNullStreams;
+      child.once("error", () => {
+        // The lifecycle controller records synchronous start errors. Async process
+        // errors are intentionally left observable through the child handle until
+        // routes add event/audit wiring.
+      });
+      return {
+        pid: child.pid,
+        stop: () => stopWorkspaceIdeProviderChild(child, killSignal, killTimeoutMs),
+      };
+    },
+  };
+}
+
+export async function stopWorkspaceIdeProviderChild(
+  child: Pick<ChildProcessWithoutNullStreams, "kill" | "killed" | "once">,
+  signal: NodeJS.Signals = "SIGTERM",
+  timeoutMs = 5000,
+): Promise<void> {
+  if (child.killed) return;
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      if (!child.killed) child.kill("SIGKILL");
+      finish();
+    }, timeoutMs);
+    child.once("exit", finish);
+    child.once("close", finish);
+    child.kill(signal);
+  });
 }

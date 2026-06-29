@@ -127,3 +127,48 @@ test("workspace IDE provider lifecycle records launch failures", async () => {
   assert.equal(session.status, "failed");
   assert.equal(session.failureReason, "provider missing");
 });
+
+test("workspace IDE provider spawn runner starts command with cwd and safe env", async () => {
+  const module = await import("../../dist/apps/api/modules/workspace-ide/provider-service.js");
+  const calls = [];
+  const fakeChild = {
+    pid: 4321,
+    killed: false,
+    once() {
+      return fakeChild;
+    },
+    kill(signal) {
+      fakeChild.killed = true;
+      calls.push({ kill: signal });
+      return true;
+    },
+  };
+  const runner = module.createWorkspaceIdeProviderSpawnRunner({
+    spawnImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return fakeChild;
+    },
+    killTimeoutMs: 1,
+  });
+  const handle = await runner.start({
+    session: {
+      id: "ide_test",
+      kind: "code-server",
+      workspaceRoot: projectRoot,
+      baseUrl: "http://127.0.0.1:39900",
+      status: "starting",
+      createdAt: new Date(0).toISOString(),
+    },
+    command: ["code-server", "--bind-addr", "127.0.0.1:39900", projectRoot],
+    cwd: projectRoot,
+    env: { PASSWORD: "secret", TRACEVANE_IDE_PROVIDER_LOOPBACK_ONLY: "1" },
+  });
+  assert.equal(handle.pid, 4321);
+  assert.equal(calls[0].command, "code-server");
+  assert.deepEqual(calls[0].args, ["--bind-addr", "127.0.0.1:39900", projectRoot]);
+  assert.equal(calls[0].options.cwd, projectRoot);
+  assert.equal(calls[0].options.env.PASSWORD, "secret");
+  assert.equal(calls[0].options.stdio, "pipe");
+  await handle.stop();
+  assert.deepEqual(calls.at(-1), { kill: "SIGTERM" });
+});
