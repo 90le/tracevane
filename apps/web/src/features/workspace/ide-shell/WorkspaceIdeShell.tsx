@@ -2629,16 +2629,21 @@ export function WorkspaceIdeShell() {
     setLayoutPreset("balanced");
   }
 
+  function resizeDockPlacement(placement: PanePlacement, delta: number) {
+    if (layoutLocked) return;
+    const { min, max } = getPaneSizeLimits(placement);
+    setPaneSizes((current) => ({
+      ...current,
+      [placement]: clamp(current[placement] + delta, min, max),
+    }));
+    setLayoutPreset("balanced");
+    openDockPlacement(placement);
+  }
+
   function resizeActiveDockPlacement(delta: number) {
     if (!activeDockFocus) return;
     const pane = activeDockFocus.placement;
-    const { min, max } = getPaneSizeLimits(pane);
-    setPaneSizes((current) => ({
-      ...current,
-      [pane]: clamp(current[pane] + delta, min, max),
-    }));
-    setLayoutPreset("balanced");
-    openDockPlacement(pane);
+    resizeDockPlacement(pane, delta);
   }
 
   function startEditorSplitResize(event: React.PointerEvent) {
@@ -3553,9 +3558,11 @@ export function WorkspaceIdeShell() {
           splitRatios={dockSplitRatios}
           dockPaneSelections={dockPaneSelections}
           pinnedPanes={pinnedPanes}
+          paneSizes={paneSizes}
           layoutLocked={layoutLocked}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onSetDockSplitMode={setDockSplitMode}
+          onResizeDock={resizeDockPlacement}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
@@ -4360,9 +4367,11 @@ function DockLayoutManager({
   splitRatios,
   dockPaneSelections,
   pinnedPanes,
+  paneSizes,
   layoutLocked,
   onToggleDockOpen,
   onSetDockSplitMode,
+  onResizeDock,
   onSetSplitRatioPreset,
   onMovePaneToGroup,
   onSwapDockGroups,
@@ -4375,9 +4384,11 @@ function DockLayoutManager({
   splitRatios: DockSplitRatios;
   dockPaneSelections: DockPaneSelections;
   pinnedPanes: PaneId[];
+  paneSizes: IdePaneSizes;
   layoutLocked: boolean;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
+  onResizeDock: (placement: PanePlacement, delta: number) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
@@ -4451,6 +4462,15 @@ function DockLayoutManager({
                     {mode === "single" ? "单组" : mode === "vertical" ? "左右" : "上下"}
                   </button>
                 ))}
+              </div>
+              <div className="workspace-ide-shell__dock-layout-size" data-ide-pane-layout-size={placement}>
+                <button type="button" disabled={layoutLocked} onClick={() => onResizeDock(placement, -KEYBOARD_RESIZE_LARGE_STEP)} data-ide-pane-layout-size-decrease={placement} aria-label={`缩小${placementLabel(placement)} Dock`}>
+                  −
+                </button>
+                <span>{paneSizes[placement]}px</span>
+                <button type="button" disabled={layoutLocked} onClick={() => onResizeDock(placement, KEYBOARD_RESIZE_LARGE_STEP)} data-ide-pane-layout-size-increase={placement} aria-label={`放大${placementLabel(placement)} Dock`}>
+                  ＋
+                </button>
               </div>
               <SplitRatioPresetStrip
                 label={`${placementLabel(placement)} Dock 拆分比例`}

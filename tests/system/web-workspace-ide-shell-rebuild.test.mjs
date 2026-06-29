@@ -1498,3 +1498,20 @@ test("new Workspace IDE shell exposes editor group swap and directional merge co
   assert.match(shellSource, /aria-label="合并编辑器到主组"/);
   assert.match(shellSource, /aria-label="合并编辑器到副组"/);
 });
+
+test("new Workspace IDE shell exposes dock size controls in the pane layout manager", () => {
+  assert.match(shellSource, /function resizeDockPlacement\(placement: PanePlacement, delta: number\)/);
+  assert.match(shellSource, /if \(layoutLocked\) return;[\s\S]*?const \{ min, max \} = getPaneSizeLimits\(placement\)/);
+  assert.match(shellSource, /resizeDockPlacement\(pane, delta\)/);
+  assert.match(shellSource, /paneSizes=\{paneSizes\}/);
+  assert.match(shellSource, /onResizeDock=\{resizeDockPlacement\}/);
+  assert.match(shellSource, /paneSizes: IdePaneSizes/);
+  assert.match(shellSource, /onResizeDock: \(placement: PanePlacement, delta: number\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-size=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-size-decrease=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDock\(placement, -KEYBOARD_RESIZE_LARGE_STEP\)\}/);
+  assert.match(shellSource, /\{paneSizes\[placement\]\}px/);
+  assert.match(shellSource, /data-ide-pane-layout-size-increase=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDock\(placement, KEYBOARD_RESIZE_LARGE_STEP\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-size/);
+});
