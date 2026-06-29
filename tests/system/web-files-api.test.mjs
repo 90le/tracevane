@@ -105,6 +105,9 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(types, /interface FilesTrashItem/);
   assert.match(types, /interface FilesTrashPayload/);
   assert.match(types, /interface FilesTrashListParams/);
+  assert.match(types, /page\?: number/);
+  assert.match(types, /pageSize\?: number/);
+  assert.match(types, /totalPages\?: number/);
   assert.match(types, /nextCursor\?: string \| null/);
   assert.match(types, /scope\?: "root" \| "global"/);
   assert.match(types, /interface FilesTrashRestorePayload/);
@@ -118,6 +121,9 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(types, /fastStats\?: boolean/);
   assert.match(types, /interface FilesContentIndexRecordsParams/);
   assert.match(types, /interface FilesContentIndexRecordsPayload/);
+  assert.match(types, /page: number/);
+  assert.match(types, /pageSize: number/);
+  assert.match(types, /totalPages: number/);
   assert.match(types, /interface FilesSqliteMaintenancePayload/);
   assert.match(types, /interface FilesContentIndexRebuildJobPayload/);
   assert.match(types, /recordsPreview: FilesContentIndexRecordPreview\[\]/);
@@ -127,6 +133,8 @@ test("files content index stats expose bounded record preview contract", () => {
   assert.match(src, /Promise<FilesContentIndexStatsPayload>/);
   assert.match(src, /Promise<FilesContentIndexRecordsPayload>/);
   assert.match(src, /Promise<import\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/types\/files"\)\.FilesSqliteMaintenancePayload>/);
+  assert.match(src, /search\.set\("page"/);
+  assert.match(src, /search\.set\("pageSize"/);
   assert.match(src, /search\.set\("cursor"/);
   assert.match(src, /search\.set\("offset"/);
   assert.match(src, /search\.set\("limit"/);

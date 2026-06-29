@@ -1591,6 +1591,17 @@ function clampContentIndexRecordsLimit(value: unknown): number {
   return Math.max(1, Math.min(CONTENT_INDEX_RECORDS_MAX_LIMIT, Math.floor(parsed)));
 }
 
+function normalizePagedSqlWindow(params: { page?: unknown; pageSize?: unknown; offset?: unknown; limit?: unknown }): { page: number; pageSize: number; offset: number; limit: number } {
+  const pageSize = params.pageSize != null ? clampContentIndexRecordsLimit(params.pageSize) : clampContentIndexRecordsLimit(params.limit);
+  const hasPage = params.page != null;
+  const page = hasPage ? normalizeDirectoryPage(params.page) : Math.floor(clampContentIndexRecordsOffset(params.offset) / pageSize) + 1;
+  const offset = hasPage ? (page - 1) * pageSize : clampContentIndexRecordsOffset(params.offset);
+  return { page, pageSize, offset, limit: pageSize };
+}
+
+function totalPagesFor(totalEntries: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(totalEntries / pageSize));
+}
 
 function encodeFileManagerCursor(parts: string[]): string {
   return Buffer.from(JSON.stringify(parts), "utf8").toString("base64url");
@@ -1618,8 +1629,8 @@ function listContentIndexRecords(
 ): FilesContentIndexRecordsPayload {
   const status = normalizeContentIndexStatusFilter(params.status);
   const query = (params.query || "").trim().toLowerCase();
-  const offset = clampContentIndexRecordsOffset(params.offset);
-  const limit = clampContentIndexRecordsLimit(params.limit);
+  const paging = normalizePagedSqlWindow(params);
+  const { page, pageSize, offset, limit } = paging;
   const scopeRoots = contentIndexScopeRoots(config, params.rootId);
   const rootIds = scopeRoots.map((root) => root.id);
   const db = fileManagerDb(config);
@@ -1642,7 +1653,7 @@ function listContentIndexRecords(
     }
     const records = stale.slice(offset, offset + limit);
     const lastRecord = records.at(-1);
-    return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount: stale.length, returnedRecordCount: records.length, hasMore: offset + records.length < stale.length, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
+    return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, page, pageSize, totalPages: totalPagesFor(stale.length, pageSize), offset, limit, totalRecordCount: stale.length, returnedRecordCount: records.length, hasMore: offset + records.length < stale.length, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
   }
 
   const totalRow = db.prepare(`SELECT COUNT(*) AS count FROM content_index_records WHERE ${whereSql}`).get(...whereParams) as { count?: number } | undefined;
@@ -1654,7 +1665,7 @@ function listContentIndexRecords(
   `).all(...whereParams, limit, offset) as SqlContentIndexRow[];
   const records = rows.map((row) => ({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: Number(row.size) || 0, indexedAt: row.indexed_at || null, status: "valid" as const }));
   const lastRecord = records.at(-1);
-  return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount, returnedRecordCount: records.length, hasMore: offset + records.length < totalRecordCount, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
+  return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, page, pageSize, totalPages: totalPagesFor(totalRecordCount, pageSize), offset, limit, totalRecordCount, returnedRecordCount: records.length, hasMore: offset + records.length < totalRecordCount, nextCursor: lastRecord ? encodeFileManagerCursor([lastRecord.rootId || "", lastRecord.path]) : null, records };
 }
 
 function shouldSkipContentIndexRebuildDirectory(relativePath: string, dirName: string): boolean {
@@ -2382,12 +2393,15 @@ function readTrashMetadataFile(config: TracevaneServerConfig, entryDirName: stri
   }
 }
 
-function normalizeTrashListParams(params: string | FilesTrashListParams): Required<Pick<FilesTrashListParams, "rootId">> & { offset: number; limit: number; cursor?: string } {
-  if (typeof params === "string") return { rootId: params, offset: 0, limit: 200 };
+function normalizeTrashListParams(params: string | FilesTrashListParams): Required<Pick<FilesTrashListParams, "rootId">> & { page: number; pageSize: number; offset: number; limit: number; cursor?: string } {
+  if (typeof params === "string") return { rootId: params, page: 1, pageSize: 200, offset: 0, limit: 200 };
+  const paging = normalizePagedSqlWindow({ page: params.page, pageSize: params.pageSize, offset: params.offset, limit: params.limit ?? 200 });
   return {
     rootId: params.rootId || "",
-    offset: clampContentIndexRecordsOffset(params.offset),
-    limit: clampContentIndexRecordsLimit(params.limit ?? 200),
+    page: paging.page,
+    pageSize: paging.pageSize,
+    offset: paging.offset,
+    limit: paging.limit,
     cursor: params.cursor,
   };
 }
@@ -2426,6 +2440,9 @@ function listTrashItems(config: TracevaneServerConfig, params: string | FilesTra
     rootId: GLOBAL_CONTENT_INDEX_ROOT_ID,
     scope: "global",
     trashDirectoryPath: GLOBAL_RECYCLE_BIN_RELATIVE_PATH,
+    page: normalized.page,
+    pageSize: normalized.pageSize,
+    totalPages: totalPagesFor(totalItemCount, normalized.pageSize),
     offset: normalized.offset,
     limit: normalized.limit,
     totalItemCount,

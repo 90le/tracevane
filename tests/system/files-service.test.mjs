@@ -653,12 +653,19 @@ test("files service supports search, read, write, create, rename, copy, move, de
   service.createFile({ rootId: "project-root", directoryPath: "docs", name: "paged-trash-b.txt", content: "b\n" });
   service.deletePaths({ rootId: "project-root", paths: ["docs/paged-trash-a.txt", "docs/paged-trash-b.txt"] });
   const firstTrashPage = service.listTrash({ rootId: "global", limit: 1 });
+  assert.equal(firstTrashPage.page, 1);
+  assert.equal(firstTrashPage.pageSize, 1);
+  assert.ok((firstTrashPage.totalPages || 0) >= 2);
   assert.equal(firstTrashPage.returnedItemCount, 1);
   assert.equal(firstTrashPage.hasMore, true);
   assert.ok(firstTrashPage.nextCursor);
-  const secondTrashPage = service.listTrash({ rootId: "global", limit: 1, cursor: firstTrashPage.nextCursor });
+  const secondTrashPage = service.listTrash({ rootId: "global", page: 2, pageSize: 1 });
+  assert.equal(secondTrashPage.page, 2);
   assert.equal(secondTrashPage.returnedItemCount, 1);
   assert.notEqual(secondTrashPage.items[0]?.trashPath, firstTrashPage.items[0]?.trashPath);
+  const cursorTrashPage = service.listTrash({ rootId: "global", limit: 1, cursor: firstTrashPage.nextCursor });
+  assert.equal(cursorTrashPage.returnedItemCount, 1);
+  assert.equal(cursorTrashPage.items[0]?.trashPath, secondTrashPage.items[0]?.trashPath);
 
   const globalTrashFromProjectView = service.listTrash("project-root");
   assert.equal(globalTrashFromProjectView.rootId, "global");
@@ -759,9 +766,15 @@ test("files service writes rebuilt content-index records to SQLite sorted pages"
   const firstPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", offset: 0, limit: 1 });
   const secondPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", offset: 1, limit: 1 });
 
+  assert.equal(firstPage.page, 1);
+  assert.equal(firstPage.pageSize, 1);
+  assert.equal(firstPage.totalPages, 2);
   assert.equal(firstPage.totalRecordCount, 2);
   assert.equal(firstPage.records[0]?.path, "alpha.txt");
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
+  const secondPageByNumber = service.getContentIndexRecords({ rootId: "project-root", status: "valid", page: 2, pageSize: 1 });
+  assert.equal(secondPageByNumber.page, 2);
+  assert.equal(secondPageByNumber.records[0]?.path, "zeta.txt");
   assert.ok(firstPage.nextCursor);
   const cursorPage = service.getContentIndexRecords({ rootId: "project-root", status: "valid", cursor: firstPage.nextCursor, limit: 1 });
   assert.equal(cursorPage.records[0]?.path, "zeta.txt");

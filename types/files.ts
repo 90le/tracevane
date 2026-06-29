@@ -284,6 +284,9 @@ export interface FilesTrashPayload {
   rootId: string;
   scope?: "root" | "global";
   trashDirectoryPath: string;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
   offset?: number;
   limit?: number;
   totalItemCount?: number;
@@ -295,6 +298,8 @@ export interface FilesTrashPayload {
 
 export interface FilesTrashListParams {
   rootId: string;
+  page?: number;
+  pageSize?: number;
   offset?: number;
   limit?: number;
   cursor?: string;
@@ -442,6 +447,8 @@ export interface FilesContentIndexRecordsParams {
   rootId: string;
   status?: "all" | "valid" | "stale";
   query?: string;
+  page?: number;
+  pageSize?: number;
   offset?: number;
   limit?: number;
   cursor?: string;
@@ -454,6 +461,9 @@ export interface FilesContentIndexRecordsPayload {
   rootCount?: number;
   status: "all" | "valid" | "stale";
   query: string;
+  page: number;
+  pageSize: number;
+  totalPages: number;
   offset: number;
   limit: number;
   totalRecordCount: number;

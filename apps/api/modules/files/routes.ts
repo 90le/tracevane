@@ -142,6 +142,8 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
       rootId: url.searchParams.get("rootId") || "",
       status: (url.searchParams.get("status") || "all") as FilesContentIndexRecordsParams["status"],
       query: url.searchParams.get("query") || "",
+      page: readNumber(url.searchParams.get("page")),
+      pageSize: readNumber(url.searchParams.get("pageSize")),
       offset: readNumber(url.searchParams.get("offset")),
       limit: readNumber(url.searchParams.get("limit")),
       cursor: url.searchParams.get("cursor") || undefined,
@@ -306,6 +308,8 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
     const url = readUrl(req);
     sendJson(res, 200, routeCtx.services.files.listTrash({
       rootId: url.searchParams.get("rootId") || "",
+      page: readNumber(url.searchParams.get("page")),
+      pageSize: readNumber(url.searchParams.get("pageSize")),
       offset: readNumber(url.searchParams.get("offset")),
       limit: readNumber(url.searchParams.get("limit")),
       cursor: url.searchParams.get("cursor") || undefined,

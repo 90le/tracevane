@@ -180,6 +180,8 @@ export function getFilesContentIndexRecords(
   const search = new URLSearchParams({ rootId: params.rootId });
   if (params.status) search.set("status", params.status);
   if (params.query) search.set("query", params.query);
+  if (params.page != null) search.set("page", String(params.page));
+  if (params.pageSize != null) search.set("pageSize", String(params.pageSize));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.cursor) search.set("cursor", params.cursor);
@@ -383,9 +385,11 @@ export function deleteFiles(
 export function getFilesTrash(
   rootId: string,
   signal?: AbortSignal,
-  options?: { offset?: number; limit?: number; cursor?: string },
+  options?: { page?: number; pageSize?: number; offset?: number; limit?: number; cursor?: string },
 ): Promise<FilesTrashPayload> {
   const search = new URLSearchParams({ rootId });
+  if (options?.page != null) search.set("page", String(options.page));
+  if (options?.pageSize != null) search.set("pageSize", String(options.pageSize));
   if (options?.offset != null) search.set("offset", String(options.offset));
   if (options?.limit != null) search.set("limit", String(options.limit));
   if (options?.cursor) search.set("cursor", options.cursor);
