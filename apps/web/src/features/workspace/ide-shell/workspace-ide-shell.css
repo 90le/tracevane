@@ -973,6 +973,11 @@
   line-height: 1;
 }
 
+.workspace-ide-shell__dock-split-pane-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .workspace-ide-shell__dock-split-pane-action:hover,
 .workspace-ide-shell__dock-split-pane-action:focus-visible {
   background: rgba(248, 113, 113, 0.18);

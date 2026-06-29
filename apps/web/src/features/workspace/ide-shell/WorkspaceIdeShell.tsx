@@ -2372,6 +2372,8 @@ export function WorkspaceIdeShell() {
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
                   onHidePane={hidePane}
+                  onFocusOtherGroup={focusOppositeDockGroup}
+                  onMergeGroups={mergeDockSplitGroups}
                   onDropPaneOnGroup={dropPaneOnDockGroup}
                   edgeDropTarget={edgeDropTarget}
                   onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2499,6 +2501,8 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
+                onFocusOtherGroup={focusOppositeDockGroup}
+                onMergeGroups={mergeDockSplitGroups}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
                 edgeDropTarget={edgeDropTarget}
                 onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2681,6 +2685,8 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onHidePane={hidePane}
+                onFocusOtherGroup={focusOppositeDockGroup}
+                onMergeGroups={mergeDockSplitGroups}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
                 edgeDropTarget={edgeDropTarget}
                 onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -2769,6 +2775,8 @@ export function WorkspaceIdeShell() {
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
               onHidePane={hidePane}
+              onFocusOtherGroup={focusOppositeDockGroup}
+              onMergeGroups={mergeDockSplitGroups}
               onDropPaneOnGroup={dropPaneOnDockGroup}
               edgeDropTarget={edgeDropTarget}
               onDragPaneOverEdge={dragPaneOverDockEdge}
@@ -3262,6 +3270,8 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard,
   onFocusPane,
   onHidePane,
+  onFocusOtherGroup,
+  onMergeGroups,
   edgeDropTarget,
   onDropPaneOnGroup,
   onDragPaneOverEdge,
@@ -3285,6 +3295,8 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onHidePane: (paneId: PaneId) => void;
+  onFocusOtherGroup: () => void;
+  onMergeGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
   onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
   onDragPaneOverEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   onLeavePaneEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
@@ -3294,6 +3306,7 @@ function DockPaneFrame({
   if (!primaryPane) return <EmptyDockPane placement={placement} hiddenRestoreCount={hiddenRestoreCount} onRestoreHidden={onRestoreHidden} onRestore={onRestore} />;
   const shouldSplit = splitMode !== "single" && Boolean(secondaryPane);
   const style = shouldSplit ? ({ "--ide-dock-primary-size": `${splitRatio}%` } as React.CSSProperties) : undefined;
+  const stopGroupAction = (event: React.SyntheticEvent) => event.stopPropagation();
   const render = (paneId: PaneId, role: DockPaneRole) => {
     const isFocused = activeFocus?.placement === placement && activeFocus.role === role && activeFocus.paneId === paneId;
     return (
@@ -3319,8 +3332,34 @@ function DockPaneFrame({
           <button
             type="button"
             className="workspace-ide-shell__dock-split-pane-action"
+            disabled={!shouldSplit}
+            aria-label={`聚焦${placementLabel(placement)} Dock 另一个窗格组`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFocusOtherGroup();
+            }}
+          >
+            ⇄
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
+            disabled={!shouldSplit}
+            aria-label={`合并${placementLabel(placement)} Dock，并保留${role === "primary" ? "主" : "副"}窗格组`}
+            onPointerDown={stopGroupAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMergeGroups(placement, role);
+            }}
+          >
+            合
+          </button>
+          <button
+            type="button"
+            className="workspace-ide-shell__dock-split-pane-action"
             aria-label={`隐藏${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格组的 ${paneLabel(paneId)} Pane`}
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={stopGroupAction}
             onClick={(event) => {
               event.stopPropagation();
               onHidePane(paneId);
