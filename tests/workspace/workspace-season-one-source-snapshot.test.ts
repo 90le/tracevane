@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   createWorkspaceSeasonOneAdapterInputFromSnapshot,
   createWorkspaceSeasonOneDemoSourceSnapshot,
+  createWorkspaceSeasonOneEvidenceSnapshot,
   createWorkspaceSeasonOneFilesSummarySnapshot,
   createWorkspaceSeasonOneStoredSessionSnapshot,
+  mergeWorkspaceSeasonOneSourceSnapshots,
 } from "../../apps/web/src/features/workspace/season-one/useWorkspaceSeasonOneLiveModel";
 
 const snapshot = createWorkspaceSeasonOneDemoSourceSnapshot();
@@ -147,3 +149,40 @@ assert.equal(defaultRootSnapshot?.rootLabel, "project-root");
 assert.equal(defaultRootSnapshot?.activePath, "docs/DESIGN.md");
 assert.equal(defaultRootSnapshot?.evidenceItems, 3);
 assert.equal(createWorkspaceSeasonOneFilesSummarySnapshot(undefined), null);
+
+
+const validEvidenceRecord = {
+  id: "evidence-1",
+  source: "verification",
+  kind: "verification",
+  title: "Browser smoke",
+  summary: "Season One viewport smoke passed",
+  refs: { command: "node tests/workspace/workspace-season-one-responsive.smoke.mjs" },
+  createdAt: "2026-06-29T00:00:00.000Z",
+};
+const evidenceSnapshot = createWorkspaceSeasonOneEvidenceSnapshot({
+  getItem(key) {
+    assert.equal(key, "tracevane.workspace.evidence-basket.v1");
+    return JSON.stringify([validEvidenceRecord, { id: "invalid" }, { ...validEvidenceRecord, id: "evidence-2" }]);
+  },
+});
+
+assert.deepEqual(evidenceSnapshot, {
+  evidenceItems: 2,
+  agentState: "waiting-review",
+});
+
+const emptyEvidenceSnapshot = createWorkspaceSeasonOneEvidenceSnapshot({
+  getItem: () => JSON.stringify([]),
+});
+assert.deepEqual(emptyEvidenceSnapshot, { evidenceItems: 0, agentState: "idle" });
+assert.equal(createWorkspaceSeasonOneEvidenceSnapshot({ getItem: () => "not-json" }), null);
+
+const mergedEvidence = mergeWorkspaceSeasonOneSourceSnapshots(
+  { activePath: "README.md", openFiles: ["README.md"], evidenceItems: 3 },
+  evidenceSnapshot,
+);
+assert.equal(mergedEvidence.activePath, "README.md");
+assert.deepEqual(mergedEvidence.openFiles, ["README.md"]);
+assert.equal(mergedEvidence.evidenceItems, 2);
+assert.equal(mergedEvidence.agentState, "waiting-review");

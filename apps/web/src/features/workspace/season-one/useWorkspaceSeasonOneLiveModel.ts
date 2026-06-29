@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { useFilesSummaryQuery } from "../../../lib/query/files";
+import { WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY } from "../shared/WorkspaceEvidenceBasket";
 
 import {
   createWorkspaceSeasonOneLiveModel,
@@ -56,17 +57,24 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
     () => createWorkspaceSeasonOneStoredSessionSnapshot(),
     [],
   );
+  const evidenceSnapshot = React.useMemo(
+    () => createWorkspaceSeasonOneEvidenceSnapshot(),
+    [],
+  );
   const liveState = React.useMemo(() => {
+    const baseSnapshot = mergeWorkspaceSeasonOneSourceSnapshots(
+      storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
+      evidenceSnapshot,
+    );
     const filesSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot(
       filesSummary.data,
-      storedSnapshot,
+      baseSnapshot,
     );
     return {
-      sourceSnapshot:
-        filesSnapshot ?? storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
-      source: filesSnapshot || storedSnapshot ? "workspace-hooks" : "demo",
+      sourceSnapshot: filesSnapshot ?? baseSnapshot,
+      source: storedSnapshot || evidenceSnapshot || filesSnapshot ? "workspace-hooks" : "demo",
     } as const;
-  }, [filesSummary.data, storedSnapshot]);
+  }, [evidenceSnapshot, filesSummary.data, storedSnapshot]);
   const adapterInput = React.useMemo(
     () => createWorkspaceSeasonOneAdapterInputFromSnapshot(liveState.sourceSnapshot),
     [liveState.sourceSnapshot],
@@ -103,6 +111,39 @@ export function createWorkspaceSeasonOneFilesSummarySnapshot(
     rootLabel: root.id,
     viewportCoverage:
       fallbackSnapshot.viewportCoverage ?? "desktop · tablet · phone live",
+  };
+}
+
+export function createWorkspaceSeasonOneEvidenceSnapshot(
+  storage: WorkspaceSeasonOneStorageReader | undefined = getWorkspaceSeasonOneBrowserStorage(),
+): WorkspaceSeasonOneSourceSnapshot | null {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const evidenceItems = parsed.filter(isWorkspaceSeasonOneEvidenceRecord).length;
+    return {
+      evidenceItems,
+      agentState: evidenceItems > 0 ? "waiting-review" : "idle",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function mergeWorkspaceSeasonOneSourceSnapshots(
+  baseSnapshot: WorkspaceSeasonOneSourceSnapshot,
+  overrideSnapshot: WorkspaceSeasonOneSourceSnapshot | null,
+): WorkspaceSeasonOneSourceSnapshot {
+  if (!overrideSnapshot) return cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot);
+  return {
+    ...cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot),
+    ...overrideSnapshot,
+    openFiles: overrideSnapshot.openFiles
+      ? [...overrideSnapshot.openFiles]
+      : [...(baseSnapshot.openFiles ?? [])],
   };
 }
 
@@ -218,5 +259,21 @@ function selectWorkspaceSeasonOneRoot(
     roots.find((root) => root.preferred) ??
     roots[0] ??
     null
+  );
+}
+
+
+function isWorkspaceSeasonOneEvidenceRecord(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.source === "string" &&
+    typeof record.kind === "string" &&
+    typeof record.title === "string" &&
+    typeof record.summary === "string" &&
+    typeof record.createdAt === "string" &&
+    Boolean(record.refs) &&
+    typeof record.refs === "object"
   );
 }

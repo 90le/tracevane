@@ -24,11 +24,15 @@ test("Season One route gets live model through a replaceable hook", () => {
   assert.match(hook, /source: "demo" \| "workspace-hooks"/);
   assert.match(hook, /sourceSnapshot: WorkspaceSeasonOneSourceSnapshot/);
   assert.match(hook, /WORKSPACE_SESSION_STORAGE_KEY = "tracevane.workspace.session.v1"/);
+  assert.match(hook, /WORKSPACE_EVIDENCE_BASKET_STORAGE_KEY/);
   assert.match(hook, /createWorkspaceSeasonOneStoredSessionSnapshot/);
+  assert.match(hook, /createWorkspaceSeasonOneEvidenceSnapshot/);
+  assert.match(hook, /mergeWorkspaceSeasonOneSourceSnapshots/);
+  assert.match(hook, /isWorkspaceSeasonOneEvidenceRecord/);
   assert.match(hook, /createWorkspaceSeasonOneFilesSummarySnapshot/);
   assert.match(hook, /filesSummary\.data/);
   assert.match(hook, /selectWorkspaceSeasonOneRoot/);
-  assert.match(hook, /source: filesSnapshot \|\| storedSnapshot \? "workspace-hooks" : "demo"/);
+  assert.match(hook, /source: storedSnapshot \|\| evidenceSnapshot \|\| filesSnapshot \? "workspace-hooks" : "demo"/);
   assert.match(hook, /createWorkspaceSeasonOneAdapterInputFromSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneDemoSourceSnapshot/);
   assert.match(hook, /createWorkspaceSeasonOneDemoAdapterInput/);
