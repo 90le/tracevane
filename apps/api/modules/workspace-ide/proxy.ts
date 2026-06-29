@@ -1,5 +1,6 @@
 import type http from "node:http";
-import { Readable } from "node:stream";
+import net from "node:net";
+import type { Duplex } from "node:stream";
 import { sendJson } from "../../core/http.js";
 import {
   WorkspaceIdeProviderError,
@@ -141,6 +142,114 @@ function responseHeadersToObject(headers: Headers): Record<string, string> {
   return next;
 }
 
-export function bufferToReadableStream(buffer: Buffer): Readable {
-  return Readable.from(buffer);
+
+export interface WorkspaceIdeProviderUpgradeProxyOptions {
+  session: WorkspaceIdeProviderSession;
+  path: string;
+  search?: string;
+  req: http.IncomingMessage;
+  socket: Duplex;
+  head: Buffer;
+  connect?: WorkspaceIdeProviderNetConnect;
+}
+
+export interface WorkspaceIdeProviderNetConnect {
+  (options: net.NetConnectOpts): Duplex;
+}
+
+export function proxyWorkspaceIdeProviderUpgrade(
+  options: WorkspaceIdeProviderUpgradeProxyOptions,
+): boolean {
+  const targetUrl = buildWorkspaceIdeProviderProxyUrl(
+    options.session,
+    options.path,
+    options.search || "",
+  );
+  const port = Number.parseInt(targetUrl.port || "80", 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new WorkspaceIdeProviderError(
+      "workspace_ide_provider_proxy_port_invalid",
+      "IDE provider WebSocket proxy requires a valid provider port.",
+    );
+  }
+
+  const upstream = (options.connect || net.connect)({
+    host: targetUrl.hostname,
+    port,
+  });
+
+  const fail = (): void => {
+    try {
+      options.socket.destroy();
+    } catch {}
+    try {
+      upstream.destroy();
+    } catch {}
+  };
+
+  upstream.once("error", fail);
+  options.socket.once("error", fail);
+  upstream.once("connect", () => {
+    upstream.write(buildWorkspaceIdeProviderUpgradeRequest(options.req, targetUrl));
+    if (options.head.byteLength > 0) upstream.write(options.head);
+    options.socket.pipe(upstream);
+    upstream.pipe(options.socket);
+  });
+  return true;
+}
+
+export function handleWorkspaceIdeProviderUpgrade(
+  req: http.IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  sessions: { getSession(sessionId: string): WorkspaceIdeProviderSession | null | undefined },
+  connect?: WorkspaceIdeProviderNetConnect,
+): boolean {
+  const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+  const match = requestUrl.pathname.match(/^\/api\/workspace\/ide-provider-sessions\/([^/]+)\/proxy$/);
+  if (!match) return false;
+  const session = sessions.getSession(decodeURIComponent(match[1] || ""));
+  if (!session || session.status !== "ready") {
+    writeUpgradeFailure(socket, !session ? 404 : 409, !session ? "Not Found" : "Conflict");
+    return true;
+  }
+  try {
+    return proxyWorkspaceIdeProviderUpgrade({
+      session,
+      req,
+      socket,
+      head,
+      path: requestUrl.searchParams.get("path") || "/",
+      search: requestUrl.searchParams.get("search") || "",
+      connect,
+    });
+  } catch {
+    writeUpgradeFailure(socket, 400, "Bad Request");
+    return true;
+  }
+}
+
+function buildWorkspaceIdeProviderUpgradeRequest(req: http.IncomingMessage, targetUrl: URL): string {
+  const headers: string[] = [];
+  const pathWithSearch = `${targetUrl.pathname || "/"}${targetUrl.search || ""}`;
+  headers.push(`${req.method || "GET"} ${pathWithSearch} HTTP/1.1`);
+  const filtered = filterWorkspaceIdeProviderProxyHeaders(req.headers);
+  filtered.set("host", targetUrl.host);
+  filtered.forEach((value, key) => {
+    headers.push(`${key}: ${value}`);
+  });
+  headers.push("connection: Upgrade");
+  headers.push("upgrade: websocket");
+  headers.push("", "");
+  return headers.join("\r\n");
+}
+
+function writeUpgradeFailure(socket: Duplex, statusCode: number, statusText: string): void {
+  try {
+    socket.write(`HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  } finally {
+    try {
+      socket.destroy();
+    } catch {}
+  }
 }
