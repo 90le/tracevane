@@ -607,3 +607,43 @@
 .workspace-ide-shell__pane-dock-controls button:disabled {
   opacity: 0.36;
 }
+
+.workspace-ide-shell__empty-dock {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px;
+  color: var(--ide-muted);
+  text-align: center;
+}
+
+.workspace-ide-shell__empty-dock-mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid rgba(34, 211, 238, 0.26);
+  border-radius: 16px;
+  background: rgba(8, 47, 73, 0.34);
+  color: #67e8f9;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.workspace-ide-shell__empty-dock h2 {
+  margin: 0;
+  color: var(--ide-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.workspace-ide-shell__empty-dock p {
+  margin: 0;
+  max-width: 260px;
+  font-size: 12px;
+  line-height: 1.7;
+}

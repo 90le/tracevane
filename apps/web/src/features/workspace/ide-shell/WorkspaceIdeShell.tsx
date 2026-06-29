@@ -164,9 +164,9 @@ export function WorkspaceIdeShell() {
   const leftPaneIds = panesByPlacement.left;
   const rightPaneIds = panesByPlacement.right;
   const bottomPaneIds = panesByPlacement.bottom;
-  const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0] ?? "explorer";
-  const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0] ?? "ai";
-  const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0] ?? "terminal";
+  const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0];
+  const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0];
+  const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0];
 
   React.useEffect(() => {
     if (!rootId && defaultRootId) {
@@ -434,11 +434,21 @@ export function WorkspaceIdeShell() {
         id: "ide.layout.reset",
         group: "布局",
         label: "重置 IDE 布局",
-        description: "恢复所有窗格、尺寸和最大化状态",
+        description: "恢复所有窗格、尺寸、拆分、停靠位置和最大化状态",
         risk: "safe",
         surface: "layout",
         icon: <RotateCcw />,
         run: resetLayout,
+      },
+      {
+        id: "ide.pane.reset-placements",
+        group: "窗格",
+        label: "恢复默认窗格布局",
+        description: "把文件/搜索/Git 放回左侧，AI/大纲/扩展放回右侧，终端/问题/输出放回底部",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        run: resetPanePlacements,
       },
     ],
     [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen],
@@ -484,11 +494,19 @@ export function WorkspaceIdeShell() {
   function resetLayout() {
     setLayoutPreset("balanced");
     setPaneSizes(DEFAULT_PANE_SIZES);
+    setMaximizedPane(null);
+    closeEditorSplit();
+    resetPanePlacements();
+  }
+
+  function resetPanePlacements() {
+    setPanePlacements(DEFAULT_PANE_PLACEMENTS);
+    setActivity("explorer");
+    setRightPanel("ai");
+    setBottomPanel("terminal");
     setLeftOpen(true);
     setRightOpen(true);
     setBottomOpen(true);
-    setMaximizedPane(null);
-    closeEditorSplit();
   }
 
   function startPaneResize(pane: keyof IdePaneSizes, event: React.PointerEvent) {
@@ -690,31 +708,37 @@ export function WorkspaceIdeShell() {
 
         {leftOpen ? (
           <section className="workspace-ide-shell__left-pane" data-testid="workspace-ide-left-pane">
-            <PaneHeader title={paneLabel(activeLeftPane)} subtitle={leftPaneSubtitle(activeLeftPane)} />
-            <PaneDockControls
-              paneId={activeLeftPane}
-              placement="left"
-              onMovePane={movePaneToPlacement}
-              onCloseDock={() => setLeftOpen(false)}
-            />
-            <LeftPane
-              activity={activeLeftPane}
-              rootId={rootId}
-              activePath={activePath}
-              workspaceDirectory={workspaceDirectory}
-              revealRequest={explorerRevealRequest}
-              onOpenFile={openFile}
-              onOpenDiff={openDiff}
-              onChangeRoot={setRootId}
-              onWorkspaceDirectoryChange={setWorkspaceDirectory}
-              onSearchCommandsChange={setSearchCommands}
-              onGitCommandsChange={setGitCommands}
-              onRevealInExplorer={revealInExplorer}
-              onFocusTerminal={() => {
-                setBottomPanel("terminal");
-                setBottomOpen(true);
-              }}
-            />
+            {activeLeftPane ? (
+              <>
+                <PaneHeader title={paneLabel(activeLeftPane)} subtitle={leftPaneSubtitle(activeLeftPane)} />
+                <PaneDockControls
+                  paneId={activeLeftPane}
+                  placement="left"
+                  onMovePane={movePaneToPlacement}
+                  onCloseDock={() => setLeftOpen(false)}
+                />
+                <LeftPane
+                  activity={activeLeftPane}
+                  rootId={rootId}
+                  activePath={activePath}
+                  workspaceDirectory={workspaceDirectory}
+                  revealRequest={explorerRevealRequest}
+                  onOpenFile={openFile}
+                  onOpenDiff={openDiff}
+                  onChangeRoot={setRootId}
+                  onWorkspaceDirectoryChange={setWorkspaceDirectory}
+                  onSearchCommandsChange={setSearchCommands}
+                  onGitCommandsChange={setGitCommands}
+                  onRevealInExplorer={revealInExplorer}
+                  onFocusTerminal={() => {
+                    setBottomPanel("terminal");
+                    setBottomOpen(true);
+                  }}
+                />
+              </>
+            ) : (
+              <EmptyDockPane placement="left" onRestore={resetPanePlacements} />
+            )}
           </section>
         ) : null}
         {leftOpen ? (
@@ -836,11 +860,15 @@ export function WorkspaceIdeShell() {
                   <Maximize2 className="h-4 w-4" aria-hidden={true} />
                 </button>
               </div>
-              <BottomPane
-                panel={activeBottomPane}
-                workspaceDirectory={workspaceDirectory}
-                onTerminalCommandsChange={setTerminalCommands}
-              />
+              {activeBottomPane ? (
+                <BottomPane
+                  panel={activeBottomPane}
+                  workspaceDirectory={workspaceDirectory}
+                  onTerminalCommandsChange={setTerminalCommands}
+                />
+              ) : (
+                <EmptyDockPane placement="bottom" onRestore={resetPanePlacements} />
+              )}
             </section>
           ) : null}
         </section>
@@ -878,14 +906,18 @@ export function WorkspaceIdeShell() {
                 </div>
               ))}
             </div>
-            <RightPane
-              panel={activeRightPane}
-              rootId={rootId}
-              activePath={activePath}
-              saveState={saveState}
-              gitDiffTarget={gitDiffTarget}
-              commandCount={commands.length}
-            />
+            {activeRightPane ? (
+              <RightPane
+                panel={activeRightPane}
+                rootId={rootId}
+                activePath={activePath}
+                saveState={saveState}
+                gitDiffTarget={gitDiffTarget}
+                commandCount={commands.length}
+              />
+            ) : (
+              <EmptyDockPane placement="right" onRestore={resetPanePlacements} />
+            )}
           </aside>
         ) : null}
       </div>
@@ -944,6 +976,22 @@ function PaneDockControls({
       <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
         ×
       </button>
+    </div>
+  );
+}
+
+function EmptyDockPane({ placement, onRestore }: { placement: PanePlacement; onRestore: () => void }) {
+  return (
+    <div className="workspace-ide-shell__empty-dock" data-ide-empty-dock={placement}>
+      <div className="workspace-ide-shell__empty-dock-mark" aria-hidden={true}>
+        {placementShortLabel(placement)}
+      </div>
+      <h2>{placementLabel(placement)} Dock 为空</h2>
+      <p>当前没有窗格停靠在这里。你可以继续保持空 Dock，或一键恢复默认 IDE 窗格组合。</p>
+      <Button size="sm" onClick={onRestore}>
+        <RotateCcw className="mr-2 h-4 w-4" aria-hidden={true} />
+        恢复默认窗格布局
+      </Button>
     </div>
   );
 }

@@ -148,3 +148,18 @@ test("new Workspace IDE shell exposes direct dock controls for pane movement", (
   assert.match(cssSource, /workspace-ide-shell__pane-dock-controls/);
   assert.match(cssSource, /workspace-ide-shell__dock-tab/);
 });
+
+test("new Workspace IDE shell treats empty docks as explicit layout states", () => {
+  assert.match(shellSource, /function EmptyDockPane/);
+  assert.match(shellSource, /data-ide-empty-dock=\{placement\}/);
+  assert.match(shellSource, /function resetPanePlacements/);
+  assert.match(shellSource, /setPanePlacements\(DEFAULT_PANE_PLACEMENTS\)/);
+  assert.match(shellSource, /ide\.pane\.reset-placements/);
+  assert.match(shellSource, /activeLeftPane = leftPaneIds\.includes\(activity\) \? activity : leftPaneIds\[0\]/);
+  assert.match(shellSource, /activeRightPane = rightPaneIds\.includes\(rightPanel\) \? rightPanel : rightPaneIds\[0\]/);
+  assert.match(shellSource, /activeBottomPane = bottomPaneIds\.includes\(bottomPanel\) \? bottomPanel : bottomPaneIds\[0\]/);
+  assert.doesNotMatch(shellSource, /leftPaneIds\[0\] \?\? "explorer"/);
+  assert.doesNotMatch(shellSource, /rightPaneIds\[0\] \?\? "ai"/);
+  assert.doesNotMatch(shellSource, /bottomPaneIds\[0\] \?\? "terminal"/);
+  assert.match(cssSource, /workspace-ide-shell__empty-dock/);
+});
