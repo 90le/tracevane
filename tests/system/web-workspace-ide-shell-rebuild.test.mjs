@@ -117,6 +117,17 @@ test("new Workspace IDE shell persists and exposes accessible pane sizing", () =
   assert.match(shellSource, /sanitizeIdeLayoutState/);
   assert.match(shellSource, /data-ide-pane-size-state/);
   assert.match(shellSource, /keyboardResizeDelta/);
+  assert.match(shellSource, /const key = event\.key\.toLowerCase\(\)/);
+  assert.match(shellSource, /if \(event\.key === "Escape"\)/);
+  assert.match(shellSource, /setCommandPaletteOpen\(false\)/);
+  assert.match(shellSource, /setMaximizedPane\(null\)/);
+  assert.match(shellSource, /key === "\\\\"/);
+  assert.match(shellSource, /splitEditor\(event\.shiftKey \? "horizontal" : "vertical"\)/);
+  assert.match(shellSource, /key === "b"/);
+  assert.match(shellSource, /setLeftOpen\(\(open\) => !open\)/);
+  assert.match(shellSource, /key === "j"/);
+  assert.match(shellSource, /setBottomOpen\(\(open\) => !open\)/);
+  assert.match(shellSource, /if \(!bottomOpen\) setMobilePanel\("bottom"\)/);
   assert.match(shellSource, /ide\.layout\.maximize-left/);
   assert.match(shellSource, /ide\.layout\.maximize-right/);
   assert.match(shellSource, /ide\.layout\.maximize-bottom/);

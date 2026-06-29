@@ -274,12 +274,42 @@ export function WorkspaceIdeShell() {
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
-      if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
+      const key = event.key.toLowerCase();
+      if (event.key === "Escape") {
+        if (commandPaletteOpen) {
+          event.preventDefault();
+          setCommandPaletteOpen(false);
+          return;
+        }
+        if (maximizedPane) {
+          event.preventDefault();
+          setMaximizedPane(null);
+          return;
+        }
+      }
+      if (mod && event.shiftKey && key === "p") {
         event.preventDefault();
         setCommandPaletteOpen((open) => !open);
         return;
       }
-      if (!mod || event.shiftKey || event.altKey) return;
+      if (mod && !event.altKey && key === "\\") {
+        event.preventDefault();
+        splitEditor(event.shiftKey ? "horizontal" : "vertical");
+        return;
+      }
+      if (!mod || event.altKey) return;
+      if (!event.shiftKey && key === "b") {
+        event.preventDefault();
+        setLeftOpen((open) => !open);
+        return;
+      }
+      if (!event.shiftKey && key === "j") {
+        event.preventDefault();
+        setBottomOpen((open) => !open);
+        if (!bottomOpen) setMobilePanel("bottom");
+        return;
+      }
+      if (event.shiftKey) return;
       const nextActivity = activityByShortcut(event.key);
       if (!nextActivity) return;
       event.preventDefault();
