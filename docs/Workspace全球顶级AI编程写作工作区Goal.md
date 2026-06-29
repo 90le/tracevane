@@ -45,76 +45,109 @@ One workspace for code, prose, agents, evidence, and shipping.
 
 ## 4. 分阶段任务
 
-### Phase A：北极星与质量门禁（当前阶段）
+### Phase A：北极星与质量门禁（已完成，保留回归）
 
-必须完成：
+已完成：
 
 - 建立本 goal 文档，记录研究、原则、分阶段任务和验收门槛。
-- 在 Workspace 空状态中明确顶级工作区定位：代码、写作、AI 上下文、终端/Git/审查闭环。
-- 为“复制 AI 上下文 / 选区上下文 / 查找替换 / 文档模式”等当前已有能力提供更可发现的起点。
-- 增加结构化测试，防止空状态退回普通“未打开文件”。
+- Workspace 空状态已经明确顶级工作区定位：代码、写作、AI 上下文、终端/Git/审查闭环。
+- 为复制 AI 上下文、选区上下文、查找替换、文档模式提供可发现起点。
+- 已用结构化测试防止空状态退回普通“未打开文件”。
 
-验收：
+保留回归：
 
 ```bash
 node --test tests/system/workspace-top-tier-goal.test.mjs
 npm run typecheck:web -- --pretty false
 ```
 
-### Phase B：桌面顶级工作台
+### Phase B：桌面顶级工作台（进行中）
 
-必须完成：
+已完成并移出待办：
 
-- 强化 Activity Rail、Side Panel、Editor Stage、Bottom Panel 的视觉层级与布局密度。
-- Editor Stage 增加“AI context rail / writing mode / review mode”的清晰入口。
-- Command Palette 可发现所有 Workspace 布局、AI、写作、审查动作。
-- Dock 与文件 tab 状态可恢复，避免 terminal/Git/preview 干扰写作和代码焦点。
+- Dockview/Monaco 工作台底座已建立，文件、编辑器、终端、搜索、Git 进入同一 Workspace 框架。
+- 侧边面板和移动面板尺寸进入 `tracevane.workspace.panel-sizes.v1` 持久化。
+- PC 侧边面板拖拽已改为无最大宽度、rAF 合并更新、`pointercancel` 清理，避免拖拽卡顿和人为宽度上限。
+- 项目导航菜单已移动化为底部 sheet，移动端底部导航按钮具备稳定语义和 open/close title。
 
-### Phase C：手机和平板工作区
+当前仍需完成：
 
-必须完成：
+- PC 顶栏、Activity Rail、Side Panel、Editor Stage、Bottom Panel 的整体视觉密度和层级继续统一，减少重复标题/重复工具条。
+- Editor/Terminal tab 右键与长按菜单补齐：关闭、关闭其他、复制路径、拆分、移动、重命名/终止终端。
+- Dock 与文件 tab 状态恢复继续补强，避免切换工作区目录后已打开文件丢失可访问根路径。
+- 终端、编辑器、文件/搜索/Git 的自由组合布局继续升级：左右/上下拆分、局部全屏、浏览器真实全屏都要能互相切换。
 
-- 手机底部 mode nav 覆盖 Files/Edit/Search/Git/Terminal/AI Review。
-- 侧边域改为 bottom sheet / full-screen sheet，支持半屏、全屏、关闭。
-- 文档模式、查找替换、AI 上下文复制在触屏上可达。
-- 所有弹窗和菜单满足 safe-area、滚动、触控目标和无横向溢出。
+### Phase C：手机和平板工作区（进行中）
 
-### Phase D：AI 协作与证据闭环
+已完成并移出待办：
 
-必须完成：
+- 手机底部 mode nav 已覆盖 Files/Search/Git/Edit/Terminal 的核心入口。
+- 侧边域已具备 bottom sheet/full-screen sheet、半屏/全屏/关闭和拖拽高度模型。
+- 终端和编辑器已有折叠式悬浮控件，避免一直遮挡内容。
+- 移动端在终端全屏时可把 Files/Search/Git 面板显示在终端前面，而不是被终端覆盖。
 
-- Workspace context basket：文件、选区、搜索结果、Git diff、终端输出可加入 AI 上下文。
-- Agent handoff：从 Workspace 发起任务，返回 plan/diff/commands/verification。
-- Evidence basket：保存 diff、命令、日志、截图、验证结果。
-- 高风险写入必须走 diff/approval，不允许静默应用。
+当前仍需完成：
 
-### Phase E：写作工作区顶级化
+- 手机端终端软键盘避让仍需继续修正：输入法弹出时必须能看到当前输入行，且不能在编辑区顶部制造多余空白。
+- 文件/搜索/Git/终端 100% 高度时底部导航仍要稳定可达；全屏面板需要清晰“临时沉浸/返回导航”的交互。
+- 触屏长按菜单需要自适应高度、可滚动、贴边避让，避免菜单底部溢出屏幕。
+- 手机端资源管理器路径栏、标题、操作入口继续降噪，避免按钮和路径挤压。
 
-必须完成：
+### Phase D：AI 协作与证据闭环（进行中）
 
-- Markdown/HTML/长文的写作模式：专注排版、结构导航、字数/阅读时间、选区 AI 改写上下文。
-- 源码、预览、编辑+预览、可视编辑保持同文件 tab 模型。
-- 支持大文档切片阅读、当前文档查找替换、跨文件替换审查。
+已完成并移出待办：
 
-### Phase F：性能、可访问性与发布级验证
+- `WorkspaceAiContextBasket` 共享契约已经建立：本地存储、事件、添加/删除/清空/替换、bundle 导出、上限控制。
+- `WorkspaceEvidenceBasket` 前端证据契约已经建立：证据来源、类型、refs、订阅、导出和上限控制。
+- `WorkspaceContextEvidenceBridge` 已把 AI Context 转为 Evidence，保持稳定去重 id 和 refs 证据链。
+- `WorkspaceEvidenceHandoff` 已提供只读 handoff packet，限制记录数量并内置 review guardrail。
 
-必须完成：
+当前仍需完成：
 
-- 大目录、大文件、大日志不会造成 DOM/Monaco 卡死。
-- 键盘、屏幕阅读器标签、focus ring、reduced motion、主题对比度达标。
-- 关键 smoke：desktop/mobile workspace、document modes、terminal reconnect、git diff、file operations、AI context。
+- Workspace 级 Context/Evidence 可视面板还没有形成最终交互，需要支持移动端 sheet、PC 侧栏/底栏、选择记录、导出给 AI。
+- Agent handoff 仍需从“共享契约”进入 UI 闭环：选择证据 → 生成计划/diff/commands → 用户审查 → 执行/回滚。
+- 高风险写入的 diff/approval 仍需和实际 Git/文件修改链路连通，不能只停留在文档或本地存储。
+
+### Phase E：写作工作区顶级化（进行中）
+
+已完成并移出待办：
+
+- 源码、预览、编辑+预览、预览时编辑已归入同一文件 tab 模型，不再把同一文件拆成两个窗口对象。
+- Markdown/HTML/长文已经有文档级统计和 `@document` 上下文入口。
+- 编辑器悬浮菜单已开始替代独占一行的模式切换工具条。
+
+当前仍需完成：
+
+- Markdown/HTML 的所见即所得编辑质量仍需提升到接近思源/现代写作软件：渲染状态直接编辑文字、块级源码编辑、Mermaid/表格/媒体块稳定呈现。
+- 图片/视频/HTML/Markdown/代码等预览仍需做成统一、可缩放、可拖拽、可查看信息、无溢出的文件查看器体验。
+- 大文档切片阅读、结构导航、当前文档/跨文件查找替换审查还需补强。
+
+### Phase F：性能、可访问性与发布级验证（进行中）
+
+已完成并移出待办：
+
+- 侧边面板拖拽、移动面板拖拽、部分文件列表性能路径已有测试锁定。
+- web typecheck、Workspace 系统测试、web build、diff check 已作为每轮交付验证门槛。
+
+当前仍需完成：
+
+- 大目录、大文件、大日志的端到端压力验证还不完整。
+- 键盘、屏幕阅读器标签、focus ring、reduced motion、主题对比度需要做系统性审计。
+- 关键 smoke 需要覆盖 desktop/mobile workspace、document modes、terminal reconnect、git diff、file operations、AI context/evidence/handoff。
 - 完成最终 completion audit 后才能关闭 goal。
 
-## 5. 当前非完成项
+## 5. 当前剩余 Goal 待办（已移除已完成项）
 
-本 goal 不能在仅完成 Phase A 后关闭。以下能力仍是后续必需：
+本 Goal 当前不再把“创建 goal 文档、空状态北极星、AI Context Basket 基础契约、Evidence Basket 基础契约、Context→Evidence 桥接、Evidence Handoff Packet、侧边面板无上限高性能拖拽、移动面板置于终端前面”等已完成事项列为待办。当前剩余只跟踪以下可验证缺口：
 
-- 完整 AI context basket。
-- Workspace 内一等 Evidence basket。
-- Agent handoff 审批闭环。
-- 真正多 editor group 拆分，而非“入口预留”。
-- 顶级移动端 AI/审查 sheet。
-- 写作模式完整信息架构。
+1. **Workspace 框架美学与布局**：PC/手机/平板统一视觉语言，减少重复标题、重复工具条和堆叠按钮；窗口模块可上下/左右组合、局部全屏、浏览器真实全屏。
+2. **编辑器与终端标签管理**：补齐右键/长按菜单、关闭/关闭其他/拆分/移动/复制路径/终止终端/重命名等操作；终端结束会话可彻底关闭删除。
+3. **移动端触屏与软键盘**：终端和编辑器输入时必须避让软键盘；触摸滚动、长按菜单、底部导航、100% 高度面板必须稳定。
+4. **工作区目录与已打开文件稳定性**：切换默认目录不能破坏已打开文件的 root/path 访问，资源管理器可自由切换目录并保持默认工作区语义清晰。
+5. **Git 管理工具**：从基础状态展示升级为可用的变更、历史、分支、提交、推送/同步、diff 审查工具，并适配手机端。
+6. **Context/Evidence/Agent UI 闭环**：把已完成的共享契约做成 Workspace 内可见、可选择、可审查、可交给 AI 的产品功能。
+7. **写作与预览质量**：Markdown/HTML/媒体/代码预览编辑达到现代写作软件和 IDE 体验，包含块编辑、图表、媒体缩放拖动、查找替换和无溢出响应式。
+8. **发布级验证**：补齐性能、可访问性、回归 smoke 和端到端验证后，才允许关闭本 Goal。
 
 ## 6. 提交纪律
 

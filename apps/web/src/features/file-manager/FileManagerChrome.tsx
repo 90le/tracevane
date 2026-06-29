@@ -71,7 +71,7 @@ export function FileManagerHeader({
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 px-3 py-2 sm:px-4"
+      className="flex min-w-0 items-center gap-2 border-b border-line px-3 py-1.5 sm:px-4"
       data-file-manager-command-bar
     >
       <div
@@ -81,7 +81,7 @@ export function FileManagerHeader({
         <span className="inline-grid size-7 shrink-0 place-items-center rounded-lg border border-primary-line bg-primary-soft text-primary">
           <HardDrive className="size-4" />
         </span>
-        <span className="hidden font-semibold text-ink-strong sm:inline">
+        <span className="font-semibold text-ink-strong">
           文件管理器
         </span>
         <span className="hidden max-w-[180px] truncate rounded-full border border-line bg-panel px-2 py-1 text-2xs text-subtle md:inline-flex">
@@ -375,7 +375,7 @@ export function FileManagerNavigationBar({
 
   return (
     <div
-      className="grid gap-2 border-t border-line px-3 py-2 sm:px-4 sm:py-3 xl:grid-cols-[minmax(0,1fr)_320px_auto] xl:items-center"
+      className="grid gap-1.5 border-b border-line bg-panel-2/70 px-3 py-1.5 sm:px-4 xl:grid-cols-[minmax(0,1fr)_320px_auto] xl:items-center"
       data-file-manager-mobile-navigation
     >
       <div className="grid min-w-0 gap-2">
@@ -383,7 +383,7 @@ export function FileManagerNavigationBar({
           <div
             role="group"
             aria-label="文件路径地址栏，可点击面包屑或输入路径跳转"
-            className="flex min-w-0 items-center gap-1 rounded-xl border border-line bg-panel px-2 py-1.5 text-xs text-muted focus-within:shadow-[var(--ring)]"
+            className="flex min-w-0 items-center gap-1 rounded-md border border-line bg-panel px-2 py-1 text-xs text-muted focus-within:shadow-[var(--ring)]"
             data-file-manager-unified-path-bar
             data-file-manager-display-path={displayPath}
             onDoubleClick={enterPathEditMode}

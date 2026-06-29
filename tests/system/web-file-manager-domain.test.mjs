@@ -265,7 +265,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(page, /data-file-manager-stats-desktop/);
   assert.match(page, /min-h-8/);
   assert.match(page, /gap-x-3/);
-  assert.match(page, /selectedList.length > 0 && "pb-32 sm:pb-4"/);
+  assert.match(page, /selectedList.length > 0 && "pb-32 sm:pb-0"/);
   assert.match(list, /export function FileListPanel/);
   assert.match(list, /export function BulkActionBar/);
   assert.match(list, /export function sortFileEntries/);

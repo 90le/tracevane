@@ -328,7 +328,7 @@ export function BulkActionBar({
                 className="grid min-h-14 cursor-pointer list-none place-items-center gap-1 rounded-md border border-line bg-panel-2 px-1 py-2 text-center text-2xs text-muted shadow-sm marker:hidden hover:border-primary-line hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
                 aria-label="更多批量操作"
               >
-                <MoreHorizontal className="size-4" />
+                <MoreHorizontal className="size-3.5" />
                 <span>更多</span>
               </summary>
               <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-10 grid grid-cols-2 gap-2 rounded-lg border border-line bg-panel p-2 shadow-xl">
@@ -392,7 +392,7 @@ function BulkOverflowMenu({
         className="inline-flex h-8 cursor-pointer list-none items-center gap-1 rounded-md border border-line bg-panel px-2 text-xs text-muted shadow-sm marker:hidden hover:border-primary-line hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
         aria-label="更多批量操作"
       >
-        <MoreHorizontal className="size-4" />
+        <MoreHorizontal className="size-3.5" />
         更多
       </summary>
       <div
@@ -1048,7 +1048,7 @@ export function FileListPanel({
   return (
     <div
       ref={panelRef}
-      className="relative grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-md border border-line bg-panel"
+      className="relative grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-y border-line bg-panel"
       tabIndex={0}
       data-file-manager-list
       data-file-manager-keyboard-scope="list-grid"
@@ -1073,7 +1073,7 @@ export function FileListPanel({
     >
       {displayMode === "list" ? (
         <div
-          className="group/list-header grid grid-cols-[36px_minmax(0,1fr)_44px] border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle sm:[grid-template-columns:var(--file-row-desktop-columns)]"
+          className="group/list-header grid grid-cols-[36px_minmax(0,1fr)_44px] border-b border-line bg-panel-2/80 px-3 py-1.5 text-xs font-medium text-subtle sm:[grid-template-columns:var(--file-row-desktop-columns)]"
           style={responsiveGridStyle}
           data-file-manager-responsive-header
         >
@@ -1088,7 +1088,7 @@ export function FileListPanel({
               type="checkbox"
               checked={allVisibleSelected}
               onChange={onToggleAllVisible}
-              className="size-4 accent-primary"
+              className="size-3.5 accent-primary"
               aria-label="选择当前可见文件"
             />
           </label>
@@ -1134,7 +1134,7 @@ export function FileListPanel({
           <span className="text-right">操作</span>
         </div>
       ) : (
-        <div className="flex items-center justify-between border-b border-line bg-panel-2 px-3 py-2 text-xs text-subtle">
+        <div className="flex items-center justify-between border-b border-line bg-panel-2/80 px-3 py-1.5 text-xs text-subtle">
           <label
             className={cn(
               "inline-flex items-center gap-2 opacity-0 transition-opacity hover:opacity-100 focus-within:opacity-100",
@@ -1146,7 +1146,7 @@ export function FileListPanel({
               type="checkbox"
               checked={allVisibleSelected}
               onChange={onToggleAllVisible}
-              className="size-4 accent-primary"
+              className="size-3.5 accent-primary"
               aria-label="选择当前可见文件"
             />
             全选可见
@@ -1206,13 +1206,22 @@ export function FileListPanel({
             icon={<Folder />}
           />
         ) : displayMode === "grid" ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 p-3">
+          <div
+            className={cn(
+              "grid gap-1.5 p-2",
+              density === "compact"
+                ? "grid-cols-[repeat(auto-fill,minmax(84px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"
+                : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(108px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(112px,1fr))]",
+            )}
+            data-file-manager-grid-density={density}
+          >
             {filteredEntries.map((entry) => (
               <FileGridCard
                 key={entry.path}
                 entry={entry}
                 selected={selectedPath === entry.path}
                 checked={selectedPaths.has(entry.path)}
+                density={density}
                 onOpen={() => onOpen(entry)}
                 onSelect={(event) =>
                   onSelect(entry, {
@@ -1283,7 +1292,7 @@ export function FileListPanel({
         )}
       </div>
       <footer
-        className="border-t border-line px-3 py-2 text-xs text-muted"
+        className="border-t border-line bg-panel px-3 py-1.5 text-xs text-muted"
         data-file-manager-responsive-footer
       >
         <details
@@ -2011,7 +2020,7 @@ function FileRow({
           type="checkbox"
           checked={checked}
           onChange={onToggleChecked}
-          className="size-4 accent-primary"
+          className="size-3.5 accent-primary"
           aria-label={`选择 ${entry.name}`}
         />
       </label>
@@ -2078,7 +2087,7 @@ function FileRow({
             onOpenContextMenu(rect.left, rect.bottom + 4);
           }}
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal className="size-3.5" />
         </button>
       </span>
     </div>
@@ -2135,6 +2144,7 @@ function FileGridCard({
   entry,
   selected,
   checked,
+  density,
   onOpen,
   onSelect,
   onToggleChecked,
@@ -2149,6 +2159,7 @@ function FileGridCard({
   entry: FileEntrySummary;
   selected: boolean;
   checked: boolean;
+  density: FileManagerListDensity;
   onOpen: () => void;
   onSelect: (event: React.MouseEvent) => void;
   onToggleChecked: () => void;
@@ -2212,8 +2223,9 @@ function FileGridCard({
         }
       }}
       className={cn(
-        "group grid min-h-36 content-between rounded-lg border border-line bg-panel-2 p-3 text-left transition-colors hover:border-primary-line hover:bg-primary-soft/50 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
-        selected && "border-primary-line bg-primary-soft",
+        "group grid content-between rounded-md border border-transparent bg-transparent text-left transition-colors hover:border-primary-line hover:bg-primary-soft/45 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
+        density === "compact" ? "min-h-[96px] p-1.5" : "min-h-[118px] p-2",
+        selected && "border-primary-line bg-primary-soft/80",
         dropOperation &&
           "border-primary-line bg-primary-soft ring-2 ring-primary/40",
       )}
@@ -2222,7 +2234,7 @@ function FileGridCard({
       <div className="flex items-start justify-between gap-2">
         <label
           className={cn(
-            "grid size-6 place-items-center rounded bg-panel opacity-0 shadow-sm transition-opacity",
+            "grid size-5 place-items-center rounded bg-panel opacity-0 shadow-sm transition-opacity",
             "group-hover:opacity-100 group-focus-within:opacity-100",
             (checked || selected) && "opacity-100",
           )}
@@ -2233,13 +2245,13 @@ function FileGridCard({
             type="checkbox"
             checked={checked}
             onChange={onToggleChecked}
-            className="size-4 accent-primary"
+            className="size-3.5 accent-primary"
             aria-label={`选择 ${entry.name}`}
           />
         </label>
         <button
           type="button"
-          className="grid size-7 place-items-center rounded text-subtle opacity-80 hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)] focus-visible:outline-none group-hover:opacity-100"
+          className="grid size-6 place-items-center rounded text-subtle opacity-70 hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)] focus-visible:outline-none group-hover:opacity-100"
           aria-label={`打开 ${entry.name} 的操作菜单`}
           onClick={(event) => {
             event.stopPropagation();
@@ -2247,13 +2259,15 @@ function FileGridCard({
             onOpenContextMenu(rect.left, rect.bottom + 4);
           }}
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal className="size-3.5" />
         </button>
       </div>
-      <div className="grid justify-items-center gap-2 py-2">
+      <div className="grid justify-items-center gap-1 py-1">
         <div
           className={cn(
-            "grid size-14 place-items-center rounded-xl border",
+            density === "compact"
+              ? "grid size-8 place-items-center rounded-md border"
+              : "grid size-10 place-items-center rounded-lg border",
             entry.kind === "directory"
               ? "border-primary-line bg-primary-soft text-primary"
               : "border-line bg-panel text-muted",
@@ -2262,10 +2276,10 @@ function FileGridCard({
           <FileTypeIcon entry={entry} size="lg" />
         </div>
         <div className="w-full min-w-0 text-center">
-          <div className="truncate text-sm font-medium text-ink-strong">
+          <div className="truncate text-xs font-medium text-ink-strong">
             {entry.name}
           </div>
-          <div className="mt-1 flex items-center justify-center gap-1 text-2xs text-subtle">
+          <div className="mt-0.5 flex items-center justify-center gap-1 text-2xs text-subtle">
             <span>
               {entry.kind === "directory" ? "目录" : entry.ext || "文件"}
             </span>
@@ -2285,16 +2299,18 @@ function FileGridCard({
           ) : null}
         </div>
       </div>
-      <div className="truncate text-center text-2xs text-muted">
-        {entry.modifiedAt
-          ? new Date(entry.modifiedAt).toLocaleString()
-          : "无修改时间"}
-        {entry.hidden ? (
-          <span className="ml-1 rounded bg-panel-3 px-1 py-0.5 text-subtle">
-            hidden
-          </span>
-        ) : null}
-      </div>
+      {density === "comfortable" ? (
+        <div className="truncate text-center text-[10px] text-muted">
+          {entry.modifiedAt
+            ? new Date(entry.modifiedAt).toLocaleString()
+            : "无修改时间"}
+          {entry.hidden ? (
+            <span className="ml-1 rounded bg-panel-3 px-1 py-0.5 text-subtle">
+              hidden
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

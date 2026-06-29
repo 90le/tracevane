@@ -1094,7 +1094,7 @@ export function FileManagerPage() {
           </div>
         </div>
       ) : null}
-      <section className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
+      <section className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel">
         <header className="border-b border-line bg-panel-2">
           <FileManagerHeader
             rootId={rootId}
@@ -1188,8 +1188,8 @@ export function FileManagerPage() {
         {viewMode === "files" ? (
           <div
             className={cn(
-              "flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4",
-              selectedList.length > 0 && "pb-32 sm:pb-4",
+              "flex min-h-0 min-w-0 flex-1 flex-col",
+              selectedList.length > 0 && "pb-32 sm:pb-0",
             )}
           >
             {browse.error ? (
@@ -1666,14 +1666,14 @@ function FileManagerSecondaryDock({
 }) {
   return (
     <aside
-      className="grid min-w-0 gap-2"
+      className="grid min-w-0"
       data-file-manager-secondary-dock
     >
       <details
-        className="group rounded-md border border-line bg-panel-2 text-xs"
+        className="group border-b border-line bg-panel text-xs"
         data-file-manager-search-and-stats-dock
       >
-        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 marker:hidden">
+        <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 px-3 py-1.5 marker:hidden">
           <span className="inline-flex min-w-0 items-center gap-2 font-semibold text-ink-strong">
             <Search className="size-3.5 shrink-0 text-subtle" />
             搜索与统计
@@ -1686,7 +1686,7 @@ function FileManagerSecondaryDock({
           />
         </summary>
         <div
-          className="hidden gap-3 border-t border-line p-3 group-open:grid xl:grid-cols-[minmax(0,1fr)_280px]"
+          className="hidden gap-3 border-t border-line p-2 group-open:grid xl:grid-cols-[minmax(0,1fr)_260px]"
           data-file-manager-search-and-stats-body
         >
           <FileManagerSearchPanel

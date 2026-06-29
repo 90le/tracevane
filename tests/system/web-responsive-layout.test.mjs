@@ -91,17 +91,23 @@ test("file manager fills the routed viewport instead of using hard-coded list he
   const chrome = read("apps/web/src/features/file-manager/FileManagerChrome.tsx");
   const shell = read("apps/web/src/app/AppShell.tsx");
 
+  assert.match(shell, /pathname === "\/chat" \|\| pathname === "\/file-manager"/);
   assert.match(shell, /"h-full min-h-0 min-w-0 overflow-auto"/);
   assert.match(page, /data-file-manager-shell="true"/);
   assert.match(page, /relative flex h-full min-h-0 min-w-0 flex-col outline-none/);
-  assert.match(page, /grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)\]/);
-  assert.match(page, /flex min-h-0 min-w-0 flex-1 flex-col gap-3/);
+  assert.match(page, /grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)\] overflow-hidden bg-panel/);
+  assert.doesNotMatch(page, /rounded-lg border border-line bg-panel shadow-sm/);
+  assert.match(page, /flex min-h-0 min-w-0 flex-1 flex-col/);
+  assert.doesNotMatch(page, /sm:gap-4 sm:p-4/);
   assert.match(page, /data-file-manager-secondary-dock/);
-  assert.match(page, /className="grid min-w-0 gap-2"/);
-  assert.match(page, /xl:grid-cols-\[minmax\(0,1fr\)_280px\]/);
+  assert.match(page, /className="grid min-w-0"/);
+  assert.match(page, /group border-b border-line bg-panel text-xs/);
+  assert.match(page, /xl:grid-cols-\[minmax\(0,1fr\)_260px\]/);
   assert.doesNotMatch(page, /xl:fixed xl:bottom-4 xl:right-4/);
+  assert.match(chrome, /data-file-manager-command-bar/);
+  assert.match(chrome, /border-b border-line px-3 py-1\.5/);
   assert.match(list, /data-file-manager-list/);
-  assert.match(list, /relative grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(list, /relative grid min-h-0 min-w-0 flex-1 grid-rows-\[auto_minmax\(0,1fr\)_auto\] overflow-hidden border-y border-line bg-panel/);
   assert.match(list, /className="min-h-0 overflow-y-auto overflow-x-hidden"/);
   assert.doesNotMatch(list, /max-h-\[calc\(100vh-470px\)\]/);
   assert.doesNotMatch(list, /min-h-\[360px\]/);
