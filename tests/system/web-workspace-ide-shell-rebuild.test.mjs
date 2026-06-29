@@ -6,6 +6,8 @@ const shellSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/W
 const cssSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/workspace-ide-shell.css", "utf-8");
 const pageSource = fs.readFileSync("apps/web/src/features/workspace/WorkspacePage.tsx", "utf-8");
 const workspaceIndexSource = fs.readFileSync("apps/web/src/features/workspace/index.ts", "utf-8");
+const ideCommandPaletteSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/IdeCommandPalette.tsx", "utf-8");
+const ideCommandsSource = fs.readFileSync("apps/web/src/features/workspace/ide-shell/ideCommands.ts", "utf-8");
 
 test("new Workspace IDE shell has real IDE layout regions", () => {
   assert.match(shellSource, /data-testid="workspace-ide-shell"/);
@@ -27,12 +29,12 @@ test("new Workspace IDE shell models pane/plugin composition", () => {
   assert.match(shellSource, /WorkspaceSearchPanel/);
   assert.match(shellSource, /WorkspaceGitPanel/);
   assert.match(shellSource, /WorkspaceEditorStage/);
-  assert.match(shellSource, /WorkspaceTerminal/);
+  assert.match(shellSource, /LazyWorkspaceTerminal/);
   assert.match(shellSource, /插件组合/);
 });
 
 test("new Workspace IDE shell is responsive for desktop tablet and phone", () => {
-  assert.match(cssSource, /grid-template-columns: 72px minmax\(280px, 340px\) minmax\(0, 1fr\) minmax\(280px, 360px\)/);
+  assert.match(cssSource, /grid-template-columns: 72px var\(--ide-left-width\) var\(--ide-resize-width\) minmax\(0, 1fr\) var\(--ide-resize-width\) var\(--ide-right-width\)/);
   assert.match(cssSource, /@media \(max-width: 1100px\)/);
   assert.match(cssSource, /@media \(max-width: 760px\)/);
   assert.match(cssSource, /grid-template-columns: 1fr/);
@@ -51,4 +53,30 @@ test("Workspace public API exports the new IDE surface and not the old Workbench
   assert.match(workspaceIndexSource, /WorkspaceIdeShell/);
   assert.doesNotMatch(workspaceIndexSource, /WorkspaceWorkbench/);
   assert.doesNotMatch(workspaceIndexSource, /\.\/workbench/);
+});
+
+test("new Workspace IDE shell owns commands without importing the old workbench", () => {
+  assert.match(shellSource, /IdeCommandPalette/);
+  assert.match(shellSource, /\.\/ideCommands/);
+  assert.doesNotMatch(shellSource, /\.\.\/workbench/);
+  assert.match(ideCommandPaletteSource, /new-ide-command-console/);
+  assert.match(ideCommandsSource, /WorkspaceCommand/);
+});
+
+test("new Workspace IDE shell supports real pane layout controls", () => {
+  assert.match(shellSource, /type MaximizedPane/);
+  assert.match(shellSource, /type LayoutPreset/);
+  assert.match(shellSource, /startPaneResize/);
+  assert.match(shellSource, /data-ide-resize-handle=\{pane\}/);
+  assert.match(shellSource, /data-ide-layout-preset=\{layoutPreset\}/);
+  assert.match(shellSource, /data-ide-maximized-pane=\{maximizedPane/);
+  assert.match(shellSource, /applyLayoutPreset\("balanced"\)/);
+  assert.match(shellSource, /applyLayoutPreset\("code"\)/);
+  assert.match(shellSource, /applyLayoutPreset\("terminal"\)/);
+  assert.match(cssSource, /--ide-left-width/);
+  assert.match(cssSource, /--ide-right-width/);
+  assert.match(cssSource, /--ide-bottom-height/);
+  assert.match(cssSource, /workspace-ide-shell__resize-handle/);
+  assert.match(cssSource, /workspace-ide-shell__body--max-center/);
+  assert.match(cssSource, /workspace-ide-shell__body--max-bottom/);
 });

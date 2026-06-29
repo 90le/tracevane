@@ -5,10 +5,12 @@ import {
   Code2,
   Files,
   GitBranch,
+  Columns3,
   Maximize2,
   PanelBottom,
   PanelLeft,
   PanelRight,
+  RotateCcw,
   Search,
   Settings2,
   TerminalSquare,
@@ -30,14 +32,22 @@ import {
   type WorkspaceOpenFileOptions,
 } from "../files";
 import { WorkspaceGitPanel, type WorkspaceGitDiffTarget } from "../git";
-import { WorkspaceCommandPalette } from "../workbench/WorkspaceCommandPalette";
-import type { WorkspaceCommand } from "../workbench/workspaceCommands";
+import { IdeCommandPalette } from "./IdeCommandPalette";
+import type { WorkspaceCommand } from "./ideCommands";
 import "./workspace-ide-shell.css";
 
 type ActivityId = "explorer" | "search" | "git" | "terminal" | "ai" | "extensions";
 type RightPanelId = "ai" | "outline" | "extensions";
 type BottomPanelId = "terminal" | "problems" | "output";
 type SaveState = "idle" | "dirty" | "saving" | "saved";
+type MaximizedPane = "left" | "center" | "right" | "bottom" | null;
+type LayoutPreset = "balanced" | "code" | "terminal";
+
+interface IdePaneSizes {
+  left: number;
+  right: number;
+  bottom: number;
+}
 
 interface ActivityDescriptor {
   id: ActivityId;
@@ -67,6 +77,10 @@ const BOTTOM_PANELS: Array<{ id: BottomPanelId; label: string }> = [
   { id: "output", label: "输出" },
 ];
 
+const DEFAULT_PANE_SIZES: IdePaneSizes = { left: 320, right: 340, bottom: 260 };
+const CODE_PANE_SIZES: IdePaneSizes = { left: 280, right: 300, bottom: 190 };
+const TERMINAL_PANE_SIZES: IdePaneSizes = { left: 300, right: 300, bottom: 380 };
+
 const LazyWorkspaceTerminal = React.lazy(() =>
   import("../terminal/WorkspaceTerminal").then((module) => ({
     default: module.WorkspaceTerminal,
@@ -92,6 +106,9 @@ export function WorkspaceIdeShell() {
   const [leftOpen, setLeftOpen] = React.useState(true);
   const [rightOpen, setRightOpen] = React.useState(true);
   const [bottomOpen, setBottomOpen] = React.useState(true);
+  const [maximizedPane, setMaximizedPane] = React.useState<MaximizedPane>(null);
+  const [layoutPreset, setLayoutPreset] = React.useState<LayoutPreset>("balanced");
+  const [paneSizes, setPaneSizes] = React.useState<IdePaneSizes>(DEFAULT_PANE_SIZES);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>();
@@ -180,10 +197,150 @@ export function WorkspaceIdeShell() {
     }
   }, []);
 
-  const commands = React.useMemo(
-    () => [...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [editorCommands, gitCommands, searchCommands, terminalCommands],
+  const layoutCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.layout.toggle-left",
+        group: "布局",
+        label: leftOpen ? "收起左侧窗格" : "打开左侧窗格",
+        description: "切换资源/搜索/Git/AI 等左侧 IDE 窗格",
+        shortcut: "⌘B",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelLeft />,
+        run: () => setLeftOpen((open) => !open),
+      },
+      {
+        id: "ide.layout.toggle-right",
+        group: "布局",
+        label: rightOpen ? "收起右侧插件窗格" : "打开右侧插件窗格",
+        description: "切换 AI/Outline/扩展右侧组合窗格",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelRight />,
+        run: () => setRightOpen((open) => !open),
+      },
+      {
+        id: "ide.layout.toggle-bottom",
+        group: "布局",
+        label: bottomOpen ? "收起底部 Dock" : "打开底部 Dock",
+        description: "切换终端/问题/输出底部组合窗格",
+        shortcut: "⌘J",
+        risk: "safe",
+        surface: "layout",
+        icon: <PanelBottom />,
+        run: () => setBottomOpen((open) => !open),
+      },
+      {
+        id: "ide.layout.maximize-center",
+        group: "布局",
+        label: maximizedPane === "center" ? "恢复组合布局" : "最大化编辑器",
+        description: "在全局窗格组合和编辑器聚焦模式之间切换",
+        risk: "safe",
+        surface: "layout",
+        icon: <Maximize2 />,
+        run: () => setMaximizedPane((pane) => (pane === "center" ? null : "center")),
+      },
+      {
+        id: "ide.layout.preset-balanced",
+        group: "布局",
+        label: "布局预设：平衡",
+        description: "恢复文件/编辑器/AI/终端的平衡工作台比例",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        run: () => applyLayoutPreset("balanced"),
+      },
+      {
+        id: "ide.layout.preset-code",
+        group: "布局",
+        label: "布局预设：代码优先",
+        description: "扩大编辑器，压缩辅助窗格和底部 Dock",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        run: () => applyLayoutPreset("code"),
+      },
+      {
+        id: "ide.layout.preset-terminal",
+        group: "布局",
+        label: "布局预设：终端优先",
+        description: "扩大底部终端，适合运行、调试和构建",
+        risk: "safe",
+        surface: "layout",
+        icon: <TerminalSquare />,
+        run: () => applyLayoutPreset("terminal"),
+      },
+      {
+        id: "ide.layout.reset",
+        group: "布局",
+        label: "重置 IDE 布局",
+        description: "恢复所有窗格、尺寸和最大化状态",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        run: resetLayout,
+      },
+    ],
+    [bottomOpen, leftOpen, maximizedPane, rightOpen],
   );
+
+  const commands = React.useMemo(
+    () => [...layoutCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [editorCommands, gitCommands, layoutCommands, searchCommands, terminalCommands],
+  );
+
+  function applyLayoutPreset(preset: LayoutPreset) {
+    setLayoutPreset(preset);
+    setMaximizedPane(null);
+    setLeftOpen(true);
+    setRightOpen(true);
+    setBottomOpen(true);
+    setPaneSizes(
+      preset === "code"
+        ? CODE_PANE_SIZES
+        : preset === "terminal"
+          ? TERMINAL_PANE_SIZES
+          : DEFAULT_PANE_SIZES,
+    );
+  }
+
+  function resetLayout() {
+    setLayoutPreset("balanced");
+    setPaneSizes(DEFAULT_PANE_SIZES);
+    setLeftOpen(true);
+    setRightOpen(true);
+    setBottomOpen(true);
+    setMaximizedPane(null);
+  }
+
+  function startPaneResize(pane: keyof IdePaneSizes, event: React.PointerEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startSize = paneSizes[pane];
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const delta = pane === "bottom" ? startY - moveEvent.clientY : moveEvent.clientX - startX;
+      const signedDelta = pane === "right" ? -delta : delta;
+      const min = pane === "bottom" ? 160 : 220;
+      const max = pane === "bottom" ? Math.round(window.innerHeight * 0.64) : 520;
+      const next = clamp(startSize + signedDelta, min, max);
+      setPaneSizes((current) => ({ ...current, [pane]: next }));
+      setLayoutPreset("balanced");
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }
+
+  function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
+    setMaximizedPane((current) => (current === pane ? null : pane));
+  }
 
   function activateActivity(nextActivity: ActivityId) {
     setActivity(nextActivity);
@@ -196,10 +353,20 @@ export function WorkspaceIdeShell() {
   }
 
   return (
-    <main className="workspace-ide-shell" data-testid="workspace-ide-shell">
+    <main
+      className="workspace-ide-shell"
+      data-testid="workspace-ide-shell"
+      data-ide-layout-preset={layoutPreset}
+      data-ide-maximized-pane={maximizedPane ?? ""}
+      style={{
+        "--ide-left-width": `${paneSizes.left}px`,
+        "--ide-right-width": `${paneSizes.right}px`,
+        "--ide-bottom-height": `${paneSizes.bottom}px`,
+      } as React.CSSProperties}
+    >
       <header className="workspace-ide-shell__topbar">
         <div className="workspace-ide-shell__brand">
-          <Code2 className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+          <Code2 className="h-4 w-4 text-cyan-300" aria-hidden={true} />
           <span>Tracevane IDE</span>
           <span className="workspace-ide-shell__pill">IDE-first</span>
         </div>
@@ -212,6 +379,11 @@ export function WorkspaceIdeShell() {
           <span className="text-slate-500">⌘⇧P</span>
           <span>命令、文件、符号、Git、终端、AI 上下文</span>
         </button>
+        <div className="workspace-ide-shell__layout-presets" aria-label="IDE 布局预设">
+          <button type="button" data-active={layoutPreset === "balanced"} onClick={() => applyLayoutPreset("balanced")}>平衡</button>
+          <button type="button" data-active={layoutPreset === "code"} onClick={() => applyLayoutPreset("code")}>代码</button>
+          <button type="button" data-active={layoutPreset === "terminal"} onClick={() => applyLayoutPreset("terminal")}>终端</button>
+        </div>
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant="ghost" onClick={() => setLeftOpen((value) => !value)}>
             <PanelLeft className="mr-2 h-4 w-4" />左栏
@@ -230,6 +402,7 @@ export function WorkspaceIdeShell() {
           "workspace-ide-shell__body",
           !leftOpen && "workspace-ide-shell__body--left-closed",
           !rightOpen && "workspace-ide-shell__body--right-closed",
+          maximizedPane && `workspace-ide-shell__body--max-${maximizedPane}`,
         )}
       >
         <aside className="workspace-ide-shell__activity" aria-label="IDE activity rail">
@@ -243,13 +416,13 @@ export function WorkspaceIdeShell() {
                 onClick={() => activateActivity(item.id)}
                 title={`${item.label} ${item.shortcut}`}
               >
-                <Icon className="h-5 w-5" aria-hidden="true" />
+                <Icon className="h-5 w-5" aria-hidden={true} />
                 <span>{item.label}</span>
               </button>
             );
           })}
           <button type="button" className="workspace-ide-shell__activity-button mt-auto" title="设置">
-            <Settings2 className="h-5 w-5" aria-hidden="true" />
+            <Settings2 className="h-5 w-5" aria-hidden={true} />
             <span>设置</span>
           </button>
         </aside>
@@ -277,8 +450,11 @@ export function WorkspaceIdeShell() {
             />
           </section>
         ) : null}
+        {leftOpen ? (
+          <ResizeHandle pane="left" label="调整左侧窗格宽度" onPointerDown={(event) => startPaneResize("left", event)} />
+        ) : null}
 
-        <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane">
+        <section className="workspace-ide-shell__center" data-testid="workspace-ide-center-pane" data-ide-pane="center">
           <div className="workspace-ide-shell__editor-grid">
             <WorkspaceEditorStage
               openFile={activePath}
@@ -294,7 +470,8 @@ export function WorkspaceIdeShell() {
             />
           </div>
           {bottomOpen ? (
-            <section className="workspace-ide-shell__bottom" data-testid="workspace-ide-bottom-pane">
+            <section className="workspace-ide-shell__bottom" data-testid="workspace-ide-bottom-pane" data-ide-pane="bottom">
+              <ResizeHandle pane="bottom" label="调整底部 Dock 高度" onPointerDown={(event) => startPaneResize("bottom", event)} />
               <div className="workspace-ide-shell__panel-tabs">
                 {BOTTOM_PANELS.map((panel) => (
                   <button
@@ -307,7 +484,7 @@ export function WorkspaceIdeShell() {
                   </button>
                 ))}
                 <button type="button" className="workspace-ide-shell__panel-icon" title="最大化终端">
-                  <Maximize2 className="h-4 w-4" aria-hidden="true" />
+                  <Maximize2 className="h-4 w-4" aria-hidden={true} />
                 </button>
               </div>
               <BottomPane
@@ -320,7 +497,10 @@ export function WorkspaceIdeShell() {
         </section>
 
         {rightOpen ? (
-          <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane">
+          <ResizeHandle pane="right" label="调整右侧窗格宽度" onPointerDown={(event) => startPaneResize("right", event)} />
+        ) : null}
+        {rightOpen ? (
+          <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane" data-ide-pane="right">
             <div className="workspace-ide-shell__right-tabs">
               {RIGHT_PANELS.map((panel) => (
                 <button
@@ -350,16 +530,38 @@ export function WorkspaceIdeShell() {
         <span>{activePath || "未打开文件"}</span>
         <span>保存: {saveState}</span>
         <span>命令: {commands.length}</span>
+        <span>布局: {layoutPreset}</span>
+        <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
       </footer>
 
-      <WorkspaceCommandPalette
+      <IdeCommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
         commands={commands}
-        keybindingConflicts={[]}
       />
     </main>
+  );
+}
+
+function ResizeHandle({
+  pane,
+  label,
+  onPointerDown,
+}: {
+  pane: keyof IdePaneSizes;
+  label: string;
+  onPointerDown: (event: React.PointerEvent) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      tabIndex={0}
+      className="workspace-ide-shell__resize-handle"
+      data-ide-resize-handle={pane}
+      onPointerDown={onPointerDown}
+    />
   );
 }
 
@@ -430,7 +632,7 @@ function LeftPane({
   if (activity === "terminal") {
     return (
       <div className="workspace-ide-shell__utility-pane">
-        <TerminalSquare className="h-8 w-8 text-cyan-300" aria-hidden="true" />
+        <TerminalSquare className="h-8 w-8 text-cyan-300" aria-hidden={true} />
         <h2>终端停靠在底部</h2>
         <p>{workspaceDirectory?.absolutePath || "选择文件目录后，新终端会继承工作区目录。"}</p>
         <Button size="sm" onClick={onFocusTerminal}>聚焦终端</Button>
@@ -543,4 +745,8 @@ function activityByShortcut(key: string): ActivityId | null {
   if (key === "5") return "ai";
   if (key === "6") return "extensions";
   return null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
