@@ -30,12 +30,22 @@ export type TerminalSessionActionId =
   | "terminal.session.insertCwd"
   | "terminal.session.copyCwd";
 
+export type TerminalSessionActionRisk = "safe" | "mutating" | "destructive";
+export type TerminalSessionActionSurface =
+  | "session"
+  | "layout"
+  | "clipboard"
+  | "input"
+  | "evidence";
+
 export interface TerminalSessionAction {
   id: TerminalSessionActionId;
   label: string;
   disabled?: boolean;
   separatorBefore?: boolean;
   shortcut?: string;
+  risk: TerminalSessionActionRisk;
+  surface: TerminalSessionActionSurface;
   icon: React.ReactNode;
   run: () => void;
 }
@@ -85,6 +95,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.new",
       label: "新建终端",
       shortcut: "Ctrl+Shift+`",
+      risk: "safe",
+      surface: "session",
       icon: <Plus />,
       run: createSession,
     },
@@ -92,6 +104,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.closeOthers",
       label: "关闭其它终端",
       disabled: !closeOtherSessions,
+      risk: "destructive",
+      surface: "session",
       icon: <Square />,
       run: () => closeOtherSessions?.(session),
     },
@@ -99,6 +113,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.closeRight",
       label: "关闭右侧终端",
       disabled: !closeRightSessions || rightSessionCount === 0,
+      risk: "destructive",
+      surface: "session",
       icon: <Square />,
       run: () => closeRightSessions?.(session),
     },
@@ -106,6 +122,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.rename",
       label: "重命名",
       shortcut: "F2",
+      risk: "mutating",
+      surface: "session",
       icon: <Edit3 />,
       run: () => renameSession(session),
     },
@@ -114,6 +132,8 @@ export function createTerminalSessionActions({
       label: "向右拆分终端",
       shortcut: "Ctrl+Shift+5",
       disabled: !session.canResume,
+      risk: "safe",
+      surface: "layout",
       icon: <Columns2 />,
       run: () => splitSession(session, "right"),
     },
@@ -121,6 +141,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.splitDown",
       label: "向下拆分终端",
       disabled: !session.canResume,
+      risk: "safe",
+      surface: "layout",
       icon: <Rows2 />,
       run: () => splitSession(session, "down"),
     },
@@ -128,6 +150,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.moveToEditor",
       label: "停靠到 IDE 主工作区",
       disabled: !session.canResume,
+      risk: "safe",
+      surface: "layout",
       icon: <MoveRight />,
       run: () => moveSessionToEditor(session),
     },
@@ -136,6 +160,8 @@ export function createTerminalSessionActions({
       label: "清屏",
       shortcut: "Ctrl+L",
       disabled: !session.canResume,
+      risk: "mutating",
+      surface: "session",
       icon: <Eraser />,
       run: () => clearSession(session.sessionId),
     },
@@ -144,12 +170,16 @@ export function createTerminalSessionActions({
       label: "复制输出",
       shortcut: "Ctrl+Shift+C",
       disabled: !session.canResume,
+      risk: "safe",
+      surface: "clipboard",
       icon: <Clipboard />,
       run: () => copyOutput(session.sessionId),
     },
     {
       id: "terminal.session.copyEvidenceContext",
       label: "复制上下文证据",
+      risk: "safe",
+      surface: "evidence",
       icon: <MessageSquarePlus />,
       run: () => copyEvidenceContext(session),
     },
@@ -159,12 +189,16 @@ export function createTerminalSessionActions({
       shortcut: "Delete",
       separatorBefore: true,
       disabled: !session.canResume,
+      risk: "destructive",
+      surface: "session",
       icon: <Square />,
       run: () => endSession(session.sessionId),
     },
     {
       id: "terminal.session.delete",
       label: session.canResume ? "关闭并删除终端" : "删除记录",
+      risk: "destructive",
+      surface: "session",
       icon: <Trash2 />,
       run: () => deleteSession(session.sessionId),
     },
@@ -173,6 +207,8 @@ export function createTerminalSessionActions({
       label: "复制 cwd 证据",
       disabled: !cwd,
       separatorBefore: true,
+      risk: "safe",
+      surface: "clipboard",
       icon: <Clipboard />,
       run: () => copyCwd(cwd),
     },
@@ -180,6 +216,8 @@ export function createTerminalSessionActions({
       id: "terminal.session.insertCwd",
       label: "插入 cwd 到输入行",
       disabled: !cwd || !session.canResume,
+      risk: "safe",
+      surface: "input",
       icon: <Clipboard />,
       run: () => insertCwd(session.sessionId, cwd),
     },

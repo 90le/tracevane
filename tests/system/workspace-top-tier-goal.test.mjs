@@ -698,3 +698,17 @@ test("Workspace Monaco editor owns text focus before global commands", () => {
   assert.match(editor, /data-workspace-shortcuts="ignore"/);
   assert.match(commandShortcuts, /data-workspace-shortcuts=\\"ignore\\"/);
 });
+
+test("Workspace terminal session actions expose mobile IDE risk and surface metadata", () => {
+  const terminalSessionActions = readWeb("features/workspace/terminal/terminalSessionActions.tsx");
+  assert.match(terminalSessionActions, /TerminalSessionActionRisk = "safe" \| "mutating" \| "destructive"/);
+  assert.match(terminalSessionActions, /TerminalSessionActionSurface =/);
+  assert.match(terminalSessionActions, /risk: TerminalSessionActionRisk/);
+  assert.match(terminalSessionActions, /surface: TerminalSessionActionSurface/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.end"[\s\S]{0,220}risk: "destructive"/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.delete"[\s\S]{0,180}risk: "destructive"/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.clear"[\s\S]{0,220}risk: "mutating"/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.splitRight"[\s\S]{0,220}surface: "layout"/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.copyEvidenceContext"[\s\S]{0,180}surface: "evidence"/);
+  assert.match(terminalSessionActions, /id: "terminal\.session\.insertCwd"[\s\S]{0,180}surface: "input"/);
+});
