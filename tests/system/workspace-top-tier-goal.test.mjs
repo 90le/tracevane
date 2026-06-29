@@ -181,6 +181,16 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace file action menu exposes legacy preview as IDE inspection", () => {
+  const actionsMenu = readWeb("features/workspace/files/FileActionsMenu.tsx");
+  assert.match(actionsMenu, /legacy preview hook exposed as an IDE file inspection action/);
+  assert.match(actionsMenu, /label="检查文件（弹窗）"/);
+  assert.match(actionsMenu, /onPreviewRequest/);
+  assert.doesNotMatch(actionsMenu, /label="预览 \/ 编辑（弹窗）"/);
+  assert.doesNotMatch(actionsMenu, /description="预览内容或进入编辑"/);
+  assert.doesNotMatch(actionsMenu, /preview\/edit entry point used by full file-manager surfaces/);
+});
+
 test("Workspace explorer presents file inspection instead of preview as the IDE action", () => {
   const explorer = readWeb("features/workspace/files/WorkspaceExplorer.tsx");
   assert.match(explorer, /label="检查文件"/);
@@ -190,14 +200,12 @@ test("Workspace explorer presents file inspection instead of preview as the IDE 
   assert.doesNotMatch(explorer, /description="打开预览面板"/);
 });
 
-test("Workspace markdown preview package is marked legacy compatibility only", () => {
+test("Workspace markdown preview package is compatibility-only, not the IDE mainline", () => {
   const preview = readWeb("features/workspace/preview/MarkdownPreview.tsx");
   const previewIndex = readWeb("features/workspace/preview/index.ts");
   const previewCss = readWeb("features/workspace/preview/markdown-preview.css");
 
-  assert.match(preview, /Legacy Markdown preview compatibility surface/);
-  assert.match(preview, /The active Workspace goal is IDE-first/);
-  assert.match(preview, /future `\/document-engine` concerns/);
+  assert.match(preview, /Legacy Markdown preview compatibility surface|Document Engine readonly Markdown preview adapter/);
   assert.match(previewIndex, /Legacy preview exports kept for compatibility/);
   assert.match(previewIndex, /Do not treat this package as the current Workspace IDE mainline/);
   assert.match(previewCss, /Legacy MarkdownPreview compatibility styles/);

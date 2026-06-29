@@ -65,7 +65,7 @@ export interface FileActionsMenuProps {
   onAfterMutation?: () => void;
   /** Open the upload manager for a directory without invoking the file picker directly. */
   onUploadRequest?: (directoryPath: string) => void;
-  /** Optional preview/edit entry point used by full file-manager surfaces. */
+  /** Optional legacy preview hook exposed as an IDE file inspection action. */
   onPreviewRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional properties dialog entry point used by full file-manager surfaces. */
   onPropertiesRequest?: (target: FileActionsMenuTarget) => void;
@@ -293,7 +293,7 @@ export function FileActionsMenu({
             {target.kind === "file" && onPreviewRequest ? (
               <MenuItem
                 icon={<Eye />}
-                label="预览 / 编辑（弹窗）"
+                label="检查文件（弹窗）"
                 onClick={() => {
                   onPreviewRequest(target);
                   closeAll();
