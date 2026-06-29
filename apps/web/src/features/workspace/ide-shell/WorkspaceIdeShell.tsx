@@ -941,10 +941,10 @@ export function WorkspaceIdeShell() {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
-  function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId) {
+  function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
-    selectDockPane(placement, "primary", paneId);
+    selectDockPane(placement, role, paneId);
     if (placement === "top") {
       setTopPanel(paneId);
       setTopOpen(true);
@@ -991,11 +991,21 @@ export function WorkspaceIdeShell() {
     setDropTarget((current) => (current === placement ? null : current));
   }
 
-  function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent, beforePaneId?: PaneId) {
+  function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
     event.preventDefault();
     const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
     if (isPaneId(paneId)) {
-      movePaneToPlacement(paneId, placement, beforePaneId);
+      movePaneToPlacement(paneId, placement, beforePaneId, role);
+    }
+    clearPaneDragState();
+  }
+
+  function dropPaneOnDockGroup(placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
+    if (isPaneId(paneId)) {
+      movePaneToPlacement(paneId, placement, undefined, role);
     }
     clearPaneDragState();
   }
@@ -1216,6 +1226,7 @@ export function WorkspaceIdeShell() {
                   onStartSplitResize={startDockSplitResize}
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
+                  onDropPaneOnGroup={dropPaneOnDockGroup}
                   renderPane={(paneId, role) => (
                     <LeftPane
                       activity={paneId}
@@ -1320,6 +1331,7 @@ export function WorkspaceIdeShell() {
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
+                onDropPaneOnGroup={dropPaneOnDockGroup}
               />
               <ResizeHandle
                 pane="top"
@@ -1472,6 +1484,7 @@ export function WorkspaceIdeShell() {
                 onStartSplitResize={startDockSplitResize}
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
+                onDropPaneOnGroup={dropPaneOnDockGroup}
               />
             </section>
           ) : null}
@@ -1544,6 +1557,7 @@ export function WorkspaceIdeShell() {
               onStartSplitResize={startDockSplitResize}
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
+              onDropPaneOnGroup={dropPaneOnDockGroup}
               renderPane={(paneId) => (
                 <RightPane
                   panel={paneId}
@@ -1902,6 +1916,7 @@ function DockPaneFrame({
   onStartSplitResize,
   onResizeSplitFromKeyboard,
   onFocusPane,
+  onDropPaneOnGroup,
   renderPane,
 }: {
   placement: PanePlacement;
@@ -1916,6 +1931,7 @@ function DockPaneFrame({
   onStartSplitResize: (placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) => void;
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
+  onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
@@ -1933,6 +1949,11 @@ function DockPaneFrame({
         aria-label={`${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}窗格：${paneLabel(paneId)}`}
         onPointerDown={() => onFocusPane(placement, role, paneId)}
         onFocus={() => onFocusPane(placement, role, paneId)}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(event) => onDropPaneOnGroup(placement, role, event)}
       >
         <div className="workspace-ide-shell__dock-split-pane-badge" aria-hidden={true}>
           {role === "primary" ? "主" : "副"} · {paneLabel(paneId)}

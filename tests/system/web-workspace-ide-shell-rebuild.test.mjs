@@ -200,6 +200,10 @@ test("new Workspace IDE shell supports drag and drop pane docking", () => {
   assert.match(shellSource, /application\/x-tracevane-pane/);
   assert.match(shellSource, /function dragPaneOverDock/);
   assert.match(shellSource, /function dropPaneOnDock/);
+  assert.match(shellSource, /function dropPaneOnDockGroup/);
+  assert.match(shellSource, /role: DockPaneRole = "primary"/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, placement, beforePaneId, role\)/);
+  assert.match(shellSource, /movePaneToPlacement\(paneId, placement, undefined, role\)/);
   assert.match(shellSource, /function leavePaneDock/);
   assert.match(shellSource, /data-ide-dock-placement="top"/);
   assert.match(shellSource, /data-ide-dock-placement="left"/);
@@ -208,7 +212,6 @@ test("new Workspace IDE shell supports drag and drop pane docking", () => {
   assert.match(shellSource, /data-ide-pane-draggable=\{paneId\}/);
   assert.match(shellSource, /draggable/);
   assert.match(shellSource, /isPaneId/);
-  assert.match(shellSource, /movePaneToPlacement\(paneId, placement, beforePaneId\)/);
   assert.match(cssSource, /workspace-ide-shell__body--dragging-pane/);
   assert.match(cssSource, /is-drop-target/);
   assert.match(cssSource, /cursor: grab/);
@@ -289,6 +292,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function DockSplitHandle/);
   assert.match(shellSource, /activeFocus: ActiveDockFocus/);
   assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
+  assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
+  assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
   assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-dock-selection-state=\{dockSelectionState\(dockPaneSelections\)\}/);
   assert.match(shellSource, /tabIndex=\{0\}/);
@@ -305,6 +310,8 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onSearchCommandsChange=\{role === "primary" \? setSearchCommands : ignoreWorkspaceCommands\}/);
   assert.match(shellSource, /data-ide-dock-split=\{shouldSplit \? splitMode : "single"\}/);
   assert.match(shellSource, /data-ide-dock-split-pane=\{role\}/);
+  assert.match(shellSource, /event\.dataTransfer\.dropEffect = "move"/);
+  assert.match(shellSource, /onDrop=\{\(event\) => onDropPaneOnGroup\(placement, role, event\)\}/);
   assert.match(shellSource, /data-ide-dock-split-handle=\{mode\}/);
   assert.match(shellSource, /--ide-dock-primary-size/);
   assert.match(shellSource, /aria-valuenow=\{Math\.round\(value\)\}/);
