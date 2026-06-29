@@ -1695,6 +1695,27 @@ export function WorkspaceIdeShell() {
         icon: <Settings2 />,
         run: saveLayoutSnapshot,
       },
+      {
+        id: "ide.layout.snapshot.export",
+        group: "布局",
+        label: "导出 IDE 布局快照 JSON",
+        description: "把当前保存的 IDE 布局快照复制到剪贴板并下载 JSON 文件，便于备份或迁移到另一设备",
+        risk: "safe",
+        surface: "layout",
+        icon: <Settings2 />,
+        disabled: layoutSnapshots.length === 0,
+        run: exportLayoutSnapshots,
+      },
+      {
+        id: "ide.layout.snapshot.import",
+        group: "布局",
+        label: "导入 IDE 布局快照 JSON",
+        description: "从 JSON 文本导入 IDE 布局快照；导入内容会通过布局 schema 清洗后再保存",
+        risk: "safe",
+        surface: "layout",
+        icon: <Settings2 />,
+        run: importLayoutSnapshots,
+      },
       ...layoutSnapshots.map((snapshot) => ({
         id: `ide.layout.snapshot.restore.${snapshot.id}`,
         group: "布局" as const,
@@ -1939,6 +1960,36 @@ export function WorkspaceIdeShell() {
     ));
     setLayoutSnapshots(nextSnapshots);
     storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function exportLayoutSnapshots() {
+    const payload = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), snapshots: sanitizeIdeLayoutSnapshots(layoutSnapshots) }, null, 2);
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(payload).catch(ignoreWorkspaceCommands);
+    }
+    if (typeof document === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") return;
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "tracevane-ide-layout-snapshots.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importLayoutSnapshots() {
+    const raw = typeof window !== "undefined" ? window.prompt("粘贴 IDE 布局快照 JSON") : null;
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const imported = sanitizeImportedLayoutSnapshots(parsed);
+      if (imported.length === 0) return;
+      const nextSnapshots = mergeLayoutSnapshots(imported, layoutSnapshots);
+      setLayoutSnapshots(nextSnapshots);
+      storeIdeLayoutSnapshots(nextSnapshots);
+    } catch {
+      if (typeof window !== "undefined") window.alert("无法导入 IDE 布局快照：JSON 无效或不符合布局 schema");
+    }
   }
 
   function renameLayoutSnapshot(snapshotId: string) {
@@ -2781,6 +2832,8 @@ export function WorkspaceIdeShell() {
         </div>
         <div className="workspace-ide-shell__layout-snapshots" aria-label="IDE 布局快照">
           <button type="button" onClick={saveLayoutSnapshot} data-ide-layout-snapshot-save>保存布局</button>
+          <button type="button" onClick={exportLayoutSnapshots} disabled={layoutSnapshots.length === 0} data-ide-layout-snapshot-export>导出</button>
+          <button type="button" onClick={importLayoutSnapshots} data-ide-layout-snapshot-import>导入</button>
           {layoutSnapshots.slice(0, 3).map((snapshot) => (
             <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-layout-snapshot={snapshot.id}>
               <button type="button" onClick={() => restoreLayoutSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
@@ -4681,6 +4734,26 @@ function storeIdeLayoutSnapshots(snapshots: IdeLayoutSnapshot[]) {
   } catch {
     // Layout snapshots are local preferences; storage denial must not break the IDE shell.
   }
+}
+
+function sanitizeImportedLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
+  if (Array.isArray(value)) return sanitizeIdeLayoutSnapshots(value);
+  if (value && typeof value === "object" && Array.isArray((value as { snapshots?: unknown }).snapshots)) {
+    return sanitizeIdeLayoutSnapshots((value as { snapshots: unknown[] }).snapshots);
+  }
+  return [];
+}
+
+function mergeLayoutSnapshots(imported: IdeLayoutSnapshot[], current: IdeLayoutSnapshot[]): IdeLayoutSnapshot[] {
+  const seen = new Set<string>();
+  const merged: IdeLayoutSnapshot[] = [];
+  for (const snapshot of [...imported, ...current]) {
+    const id = snapshot.id || `layout-${Date.now()}-${merged.length}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    merged.push({ ...snapshot, id });
+  }
+  return sanitizeIdeLayoutSnapshots(merged).slice(0, MAX_LAYOUT_SNAPSHOTS);
 }
 
 function storeIdeLayoutState(state: IdeLayoutState) {
