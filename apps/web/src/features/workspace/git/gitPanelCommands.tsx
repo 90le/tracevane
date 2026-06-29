@@ -334,7 +334,7 @@ export function createGitPanelCommands({
         run: () => openCommitDetails(commit),
       },
       {
-        id: `git.panel.commitReleaseNote.${commit.shortHash || commit.hash}`,
+        id: `git.panel.commitReviewEntry.${commit.shortHash || commit.hash}`,
         group: "证据" as const,
         label: `Git：复制提交审查条目 ${commit.shortHash}`,
         description: commit.subject

@@ -509,6 +509,7 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
   assert.match(gitCommands, /Diff 审查上下文/);
   assert.match(gitCommands, /Git：复制提交证据包/);
+  assert.match(gitCommands, /git\.panel\.commitReviewEntry/);
   assert.match(gitCommands, /审查证据包/);
   assert.match(gitPanel, /复制 Git 审查上下文/);
   assert.match(gitPanel, /已复制 Git 审查上下文/);
@@ -522,6 +523,7 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.doesNotMatch(gitPanel, />\s*变更日志\s*</);
   assert.doesNotMatch(gitPanel, /复制变更日志条目/);
   assert.doesNotMatch(gitPanel, /release-note context/);
+  assert.doesNotMatch(gitCommands, /git\.panel\.commitReleaseNote/);
   assert.doesNotMatch(gitPanel, /formatGitCommitReleaseNote/);
   assert.doesNotMatch(gitPanel, /copyGitCommitReleaseNote/);
   assert.match(gitPanel, /formatGitCommitReviewEntry/);
@@ -564,6 +566,7 @@ test("Workspace Git commands separate evidence from AI generation", () => {
   assert.match(gitCommands, /复制提交审查条目/);
   assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
   assert.match(gitCommands, /Git：复制提交证据包/);
+  assert.match(gitCommands, /git\.panel\.commitReviewEntry/);
   assert.match(gitCommands, /id: "git\.panel\.ai\.commitMessage"[\s\S]{0,220}group: "证据"/);
   assert.doesNotMatch(gitCommands, /Git：AI 提交信息/);
   assert.doesNotMatch(gitCommands, /Git：AI 总结当前变更/);
