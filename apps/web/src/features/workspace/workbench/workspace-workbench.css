@@ -145,6 +145,17 @@
   --workspace-command-hit-target: 2.75rem;
 }
 
+[data-workspace-command-palette-header="ide-command-console"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 92%, transparent), var(--panel));
+}
+
+[data-workspace-command-palette-scope] span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  padding: 0.18rem 0.48rem;
+}
+
 [data-workspace-command-palette-surface="ide-command-center"] [cmdk-group-heading] {
   letter-spacing: 0.08em;
   text-transform: uppercase;

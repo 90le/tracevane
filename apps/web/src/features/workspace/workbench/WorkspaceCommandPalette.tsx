@@ -30,6 +30,12 @@ export function WorkspaceCommandPalette({
   commands,
   keybindingConflicts = [],
 }: WorkspaceCommandPaletteProps) {
+  const enabledCommandCount = React.useMemo(
+    () => commands.filter((command) => !command.disabled).length,
+    [commands],
+  );
+  const totalCommandCount = commands.length;
+
   const runCommand = React.useCallback(
     (command: WorkspaceCommand) => {
       if (command.disabled) return;
@@ -53,7 +59,36 @@ export function WorkspaceCommandPalette({
       >
         <span className="h-1 w-10 rounded-full bg-line-2" />
       </div>
-      <CommandInput placeholder="输入命令：文件、搜索、Git、终端、布局…" />
+      <header
+        className="border-b border-line px-4 py-3"
+        data-workspace-command-palette-header="ide-command-console"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-primary">
+              IDE 命令控制台
+            </p>
+            <h2 className="truncate text-base font-semibold text-ink-strong">
+              文件、搜索、Git、终端、布局的统一动作入口
+            </h2>
+          </div>
+          <div
+            className="shrink-0 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-2xs font-semibold text-muted"
+            data-workspace-command-palette-count
+          >
+            {enabledCommandCount}/{totalCommandCount} 可用
+          </div>
+        </div>
+        <div
+          className="mt-2 flex flex-wrap gap-1.5 text-2xs text-muted"
+          data-workspace-command-palette-scope
+        >
+          <span>桌面：键盘优先</span>
+          <span>移动：拇指安全 Sheet</span>
+          <span>冲突：{keybindingConflicts.length}</span>
+        </div>
+      </header>
+      <CommandInput placeholder="输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作…" />
       <CommandList
         className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
         data-workspace-command-palette

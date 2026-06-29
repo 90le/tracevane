@@ -79,7 +79,11 @@ test("Workspace command system keeps the current IDE UI mainline out of preview/
 
 test("Workspace command palette is framed as an IDE command center", () => {
   const palette = readWeb("features/workspace/workbench/WorkspaceCommandPalette.tsx");
-  assert.match(palette, /输入命令：文件、搜索、Git、终端、布局/);
+  assert.match(palette, /IDE 命令控制台/);
+  assert.match(palette, /文件、搜索、Git、终端、布局的统一动作入口/);
+  assert.match(palette, /输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作/);
+  assert.match(palette, /enabledCommandCount/);
+  assert.match(palette, /data-workspace-command-palette-header="ide-command-console"/);
   assert.match(palette, /data-workspace-command-palette-surface="ide-command-center"/);
   assert.match(palette, /没有匹配的 IDE 命令/);
   assert.match(palette, /index < WORKSPACE_COMMAND_GROUPS\.length - 1/);
@@ -90,6 +94,8 @@ test("Workspace command palette is framed as an IDE command center", () => {
 test("Workspace command palette has IDE command-center styling hooks", () => {
   const css = readWeb("features/workspace/workbench/workspace-workbench.css");
   assert.match(css, /data-workspace-command-palette-surface="ide-command-center"/);
+  assert.match(css, /data-workspace-command-palette-header="ide-command-console"/);
+  assert.match(css, /data-workspace-command-palette-scope/);
   assert.match(css, /--workspace-command-hit-target: 2\.75rem/);
   assert.match(css, /--workspace-command-hit-target: 3\.25rem/);
   assert.match(css, /data-workspace-command-palette-mobile-sheet/);
