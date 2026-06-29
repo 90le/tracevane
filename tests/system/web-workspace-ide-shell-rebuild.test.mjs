@@ -278,6 +278,11 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /function selectDockTab/);
   assert.match(shellSource, /function setPrimaryDockPanel/);
   assert.match(shellSource, /function focusDockPane/);
+  assert.match(shellSource, /function activeDockPaneForPlacement/);
+  assert.match(shellSource, /function canSwapDockSplit/);
+  assert.match(shellSource, /function swapDockSplitPanes/);
+  assert.match(shellSource, /setPrimaryDockPanel\(placement, secondaryPane\)/);
+  assert.match(shellSource, /focusDockPane\(placement, "primary", secondaryPane\)/);
   assert.match(shellSource, /function resetDockSplitRatio/);
   assert.match(shellSource, /function openDockPlacement/);
   assert.match(shellSource, /function startDockSplitResize/);
@@ -292,6 +297,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.split\.\$\{placement\}\.down/);
   assert.match(shellSource, /ide\.dock\.close-split\.\$\{placement\}/);
   assert.match(shellSource, /ide\.dock\.reset-ratio\.\$\{placement\}/);
+  assert.match(shellSource, /ide\.dock\.swap-groups\.\$\{placement\}/);
+  assert.match(shellSource, /disabled: !canSwapDockSplit\(placement\)/);
+  assert.match(shellSource, /run: \(\) => swapDockSplitPanes\(placement\)/);
   assert.match(shellSource, /\.\.\.activeDockGroupCommands/);
   assert.match(shellSource, /\.\.\.dockSplitCommands/);
   assert.match(shellSource, /function DockPaneFrame/);
@@ -300,6 +308,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /onFocusPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup: \(placement: PanePlacement, role: DockPaneRole, event: React\.DragEvent\) => void/);
   assert.match(shellSource, /onDropPaneOnGroup=\{dropPaneOnDockGroup\}/);
+  assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
+  assert.match(shellSource, /data-ide-dock-swap-groups=\{placement\}/);
+  assert.match(shellSource, /交换\$\{placementLabel\(placement\)\} Dock 主副窗格组/);
   assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-dock-selection-state=\{dockSelectionState\(dockPaneSelections\)\}/);
   assert.match(shellSource, /tabIndex=\{0\}/);

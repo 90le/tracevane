@@ -625,8 +625,19 @@ export function WorkspaceIdeShell() {
           icon: <RotateCcw />,
           run: () => resetDockSplitRatio(placement),
         },
+        {
+          id: `ide.dock.swap-groups.${placement}`,
+          group: "窗格",
+          label: `交换${placementLabel(placement)} Dock 主副窗格组`,
+          description: `交换${placementLabel(placement)} Dock 的主窗格组和副窗格组，保留拆分方向和比例`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <RotateCcw />,
+          disabled: !canSwapDockSplit(placement),
+          run: () => swapDockSplitPanes(placement),
+        },
       ]),
-    [],
+    [activeBottomPane, activeLeftPane, activeRightPane, activeTopPane, dockPaneSelections, dockSplitModes, secondaryBottomPane, secondaryLeftPane, secondaryRightPane, secondaryTopPane],
   );
 
   const layoutSnapshotCommands = React.useMemo<WorkspaceCommand[]>(
@@ -925,6 +936,34 @@ export function WorkspaceIdeShell() {
 
   function focusDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
     setActiveDockFocus({ placement, role, paneId });
+  }
+
+  function activeDockPaneForPlacement(placement: PanePlacement, role: DockPaneRole): PaneId | undefined {
+    if (placement === "top") return role === "primary" ? activeTopPane : secondaryTopPane;
+    if (placement === "left") return role === "primary" ? activeLeftPane : secondaryLeftPane;
+    if (placement === "right") return role === "primary" ? activeRightPane : secondaryRightPane;
+    return role === "primary" ? activeBottomPane : secondaryBottomPane;
+  }
+
+  function canSwapDockSplit(placement: PanePlacement) {
+    return dockSplitModes[placement] !== "single" && Boolean(activeDockPaneForPlacement(placement, "primary") && activeDockPaneForPlacement(placement, "secondary"));
+  }
+
+  function swapDockSplitPanes(placement: PanePlacement) {
+    const primaryPane = activeDockPaneForPlacement(placement, "primary");
+    const secondaryPane = activeDockPaneForPlacement(placement, "secondary");
+    if (dockSplitModes[placement] === "single" || !primaryPane || !secondaryPane) return;
+    setDockPaneSelections((current) => ({
+      ...current,
+      [placement]: {
+        ...current[placement],
+        primary: secondaryPane,
+        secondary: primaryPane,
+      },
+    }));
+    setPrimaryDockPanel(placement, secondaryPane);
+    openDockPlacement(placement);
+    focusDockPane(placement, "primary", secondaryPane);
   }
 
   function resetDockSplitRatio(placement: PanePlacement) {
@@ -1231,6 +1270,7 @@ export function WorkspaceIdeShell() {
                   splitMode={dockSplitModes.left}
                   onMovePane={movePaneToPlacement}
                   onSetDockSplitMode={setDockSplitMode}
+                  onSwapDockGroups={swapDockSplitPanes}
                   onBeginDrag={beginPaneDrag}
                   onEndDrag={clearPaneDragState}
                   onCloseDock={() => setLeftOpen(false)}
@@ -1325,6 +1365,7 @@ export function WorkspaceIdeShell() {
                       splitMode={dockSplitModes.top}
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
+                      onSwapDockGroups={swapDockSplitPanes}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onCloseDock={() => setTopOpen(false)}
@@ -1478,6 +1519,7 @@ export function WorkspaceIdeShell() {
                       splitMode={dockSplitModes.bottom}
                       onMovePane={movePaneToPlacement}
                       onSetDockSplitMode={setDockSplitMode}
+                      onSwapDockGroups={swapDockSplitPanes}
                       onBeginDrag={beginPaneDrag}
                       onEndDrag={clearPaneDragState}
                       onCloseDock={() => setBottomOpen(false)}
@@ -1559,6 +1601,7 @@ export function WorkspaceIdeShell() {
                     splitMode={dockSplitModes.right}
                     onMovePane={movePaneToPlacement}
                     onSetDockSplitMode={setDockSplitMode}
+                    onSwapDockGroups={swapDockSplitPanes}
                     onBeginDrag={beginPaneDrag}
                     onEndDrag={clearPaneDragState}
                     onCloseDock={() => setRightOpen(false)}
@@ -1629,6 +1672,7 @@ function PaneDockControls({
   splitMode,
   onMovePane,
   onSetDockSplitMode,
+  onSwapDockGroups,
   onBeginDrag,
   onEndDrag,
   onCloseDock,
@@ -1639,6 +1683,7 @@ function PaneDockControls({
   splitMode?: DockSplitMode;
   onMovePane: (paneId: PaneId, placement: PanePlacement) => void;
   onSetDockSplitMode?: (placement: PanePlacement, mode: DockSplitMode) => void;
+  onSwapDockGroups?: (placement: PanePlacement) => void;
   onBeginDrag: (paneId: PaneId, event: React.DragEvent) => void;
   onEndDrag: () => void;
   onCloseDock: () => void;
@@ -1668,6 +1713,17 @@ function PaneDockControls({
           <button type="button" data-active={splitMode === "single"} aria-label={`取消${placementLabel(placement)} Dock 拆分`} onClick={() => onSetDockSplitMode(placement, "single")}>单</button>
           <button type="button" data-active={splitMode === "vertical"} aria-label={`${placementLabel(placement)} Dock 左右拆分`} onClick={() => onSetDockSplitMode(placement, "vertical")}>↔</button>
           <button type="button" data-active={splitMode === "horizontal"} aria-label={`${placementLabel(placement)} Dock 上下拆分`} onClick={() => onSetDockSplitMode(placement, "horizontal")}>↕</button>
+          {onSwapDockGroups ? (
+            <button
+              type="button"
+              data-ide-dock-swap-groups={placement}
+              disabled={splitMode === "single"}
+              aria-label={`交换${placementLabel(placement)} Dock 主副窗格组`}
+              onClick={() => onSwapDockGroups(placement)}
+            >
+              ⇄组
+            </button>
+          ) : null}
         </>
       ) : null}
       <button type="button" aria-label={`关闭${placementLabel(placement)} Dock`} onClick={onCloseDock}>
