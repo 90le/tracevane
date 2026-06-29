@@ -23,8 +23,9 @@ test("new Workspace IDE shell models pane/plugin composition", () => {
   for (const token of ["explorer", "search", "git", "terminal", "ai", "extensions", "provider"]) {
     assert.match(shellSource, new RegExp(token));
   }
-  assert.match(shellSource, /RIGHT_PANELS/);
-  assert.match(shellSource, /BOTTOM_PANELS/);
+  assert.match(shellSource, /PANE_REGISTRY/);
+  assert.match(shellSource, /DEFAULT_PANE_PLACEMENTS/);
+  assert.match(shellSource, /type PanePlacement = "left" \| "right" \| "bottom"/);
   assert.match(shellSource, /WorkspaceExplorer/);
   assert.match(shellSource, /WorkspaceSearchPanel/);
   assert.match(shellSource, /WorkspaceGitPanel/);
@@ -117,4 +118,19 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="vertical"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-grid\[data-ide-editor-split="horizontal"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-split-handle/);
+});
+
+
+test("new Workspace IDE shell supports movable pane registry placements", () => {
+  assert.match(shellSource, /type PaneId = "explorer" \| "search" \| "git" \| "terminal" \| "ai" \| "outline" \| "extensions" \| "problems" \| "output"/);
+  assert.match(shellSource, /interface PaneDescriptor/);
+  assert.match(shellSource, /defaultPlacement: PanePlacement/);
+  assert.match(shellSource, /panePlacements/);
+  assert.match(shellSource, /groupPanesByPlacement/);
+  assert.match(shellSource, /movePaneToPlacement/);
+  assert.match(shellSource, /ide\.pane\.move\.\$\{pane\.id\}\.\$\{placement\}/);
+  assert.match(shellSource, /placementLabel/);
+  assert.match(shellSource, /sanitizePanePlacements/);
+  assert.match(shellSource, /isPanePlacement/);
+  assert.match(shellSource, /窗格: L\{leftPaneIds\.length\}\/R\{rightPaneIds\.length\}\/B\{bottomPaneIds\.length\}/);
 });

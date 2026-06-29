@@ -36,9 +36,8 @@ import { IdeCommandPalette } from "./IdeCommandPalette";
 import type { WorkspaceCommand } from "./ideCommands";
 import "./workspace-ide-shell.css";
 
-type ActivityId = "explorer" | "search" | "git" | "terminal" | "ai" | "extensions";
-type RightPanelId = "ai" | "outline" | "extensions";
-type BottomPanelId = "terminal" | "problems" | "output";
+type PaneId = "explorer" | "search" | "git" | "terminal" | "ai" | "outline" | "extensions" | "problems" | "output";
+type PanePlacement = "left" | "right" | "bottom";
 type SaveState = "idle" | "dirty" | "saving" | "saved";
 type MaximizedPane = "left" | "center" | "right" | "bottom" | null;
 type LayoutPreset = "balanced" | "code" | "terminal";
@@ -51,33 +50,32 @@ interface IdePaneSizes {
   bottom: number;
 }
 
-interface ActivityDescriptor {
-  id: ActivityId;
+interface PaneDescriptor {
+  id: PaneId;
   label: string;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  shortcut: string;
+  shortcut?: string;
+  defaultPlacement: PanePlacement;
 }
 
-const ACTIVITIES: ActivityDescriptor[] = [
-  { id: "explorer", label: "文件", icon: Files, shortcut: "⌘1" },
-  { id: "search", label: "搜索", icon: Search, shortcut: "⌘2" },
-  { id: "git", label: "Git", icon: GitBranch, shortcut: "⌘3" },
-  { id: "terminal", label: "终端", icon: TerminalSquare, shortcut: "⌘4" },
-  { id: "ai", label: "AI", icon: Bot, shortcut: "⌘5" },
-  { id: "extensions", label: "扩展", icon: Braces, shortcut: "⌘6" },
+const PANE_REGISTRY: PaneDescriptor[] = [
+  { id: "explorer", label: "文件", icon: Files, shortcut: "⌘1", defaultPlacement: "left" },
+  { id: "search", label: "搜索", icon: Search, shortcut: "⌘2", defaultPlacement: "left" },
+  { id: "git", label: "Git", icon: GitBranch, shortcut: "⌘3", defaultPlacement: "left" },
+  { id: "terminal", label: "终端", icon: TerminalSquare, shortcut: "⌘4", defaultPlacement: "bottom" },
+  { id: "ai", label: "AI", icon: Bot, shortcut: "⌘5", defaultPlacement: "right" },
+  { id: "outline", label: "大纲", icon: Braces, defaultPlacement: "right" },
+  { id: "extensions", label: "扩展", icon: Braces, shortcut: "⌘6", defaultPlacement: "right" },
+  { id: "problems", label: "问题", icon: Braces, defaultPlacement: "bottom" },
+  { id: "output", label: "输出", icon: Code2, defaultPlacement: "bottom" },
 ];
 
-const RIGHT_PANELS: Array<{ id: RightPanelId; label: string }> = [
-  { id: "ai", label: "AI 上下文" },
-  { id: "outline", label: "符号大纲" },
-  { id: "extensions", label: "插件" },
-];
+type IdePanePlacements = Record<PaneId, PanePlacement>;
 
-const BOTTOM_PANELS: Array<{ id: BottomPanelId; label: string }> = [
-  { id: "terminal", label: "终端" },
-  { id: "problems", label: "问题" },
-  { id: "output", label: "输出" },
-];
+const DEFAULT_PANE_PLACEMENTS = PANE_REGISTRY.reduce((placements, pane) => {
+  placements[pane.id] = pane.defaultPlacement;
+  return placements;
+}, {} as IdePanePlacements);
 
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 
@@ -103,6 +101,7 @@ interface IdeLayoutState {
   paneSizes?: Partial<IdePaneSizes>;
   editorSplitMode?: EditorSplitMode;
   editorSplitRatio?: number;
+  panePlacements?: Partial<IdePanePlacements>;
 }
 
 const LazyWorkspaceTerminal = React.lazy(() =>
@@ -125,9 +124,13 @@ export function WorkspaceIdeShell() {
   }, [filesSummary.data?.defaultRootId, roots]);
 
   const [layoutState] = React.useState(() => loadIdeLayoutState());
-  const [activity, setActivity] = React.useState<ActivityId>("explorer");
-  const [rightPanel, setRightPanel] = React.useState<RightPanelId>("ai");
-  const [bottomPanel, setBottomPanel] = React.useState<BottomPanelId>("terminal");
+  const [activity, setActivity] = React.useState<PaneId>("explorer");
+  const [rightPanel, setRightPanel] = React.useState<PaneId>("ai");
+  const [bottomPanel, setBottomPanel] = React.useState<PaneId>("terminal");
+  const [panePlacements, setPanePlacements] = React.useState<IdePanePlacements>(() => ({
+    ...DEFAULT_PANE_PLACEMENTS,
+    ...layoutState.panePlacements,
+  }));
   const [leftOpen, setLeftOpen] = React.useState(layoutState.leftOpen ?? true);
   const [rightOpen, setRightOpen] = React.useState(layoutState.rightOpen ?? true);
   const [bottomOpen, setBottomOpen] = React.useState(layoutState.bottomOpen ?? true);
@@ -157,6 +160,14 @@ export function WorkspaceIdeShell() {
   const [terminalCommands, setTerminalCommands] = React.useState<WorkspaceCommand[]>([]);
   const searchSignalRef = React.useRef(0);
 
+  const panesByPlacement = React.useMemo(() => groupPanesByPlacement(panePlacements), [panePlacements]);
+  const leftPaneIds = panesByPlacement.left;
+  const rightPaneIds = panesByPlacement.right;
+  const bottomPaneIds = panesByPlacement.bottom;
+  const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0] ?? "explorer";
+  const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0] ?? "ai";
+  const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0] ?? "terminal";
+
   React.useEffect(() => {
     if (!rootId && defaultRootId) {
       setRootId(defaultRootId);
@@ -183,8 +194,9 @@ export function WorkspaceIdeShell() {
       paneSizes,
       editorSplitMode,
       editorSplitRatio,
+      panePlacements,
     });
-  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneSizes, rightOpen]);
+  }, [bottomOpen, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, panePlacements, paneSizes, rightOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -432,9 +444,26 @@ export function WorkspaceIdeShell() {
     [bottomOpen, editorSplitMode, leftOpen, maximizedPane, rightOpen],
   );
 
+  const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      PANE_REGISTRY.flatMap((pane) =>
+        (["left", "right", "bottom"] as PanePlacement[]).map((placement) => ({
+          id: `ide.pane.move.${pane.id}.${placement}`,
+          group: "窗格",
+          label: `移动 ${pane.label} 到${placementLabel(placement)}`,
+          description: "把 IDE 窗格移动到左侧、右侧或底部 Dock，形成自定义工作台组合",
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: React.createElement(pane.icon),
+          run: () => movePaneToPlacement(pane.id, placement),
+        })),
+      ),
+    [],
+  );
+
   const commands = React.useMemo(
-    () => [...layoutCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [editorCommands, gitCommands, layoutCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...panePlacementCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [editorCommands, gitCommands, layoutCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -549,11 +578,33 @@ export function WorkspaceIdeShell() {
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
-  function activateActivity(nextActivity: ActivityId) {
-    setActivity(nextActivity);
-    if (nextActivity === "terminal") {
-      setBottomPanel("terminal");
+  function movePaneToPlacement(paneId: PaneId, placement: PanePlacement) {
+    setPanePlacements((current) => ({ ...current, [paneId]: placement }));
+    if (placement === "left") {
+      setActivity(paneId);
+      setLeftOpen(true);
+    }
+    if (placement === "right") {
+      setRightPanel(paneId);
+      setRightOpen(true);
+    }
+    if (placement === "bottom") {
+      setBottomPanel(paneId);
       setBottomOpen(true);
+    }
+  }
+
+  function activateActivity(nextActivity: PaneId) {
+    setActivity(nextActivity);
+    const placement = panePlacements[nextActivity];
+    if (placement === "bottom") {
+      setBottomPanel(nextActivity);
+      setBottomOpen(true);
+      return;
+    }
+    if (placement === "right") {
+      setRightPanel(nextActivity);
+      setRightOpen(true);
       return;
     }
     setLeftOpen(true);
@@ -615,15 +666,16 @@ export function WorkspaceIdeShell() {
         )}
       >
         <aside className="workspace-ide-shell__activity" aria-label="IDE activity rail">
-          {ACTIVITIES.map((item) => {
+          {leftPaneIds.map((paneId) => {
+            const item = paneDescriptor(paneId);
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
                 type="button"
-                className={cn("workspace-ide-shell__activity-button", activity === item.id && "is-active")}
+                className={cn("workspace-ide-shell__activity-button", activeLeftPane === item.id && "is-active")}
                 onClick={() => activateActivity(item.id)}
-                title={`${item.label} ${item.shortcut}`}
+                title={`${item.label} ${item.shortcut ?? ""}`}
               >
                 <Icon className="h-5 w-5" aria-hidden={true} />
                 <span>{item.label}</span>
@@ -638,9 +690,9 @@ export function WorkspaceIdeShell() {
 
         {leftOpen ? (
           <section className="workspace-ide-shell__left-pane" data-testid="workspace-ide-left-pane">
-            <PaneHeader title={activityLabel(activity)} subtitle={leftPaneSubtitle(activity)} />
+            <PaneHeader title={paneLabel(activeLeftPane)} subtitle={leftPaneSubtitle(activeLeftPane)} />
             <LeftPane
-              activity={activity}
+              activity={activeLeftPane}
               rootId={rootId}
               activePath={activePath}
               workspaceDirectory={workspaceDirectory}
@@ -751,14 +803,14 @@ export function WorkspaceIdeShell() {
                 onKeyDown={(event) => resizePaneFromKeyboard("bottom", event)}
               />
               <div className="workspace-ide-shell__panel-tabs">
-                {BOTTOM_PANELS.map((panel) => (
+                {bottomPaneIds.map((paneId) => (
                   <button
-                    key={panel.id}
+                    key={paneId}
                     type="button"
-                    className={cn("workspace-ide-shell__panel-tab", bottomPanel === panel.id && "is-active")}
-                    onClick={() => setBottomPanel(panel.id)}
+                    className={cn("workspace-ide-shell__panel-tab", activeBottomPane === paneId && "is-active")}
+                    onClick={() => setBottomPanel(paneId)}
                   >
-                    {panel.label}
+                    {paneLabel(paneId)}
                   </button>
                 ))}
                 <button
@@ -771,7 +823,7 @@ export function WorkspaceIdeShell() {
                 </button>
               </div>
               <BottomPane
-                panel={bottomPanel}
+                panel={activeBottomPane}
                 workspaceDirectory={workspaceDirectory}
                 onTerminalCommandsChange={setTerminalCommands}
               />
@@ -793,19 +845,19 @@ export function WorkspaceIdeShell() {
         {rightOpen ? (
           <aside className="workspace-ide-shell__right-pane" data-testid="workspace-ide-right-pane" data-ide-pane="right">
             <div className="workspace-ide-shell__right-tabs">
-              {RIGHT_PANELS.map((panel) => (
+              {rightPaneIds.map((paneId) => (
                 <button
-                  key={panel.id}
+                  key={paneId}
                   type="button"
-                  className={cn("workspace-ide-shell__right-tab", rightPanel === panel.id && "is-active")}
-                  onClick={() => setRightPanel(panel.id)}
+                  className={cn("workspace-ide-shell__right-tab", activeRightPane === paneId && "is-active")}
+                  onClick={() => setRightPanel(paneId)}
                 >
-                  {panel.label}
+                  {paneLabel(paneId)}
                 </button>
               ))}
             </div>
             <RightPane
-              panel={rightPanel}
+              panel={activeRightPane}
               rootId={rootId}
               activePath={activePath}
               saveState={saveState}
@@ -824,6 +876,7 @@ export function WorkspaceIdeShell() {
         <span>布局: {layoutPreset}</span>
         <span>尺寸: {paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
+        <span>窗格: L{leftPaneIds.length}/R{rightPaneIds.length}/B{bottomPaneIds.length}</span>
         <span className="ml-auto">桌面 · 平板 · 手机自适应 IDE</span>
       </footer>
 
@@ -976,7 +1029,7 @@ function LeftPane({
   onRevealInExplorer,
   onFocusTerminal,
 }: {
-  activity: ActivityId;
+  activity: PaneId;
   rootId: string;
   activePath?: string;
   workspaceDirectory: WorkspaceDirectoryContext | null;
@@ -1040,7 +1093,7 @@ function RightPane({
   gitDiffTarget,
   commandCount,
 }: {
-  panel: RightPanelId;
+  panel: PaneId;
   rootId: string;
   activePath?: string;
   saveState: SaveState;
@@ -1072,7 +1125,7 @@ function BottomPane({
   workspaceDirectory,
   onTerminalCommandsChange,
 }: {
-  panel: BottomPanelId;
+  panel: PaneId;
   workspaceDirectory: WorkspaceDirectoryContext | null;
   onTerminalCommandsChange: (commands: WorkspaceCommand[]) => void;
 }) {
@@ -1084,7 +1137,8 @@ function BottomPane({
     );
   }
   if (panel === "problems") return <CodePane title="Problems" lines={["0 errors", "0 warnings", "真实诊断面板将在 LSP 接入后替换此占位。"]} compact />;
-  return <CodePane title="Output" lines={["Tracevane IDE shell mounted", "Explorer/Search/Git/Editor/Terminal are live components", "Provider route: /#/workspace?provider=ide"]} compact />;
+  if (panel === "output") return <CodePane title="Output" lines={["Tracevane IDE shell mounted", "Explorer/Search/Git/Editor/Terminal are live components", "Provider route: /#/workspace?provider=ide"]} compact />;
+  return <TreeList title={`${paneLabel(panel)} Dock`} items={["该窗格已移动到底部 Dock", "命令面板可再次移动到左侧或右侧", "后续插件窗格可复用同一 placement contract"]} />;
 }
 
 function TreeList({ title, items }: { title: string; items: string[] }) {
@@ -1111,11 +1165,15 @@ function CodePane({ title, lines, compact = false }: { title: string; lines: str
   );
 }
 
-function activityLabel(activity: ActivityId): string {
-  return ACTIVITIES.find((item) => item.id === activity)?.label ?? activity;
+function paneDescriptor(paneId: PaneId): PaneDescriptor {
+  return PANE_REGISTRY.find((pane) => pane.id === paneId) ?? PANE_REGISTRY[0];
 }
 
-function leftPaneSubtitle(activity: ActivityId): string {
+function paneLabel(paneId: PaneId): string {
+  return paneDescriptor(paneId).label;
+}
+
+function leftPaneSubtitle(activity: PaneId): string {
   if (activity === "explorer") return "真实文件树、目录、上传与文件操作";
   if (activity === "search") return "真实全文搜索与替换";
   if (activity === "git") return "真实 Git 状态、diff 与提交";
@@ -1124,14 +1182,24 @@ function leftPaneSubtitle(activity: ActivityId): string {
   return "后续可替换为插件市场和 provider 管理";
 }
 
-function activityByShortcut(key: string): ActivityId | null {
-  if (key === "1") return "explorer";
-  if (key === "2") return "search";
-  if (key === "3") return "git";
-  if (key === "4") return "terminal";
-  if (key === "5") return "ai";
-  if (key === "6") return "extensions";
-  return null;
+function activityByShortcut(key: string): PaneId | null {
+  return PANE_REGISTRY.find((pane) => pane.shortcut?.endsWith(key))?.id ?? null;
+}
+
+function groupPanesByPlacement(placements: IdePanePlacements): Record<PanePlacement, PaneId[]> {
+  return PANE_REGISTRY.reduce(
+    (groups, pane) => {
+      groups[placements[pane.id] ?? pane.defaultPlacement].push(pane.id);
+      return groups;
+    },
+    { left: [], right: [], bottom: [] } as Record<PanePlacement, PaneId[]>,
+  );
+}
+
+function placementLabel(placement: PanePlacement): string {
+  if (placement === "left") return "左侧";
+  if (placement === "right") return "右侧";
+  return "底部";
 }
 
 function editorSplitKeyboardDelta(mode: EditorSplitMode, key: string, step: number): number {
@@ -1204,7 +1272,17 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     paneSizes: sanitizePaneSizes(value.paneSizes),
     editorSplitMode: isEditorSplitMode(value.editorSplitMode) ? value.editorSplitMode : undefined,
     editorSplitRatio: sanitizeEditorSplitRatio(value.editorSplitRatio),
+    panePlacements: sanitizePanePlacements(value.panePlacements),
   };
+}
+
+function sanitizePanePlacements(value: Partial<IdePanePlacements> | undefined): Partial<IdePanePlacements> | undefined {
+  if (!value) return undefined;
+  const placements: Partial<IdePanePlacements> = {};
+  for (const pane of PANE_REGISTRY) {
+    if (isPanePlacement(value[pane.id])) placements[pane.id] = value[pane.id];
+  }
+  return placements;
 }
 
 function sanitizePaneSizes(value: Partial<IdePaneSizes> | undefined): Partial<IdePaneSizes> | undefined {
@@ -1223,6 +1301,10 @@ function sanitizePaneSize(pane: keyof IdePaneSizes, value: number | undefined): 
   if (typeof value !== "number" || Number.isNaN(value)) return undefined;
   const { min, max } = PANE_SIZE_LIMITS[pane];
   return clamp(value, min, max);
+}
+
+function isPanePlacement(value: unknown): value is PanePlacement {
+  return value === "left" || value === "right" || value === "bottom";
 }
 
 function sanitizeEditorSplitRatio(value: number | undefined): number | undefined {
