@@ -187,7 +187,7 @@ export function TrashManager({
             <Trash2 className="size-4" />
           </span>
           <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+            <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 lg:flex-wrap lg:justify-end lg:overflow-visible lg:pb-0">
               <h2 className="text-sm font-semibold text-ink-strong">
                 全局回收站
               </h2>
@@ -195,16 +195,16 @@ export function TrashManager({
                 {totalItems} 项 · {selectedItems.length} 已选
               </span>
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted">
-              所有 root 删除项统一进入
-              .openclaw/.tracevane/trash，恢复时自动回到原 root。
+            <p className="mt-0.5 hidden truncate text-xs text-muted sm:block">
+              所有 root 删除项统一进入 .openclaw/.tracevane/trash，恢复时自动回到原 root。
             </p>
           </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+        <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 lg:flex-wrap lg:justify-end lg:overflow-visible lg:pb-0">
           <Button
             variant="outline"
             size="sm"
+            className="shrink-0"
             onClick={() => void trash.refetch()}
             disabled={trash.isFetching}
           >
@@ -214,6 +214,7 @@ export function TrashManager({
           <Button
             variant="danger"
             size="sm"
+            className="shrink-0"
             onClick={() =>
               void purgeItems(selectedItems.length ? selectedItems : items)
             }
@@ -228,43 +229,26 @@ export function TrashManager({
       </header>
 
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-      <div
-        className="grid gap-2 border-b border-line bg-panel-2/70 px-3 py-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] lg:px-4"
-        data-file-manager-trash-overview
-      >
-        <TrashMetric
-          icon={<ArchiveRestore className="size-4" />}
-          label="全部项目"
-          value={`${totalItems}`}
-          hint={`${summary.rootCount} 个 root`}
-        />
-        <TrashMetric
-          icon={<FolderOpen className="size-4" />}
-          label="目录"
-          value={`${summary.directories}`}
-          hint="可整目录恢复"
-        />
-        <TrashMetric
-          icon={<FileText className="size-4" />}
-          label="文件"
-          value={`${summary.files}`}
-          hint={formatBytes(summary.size)}
-        />
-        <TrashMetric
-          icon={<ShieldAlert className="size-4" />}
-          label="恢复策略"
-          value={conflictPolicyLabel(conflictPolicy)}
-          hint="默认保留两者"
-        />
-        <label className="flex min-w-0 items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-xs shadow-sm">
-          <Search className="size-4 shrink-0 text-subtle" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="筛选名称、原路径、root"
-            className="min-w-0 flex-1 bg-transparent text-sm text-ink-strong outline-none placeholder:text-subtle"
-            aria-label="筛选回收站"
-          />
+      <div className="border-b border-line bg-panel-2/70" data-file-manager-trash-overview>
+        <div className="flex gap-2 overflow-x-auto px-3 py-2 sm:hidden">
+          <TrashChip label="全部" value={`${totalItems}`} />
+          <TrashChip label="目录" value={`${summary.directories}`} />
+          <TrashChip label="文件" value={`${summary.files}`} />
+          <TrashChip label="策略" value={conflictPolicyLabel(conflictPolicy)} />
+        </div>
+        <div className="hidden gap-2 px-3 py-2 sm:grid sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] lg:px-4">
+          <TrashMetric icon={<ArchiveRestore className="size-4" />} label="全部项目" value={`${totalItems}`} hint={`${summary.rootCount} 个 root`} />
+          <TrashMetric icon={<FolderOpen className="size-4" />} label="目录" value={`${summary.directories}`} hint="可整目录恢复" />
+          <TrashMetric icon={<FileText className="size-4" />} label="文件" value={`${summary.files}`} hint={formatBytes(summary.size)} />
+          <TrashMetric icon={<ShieldAlert className="size-4" />} label="恢复策略" value={conflictPolicyLabel(conflictPolicy)} hint="默认保留两者" />
+          <label className="flex min-w-0 items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-xs shadow-sm">
+            <Search className="size-4 shrink-0 text-subtle" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选名称、原路径、root" className="min-w-0 flex-1 bg-transparent text-sm text-ink-strong outline-none placeholder:text-subtle" aria-label="筛选回收站" />
+          </label>
+        </div>
+        <label className="mx-3 mb-2 flex min-w-0 items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-xs shadow-sm sm:hidden">
+          <Search className="size-3.5 shrink-0 text-subtle" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选回收站" className="min-w-0 flex-1 bg-transparent text-xs text-ink-strong outline-none placeholder:text-subtle" aria-label="筛选回收站" />
         </label>
       </div>
 
@@ -279,7 +263,7 @@ export function TrashManager({
             className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-t-lg border border-b-0 border-line bg-panel-2 px-2 py-2 text-xs text-muted sm:px-3"
             data-file-manager-trash-toolbar
           >
-            <label className="flex items-center gap-2">
+            <label className="hidden items-center gap-2 sm:flex">
               <Gauge className="size-4 text-subtle" />
               <span className="text-subtle">恢复冲突策略</span>
               <select
@@ -302,7 +286,7 @@ export function TrashManager({
             <span>
               {query
                 ? `${visibleItems.length} / ${items.length} 项匹配`
-                : "全局回收站 · 不按目录分组"}
+                : `第 ${trash.data?.page ?? page}/${totalPages} 页 · 全局回收站`}
             </span>
           </div>
 
@@ -538,9 +522,9 @@ function TrashPagination({
     onPageChange(Math.min(totalPages, Math.max(1, Math.floor(parsed))));
   }, [draft, onPageChange, page, totalPages]);
   return (
-    <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-2 py-2 text-xs text-muted sm:px-3" data-file-manager-trash-pagination>
+    <footer className="flex flex-wrap items-center justify-between gap-1.5 border-t border-line bg-panel px-2 py-1.5 text-xs text-muted sm:gap-2 sm:px-3 sm:py-2" data-file-manager-trash-pagination>
       <span className="min-w-0 truncate">第 {page}/{totalPages} 页 · 本页 {pageItems} 项 · 共 {totalItems} 项</span>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
         <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={loading || page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>上一页</Button>
         <label className="flex items-center gap-1">
           跳至
@@ -671,6 +655,15 @@ function extensionOf(name: string): string {
   return index > 0 && index < name.length - 1
     ? name.slice(index + 1).toLowerCase()
     : "";
+}
+
+function TrashChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5">
+      <span className="text-2xs text-muted">{label}</span>
+      <span className="max-w-[90px] truncate text-xs font-semibold text-ink-strong">{value}</span>
+    </div>
+  );
 }
 
 function TrashMetric({

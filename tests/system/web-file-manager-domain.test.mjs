@@ -130,6 +130,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(trashManager, /data-file-manager-trash-virtual-list/);
   assert.match(trashManager, /data-file-manager-trash-rendered-count/);
   assert.match(trashManager, /data-file-manager-trash-total-count/);
+  assert.match(trashManager, /data-file-manager-trash-pagination/);
+  assert.match(trashManager, /overflow-x-auto px-3 py-2 sm:hidden/);
   assert.match(trashManager, /useIdleReady\(120\)/);
   assert.match(trashManager, /enabled: trashQueryReady/);
   assert.match(
@@ -218,6 +220,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(contentIndex, /CONTENT_INDEX_RECORD_ROW_HEIGHT/);
   assert.match(contentIndex, /data-content-index-virtualized-records/);
   assert.match(contentIndex, /data-content-index-rendered-count/);
+  assert.match(contentIndex, /data-content-index-page-jump/);
+  assert.match(contentIndex, /overflow-x-auto px-3 py-2 sm:hidden/);
   assert.match(contentIndex, /data-content-index-total-count/);
   assert.match(contentIndex, /useIdleReady\(140\)/);
   assert.doesNotMatch(contentIndex, /cleanAvailable/);
@@ -760,7 +764,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     actionsMenu,
     /onPreviewRequest\?: \(target: FileActionsMenuTarget\) => void/,
   );
-  assert.match(actionsMenu, /label="预览 \/ 编辑（弹窗）"/);
+  assert.match(actionsMenu, /label="检查文件（弹窗）"/);
+  assert.doesNotMatch(actionsMenu, /label="预览 \/ 编辑（弹窗）"/);
   assert.match(previewPanel, /DocumentWorkbench/);
   assert.match(previewPanel, /FilePreviewTabStrip/);
   assert.match(previewPanel, /data-file-preview-tab-strip/);
@@ -789,9 +794,10 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(textSearchReplace, /countTextMatches/);
   assert.match(textSearchReplace, /replaceText/);
   assert.match(textSearchReplace, /同标签页查找\/替换/);
-  assert.match(textSearchReplace, /预览全部/);
+  assert.match(textSearchReplace, /审查全部/);
+  assert.doesNotMatch(textSearchReplace, /预览全部/);
   assert.match(textSearchReplace, /确认全部替换/);
-  assert.match(textSearchReplace, /替换前预览/);
+  assert.match(textSearchReplace, /替换前审查/);
   assert.match(textSearchReplace, /data-text-replace-preview/);
   assert.match(textSearchReplace, /ReplaceDiffPreview/);
   assert.match(textSearchReplace, /createReplaceDiffLines/);
@@ -846,7 +852,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(binaryFilePreview, /Office \/ 文档文件/);
   assert.match(binaryFilePreview, /data-document-preview-kind/);
   assert.match(binaryFilePreview, /尝试浏览器打开/);
-  assert.match(binaryFilePreview, /安全占位预览/);
+  assert.match(binaryFilePreview, /安全占位检查/);
+  assert.doesNotMatch(binaryFilePreview, /安全占位预览/);
   assert.match(textSlicePreview, /仅渲染前/);
   assert.match(textSlicePreview, /data-document-preview-kind/);
   assert.match(textSlicePreview, /下一段/);
@@ -855,125 +862,37 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(archivePreview, /data-document-preview-kind/);
   assert.match(archivePreview, /data-archive-preview-items/);
   assert.match(archivePreview, /data-archive-preview-error/);
-  assert.match(archivePreview, /仅预览前/);
+  assert.match(archivePreview, /仅检查前/);
+  assert.doesNotMatch(archivePreview, /仅预览前/);
   assert.match(page, /useFileReadQuery/);
   assert.match(previewPanel, /useWriteFileContentMutation/);
   assert.match(previewPanel, /className\?: string/);
   assert.match(previewPanel, /文件详情/);
-  assert.match(documentWorkbench, /源码\/编辑/);
-  assert.match(documentWorkbench, /预览/);
-  assert.match(documentWorkbench, /边写边预览/);
-  assert.match(documentWorkbench, /预览时编辑/);
-  assert.match(visualDocumentEditor, /预览时编辑/);
-  assert.match(visualDocumentEditor, /正文保持渲染预览/);
-  assert.match(visualDocumentEditor, /data-markdown-visual-scrollport/);
-  assert.match(visualDocumentEditor, /data-markdown-table-editor/);
-  assert.match(visualDocumentEditor, /data-markdown-table-cell-input/);
-  assert.match(visualDocumentEditor, /data-markdown-table-apply/);
-  assert.match(visualDocumentEditor, /data-markdown-table-add-row/);
-  assert.match(visualDocumentEditor, /data-markdown-table-add-column/);
-  assert.match(visualDocumentEditor, /data-markdown-table-delete-row/);
-  assert.match(visualDocumentEditor, /data-markdown-table-delete-column/);
-  assert.match(visualDocumentEditor, /data-markdown-table-align-select/);
-  assert.match(visualDocumentEditor, /data-markdown-table-column-tools/);
-  assert.match(visualDocumentEditor, /data-markdown-table-row-tools/);
-  assert.match(visualDocumentEditor, /parseMarkdownTableClipboard/);
-  assert.match(visualDocumentEditor, /pasteTableAtCell/);
-  assert.match(visualDocumentEditor, /isMarkdownTableStart\(lines, index\)/);
-  assert.match(visualDocumentEditor, /isMarkdownTableDelimiterLine/);
-  assert.doesNotMatch(
-    visualDocumentEditor,
-    /if \(isMarkdownTableLine\(line\)\) return "table"/,
-  );
-  assert.match(visualDocumentEditor, /normalized\.includes\("\\t"\)/);
-  assert.match(
-    visualDocumentEditor,
-    /lines\.every\(\(line\) => isMarkdownTableLine\(line\)\)/,
-  );
-  assert.match(visualDocumentEditor, /onPaste=\{\(event\) => \{/);
-  assert.match(
-    visualDocumentEditor,
-    /event\.clipboardData\.getData\("text\/plain"\)/,
-  );
-  assert.match(visualDocumentEditor, /event\.preventDefault\(\)/);
-  assert.doesNotMatch(
-    visualDocumentEditor,
-    /data-markdown-table-row-tools[\s\S]*data-markdown-table-row-tools/,
-  );
-  assert.doesNotMatch(
-    visualDocumentEditor,
-    /canMoveDown: boolean;\n  canMoveDown: boolean;/,
-  );
-  assert.match(visualDocumentEditor, /MarkdownTableAlignment/);
-  assert.match(visualDocumentEditor, /markdownAlignmentFromDelimiter/);
-  assert.match(visualDocumentEditor, /markdownDelimiterFromAlignment/);
-  assert.match(visualDocumentEditor, /markdownTextAlignClass/);
-  assert.match(visualDocumentEditor, /min-w-max border-collapse/);
-  assert.match(visualDocumentEditor, /overscroll-contain/);
-  assert.match(visualDocumentEditor, /data-markdown-html-visible-editor/);
-  assert.match(visualDocumentEditor, /data-markdown-html-text-node/);
-  assert.match(visualDocumentEditor, /data-markdown-html-apply/);
-  assert.match(visualDocumentEditor, /contenteditable", "plaintext-only"/);
-  assert.match(visualDocumentEditor, /DOMPurify\.sanitize/);
-  assert.match(visualDocumentEditor, /DOMParser\(\)\.parseFromString/);
-  assert.match(visualDocumentEditor, /group-hover\/visual-block:opacity-100/);
-  assert.match(
-    visualDocumentEditor,
-    /group-focus-within\/visual-block:opacity-100/,
-  );
-  assert.match(visualDocumentEditor, /data-markdown-inline-editable/);
-  assert.match(visualDocumentEditor, /data-markdown-inline-editable-plaintext/);
-  assert.match(visualDocumentEditor, /contentEditable="plaintext-only"/);
-  assert.match(visualDocumentEditor, /data-markdown-block-toolbar/);
-  assert.match(visualDocumentEditor, /overflow-x-auto rounded-full/);
-  assert.match(visualDocumentEditor, /MarkdownTaskListInlineEditor/);
-  assert.match(visualDocumentEditor, /parseMarkdownListItems/);
-  assert.match(visualDocumentEditor, /buildMarkdownListItems/);
-  assert.match(visualDocumentEditor, /editable && block\.kind === "list" \?/);
-  assert.doesNotMatch(
-    visualDocumentEditor,
-    /editable && block\.kind === "list" && hasMarkdownTaskItems/,
-  );
-  assert.match(visualDocumentEditor, /data-markdown-task-list-inline-editor/);
-  assert.match(visualDocumentEditor, /data-markdown-list-apply/);
-  assert.match(visualDocumentEditor, /data-markdown-list-add-item/);
-  assert.match(visualDocumentEditor, /data-markdown-list-delete-item/);
-  assert.match(visualDocumentEditor, /data-markdown-list-text-input/);
-  assert.match(visualDocumentEditor, /data-markdown-regular-list-marker/);
-  assert.match(visualDocumentEditor, /data-markdown-task-checkbox/);
-  assert.match(visualDocumentEditor, /data-markdown-task-text-input/);
-  assert.match(visualDocumentEditor, /data-markdown-task-list-add-item/);
-  assert.match(visualDocumentEditor, /nextMarkdownListMarker/);
-  assert.match(visualDocumentEditor, /Number\(ordered\[2\]\) \+ 1/);
-  assert.match(visualDocumentEditor, /普通列表保留原 marker/);
-  assert.match(visualDocumentEditor, /勾选状态写回 \[x\]\/\[ \]/);
-  assert.match(visualDocumentEditor, /contentEditable/);
-  assert.match(visualDocumentEditor, /canEditMarkdownBlockInline/);
-  assert.doesNotMatch(
-    visualDocumentEditor,
-    /return blockKind === "image"[\s\S]*return blockKind === "image"/,
-  );
-  assert.doesNotMatch(visualDocumentEditor, /完整实时渲染预览/);
-  assert.doesNotMatch(visualDocumentEditor, /Block Live/);
-  assert.match(visualDocumentEditor, /parseMarkdownBlocks/);
-  assert.match(visualDocumentEditor, /data-markdown-fence-apply/);
-  assert.match(
-    visualDocumentEditor,
-    /data-markdown-visual-block=\{block\.kind\}/,
-  );
+  assert.match(documentWorkbench, /label: "源码"/);
+  assert.match(documentWorkbench, /label: "预览"/);
+  assert.match(documentWorkbench, /data-document-workbench-preview-edit-toggle/);
+  assert.doesNotMatch(documentWorkbench, /边写边预览/);
+  assert.doesNotMatch(documentWorkbench, /预览时编辑/);
+  assert.match(visualDocumentEditor, /DocumentEngineMarkdownEditor/);
+  assert.match(visualDocumentEditor, /DocumentEngineHtmlEditor/);
+  assert.doesNotMatch(visualDocumentEditor, /import Vditor from "vditor"/);
+  assert.doesNotMatch(visualDocumentEditor, /data-markdown-vditor-host/);
+  assert.doesNotMatch(visualDocumentEditor, /parseMarkdownBlocks/);
+  assert.doesNotMatch(visualDocumentEditor, /MarkdownTaskListInlineEditor/);
+  assert.doesNotMatch(visualDocumentEditor, /data-markdown-table-inline-editor/);
+  assert.doesNotMatch(visualDocumentEditor, /data-markdown-task-list-inline-editor/);
+  assert.doesNotMatch(visualDocumentEditor, /data-markdown-block-toolbar/);
   assert.match(previewPanel, /data-file-preview-path=\{entry\.path\}/);
   assert.match(packageJson, /smoke:file-manager:markdown-visual-editor/);
-  assert.match(markdownVisualEditorSmoke, /data-visual-document-editor-shell/);
+  assert.match(markdownVisualEditorSmoke, /data-document-engine-editor/);
   assert.match(markdownVisualEditorSmoke, /data-file-preview-path/);
-  assert.match(markdownVisualEditorSmoke, /Edited paragraph from visual smoke/);
-  assert.match(markdownVisualEditorSmoke, /data-markdown-task-checkbox/);
-  assert.match(markdownVisualEditorSmoke, /data-markdown-table-cell-input/);
-  assert.match(markdownVisualEditorSmoke, /data-markdown-fence-inline-editor/);
-  assert.match(markdownVisualEditorSmoke, /data-markdown-html-visible-editor/);
+  assert.match(markdownVisualEditorSmoke, /data-document-engine-editor/);
+  assert.match(markdownVisualEditorSmoke, /milkdown-prosemirror/);
+  assert.doesNotMatch(markdownVisualEditorSmoke, /__tracevaneVditor/);
   assert.match(markdownVisualEditorSmoke, /data-file-save-review-dialog/);
   assert.match(packageJson, /smoke:file-manager:html-editor/);
   assert.match(htmlEditorSmoke, /data-document-preview-kind="html"/);
-  assert.match(htmlEditorSmoke, /data-split-source-editor/);
+  assert.doesNotMatch(htmlEditorSmoke, /data-split-source-editor/);
   assert.match(htmlEditorSmoke, /data-html-visual-editor-shell/);
   assert.match(htmlEditorSmoke, /data-html-visual-frame/);
   assert.match(htmlEditorSmoke, /data-html-visual-sync/);
@@ -998,8 +917,9 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     /Mobile fallback preview has page overflow/,
   );
   assert.match(fallbackPreviewSmoke, /data-file-manager-modal-error-boundary/);
-  assert.match(visualDocumentEditor, /Mermaid 图表默认渲染/);
-  assert.match(visualDocumentEditor, /Markdown 图片默认直接预览/);
+  assert.match(visualDocumentEditor, /DocumentEngineMarkdownEditor/);
+  assert.match(visualDocumentEditor, /DocumentEngineHtmlEditor/);
+  assert.doesNotMatch(visualDocumentEditor, /Mermaid 图表默认渲染/);
   assert.match(documentPreview, /buildFileDownloadUrl\(rootId, path, false\)/);
   assert.match(previewPanel, /打开预览/);
   assert.match(previewPanel, /保存修改/);
@@ -1015,7 +935,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     previewResilienceSmoke,
     /data-document-workbench-mobile-mode-select/,
   );
-  assert.match(previewResilienceSmoke, /data-split-source-editor/);
+  assert.doesNotMatch(previewResilienceSmoke, /data-split-source-editor/);
   assert.match(previewResilienceSmoke, /articleCanScroll/);
   assert.match(
     previewResilienceSmoke,
@@ -1173,19 +1093,18 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     /Mobile media scrollport should stay usable within viewport/,
   );
   assert.match(mediaPreviewSmoke, /data-media-preview-mobile-tools/);
-  assert.match(visualDocumentEditor, /data-visual-document-editor-shell/);
-  assert.match(visualDocumentEditor, /data-html-visual-editor-shell/);
-  assert.match(visualDocumentEditor, /data-html-visual-frame/);
-  assert.match(visualDocumentEditor, /data-html-visual-sync/);
-  assert.match(
-    visualDocumentEditor,
-    /doc\.designMode = editable \? "on" : "off"/,
-  );
-  assert.match(visualDocumentEditor, /grid h-full min-h-0 min-w-0/);
-  assert.doesNotMatch(visualDocumentEditor, /min-h-\[360px\]/);
-  assert.match(visualDocumentEditor, /min-w-0/);
-  assert.match(visualDocumentEditor, /overflow-auto bg-panel/);
-  assert.match(visualDocumentEditor, /sm:px-6 sm:py-7/);
+  assert.match(visualDocumentEditor, /DocumentEngineMarkdownEditor/);
+  const htmlEngineEditor = read("apps/web/src/features/document-engine/html/DocumentEngineHtmlEditor.tsx");
+  assert.match(htmlEngineEditor, /data-document-engine-editor="html-visual"/);
+  assert.match(htmlEngineEditor, /data-html-visual-editor-shell/);
+  assert.match(htmlEngineEditor, /data-html-visual-frame/);
+  assert.match(htmlEngineEditor, /data-html-visual-sync/);
+  assert.match(htmlEngineEditor, /doc\.designMode = editable \? "on" : "off"/);
+  const milkdownEditor = read("apps/web/src/features/document-engine/editor/MilkdownMarkdownEditor.tsx");
+  assert.match(milkdownEditor, /document-engine-milkdown/);
+  assert.match(milkdownEditor, /min-h-0 min-w-0/);
+  assert.match(milkdownEditor, /data-document-engine-milkdown-scrollport/);
+  assert.match(milkdownEditor, /\[&_\.ProseMirror\]:min-h-\[360px\]/);
   assert.match(documentPreview, /isVideoDocument/);
   assert.match(documentPreview, /isAudioDocument/);
   assert.match(documentPreview, /isPdfDocument/);
@@ -1315,8 +1234,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(actionDialog, /保留两者：自动生成 name \(1\)\.ext/);
   assert.match(actionsMenu, /overwriteConfirm/);
   assert.match(actionsMenu, /请输入 OVERWRITE 确认/);
-  assert.match(actionsMenu, /previewBusy/);
-  assert.match(actionsMenu, /!preview/);
+  assert.match(actionsMenu, /dryRunBusy/);
+  assert.match(actionsMenu, /!dryRun/);
   assert.match(actionDialog, /ops\.remove/);
   assert.match(list, /加载更多/);
   assert.match(list, /名称/);

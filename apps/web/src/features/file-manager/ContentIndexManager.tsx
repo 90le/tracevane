@@ -186,10 +186,10 @@ export function ContentIndexManager({
 
   return (
     <section
-      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-panel"
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel"
       data-file-manager-index-manager
     >
-      <header className="grid gap-3 border-b border-line bg-panel-2 px-3 py-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <header className="grid gap-2 border-b border-line bg-panel-2 px-3 py-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Database className="size-4 text-primary" />
@@ -205,15 +205,15 @@ export function ContentIndexManager({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 truncate text-2xs text-muted">
+          <p className="mt-1 hidden truncate text-2xs text-muted sm:block">
             按需校验，默认只读索引元数据，避免进入页面就扫描整个文件系统。
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 lg:flex-wrap lg:justify-end lg:overflow-visible lg:pb-0">
           <Button
             variant="outline"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => void stats.refetch()}
             disabled={busy}
           >
@@ -223,7 +223,7 @@ export function ContentIndexManager({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => copyContentIndexDiagnostics(data, health)}
             disabled={!data}
           >
@@ -232,7 +232,7 @@ export function ContentIndexManager({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => void runScan()}
             disabled={busy}
           >
@@ -242,7 +242,7 @@ export function ContentIndexManager({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => void runRebuild()}
             disabled={busy}
             title="全局重建会扫描所有 root，风险太高；此按钮只重建当前入口。"
@@ -253,7 +253,7 @@ export function ContentIndexManager({
           <Button
             variant="danger"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => void runClean()}
             disabled={busy || !data}
           >
@@ -278,7 +278,7 @@ export function ContentIndexManager({
           }
         />
       ) : (
-        <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
           <IndexOverviewStrip data={data} health={health} busy={busy} />
           <IndexToolbar
             query={queryDraft}
@@ -348,27 +348,32 @@ function IndexOverviewStrip({
     },
   ];
   return (
-    <div
-      className="grid gap-px border-b border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
-      data-content-index-overview-strip
-    >
-      {cards.map((card) => (
-        <div key={card.label} className="min-w-0 bg-panel px-3 py-2">
-          <div className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-subtle">
-            <card.icon className="size-3.5" />
-            {card.label}
+    <div className="border-b border-line bg-panel" data-content-index-overview-strip>
+      <div className="flex gap-2 overflow-x-auto px-3 py-2 sm:hidden">
+        {cards.map((card) => (
+          <div key={card.label} className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-panel-2 px-2.5 py-1.5">
+            <card.icon className="size-3.5 text-subtle" />
+            <span className="text-2xs text-muted">{card.label}</span>
+            <span className="max-w-[90px] truncate text-xs font-semibold text-ink-strong">{card.value}</span>
           </div>
-          <div className="mt-1 truncate text-lg font-semibold text-ink-strong">
-            {card.value}
+        ))}
+      </div>
+      <div className="hidden gap-px bg-line sm:grid sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => (
+          <div key={card.label} className="min-w-0 bg-panel px-3 py-2">
+            <div className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-subtle">
+              <card.icon className="size-3.5" />
+              {card.label}
+            </div>
+            <div className="mt-1 truncate text-lg font-semibold text-ink-strong">
+              {card.value}
+            </div>
+            <div className="mt-0.5 truncate text-2xs text-muted" title={card.hint}>
+              {card.hint}
+            </div>
           </div>
-          <div
-            className="mt-0.5 truncate text-2xs text-muted"
-            title={card.hint}
-          >
-            {card.hint}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -390,7 +395,7 @@ function IndexToolbar({
 }) {
   return (
     <div
-      className="grid gap-2 border-b border-line bg-panel-2 px-3 py-2 lg:grid-cols-[minmax(260px,420px)_auto_minmax(0,1fr)] lg:items-center"
+      className="grid gap-2 border-b border-line bg-panel-2 px-3 py-2 sm:grid-cols-[minmax(220px,1fr)_auto] lg:grid-cols-[minmax(260px,420px)_auto_minmax(0,1fr)] lg:items-center"
       data-content-index-toolbar
     >
       <label className="relative block min-w-0">
@@ -421,7 +426,7 @@ function IndexToolbar({
           </button>
         ))}
       </div>
-      <div className="min-w-0 truncate text-2xs text-muted">
+      <div className="hidden min-w-0 truncate text-2xs text-muted lg:block">
         {recordsPage
           ? `后端分页 · ${recordsPage.returnedRecordCount}/${recordsPage.totalRecordCount} 条`
           : "等待统计加载"}
@@ -521,14 +526,14 @@ function IndexRecordsPanel({
           </div>
         )}
       </div>
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 py-2 text-xs text-muted">
+      <footer className="flex flex-wrap items-center justify-between gap-1.5 border-t border-line bg-panel px-2 py-1.5 text-xs text-muted sm:gap-2 sm:px-3 sm:py-2">
         <span className="min-w-0 truncate">
           {visibleStart}-{visibleEnd}/{totalRecordCount} · 第 {resolvedPage}/{totalPages} 页
           {records.length > virtual.items.length
             ? ` · 已渲染 ${virtual.items.length}/${records.length}`
             : ""}
         </span>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
           <Button
             variant="outline"
             size="sm"
