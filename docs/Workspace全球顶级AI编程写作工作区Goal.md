@@ -252,3 +252,28 @@ npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResoluti
 node --test tests/system/workspace-evidence-handoff.test.mjs tests/system/workspace-evidence-basket.test.mjs
 npx tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --strict --skipLibCheck --allowSyntheticDefaultImports apps/web/src/features/workspace/shared/WorkspaceEvidenceHandoff.ts
 ```
+
+### 2026-06-29 / Phase E 小步：Evidence Review Panel 组件雏形
+
+研究补充：VS Code UX Guidelines 将 Panel、Sidebar、Status Bar 等定义为明确的工作区信息容器，避免把关键状态散落在不可恢复的按钮回调里；Sidebars 指南要求 related views grouped together 且命名清楚；Accessibility 文档强调键盘导航、读屏、可见状态和高对比支持；OpenAI Canvas 的协作模型强调用户控制、上下文理解、inline critique 与可回退版本。因此本阶段把 Evidence/Handoff 契约落成一个可复用的前端审查面板组件，先提供低冲突的 shared UI 基础，而不是直接修改多人协作中的 Workbench shell。
+
+来源：
+
+- https://code.visualstudio.com/api/ux-guidelines/overview
+- https://code.visualstudio.com/api/ux-guidelines/sidebars
+- https://code.visualstudio.com/docs/configure/accessibility/accessibility
+- https://openai.com/index/introducing-canvas/
+
+完成范围：
+
+- 新增 `WorkspaceEvidenceReviewPanel.tsx`，将 evidence records 渲染为可扫描、可复制 handoff 的 AI review cockpit。
+- 面板内置 responsive layout：桌面双栏 cockpit，窄屏单栏；records 区域在 `sm` 以上切双列。
+- 提供可访问 section label、按钮 aria-label、空态和 guardrail 区块，为读屏与键盘操作保留明确语义。
+- 更新 workspace shared barrel export，后续 Workbench 右栏、移动 sheet、Agent review drawer 可直接复用。
+
+验证：
+
+```bash
+node --test tests/system/workspace-evidence-review-panel.test.mjs tests/system/workspace-evidence-handoff.test.mjs tests/system/workspace-evidence-basket.test.mjs
+(cd apps/web && npx tsc --noEmit --pretty false -p tsconfig.workspace-evidence-review-panel.tmp.json)
+```

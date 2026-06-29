@@ -11,3 +11,8 @@ export * from "./DocumentPreview";
 export * from "./TextSearchReplaceStrip";
 export * from "./DocumentWorkbench";
 export * from "./VisualDocumentEditor";
+export * from "./WorkspaceAiContextBasket";
+export * from "./WorkspaceEvidenceBasket";
+export * from "./WorkspaceContextEvidenceBridge";
+export * from "./WorkspaceEvidenceHandoff";
+export * from "./WorkspaceEvidenceReviewPanel";
