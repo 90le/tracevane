@@ -1,10 +1,13 @@
 import * as React from "react";
 
+import { useFilesSummaryQuery } from "../../../lib/query/files";
+
 import {
   createWorkspaceSeasonOneLiveModel,
   type WorkspaceSeasonOneLiveAdapterInput,
 } from "../shared/WorkspaceSeasonOneLiveAdapter";
 import type { WorkspaceSeasonOneProductModel } from "../shared/WorkspaceSeasonOneProductModel";
+import type { FilesSummaryPayload } from "../../../../../../types/files";
 
 export interface WorkspaceSeasonOneSourceSnapshot {
   rootLabel?: string;
@@ -48,13 +51,22 @@ export interface WorkspaceSeasonOneLiveModelState {
 }
 
 export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelState {
+  const filesSummary = useFilesSummaryQuery();
+  const storedSnapshot = React.useMemo(
+    () => createWorkspaceSeasonOneStoredSessionSnapshot(),
+    [],
+  );
   const liveState = React.useMemo(() => {
-    const storedSnapshot = createWorkspaceSeasonOneStoredSessionSnapshot();
+    const filesSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot(
+      filesSummary.data,
+      storedSnapshot,
+    );
     return {
-      sourceSnapshot: storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
-      source: storedSnapshot ? "workspace-hooks" : "demo",
+      sourceSnapshot:
+        filesSnapshot ?? storedSnapshot ?? createWorkspaceSeasonOneDemoSourceSnapshot(),
+      source: filesSnapshot || storedSnapshot ? "workspace-hooks" : "demo",
     } as const;
-  }, []);
+  }, [filesSummary.data, storedSnapshot]);
   const adapterInput = React.useMemo(
     () => createWorkspaceSeasonOneAdapterInputFromSnapshot(liveState.sourceSnapshot),
     [liveState.sourceSnapshot],
@@ -74,6 +86,24 @@ export function useWorkspaceSeasonOneLiveModel(): WorkspaceSeasonOneLiveModelSta
 
 export function createWorkspaceSeasonOneDemoSourceSnapshot(): WorkspaceSeasonOneSourceSnapshot {
   return cloneWorkspaceSeasonOneSourceSnapshot(DEFAULT_SEASON_ONE_SOURCE_SNAPSHOT);
+}
+
+export function createWorkspaceSeasonOneFilesSummarySnapshot(
+  summary: FilesSummaryPayload | undefined,
+  baseSnapshot: WorkspaceSeasonOneSourceSnapshot | null = null,
+): WorkspaceSeasonOneSourceSnapshot | null {
+  const fallbackSnapshot = baseSnapshot
+    ? cloneWorkspaceSeasonOneSourceSnapshot(baseSnapshot)
+    : createWorkspaceSeasonOneDemoSourceSnapshot();
+  const root = selectWorkspaceSeasonOneRoot(summary, fallbackSnapshot.rootLabel);
+  if (!root) return baseSnapshot ? fallbackSnapshot : null;
+
+  return {
+    ...fallbackSnapshot,
+    rootLabel: root.id,
+    viewportCoverage:
+      fallbackSnapshot.viewportCoverage ?? "desktop · tablet · phone live",
+  };
 }
 
 export function createWorkspaceSeasonOneStoredSessionSnapshot(
@@ -173,5 +203,20 @@ function isGitDiffTarget(value: unknown) {
     typeof target.staged === "boolean" &&
     typeof target.untracked === "boolean" &&
     typeof target.kind === "string"
+  );
+}
+
+function selectWorkspaceSeasonOneRoot(
+  summary: FilesSummaryPayload | undefined,
+  preferredRootId?: string,
+) {
+  const roots = summary?.roots ?? [];
+  if (roots.length === 0) return null;
+  return (
+    roots.find((root) => root.id === preferredRootId) ??
+    roots.find((root) => root.id === summary?.defaultRootId) ??
+    roots.find((root) => root.preferred) ??
+    roots[0] ??
+    null
   );
 }

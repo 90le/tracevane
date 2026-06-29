@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   createWorkspaceSeasonOneAdapterInputFromSnapshot,
   createWorkspaceSeasonOneDemoSourceSnapshot,
+  createWorkspaceSeasonOneFilesSummarySnapshot,
   createWorkspaceSeasonOneStoredSessionSnapshot,
 } from "../../apps/web/src/features/workspace/season-one/useWorkspaceSeasonOneLiveModel";
 
@@ -81,3 +82,68 @@ assert.equal(
   null,
 );
 assert.equal(createWorkspaceSeasonOneStoredSessionSnapshot(undefined), null);
+
+
+const filesSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot(
+  {
+    checkedAt: "2026-06-29T00:00:00.000Z",
+    defaultRootId: "workspace-root",
+    roots: [
+      {
+        id: "project-root",
+        labelZh: "项目",
+        labelEn: "Project",
+        descriptionZh: "项目根",
+        descriptionEn: "Project root",
+        absolutePath: "/project",
+      },
+      {
+        id: "workspace-root",
+        labelZh: "工作区",
+        labelEn: "Workspace",
+        descriptionZh: "工作区根",
+        descriptionEn: "Workspace root",
+        absolutePath: "/workspace",
+        preferred: true,
+      },
+    ],
+  },
+  {
+    rootLabel: "project-root",
+    activePath: "docs/Stored.md",
+    openFiles: ["docs/Stored.md"],
+    gitChanges: 1,
+  },
+);
+
+assert.equal(filesSnapshot?.rootLabel, "project-root");
+assert.equal(filesSnapshot?.activePath, "docs/Stored.md");
+assert.deepEqual(filesSnapshot?.openFiles, ["docs/Stored.md"]);
+
+const defaultRootSnapshot = createWorkspaceSeasonOneFilesSummarySnapshot({
+  checkedAt: "2026-06-29T00:00:00.000Z",
+  defaultRootId: "workspace-root",
+  roots: [
+    {
+      id: "project-root",
+      labelZh: "项目",
+      labelEn: "Project",
+      descriptionZh: "项目根",
+      descriptionEn: "Project root",
+      absolutePath: "/project",
+    },
+    {
+      id: "workspace-root",
+      labelZh: "工作区",
+      labelEn: "Workspace",
+      descriptionZh: "工作区根",
+      descriptionEn: "Workspace root",
+      absolutePath: "/workspace",
+    },
+  ],
+});
+
+assert.equal(defaultRootSnapshot?.rootLabel, "project-root");
+assert.equal(defaultRootSnapshot?.activePath, "docs/DESIGN.md");
+assert.equal(defaultRootSnapshot?.evidenceItems, 3);
+assert.equal(createWorkspaceSeasonOneFilesSummarySnapshot(undefined), null);
