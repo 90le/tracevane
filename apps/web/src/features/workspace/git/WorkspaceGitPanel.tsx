@@ -594,10 +594,10 @@ export function WorkspaceGitPanel({
     void navigator.clipboard.writeText(context).then(
       () =>
         toast.success("已复制 Git 冲突上下文", {
-          description: `${conflicts.length} 个冲突文件，可交给 AI 解释解决顺序。`,
+          description: `${conflicts.length} 个冲突文件，可作为审查证据判断解决顺序。`,
         }),
       () =>
-        toast.info("AI 冲突解释入口已预留", {
+        toast.info("Git 冲突审查入口已预留", {
           description:
             "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git conflicts context。",
         }),
@@ -621,7 +621,7 @@ export function WorkspaceGitPanel({
       return;
     }
     setMessage(generateGitCommitDraft(staged));
-    toast.info("AI 提交信息入口已预留", {
+    toast.info("Git 提交信息建议入口已预留", {
       description:
         "当前先使用本地规则草稿；后续接入 Tracevane Gateway 的 @git staged diff context。",
     });
@@ -668,7 +668,7 @@ export function WorkspaceGitPanel({
             "当前先复制单文件 @git diff 元数据；后续接入 Gateway 后可直接解释选中文件。",
         }),
       () =>
-        toast.info("AI Diff 解释入口已预留", {
+        toast.info("Git Diff 审查入口已预留", {
           description:
             "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git diff context。",
         }),
@@ -684,7 +684,7 @@ export function WorkspaceGitPanel({
             "当前先复制 @git commit 元数据；后续接入 Gateway 后可直接解释该提交。",
         }),
       () =>
-        toast.info("AI 提交解释入口已预留", {
+        toast.info("Git 提交审查入口已预留", {
           description: `剪贴板不可用；后续会接入 Tracevane Gateway 的 @git commit ${commit.shortHash} context。`,
         }),
     );
@@ -696,7 +696,7 @@ export function WorkspaceGitPanel({
       void navigator.clipboard.writeText(context).then(
         () =>
           toast.success("已复制变更日志条目", {
-            description: "可用于 release note、周报或 AI changelog 生成。",
+            description: "可用于变更日志、周报或审查摘要生成。",
           }),
         () =>
           toast.info("变更日志入口已预留", {
@@ -721,8 +721,8 @@ export function WorkspaceGitPanel({
         () =>
           toast.success("已复制提交 Diff 上下文", {
             description: detail.truncated
-              ? "Diff 已按安全上限截断，适合交给 AI 做概要审阅。"
-              : "可直接用于 AI 审阅、风险分析或回滚说明。",
+              ? "Diff 已按安全上限截断，适合做概要审阅。"
+              : "可直接用于审阅、风险分析或回滚说明。",
           }),
         () =>
           toast.info("提交 Diff 上下文入口已预留", {
@@ -748,7 +748,7 @@ export function WorkspaceGitPanel({
       () =>
         toast.success("已复制 Git 近期历史上下文", {
           description:
-            "可用于 AI 总结最近变更、生成 changelog 或审查提交节奏。",
+            "可用于总结最近变更、生成变更日志或审查提交节奏。",
         }),
       () =>
         toast.info("Git 历史上下文入口已预留", {
@@ -772,7 +772,7 @@ export function WorkspaceGitPanel({
           description: target.name,
         }),
       () =>
-        toast.info("AI 分支解释入口已预留", {
+        toast.info("Git 分支审查入口已预留", {
           description:
             "剪贴板不可用；后续会接入 Tracevane Gateway 的 @git branch context。",
         }),
@@ -1552,7 +1552,7 @@ export function WorkspaceGitPanel({
             data-workspace-git-ai-commit-draft
           >
             <Sparkles className="size-3.5" />
-            AI 提交信息
+            提交信息建议
           </Button>
           <Button
             type="button"
@@ -1634,7 +1634,7 @@ function createGitBranchActions(
     },
     {
       id: "git.branch.explain",
-      label: "AI 解释分支",
+      label: "审查分支上下文",
       icon: <Sparkles className="size-3.5" />,
       separatorBefore: true,
       run: () => handlers.copyContext(branch),
@@ -1715,7 +1715,7 @@ function createGitCommitActions(
       : []),
     {
       id: "git.commit.explain",
-      label: "AI 解释提交",
+      label: "审查提交上下文",
       icon: <Sparkles className="size-3.5" />,
       separatorBefore: true,
       run: () => handlers.explainCommit(commit),
@@ -1893,7 +1893,7 @@ function GitCommitDetailsPanel({
           data-workspace-git-commit-details-copy-context
         >
           <Sparkles className="size-3.5" />
-          AI 上下文
+          审查上下文
         </Button>
         <Button
           type="button"
@@ -1930,7 +1930,7 @@ function gitSheetActionHint(action: {
   if (action.disabled) return "当前状态不可用";
   if (action.id.includes("stage")) return "更新暂存区";
   if (action.id.includes("copy")) return "复制到剪贴板";
-  if (action.id.includes("explain")) return "AI 上下文入口";
+  if (action.id.includes("explain")) return "审查上下文入口";
   if (action.id.includes("open")) return "打开详情视图";
   return "Git 触屏快捷操作";
 }
@@ -1971,7 +1971,7 @@ function GitConflictPanel({
           data-workspace-git-conflict-copy-context
         >
           <Sparkles className="size-3.5" />
-          AI 上下文
+          审查上下文
         </Button>
       </div>
       <div className="mt-2 grid gap-1" data-workspace-git-conflict-list>

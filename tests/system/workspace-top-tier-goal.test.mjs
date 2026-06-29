@@ -141,6 +141,25 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.doesNotMatch(gitPanel, /已复制 Git AI 上下文/);
 });
 
+test("Workspace Git panel uses review language instead of AI-first labels", () => {
+  const gitPanel = readWeb("features/workspace/git/WorkspaceGitPanel.tsx");
+  assert.match(gitPanel, /Git 冲突审查入口已预留/);
+  assert.match(gitPanel, /Git 提交信息建议入口已预留/);
+  assert.match(gitPanel, /Git Diff 审查入口已预留/);
+  assert.match(gitPanel, /Git 提交审查入口已预留/);
+  assert.match(gitPanel, /Git 分支审查入口已预留/);
+  assert.match(gitPanel, /提交信息建议/);
+  assert.match(gitPanel, /审查分支上下文/);
+  assert.match(gitPanel, /审查提交上下文/);
+  assert.match(gitPanel, /审查上下文入口/);
+  assert.doesNotMatch(gitPanel, /AI 冲突解释入口已预留/);
+  assert.doesNotMatch(gitPanel, /AI 提交信息入口已预留/);
+  assert.doesNotMatch(gitPanel, /AI Diff 解释入口已预留/);
+  assert.doesNotMatch(gitPanel, /AI 提交解释入口已预留/);
+  assert.doesNotMatch(gitPanel, /AI 分支解释入口已预留/);
+  assert.doesNotMatch(gitPanel, />\s*AI 上下文\s*<\/Button>/);
+});
+
 test("Workspace Git commands separate evidence from AI generation", () => {
   const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
   assert.match(gitCommands, /Git：生成提交信息建议/);
