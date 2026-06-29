@@ -55,7 +55,7 @@ export interface WorkspaceSearchPanelProps {
 
 const WORKSPACE_SEARCH_LIMIT = 250;
 
-interface ReplacePreviewItem {
+interface ReplacePlanItem {
   path: string;
   name: string;
   content: string;
@@ -88,8 +88,8 @@ export function WorkspaceSearchPanel({
   const [searchCaseSensitive, setSearchCaseSensitive] = React.useState(false);
   const [searchRegex, setSearchRegex] = React.useState(false);
   const [replaceBusy, setReplaceBusy] = React.useState(false);
-  const [replacePreview, setReplacePreview] = React.useState<
-    ReplacePreviewItem[] | null
+  const [replacePlan, setReplacePlan] = React.useState<
+    ReplacePlanItem[] | null
   >(null);
   const [replaceSelection, setReplaceSelection] = React.useState<Set<string>>(
     () => new Set(),
@@ -125,10 +125,10 @@ export function WorkspaceSearchPanel({
   const replaceTargets = results.filter(
     (result) => result.kind === "file" && result.textLike,
   );
-  const selectedReplaceItems = React.useMemo(
+  const selectedReplacePlanItems = React.useMemo(
     () =>
-      (replacePreview ?? []).filter((item) => replaceSelection.has(item.path)),
-    [replacePreview, replaceSelection],
+      (replacePlan ?? []).filter((item) => replaceSelection.has(item.path)),
+    [replacePlan, replaceSelection],
   );
   const replaceOptions = React.useMemo(
     () => ({ caseSensitive: searchCaseSensitive, regex: searchRegex }),
@@ -190,12 +190,12 @@ export function WorkspaceSearchPanel({
   const clearSearch = React.useCallback(() => {
     setDraft("");
     setQuery("");
-    setReplacePreview(null);
+    setReplacePlan(null);
     setReplaceSelection(new Set());
     searchInputRef.current?.focus();
   }, []);
 
-  const prepareReplacePreview = React.useCallback(async () => {
+  const prepareReplacePlan = React.useCallback(async () => {
     if (!rootId || !query || replaceTargets.length === 0) return;
     const validation = countTextMatches("", query, replaceOptions);
     if (validation.error) {
@@ -203,7 +203,7 @@ export function WorkspaceSearchPanel({
       return;
     }
     setReplaceBusy(true);
-    const previewItems: ReplacePreviewItem[] = [];
+    const planItems: ReplacePlanItem[] = [];
     let failedReads = 0;
     try {
       for (const result of replaceTargets) {
@@ -217,7 +217,7 @@ export function WorkspaceSearchPanel({
             ...replaceOptions,
             all: true,
           });
-          previewItems.push({
+          planItems.push({
             path: result.path,
             name: result.name,
             content,
@@ -234,13 +234,13 @@ export function WorkspaceSearchPanel({
           failedReads += 1;
         }
       }
-      setReplacePreview(previewItems);
-      setReplaceSelection(new Set(previewItems.map((item) => item.path)));
+      setReplacePlan(planItems);
+      setReplaceSelection(new Set(planItems.map((item) => item.path)));
       if (failedReads)
         toast.error("替换计划部分生成失败", {
           description: `${failedReads} 个文件无法读取，已跳过。`,
         });
-      if (!previewItems.length)
+      if (!planItems.length)
         toast.info("没有可替换内容", {
           description: "搜索结果中未找到精确匹配的可写文本。",
         });
@@ -249,14 +249,14 @@ export function WorkspaceSearchPanel({
     }
   }, [query, replaceOptions, replaceTargets, replaceWith, rootId]);
 
-  const applyReplacePreview = React.useCallback(async () => {
-    if (!rootId || !selectedReplaceItems.length) return;
+  const applyReplacePlan = React.useCallback(async () => {
+    if (!rootId || !selectedReplacePlanItems.length) return;
     setReplaceBusy(true);
     let changed = 0;
     let failed = 0;
     const undoItems: ReplaceUndoPackage["items"] = [];
     try {
-      for (const item of selectedReplaceItems) {
+      for (const item of selectedReplacePlanItems) {
         try {
           await writeFileContent({
             rootId,
@@ -283,7 +283,7 @@ export function WorkspaceSearchPanel({
           items: undoItems,
         });
       }
-      setReplacePreview(null);
+      setReplacePlan(null);
       setReplaceSelection(new Set());
       if (failed)
         toast.error("批量替换部分失败", {
@@ -296,9 +296,9 @@ export function WorkspaceSearchPanel({
     } finally {
       setReplaceBusy(false);
     }
-  }, [query, queryClient, replaceWith, rootId, selectedReplaceItems]);
+  }, [query, queryClient, replaceWith, rootId, selectedReplacePlanItems]);
 
-  const toggleReplacePreviewItem = React.useCallback((path: string) => {
+  const toggleReplacePlanItem = React.useCallback((path: string) => {
     setReplaceSelection((current) => {
       const next = new Set(current);
       if (next.has(path)) next.delete(path);
@@ -307,15 +307,15 @@ export function WorkspaceSearchPanel({
     });
   }, []);
 
-  const selectAllReplacePreviewItems = React.useCallback(
+  const selectAllReplacePlanItems = React.useCallback(
     (selected: boolean) => {
       setReplaceSelection(
         selected
-          ? new Set((replacePreview ?? []).map((item) => item.path))
+          ? new Set((replacePlan ?? []).map((item) => item.path))
           : new Set(),
       );
     },
-    [replacePreview],
+    [replacePlan],
   );
 
   const undoLastReplace = React.useCallback(async () => {
@@ -387,24 +387,24 @@ export function WorkspaceSearchPanel({
         resultCount: results.length,
         replaceTargetCount: replaceTargets.length,
         replaceBusy,
-        hasReplacePreview: Boolean(replacePreview?.length),
+        hasReplacePlan: Boolean(replacePlan?.length),
         hasUndoPackage: Boolean(undoPackage?.items.length),
         focusSearch: focusSearchInput,
         clearSearch,
         copySearchAiContext,
-        prepareReplacePreview: () => void prepareReplacePreview(),
-        applyReplacePreview: () => void applyReplacePreview(),
+        prepareReplacePlan: () => void prepareReplacePlan(),
+        applyReplacePlan: () => void applyReplacePlan(),
         undoLastReplace: () => void undoLastReplace(),
       }),
     [
-      applyReplacePreview,
+      applyReplacePlan,
       clearSearch,
       copySearchAiContext,
       focusSearchInput,
-      prepareReplacePreview,
+      prepareReplacePlan,
       query,
       replaceBusy,
-      replacePreview?.length,
+      replacePlan?.length,
       replaceTargets.length,
       results.length,
       undoLastReplace,
@@ -522,7 +522,7 @@ export function WorkspaceSearchPanel({
               variant="outline"
               size="sm"
               disabled={!query || replaceTargets.length === 0 || replaceBusy}
-              onClick={() => void prepareReplacePreview()}
+              onClick={() => void prepareReplacePlan()}
             >
               {replaceBusy
                 ? "分析中..."
@@ -607,17 +607,17 @@ export function WorkspaceSearchPanel({
           onOpenFile={onOpenFile}
         />
       ) : null}
-      <ReplacePreviewDialog
-        items={replacePreview}
+      <ReplacePlanDialog
+        items={replacePlan}
         selectedPaths={replaceSelection}
         query={query}
         replaceWith={replaceWith}
         replaceOptions={replaceOptions}
         busy={replaceBusy}
-        onClose={() => setReplacePreview(null)}
-        onToggleItem={toggleReplacePreviewItem}
-        onSelectAll={selectAllReplacePreviewItems}
-        onApply={() => void applyReplacePreview()}
+        onClose={() => setReplacePlan(null)}
+        onToggleItem={toggleReplacePlanItem}
+        onSelectAll={selectAllReplacePlanItems}
+        onApply={() => void applyReplacePlan()}
       />
     </section>
   );
@@ -1026,7 +1026,7 @@ function findHighlightMatch(
   }
 }
 
-function ReplacePreviewDialog({
+function ReplacePlanDialog({
   items,
   selectedPaths,
   query,
@@ -1038,7 +1038,7 @@ function ReplacePreviewDialog({
   onSelectAll,
   onApply,
 }: {
-  items: ReplacePreviewItem[] | null;
+  items: ReplacePlanItem[] | null;
   selectedPaths: Set<string>;
   query: string;
   replaceWith: string;

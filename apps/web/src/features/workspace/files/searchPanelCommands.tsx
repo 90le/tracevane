@@ -8,13 +8,13 @@ export interface SearchPanelCommandRegistryInput {
   resultCount: number;
   replaceTargetCount: number;
   replaceBusy: boolean;
-  hasReplacePreview: boolean;
+  hasReplacePlan: boolean;
   hasUndoPackage: boolean;
   focusSearch: () => void;
   clearSearch: () => void;
   copySearchAiContext: () => void;
-  prepareReplacePreview: () => void;
-  applyReplacePreview: () => void;
+  prepareReplacePlan: () => void;
+  applyReplacePlan: () => void;
   undoLastReplace: () => void;
 }
 
@@ -23,13 +23,13 @@ export function createSearchPanelCommands({
   resultCount,
   replaceTargetCount,
   replaceBusy,
-  hasReplacePreview,
+  hasReplacePlan,
   hasUndoPackage,
   focusSearch,
   clearSearch,
   copySearchAiContext,
-  prepareReplacePreview,
-  applyReplacePreview,
+  prepareReplacePlan,
+  applyReplacePlan,
   undoLastReplace,
 }: SearchPanelCommandRegistryInput): WorkspaceCommand[] {
   return [
@@ -63,18 +63,18 @@ export function createSearchPanelCommands({
           : "当前结果内没有可替换文本文件",
       icon: <Replace />,
       disabled: !query || replaceTargetCount === 0 || replaceBusy,
-      run: prepareReplacePreview,
+      run: prepareReplacePlan,
     },
     {
       id: "search.panel.applyReplacePreview",
       group: "编辑器",
       label: "搜索：应用本次替换计划",
-      description: hasReplacePreview
+      description: hasReplacePlan
         ? "写入当前替换计划中勾选的文件"
         : "请先生成可审查替换计划",
       icon: <Clipboard />,
-      disabled: !hasReplacePreview || replaceBusy,
-      run: applyReplacePreview,
+      disabled: !hasReplacePlan || replaceBusy,
+      run: applyReplacePlan,
     },
     {
       id: "search.panel.undoLastReplace",
