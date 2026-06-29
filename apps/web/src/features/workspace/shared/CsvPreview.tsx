@@ -23,7 +23,7 @@ export function CsvPreview({ path, content, className, "data-document-preview-ki
       >
         <div>
           <div className="font-medium text-ink-strong">表格文件过大</div>
-          <p className="mt-1 text-xs">结构化预览限制为 {formatBytes(MAX_CSV_PREVIEW_BYTES)}，请切换“源码”查看完整内容。</p>
+          <p className="mt-1 text-xs">结构检查限制为 {formatBytes(MAX_CSV_PREVIEW_BYTES)}，请切换“源码”查看完整内容。</p>
         </div>
       </div>
     );
@@ -37,7 +37,7 @@ export function CsvPreview({ path, content, className, "data-document-preview-ki
       className={cn("grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel", className)}
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-3 py-2 text-xs text-muted">
-        <span className="font-medium text-ink-strong">{path.toLowerCase().endsWith(".tsv") ? "TSV" : "CSV"} 表格预览</span>
+        <span className="font-medium text-ink-strong">{path.toLowerCase().endsWith(".tsv") ? "TSV" : "CSV"} 表格检查</span>
         <span>{parsed.rows.length} 行 · {columns.length} 列</span>
         {parsed.truncated ? <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">已截断</span> : null}
         <span className="ml-auto">源码模式可编辑和查找</span>

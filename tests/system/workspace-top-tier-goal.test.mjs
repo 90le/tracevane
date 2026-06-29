@@ -242,6 +242,20 @@ test("Workspace markdown preview package is compatibility-only, not the IDE main
   assert.doesNotMatch(previewIndex, /Active preview package/);
 });
 
+test("Workspace structured file inspectors avoid preview-facing labels", () => {
+  const json = readWeb("features/workspace/shared/JsonPreview.tsx");
+  const csv = readWeb("features/workspace/shared/CsvPreview.tsx");
+
+  assert.match(json, /JSON 结构检查/);
+  assert.match(json, /结构检查限制为/);
+  assert.match(csv, /表格检查/);
+  assert.match(csv, /结构检查限制为/);
+  assert.doesNotMatch(json, /JSON 结构化预览/);
+  assert.doesNotMatch(json, /结构化预览限制为/);
+  assert.doesNotMatch(csv, /表格预览/);
+  assert.doesNotMatch(csv, /结构化预览限制为/);
+});
+
 test("Workspace document view registry is quarantined as a future adapter boundary", () => {
   const registry = readWeb("features/workspace/shared/DocumentViewRegistry.ts");
   assert.match(registry, /Legacy Workspace document-view registry/);

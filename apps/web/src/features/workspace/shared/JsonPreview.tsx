@@ -20,7 +20,7 @@ export function JsonPreview({ content, className, "data-document-preview-kind": 
       >
         <div>
           <div className="font-medium text-ink-strong">JSON 文件过大</div>
-          <p className="mt-1 text-xs">结构化预览限制为 {formatBytes(MAX_JSON_PREVIEW_BYTES)}，请切换“源码”用 Monaco 查看和搜索。</p>
+          <p className="mt-1 text-xs">结构检查限制为 {formatBytes(MAX_JSON_PREVIEW_BYTES)}，请切换“源码”用 Monaco 查看和搜索。</p>
         </div>
       </div>
     );
@@ -45,7 +45,7 @@ export function JsonPreview({ content, className, "data-document-preview-kind": 
       className={cn("grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel", className)}
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-3 py-2 text-xs text-muted">
-        <span className="font-medium text-ink-strong">JSON 结构化预览</span>
+        <span className="font-medium text-ink-strong">JSON 结构检查</span>
         <span>{rootSummary}</span>
         <span className="ml-auto">源码模式可编辑和批量查找</span>
       </div>
