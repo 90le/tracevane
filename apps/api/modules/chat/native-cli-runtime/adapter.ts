@@ -259,6 +259,8 @@ export function createNativeCliChatRuntimeAdapter(options: NativeCliChatRuntimeA
             safeRuntimePathSegment(input.sessionKey, 'session'),
           ),
           session: runtimeSession,
+          nativeCommand: normalizeString(input.nativeCommand) || null,
+          allowNativeCompact: true,
           signal: controller.signal,
           onProgress: (event) => {
             progressEvents.push(event);

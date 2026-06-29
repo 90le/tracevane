@@ -752,6 +752,98 @@ test('native CLI chat sessions send through channel connector runner and persist
   }
 });
 
+
+test('native CLI chat slash commands preserve native command semantics and Tracevane skills', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-native-slash-'));
+  let gateway = null;
+  try {
+    writeOpenClawConfig(root);
+    writeGatewayIdentity(root);
+    const skillDir = path.join(root, 'workspace', '.agents', 'skills', 'demo-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: Demo Skill',
+      'description: Demonstrate native chat skill expansion',
+      '---',
+      '# Demo Skill',
+      '',
+      'Reply with the supplied demo arguments.',
+      '',
+    ].join('\n'));
+    gateway = await startFakeGateway();
+    const runnerCalls = [];
+    const context = await createContextForRoot(root, `ws://127.0.0.1:${gateway.port}`, {
+      chatOptions: {
+        agentProcessRunner: async (request) => {
+          runnerCalls.push(request);
+          return {
+            exitCode: 0,
+            signal: null,
+            stdout: `${JSON.stringify({ type: 'thread.started', thread_id: `thread-native-slash-${runnerCalls.length}` })}\n${JSON.stringify({ message: { role: 'assistant', content: [{ type: 'text', text: `slash reply ${runnerCalls.length}` }] } })}\n`,
+            stderr: '',
+            durationMs: 7,
+            timedOut: false,
+            cancelled: false,
+            error: null,
+          };
+        },
+      },
+    });
+
+    const created = await context.services.chat.createSession('main', {
+      label: 'Native Codex slash runnable',
+      runtimeTarget: {
+        adapterKind: 'native-cli',
+        agent: 'codex',
+        model: 'gpt-5.5',
+        workDir: path.join(root, 'workspace'),
+        permissionMode: 'yolo',
+      },
+    });
+
+    const helpAck = await context.services.chat.send(created.session.key, {
+      text: '/help exec',
+      clientRequestId: 'native-slash-help',
+    });
+    assert.equal(helpAck.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 1);
+    assert.equal(runnerCalls[0].nativeCommand, '/help exec');
+    assert.deepEqual(runnerCalls[0].args, ['exec', '--help']);
+    assert.equal(runnerCalls[0].stdin, '');
+
+    const skillsAck = await context.services.chat.send(created.session.key, {
+      text: '/skills',
+      clientRequestId: 'native-slash-skills',
+    });
+    assert.equal(skillsAck.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 2);
+    assert.equal(runnerCalls[1].nativeCommand, null);
+    assert.match(runnerCalls[1].stdin, /Tracevane native CLI skills \(codex\)/);
+    assert.match(runnerCalls[1].stdin, /\/demo-skill/);
+    assert.doesNotMatch(runnerCalls[1].stdin, /^\/skills\b/);
+
+    const skillAck = await context.services.chat.send(created.session.key, {
+      text: '/demo-skill alpha beta',
+      clientRequestId: 'native-slash-skill',
+    });
+    assert.equal(skillAck.runtime.state, 'completed');
+    assert.equal(runnerCalls.length, 3);
+    assert.equal(runnerCalls[2].nativeCommand, null);
+    assert.match(runnerCalls[2].stdin, /## Skill: Demo Skill/);
+    assert.match(runnerCalls[2].stdin, /## User Arguments:\s*alpha beta/);
+    assert.match(runnerCalls[2].stdin, /Reply with the supplied demo arguments\./);
+    assert.doesNotMatch(runnerCalls[2].stdin, /^\/demo-skill\b/);
+
+    const history = await context.services.chat.getHistory(created.session.key, { limit: 10 });
+    assert.equal(history.messages.filter((message) => message.role === 'assistant').length, 3);
+  } finally {
+    await gateway?.close?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
 test('Claude Code chat sessions send through the native runner with model, permission, and file refs', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-claude-send-'));
   let gateway = null;

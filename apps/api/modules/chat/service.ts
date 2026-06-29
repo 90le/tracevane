@@ -158,6 +158,7 @@ import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
 import {
   type ChannelConnectorAgentProcessRunner,
   type ChannelConnectorAgentProgressEvent,
+  type ChannelConnectorRuntimeProject,
 } from '../channel-connectors/agent-runner.js';
 import {
   LruMap,
@@ -233,6 +234,11 @@ import {
 } from './runtime-summary.js';
 import { buildHistorySearchSummary } from './history-search-summary.js';
 import { compileGatewayMessageText } from '../../../../lib/chat-gateway-transport.js';
+import {
+  buildChannelConnectorSkillPrompt,
+  listChannelConnectorSkills,
+  resolveChannelConnectorSkill,
+} from '../channel-connectors/skill-registry.js';
 
 interface TracevaneManagedSessionState {
   row: ChatSessionRow;
@@ -326,15 +332,80 @@ const CHAT_CANONICAL_STATE_ENTRY_LIMIT = CHAT_CANONICAL_SNAPSHOT_WINDOW_LIMIT * 
 const CHAT_CANONICAL_LOCAL_TAIL_RAW_LINE_LIMIT = 800;
 const CHAT_STREAM_REPLAY_EVENT_LIMIT = 240;
 
+interface RuntimeTransportMessage {
+  text: string;
+  nativeCommand: string | null;
+}
+
+function isSlashCommandText(text: string): boolean {
+  return /^\s*\/\S+/.test(text);
+}
+
+function firstSlashCommandToken(text: string): string {
+  const match = text.trim().match(/^\/+([^\s]+)(?:\s+([\s\S]*))?$/);
+  return match?.[1]?.trim().toLowerCase() || '';
+}
+
+function slashCommandArgs(text: string): string[] {
+  const rest = text.trim().replace(/^\/+[^\s]+\s*/, '').trim();
+  return rest ? rest.split(/\s+/).filter(Boolean) : [];
+}
+
+function nativeChatSkillListText(session: ChatSessionRow, config: TracevaneServerConfig): string {
+  const project = buildChatNativeRuntimeProject(session, config);
+  const skills = listChannelConnectorSkills(project);
+  if (!skills.length) {
+    return [
+      `No Tracevane native CLI skills were found for ${project.agent}.`,
+      'Use the Agent native skill discovery in the CLI if it exposes additional commands; Tracevane Chat will pass ordinary slash commands through to the runtime.',
+    ].join('\n');
+  }
+  const lines = [`Tracevane native CLI skills (${project.agent}) - ${skills.length}`];
+  for (const skill of skills) {
+    lines.push(`/${skill.name}${skill.displayName && skill.displayName !== skill.name ? ` · ${skill.displayName}` : ''}`);
+    lines.push(`  ${skill.description || 'Skill'}`);
+  }
+  lines.push('Usage: /<skill-name> [arguments]. Tracevane expands the skill prompt and sends it to the selected CLI agent.');
+  return lines.join('\n');
+}
+
+function buildChatNativeRuntimeProject(session: ChatSessionRow, config: TracevaneServerConfig): ChannelConnectorRuntimeProject {
+  return {
+    id: `tracevane-chat-${normalizeString(session.key).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 96) || 'session'}`,
+    name: normalizeString(session.label, 'Tracevane Chat'),
+    workDir: normalizeString(session.runtimeTarget.workDir) || config.projectRoot || config.openclawRoot,
+    agent: normalizeString(session.runtimeTarget.agent, 'codex') as ChannelConnectorRuntimeProject['agent'],
+    model: normalizeString(session.runtimeTarget.model) || null,
+    permissionMode: (normalizeString(session.runtimeTarget.permissionMode) || 'suggest') as ChannelConnectorRuntimeProject['permissionMode'],
+    gatewayEndpoint: '',
+    gatewayKeyRef: 'tracevane-gateway-client-key',
+    appProfileRef: 'tracevane-chat',
+    platformBindings: [],
+  };
+}
+
 function compileRuntimeTransportMessage(
-  adapterKind: ChatSessionRuntimeTarget['adapterKind'] | null | undefined,
+  session: ChatSessionRow,
   text: string,
   fileRefs: ChatSendRequest['fileRefs'],
-): string {
-  if (adapterKind === 'native-cli') {
-    return text;
+  config: TracevaneServerConfig,
+): RuntimeTransportMessage {
+  if (session.runtimeTarget.adapterKind !== 'native-cli') {
+    return { text: compileGatewayMessageText(text, fileRefs || []), nativeCommand: null };
   }
-  return compileGatewayMessageText(text, fileRefs || []);
+  if (!isSlashCommandText(text)) {
+    return { text, nativeCommand: null };
+  }
+  const command = firstSlashCommandToken(text);
+  if (command === 'skills') {
+    return { text: nativeChatSkillListText(session, config), nativeCommand: null };
+  }
+  const project = buildChatNativeRuntimeProject(session, config);
+  const skill = resolveChannelConnectorSkill(project, command);
+  if (skill) {
+    return { text: buildChannelConnectorSkillPrompt(skill, slashCommandArgs(text)), nativeCommand: null };
+  }
+  return { text, nativeCommand: text.trim() };
 }
 
 function mergeResources(
@@ -1906,6 +1977,23 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return { accumulatedText: next, textDelta: next };
   }
 
+
+  function isNativeToolResultProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+    const rawType = normalizeString(event.rawType).toLowerCase();
+    const itemType = normalizeString(event.itemType).toLowerCase();
+    return rawType.includes('tool_result')
+      || itemType.includes('tool_result')
+      || rawType === 'user'
+      || rawType.endsWith('.completed')
+      || rawType.endsWith('/completed')
+      || rawType === 'item.completed';
+  }
+
+  function nativeToolStatusFromProgress(event: ChannelConnectorAgentProgressEvent): ChatMessageToolCallItem['status'] {
+    if (event.type === 'error' || event.type === 'failed') return 'error';
+    return event.phase === 'final' || isNativeToolResultProgressEvent(event) ? 'completed' : 'running';
+  }
+
   function applyNativeCliProgressEvent(
     sessionKey: string,
     runId: string,
@@ -1919,7 +2007,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (event.type === 'tool') {
       const toolCallId = normalizeString(event.toolCallId)
         || `native-tool-${crypto.randomUUID()}`;
-      const status: ChatMessageToolCallItem['status'] = event.phase === 'final' ? 'completed' : 'running';
+      const status = nativeToolStatusFromProgress(event);
       const toolName = normalizeString(event.toolName) || normalizeString(event.itemType) || 'tool';
       const existingToolCall = projection.toolCalls.find((item) => item.toolCallId === toolCallId) || null;
       const toolCall: ChatMessageToolCallItem = {
@@ -1933,7 +2021,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           ? (text || normalizeString(event.rawType) || existingToolCall?.argsPreview || null)
           : (existingToolCall?.argsPreview || null),
         resultPreview: status === 'completed' ? (text || existingToolCall?.resultPreview || null) : existingToolCall?.resultPreview || null,
-        isError: false,
+        isError: status === 'error',
       };
       projection.firstToolStartedAt = projection.firstToolStartedAt || emittedAt;
       upsertProjectionToolCall(projection, toolCall);
@@ -6824,7 +6912,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   async function performDirectSend(
     sessionKey: string,
     payload: ChatSendRequest,
-    options: {
+    sendOptions: {
       publishCanonicalUserMessageImmediately?: boolean;
     } = {},
   ): Promise<ChatSendAck> {
@@ -6846,7 +6934,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!normalizedText && fileRefs.length === 0 && attachments.length === 0) {
       throw new ChatServiceError(400, buildChatError('invalid_request', 'Message text or attachment is required'));
     }
-    const transportText = compileRuntimeTransportMessage(session.runtimeTarget.adapterKind, normalizedText, fileRefs);
+    const transport = compileRuntimeTransportMessage(session, normalizedText, fileRefs, options.config);
+    const transportText = transport.text;
     const sendResources = mediaBridge.buildSendResources(sessionKey, fileRefs, attachments);
     const inMemory = ensureTracevaneSessionState(session, {
       row: session,
@@ -6869,6 +6958,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       idempotencyKey: requestId,
       attachments,
       fileRefs,
+      nativeCommand: transport.nativeCommand,
     });
     const status = sendResult.status;
     const ackRunId = sendResult.runId;
@@ -6981,7 +7071,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       baseMessageSeq: inMemory.messages.length,
       savedAt: now,
     });
-    if (options.publishCanonicalUserMessageImmediately) {
+    if (sendOptions.publishCanonicalUserMessageImmediately) {
       const currentMessages = currentTracevaneHistory(inMemory);
       const latestUserMessage = currentMessages[currentMessages.length - 1] || null;
       if (latestUserMessage?.role === 'user') {

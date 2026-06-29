@@ -11,6 +11,7 @@ export interface ChatRuntimeSendInput {
   idempotencyKey: string;
   attachments: ChatSendAttachment[];
   fileRefs?: ChatSendFileRef[];
+  nativeCommand?: string | null;
 }
 
 export interface ChatRuntimeSendResult {
