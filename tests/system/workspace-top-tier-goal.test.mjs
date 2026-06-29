@@ -35,6 +35,17 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
 });
 
+test("Workspace design contract keeps the active goal IDE-only", () => {
+  const blueprint = readRoot("docs/Workspace全球顶级AI编程IDE工作区Goal蓝图.md");
+  const design = readRoot("DESIGN.md");
+  assert.match(blueprint, /Codex Goal 文本修正声明/);
+  assert.match(blueprint, /当前执行目标只推进 IDE 工作区本体和 UI\/UX/);
+  assert.match(blueprint, /文件\/编辑器、终端、Git、搜索、命令、状态、布局/);
+  assert.match(design, /real AI coding IDE workbench/);
+  assert.match(design, /writing, rendering and preview enhancement are future extension lines only/);
+  assert.doesNotMatch(design, /AI writing workbench/);
+});
+
 test("Workspace empty state exposes the AI coding IDE north star", () => {
   const stage = readWeb("features/workspace/editor/WorkspaceEditorStage.tsx");
   assert.match(stage, /WorkspaceTopTierEmptyState/);
