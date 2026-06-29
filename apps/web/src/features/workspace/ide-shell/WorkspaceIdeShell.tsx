@@ -1507,6 +1507,7 @@ export function WorkspaceIdeShell() {
 
   function dropEditorTabBefore(group: EditorGroupId, beforeTab: EditorTab, event: React.DragEvent) {
     event.preventDefault();
+    event.stopPropagation();
     const payload = parseEditorTabDragPayload(event.dataTransfer.getData("application/x-tracevane-editor-tab"));
     if (!payload) return;
     if (payload.group === group) {
@@ -1516,11 +1517,27 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function dropEditorTabAtEnd(group: EditorGroupId, event: React.DragEvent) {
+    event.preventDefault();
+    const payload = parseEditorTabDragPayload(event.dataTransfer.getData("application/x-tracevane-editor-tab"));
+    if (!payload) return;
+    moveEditorTabToGroupEnd(payload.group, group, payload);
+  }
+
   function moveEditorTabToGroup(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab, beforeTab: EditorTab) {
     setEditorGroupTabs((current) => ({
       ...current,
       [sourceGroup]: current[sourceGroup].filter((item) => item.path !== tab.path || item.rootId !== tab.rootId),
       [targetGroup]: insertEditorTabBefore(current[targetGroup], tab, beforeTab),
+    }));
+    selectEditorTab(targetGroup, tab);
+  }
+
+  function moveEditorTabToGroupEnd(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab) {
+    setEditorGroupTabs((current) => ({
+      ...current,
+      [sourceGroup]: current[sourceGroup].filter((item) => item.path !== tab.path || item.rootId !== tab.rootId),
+      [targetGroup]: upsertEditorTab(current[targetGroup], tab),
     }));
     selectEditorTab(targetGroup, tab);
   }
@@ -2193,6 +2210,7 @@ export function WorkspaceIdeShell() {
               onCloseTab={closeEditorTab}
               onBeginTabDrag={beginEditorTabDrag}
               onDropTabBefore={dropEditorTabBefore}
+              onDropTabAtEnd={dropEditorTabAtEnd}
               onFocus={() => setActiveEditorGroup("primary")}
               onSplitRight={() => splitEditor("vertical")}
               onSplitDown={() => splitEditor("horizontal")}
@@ -2229,6 +2247,7 @@ export function WorkspaceIdeShell() {
                   onCloseTab={closeEditorTab}
                   onBeginTabDrag={beginEditorTabDrag}
                   onDropTabBefore={dropEditorTabBefore}
+                  onDropTabAtEnd={dropEditorTabAtEnd}
                   onFocus={() => setActiveEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
@@ -2596,6 +2615,7 @@ function EditorGroupFrame({
   onCloseTab,
   onBeginTabDrag,
   onDropTabBefore,
+  onDropTabAtEnd,
   onFocus,
   onSplitRight,
   onSplitDown,
@@ -2612,6 +2632,7 @@ function EditorGroupFrame({
   onCloseTab: (group: EditorGroupId, tab: EditorTab) => void;
   onBeginTabDrag: (group: EditorGroupId, tab: EditorTab, event: React.DragEvent) => void;
   onDropTabBefore: (group: EditorGroupId, beforeTab: EditorTab, event: React.DragEvent) => void;
+  onDropTabAtEnd: (group: EditorGroupId, event: React.DragEvent) => void;
   onFocus: () => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
@@ -2629,7 +2650,16 @@ function EditorGroupFrame({
           <span>{title}</span>
           <small>{filePath || "未打开文件"}</small>
         </button>
-        <div className="workspace-ide-shell__editor-tabs" data-ide-editor-tabs={group}>
+        <div
+          className="workspace-ide-shell__editor-tabs"
+          data-ide-editor-tabs={group}
+          data-ide-editor-tab-drop-zone={group}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => onDropTabAtEnd(group, event)}
+        >
           {tabs.map((tab) => (
             <span
               key={`${tab.rootId}:${tab.path}`}

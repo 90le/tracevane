@@ -180,6 +180,7 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /onCloseTab=\{closeEditorTab\}/);
   assert.match(shellSource, /onBeginTabDrag=\{beginEditorTabDrag\}/);
   assert.match(shellSource, /onDropTabBefore=\{dropEditorTabBefore\}/);
+  assert.match(shellSource, /onDropTabAtEnd=\{dropEditorTabAtEnd\}/);
   assert.match(shellSource, /onSelectTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
   assert.match(shellSource, /onCloseTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
   assert.match(shellSource, /function closeEditorTab\(group: EditorGroupId, tab: EditorTab\)/);
@@ -193,12 +194,15 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /application\/x-tracevane-editor-tab/);
   assert.match(shellSource, /function reorderEditorTab\(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\)/);
   assert.match(shellSource, /function dropEditorTabBefore\(group: EditorGroupId, beforeTab: EditorTab, event: React\.DragEvent\)/);
+  assert.match(shellSource, /function dropEditorTabAtEnd\(group: EditorGroupId, event: React\.DragEvent\)/);
   assert.match(shellSource, /parseEditorTabDragPayload\(event\.dataTransfer\.getData\("application\/x-tracevane-editor-tab"\)\)/);
   assert.match(shellSource, /payload\.group === group/);
   assert.match(shellSource, /moveEditorTabToGroup\(payload\.group, group, payload, beforeTab\)/);
   assert.match(shellSource, /function moveEditorTabToGroup\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab, beforeTab: EditorTab\)/);
+  assert.match(shellSource, /function moveEditorTabToGroupEnd\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab\)/);
   assert.match(shellSource, /\[sourceGroup\]: current\[sourceGroup\]\.filter/);
   assert.match(shellSource, /\[targetGroup\]: insertEditorTabBefore\(current\[targetGroup\], tab, beforeTab\)/);
+  assert.match(shellSource, /\[targetGroup\]: upsertEditorTab\(current\[targetGroup\], tab\)/);
   assert.match(shellSource, /selectEditorTab\(targetGroup, tab\)/);
   assert.match(shellSource, /function reorderEditorTabs\(tabs: EditorTab\[\], draggedTab: EditorTab, beforeTab: EditorTab\): EditorTab\[\]/);
   assert.match(shellSource, /function insertEditorTabBefore\(tabs: EditorTab\[\], draggedTab: EditorTab, beforeTab: EditorTab\): EditorTab\[\]/);
@@ -207,6 +211,8 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /function parseEditorTabDragPayload\(value: string\)/);
   assert.match(shellSource, /draggable/);
   assert.match(shellSource, /onDragStart=\{\(event\) => onBeginTabDrag\(group, tab, event\)\}/);
+  assert.match(shellSource, /data-ide-editor-tab-drop-zone=\{group\}/);
+  assert.match(shellSource, /onDrop=\{\(event\) => onDropTabAtEnd\(group, event\)\}/);
   assert.match(shellSource, /onDrop=\{\(event\) => onDropTabBefore\(group, tab, event\)\}/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-label/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-close/);
