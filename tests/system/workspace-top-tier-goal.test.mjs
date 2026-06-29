@@ -12,9 +12,10 @@ test("top-tier Workspace goal blueprint defines the IDE-first cleanup and rebuil
   assert.match(doc, /全球顶级 AI 编程 IDE 工作区 Goal 蓝图/);
   assert.match(doc, /IDE-first、AI-native、可无限扩展/);
   assert.match(doc, /写作、渲染、预览增强仅作为未来扩展，不是当前主线/);
+  assert.match(doc, /Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status/);
   assert.match(doc, /先完成 IDE 工作区本体/);
   assert.doesNotMatch(doc, /写作工作区/);
-  assert.match(doc, /Phase 0 — 先清理不恰当代码与文档/);
+  assert.match(doc, /Phase 0\/1 — 先清理不恰当代码与文档，并把后续重建范围锁定到 IDE Core UI\/UX/);
   assert.match(doc, /先 IDE，后 AI/);
   assert.match(doc, /不做预览增强/);
   assert.match(doc, /禁止再做“看起来很酷但不能工作”的说明页式 Workspace/);
@@ -153,12 +154,27 @@ test("legacy Workspace design doc is downgraded behind the IDE-first UI contract
   assert.doesNotMatch(designDoc, /Preview[\s\S]{0,80}File Info/);
 });
 
+test("Workspace UI/UX contract locks the redesign to IDE core capabilities", () => {
+  const contract = readRoot("docs/WorkspaceIDE-UIUX重设计验收.md");
+  assert.match(contract, /当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor,? Command Palette|当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette/);
+  assert.match(contract, /当前重设计总范围/);
+  assert.match(contract, /全局顶栏必须保留/);
+  assert.match(contract, /Terminal 前端能力/);
+  assert.match(contract, /Git 前端能力/);
+  assert.match(contract, /Search 前端能力/);
+  assert.match(contract, /Files \/ Editor 前端能力/);
+  assert.match(contract, /不删除全局顶栏/);
+  assert.match(contract, /Terminal 不被底栏\/键盘遮挡/);
+  assert.doesNotMatch(contract, /写作产品线、渲染增强、预览增强[\s\S]{0,80}必须整体重新设计/);
+});
+
 test("Workspace design contract keeps the active goal IDE-only", () => {
   const blueprint = readRoot("docs/Workspace全球顶级AI编程IDE工作区Goal蓝图.md");
   const design = readRoot("DESIGN.md");
   assert.match(blueprint, /Codex Goal 文本修正声明/);
   assert.match(blueprint, /当前执行目标只推进 IDE 工作区本体和 UI\/UX/);
-  assert.match(blueprint, /文件\/编辑器、终端、Git、搜索、命令、状态、布局/);
+  assert.match(blueprint, /Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar/);
+  assert.match(blueprint, /Workspace Shell：全局顶栏\/项目栏、Activity Rail、Primary Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar/);
   assert.match(blueprint, /IDE Core Features[\s\S]*code editor[\s\S]*terminal[\s\S]*search[\s\S]*git[\s\S]*command\/status\/layout/);
   assert.match(blueprint, /Future Extension Placeholders \(not Phase 0\/1\/2 scope\)[\s\S]*preview\/rendering[\s\S]*writing/);
   assert.doesNotMatch(blueprint, /IDE Core Features[\s\S]{0,160}preview/);

@@ -2,9 +2,9 @@
 
 > 状态：Active Codex Goal Blueprint
 > 创建：2026-06-29
-> 当前阶段：Phase 0 — 先清理不恰当代码与文档，再进入 IDE-first 重建
-> 当前适用范围：Tracevane Workspace IDE 本体、工作区前后端能力、文件/编辑器/终端/Git/搜索/命令/布局/桌面端/手机端 UI/UX；写作、渲染、预览增强仅作为未来扩展，不是当前主线
-> 执行原则：先 IDE，后 AI；先能力与架构，后视觉装饰；先删除错误方向，后建设长期平台。
+> 当前阶段：Phase 0/1 — 先清理不恰当代码与文档，并把后续重建范围锁定到 IDE Core UI/UX
+> 当前适用范围：Tracevane Workspace IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status、布局持久化、桌面/平板/手机响应式 UI/UX，以及支撑这些能力的最小后端契约；写作、渲染、预览增强仅作为未来扩展，不是当前主线
+> 执行原则：先 IDE，后 AI；先终端/Git/搜索/文件/编辑器真实能力，后视觉装饰；先删除错误方向，后建设长期平台。
 
 ---
 
@@ -14,9 +14,9 @@
 
 当前 Codex Goal 的核心含义被展开为：
 
-> 把 Tracevane Workspace 重新确立为 **IDE-first、AI-native、可无限扩展的全球顶级 AI 编程 IDE 工作区**。第一阶段先暂停视觉概念推进，清理当前前后端 IDE 工作区里不恰当、误导性、重复、半成品或偏离 IDE-first 方向的代码与文档；随后在清理后的基础上建立可执行的长期产品/架构路线，优先恢复并巩固 IDE 核心能力、终端能力、工作区前后端边界、基础布局、桌面/平板/手机响应式 UI/UX 与可扩展边界。
+> 把 Tracevane Workspace 重新确立为 **IDE-first、AI-native、可无限扩展的全球顶级 AI 编程 IDE 工作区**。第一阶段先暂停视觉概念推进，清理当前前后端 IDE 工作区里不恰当、误导性、重复、半成品或偏离 IDE-first 方向的代码与文档；随后在清理后的基础上建立可执行的长期产品/架构路线，优先恢复并巩固 IDE 核心能力、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status、工作区前后端契约、基础布局、桌面/平板/手机响应式 UI/UX 与可扩展边界。
 
-**Codex Goal 文本修正声明：** 当前 Codex 工具内的 active goal 是早期超大目标，残留了“写作、预览、渲染”等宽泛表述；工具只允许标记 complete/blocked，不能原地改写 objective。因此本蓝图覆盖旧 objective 的歧义：当前执行目标只推进 IDE 工作区本体和 UI/UX，包括 IDE 主体框架、文件/编辑器、终端、Git、搜索、命令、状态、布局、桌面/平板/手机适配与前后端契约。写作、渲染、预览增强不是 Phase 0/1/2 的目标，也不是当前代码清理或前端重设计的验收范围。
+**Codex Goal 文本修正声明：** 当前 Codex 工具内的 active goal 是早期超大目标，残留了“写作、预览、渲染”等宽泛表述；工具只允许标记 complete/blocked，不能原地改写 objective。因此本蓝图覆盖旧 objective 的歧义：当前执行目标只推进 IDE 工作区本体和 UI/UX，包括 IDE 主体框架、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、布局持久化、桌面/平板/手机适配与支撑这些能力的最小前后端契约。写作、渲染、预览增强不是 Phase 0/1/2 的目标，也不是当前代码清理或前端重设计的验收范围。
 
 本蓝图不是一次 UI 美化任务，也不是继续在旧框架上“补几个按钮”。它是一次面向长期产品的重新定向：**Tracevane 首先必须成为可靠、可扩展、专业的 Web IDE 工作区；AI、证据、Agent、IM、平台集成只能作为 IDE 平台上的扩展层；写作、渲染、预览增强暂时只作为未来可选扩展，而不能反过来破坏 IDE 基础心智。**
 
@@ -61,13 +61,14 @@ Project Workspace
 
 优先级必须按以下顺序执行：
 
-1. **IDE 基础能力**：文件、代码编辑器、终端、Git、搜索、命令、状态、布局恢复。
-2. **工作台架构**：可扩展的 shell、pane、panel、command、context、layout、state。
-3. **响应式体验**：桌面、平板、手机分别是不同交互范式，不是简单压缩；手机端也必须能完成终端、Git 审查、搜索跳转和轻编辑。
-4. **AI 编程层**：上下文收集、代码建议、diff、命令执行审批、证据交接。
-5. **工作区 UI/UX**：桌面端信息密度、手机端单任务流、终端输入体验、面板切换与状态反馈。
-6. **生态与个性化**：插件、面板、命令、主题、Agent、平台集成。
-7. **视觉品牌与动效**：只在上述基础可靠后增强；不能先做“看起来像产品”的空壳。
+1. **IDE 基础能力**：Files、Editor、Terminal、Git、Search、Command Palette、Status Bar、布局恢复。
+2. **Terminal / Git / Search 前端可用性**：终端会话、输入、移动端键盘、Git 审查、Search 跳转必须成为第一批真实工作流，而不是装饰面板。
+3. **工作台架构**：可扩展的 shell、pane、panel、command、context、layout、state。
+4. **响应式体验**：桌面、平板、手机分别是不同交互范式，不是简单压缩；手机端也必须能完成终端、Git 审查、搜索跳转和轻编辑。
+5. **AI 编程层**：上下文收集、代码建议、diff、命令执行审批、证据交接。
+6. **工作区 UI/UX**：桌面端信息密度、手机端单任务流、终端输入体验、面板切换与状态反馈。
+7. **生态与个性化**：插件、面板、命令、主题、Agent、平台集成。
+8. **视觉品牌与动效**：只在上述基础可靠后增强；不能先做“看起来像产品”的空壳。
 
 ---
 
@@ -84,7 +85,7 @@ Project Workspace
 7. **旧文档和旧代码残留**：历史阶段文档、半成品 UI、旧路线测试会误导继续维护错误方向。
 8. **并行开发污染风险**：当前工作区有大量其他人未提交改动，任何清理和提交都必须严格只处理本代理修改的文件。
 
-本 Goal 的第一动作不是继续开发新界面，而是 **停止错误增量、建立边界、清理不恰当残留**。
+本 Goal 的第一动作不是继续开发新说明页或新视觉概念，而是 **停止错误增量、建立边界、清理不恰当残留**；下一步重建也必须围绕 IDE 主体、Terminal、Git、Search、Files、Editor 和移动端真实工作流，而不是围绕预览/写作/渲染。
 
 本 Goal 当前也不是渲染/预览/写作增强任务：
 
@@ -508,6 +509,15 @@ Future Extension Placeholders (not Phase 0/1/2 scope)
   - writing
 ```
 
+当前前端重设计的硬范围：
+
+- Workspace Shell：全局顶栏/项目栏、Activity Rail、Primary Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar。
+- Terminal UX：session roster、active cwd、stream/input/resize 状态、移动端 keyboard inset、copy/clear/insert-command、fullscreen/dock/sheet。
+- Git UX：branch、changes、diff review、stage/unstage/commit-confirm、mobile review flow。
+- Search UX：file/content search、result grouping、open-to-editor、reviewable replace plan、mobile jump flow。
+- Files/Editor UX：tree、tabs、dirty/save、diff/review mode、open/reveal/rename/delete/upload confirmation。
+- Command/Status：统一 command registry、context-aware commands、status bar reflects real work state.
+
 禁止：
 
 - 在 `WorkspaceWorkbench` 中无限堆业务逻辑。
@@ -524,7 +534,7 @@ Future Extension Placeholders (not Phase 0/1/2 scope)
 Workspace FS Service
 Terminal Service
 Git Service
-Preview/Runtime Service
+Optional Preview/Runtime Service (future extension boundary only)
 Agent Runtime Service
 Evidence Service
 ```
@@ -700,4 +710,4 @@ Phase 0 完成条件：
 2. **清理错误方向**：删除旧原型、旧说明页、旧第一季概念、冲突文档。
 3. **保护可用基线**：当前 `/workspace` 仍应回到真实 Workbench，而不是概念展示页。
 4. **研究并决策路线**：Theia、code-server/OpenVSCode、自研 Workbench 三者必须经过 Spike 与 ADR。
-5. **再重建**：在明确架构选择后，再系统性重建 IDE 工作区前端/后端、终端和桌面/手机 UI/UX，而不是修修补补。
+5. **再重建**：在明确架构选择后，再系统性重建 IDE 工作区主体、Terminal、Git、Search、Files、Editor、Command/Status、前后端契约和桌面/平板/手机 UI/UX，而不是修修补补。

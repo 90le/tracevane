@@ -4,7 +4,7 @@
 > 创建：2026-06-29
 > 上位目标：`Workspace全球顶级AI编程IDE工作区Goal蓝图.md`
 > 前置审计：`WorkspaceIDE工作区现状审计与下一步清理计划.md`
-> 当前主线：IDE 主体、终端、Git、搜索、文件/编辑器/命令/布局、电脑端、手机端。
+> 当前主线：IDE 主体、Terminal 前端体验、Git、Search、Files、Editor、Command Palette、Status Bar、布局持久化、电脑端、平板端、手机端。
 > 当前不做：写作产品线、渲染增强、预览增强、富媒体阅读体验。
 
 ---
@@ -25,7 +25,7 @@
 
 ## 2. 设计立场
 
-Tracevane Workspace 必须成为一个 **严肃、高密度、可长期扩展的 AI 编程 IDE 工作区**。
+Tracevane Workspace 必须成为一个 **严肃、高密度、可长期扩展的 AI 编程 IDE 工作区**。本阶段不是改几处样式，而是为后续全面重建规定主线：IDE 主体、Terminal、Git、Search、Files、Editor、Command/Status 和响应式工作流。
 
 视觉方向：
 
@@ -38,6 +38,18 @@ Tracevane Workspace 必须成为一个 **严肃、高密度、可长期扩展的
 一句话：
 
 > 用户打开 `/workspace` 后，第一眼应该知道“我可以在这里真实工作”：找文件、改代码、跑命令、看 Git、搜项目、用 AI 审查，而不是阅读产品说明。
+
+### 2.1 当前重设计总范围
+
+必须整体重新设计并最终落地：
+
+1. **IDE 主体框架**：全局顶栏必须保留，Workspace 内部再有项目栏、Activity Rail、Side Panel、Editor Stage、Bottom Terminal Panel、Status Bar；不能再出现没有顶栏或像说明文档页的工作区。
+2. **Terminal 前端能力**：终端是第一优先级 IDE 面板，必须覆盖 session、cwd、stream/input/resize、错误、移动端键盘、copy/clear/insert-command、dock/fullscreen/sheet。
+3. **Git 前端能力**：Git 是审查与提交工作流，不是统计卡片；必须覆盖 branch、changes、diff、stage、commit confirmation、mobile review。
+4. **Search 前端能力**：Search 是项目级定位和可审查替换工作流；必须覆盖 file/content search、result grouping、open-to-editor、replace review plan、mobile jump flow。
+5. **Files / Editor 前端能力**：文件树、tabs、dirty/save、code/diff/review modes、open/reveal/rename/delete/upload confirmation 是 IDE 基础，不得被 AI 或文档预览抢占。
+6. **Command / Status 能力**：所有低频动作进入 Command Palette；Status Bar 必须表达 branch、dirty/save、active file、terminal status、workspace root、mobile mode。
+7. **桌面/平板/手机响应式**：桌面高密度，平板双态，手机单任务流；不能简单隐藏面板或横向挤压。
 
 ---
 
@@ -61,6 +73,7 @@ Global App Shell
 
 ### 3.2 桌面端必须满足
 
+- 全局顶栏不得被删除；Workspace IDE Shell 必须嵌入全局产品壳，而不是替代整个应用顶栏。
 - Editor 是主舞台，不被 AI/文案/卡片抢占。
 - Files/Search/Git 在同一侧栏体系内切换，不能各自成为孤岛页面。
 - Terminal 默认属于 Bottom Panel，支持聚焦、放大、全屏、关闭、恢复。
@@ -253,11 +266,12 @@ Terminal 是当前最重要的 IDE 能力之一。
 
 1. 不新增说明页式 Workspace。
 2. 不新增写作/预览/渲染增强范围。
-3. 桌面端主区域仍以 editor/terminal/work panels 为中心。
-4. 手机端不出现桌面三栏压缩。
-5. Terminal 输入不被 nav/keyboard 遮挡。
-6. Git/Search/Files 都有清楚 owner，不混进 AI/Agent 生命周期。
-7. 每次阶段性改动后 commit，且只提交本代理改动。
+3. 不删除全局顶栏；Workspace 只能重建内部 IDE shell。
+4. 桌面端主区域仍以 editor/terminal/work panels 为中心。
+5. 手机端不出现桌面三栏压缩。
+6. Terminal 输入不被 nav/keyboard 遮挡。
+7. Git/Search/Files 都有清楚 owner，不混进 AI/Agent 生命周期。
+8. 每次阶段性改动后 commit，且只提交本代理改动。
 
 ---
 
@@ -265,10 +279,12 @@ Terminal 是当前最重要的 IDE 能力之一。
 
 等关键 dirty 文件可安全修改后，第一批代码应按顺序做：
 
-1. **Workbench shell 分层**：从 `WorkspaceWorkbench.tsx` 拆出 mobile nav、side panel shell、terminal dock shell、project bar。
-2. **Terminal UX 第一轮**：session roster、active cwd、mobile keyboard/input、error state、copy/clear/diagnose actions。
-3. **Git/Search 面板密度**：统一为 IDE 工具面板，不做后台卡片。
-4. **Mobile single-task mode**：Editor/Terminal/Files/Search/Git 五个模式明确切换。
-5. **Status Bar 重建**：真实状态，不是装饰。
+1. **Workspace shell 分层**：保留全局顶栏，从 `WorkspaceWorkbench.tsx` 拆出 project bar、activity rail、side panel shell、editor stage shell、terminal dock shell、status bar、mobile mode shell。
+2. **Terminal UX 第一轮**：session roster、active cwd、mobile keyboard/input、stream/input/resize error state、copy/clear/insert-command/fullscreen/sheet actions。
+3. **Git 面板重建**：branch、changes、diff review、stage/unstage、commit confirmation、mobile review flow。
+4. **Search 面板重建**：file/content search、result grouping、open-to-editor、replace review plan、mobile jump flow。
+5. **Files/Editor 基础重建**：tree、tabs、dirty/save、code/diff/review mode、reveal active file、danger operation confirmation。
+6. **Mobile single-task mode**：Editor/Terminal/Files/Search/Git 五个模式明确切换，Terminal 不被底栏/键盘遮挡。
+7. **Status Bar 重建**：真实状态，不是装饰。
 
 不从 preview/rendering/writing 开始。
