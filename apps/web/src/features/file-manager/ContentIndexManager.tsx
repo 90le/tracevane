@@ -71,7 +71,6 @@ export function ContentIndexManager({
   const data = stats.data;
   const busy =
     stats.isFetching || scan.isPending || clean.isPending || rebuild.isPending;
-  const cleanAvailable = Boolean(data?.fastStats || data?.staleRecordCount);
   const recordsQueryReady = useIdleReady(140);
   const recordsPage = useFilesContentIndexRecordsQuery(
     {
@@ -256,7 +255,7 @@ export function ContentIndexManager({
             size="sm"
             className="h-8 px-2 text-xs"
             onClick={() => void runClean()}
-            disabled={busy || !data || !cleanAvailable}
+            disabled={busy || !data}
           >
             清理失效
           </Button>

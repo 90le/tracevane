@@ -634,6 +634,7 @@ test("files service supports search, read, write, create, rename, copy, move, de
   const trashMetadata = JSON.parse(fs.readFileSync(trashMetadataPath, "utf8"));
   assert.equal(trashMetadata.rootId, "project-root");
   assert.equal(trashMetadata.originalPath, "docs/archive");
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
   const trash = service.listTrash("project-root");
   assert.equal(trash.trashDirectoryPath, ".tracevane/trash");
   assert.equal(trash.items.some((item) => item.originalPath === "docs/archive" && item.rootId === "project-root"), true);
@@ -708,7 +709,7 @@ test("files service exposes tree nodes and download payloads", () => {
   assert.equal(fontDownload.mimeType, "font/woff2");
 });
 
-test("files service returns content-index records in stable sorted pages", () => {
+test("files service migrates JSON content-index records into SQLite sorted pages", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
@@ -780,9 +781,10 @@ test("files service returns content-index records in stable sorted pages", () =>
   assert.equal(secondPage.returnedRecordCount, 1);
   assert.equal(secondPage.hasMore, false);
   assert.equal(secondPage.records[0]?.path, "zeta.txt");
+  assert.equal(fs.existsSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite")), true);
 });
 
-test("files service pages large content-index records without materializing full result rows", () => {
+test("files service pages large content-index records through SQLite without approximate totals", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   const service = createFilesService(config);

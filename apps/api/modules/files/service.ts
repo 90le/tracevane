@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   FilesArchivePayload,
@@ -72,6 +73,8 @@ const MAX_CHMOD_DRY_RUN_ENTRIES = 5000;
 const FILE_VERSION_DIR_NAME = "file-versions";
 const MAX_FILE_VERSION_BYTES = 1024 * 1024;
 const MAX_FILE_VERSIONS_PER_FILE = 20;
+const FILE_MANAGER_SQLITE_DB_NAME = "file-manager.sqlite";
+const FILE_MANAGER_SQLITE_SCHEMA_VERSION = 1;
 
 type FileRootContext = FileRootSummary & {
   absolutePath: string;
@@ -878,6 +881,168 @@ interface ContentIndexShardSource {
   shardPath: string;
 }
 
+type SqliteValue = string | number | null;
+type SqliteRow = Record<string, SqliteValue>;
+type FileManagerSqliteDatabase = InstanceType<typeof DatabaseSync>;
+
+interface SqlContentIndexRow extends SqliteRow {
+  root_id: string;
+  path: string;
+  sha256: string;
+  size: number;
+  mtime_ms: number;
+  indexed_at: string;
+}
+
+interface SqlTrashRow extends SqliteRow {
+  id: string;
+  root_id: string;
+  root_absolute_path: string | null;
+  original_path: string;
+  trash_path: string;
+  name: string;
+  kind: string;
+  size: number | null;
+  deleted_at: string;
+  entry_dir_name: string;
+  metadata_path: string | null;
+}
+
+let fileManagerSqliteDb: FileManagerSqliteDatabase | null = null;
+let fileManagerSqliteDbPath: string | null = null;
+const migratedContentIndexRoots = new Set<string>();
+const migratedTrashStores = new Set<string>();
+
+function fileManagerSqlitePath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, ".tracevane", FILE_MANAGER_SQLITE_DB_NAME);
+}
+
+function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase {
+  const dbPath = fileManagerSqlitePath(config);
+  if (fileManagerSqliteDb && fileManagerSqliteDbPath === dbPath) return fileManagerSqliteDb;
+  fileManagerSqliteDb?.close();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+    PRAGMA temp_store = MEMORY;
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS file_manager_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS content_index_records (
+      root_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      indexed_at TEXT NOT NULL,
+      PRIMARY KEY (root_id, path)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_content_index_sha ON content_index_records(sha256);
+    CREATE INDEX IF NOT EXISTS idx_content_index_root_path ON content_index_records(root_id, path);
+    CREATE INDEX IF NOT EXISTS idx_content_index_indexed_at ON content_index_records(indexed_at DESC);
+    CREATE TABLE IF NOT EXISTS trash_items (
+      id TEXT PRIMARY KEY,
+      root_id TEXT NOT NULL,
+      root_absolute_path TEXT,
+      original_path TEXT NOT NULL,
+      trash_path TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('file', 'directory')),
+      size INTEGER,
+      deleted_at TEXT NOT NULL,
+      entry_dir_name TEXT NOT NULL UNIQUE,
+      metadata_path TEXT
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_trash_items_deleted_at ON trash_items(deleted_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_trash_items_root_original ON trash_items(root_id, original_path);
+  `);
+  db.prepare("INSERT OR REPLACE INTO file_manager_meta (key, value) VALUES ('schema_version', ?)").run(String(FILE_MANAGER_SQLITE_SCHEMA_VERSION));
+  fileManagerSqliteDb = db;
+  fileManagerSqliteDbPath = dbPath;
+  return db;
+}
+
+function runSqlTransaction<T>(db: FileManagerSqliteDatabase, task: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = task();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore rollback failures */ }
+    throw error;
+  }
+}
+
+function toContentIndexRecord(row: SqlContentIndexRow): ContentIndexRecord {
+  return {
+    rootId: row.root_id,
+    path: row.path,
+    sha256: row.sha256,
+    size: Number(row.size) || 0,
+    mtimeMs: Number(row.mtime_ms) || 0,
+    indexedAt: row.indexed_at,
+  };
+}
+
+function sqlTrashRowToItem(config: TracevaneServerConfig, row: SqlTrashRow): FilesTrashItem | null {
+  const trashPath = normalizeRelativePath(row.trash_path);
+  if (!trashPath) return null;
+  const target = path.resolve(recycleBinDir(config), trashPath);
+  try {
+    if (!isWithinRoot(realPathOf(recycleBinDir(config)), realPathOf(path.dirname(target)))) return null;
+    if (!fs.existsSync(target)) return null;
+    const stat = fs.statSync(target);
+    return {
+      id: row.id,
+      rootId: row.root_id,
+      originalPath: normalizeRelativePath(row.original_path),
+      trashPath,
+      name: row.name || path.basename(trashPath),
+      kind: stat.isDirectory() ? "directory" : "file",
+      size: stat.isFile() ? stat.size : row.size,
+      deletedAt: row.deleted_at,
+      metadataPath: row.metadata_path || recycleDisplayPath(config, recycleMetadataPath(path.join(recycleBinDir(config), row.entry_dir_name))),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function upsertTrashItemSql(config: TracevaneServerConfig, item: FilesTrashItem, entryDirName: string, rootAbsolutePath?: string | null): void {
+  fileManagerDb(config).prepare(`
+    INSERT INTO trash_items (id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(trash_path) DO UPDATE SET
+      root_id = excluded.root_id,
+      root_absolute_path = excluded.root_absolute_path,
+      original_path = excluded.original_path,
+      name = excluded.name,
+      kind = excluded.kind,
+      size = excluded.size,
+      deleted_at = excluded.deleted_at,
+      entry_dir_name = excluded.entry_dir_name,
+      metadata_path = excluded.metadata_path
+  `).run(item.id, item.rootId, rootAbsolutePath || null, item.originalPath, item.trashPath, item.name, item.kind, item.size, item.deletedAt, entryDirName, item.metadataPath);
+}
+
+function migrateTrashToSqlite(config: TracevaneServerConfig): void {
+  const key = fileManagerSqlitePath(config);
+  if (migratedTrashStores.has(key)) return;
+  migratedTrashStores.add(key);
+  const trashDir = recycleBinDir(config);
+  if (!fs.existsSync(trashDir)) return;
+  for (const entry of fs.readdirSync(trashDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const migrated = readTrashMetadataFile(config, entry.name);
+    if (migrated) upsertTrashItemSql(config, migrated.item, entry.name, migrated.rootAbsolutePath);
+  }
+}
+
 interface ContentIndexListMatch {
   record: FilesContentIndexRecordPreview;
   sortKey: string;
@@ -1096,6 +1261,70 @@ function readContentIndexShardFile(filePath: string): ContentIndexShard {
   }
 }
 
+function upsertContentIndexRecordSql(db: FileManagerSqliteDatabase, record: ContentIndexRecord): void {
+  db.prepare(`
+    INSERT INTO content_index_records (root_id, path, sha256, size, mtime_ms, indexed_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(root_id, path) DO UPDATE SET
+      sha256 = excluded.sha256,
+      size = excluded.size,
+      mtime_ms = excluded.mtime_ms,
+      indexed_at = excluded.indexed_at
+  `).run(record.rootId, record.path, record.sha256, record.size, record.mtimeMs, record.indexedAt);
+}
+
+function migrateContentIndexRootToSqlite(config: TracevaneServerConfig, rootId: string): void {
+  const key = `${fileManagerSqlitePath(config)}:${rootId}`;
+  if (migratedContentIndexRoots.has(key)) return;
+  migratedContentIndexRoots.add(key);
+  const shardFiles = listContentIndexShardFiles(config, rootId);
+  if (!shardFiles.length) return;
+  const db = fileManagerDb(config);
+  runSqlTransaction(db, () => {
+    for (const shardPath of shardFiles) {
+      const shard = readContentIndexShardFile(shardPath);
+      for (const [sha256, records] of Object.entries(shard)) {
+        if (!/^[a-f0-9]{64}$/.test(sha256) || !Array.isArray(records)) continue;
+        for (const record of records) {
+          if (!record?.path) continue;
+          upsertContentIndexRecordSql(db, {
+            rootId,
+            path: normalizeRelativePath(record.path),
+            sha256,
+            size: Number(record.size) || 0,
+            mtimeMs: Number(record.mtimeMs) || 0,
+            indexedAt: record.indexedAt || new Date().toISOString(),
+          });
+        }
+      }
+    }
+  });
+}
+
+function ensureContentIndexSqliteMigrated(config: TracevaneServerConfig, rootId: string | undefined): void {
+  for (const root of contentIndexScopeRoots(config, rootId)) migrateContentIndexRootToSqlite(config, root.id);
+}
+
+function contentIndexRootWhereClause(rootIds: string[]): { sql: string; params: SqliteValue[] } {
+  if (!rootIds.length) return { sql: "1 = 0", params: [] };
+  return { sql: `root_id IN (${rootIds.map(() => "?").join(", ")})`, params: rootIds };
+}
+
+function contentIndexQueryClause(query: string): { sql: string; params: SqliteValue[] } {
+  if (!query) return { sql: "", params: [] };
+  const normalized = query.toLowerCase();
+  return {
+    sql: " AND (instr(lower(path), ?) > 0 OR instr(lower(sha256), ?) > 0 OR instr(lower(root_id), ?) > 0)",
+    params: [normalized, normalized, normalized],
+  };
+}
+
+function countContentIndexRows(db: FileManagerSqliteDatabase, rootIds: string[]): number {
+  const rootWhere = contentIndexRootWhereClause(rootIds);
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM content_index_records WHERE ${rootWhere.sql}`).get(...rootWhere.params) as { count?: number } | undefined;
+  return Number(row?.count) || 0;
+}
+
 function summarizeIndexedFile(
   config: TracevaneServerConfig,
   rootId: string,
@@ -1153,38 +1382,35 @@ function searchContentIndex(
   seenPaths: Set<string>,
   limit: number,
 ): { candidateCount: number; results: FilesSearchPayload["results"] } {
+  ensureContentIndexSqliteMigrated(config, rootId);
   const results: FilesSearchPayload["results"] = [];
   let candidateCount = 0;
-  for (const shardPath of listContentIndexShardFiles(config, rootId)) {
-    const shard = readContentIndexShardFile(shardPath);
-    for (const records of Object.values(shard)) {
-      if (!Array.isArray(records)) continue;
-      for (const record of records) {
-        if (results.length >= limit) break;
-        if (!record?.path || seenPaths.has(record.path)) continue;
-        if (!showHidden && hasHiddenPathSegment(record.path)) continue;
-        if (!isPathInSearchScope(record.path, directoryPath, recursive)) continue;
-        candidateCount += 1;
-        const summary = summarizeIndexedFile(config, rootId, record);
-        if (!summary) continue;
-        const target = resolveTargetPath(config, rootId, summary.path, { allowRoot: false });
-        const nameMatches = matchesSearch(summary.name, query, options);
-        const contentSnippet =
-          !nameMatches && summary.textLike
-            ? findContentSearchSnippet(target.absolutePath, query, options)
-            : null;
-        if (!nameMatches && !contentSnippet) continue;
-        seenPaths.add(summary.path);
-        results.push({
-          ...summary,
-          directoryPath: path.posix.dirname(summary.path) === "." ? "" : path.posix.dirname(summary.path),
-          matchKind: nameMatches ? "name" : "content",
-          snippet: contentSnippet,
-        });
-      }
-      if (results.length >= limit) break;
-    }
+  const rows = fileManagerDb(config).prepare(`
+    SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+    FROM content_index_records
+    WHERE root_id = ?
+    ORDER BY path ASC
+  `).all(rootId) as SqlContentIndexRow[];
+  for (const row of rows) {
     if (results.length >= limit) break;
+    const record = toContentIndexRecord(row);
+    if (!record.path || seenPaths.has(record.path)) continue;
+    if (!showHidden && hasHiddenPathSegment(record.path)) continue;
+    if (!isPathInSearchScope(record.path, directoryPath, recursive)) continue;
+    candidateCount += 1;
+    const summary = summarizeIndexedFile(config, rootId, record);
+    if (!summary) continue;
+    const target = resolveTargetPath(config, rootId, summary.path, { allowRoot: false });
+    const nameMatches = matchesSearch(summary.name, query, options);
+    const contentSnippet = !nameMatches && summary.textLike ? findContentSearchSnippet(target.absolutePath, query, options) : null;
+    if (!nameMatches && !contentSnippet) continue;
+    seenPaths.add(summary.path);
+    results.push({
+      ...summary,
+      directoryPath: path.posix.dirname(summary.path) === "." ? "" : path.posix.dirname(summary.path),
+      matchKind: nameMatches ? "name" : "content",
+      snippet: contentSnippet,
+    });
   }
   return { candidateCount, results };
 }
@@ -1209,8 +1435,12 @@ function computeContentIndexStats(
   rootId: string,
   options: { cleanStale?: boolean; validateRecords?: boolean } = {},
 ): FilesContentIndexActionResponse {
+  ensureContentIndexSqliteMigrated(config, rootId);
   const scopeRoots = contentIndexScopeRoots(config, rootId);
-  const shardSources = listContentIndexShardSources(config, rootId);
+  const rootIds = scopeRoots.map((root) => root.id);
+  const db = fileManagerDb(config);
+  const rootWhere = contentIndexRootWhereClause(rootIds);
+  const validateRecords = Boolean(options.cleanStale || options.validateRecords);
   let hashCount = 0;
   let recordCount = 0;
   let validRecordCount = 0;
@@ -1220,68 +1450,67 @@ function computeContentIndexStats(
   let staleBytes = 0;
   let newestIndexedAt: string | null = null;
   const recordsPreview: FilesContentIndexRecordPreview[] = [];
-  const validateRecords = Boolean(options.cleanStale || options.validateRecords);
 
-  for (const { root, shardPath } of shardSources) {
-    const shard = readContentIndexShardFile(shardPath);
-    const nextShard: ContentIndexShard = {};
-    for (const [sha256, records] of Object.entries(shard)) {
-      if (!/^[a-f0-9]{64}$/.test(sha256) || !Array.isArray(records)) continue;
-      hashCount += 1;
-      const survivors: ContentIndexRecord[] = [];
-      for (const record of records) {
-        recordCount += 1;
-        const inspected = validateRecords
-          ? inspectContentIndexRecord(config, root.id, record)
-          : { valid: true, size: Number(record.size) || 0, indexedAt: record.indexedAt || null };
-        if (inspected.indexedAt && (!newestIndexedAt || inspected.indexedAt > newestIndexedAt)) newestIndexedAt = inspected.indexedAt;
-        if (recordsPreview.length < CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT) {
-          recordsPreview.push({
-            rootId: root.id,
-            path: record.path,
-            sha256,
-            size: inspected.size,
-            indexedAt: inspected.indexedAt,
-            status: inspected.valid ? "valid" : "stale",
-          });
-        }
-        if (inspected.valid) {
-          validRecordCount += 1;
-          indexedBytes += inspected.size;
-          survivors.push(record);
-        } else {
-          staleRecordCount += 1;
-          staleBytes += inspected.size;
-          cleanedRecordCount += 1;
-        }
-      }
-      if (survivors.length) nextShard[sha256] = survivors;
-    }
-    if (options.cleanStale) {
-      const keys = Object.keys(nextShard);
-      if (keys.length) fs.writeFileSync(shardPath, JSON.stringify(nextShard), "utf8");
-      else fs.rmSync(shardPath, { force: true });
-    }
+  if (!validateRecords) {
+    const counts = db.prepare(`
+      SELECT COUNT(*) AS recordCount, COUNT(DISTINCT sha256) AS hashCount,
+             COUNT(DISTINCT root_id || ':' || substr(sha256, 1, 2)) AS shardCount,
+             COALESCE(SUM(size), 0) AS indexedBytes, MAX(indexed_at) AS newestIndexedAt
+      FROM content_index_records WHERE ${rootWhere.sql}
+    `).get(...rootWhere.params) as { recordCount?: number; hashCount?: number; shardCount?: number; indexedBytes?: number; newestIndexedAt?: string | null } | undefined;
+    recordCount = Number(counts?.recordCount) || 0;
+    validRecordCount = recordCount;
+    hashCount = Number(counts?.hashCount) || 0;
+    indexedBytes = Number(counts?.indexedBytes) || 0;
+    newestIndexedAt = counts?.newestIndexedAt || null;
+    const previewRows = db.prepare(`
+      SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+      FROM content_index_records WHERE ${rootWhere.sql}
+      ORDER BY root_id ASC, path ASC LIMIT ?
+    `).all(...rootWhere.params, CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT) as SqlContentIndexRow[];
+    for (const row of previewRows) recordsPreview.push({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: Number(row.size) || 0, indexedAt: row.indexed_at || null, status: "valid" });
+    return {
+      checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(rootId), scope: isGlobalContentIndexRoot(rootId) ? "global" : "root", rootCount: scopeRoots.length,
+      shardCount: Number(counts?.shardCount) || 0, hashCount, recordCount, validRecordCount, staleRecordCount: 0, indexedBytes, staleBytes: 0, newestIndexedAt,
+      storageDirectory: fileManagerSqlitePath(config), previewLimit: CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT, recordsPreview, fastStats: true,
+    };
+  }
+
+  const rows = db.prepare(`
+    SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+    FROM content_index_records WHERE ${rootWhere.sql}
+    ORDER BY root_id ASC, path ASC
+  `).all(...rootWhere.params) as SqlContentIndexRow[];
+  recordCount = rows.length;
+  const seenHashes = new Set<string>();
+  const staleKeys: Array<[string, string]> = [];
+  for (const row of rows) {
+    seenHashes.add(row.sha256);
+    const inspected = inspectContentIndexRecord(config, row.root_id, toContentIndexRecord(row));
+    if (inspected.indexedAt && (!newestIndexedAt || inspected.indexedAt > newestIndexedAt)) newestIndexedAt = inspected.indexedAt;
+    if (recordsPreview.length < CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT) recordsPreview.push({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: inspected.valid ? "valid" : "stale" });
+    if (inspected.valid) { validRecordCount += 1; indexedBytes += inspected.size; }
+    else { staleRecordCount += 1; staleBytes += inspected.size; staleKeys.push([row.root_id, row.path]); }
+  }
+  hashCount = seenHashes.size;
+  if (options.cleanStale && staleKeys.length) {
+    runSqlTransaction(db, () => {
+      const statement = db.prepare("DELETE FROM content_index_records WHERE root_id = ? AND path = ?");
+      for (const [rowRootId, rowPath] of staleKeys) statement.run(rowRootId, rowPath);
+    });
+    cleanedRecordCount = staleKeys.length;
+    recordCount = validRecordCount;
+    staleRecordCount = 0;
+    staleBytes = 0;
   }
 
   return {
-    checkedAt: new Date().toISOString(),
-    rootId: contentIndexPayloadRootId(rootId),
-    scope: isGlobalContentIndexRoot(rootId) ? "global" : "root",
-    rootCount: scopeRoots.length,
-    shardCount: options.cleanStale ? listContentIndexShardSources(config, rootId).length : shardSources.length,
-    hashCount,
-    recordCount,
-    validRecordCount,
-    staleRecordCount: validateRecords && !options.cleanStale ? staleRecordCount : 0,
-    indexedBytes,
-    staleBytes: validateRecords && !options.cleanStale ? staleBytes : 0,
-    newestIndexedAt,
-    storageDirectory: contentIndexPayloadStorageDirectory(config, rootId),
-    previewLimit: CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT,
+    checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(rootId), scope: isGlobalContentIndexRoot(rootId) ? "global" : "root", rootCount: scopeRoots.length,
+    shardCount: countContentIndexRows(db, rootIds) ? rootIds.length : 0, hashCount, recordCount, validRecordCount,
+    staleRecordCount: validateRecords && !options.cleanStale ? staleRecordCount : 0, indexedBytes, staleBytes: validateRecords && !options.cleanStale ? staleBytes : 0, newestIndexedAt,
+    storageDirectory: fileManagerSqlitePath(config), previewLimit: CONTENT_INDEX_FAST_STATS_PREVIEW_LIMIT,
     recordsPreview: options.cleanStale ? recordsPreview.filter((record) => record.status === "valid") : recordsPreview,
-    fastStats: !validateRecords,
-    ...(options.cleanStale ? { cleanedRecordCount } : {}),
+    fastStats: !validateRecords, ...(options.cleanStale ? { cleanedRecordCount } : {}),
   };
 }
 
@@ -1309,70 +1538,44 @@ function listContentIndexRecords(
   config: TracevaneServerConfig,
   params: FilesContentIndexRecordsParams,
 ): FilesContentIndexRecordsPayload {
+  ensureContentIndexSqliteMigrated(config, params.rootId);
   const status = normalizeContentIndexStatusFilter(params.status);
   const query = (params.query || "").trim().toLowerCase();
   const offset = clampContentIndexRecordsOffset(params.offset);
   const limit = clampContentIndexRecordsLimit(params.limit);
-  const matches: ContentIndexListMatch[] = [];
   const scopeRoots = contentIndexScopeRoots(config, params.rootId);
-  const validateRecords = status === "stale";
-  const counts: ContentIndexListCounts = { all: 0, valid: 0, stale: 0 };
-  let visitedAfterMatches = 0;
-  let hasMore = false;
+  const rootIds = scopeRoots.map((root) => root.id);
+  const db = fileManagerDb(config);
+  const rootWhere = contentIndexRootWhereClause(rootIds);
+  const queryWhere = contentIndexQueryClause(query);
+  const whereSql = `${rootWhere.sql}${queryWhere.sql}`;
+  const whereParams = [...rootWhere.params, ...queryWhere.params];
 
-  for (const { root, shardPath } of listContentIndexShardSources(config, params.rootId)) {
-    const shard = readContentIndexShardFile(shardPath);
-    for (const [sha256, shardRecords] of Object.entries(shard)) {
-      if (!/^[a-f0-9]{64}$/.test(sha256) || !Array.isArray(shardRecords)) continue;
-      for (const record of shardRecords) {
-        if (!record?.path) continue;
-        if (query && !record.path.toLowerCase().includes(query) && !sha256.toLowerCase().includes(query) && !root.id.toLowerCase().includes(query)) continue;
-        const inspected = validateRecords
-          ? inspectContentIndexRecord(config, root.id, record)
-          : { valid: true, size: Number(record.size) || 0, indexedAt: record.indexedAt || null };
-        const recordStatus = inspected.valid ? "valid" : "stale";
-        counts.all += 1;
-        counts[recordStatus] += 1;
-        if (status !== "all" && recordStatus !== status) continue;
-        visitedAfterMatches += 1;
-        hasMore = visitedAfterMatches > offset + limit;
-        const candidate: ContentIndexListMatch = {
-          record: { rootId: root.id, path: record.path, sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: recordStatus },
-          sortKey: `${root.id}|||${record.path}|||${sha256}`.toLowerCase(),
-        };
-        if (matches.length < offset + limit) {
-          matches.push(candidate);
-          continue;
-        }
-        let largestIndex = 0;
-        for (let index = 1; index < matches.length; index += 1) {
-          if (compareContentIndexListMatches(matches[index], matches[largestIndex]) > 0) largestIndex = index;
-        }
-        if (compareContentIndexListMatches(candidate, matches[largestIndex]) < 0) matches[largestIndex] = candidate;
-      }
+  if (status === "stale") {
+    const rows = db.prepare(`
+      SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+      FROM content_index_records WHERE ${whereSql}
+      ORDER BY root_id ASC, path ASC
+    `).all(...whereParams) as SqlContentIndexRow[];
+    const stale: FilesContentIndexRecordPreview[] = [];
+    for (const row of rows) {
+      const inspected = inspectContentIndexRecord(config, row.root_id, toContentIndexRecord(row));
+      if (!inspected.valid) stale.push({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: inspected.size, indexedAt: inspected.indexedAt, status: "stale" });
     }
+    const records = stale.slice(offset, offset + limit);
+    return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount: stale.length, returnedRecordCount: records.length, hasMore: offset + records.length < stale.length, records };
   }
 
-  matches.sort(compareContentIndexListMatches);
-  const totalRecordCount = validateRecords || query || status === "all" ? visitedAfterMatches : counts[status];
-  const records = matches.slice(offset, offset + limit).map((match) => match.record);
-
-  return {
-    checkedAt: new Date().toISOString(),
-    rootId: contentIndexPayloadRootId(params.rootId),
-    scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root",
-    rootCount: scopeRoots.length,
-    status,
-    query,
-    offset,
-    limit,
-    totalRecordCount,
-    returnedRecordCount: records.length,
-    hasMore,
-    records,
-  };
+  const totalRow = db.prepare(`SELECT COUNT(*) AS count FROM content_index_records WHERE ${whereSql}`).get(...whereParams) as { count?: number } | undefined;
+  const totalRecordCount = Number(totalRow?.count) || 0;
+  const rows = db.prepare(`
+    SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+    FROM content_index_records WHERE ${whereSql}
+    ORDER BY root_id ASC, path ASC LIMIT ? OFFSET ?
+  `).all(...whereParams, limit, offset) as SqlContentIndexRow[];
+  const records = rows.map((row) => ({ rootId: row.root_id, path: row.path, sha256: row.sha256, size: Number(row.size) || 0, indexedAt: row.indexed_at || null, status: "valid" as const }));
+  return { checkedAt: new Date().toISOString(), rootId: contentIndexPayloadRootId(params.rootId), scope: isGlobalContentIndexRoot(params.rootId) ? "global" : "root", rootCount: scopeRoots.length, status, query, offset, limit, totalRecordCount, returnedRecordCount: records.length, hasMore: offset + records.length < totalRecordCount, records };
 }
-
 
 function shouldSkipContentIndexRebuildDirectory(relativePath: string, dirName: string): boolean {
   if (CONTENT_INDEX_REBUILD_SKIP_DIRS.has(dirName)) return true;
@@ -1385,6 +1588,8 @@ function rebuildContentIndexForRoot(
   rootId: string,
 ): FilesContentIndexRebuildResponse {
   const root = resolveRoot(config, rootId);
+  const db = fileManagerDb(config);
+  db.prepare("DELETE FROM content_index_records WHERE root_id = ?").run(root.id);
   fs.rmSync(contentIndexRootDir(config, root.id), { recursive: true, force: true });
 
   const queue: Array<{ absolutePath: string; relativePath: string }> = [{ absolutePath: root.absolutePath, relativePath: "" }];
@@ -1489,24 +1694,9 @@ function recordContentIndex(
   if (!sha256) return;
   const target = resolveTargetPath(config, rootId, relativePath, { allowRoot: false });
   let stat: fs.Stats;
-  try {
-    stat = fs.statSync(target.absolutePath);
-  } catch {
-    return;
-  }
+  try { stat = fs.statSync(target.absolutePath); } catch { return; }
   if (!stat.isFile() || stat.size !== size) return;
-  const shard = readContentIndexShard(config, rootId, sha256);
-  const records = (shard[sha256] ?? []).filter((record) => record.path !== target.relativePath);
-  records.unshift({
-    rootId,
-    path: target.relativePath,
-    size,
-    sha256,
-    mtimeMs: stat.mtimeMs,
-    indexedAt: new Date().toISOString(),
-  });
-  shard[sha256] = records.slice(0, 200);
-  writeContentIndexShard(config, rootId, sha256, shard);
+  upsertContentIndexRecordSql(fileManagerDb(config), { rootId, path: target.relativePath, size, sha256, mtimeMs: stat.mtimeMs, indexedAt: new Date().toISOString() });
 }
 
 function lookupContentIndex(
@@ -1517,27 +1707,28 @@ function lookupContentIndex(
   excludePath: string,
 ): string | null {
   if (!sha256) return null;
-  const shard = readContentIndexShard(config, rootId, sha256);
-  const records = shard[sha256] ?? [];
-  const survivors: ContentIndexRecord[] = [];
-  let found: string | null = null;
-  for (const record of records) {
+  ensureContentIndexSqliteMigrated(config, rootId);
+  const db = fileManagerDb(config);
+  const rows = db.prepare(`
+    SELECT root_id, path, sha256, size, mtime_ms, indexed_at
+    FROM content_index_records WHERE root_id = ? AND sha256 = ? AND size = ?
+    ORDER BY indexed_at DESC
+  `).all(rootId, sha256, size) as SqlContentIndexRow[];
+  const stalePaths: string[] = [];
+  for (const row of rows) {
     try {
-      const target = resolveTargetPath(config, rootId, record.path, { allowRoot: false });
+      const target = resolveTargetPath(config, rootId, row.path, { allowRoot: false });
       if (samePath(target.absolutePath, excludePath)) continue;
       const stat = fs.statSync(target.absolutePath);
-      if (!stat.isFile() || stat.size !== size || stat.mtimeMs !== record.mtimeMs) continue;
-      survivors.push(record);
-      if (!found) found = target.absolutePath;
-    } catch {
-      continue;
-    }
+      if (!stat.isFile() || stat.size !== size || stat.mtimeMs !== Number(row.mtime_ms)) { stalePaths.push(row.path); continue; }
+      return target.absolutePath;
+    } catch { stalePaths.push(row.path); }
   }
-  if (survivors.length !== records.length) {
-    shard[sha256] = survivors;
-    writeContentIndexShard(config, rootId, sha256, shard);
-  }
-  return found;
+  if (stalePaths.length) runSqlTransaction(db, () => {
+    const statement = db.prepare("DELETE FROM content_index_records WHERE root_id = ? AND path = ?");
+    for (const stalePath of stalePaths) statement.run(rootId, stalePath);
+  });
+  return null;
 }
 
 function instantCopyResponse(
@@ -2011,10 +2202,21 @@ function moveEntryToRecycleBin(config: TracevaneServerConfig, target: ResolvedPa
     }
     throw error;
   }
+  upsertTrashItemSql(config, {
+    id: path.basename(trashEntryDir),
+    rootId: metadata.rootId,
+    originalPath: metadata.originalPath,
+    trashPath: metadata.trashPath,
+    name: metadata.name,
+    kind: metadata.kind as FileEntryKind,
+    size: metadata.size,
+    deletedAt: metadata.deletedAt,
+    metadataPath: recycleDisplayPath(config, recycleMetadataPath(trashEntryDir)),
+  }, path.basename(trashEntryDir), metadata.rootAbsolutePath);
   return metadata.trashPath;
 }
 
-function readTrashMetadata(config: TracevaneServerConfig, entryDirName: string): FilesTrashItem | null {
+function readTrashMetadataFile(config: TracevaneServerConfig, entryDirName: string): { item: FilesTrashItem; rootAbsolutePath: string | null } | null {
   const entryDir = path.join(recycleBinDir(config), entryDirName);
   const metadataPath = recycleMetadataPath(entryDir);
   try {
@@ -2027,15 +2229,18 @@ function readTrashMetadata(config: TracevaneServerConfig, entryDirName: string):
     const stat = fs.statSync(target);
     const root = resolveRoot(config, parsed.rootId);
     return {
-      id: entryDirName,
-      rootId: root.id,
-      originalPath: normalizeRelativePath(parsed.originalPath || ""),
-      trashPath,
-      name: typeof parsed.name === "string" && parsed.name ? parsed.name : path.basename(trashPath),
-      kind: stat.isDirectory() ? "directory" : "file",
-      size: stat.isFile() ? stat.size : null,
-      deletedAt: typeof parsed.deletedAt === "string" && parsed.deletedAt ? parsed.deletedAt : new Date(stat.mtimeMs).toISOString(),
-      metadataPath: recycleDisplayPath(config, metadataPath),
+      item: {
+        id: entryDirName,
+        rootId: root.id,
+        originalPath: normalizeRelativePath(parsed.originalPath || ""),
+        trashPath,
+        name: typeof parsed.name === "string" && parsed.name ? parsed.name : path.basename(trashPath),
+        kind: stat.isDirectory() ? "directory" : "file",
+        size: stat.isFile() ? stat.size : null,
+        deletedAt: typeof parsed.deletedAt === "string" && parsed.deletedAt ? parsed.deletedAt : new Date(stat.mtimeMs).toISOString(),
+        metadataPath: recycleDisplayPath(config, metadataPath),
+      },
+      rootAbsolutePath: typeof parsed.rootAbsolutePath === "string" ? parsed.rootAbsolutePath : null,
     };
   } catch {
     return null;
@@ -2043,14 +2248,24 @@ function readTrashMetadata(config: TracevaneServerConfig, entryDirName: string):
 }
 
 function listTrashItems(config: TracevaneServerConfig): FilesTrashItem[] {
-  const trashDir = recycleBinDir(config);
-  if (!fs.existsSync(trashDir)) return [];
-  return fs
-    .readdirSync(trashDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => readTrashMetadata(config, entry.name))
-    .filter((entry): entry is FilesTrashItem => Boolean(entry))
-    .sort((left, right) => Date.parse(right.deletedAt) - Date.parse(left.deletedAt));
+  migrateTrashToSqlite(config);
+  const db = fileManagerDb(config);
+  const rows = db.prepare(`
+    SELECT id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path
+    FROM trash_items ORDER BY deleted_at DESC, id DESC
+  `).all() as SqlTrashRow[];
+  const items: FilesTrashItem[] = [];
+  const staleTrashPaths: string[] = [];
+  for (const row of rows) {
+    const item = sqlTrashRowToItem(config, row);
+    if (item) items.push(item);
+    else staleTrashPaths.push(row.trash_path);
+  }
+  if (staleTrashPaths.length) runSqlTransaction(db, () => {
+    const statement = db.prepare("DELETE FROM trash_items WHERE trash_path = ?");
+    for (const trashPath of staleTrashPaths) statement.run(trashPath);
+  });
+  return items;
 }
 
 function resolveTrashItem(config: TracevaneServerConfig, trashPath: string | undefined): ResolvedPath {
@@ -2080,7 +2295,11 @@ function resolveTrashItem(config: TracevaneServerConfig, trashPath: string | und
 
 function restoreTrashItem(config: TracevaneServerConfig, payload: FilesTrashRestorePayload): FilesMutationResponse {
   const source = resolveTrashItem(config, payload.trashPath);
-  const metadata = readTrashMetadata(config, path.basename(path.dirname(source.absolutePath)));
+  migrateTrashToSqlite(config);
+  const metadataRow = fileManagerDb(config).prepare(
+    "SELECT id, root_id, root_absolute_path, original_path, trash_path, name, kind, size, deleted_at, entry_dir_name, metadata_path FROM trash_items WHERE trash_path = ?",
+  ).get(source.relativePath) as SqlTrashRow | undefined;
+  const metadata = metadataRow ? sqlTrashRowToItem(config, metadataRow) : null;
   if (!metadata || metadata.trashPath !== source.relativePath) {
     throw new Error("Recycle-bin metadata was not found for this item");
   }
@@ -2111,6 +2330,7 @@ function restoreTrashItem(config: TracevaneServerConfig, payload: FilesTrashRest
   } catch {
     // Metadata cleanup is best-effort after a successful restore.
   }
+  fileManagerDb(config).prepare("DELETE FROM trash_items WHERE trash_path = ?").run(source.relativePath);
   return {
     success: true,
     action: "restore-trash",
@@ -3308,6 +3528,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         const target = resolveTrashItem(config, trashPath);
         const trashEntryDir = path.dirname(target.absolutePath);
         fs.rmSync(trashEntryDir, { recursive: true, force: true });
+        fileManagerDb(config).prepare("DELETE FROM trash_items WHERE trash_path = ?").run(target.relativePath);
         affectedPaths.push(target.relativePath);
       }
       return {

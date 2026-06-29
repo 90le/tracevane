@@ -220,8 +220,8 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(contentIndex, /data-content-index-rendered-count/);
   assert.match(contentIndex, /data-content-index-total-count/);
   assert.match(contentIndex, /useIdleReady\(140\)/);
-  assert.match(contentIndex, /cleanAvailable/);
-  assert.match(contentIndex, /disabled=\{busy \|\| !data \|\| !cleanAvailable\}/);
+  assert.doesNotMatch(contentIndex, /cleanAvailable/);
+  assert.match(contentIndex, /disabled=\{busy \|\| !data\}/);
   assert.match(contentIndex, /enabled: Boolean\(data\) && recordsQueryReady/);
   assert.match(searchPanel, /索引未命中，已扫描补全/);
   assert.match(
