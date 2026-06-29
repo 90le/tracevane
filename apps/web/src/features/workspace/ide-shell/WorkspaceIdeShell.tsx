@@ -296,6 +296,7 @@ interface IdeLayoutState {
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
   hiddenPanes?: PaneId[];
+  layoutLocked?: boolean;
 }
 
 interface IdeLayoutSnapshot {
@@ -367,6 +368,7 @@ export function WorkspaceIdeShell() {
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>(layoutState.activeEditorGroup ?? "primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
+  const [layoutLocked, setLayoutLocked] = React.useState(layoutState.layoutLocked ?? false);
   const [rootId, setRootId] = React.useState(defaultRootId);
   const [activePath, setActivePath] = React.useState<string | undefined>(layoutState.activePath);
   const [activePathRootId, setActivePathRootId] = React.useState(layoutState.activePathRootId ?? "");
@@ -446,8 +448,9 @@ export function WorkspaceIdeShell() {
       dockPaneSelections,
       editorGroupTabs,
       hiddenPanes,
+      layoutLocked,
     });
-  }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
+  }, [activeEditorGroup, activePath, activePathRootId, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutLocked, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, secondaryPath, secondaryPathRootId, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -481,6 +484,11 @@ export function WorkspaceIdeShell() {
         return;
       }
       if (mod && event.altKey) {
+        if (event.shiftKey && key === "l") {
+          event.preventDefault();
+          setLayoutLocked((locked) => !locked);
+          return;
+        }
         if (event.key === "\\") {
           event.preventDefault();
           if (activeDockFocus) {
@@ -683,13 +691,15 @@ export function WorkspaceIdeShell() {
       }
       if (!event.shiftKey && key === "b") {
         event.preventDefault();
-        setLeftOpen((open) => !open);
+        if (!layoutLocked) setLeftOpen((open) => !open);
         return;
       }
       if (!event.shiftKey && key === "j") {
         event.preventDefault();
-        setBottomOpen((open) => !open);
-        if (!bottomOpen) setMobilePanel("bottom");
+        if (!layoutLocked) {
+          setBottomOpen((open) => !open);
+          if (!bottomOpen) setMobilePanel("bottom");
+        }
         return;
       }
       if (event.shiftKey) return;
@@ -763,7 +773,10 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelBottom />,
-        run: () => setTopOpen((open) => !open),
+        disabled: layoutLocked,
+        run: () => {
+          if (!layoutLocked) setTopOpen((open) => !open);
+        },
       },
       {
         id: "ide.layout.toggle-left",
@@ -774,7 +787,10 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelLeft />,
-        run: () => setLeftOpen((open) => !open),
+        disabled: layoutLocked,
+        run: () => {
+          if (!layoutLocked) setLeftOpen((open) => !open);
+        },
       },
       {
         id: "ide.layout.toggle-right",
@@ -784,7 +800,10 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelRight />,
-        run: () => setRightOpen((open) => !open),
+        disabled: layoutLocked,
+        run: () => {
+          if (!layoutLocked) setRightOpen((open) => !open);
+        },
       },
       {
         id: "ide.layout.toggle-bottom",
@@ -795,7 +814,13 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelBottom />,
-        run: () => setBottomOpen((open) => !open),
+        disabled: layoutLocked,
+        run: () => {
+          if (!layoutLocked) {
+            setBottomOpen((open) => !open);
+            if (!bottomOpen) setMobilePanel("bottom");
+          }
+        },
       },
       {
         id: "ide.layout.maximize-center",
@@ -805,6 +830,7 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <Maximize2 />,
+        disabled: layoutLocked,
         run: () => toggleMaximizedPane("center"),
       },
       {
@@ -815,7 +841,9 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelLeft />,
+        disabled: layoutLocked,
         run: () => {
+          if (layoutLocked) return;
           setLeftOpen(true);
           toggleMaximizedPane("left");
         },
@@ -828,7 +856,9 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelRight />,
+        disabled: layoutLocked,
         run: () => {
+          if (layoutLocked) return;
           setRightOpen(true);
           toggleMaximizedPane("right");
         },
@@ -841,7 +871,9 @@ export function WorkspaceIdeShell() {
         risk: "safe",
         surface: "layout",
         icon: <PanelBottom />,
+        disabled: layoutLocked,
         run: () => {
+          if (layoutLocked) return;
           setBottomOpen(true);
           toggleMaximizedPane("bottom");
         },
@@ -879,6 +911,17 @@ export function WorkspaceIdeShell() {
         icon: <Columns3 />,
         run: () => applyWorkbenchRecipe(recipe.id),
       })),
+      {
+        id: "ide.layout.toggle-lock",
+        group: "布局",
+        label: layoutLocked ? "解锁 IDE 布局" : "锁定 IDE 布局",
+        description: layoutLocked ? "允许拖拽、拆分、移动、隐藏和 resize 等布局修改" : "保护当前窗格组合，阻止误拖、误拆分、误隐藏和误 resize",
+        shortcut: "⌘⌥⇧L",
+        risk: "safe",
+        surface: "layout",
+        icon: <Settings2 />,
+        run: () => setLayoutLocked((locked) => !locked),
+      },
       {
         id: "ide.dock.close-all-splits",
         group: "窗格",
@@ -1078,7 +1121,7 @@ export function WorkspaceIdeShell() {
         run: resetPanePlacements,
       },
     ],
-    [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, leftOpen, maximizedPane, rightOpen, topOpen],
+    [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, layoutLocked, leftOpen, maximizedPane, rightOpen, topOpen],
   );
 
   const paneVisibilityCommands = React.useMemo<WorkspaceCommand[]>(
@@ -1826,6 +1869,7 @@ export function WorkspaceIdeShell() {
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
+    if (layoutLocked) return;
     setLayoutPreset(preset);
     setMaximizedPane(null);
     setTopOpen(preset === "terminal");
@@ -1843,6 +1887,7 @@ export function WorkspaceIdeShell() {
 
 
   function applyWorkbenchRecipe(recipeId: WorkbenchRecipeId) {
+    if (layoutLocked) return;
     const recipe = WORKBENCH_LAYOUT_RECIPES.find((item) => item.id === recipeId);
     if (!recipe) return;
     const nextGroups = groupPanesByPlacement(recipe.panePlacements, recipe.paneOrder, []);
@@ -1868,6 +1913,7 @@ export function WorkspaceIdeShell() {
   }
 
   function openAllDocks() {
+    if (layoutLocked) return;
     setTopOpen(true);
     setLeftOpen(true);
     setRightOpen(true);
@@ -1877,6 +1923,7 @@ export function WorkspaceIdeShell() {
   }
 
   function focusEditorOnlyLayout() {
+    if (layoutLocked) return;
     setTopOpen(false);
     setLeftOpen(false);
     setRightOpen(false);
@@ -1888,6 +1935,7 @@ export function WorkspaceIdeShell() {
   }
 
   function closeAllDockSplits() {
+    if (layoutLocked) return;
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
     setDockPaneSelections((current) => ({
@@ -1900,10 +1948,12 @@ export function WorkspaceIdeShell() {
   }
 
   function resetAllDockSplitRatios() {
+    if (layoutLocked) return;
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
   }
 
   function resetLayout() {
+    if (layoutLocked) return;
     setLayoutPreset("balanced");
     setPaneSizes(DEFAULT_PANE_SIZES);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
@@ -1915,11 +1965,13 @@ export function WorkspaceIdeShell() {
   }
 
   function resetDockSize(placement: PanePlacement) {
+    if (layoutLocked) return;
     setPaneSizes((current) => ({ ...current, [placement]: DEFAULT_PANE_SIZES[placement] }));
     setLayoutPreset("balanced");
   }
 
   function resetDockComposition(placement: PanePlacement) {
+    if (layoutLocked) return;
     const defaultPaneIds = defaultPaneIdsForPlacement(placement);
     setPanePlacements((current) => {
       const next = { ...current };
@@ -1944,6 +1996,7 @@ export function WorkspaceIdeShell() {
   }
 
   function resetPanePlacements() {
+    if (layoutLocked) return;
     setPanePlacements(DEFAULT_PANE_PLACEMENTS);
     setPaneOrder(DEFAULT_PANE_ORDER);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
@@ -2001,6 +2054,7 @@ export function WorkspaceIdeShell() {
       dockPaneSelections,
       editorGroupTabs,
       hiddenPanes,
+      layoutLocked,
     };
   }
 
@@ -2070,6 +2124,7 @@ export function WorkspaceIdeShell() {
   }
 
   function restoreLayoutSnapshot(snapshot: IdeLayoutSnapshot) {
+    if (layoutLocked) return;
     applyIdeLayoutState(snapshot.state);
   }
 
@@ -2096,6 +2151,7 @@ export function WorkspaceIdeShell() {
     setDockSplitRatios({ ...DEFAULT_DOCK_SPLIT_RATIOS, ...sanitized.dockSplitRatios });
     setDockPaneSelections(mergeDockPaneSelections(sanitized.dockPaneSelections));
     setHiddenPanes(nextHiddenPanes);
+    setLayoutLocked(sanitized.layoutLocked ?? false);
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
@@ -2120,6 +2176,7 @@ export function WorkspaceIdeShell() {
   }
 
   function startPaneResize(pane: keyof IdePaneSizes, event: React.PointerEvent) {
+    if (layoutLocked) return;
     event.preventDefault();
     const startX = event.clientX;
     const startY = event.clientY;
@@ -2168,6 +2225,7 @@ export function WorkspaceIdeShell() {
   }
 
   function startEditorSplitResize(event: React.PointerEvent) {
+    if (layoutLocked) return;
     if (editorSplitMode === "single") return;
     event.preventDefault();
     const startX = event.clientX;
@@ -2193,6 +2251,7 @@ export function WorkspaceIdeShell() {
   }
 
   function resizeEditorSplitFromKeyboard(event: React.KeyboardEvent) {
+    if (layoutLocked) return;
     const baseStep = event.shiftKey ? 8 : 3;
     const delta = editorSplitKeyboardDelta(editorSplitMode, event.key, baseStep);
     if (delta === 0) return;
@@ -2201,6 +2260,7 @@ export function WorkspaceIdeShell() {
   }
 
   function startDockSplitResize(placement: PanePlacement, mode: DockSplitMode, event: React.PointerEvent) {
+    if (layoutLocked) return;
     if (mode === "single") return;
     event.preventDefault();
     const startX = event.clientX;
@@ -2229,6 +2289,7 @@ export function WorkspaceIdeShell() {
   }
 
   function resizeDockSplitFromKeyboard(placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) {
+    if (layoutLocked) return;
     const baseStep = event.shiftKey ? 8 : 3;
     const delta = splitKeyboardDelta(mode, event.key, baseStep);
     if (delta === 0) return;
@@ -2363,6 +2424,7 @@ export function WorkspaceIdeShell() {
   }
 
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
+    if (layoutLocked) return;
     const nextSecondaryPath = secondaryPath ?? activePath;
     const nextSecondaryRootId = secondaryPathRootId || activePathRootId || rootId;
     setEditorSplitMode(mode);
@@ -2379,6 +2441,7 @@ export function WorkspaceIdeShell() {
   }
 
   function swapEditorGroups() {
+    if (layoutLocked) return;
     if (editorSplitMode === "single") return;
     const nextPrimaryPath = secondaryPath ?? activePath;
     const nextPrimaryRootId = secondaryPathRootId || activePathRootId || rootId;
@@ -2391,6 +2454,7 @@ export function WorkspaceIdeShell() {
   }
 
   function moveActiveEditorFileToOtherGroup() {
+    if (layoutLocked) return;
     const tab = activeEditorTab();
     if (!tab) return;
     const sourceGroup = activeEditorGroupId();
@@ -2423,6 +2487,7 @@ export function WorkspaceIdeShell() {
   }
 
   function setDockSplitMode(placement: PanePlacement, mode: DockSplitMode) {
+    if (layoutLocked) return;
     setDockSplitModes((current) => ({ ...current, [placement]: mode }));
     if (mode !== "single") {
       setDockSplitRatios((current) => ({ ...current, [placement]: current[placement] ?? DEFAULT_DOCK_SPLIT_RATIOS[placement] }));
@@ -2532,6 +2597,7 @@ export function WorkspaceIdeShell() {
   }
 
   function moveActiveDockPaneToOppositeGroup() {
+    if (layoutLocked) return;
     if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return;
     const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
     const nextRole: DockPaneRole = activeDockFocus.role === "primary" ? "secondary" : "primary";
@@ -2558,6 +2624,7 @@ export function WorkspaceIdeShell() {
   }
 
   function reorderActiveDockPane(direction: "next" | "previous") {
+    if (layoutLocked) return;
     if (!activeDockFocus || !canReorderActiveDockPane(direction)) return;
     const { placement, role } = activeDockFocus;
     const paneId = activeDockPaneForPlacement(placement, role) ?? activeDockFocus.paneId;
@@ -2571,6 +2638,7 @@ export function WorkspaceIdeShell() {
   }
 
   function swapDockSplitPanes(placement: PanePlacement) {
+    if (layoutLocked) return;
     const primaryPane = activeDockPaneForPlacement(placement, "primary");
     const secondaryPane = activeDockPaneForPlacement(placement, "secondary");
     if (dockSplitModes[placement] === "single" || !primaryPane || !secondaryPane) return;
@@ -2588,6 +2656,7 @@ export function WorkspaceIdeShell() {
   }
 
   function mergeDockSplitGroups(placement: PanePlacement, preferredRole: DockPaneRole = "primary") {
+    if (layoutLocked) return;
     const primaryPane = activeDockPaneForPlacement(placement, "primary");
     const secondaryPane = activeDockPaneForPlacement(placement, "secondary");
     const mergedPane = preferredRole === "secondary" ? secondaryPane ?? primaryPane : primaryPane ?? secondaryPane;
@@ -2607,6 +2676,7 @@ export function WorkspaceIdeShell() {
   }
 
   function resetDockSplitRatio(placement: PanePlacement) {
+    if (layoutLocked) return;
     setDockSplitRatios((current) => ({
       ...current,
       [placement]: DEFAULT_DOCK_SPLIT_RATIOS[placement],
@@ -2614,6 +2684,7 @@ export function WorkspaceIdeShell() {
   }
 
   function setDockSplitRatioPreset(placement: PanePlacement, ratio: SplitRatioPreset) {
+    if (layoutLocked) return;
     setDockSplitRatios((current) => ({
       ...current,
       [placement]: ratio,
@@ -2621,11 +2692,13 @@ export function WorkspaceIdeShell() {
   }
 
   function setEditorSplitRatioPreset(ratio: SplitRatioPreset) {
+    if (layoutLocked) return;
     if (editorSplitMode === "single") splitEditor("vertical");
     setEditorSplitRatio(ratio);
   }
 
   function resizeDockSplitGroup(placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") {
+    if (layoutLocked) return;
     const signedStep = direction === "grow" ? 5 : -5;
     const roleStep = role === "primary" ? signedStep : -signedStep;
     setDockSplitRatios((current) => ({
@@ -2654,6 +2727,7 @@ export function WorkspaceIdeShell() {
   }
 
   function closeDockPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
     if (placement === "top") setTopOpen(false);
     if (placement === "left") setLeftOpen(false);
     if (placement === "right") setRightOpen(false);
@@ -2664,6 +2738,7 @@ export function WorkspaceIdeShell() {
   }
 
   function closeEditorSplit() {
+    if (layoutLocked) return;
     const fallbackPrimaryTab = activePath ? null : editorGroupTabs.secondary.at(-1);
     setEditorGroupTabs((current) => ({
       primary: mergeEditorTabs(current.primary, current.secondary),
@@ -2681,20 +2756,23 @@ export function WorkspaceIdeShell() {
   }
 
   function toggleMaximizedPane(pane: NonNullable<MaximizedPane>) {
+    if (layoutLocked) return;
     setMaximizedPane((current) => (current === pane ? null : pane));
   }
 
   function hidePane(paneId: PaneId) {
+    if (layoutLocked) return;
     setHiddenPanes((current) => (current.includes(paneId) ? current : [...current, paneId]));
     setActiveDockFocus((current) => (current?.paneId === paneId ? null : current));
   }
 
   function hideActiveDockPane() {
-    if (!activeDockFocus) return;
+    if (layoutLocked || !activeDockFocus) return;
     hidePane(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId);
   }
 
   function restoreAllHiddenPanes() {
+    if (layoutLocked) return;
     const panesToRestore = hiddenPanes;
     setHiddenPanes([]);
     for (const paneId of panesToRestore) {
@@ -2707,6 +2785,7 @@ export function WorkspaceIdeShell() {
   }
 
   function restoreHiddenPanesForPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
     const panesToRestore = hiddenPanesForPlacement(placement);
     if (panesToRestore.length === 0) return;
     const restoreSet = new Set(panesToRestore);
@@ -2717,17 +2796,20 @@ export function WorkspaceIdeShell() {
   }
 
   function restorePane(paneId: PaneId) {
+    if (layoutLocked) return;
     setHiddenPanes((current) => current.filter((hiddenPane) => hiddenPane !== paneId));
     movePaneToPlacement(paneId, panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement);
   }
 
   function moveActiveDockPaneToPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
     if (!activeDockFocus) return;
     const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
     movePaneToPlacement(paneId, placement);
   }
 
   function moveActiveDockPaneToPlacementGroup(placement: PanePlacement, role: DockPaneRole) {
+    if (layoutLocked) return;
     if (!activeDockFocus) return;
     const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
     if (role === "secondary" && dockSplitModes[placement] === "single") {
@@ -2737,6 +2819,7 @@ export function WorkspaceIdeShell() {
   }
 
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
+    if (layoutLocked) return;
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
     selectDockPane(placement, role, paneId);
@@ -2763,6 +2846,7 @@ export function WorkspaceIdeShell() {
   }
 
   function beginPaneDrag(paneId: PaneId, event: React.DragEvent) {
+    if (layoutLocked) return;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/x-tracevane-pane", paneId);
     event.dataTransfer.setData("text/plain", paneLabel(paneId));
@@ -2776,6 +2860,7 @@ export function WorkspaceIdeShell() {
   }
 
   function dragPaneOverDock(placement: PanePlacement, event: React.DragEvent) {
+    if (layoutLocked) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setDropTarget(placement);
@@ -2788,6 +2873,7 @@ export function WorkspaceIdeShell() {
   }
 
   function dropPaneOnDock(placement: PanePlacement, event: React.DragEvent, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
+    if (layoutLocked) return;
     event.preventDefault();
     const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
     if (isPaneId(paneId)) {
@@ -2797,6 +2883,7 @@ export function WorkspaceIdeShell() {
   }
 
   function dropPaneOnDockGroup(placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) {
+    if (layoutLocked) return;
     event.preventDefault();
     event.stopPropagation();
     const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
@@ -2807,6 +2894,7 @@ export function WorkspaceIdeShell() {
   }
 
   function dragPaneOverDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
+    if (layoutLocked) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
@@ -2821,6 +2909,7 @@ export function WorkspaceIdeShell() {
   }
 
   function dropPaneOnDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
+    if (layoutLocked) return;
     event.preventDefault();
     event.stopPropagation();
     const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
@@ -2874,6 +2963,7 @@ export function WorkspaceIdeShell() {
       data-ide-drop-target={dropTarget ?? ""}
       data-ide-edge-drop-target={edgeDropTarget ? `${edgeDropTarget.placement}:${edgeDropTarget.edge}` : ""}
       data-ide-mobile-panel={mobilePanel}
+      data-ide-layout-locked={layoutLocked ? "true" : "false"}
       data-ide-dock-selection-state={dockSelectionState(dockPaneSelections)}
       style={{
         "--ide-top-height": `${paneSizes.top}px`,
@@ -2931,16 +3021,19 @@ export function WorkspaceIdeShell() {
           ))}
         </div>
         <div className="workspace-ide-shell__top-actions">
-          <Button size="sm" variant="ghost" onClick={() => setTopOpen((value) => !value)}>
+          <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
+            <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={layoutLocked} onClick={() => setTopOpen((value) => !value)}>
             <PanelBottom className="mr-2 h-4 w-4 rotate-180" />顶部
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setLeftOpen((value) => !value)}>
+          <Button size="sm" variant="ghost" disabled={layoutLocked} onClick={() => setLeftOpen((value) => !value)}>
             <PanelLeft className="mr-2 h-4 w-4" />左栏
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setBottomOpen((value) => !value)}>
+          <Button size="sm" variant="ghost" disabled={layoutLocked} onClick={() => setBottomOpen((value) => !value)}>
             <PanelBottom className="mr-2 h-4 w-4" />终端
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setRightOpen((value) => !value)}>
+          <Button size="sm" variant="ghost" disabled={layoutLocked} onClick={() => setRightOpen((value) => !value)}>
             <PanelRight className="mr-2 h-4 w-4" />插件
           </Button>
         </div>
@@ -3592,6 +3685,7 @@ export function WorkspaceIdeShell() {
         <span>保存: {saveState}</span>
         <span>命令: {commands.length}</span>
         <span>布局: {layoutPreset}</span>
+        <span>布局锁: {layoutLocked ? "locked" : "open"}</span>
         <span>快照: {layoutSnapshots.length}</span>
         <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
@@ -4949,6 +5043,7 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     dockPaneSelections: sanitizeDockPaneSelections(value.dockPaneSelections),
     editorGroupTabs: sanitizeEditorGroupTabs(value.editorGroupTabs),
     hiddenPanes: sanitizeHiddenPanes(value.hiddenPanes),
+    layoutLocked: typeof value.layoutLocked === "boolean" ? value.layoutLocked : undefined,
   };
 }
 

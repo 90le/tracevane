@@ -995,7 +995,7 @@ test("new Workspace IDE shell supports hide and restore pane visibility", () => 
   assert.match(shellSource, /hiddenPanes\?: PaneId\[\]/);
   assert.match(shellSource, /hiddenPanes, setHiddenPanes/);
   assert.match(shellSource, /groupPanesByPlacement\(panePlacements, paneOrder, hiddenPanes\)/);
-  assert.match(shellSource, /hiddenPanes,\n\s+\};/);
+  assert.match(shellSource, /hiddenPanes,\n\s+layoutLocked,/);
   assert.match(shellSource, /hiddenPanes: sanitizeHiddenPanes\(value\.hiddenPanes\)/);
   assert.match(shellSource, /function sanitizeHiddenPanes\(value: PaneId\[\] \| undefined\)/);
   assert.match(shellSource, /const paneVisibilityCommands = React\.useMemo<WorkspaceCommand\[\]>/);
@@ -1133,6 +1133,33 @@ test("new Workspace IDE shell supports keyboard focus between IDE regions", () =
 
 
 
+
+
+
+test("new Workspace IDE shell supports layout locking", () => {
+  assert.match(shellSource, /layoutLocked\?: boolean/);
+  assert.match(shellSource, /React\.useState\(layoutState\.layoutLocked \?\? false\)/);
+  assert.match(shellSource, /layoutLocked,/);
+  assert.match(shellSource, /layoutLocked: typeof value\.layoutLocked === "boolean" \? value\.layoutLocked : undefined/);
+  assert.match(shellSource, /data-ide-layout-locked=\{layoutLocked \? "true" : "false"\}/);
+  assert.match(shellSource, /ide\.layout\.toggle-lock/);
+  assert.match(shellSource, /label: layoutLocked \? "解锁 IDE 布局" : "锁定 IDE 布局"/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧L"/);
+  assert.match(shellSource, /setLayoutLocked\(\(locked\) => !locked\)/);
+  assert.match(shellSource, /data-ide-layout-lock-toggle/);
+  assert.match(shellSource, /布局锁: \{layoutLocked \? "locked" : "open"\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked\} onClick=\{\(\) => setTopOpen/);
+  assert.match(shellSource, /function restoreLayoutSnapshot\(snapshot: IdeLayoutSnapshot\) \{\n    if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function applyWorkbenchRecipe\(recipeId: WorkbenchRecipeId\) \{\n    if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function movePaneToPlacement[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function startPaneResize[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function startDockSplitResize[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function beginPaneDrag[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function dropPaneOnDock[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function setEditorSplitRatioPreset[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function setDockSplitRatioPreset[\s\S]*?if \(layoutLocked\) return;/);
+  assert.match(shellSource, /function hidePane[\s\S]*?if \(layoutLocked\) return;/);
+});
 
 test("new Workspace IDE shell supports split ratio presets", () => {
   assert.match(shellSource, /const SPLIT_RATIO_PRESETS = \[33, 50, 67\] as const/);
