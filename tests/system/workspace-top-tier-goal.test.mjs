@@ -92,6 +92,21 @@ test("docs README promotes the goal blueprint as the first authority", () => {
   assert.doesNotMatch(readme, /Workspace前端原型\.md/);
 });
 
+test("Workspace frontend architecture keeps preview out of the current main stage", () => {
+  const frontendArchitecture = readRoot("docs/Workspace前端架构.md");
+  assert.match(frontendArchitecture, /状态：IDE-first frontend architecture reference/);
+  assert.match(frontendArchitecture, /MainStage 默认只承载 `Editor \/ Diff \/ Review`/);
+  assert.match(frontendArchitecture, /Terminal 是 BottomPanel 的一等 IDE 面板/);
+  assert.match(frontendArchitecture, /当前不把 preview\/rendering\/writing view mode 作为持久化验收项/);
+  assert.match(frontendArchitecture, /Preview dock panel/);
+  assert.match(frontendArchitecture, /Future extension boundary:[\s\S]*preview\/[\s\S]*compatibility\/future document preview provider only/);
+  assert.doesNotMatch(frontendArchitecture, /状态：Active frontend architecture/);
+  assert.doesNotMatch(frontendArchitecture, /Center 默认只含 `Editor \/ Preview`/);
+  assert.doesNotMatch(frontendArchitecture, /Editor\/Preview\s+\|\s+Terminal/);
+  assert.doesNotMatch(frontendArchitecture, /编辑\/预览\/源码同标签页原则/);
+  assert.doesNotMatch(frontendArchitecture, /Markdown\/HTML\/图片\/视频\/音频\/PDF 等按文件类型渲染/);
+});
+
 test("Workspace architecture reference keeps preview and rendering out of the current core", () => {
   const architecture = readRoot("docs/Workspace架构.md");
   assert.match(architecture, /状态：IDE-first architecture reference/);
