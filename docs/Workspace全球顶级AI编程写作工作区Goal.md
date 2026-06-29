@@ -155,3 +155,20 @@ npm run typecheck:web -- --pretty false
 node --test tests/system/workspace-document-workbench.test.mjs tests/system/workspace-ai-context-basket.test.mjs
 npm run typecheck:web -- --pretty false
 ```
+
+### 2026-06-29 / Phase D 小步：AI Context Basket 共享契约
+
+研究补充：顶级工作区需要把“上下文”从单个按钮提升为可复用对象契约，类似 VS Code 将文件、编辑器、面板、Timeline 等作为稳定工作对象，而 Monaco 继续只负责编辑/选择底座。OpenAI Canvas 的协作模型也要求上下文可被后续编辑和审查复用，而不是一次性复制后丢失。因此本阶段将 context basket 存储、事件、`@document` 格式化和 bundle 导出从 `DocumentWorkbench` 抽到共享模块，避免未来 Workspace 级 UI、Agent handoff、Evidence basket 各自复制一套规则。
+
+完成范围：
+
+- 新增 `workspace/shared/WorkspaceAiContextBasket.ts`，导出 storage key、事件名、limit、item 类型、读写、添加文档、导出 bundle、类型守卫。
+- `DocumentWorkbench` 只负责 UI 调用共享契约，不再持有本地 basket 存储细节。
+- 保持本阶段不改当前有他人改动的 `WorkspaceWorkbench.tsx`，避免多人协作冲突。
+
+验证：
+
+```bash
+node --test tests/system/workspace-ai-context-basket.test.mjs tests/system/workspace-document-workbench.test.mjs
+npm run typecheck:web -- --pretty false
+```

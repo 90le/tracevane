@@ -24,6 +24,11 @@ import {
   canEditDocumentVisually,
 } from "./VisualDocumentEditor";
 import { useVisualViewportKeyboardInset } from "./useVisualViewportKeyboardInset";
+import {
+  addDocumentToAiContextBasket,
+  formatDocumentAiContext,
+  summarizeDocumentForAi,
+} from "./WorkspaceAiContextBasket";
 
 export type DocumentWorkbenchMode = "source" | "preview" | "split" | "visual";
 
@@ -665,148 +670,6 @@ function DocumentAiWritingGuide({
   );
 }
 
-
-const WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY =
-  "tracevane.workspace.ai-context-basket.v1";
-const TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT =
-  "tracevane:workspace-ai-context-basket-updated";
-
-interface WorkspaceAiContextBasketItem {
-  id: string;
-  kind: "document";
-  path: string;
-  title: string;
-  mode: DocumentWorkbenchMode;
-  editable: boolean;
-  textLike: boolean;
-  stats: { lines: number; words: number; characters: number; readingMinutes: number };
-  context: string;
-  addedAt: string;
-}
-
-function addDocumentToAiContextBasket({
-  path,
-  mode,
-  editable,
-  textLike,
-  stats,
-}: {
-  path: string;
-  mode: DocumentWorkbenchMode;
-  editable: boolean;
-  textLike: boolean;
-  stats: { lines: number; words: number; characters: number; readingMinutes: number };
-}): void {
-  if (typeof window === "undefined") return;
-  const title = path.split("/").pop() || path;
-  const nextItem: WorkspaceAiContextBasketItem = {
-    id: `document:${path}`,
-    kind: "document",
-    path,
-    title,
-    mode,
-    editable,
-    textLike,
-    stats,
-    context: formatDocumentAiContext({ path, mode, editable, textLike, stats }),
-    addedAt: new Date().toISOString(),
-  };
-  const items = readWorkspaceAiContextBasket().filter(
-    (item) => item.id !== nextItem.id,
-  );
-  const next = [nextItem, ...items].slice(0, 24);
-  try {
-    window.localStorage.setItem(
-      WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY,
-      JSON.stringify(next),
-    );
-    window.dispatchEvent(
-      new CustomEvent(TRACEVANE_WORKSPACE_AI_CONTEXT_BASKET_EVENT, {
-        detail: { items: next, added: nextItem },
-      }),
-    );
-    toast.success("已加入 AI 上下文篮", {
-      description: `${title} · ${next.length} 项上下文`,
-    });
-  } catch {
-    toast.error("加入 AI 上下文篮失败", { description: title });
-  }
-}
-
-function readWorkspaceAiContextBasket(): WorkspaceAiContextBasketItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(WORKSPACE_AI_CONTEXT_BASKET_STORAGE_KEY) ||
-        "[]",
-    ) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isWorkspaceAiContextBasketItem);
-  } catch {
-    return [];
-  }
-}
-
-function isWorkspaceAiContextBasketItem(
-  value: unknown,
-): value is WorkspaceAiContextBasketItem {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<WorkspaceAiContextBasketItem>;
-  return (
-    item.kind === "document" &&
-    typeof item.id === "string" &&
-    typeof item.path === "string" &&
-    typeof item.title === "string" &&
-    typeof item.context === "string" &&
-    typeof item.addedAt === "string"
-  );
-}
-
-function summarizeDocumentForAi(content: string): {
-  lines: number;
-  words: number;
-  characters: number;
-  readingMinutes: number;
-} {
-  const trimmed = content.trim();
-  const lines = content.length ? content.split(/\r\n|\r|\n/).length : 0;
-  const latinWords = trimmed.match(/[A-Za-z0-9_]+(?:[-'][A-Za-z0-9_]+)*/g)?.length ?? 0;
-  const cjkUnits = trimmed.match(/[\u3400-\u9fff\uf900-\ufaff]/g)?.length ?? 0;
-  const words = latinWords + cjkUnits;
-  return {
-    lines,
-    words,
-    characters: content.length,
-    readingMinutes: Math.max(1, Math.ceil(Math.max(words, content.length / 5) / 220)),
-  };
-}
-
-function formatDocumentAiContext({
-  path,
-  mode,
-  editable,
-  textLike,
-  stats,
-}: {
-  path: string;
-  mode: DocumentWorkbenchMode;
-  editable: boolean;
-  textLike: boolean;
-  stats: { lines: number; words: number; characters: number; readingMinutes: number };
-}): string {
-  return [
-    "@document",
-    `path: ${path}`,
-    `mode: ${mode}`,
-    `editable: ${editable ? "yes" : "no"}`,
-    `textLike: ${textLike ? "yes" : "no"}`,
-    `lines: ${stats.lines}`,
-    `wordsOrCjkUnits: ${stats.words}`,
-    `characters: ${stats.characters}`,
-    `readingMinutes: ${stats.readingMinutes}`,
-    "intent: use the current Tracevane document tab as AI coding/writing context; preserve user control and require diff/review before risky edits",
-  ].join("\n");
-}
 
 function SplitSourceEditor({
   path,
