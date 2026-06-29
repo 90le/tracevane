@@ -181,6 +181,15 @@ test("Workspace empty state exposes the AI coding IDE north star", () => {
 });
 
 
+test("Workspace explorer presents file inspection instead of preview as the IDE action", () => {
+  const explorer = readWeb("features/workspace/files/WorkspaceExplorer.tsx");
+  assert.match(explorer, /label="检查文件"/);
+  assert.match(explorer, /description="打开 IDE 文件检查器"/);
+  assert.match(explorer, /FilePreviewDialog/);
+  assert.doesNotMatch(explorer, /label="预览文件"/);
+  assert.doesNotMatch(explorer, /description="打开预览面板"/);
+});
+
 test("Workspace markdown preview package is marked legacy compatibility only", () => {
   const preview = readWeb("features/workspace/preview/MarkdownPreview.tsx");
   const previewIndex = readWeb("features/workspace/preview/index.ts");

@@ -1740,8 +1740,8 @@ function WorkspaceExplorerActionSheet({
                 <>
                   <TouchActionButton
                     icon={<Eye />}
-                    label="预览文件"
-                    description="打开预览面板"
+                    label="检查文件"
+                    description="打开 IDE 文件检查器"
                     onClick={() => onPreview(target)}
                   />
                   <TouchActionButton
