@@ -74,7 +74,7 @@ export function BinaryFilePreview({
           ) : null}
           <span className="inline-flex items-center gap-1 rounded-full bg-panel-2 px-2 py-1 text-xs text-subtle">
             <ShieldCheck className="size-3.5" />
-            安全占位预览
+            安全占位检查
           </span>
         </div>
       </div>

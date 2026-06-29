@@ -242,6 +242,26 @@ test("Workspace markdown preview package is compatibility-only, not the IDE main
   assert.doesNotMatch(previewIndex, /Active preview package/);
 });
 
+test("Workspace file inspection adapters avoid preview-facing labels", () => {
+  const archive = readWeb("features/workspace/shared/ArchivePreview.tsx");
+  const textSlice = readWeb("features/workspace/shared/TextSlicePreview.tsx");
+  const binary = readWeb("features/workspace/shared/BinaryFilePreview.tsx");
+  const properties = readWeb("features/workspace/shared/FilePropertiesDialog.tsx");
+
+  assert.match(archive, /压缩包检查需要 rootId/);
+  assert.match(archive, /压缩包清单检查/);
+  assert.match(archive, /这里只是检查/);
+  assert.match(archive, /仅检查前/);
+  assert.match(textSlice, /大文本\/日志切片检查/);
+  assert.match(binary, /安全占位检查/);
+  assert.match(properties, /label="可检查"/);
+  assert.doesNotMatch(archive, /压缩包清单预览/);
+  assert.doesNotMatch(archive, /这里只是预览/);
+  assert.doesNotMatch(textSlice, /切片预览/);
+  assert.doesNotMatch(binary, /占位预览/);
+  assert.doesNotMatch(properties, /label="可预览"/);
+});
+
 test("Workspace structured file inspectors avoid preview-facing labels", () => {
   const json = readWeb("features/workspace/shared/JsonPreview.tsx");
   const csv = readWeb("features/workspace/shared/CsvPreview.tsx");

@@ -59,7 +59,7 @@ export function TextSlicePreview({ rootId, path, initialRead, className, "data-d
         <div className="flex min-w-0 items-center gap-2">
           <FileText className="size-4 text-primary" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ink-strong">大文本/日志切片预览</div>
+            <div className="truncate text-sm font-semibold text-ink-strong">大文本/日志切片检查</div>
             <div className="truncate text-xs text-muted">
               {formatBytes(slice.contentOffset)} - {formatBytes(nextOffset)} / {formatBytes(slice.size)} · 仅渲染前 {MAX_RENDERED_LINES} 行避免 DOM 卡顿
             </div>

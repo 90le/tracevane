@@ -56,7 +56,7 @@ export function FilePropertiesDialog({
           <section className="rounded-md border border-line bg-panel-2 p-3">
             <div className="text-xs font-semibold text-ink-strong">能力</div>
             <div className="mt-2 flex flex-wrap gap-2 text-2xs">
-              <Capability label="可预览" enabled={entry.kind === "file" && (Boolean(entry.textLike) || Boolean(entry.imageLike) || Boolean(entry.ext))} />
+              <Capability label="可检查" enabled={entry.kind === "file" && (Boolean(entry.textLike) || Boolean(entry.imageLike) || Boolean(entry.ext))} />
               <Capability label="可编辑文本" enabled={entry.kind === "file" && Boolean(entry.textLike)} />
               <Capability label="隐藏项目" enabled={Boolean(entry.hidden)} />
               <Capability label="目录" enabled={entry.kind === "directory"} />

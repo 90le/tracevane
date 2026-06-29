@@ -51,7 +51,7 @@ export function ArchivePreview({ rootId, path, className, "data-document-preview
       >
         <div>
           <Archive className="mx-auto mb-2 size-8 text-subtle" />
-          压缩包预览需要 rootId 才能读取安全清单。
+          压缩包检查需要 rootId 才能读取安全清单。
         </div>
       </div>
     );
@@ -70,7 +70,7 @@ export function ArchivePreview({ rootId, path, className, "data-document-preview
         <div className="flex min-w-0 items-center gap-2">
           <Archive className="size-4 text-primary" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ink-strong">压缩包清单预览</div>
+            <div className="truncate text-sm font-semibold text-ink-strong">压缩包清单检查</div>
             <div className="truncate text-xs text-muted" title={path}>目标预检目录：/{destinationDirectoryPath || "根目录"}</div>
           </div>
           <Button variant="outline" size="sm" className="h-7" onClick={() => void loadPreview()} disabled={loading}>
@@ -105,7 +105,7 @@ export function ArchivePreview({ rootId, path, className, "data-document-preview
           <div className="grid gap-2" data-archive-preview-items>
             {riskCount ? (
               <div className="rounded border border-danger/30 bg-danger/5 p-3 text-xs text-danger">
-                发现冲突或不安全条目。这里只是预览；实际解压仍需在文件操作弹窗中选择目标路径和冲突策略。
+                发现冲突或不安全条目。这里只是检查；实际解压仍需在文件操作弹窗中选择目标路径和冲突策略。
               </div>
             ) : (
               <div className="rounded border border-success/30 bg-success/5 p-3 text-xs text-success">
@@ -131,7 +131,7 @@ export function ArchivePreview({ rootId, path, className, "data-document-preview
               ))}
             </div>
             {items.length > visibleItems.length ? (
-              <div className="text-center text-xs text-subtle">仅预览前 {visibleItems.length} 条，完整执行前请使用解压预检弹窗。</div>
+              <div className="text-center text-xs text-subtle">仅检查前 {visibleItems.length} 条，完整执行前请使用解压预检弹窗。</div>
             ) : null}
           </div>
         ) : null}
