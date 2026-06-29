@@ -259,7 +259,7 @@ export function createWorkspaceCommandRegistry({
     },
     ...extensionCommands,
     {
-      id: "workspace.ai.context",
+      id: "workspace.evidence.context",
       group: "证据",
       label: "准备 IDE 上下文证据",
       description: "收集 @file / @terminal / @git / @selection，交给 AI 扩展前先形成可审查证据",

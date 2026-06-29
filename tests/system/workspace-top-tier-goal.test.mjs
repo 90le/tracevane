@@ -640,12 +640,14 @@ test("Workspace context commands collect reviewable evidence before AI handoff",
   const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
   assert.match(workspaceCommands, /"证据"/);
   assert.match(workspaceCommands, /准备 IDE 上下文证据/);
+  assert.match(workspaceCommands, /workspace\.evidence\.context/);
   assert.match(workspaceCommands, /交给 AI 扩展前先形成可审查证据/);
   assert.match(searchCommands, /group: "证据"/);
   assert.match(searchCommands, /搜索：复制上下文证据/);
   assert.match(searchCommands, /copySearchEvidence/);
   assert.match(searchCommands, /search\.panel\.copyEvidence/);
   assert.match(searchCommands, /可审查上下文证据/);
+  assert.doesNotMatch(workspaceCommands, /workspace\.ai\.context/);
   assert.doesNotMatch(workspaceCommands, /准备 AI 上下文入口/);
   assert.doesNotMatch(searchCommands, /搜索：复制 AI 上下文/);
   assert.doesNotMatch(searchCommands, /copySearchAiContext/);
