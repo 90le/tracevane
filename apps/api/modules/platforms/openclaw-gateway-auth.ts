@@ -1,10 +1,13 @@
-import crypto from 'node:crypto';
-import path from 'node:path';
-import type { TracevaneServerConfig } from '../../../../../types/api.js';
-import { readJsonFile, readOpenClawConfig } from '../../../core/state.js';
-import { resolveSecretInputString } from '../../../core/secret-ref.js';
-import { ChatServiceError, buildChatError } from '../errors.js';
-import { normalizeString } from '../shared.js';
+import crypto from "node:crypto";
+import path from "node:path";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
+import { readJsonFile, readOpenClawConfig } from "../../core/state.js";
+import { resolveSecretInputString } from "../../core/secret-ref.js";
+import {
+  OpenClawGatewayServiceError,
+  buildOpenClawGatewayError,
+} from "./openclaw-gateway-error.js";
+import { normalizeString } from "./openclaw-gateway-shared.js";
 
 export interface GatewayAuthContext {
   gatewayToken: string;
@@ -14,16 +17,16 @@ export interface GatewayAuthContext {
   scopes: string[];
 }
 
-export const TRACEVANE_GATEWAY_CAPS = ['tool-events'] as const;
+export const TRACEVANE_GATEWAY_CAPS = ["tool-events"] as const;
 const DEFAULT_OPERATOR_SCOPES = [
-  'operator.admin',
-  'operator.approvals',
-  'operator.pairing',
-  'operator.read',
-  'operator.write',
+  "operator.admin",
+  "operator.approvals",
+  "operator.pairing",
+  "operator.read",
+  "operator.write",
 ] as const;
 
-export type GatewaySignatureVersion = 'v2' | 'v3';
+export type GatewaySignatureVersion = "v2" | "v3";
 
 export function buildGatewaySignaturePayloadV2(params: {
   deviceId: string;
@@ -36,16 +39,16 @@ export function buildGatewaySignaturePayloadV2(params: {
   nonce: string;
 }): string {
   return [
-    'v2',
+    "v2",
     params.deviceId,
     params.clientId,
     params.clientMode,
     params.role,
-    params.scopes.join(','),
+    params.scopes.join(","),
     String(params.signedAtMs),
-    params.token ?? '',
+    params.token ?? "",
     params.nonce,
-  ].join('|');
+  ].join("|");
 }
 
 export function buildGatewaySignaturePayloadV3(params: {
@@ -61,18 +64,18 @@ export function buildGatewaySignaturePayloadV3(params: {
   deviceFamily: string;
 }): string {
   return [
-    'v3',
+    "v3",
     params.deviceId,
     params.clientId,
     params.clientMode,
     params.role,
-    params.scopes.join(','),
+    params.scopes.join(","),
     String(params.signedAtMs),
-    params.token ?? '',
+    params.token ?? "",
     params.nonce,
     params.platform,
     params.deviceFamily,
-  ].join('|');
+  ].join("|");
 }
 
 export function buildGatewaySignaturePayload(
@@ -88,42 +91,66 @@ export function buildGatewaySignaturePayload(
     nonce: string;
     platform: string;
     deviceFamily: string;
-  }
+  },
 ): string {
-  if (version === 'v3') {
+  if (version === "v3") {
     return buildGatewaySignaturePayloadV3(params);
   }
   return buildGatewaySignaturePayloadV2(params);
 }
 
-export function loadGatewayAuthContext(config: TracevaneServerConfig): GatewayAuthContext {
+export function loadGatewayAuthContext(
+  config: TracevaneServerConfig,
+): GatewayAuthContext {
   const openclawConfig = readOpenClawConfig(config);
   const gatewayToken = resolveSecretInputString(
     openclawConfig,
     openclawConfig.gateway?.auth?.token,
-    { envFilePath: path.join(config.openclawRoot, '.env') },
+    { envFilePath: path.join(config.openclawRoot, ".env") },
   );
   if (!gatewayToken) {
-    throw new ChatServiceError(503, buildChatError('auth_failure', 'Gateway token is not configured for Tracevane backend adapter.'));
+    throw new OpenClawGatewayServiceError(
+      503,
+      buildOpenClawGatewayError(
+        "auth_failure",
+        "Gateway token is not configured for Tracevane backend adapter.",
+      ),
+    );
   }
 
-  const deviceAuth = readJsonFile<Record<string, any>>(path.join(config.openclawRoot, 'identity', 'device-auth.json'), {});
-  const deviceState = readJsonFile<Record<string, any>>(path.join(config.openclawRoot, 'identity', 'device.json'), {});
-  const paired = readJsonFile<Record<string, any>>(path.join(config.openclawRoot, 'devices', 'paired.json'), {});
+  const deviceAuth = readJsonFile<Record<string, any>>(
+    path.join(config.openclawRoot, "identity", "device-auth.json"),
+    {},
+  );
+  const deviceState = readJsonFile<Record<string, any>>(
+    path.join(config.openclawRoot, "identity", "device.json"),
+    {},
+  );
+  const paired = readJsonFile<Record<string, any>>(
+    path.join(config.openclawRoot, "devices", "paired.json"),
+    {},
+  );
 
   const deviceId = normalizeString(deviceAuth.deviceId);
   const privateKeyPem = normalizeString(deviceState.privateKeyPem);
   const publicKey = normalizeString(paired[deviceId]?.publicKey);
   const persistedScopes = Array.isArray(deviceAuth.tokens?.operator?.scopes)
-    ? deviceAuth.tokens.operator.scopes.map((value: unknown) => String(value).trim()).filter(Boolean)
+    ? deviceAuth.tokens.operator.scopes
+        .map((value: unknown) => String(value).trim())
+        .filter(Boolean)
     : [];
-  const scopes = Array.from(new Set([
-    ...DEFAULT_OPERATOR_SCOPES,
-    ...persistedScopes,
-  ]));
+  const scopes = Array.from(
+    new Set([...DEFAULT_OPERATOR_SCOPES, ...persistedScopes]),
+  );
 
   if (!deviceId || !privateKeyPem || !publicKey) {
-    throw new ChatServiceError(503, buildChatError('auth_failure', 'Tracevane backend device identity is not fully configured.'));
+    throw new OpenClawGatewayServiceError(
+      503,
+      buildOpenClawGatewayError(
+        "auth_failure",
+        "Tracevane backend device identity is not fully configured.",
+      ),
+    );
   }
 
   return {
@@ -144,33 +171,38 @@ export function buildGatewayConnectRequest(params: {
   signatureVersion?: GatewaySignatureVersion;
 }): Record<string, unknown> {
   const signedAtMs = Date.now();
-  const signaturePayload = buildGatewaySignaturePayload(params.signatureVersion || 'v2', {
-    deviceId: params.auth.deviceId,
-    clientId: 'cli',
-    clientMode: 'backend',
-    role: params.role,
-    scopes: params.scopes,
-    signedAtMs,
-    token: params.auth.gatewayToken,
-    nonce: params.nonce,
-    platform: process.platform,
-    deviceFamily: 'server',
-  });
-  const signature = crypto.sign(null, Buffer.from(signaturePayload), params.auth.privateKeyPem).toString('base64url');
+  const signaturePayload = buildGatewaySignaturePayload(
+    params.signatureVersion || "v2",
+    {
+      deviceId: params.auth.deviceId,
+      clientId: "cli",
+      clientMode: "backend",
+      role: params.role,
+      scopes: params.scopes,
+      signedAtMs,
+      token: params.auth.gatewayToken,
+      nonce: params.nonce,
+      platform: process.platform,
+      deviceFamily: "server",
+    },
+  );
+  const signature = crypto
+    .sign(null, Buffer.from(signaturePayload), params.auth.privateKeyPem)
+    .toString("base64url");
 
   return {
-    type: 'req',
+    type: "req",
     id: params.connectRequestId,
-    method: 'connect',
+    method: "connect",
     params: {
       minProtocol: 3,
       maxProtocol: 5,
       client: {
-        id: 'cli',
-        version: 'tracevane',
+        id: "cli",
+        version: "tracevane",
         platform: process.platform,
-        deviceFamily: 'server',
-        mode: 'backend',
+        deviceFamily: "server",
+        mode: "backend",
       },
       caps: [...TRACEVANE_GATEWAY_CAPS],
       role: params.role,
@@ -185,8 +217,8 @@ export function buildGatewayConnectRequest(params: {
         signedAt: signedAtMs,
         nonce: params.nonce,
       },
-      locale: 'zh-CN',
-      userAgent: 'tracevane',
+      locale: "zh-CN",
+      userAgent: "tracevane",
     },
   };
 }

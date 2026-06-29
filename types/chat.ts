@@ -1,61 +1,81 @@
-export type ChatSessionKind = 'tracevane_managed' | 'observed_external' | 'system_internal';
-export type ChatProtocolMode = 'legacy' | 'dual_write' | 'canonical_v1';
+export type ChatSessionKind =
+  "tracevane_managed" | "observed_external" | "system_internal";
+export type ChatProtocolMode = "legacy" | "dual_write" | "canonical_v1";
 
-export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'unknown';
+export type ChatMessageRole =
+  "user" | "assistant" | "system" | "tool" | "unknown";
 
-export type ChatRunState = 'idle' | 'running' | 'streaming' | 'completed' | 'aborted' | 'error' | 'unknown';
-export type ChatRuntimeAdapterKind = 'openclaw-gateway' | 'native-cli';
-export type ChatRuntimeAgentId = 'codex' | 'claude-code' | 'opencode' | 'openclaw' | string;
-export type ChatRuntimePermissionMode = 'suggest' | 'read-only' | 'auto-edit' | 'full-auto' | 'plan' | 'yolo' | string;
+export type ChatRunState =
+  | "idle"
+  | "running"
+  | "streaming"
+  | "completed"
+  | "aborted"
+  | "error"
+  | "unknown";
+export type ChatRuntimeAdapterKind = "openclaw-gateway" | "native-cli";
+export type ChatRuntimeAgentId =
+  "codex" | "claude-code" | "opencode" | "openclaw" | string;
+export type ChatRuntimePermissionMode =
+  | "suggest"
+  | "read-only"
+  | "auto-edit"
+  | "full-auto"
+  | "plan"
+  | "yolo"
+  | string;
 
-export type ChatAgentLifecyclePhase = 'start' | 'end' | 'error';
+export type ChatAgentLifecyclePhase = "start" | "end" | "error";
 
-export type ChatToolStatus = 'running' | 'completed' | 'error';
-export type ChatPermissionStatus = 'pending' | 'allowed' | 'denied' | 'timed-out' | 'failed';
-export type ChatRunProjectionLifecycle = 'queued' | 'running' | 'completed' | 'aborted' | 'error';
-export type ChatQueuedMessageStatus = 'queued' | 'blocked';
+export type ChatToolStatus = "running" | "completed" | "error";
+export type ChatPermissionStatus =
+  "pending" | "allowed" | "denied" | "timed-out" | "failed";
+export type ChatRunProjectionLifecycle =
+  "queued" | "running" | "completed" | "aborted" | "error";
+export type ChatQueuedMessageStatus = "queued" | "blocked";
 
-export type ChatActivityKind = 'lifecycle' | 'assistant' | 'tool_call' | 'tool_result' | 'usage';
+export type ChatActivityKind =
+  "lifecycle" | "assistant" | "tool_call" | "tool_result" | "usage";
 
-export type ChatActivityLevel = 'info' | 'success' | 'warning' | 'error';
-export type ChatProcessBlockKind = 'thinking' | 'reasoning';
+export type ChatActivityLevel = "info" | "success" | "warning" | "error";
+export type ChatProcessBlockKind = "thinking" | "reasoning";
 
-export type ChatAttachmentKind = 'image' | 'video' | 'file';
+export type ChatAttachmentKind = "image" | "video" | "file";
 export type ChatResourceSource =
-  | 'user_upload'
-  | 'tool_artifact'
-  | 'structured_message'
-  | 'tracevane_delivery'
-  | 'assistant_markdown'
-  | 'tracevane_resource';
-export type ChatResourceStatus = 'ready' | 'missing';
-export type ChatResourcePlacement = 'append';
+  | "user_upload"
+  | "tool_artifact"
+  | "structured_message"
+  | "tracevane_delivery"
+  | "assistant_markdown"
+  | "tracevane_resource";
+export type ChatResourceStatus = "ready" | "missing";
+export type ChatResourcePlacement = "append";
 export type ChatInlineResourceDisplay =
-  | 'inline-image'
-  | 'inline-video'
-  | 'inline-chip'
-  | 'break-image'
-  | 'break-video'
-  | 'break-chip';
-export type ChatResourceBlockDisplay = 'card';
+  | "inline-image"
+  | "inline-video"
+  | "inline-chip"
+  | "break-image"
+  | "break-video"
+  | "break-chip";
+export type ChatResourceBlockDisplay = "card";
 export type ChatComposerResourceDisplay = ChatInlineResourceDisplay;
 
 export type ChatContractErrorCode =
-  | 'gateway_down'
-  | 'auth_failure'
-  | 'session_not_found'
-  | 'session_not_writable'
-  | 'history_truncated'
-  | 'duplicate_in_flight'
-  | 'no_active_run'
-  | 'invalid_request'
-  | 'internal_error';
+  | "gateway_down"
+  | "auth_failure"
+  | "session_not_found"
+  | "session_not_writable"
+  | "history_truncated"
+  | "duplicate_in_flight"
+  | "no_active_run"
+  | "invalid_request"
+  | "internal_error";
 
 export interface ChatContractError {
   code: ChatContractErrorCode;
   message: string;
   retryable: boolean;
-  source: 'tracevane' | 'gateway';
+  source: "tracevane" | "gateway";
 }
 
 export interface ChatRuntimeState {
@@ -68,7 +88,6 @@ export interface ChatRuntimeState {
   lastErrorCode: ChatContractErrorCode | null;
   lastErrorMessage: string | null;
 }
-
 
 export interface ChatUsageSummary {
   inputTokens: number;
@@ -179,7 +198,7 @@ export interface ChatSessionRuntimeTarget {
 }
 
 export interface ChatSessionSource {
-  source: 'tracevane' | 'external' | 'system';
+  source: "tracevane" | "external" | "system";
   channel: string | null;
   surface: string | null;
   originLabel: string | null;
@@ -216,7 +235,7 @@ export interface ChatSessionRow {
   runtimeTarget: ChatSessionRuntimeTarget;
 }
 
-export type ChatSessionFolderMove = 'up' | 'down' | 'top';
+export type ChatSessionFolderMove = "up" | "down" | "top";
 
 export interface ChatSessionFolder {
   id: string;
@@ -253,35 +272,37 @@ export interface ChatMessageMediaItem {
 }
 
 export interface ChatMessageTextBlock {
-  type: 'text';
+  type: "text";
   text: string;
 }
 
 export interface ChatMessageTextSegment {
-  type: 'text';
+  type: "text";
   text: string;
 }
 
 export interface ChatMessageResourceSegment {
-  type: 'resource';
+  type: "resource";
   resourceId: string;
   display: ChatInlineResourceDisplay;
 }
 
-export type ChatInlineSegment = ChatMessageTextSegment | ChatMessageResourceSegment;
+export type ChatInlineSegment =
+  ChatMessageTextSegment | ChatMessageResourceSegment;
 
 export interface ChatMessageParagraphBlock {
-  type: 'paragraph';
+  type: "paragraph";
   segments: ChatInlineSegment[];
 }
 
 export interface ChatMessageResourceBlock {
-  type: 'resource';
+  type: "resource";
   resourceId: string;
   display?: ChatResourceBlockDisplay;
 }
 
-export type ChatMessageBlock = ChatMessageTextBlock | ChatMessageParagraphBlock | ChatMessageResourceBlock;
+export type ChatMessageBlock =
+  ChatMessageTextBlock | ChatMessageParagraphBlock | ChatMessageResourceBlock;
 
 export interface ChatProcessBlock {
   id: string;
@@ -290,19 +311,20 @@ export interface ChatProcessBlock {
 }
 
 export interface ChatComposerTextNode {
-  type: 'text';
+  type: "text";
   id: string;
   text: string;
 }
 
 export interface ChatComposerResourceRefNode {
-  type: 'resource-ref';
+  type: "resource-ref";
   id: string;
   attachmentId: string;
   display: ChatComposerResourceDisplay;
 }
 
-export type ChatComposerNode = ChatComposerTextNode | ChatComposerResourceRefNode;
+export type ChatComposerNode =
+  ChatComposerTextNode | ChatComposerResourceRefNode;
 export type ChatComposerDocument = ChatComposerNode[];
 
 export interface ChatSendFileRef {
@@ -320,7 +342,7 @@ export interface ChatMessageItem {
   role: ChatMessageRole;
   text: string;
   createdAt: string | null;
-  source: 'history' | 'stream' | 'inject';
+  source: "history" | "stream" | "inject";
   runId: string | null;
   truncated: boolean;
   omitted: boolean;
@@ -370,31 +392,31 @@ export interface ChatRuntimeCapability {
   binaryId: string | null;
   binaryName: string | null;
   runnerContract: string;
-  modelSource?: 'gateway' | 'native' | 'platform';
+  modelSource?: "gateway" | "native" | "platform";
   defaultModelLabel?: string | null;
-  status: 'runnable' | 'registered_pending';
+  status: "runnable" | "registered_pending";
   description: string;
 }
 
 export interface ChatFileCapability {
-  browseEndpoint: '/api/files/browse';
-  uploadEndpoint: '/api/files/uploads/*';
-  readEndpoint: '/api/files/read';
-  downloadEndpoint: '/api/files/download';
-  resourceRef: 'files:<rootId>:<path>';
+  browseEndpoint: "/api/files/browse";
+  uploadEndpoint: "/api/files/uploads/*";
+  readEndpoint: "/api/files/read";
+  downloadEndpoint: "/api/files/download";
+  resourceRef: "files:<rootId>:<path>";
   legacyRefsReadOnly: readonly string[];
 }
 
 export interface ChatDiagnostics {
   gatewayReachable: boolean;
   gatewayWsUrl: string;
-  transport: 'tracevane_bff';
-  authMode: 'tracevane_backend_token';
+  transport: "tracevane_bff";
+  authMode: "tracevane_backend_token";
   rawGatewayFramesExposed: false;
   rawGatewayMethodsExposed: false;
   sameOriginRequired: boolean;
   historyTruncated: boolean;
-  truncationMode: 'none' | 'tail_marked' | 'omitted_placeholder';
+  truncationMode: "none" | "tail_marked" | "omitted_placeholder";
   runtimeCapabilities: ChatRuntimeCapability[];
   fileCapability: ChatFileCapability;
   notes: string[];
@@ -403,7 +425,7 @@ export interface ChatDiagnostics {
 export type ChatHealthPayload = ChatDiagnostics;
 
 export interface ChatHistoryCursor {
-  source: 'history_window' | 'history_search';
+  source: "history_window" | "history_search";
   anchorIndex: number;
   anchorMessageId: string | null;
   anchorCreatedAt: string | null;
@@ -413,8 +435,9 @@ export interface ChatHistoryCursor {
   contentFilter: ChatHistorySearchContentFilter | null;
 }
 
-export type ChatHistorySearchRoleFilter = 'all' | 'user' | 'assistant' | 'tool';
-export type ChatHistorySearchContentFilter = 'all' | 'text' | 'resource' | 'code';
+export type ChatHistorySearchRoleFilter = "all" | "user" | "assistant" | "tool";
+export type ChatHistorySearchContentFilter =
+  "all" | "text" | "resource" | "code";
 
 export interface ChatHistorySearchMatch {
   messageId: string;
@@ -596,7 +619,7 @@ export interface ChatQueuePayload {
 }
 
 export interface ChatResolvePermissionRequest {
-  decision: 'allow' | 'deny';
+  decision: "allow" | "deny";
   updatedInput?: Record<string, unknown> | null;
   message?: string | null;
 }
@@ -608,8 +631,8 @@ export interface ChatResolvePermissionResponse {
 
 export interface ChatPatchQueueEntryRequest extends ChatSendRequest {}
 
-
-export type ChatSendStatus = 'started' | 'duplicate_in_flight' | 'duplicate_completed';
+export type ChatSendStatus =
+  "started" | "duplicate_in_flight" | "duplicate_completed";
 
 export interface ChatSendAck {
   accepted: boolean;
@@ -654,10 +677,13 @@ export interface ChatFileUploadResponse {
   size: number;
 }
 
-export type ChatCanonicalSnapshotSource = 'local_transcript' | 'history_sse' | 'history_rpc' | 'tracevane_mirror';
-export type ChatCanonicalMessageSource = 'local_transcript' | 'history_sse' | 'session.message' | 'tracevane_bff';
-export type ChatTemporaryToolSource = 'session.tool' | 'agent.tool' | 'tracevane_bff';
-export type ChatSideResultKind = 'btw';
+export type ChatCanonicalSnapshotSource =
+  "local_transcript" | "history_sse" | "history_rpc" | "tracevane_mirror";
+export type ChatCanonicalMessageSource =
+  "local_transcript" | "history_sse" | "session.message" | "tracevane_bff";
+export type ChatTemporaryToolSource =
+  "session.tool" | "agent.tool" | "tracevane_bff";
+export type ChatSideResultKind = "btw";
 
 export interface ChatSideResult {
   kind: ChatSideResultKind;
@@ -667,220 +693,175 @@ export interface ChatSideResult {
 }
 
 export type ChatStreamEvent = (
-  {
-    kind: 'queue.state';
-    sessionKey: string;
-    emittedAt: string;
-    items: ChatQueuedMessageItem[];
-  }
   | {
-    kind: 'side_result';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    result: ChatSideResult;
-  }
+      kind: "queue.state";
+      sessionKey: string;
+      emittedAt: string;
+      items: ChatQueuedMessageItem[];
+    }
   | {
-    kind: 'ack';
-    sessionKey: string;
-    runId: string;
-    requestId: string;
-    emittedAt: string;
-    status: ChatSendStatus;
-    runtime: ChatRuntimeState;
-  }
+      kind: "side_result";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      result: ChatSideResult;
+    }
   | {
-    kind: 'canonical.snapshot';
-    sessionKey: string;
-    emittedAt: string;
-    version: string;
-    messages: ChatMessageItem[];
-    overlays: ChatRunOverlay[];
-    pageInfo?: ChatHistoryPageInfo;
-    runtime: ChatRuntimeState;
-    source: ChatCanonicalSnapshotSource;
-  }
+      kind: "ack";
+      sessionKey: string;
+      runId: string;
+      requestId: string;
+      emittedAt: string;
+      status: ChatSendStatus;
+      runtime: ChatRuntimeState;
+    }
   | {
-    kind: 'canonical.message';
-    sessionKey: string;
-    emittedAt: string;
-    message: ChatMessageItem;
-    messageId: string;
-    messageSeq: number;
-    version: string;
-    source: ChatCanonicalMessageSource;
-  }
+      kind: "canonical.snapshot";
+      sessionKey: string;
+      emittedAt: string;
+      version: string;
+      messages: ChatMessageItem[];
+      overlays: ChatRunOverlay[];
+      pageInfo?: ChatHistoryPageInfo;
+      runtime: ChatRuntimeState;
+      source: ChatCanonicalSnapshotSource;
+    }
   | {
-    kind: 'temporary.assistant';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    textDelta: string;
-    accumulatedText: string;
-  }
+      kind: "canonical.message";
+      sessionKey: string;
+      emittedAt: string;
+      message: ChatMessageItem;
+      messageId: string;
+      messageSeq: number;
+      version: string;
+      source: ChatCanonicalMessageSource;
+    }
   | {
-    kind: 'temporary.tool';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    partial: boolean;
-    tool: ChatToolCard;
-    source: ChatTemporaryToolSource;
-  }
+      kind: "temporary.assistant";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      textDelta: string;
+      accumulatedText: string;
+    }
   | {
-    kind: 'runtime.state';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    runtime: ChatRuntimeState;
-  }
+      kind: "temporary.tool";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      partial: boolean;
+      tool: ChatToolCard;
+      source: ChatTemporaryToolSource;
+    }
   | {
-    kind: 'agent_permission';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    permission: ChatPermissionRequestCard;
-  }
+      kind: "runtime.state";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      runtime: ChatRuntimeState;
+    }
   | {
-    kind: 'run_overlay';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    overlay: ChatRunOverlay;
-    terminal: boolean;
-  }
+      kind: "agent_permission";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      permission: ChatPermissionRequestCard;
+    }
   | {
-    kind: 'delta';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    textDelta: string;
-    accumulatedText: string;
-    message?: ChatMessageItem | null;
-  }
+      kind: "run_overlay";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      overlay: ChatRunOverlay;
+      terminal: boolean;
+    }
   | {
-    kind: 'final';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    message: ChatMessageItem;
-    runtime: ChatRuntimeState;
-    usage: ChatUsageSummary | null;
-  }
+      kind: "delta";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      textDelta: string;
+      accumulatedText: string;
+      message?: ChatMessageItem | null;
+    }
   | {
-    kind: 'aborted';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    stopReason: string | null;
-    partialMessage: ChatMessageItem | null;
-    runtime: ChatRuntimeState;
-  }
+      kind: "final";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      message: ChatMessageItem;
+      runtime: ChatRuntimeState;
+      usage: ChatUsageSummary | null;
+    }
   | {
-    kind: 'error';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    error: ChatContractError;
-    runtime: ChatRuntimeState;
-  }
+      kind: "aborted";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      stopReason: string | null;
+      partialMessage: ChatMessageItem | null;
+      runtime: ChatRuntimeState;
+    }
   | {
-    kind: 'runtime';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    runtime: ChatRuntimeState;
-  }
+      kind: "error";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      error: ChatContractError;
+      runtime: ChatRuntimeState;
+    }
   | {
-    kind: 'assistant_delivery';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    message: ChatMessageItem;
-  }
+      kind: "runtime";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      runtime: ChatRuntimeState;
+    }
   | {
-    kind: 'agent_lifecycle';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    lifecycle: ChatLifecycleSignal;
-  }
+      kind: "assistant_delivery";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      message: ChatMessageItem;
+    }
   | {
-    kind: 'agent_assistant';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    text: string;
-    textPreview: string;
-    deltaText: string | null;
-  }
-
+      kind: "agent_lifecycle";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      lifecycle: ChatLifecycleSignal;
+    }
   | {
-    kind: 'agent_process';
-    sessionKey: string;
-    runId: string;
-    emittedAt: string;
-    block: ChatProcessBlock;
-  }
+      kind: "agent_assistant";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      text: string;
+      textPreview: string;
+      deltaText: string | null;
+    }
   | {
-    kind: 'agent_tool_call';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    tool: ChatToolCard;
-  }
+      kind: "agent_process";
+      sessionKey: string;
+      runId: string;
+      emittedAt: string;
+      block: ChatProcessBlock;
+    }
   | {
-    kind: 'agent_tool_result';
-    sessionKey: string;
-    runId: string | null;
-    emittedAt: string;
-    partial: boolean;
-    tool: ChatToolCard;
-  }
+      kind: "agent_tool_call";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      tool: ChatToolCard;
+    }
+  | {
+      kind: "agent_tool_result";
+      sessionKey: string;
+      runId: string | null;
+      emittedAt: string;
+      partial: boolean;
+      tool: ChatToolCard;
+    }
 ) & {
   streamSeq?: number;
 };
-
-export interface ChatGatewayAttachPayload {
-  sessionKey: string;
-  bootstrapSnapshot?: boolean;
-  lastStreamSeq?: number | null;
-}
-
-export interface ChatGatewayHeartbeatPayload {
-  sessionKey: string;
-}
-
-export interface ChatGatewayDetachPayload {
-  sessionKey?: string | null;
-}
-
-export interface ChatGatewaySendPayload extends ChatSendRequest {
-  sessionKey: string;
-}
-
-export interface ChatGatewayAbortPayload {
-  sessionKey: string;
-}
-
-
-export interface ChatGatewayAttachResponse {
-  sessionKey: string;
-  leaseTtlMs: number;
-  events: ChatStreamEvent[];
-}
-
-export interface ChatGatewayAckResponse {
-  ok: true;
-  sessionKey: string;
-}
-
-export const TRACEVANE_CHAT_GATEWAY_EVENT = 'tracevane.chat';
-
-export const TRACEVANE_CHAT_GATEWAY_METHODS = {
-  attach: 'tracevane.chat.attach',
-  heartbeat: 'tracevane.chat.heartbeat',
-  detach: 'tracevane.chat.detach',
-  send: 'tracevane.chat.send',
-  abort: 'tracevane.chat.abort',
-} as const;

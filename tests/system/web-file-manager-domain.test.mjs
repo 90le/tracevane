@@ -47,7 +47,6 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   const documentPreview = read(
     "apps/web/src/features/workspace/shared/DocumentPreview.tsx",
   );
-  const chatApi = read("apps/web/src/lib/api/chat.ts");
   const archivePreview = read(
     "apps/web/src/features/workspace/shared/ArchivePreview.tsx",
   );
@@ -115,6 +114,12 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(chrome, /viewMode === "trash"/);
   assert.match(page, /LazyTrashManager/);
   assert.match(trashManager, /useFilesTrashQuery/);
+  assert.match(trashManager, /FILES_GLOBAL_SCOPE_ID/);
+  assert.match(trashManager, /rootId: trashScopeRootId/);
+  assert.match(
+    trashManager,
+    /data-file-manager-trash-root-id=\{item\.rootId\}/,
+  );
   assert.match(trashManager, /useRestoreFilesTrashMutation/);
   assert.match(trashManager, /usePurgeFilesTrashMutation/);
   assert.match(trashManager, /恢复冲突/);
@@ -1174,7 +1179,10 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(documentPreview, /<video[\s\S]*src=\{resolvedDownloadUrl\}/);
   assert.match(documentPreview, /<audio[\s\S]*src=\{downloadUrl\}/);
   assert.match(documentPreview, /buildFileDownloadUrl/);
-  assert.match(chatApi, /resourceRef,[\s\S]*fileName/);
+  assert.equal(
+    fs.existsSync(path.join(rootDir, "apps/web/src/lib/api/chat.ts")),
+    false,
+  );
   assert.match(binaryFilePreview, /data-binary-preview-stage/);
   assert.match(binaryFilePreview, /data-binary-preview-actions/);
   assert.match(actionDialog, /打包所选项目/);
@@ -1593,9 +1601,12 @@ test("file manager owns content index management view instead of placing it in W
   assert.match(contentIndex, /useScanFilesContentIndexMutation/);
   assert.match(contentIndex, /useCleanFilesContentIndexMutation/);
   assert.match(contentIndex, /useRebuildFilesContentIndexMutation/);
-  assert.match(contentIndex, /文件系统仍是事实源/);
+  assert.match(contentIndex, /全局汇总所有入口的内容索引/);
+  assert.match(contentIndex, /FILES_GLOBAL_SCOPE_ID/);
+  assert.match(contentIndex, /rootId: indexScopeRootId/);
+  assert.match(contentIndex, /fastStats/);
   assert.match(contentIndex, /扫描失效/);
-  assert.match(contentIndex, /重建索引/);
+  assert.match(contentIndex, /重建当前入口/);
   assert.match(contentIndex, /清理失效/);
   assert.match(contentIndex, /复制诊断/);
   assert.match(contentIndex, /deriveContentIndexHealth/);
@@ -1642,14 +1653,16 @@ test("file manager owns content index management view instead of placing it in W
     page,
     /LazyContentIndexManager[\s\S]*rootId=\{rootId\}[\s\S]*rootLabel=\{root\?\.labelZh \?\? rootId\}[\s\S]*onRevealPath=\{revealOperationPath\}[\s\S]*onOpenFile=\{openFilePreview\}/,
   );
+  assert.match(page, /previewRootId/);
+  assert.match(page, /activePreviewRootId/);
   assert.match(
     contentIndex,
-    /onOpenFile\?: \(entry: FileEntrySummary\) => void/,
+    /onOpenFile\?: \(entry: FileEntrySummary, rootId\?: string\) => void/,
   );
   assert.match(contentIndex, /contentIndexRecordToFileEntry/);
   assert.match(
     contentIndex,
-    /onOpenFile\(contentIndexRecordToFileEntry\(record\)\)/,
+    /onOpenFile\(contentIndexRecordToFileEntry\(record\), record\.rootId\)/,
   );
   assert.match(contentIndex, /预览 \/ 编辑/);
   assert.match(contentIndex, /data-content-index-export-current-page/);

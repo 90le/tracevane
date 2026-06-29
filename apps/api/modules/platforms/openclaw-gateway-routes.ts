@@ -1,16 +1,16 @@
-import { parseJsonBody, sendJson } from '../../core/http.js';
-import type { TracevaneRouter } from '../../core/router.js';
-import { isChatServiceError } from '../chat/errors.js';
+import { parseJsonBody, sendJson } from "../../core/http.js";
+import type { TracevaneRouter } from "../../core/router.js";
+import { isOpenClawGatewayServiceError } from "./openclaw-gateway-error.js";
 import {
   requestOpenClawGateway,
   type OpenClawGatewayRequest,
-} from './openclaw-gateway.js';
+} from "./openclaw-gateway.js";
 
 function sendOpenClawGatewayError(
   res: Parameters<typeof sendJson>[0],
   error: unknown,
 ): void {
-  if (isChatServiceError(error)) {
+  if (isOpenClawGatewayServiceError(error)) {
     const shape = error.toShape();
     sendJson(res, shape.statusCode, { error: shape.error });
     return;
@@ -18,17 +18,24 @@ function sendOpenClawGatewayError(
 
   sendJson(res, 500, {
     error: {
-      code: 'internal_error',
-      message: error instanceof Error ? error.message : 'Unexpected OpenClaw gateway failure',
+      code: "internal_error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unexpected OpenClaw gateway failure",
     },
   });
 }
 
 export function registerOpenClawGatewayRoutes(router: TracevaneRouter): void {
-  router.post('/api/platforms/openclaw/gateway', async (req, res, routeCtx) => {
+  router.post("/api/platforms/openclaw/gateway", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<OpenClawGatewayRequest>(req);
-      sendJson(res, 200, await requestOpenClawGateway(routeCtx.config, payload));
+      sendJson(
+        res,
+        200,
+        await requestOpenClawGateway(routeCtx.config, payload),
+      );
     } catch (error) {
       sendOpenClawGatewayError(res, error);
     }
