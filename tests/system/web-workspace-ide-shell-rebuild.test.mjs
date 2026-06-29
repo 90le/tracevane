@@ -1320,3 +1320,26 @@ test("new Workspace IDE shell supports undo and redo for layout changes", () => 
   assert.match(shellSource, /data-ide-layout-history-redo/);
   assert.match(shellSource, /布局历史: \{layoutHistoryPast\.length\}\/\{layoutHistoryFuture\.length\}/);
 });
+
+test("new Workspace IDE shell supports dock composition snapshots", () => {
+  assert.match(shellSource, /interface IdeDockSnapshot/);
+  assert.match(shellSource, /const IDE_DOCK_SNAPSHOTS_STORAGE_KEY = "tracevane\.workspace\.ide-shell\.dock-snapshots\.v1"/);
+  assert.match(shellSource, /const MAX_DOCK_SNAPSHOTS = 16/);
+  assert.match(shellSource, /const \[dockSnapshots, setDockSnapshots\] = React\.useState<IdeDockSnapshot\[\]>\(\(\) => loadIdeDockSnapshots\(\)\)/);
+  assert.match(shellSource, /function currentDockSnapshotState\(placement: PanePlacement, name: string/);
+  assert.match(shellSource, /function saveDockSnapshot\(placement: PanePlacement\)/);
+  assert.match(shellSource, /function restoreDockSnapshot\(snapshot: IdeDockSnapshot\)/);
+  assert.match(shellSource, /function updateDockSnapshot\(snapshotId: string\)/);
+  assert.match(shellSource, /function deleteDockSnapshot\(snapshotId: string\)/);
+  assert.match(shellSource, /function loadIdeDockSnapshots\(\): IdeDockSnapshot\[\]/);
+  assert.match(shellSource, /function storeIdeDockSnapshots\(snapshots: IdeDockSnapshot\[\]\)/);
+  assert.match(shellSource, /function sanitizeIdeDockSnapshot\(value: unknown\): IdeDockSnapshot \| null/);
+  assert.match(shellSource, /ide\.dock\.snapshot\.save\.\$\{placement\}/);
+  assert.match(shellSource, /ide\.dock\.snapshot\.restore\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /ide\.dock\.snapshot\.update\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /ide\.dock\.snapshot\.delete\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-dock-snapshot-save=\{placement\}/);
+  assert.match(shellSource, /data-ide-dock-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-dock-snapshot-placement=\{snapshot\.placement\}/);
+  assert.match(shellSource, /Dock组合: \{dockSnapshots\.length\}/);
+});

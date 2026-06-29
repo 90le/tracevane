@@ -126,7 +126,9 @@ const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
 
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 const IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.snapshots.v1";
+const IDE_DOCK_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.dock-snapshots.v1";
 const MAX_LAYOUT_SNAPSHOTS = 8;
+const MAX_DOCK_SNAPSHOTS = 16;
 const MAX_LAYOUT_HISTORY = 32;
 
 const DEFAULT_PANE_SIZES: IdePaneSizes = { top: 170, left: 320, right: 340, bottom: 260 };
@@ -309,6 +311,21 @@ interface IdeLayoutSnapshot {
   state: IdeLayoutState;
 }
 
+interface IdeDockSnapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  placement: PanePlacement;
+  paneIds: PaneId[];
+  hiddenPaneIds: PaneId[];
+  pinnedPaneIds: PaneId[];
+  splitMode: DockSplitMode;
+  splitRatio: number;
+  paneSelection: Partial<Record<DockPaneRole, PaneId>>;
+  open: boolean;
+  size: number;
+}
+
 const LazyWorkspaceTerminal = React.lazy(() =>
   import("../terminal/WorkspaceTerminal").then((module) => ({
     default: module.WorkspaceTerminal,
@@ -332,6 +349,7 @@ export function WorkspaceIdeShell() {
 
   const [layoutState] = React.useState(() => loadIdeLayoutState());
   const [layoutSnapshots, setLayoutSnapshots] = React.useState<IdeLayoutSnapshot[]>(() => loadIdeLayoutSnapshots());
+  const [dockSnapshots, setDockSnapshots] = React.useState<IdeDockSnapshot[]>(() => loadIdeDockSnapshots());
   const [activity, setActivity] = React.useState<PaneId>("explorer");
   const [topPanel, setTopPanel] = React.useState<PaneId>("output");
   const [rightPanel, setRightPanel] = React.useState<PaneId>("ai");
@@ -1944,9 +1962,55 @@ export function WorkspaceIdeShell() {
     [layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorGroupTabs, editorSplitMode, editorSplitRatio, hiddenPanes, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
+  const dockSnapshotCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      ...DOCK_PLACEMENTS.map((placement) => ({
+        id: `ide.dock.snapshot.save.${placement}`,
+        group: "布局" as const,
+        label: `保存${placementLabel(placement)} Dock 组合快照`,
+        description: `只保存${placementLabel(placement)} Dock 的 Pane 顺序、隐藏/固定状态、拆分方向、比例、尺寸和开合状态`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        run: () => saveDockSnapshot(placement),
+      })),
+      ...dockSnapshots.map((snapshot) => ({
+        id: `ide.dock.snapshot.restore.${snapshot.id}`,
+        group: "布局" as const,
+        label: `恢复${placementLabel(snapshot.placement)} Dock 组合：${snapshot.name}`,
+        description: `恢复 ${formatSnapshotTime(snapshot.createdAt)} 保存的${placementLabel(snapshot.placement)} Dock 组合，不覆盖其它 Dock`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        run: () => restoreDockSnapshot(snapshot),
+      })),
+      ...dockSnapshots.map((snapshot) => ({
+        id: `ide.dock.snapshot.update.${snapshot.id}`,
+        group: "布局" as const,
+        label: `用当前${placementLabel(snapshot.placement)} Dock 覆盖组合：${snapshot.name}`,
+        description: `把当前${placementLabel(snapshot.placement)} Dock 的组合状态写回该 Dock 快照`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        run: () => updateDockSnapshot(snapshot.id),
+      })),
+      ...dockSnapshots.map((snapshot) => ({
+        id: `ide.dock.snapshot.delete.${snapshot.id}`,
+        group: "布局" as const,
+        label: `删除${placementLabel(snapshot.placement)} Dock 组合：${snapshot.name}`,
+        description: `删除 ${formatSnapshotTime(snapshot.createdAt)} 保存的${placementLabel(snapshot.placement)} Dock 组合快照`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Trash2 />,
+        run: () => deleteDockSnapshot(snapshot.id),
+      })),
+    ],
+    [dockSnapshots, dockPaneSelections, dockSplitModes, dockSplitRatios, hiddenPanes, paneOrder, paneSizes, pinnedPanes, topOpen, leftOpen, rightOpen, bottomOpen],
+  );
+
   const commands = React.useMemo(
-    () => [...layoutCommands, ...dockPlacementLayoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockExactGroupMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockExactGroupMoveCommands, activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockPlacementLayoutCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...dockPlacementLayoutCommands, ...layoutSnapshotCommands, ...dockSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockExactGroupMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockExactGroupMoveCommands, activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockPlacementLayoutCommands, dockSnapshotCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -2106,6 +2170,20 @@ export function WorkspaceIdeShell() {
     setMobilePanel(panel);
   }
 
+  function isDockOpen(placement: PanePlacement): boolean {
+    if (placement === "top") return topOpen;
+    if (placement === "left") return leftOpen;
+    if (placement === "right") return rightOpen;
+    return bottomOpen;
+  }
+
+  function setDockOpen(placement: PanePlacement, open: boolean) {
+    if (placement === "top") setTopOpen(open);
+    if (placement === "left") setLeftOpen(open);
+    if (placement === "right") setRightOpen(open);
+    if (placement === "bottom") setBottomOpen(open);
+  }
+
   function cycleMobilePanel(direction: MobilePanelDirection) {
     const currentIndex = Math.max(0, MOBILE_PANEL_ORDER.indexOf(mobilePanel));
     const offset = direction === "next" ? 1 : -1;
@@ -2235,6 +2313,78 @@ export function WorkspaceIdeShell() {
     const nextSnapshots = layoutSnapshots.filter((snapshot) => snapshot.id !== snapshotId);
     setLayoutSnapshots(nextSnapshots);
     storeIdeLayoutSnapshots(nextSnapshots);
+  }
+
+  function currentDockSnapshotState(placement: PanePlacement, name: string, id = `dock-${placement}-${Date.now()}`): IdeDockSnapshot {
+    const paneIds = paneOrder[placement].filter((paneId) => (panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement) === placement);
+    const hiddenPaneIds = hiddenPanes.filter((paneId) => (panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement) === placement);
+    return {
+      id,
+      name,
+      createdAt: new Date().toISOString(),
+      placement,
+      paneIds,
+      hiddenPaneIds,
+      pinnedPaneIds: pinnedPanes.filter((paneId) => paneIds.includes(paneId) || hiddenPaneIds.includes(paneId)),
+      splitMode: dockSplitModes[placement],
+      splitRatio: dockSplitRatios[placement],
+      paneSelection: dockPaneSelections[placement],
+      open: isDockOpen(placement),
+      size: paneSizes[placement],
+    };
+  }
+
+  function saveDockSnapshot(placement: PanePlacement) {
+    const defaultName = `${placementLabel(placement)} Dock 组合 ${dockSnapshots.filter((snapshot) => snapshot.placement === placement).length + 1}`;
+    const requestedName = typeof window !== "undefined" ? window.prompt(`命名${placementLabel(placement)} Dock 组合快照`, defaultName) : defaultName;
+    const snapshot = currentDockSnapshotState(placement, sanitizeSnapshotName(requestedName, defaultName));
+    const nextSnapshots = [snapshot, ...dockSnapshots].slice(0, MAX_DOCK_SNAPSHOTS);
+    setDockSnapshots(nextSnapshots);
+    storeIdeDockSnapshots(nextSnapshots);
+  }
+
+  function updateDockSnapshot(snapshotId: string) {
+    const snapshot = dockSnapshots.find((item) => item.id === snapshotId);
+    if (!snapshot) return;
+    const nextSnapshots = dockSnapshots.map((item) => (
+      item.id === snapshotId ? currentDockSnapshotState(item.placement, item.name, item.id) : item
+    ));
+    setDockSnapshots(nextSnapshots);
+    storeIdeDockSnapshots(nextSnapshots);
+  }
+
+  function deleteDockSnapshot(snapshotId: string) {
+    const nextSnapshots = dockSnapshots.filter((snapshot) => snapshot.id !== snapshotId);
+    setDockSnapshots(nextSnapshots);
+    storeIdeDockSnapshots(nextSnapshots);
+  }
+
+  function restoreDockSnapshot(snapshot: IdeDockSnapshot) {
+    if (layoutLocked) return;
+    const sanitized = sanitizeIdeDockSnapshot(snapshot);
+    if (!sanitized) return;
+    const placement = sanitized.placement;
+    const paneSet = new Set([...sanitized.paneIds, ...sanitized.hiddenPaneIds]);
+    setPanePlacements((current) => {
+      const next = { ...current };
+      for (const paneId of paneSet) next[paneId] = placement;
+      return next;
+    });
+    setPaneOrder((current) => ({ ...current, [placement]: sanitized.paneIds }));
+    setHiddenPanes((current) => [
+      ...current.filter((paneId) => (panePlacements[paneId] ?? paneDescriptor(paneId).defaultPlacement) !== placement && !paneSet.has(paneId)),
+      ...sanitized.hiddenPaneIds,
+    ]);
+    setPinnedPanes((current) => [
+      ...current.filter((paneId) => !paneSet.has(paneId)),
+      ...sanitized.pinnedPaneIds,
+    ]);
+    setDockSplitModes((current) => ({ ...current, [placement]: sanitized.splitMode }));
+    setDockSplitRatios((current) => ({ ...current, [placement]: sanitized.splitRatio }));
+    setDockPaneSelections((current) => ({ ...current, [placement]: normalizeDockPaneSelection(sanitized.paneSelection, sanitized.paneIds) }));
+    setPaneSizes((current) => ({ ...current, [placement]: sanitized.size }));
+    setDockOpen(placement, sanitized.open);
+    if (sanitized.open) setMobilePanel(placement);
   }
 
   function applyIdeLayoutState(state: IdeLayoutState) {
@@ -3166,6 +3316,26 @@ export function WorkspaceIdeShell() {
             </span>
           ))}
         </div>
+        <div className="workspace-ide-shell__layout-snapshots" aria-label="IDE Dock 组合快照">
+          {DOCK_PLACEMENTS.map((placement) => (
+            <button key={placement} type="button" onClick={() => saveDockSnapshot(placement)} data-ide-dock-snapshot-save={placement}>
+              保存{placementLabel(placement)}Dock
+            </button>
+          ))}
+          {dockSnapshots.slice(0, 4).map((snapshot) => (
+            <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-dock-snapshot={snapshot.id} data-ide-dock-snapshot-placement={snapshot.placement}>
+              <button type="button" onClick={() => restoreDockSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
+                {placementShortLabel(snapshot.placement)} · {snapshot.name}
+              </button>
+              <button type="button" aria-label={`用当前${placementLabel(snapshot.placement)} Dock 覆盖组合 ${snapshot.name}`} onClick={() => updateDockSnapshot(snapshot.id)} data-ide-dock-snapshot-update={snapshot.id}>
+                ↻
+              </button>
+              <button type="button" aria-label={`删除${placementLabel(snapshot.placement)} Dock 组合 ${snapshot.name}`} onClick={() => deleteDockSnapshot(snapshot.id)} data-ide-dock-snapshot-delete={snapshot.id}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
             <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}
@@ -3849,6 +4019,7 @@ export function WorkspaceIdeShell() {
         <span>布局历史: {layoutHistoryPast.length}/{layoutHistoryFuture.length}</span>
         <span>固定 Pane: {pinnedPanes.length}</span>
         <span>快照: {layoutSnapshots.length}</span>
+        <span>Dock组合: {dockSnapshots.length}</span>
         <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
@@ -5145,6 +5316,27 @@ function storeIdeLayoutSnapshots(snapshots: IdeLayoutSnapshot[]) {
   }
 }
 
+function loadIdeDockSnapshots(): IdeDockSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(IDE_DOCK_SNAPSHOTS_STORAGE_KEY);
+    if (!raw) return [];
+    const value = JSON.parse(raw) as IdeDockSnapshot[];
+    return sanitizeIdeDockSnapshots(value);
+  } catch {
+    return [];
+  }
+}
+
+function storeIdeDockSnapshots(snapshots: IdeDockSnapshot[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(IDE_DOCK_SNAPSHOTS_STORAGE_KEY, JSON.stringify(sanitizeIdeDockSnapshots(snapshots)));
+  } catch {
+    // Dock snapshots are local preferences; storage denial must not break the IDE shell.
+  }
+}
+
 function sanitizeImportedLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
   if (Array.isArray(value)) return sanitizeIdeLayoutSnapshots(value);
   if (value && typeof value === "object" && Array.isArray((value as { snapshots?: unknown }).snapshots)) {
@@ -5185,6 +5377,37 @@ function sanitizeIdeLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
       state: sanitizeIdeLayoutState(snapshot.state ?? {}),
     }))
     .slice(0, MAX_LAYOUT_SNAPSHOTS);
+}
+
+function sanitizeIdeDockSnapshots(value: unknown): IdeDockSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((snapshot) => sanitizeIdeDockSnapshot(snapshot))
+    .filter((snapshot): snapshot is IdeDockSnapshot => Boolean(snapshot))
+    .slice(0, MAX_DOCK_SNAPSHOTS);
+}
+
+function sanitizeIdeDockSnapshot(value: unknown): IdeDockSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<IdeDockSnapshot>;
+  if (!isPanePlacement(snapshot.placement)) return null;
+  const placement = snapshot.placement;
+  const paneIds = sanitizePaneIdList(snapshot.paneIds) ?? [];
+  const hiddenPaneIds = sanitizePaneIdList(snapshot.hiddenPaneIds) ?? [];
+  return {
+    id: typeof snapshot.id === "string" ? snapshot.id : `dock-${placement}-${Date.now()}`,
+    name: sanitizeSnapshotName(snapshot.name, `${placementLabel(placement)} Dock 组合`),
+    createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : new Date().toISOString(),
+    placement,
+    paneIds,
+    hiddenPaneIds,
+    pinnedPaneIds: sanitizePaneIdList(snapshot.pinnedPaneIds)?.filter((paneId) => paneIds.includes(paneId) || hiddenPaneIds.includes(paneId)) ?? [],
+    splitMode: isDockSplitMode(snapshot.splitMode) ? snapshot.splitMode : DEFAULT_DOCK_SPLIT_MODES[placement],
+    splitRatio: typeof snapshot.splitRatio === "number" ? clamp(snapshot.splitRatio, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max) : DEFAULT_DOCK_SPLIT_RATIOS[placement],
+    paneSelection: normalizeDockPaneSelection(snapshot.paneSelection ?? {}, paneIds),
+    open: typeof snapshot.open === "boolean" ? snapshot.open : true,
+    size: sanitizePaneSize(placement, snapshot.size) ?? DEFAULT_PANE_SIZES[placement],
+  };
 }
 
 function sanitizeSnapshotName(value: unknown, fallback: string): string {
