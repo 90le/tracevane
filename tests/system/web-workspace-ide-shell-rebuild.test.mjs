@@ -342,7 +342,7 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /data-ide-editor-tab-close=\{tab\.path\}/);
   assert.match(shellSource, /function closeEditorSplit\(\)/);
   assert.match(shellSource, /const fallbackPrimaryTab = activePath \? null : editorGroupTabs\.secondary\.at\(-1\)/);
-  assert.match(shellSource, /primary: mergeEditorTabs\(current\.primary, current\.secondary\)/);
+  assert.match(shellSource, /primary: preferredGroup === "secondary" \? mergeEditorTabs\(current\.secondary, current\.primary\) : mergeEditorTabs\(current\.primary, current\.secondary\)/);
   assert.match(shellSource, /secondary: \[\]/);
   assert.match(shellSource, /setSecondaryPath\(undefined\)/);
   assert.match(shellSource, /setSecondaryPathRootId\(""\)/);
@@ -1475,4 +1475,26 @@ test("new Workspace IDE shell exposes editor tab drag target feedback", () => {
   assert.match(cssSource, /workspace-ide-shell__editor-tabs\[data-ide-editor-tab-drop-active="true"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-tab\[data-ide-editor-tab-drop-active="true"\]/);
   assert.match(cssSource, /workspace-ide-shell__editor-tab\[draggable="true"\]/);
+});
+
+test("new Workspace IDE shell exposes editor group swap and directional merge controls", () => {
+  assert.match(shellSource, /id: "ide\.editor\.merge-split-to-secondary"/);
+  assert.match(shellSource, /label: "合并编辑器到副组"/);
+  assert.match(shellSource, /run: \(\) => mergeEditorSplitToGroup\("secondary"\)/);
+  assert.match(shellSource, /function closeEditorSplit\(\) \{\n    mergeEditorSplitToGroup\("primary"\);\n  \}/);
+  assert.match(shellSource, /function mergeEditorSplitToGroup\(preferredGroup: EditorGroupId\)/);
+  assert.match(shellSource, /preferredGroup === "secondary" \? mergeEditorTabs\(current\.secondary, current\.primary\) : mergeEditorTabs\(current\.primary, current\.secondary\)/);
+  assert.match(shellSource, /setActivePath\(nextPrimaryTab\?\.path\)/);
+  assert.match(shellSource, /onSwapGroups=\{swapEditorGroups\}/);
+  assert.match(shellSource, /onMergeToPrimary=\{closeEditorSplit\}/);
+  assert.match(shellSource, /onMergeToSecondary=\{\(\) => mergeEditorSplitToGroup\("secondary"\)\}/);
+  assert.match(shellSource, /onSwapGroups\?: \(\) => void/);
+  assert.match(shellSource, /onMergeToPrimary\?: \(\) => void/);
+  assert.match(shellSource, /onMergeToSecondary\?: \(\) => void/);
+  assert.match(shellSource, /data-ide-editor-swap-groups/);
+  assert.match(shellSource, /data-ide-editor-merge-primary/);
+  assert.match(shellSource, /data-ide-editor-merge-secondary/);
+  assert.match(shellSource, /aria-label="交换主副编辑器组"/);
+  assert.match(shellSource, /aria-label="合并编辑器到主组"/);
+  assert.match(shellSource, /aria-label="合并编辑器到副组"/);
 });

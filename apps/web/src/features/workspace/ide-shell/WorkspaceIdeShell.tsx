@@ -1060,11 +1060,22 @@ export function WorkspaceIdeShell() {
         id: "ide.editor.close-split",
         group: "布局",
         label: "关闭编辑器拆分",
-        description: "恢复单编辑器组，但保留已打开的主编辑器",
+        description: "恢复单编辑器组，并把主/副编辑器组标签合并到主组",
         risk: "safe",
         surface: "layout",
         icon: <RotateCcw />,
         run: closeEditorSplit,
+      },
+      {
+        id: "ide.editor.merge-split-to-secondary",
+        group: "布局",
+        label: "合并编辑器到副组",
+        description: "恢复单编辑器组，并优先保留副编辑器组的活动文件和标签顺序",
+        risk: "safe",
+        surface: "layout",
+        icon: <RotateCcw />,
+        disabled: editorSplitMode === "single",
+        run: () => mergeEditorSplitToGroup("secondary"),
       },
       {
         id: "ide.editor.swap-groups",
@@ -3165,13 +3176,24 @@ export function WorkspaceIdeShell() {
   }
 
   function closeEditorSplit() {
+    mergeEditorSplitToGroup("primary");
+  }
+
+  function mergeEditorSplitToGroup(preferredGroup: EditorGroupId) {
     if (layoutLocked) return;
     const fallbackPrimaryTab = activePath ? null : editorGroupTabs.secondary.at(-1);
+    const fallbackSecondaryTab = secondaryPath ? null : editorGroupTabs.primary.at(-1);
     setEditorGroupTabs((current) => ({
-      primary: mergeEditorTabs(current.primary, current.secondary),
+      primary: preferredGroup === "secondary" ? mergeEditorTabs(current.secondary, current.primary) : mergeEditorTabs(current.primary, current.secondary),
       secondary: [],
     }));
-    if (fallbackPrimaryTab) {
+    if (preferredGroup === "secondary") {
+      const nextPrimaryTab = secondaryPath
+        ? { path: secondaryPath, rootId: secondaryPathRootId || activePathRootId || rootId }
+        : fallbackSecondaryTab;
+      setActivePath(nextPrimaryTab?.path);
+      setActivePathRootId(nextPrimaryTab?.rootId ?? "");
+    } else if (fallbackPrimaryTab) {
       setActivePath(fallbackPrimaryTab.path);
       setActivePathRootId(fallbackPrimaryTab.rootId);
     }
@@ -3899,9 +3921,11 @@ export function WorkspaceIdeShell() {
               onDropTabBefore={dropEditorTabBefore}
               onDropTabAtEnd={dropEditorTabAtEnd}
               onFocus={() => focusEditorGroup("primary")}
-              onSplitRight={() => splitEditor("vertical")}
-              onSplitDown={() => splitEditor("horizontal")}
-            >
+                  onSplitRight={() => splitEditor("vertical")}
+                  onSplitDown={() => splitEditor("horizontal")}
+                  onSwapGroups={swapEditorGroups}
+                  onMergeToPrimary={closeEditorSplit}
+                >
               <WorkspaceEditorStage
                 openFile={activePath}
                 gitDiffTarget={gitDiffTarget}
@@ -3945,6 +3969,9 @@ export function WorkspaceIdeShell() {
                   onFocus={() => focusEditorGroup("secondary")}
                   onSplitRight={() => splitEditor("vertical")}
                   onSplitDown={() => splitEditor("horizontal")}
+                  onSwapGroups={swapEditorGroups}
+                  onMergeToPrimary={closeEditorSplit}
+                  onMergeToSecondary={() => mergeEditorSplitToGroup("secondary")}
                   onClose={closeEditorSplit}
                 >
                   <WorkspaceEditorStage
@@ -4657,6 +4684,9 @@ function EditorGroupFrame({
   onFocus,
   onSplitRight,
   onSplitDown,
+  onSwapGroups,
+  onMergeToPrimary,
+  onMergeToSecondary,
   onClose,
 }: {
   group: EditorGroupId;
@@ -4674,6 +4704,9 @@ function EditorGroupFrame({
   onFocus: () => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
+  onSwapGroups?: () => void;
+  onMergeToPrimary?: () => void;
+  onMergeToSecondary?: () => void;
   onClose?: () => void;
 }) {
   const [tabDropTarget, setTabDropTarget] = React.useState<{ group: EditorGroupId; path?: string } | null>(null);
@@ -4748,6 +4781,21 @@ function EditorGroupFrame({
         <button type="button" onClick={onSplitDown} aria-label="向下拆分编辑器">
           下拆
         </button>
+        {splitMode !== "single" && onSwapGroups ? (
+          <button type="button" onClick={onSwapGroups} data-ide-editor-swap-groups aria-label="交换主副编辑器组">
+            交换
+          </button>
+        ) : null}
+        {splitMode !== "single" && onMergeToPrimary ? (
+          <button type="button" onClick={onMergeToPrimary} data-ide-editor-merge-primary aria-label="合并编辑器到主组">
+            合主
+          </button>
+        ) : null}
+        {splitMode !== "single" && onMergeToSecondary ? (
+          <button type="button" onClick={onMergeToSecondary} data-ide-editor-merge-secondary aria-label="合并编辑器到副组">
+            合副
+          </button>
+        ) : null}
         {onClose ? (
           <button type="button" onClick={onClose} aria-label="关闭编辑器拆分">
             关闭
