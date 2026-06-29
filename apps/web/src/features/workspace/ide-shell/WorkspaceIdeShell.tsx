@@ -307,6 +307,11 @@ export function WorkspaceIdeShell() {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (event.key === "Escape") {
+        if (draggingPane || dropTarget || edgeDropTarget) {
+          event.preventDefault();
+          clearPaneDragState();
+          return;
+        }
         if (commandPaletteOpen) {
           event.preventDefault();
           setCommandPaletteOpen(false);

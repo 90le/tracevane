@@ -134,6 +134,8 @@ test("new Workspace IDE shell persists and exposes accessible pane sizing", () =
   assert.match(shellSource, /keyboardResizeDelta/);
   assert.match(shellSource, /const key = event\.key\.toLowerCase\(\)/);
   assert.match(shellSource, /if \(event\.key === "Escape"\)/);
+  assert.match(shellSource, /if \(draggingPane \|\| dropTarget \|\| edgeDropTarget\)/);
+  assert.match(shellSource, /clearPaneDragState\(\)/);
   assert.match(shellSource, /setCommandPaletteOpen\(false\)/);
   assert.match(shellSource, /setMaximizedPane\(null\)/);
   assert.match(shellSource, /key === "\\\\"/);
