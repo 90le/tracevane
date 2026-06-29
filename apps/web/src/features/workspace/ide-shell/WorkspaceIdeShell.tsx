@@ -48,6 +48,8 @@ type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
+const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
+
 interface IdePaneSizes {
   top: number;
   left: number;
@@ -530,7 +532,7 @@ export function WorkspaceIdeShell() {
   const panePlacementCommands = React.useMemo<WorkspaceCommand[]>(
     () =>
       PANE_REGISTRY.flatMap((pane) =>
-        (["top", "left", "right", "bottom"] as PanePlacement[]).map((placement) => ({
+        DOCK_PLACEMENTS.map((placement) => ({
           id: `ide.pane.move.${pane.id}.${placement}`,
           group: "窗格",
           label: `移动 ${pane.label} 到${placementLabel(placement)}`,
@@ -541,6 +543,59 @@ export function WorkspaceIdeShell() {
           run: () => movePaneToPlacement(pane.id, placement),
         })),
       ),
+    [],
+  );
+
+  const dockSplitCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      DOCK_PLACEMENTS.flatMap((placement) => [
+        {
+          id: `ide.dock.split.${placement}.right`,
+          group: "窗格",
+          label: `${placementLabel(placement)} Dock 左右拆分`,
+          description: `把${placementLabel(placement)} Dock 变成左右窗格组，并保留当前布局比例`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <Columns3 />,
+          run: () => {
+            openDockPlacement(placement);
+            setDockSplitMode(placement, "vertical");
+          },
+        },
+        {
+          id: `ide.dock.split.${placement}.down`,
+          group: "窗格",
+          label: `${placementLabel(placement)} Dock 上下拆分`,
+          description: `把${placementLabel(placement)} Dock 变成上下窗格组，并保留当前布局比例`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <PanelBottom />,
+          run: () => {
+            openDockPlacement(placement);
+            setDockSplitMode(placement, "horizontal");
+          },
+        },
+        {
+          id: `ide.dock.close-split.${placement}`,
+          group: "窗格",
+          label: `关闭${placementLabel(placement)} Dock 拆分`,
+          description: `恢复${placementLabel(placement)} Dock 为单一窗格组`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <RotateCcw />,
+          run: () => setDockSplitMode(placement, "single"),
+        },
+        {
+          id: `ide.dock.reset-ratio.${placement}`,
+          group: "窗格",
+          label: `重置${placementLabel(placement)} Dock 拆分比例`,
+          description: `把${placementLabel(placement)} Dock 的拆分比例恢复为 50/50`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <RotateCcw />,
+          run: () => resetDockSplitRatio(placement),
+        },
+      ]),
     [],
   );
 
@@ -571,8 +626,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...layoutSnapshotCommands, ...panePlacementCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [dockSplitCommands, editorCommands, gitCommands, layoutCommands, layoutSnapshotCommands, panePlacementCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -806,6 +861,32 @@ export function WorkspaceIdeShell() {
     setDockSplitModes((current) => ({ ...current, [placement]: mode }));
     if (mode !== "single") {
       setDockSplitRatios((current) => ({ ...current, [placement]: current[placement] ?? DEFAULT_DOCK_SPLIT_RATIOS[placement] }));
+    }
+  }
+
+  function resetDockSplitRatio(placement: PanePlacement) {
+    setDockSplitRatios((current) => ({
+      ...current,
+      [placement]: DEFAULT_DOCK_SPLIT_RATIOS[placement],
+    }));
+  }
+
+  function openDockPlacement(placement: PanePlacement) {
+    if (placement === "top") {
+      setTopOpen(true);
+      setMobilePanel("top");
+    }
+    if (placement === "left") {
+      setLeftOpen(true);
+      setMobilePanel("left");
+    }
+    if (placement === "right") {
+      setRightOpen(true);
+      setMobilePanel("right");
+    }
+    if (placement === "bottom") {
+      setBottomOpen(true);
+      setMobilePanel("bottom");
     }
   }
 
@@ -1468,7 +1549,6 @@ function PaneDockControls({
   onEndDrag: () => void;
   onCloseDock: () => void;
 }) {
-  const targets: PanePlacement[] = ["top", "left", "right", "bottom"];
   return (
     <div
       className={cn("workspace-ide-shell__pane-dock-controls", compact && "is-compact")}
@@ -1478,7 +1558,7 @@ function PaneDockControls({
       onDragStart={(event) => onBeginDrag(paneId, event)}
       onDragEnd={onEndDrag}
     >
-      {targets.map((target) => (
+      {DOCK_PLACEMENTS.map((target) => (
         <button
           key={target}
           type="button"
@@ -2101,7 +2181,7 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
 function sanitizeDockSplitModes(value: Partial<DockSplitModes> | undefined): Partial<DockSplitModes> | undefined {
   if (!value) return undefined;
   const modes: Partial<DockSplitModes> = {};
-  for (const placement of ["top", "left", "right", "bottom"] as PanePlacement[]) {
+  for (const placement of DOCK_PLACEMENTS) {
     if (isDockSplitMode(value[placement])) modes[placement] = value[placement];
   }
   return modes;
@@ -2114,7 +2194,7 @@ function isDockSplitMode(value: unknown): value is DockSplitMode {
 function sanitizeDockSplitRatios(value: Partial<DockSplitRatios> | undefined): Partial<DockSplitRatios> | undefined {
   if (!value) return undefined;
   const ratios: Partial<DockSplitRatios> = {};
-  for (const placement of ["top", "left", "right", "bottom"] as PanePlacement[]) {
+  for (const placement of DOCK_PLACEMENTS) {
     const ratio = value[placement];
     if (typeof ratio === "number" && !Number.isNaN(ratio)) {
       ratios[placement] = clamp(ratio, SPLIT_RATIO_LIMITS.min, SPLIT_RATIO_LIMITS.max);
