@@ -880,9 +880,13 @@
   position: absolute;
   z-index: 5;
   opacity: 0;
-  pointer-events: auto;
+  pointer-events: none;
   border: 1px dashed transparent;
   transition: opacity 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.workspace-ide-shell[data-ide-dragging-pane]:not([data-ide-dragging-pane=""]) .workspace-ide-shell__dock-edge-drop-zone {
+  pointer-events: auto;
 }
 
 .workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-zone="top"] {

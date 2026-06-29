@@ -658,6 +658,9 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /data-ide-dock-split-active=\{isFocused \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-dock-selection-state=\{dockSelectionState\(dockPaneSelections\)\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-edge-drop-zone/);
+  assert.match(cssSource, /pointer-events: none/);
+  assert.match(cssSource, /workspace-ide-shell\[data-ide-dragging-pane\]:not\(\[data-ide-dragging-pane=""\]\) \.workspace-ide-shell__dock-edge-drop-zone/);
+  assert.match(cssSource, /pointer-events: auto/);
   assert.match(cssSource, /data-ide-dock-edge-drop-active="true"/);
   assert.match(cssSource, /data-ide-dock-edge-drop-zone="top"/);
   assert.match(cssSource, /data-ide-dock-edge-drop-zone="right"/);
