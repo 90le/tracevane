@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Save,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -40,6 +41,12 @@ import {
 import type { FileEntrySummary } from "@/features/workspace/files";
 import type { FilesVersionItem } from "../../../../../types/files";
 
+interface FilePreviewTab {
+  id: string;
+  rootId: string;
+  entry: FileEntrySummary;
+}
+
 type FilePreviewSaveHandler = () => Promise<boolean>;
 type FilePreviewDialogSize = { width: number; height: number };
 
@@ -54,11 +61,19 @@ export function FilePreviewDialog({
   rootId,
   entry,
   readQuery,
+  tabs = [],
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
   onOpenChange,
 }: {
   rootId: string;
   entry: FileEntrySummary | undefined;
   readQuery: ReturnType<typeof useFileReadQuery>;
+  tabs?: FilePreviewTab[];
+  activeTabId?: string;
+  onSelectTab?: (tabId: string) => void;
+  onCloseTab?: (tabId: string) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [dirty, setDirty] = React.useState(false);
@@ -246,7 +261,11 @@ export function FilePreviewDialog({
             请关闭弹窗后重新双击文件；前端会保留主文件管理器，不再因为缺失预览目标显示空白。
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="primary" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => onOpenChange(false)}
+            >
               关闭
             </Button>
           </DialogFooter>
@@ -273,8 +292,14 @@ export function FilePreviewDialog({
               : undefined
           }
         >
-          <DialogHeader className="border-b border-line bg-panel-2 px-3 py-2 pr-12 sm:px-4 sm:py-3 sm:pr-24">
-            <div className="grid min-w-0 gap-2 sm:flex sm:items-start sm:gap-3">
+          <DialogHeader className="grid min-h-0 grid-rows-[auto_auto] border-b border-line bg-panel-2 p-0 pr-12 sm:pr-24">
+            <FilePreviewTabStrip
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={onSelectTab}
+              onCloseTab={onCloseTab}
+            />
+            <div className="grid min-w-0 gap-2 px-3 py-2 sm:flex sm:items-start sm:gap-3 sm:px-4 sm:py-3">
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-sm sm:text-base">
                   {entry.name}
@@ -282,7 +307,7 @@ export function FilePreviewDialog({
                 <DialogDescription className="truncate text-2xs sm:text-xs">
                   {entry.path} ·{" "}
                   <span className="hidden sm:inline">
-                    拖拽右下角调整窗口尺寸
+                    在线预览/编辑 · 可多标签打开文件 · 拖拽右下角调整窗口尺寸
                   </span>
                   <span className="sm:hidden">在线预览/编辑</span>
                 </DialogDescription>
@@ -412,6 +437,64 @@ export function FilePreviewDialog({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function FilePreviewTabStrip({
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+}: {
+  tabs: FilePreviewTab[];
+  activeTabId?: string;
+  onSelectTab?: (tabId: string) => void;
+  onCloseTab?: (tabId: string) => void;
+}) {
+  if (!tabs.length) return null;
+  return (
+    <div
+      className="flex min-h-10 items-end overflow-x-auto border-b border-line bg-panel px-2 pt-2"
+      role="tablist"
+      aria-label="已打开文件"
+      data-file-preview-tab-strip
+    >
+      {tabs.map((tab) => {
+        const active = tab.id === activeTabId;
+        return (
+          <div
+            key={tab.id}
+            className={cn(
+              "mr-1 flex h-8 max-w-[220px] shrink-0 items-center rounded-t-lg border border-b-0 border-line text-xs text-muted transition-colors hover:bg-panel-2 hover:text-ink-strong",
+              active && "bg-panel-2 text-ink-strong shadow-sm",
+            )}
+            title={`${tab.entry.name} · ${tab.entry.path}`}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+              data-file-preview-tab={tab.id}
+              onClick={() => onSelectTab?.(tab.id)}
+            >
+              <File className="size-3.5 shrink-0" />
+              <span className="truncate">{tab.entry.name}</span>
+            </button>
+            {tabs.length > 1 ? (
+              <button
+                type="button"
+                aria-label={`关闭 ${tab.entry.name}`}
+                className="mr-1 rounded p-0.5 text-subtle hover:bg-panel hover:text-danger"
+                onClick={() => onCloseTab?.(tab.id)}
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -880,7 +963,9 @@ function FilePreviewEditorShell({
   onChange: (content: string) => void;
 }) {
   const [saveReviewOpen, setSaveReviewOpen] = React.useState(false);
-  const pendingReviewedSaveRef = React.useRef<((saved: boolean) => void) | null>(null);
+  const pendingReviewedSaveRef = React.useRef<
+    ((saved: boolean) => void) | null
+  >(null);
   const [versionHistoryOpen, setVersionHistoryOpen] = React.useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false);
   const saveDiffLines = React.useMemo(
@@ -941,13 +1026,13 @@ function FilePreviewEditorShell({
   );
 
   return (
-      <div
-        className="flex h-full min-h-0 flex-col overflow-hidden text-xs"
-        data-file-preview-editor-shell
-        data-file-preview-path={entry.path}
-        data-file-preview-save-shortcut="review-diff-first"
-        onKeyDown={handleEditorShellKeyDown}
-      >
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden text-xs"
+      data-file-preview-editor-shell
+      data-file-preview-path={entry.path}
+      data-file-preview-save-shortcut="review-diff-first"
+      onKeyDown={handleEditorShellKeyDown}
+    >
       <div
         className="grid min-w-0 gap-2 border-b border-line bg-panel px-3 py-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2 sm:px-4"
         data-file-preview-editor-toolbar
@@ -2005,7 +2090,8 @@ class FilePreviewErrorBoundary extends React.Component<
         <div className="max-w-xl">
           <div className="font-semibold">文件预览渲染失败</div>
           <p className="mt-1 text-xs text-muted">
-            {this.props.fileName} 的预览组件出现异常，已阻止页面整体空白。可切换其它文件或刷新后重试。
+            {this.props.fileName}{" "}
+            的预览组件出现异常，已阻止页面整体空白。可切换其它文件或刷新后重试。
           </p>
           <pre className="mt-3 max-h-32 overflow-auto rounded border border-danger/20 bg-panel p-2 text-left font-mono text-2xs text-danger">
             {this.state.error.message}

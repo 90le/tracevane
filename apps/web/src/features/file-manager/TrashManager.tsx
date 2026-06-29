@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import {
@@ -35,7 +36,10 @@ export function TrashManager({
   onRecord?: (record: FileOperationRecord) => void;
 }) {
   const trashScopeRootId = FILES_GLOBAL_SCOPE_ID;
-  const trash = useFilesTrashQuery(trashScopeRootId);
+  const trashQueryReady = useIdleReady(120);
+  const trash = useFilesTrashQuery(trashScopeRootId, {
+    enabled: trashQueryReady,
+  });
   const restoreMutation = useRestoreFilesTrashMutation();
   const purgeMutation = usePurgeFilesTrashMutation();
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(
@@ -46,15 +50,19 @@ export function TrashManager({
   const [query, setQuery] = React.useState("");
   const deferredQuery = React.useDeferredValue(query.trim().toLowerCase());
   const items = trash.data?.items ?? [];
+  const categoryItems = React.useMemo(() => categorizeTrash(items), [items]);
+  const [category, setCategory] = React.useState<TrashCategory>("all");
+  const scopedItems = categoryItems[category];
   const visibleItems = React.useMemo(() => {
-    if (!deferredQuery) return items;
-    return items.filter((item) =>
+    const sourceItems = scopedItems;
+    if (!deferredQuery) return sourceItems;
+    return sourceItems.filter((item) =>
       [item.name, item.originalPath, item.rootId, item.trashPath]
         .join("\n")
         .toLowerCase()
         .includes(deferredQuery),
     );
-  }, [deferredQuery, items]);
+  }, [deferredQuery, scopedItems]);
   const selectedItems = React.useMemo(
     () => items.filter((item) => selectedPaths.has(item.trashPath)),
     [items, selectedPaths],
@@ -245,142 +253,351 @@ export function TrashManager({
         </label>
       </div>
 
-      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] px-4 py-3 md:px-5">
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 rounded-t-xl border border-b-0 border-line bg-panel-2 px-3 py-2 text-xs text-muted"
-          data-file-manager-trash-toolbar
-        >
-          <label className="flex items-center gap-2">
-            <Gauge className="size-4 text-subtle" />
-            <span className="text-subtle">恢复冲突策略</span>
-            <select
-              value={conflictPolicy}
-              aria-label="恢复冲突策略"
-              data-file-manager-trash-conflict-policy
-              onChange={(event) =>
-                setConflictPolicy(
-                  event.target.value as FilesTransferConflictPolicy,
-                )
-              }
-              className="rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink-strong outline-none"
-            >
-              <option value="rename">保留两者</option>
-              <option value="fail">遇到同名时报错</option>
-              <option value="overwrite">覆盖原路径</option>
-              <option value="skip">跳过恢复</option>
-            </select>
-          </label>
-          <span>
-            {query
-              ? `${visibleItems.length} / ${items.length} 项匹配`
-              : "全局回收站 · 不按目录分组"}
-          </span>
-        </div>
-
-        {trash.isLoading ? (
-          <TrashLoading />
-        ) : trash.error ? (
-          <div className="rounded-b-xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-            {trash.error.message}
-          </div>
-        ) : !items.length ? (
-          <div className="rounded-b-xl border border-dashed border-line bg-panel-2 px-3 py-10 text-center text-sm text-muted">
-            回收站为空。默认删除的文件会显示在这里。
-          </div>
-        ) : !visibleItems.length ? (
-          <div className="rounded-b-xl border border-line bg-panel px-3 py-10 text-center text-sm text-muted">
-            没有匹配“{query}”的回收站项目。
-          </div>
-        ) : (
+      <div className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] px-4 py-3 md:px-5 lg:grid-cols-[150px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-3">
+        <TrashCategoryRail
+          category={category}
+          counts={categoryItems.counts}
+          onCategoryChange={setCategory}
+        />
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
           <div
-            className="min-h-0 overflow-y-auto rounded-b-xl border border-line bg-panel"
-            data-file-manager-trash-list
+            className="flex flex-wrap items-center justify-between gap-2 rounded-t-xl border border-b-0 border-line bg-panel-2 px-3 py-2 text-xs text-muted"
+            data-file-manager-trash-toolbar
           >
-            <div className="sticky top-0 z-10 hidden grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] gap-3 border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle lg:grid">
-              <span />
-              <span>名称</span>
-              <span>来源 root</span>
-              <span>原路径</span>
-              <span>大小</span>
-              <span className="text-right">操作</span>
-            </div>
-            {visibleItems.map((item) => (
-              <article
-                key={item.trashPath}
-                className="grid gap-2 border-b border-line px-3 py-3 last:border-b-0 hover:bg-panel-2/70 lg:grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] lg:items-center lg:gap-3"
-                data-file-manager-trash-item={item.trashPath}
-                data-file-manager-trash-root-id={item.rootId}
-                data-file-manager-trash-original-path={item.originalPath}
+            <label className="flex items-center gap-2">
+              <Gauge className="size-4 text-subtle" />
+              <span className="text-subtle">恢复冲突策略</span>
+              <select
+                value={conflictPolicy}
+                aria-label="恢复冲突策略"
+                data-file-manager-trash-conflict-policy
+                onChange={(event) =>
+                  setConflictPolicy(
+                    event.target.value as FilesTransferConflictPolicy,
+                  )
+                }
+                className="rounded-md border border-line bg-panel px-2 py-1 text-xs text-ink-strong outline-none"
               >
-                <label className="flex items-center gap-2 text-xs text-muted lg:block">
-                  <input
-                    type="checkbox"
-                    checked={selectedPaths.has(item.trashPath)}
-                    onChange={() => toggle(item)}
-                    className="size-4 accent-primary"
-                    aria-label={`选择 ${item.name}`}
-                  />
-                  <span className="lg:sr-only">选择</span>
-                </label>
-                <div className="min-w-0">
-                  <div
-                    className="truncate text-sm font-medium text-ink-strong"
-                    title={item.trashPath}
-                  >
-                    {item.name}
-                  </div>
-                  <div className="mt-1 text-xs text-muted lg:hidden">
-                    {formatBytes(item.size ?? 0)} ·{" "}
-                    {new Date(item.deletedAt).toLocaleString()}
-                  </div>
-                </div>
-                <span
-                  className="min-w-0 truncate rounded-md bg-panel-2 px-2 py-1 font-mono text-xs text-subtle"
-                  title={item.rootId}
-                >
-                  {item.rootId}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRevealPath?.(item.originalPath, item.rootId)}
-                  className="min-w-0 truncate text-left font-mono text-xs text-muted underline-offset-2 hover:text-primary hover:underline"
-                  title={item.originalPath}
-                >
-                  {item.originalPath}
-                </button>
-                <span className="hidden text-xs text-muted lg:block">
-                  {formatBytes(item.size ?? 0)}
-                </span>
-                <span className="flex justify-end gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => void restoreItem(item)}
-                    disabled={restoreMutation.isPending}
-                    data-file-manager-trash-restore
-                  >
-                    <RotateCcw className="size-3.5" />
-                    恢复
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => void purgeItems([item])}
-                    disabled={purgeMutation.isPending}
-                    data-file-manager-trash-purge
-                  >
-                    永久删除
-                  </Button>
-                </span>
-              </article>
-            ))}
+                <option value="rename">保留两者</option>
+                <option value="fail">遇到同名时报错</option>
+                <option value="overwrite">覆盖原路径</option>
+                <option value="skip">跳过恢复</option>
+              </select>
+            </label>
+            <span>
+              {query
+                ? `${visibleItems.length} / ${items.length} 项匹配`
+                : "全局回收站 · 不按目录分组"}
+            </span>
           </div>
-        )}
+
+          {!trashQueryReady || trash.isLoading ? (
+            <TrashLoading />
+          ) : trash.error ? (
+            <div className="rounded-b-xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+              {trash.error.message}
+            </div>
+          ) : !items.length ? (
+            <div className="rounded-b-xl border border-dashed border-line bg-panel-2 px-3 py-10 text-center text-sm text-muted">
+              回收站为空。默认删除的文件会显示在这里。
+            </div>
+          ) : !visibleItems.length ? (
+            <div className="rounded-b-xl border border-line bg-panel px-3 py-10 text-center text-sm text-muted">
+              没有匹配“{query}”的回收站项目。
+            </div>
+          ) : (
+            <div
+              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-b-xl border border-line bg-panel"
+              data-file-manager-trash-list
+            >
+              <div className="sticky top-0 z-10 hidden grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] gap-3 border-b border-line bg-panel-2 px-3 py-2 text-xs font-medium text-subtle lg:grid">
+                <span />
+                <span>名称</span>
+                <span>来源 root</span>
+                <span>原路径</span>
+                <span>大小</span>
+                <span className="text-right">操作</span>
+              </div>
+              <TrashVirtualRows
+                items={visibleItems}
+                selectedPaths={selectedPaths}
+                restorePending={restoreMutation.isPending}
+                purgePending={purgeMutation.isPending}
+                onToggle={toggle}
+                onRevealPath={onRevealPath}
+                onRestore={restoreItem}
+                onPurge={(item) => void purgeItems([item])}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
+}
+
+type TrashCategory = "all" | "directory" | "file" | "image" | "document";
+
+function TrashCategoryRail({
+  category,
+  counts,
+  onCategoryChange,
+}: {
+  category: TrashCategory;
+  counts: Record<TrashCategory, number>;
+  onCategoryChange: (category: TrashCategory) => void;
+}) {
+  const categories: Array<{ id: TrashCategory; label: string }> = [
+    { id: "all", label: "全部" },
+    { id: "directory", label: "文件夹" },
+    { id: "file", label: "文件" },
+    { id: "image", label: "图片" },
+    { id: "document", label: "文档" },
+  ];
+  return (
+    <nav
+      className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-line bg-panel-2 p-1 text-xs lg:mb-0 lg:block lg:p-0"
+      aria-label="回收站分类"
+      data-file-manager-trash-category-rail
+    >
+      {categories.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onCategoryChange(item.id)}
+          className={cn(
+            "flex items-center justify-between rounded-lg px-3 py-2 text-left text-muted hover:bg-panel hover:text-ink-strong lg:rounded-none lg:border-b lg:border-line lg:last:border-b-0",
+            category === item.id && "bg-panel text-primary",
+          )}
+          data-file-manager-trash-category={item.id}
+        >
+          <span>{item.label}</span>
+          <span>{counts[item.id]}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function TrashVirtualRows({
+  items,
+  selectedPaths,
+  restorePending,
+  purgePending,
+  onToggle,
+  onRevealPath,
+  onRestore,
+  onPurge,
+}: {
+  items: FilesTrashItem[];
+  selectedPaths: Set<string>;
+  restorePending: boolean;
+  purgePending: boolean;
+  onToggle: (item: FilesTrashItem) => void;
+  onRevealPath?: (path: string, rootId?: string) => void;
+  onRestore: (item: FilesTrashItem) => void;
+  onPurge: (item: FilesTrashItem) => void;
+}) {
+  const virtual = useVirtualRows(items, { rowHeight: 68, overscan: 8 });
+  return (
+    <div
+      ref={virtual.scrollRef}
+      onScroll={virtual.onScroll}
+      className="min-h-0 overflow-y-auto overscroll-contain"
+      data-file-manager-trash-virtual-list
+      data-file-manager-trash-rendered-count={virtual.items.length}
+      data-file-manager-trash-total-count={items.length}
+    >
+      <div className="relative" style={{ height: virtual.totalHeight }}>
+        <div style={{ transform: `translateY(${virtual.paddingTop}px)` }}>
+          {virtual.items.map((item) => (
+            <article
+              key={item.trashPath}
+              className="grid min-h-[68px] gap-2 border-b border-line px-3 py-2 [content-visibility:auto] [contain-intrinsic-size:68px] last:border-b-0 hover:bg-panel-2/70 lg:grid-cols-[42px_minmax(180px,1.1fr)_minmax(160px,0.75fr)_minmax(220px,1.4fr)_110px_152px] lg:items-center lg:gap-3"
+              data-file-manager-trash-item={item.trashPath}
+              data-file-manager-trash-root-id={item.rootId}
+              data-file-manager-trash-original-path={item.originalPath}
+            >
+              <label className="flex items-center gap-2 text-xs text-muted lg:block">
+                <input
+                  type="checkbox"
+                  checked={selectedPaths.has(item.trashPath)}
+                  onChange={() => onToggle(item)}
+                  className="size-4 accent-primary"
+                  aria-label={`选择 ${item.name}`}
+                />
+                <span className="lg:sr-only">选择</span>
+              </label>
+              <div className="min-w-0">
+                <div
+                  className="truncate text-sm font-medium text-ink-strong"
+                  title={item.trashPath}
+                >
+                  {item.name}
+                </div>
+                <div className="mt-1 text-xs text-muted lg:hidden">
+                  {formatBytes(item.size ?? 0)} ·{" "}
+                  {new Date(item.deletedAt).toLocaleString()}
+                </div>
+              </div>
+              <span
+                className="min-w-0 truncate rounded-md bg-panel-2 px-2 py-1 font-mono text-xs text-subtle"
+                title={item.rootId}
+              >
+                {item.rootId}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRevealPath?.(item.originalPath, item.rootId)}
+                className="min-w-0 truncate text-left font-mono text-xs text-muted underline-offset-2 hover:text-primary hover:underline"
+                title={item.originalPath}
+              >
+                {item.originalPath}
+              </button>
+              <span className="hidden text-xs text-muted lg:block">
+                {formatBytes(item.size ?? 0)}
+              </span>
+              <span className="flex justify-end gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => onRestore(item)}
+                  disabled={restorePending}
+                  data-file-manager-trash-restore
+                >
+                  <RotateCcw className="size-3.5" />
+                  恢复
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => onPurge(item)}
+                  disabled={purgePending}
+                  data-file-manager-trash-purge
+                >
+                  永久删除
+                </Button>
+              </span>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function categorizeTrash(items: FilesTrashItem[]) {
+  const buckets: Record<TrashCategory, FilesTrashItem[]> = {
+    all: items,
+    directory: [],
+    file: [],
+    image: [],
+    document: [],
+  };
+  for (const item of items) {
+    if (item.kind === "directory") {
+      buckets.directory.push(item);
+      continue;
+    }
+    buckets.file.push(item);
+    const ext = extensionOf(item.name);
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].includes(ext)) {
+      buckets.image.push(item);
+    }
+    if (
+      [
+        "txt",
+        "md",
+        "markdown",
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "json",
+        "csv",
+      ].includes(ext)
+    ) {
+      buckets.document.push(item);
+    }
+  }
+  return {
+    ...buckets,
+    counts: {
+      all: buckets.all.length,
+      directory: buckets.directory.length,
+      file: buckets.file.length,
+      image: buckets.image.length,
+      document: buckets.document.length,
+    },
+  };
+}
+
+function useIdleReady(timeoutMs: number): boolean {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    const win = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === "function") {
+      const id = win.requestIdleCallback(() => setReady(true), {
+        timeout: timeoutMs,
+      });
+      return () => win.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(() => setReady(true), timeoutMs);
+    return () => window.clearTimeout(id);
+  }, [timeoutMs]);
+  return ready;
+}
+
+function useVirtualRows<T>(
+  items: T[],
+  options: { rowHeight: number; overscan: number },
+) {
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = React.useState({ scrollTop: 0, height: 0 });
+  React.useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    setViewport({ scrollTop: node.scrollTop, height: node.clientHeight });
+  }, [items.length]);
+  const onScroll = React.useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    setViewport({ scrollTop: target.scrollTop, height: target.clientHeight });
+  }, []);
+  const visibleCount = Math.max(
+    16,
+    Math.ceil((viewport.height || options.rowHeight * 16) / options.rowHeight),
+  );
+  const start = Math.max(
+    0,
+    Math.floor(viewport.scrollTop / options.rowHeight) - options.overscan,
+  );
+  const end = Math.min(
+    items.length,
+    start + visibleCount + options.overscan * 2,
+  );
+  return {
+    scrollRef,
+    onScroll,
+    items: items.slice(start, end),
+    paddingTop: start * options.rowHeight,
+    totalHeight: Math.max(items.length * options.rowHeight, options.rowHeight),
+  };
+}
+
+function extensionOf(name: string): string {
+  const index = name.lastIndexOf(".");
+  return index > 0 && index < name.length - 1
+    ? name.slice(index + 1).toLowerCase()
+    : "";
 }
 
 function TrashMetric({

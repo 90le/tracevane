@@ -125,6 +125,13 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(trashManager, /恢复冲突/);
   assert.match(trashManager, /data-file-manager-trash-manager/);
   assert.match(trashManager, /data-file-manager-trash-list/);
+  assert.match(trashManager, /data-file-manager-trash-category-rail/);
+  assert.match(trashManager, /data-file-manager-trash-category=\{item\.id\}/);
+  assert.match(trashManager, /data-file-manager-trash-virtual-list/);
+  assert.match(trashManager, /data-file-manager-trash-rendered-count/);
+  assert.match(trashManager, /data-file-manager-trash-total-count/);
+  assert.match(trashManager, /useIdleReady\(120\)/);
+  assert.match(trashManager, /enabled: trashQueryReady/);
   assert.match(
     trashManager,
     /data-file-manager-trash-item=\{item\.trashPath\}/,
@@ -207,6 +214,12 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(searchPanel, /区分大小写/);
   assert.match(searchPanel, /正则/);
   assert.match(searchPanel, /内容索引命中/);
+  assert.match(contentIndex, /CONTENT_INDEX_RECORD_ROW_HEIGHT/);
+  assert.match(contentIndex, /data-content-index-virtualized-records/);
+  assert.match(contentIndex, /data-content-index-rendered-count/);
+  assert.match(contentIndex, /data-content-index-total-count/);
+  assert.match(contentIndex, /useIdleReady\(140\)/);
+  assert.match(contentIndex, /enabled: Boolean\(data\) && recordsQueryReady/);
   assert.match(searchPanel, /索引未命中，已扫描补全/);
   assert.match(
     searchPanel,
@@ -667,11 +680,16 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(operationHistory, /定位/);
   assert.match(operationHistory, /清空记录/);
   assert.match(page, /revealOperationPath/);
-  assert.match(page, /previewTarget/);
+  assert.match(page, /previewTabs/);
+  assert.match(page, /activePreviewTabId/);
+  assert.match(page, /createFilePreviewTabId/);
+  assert.match(page, /setPreviewTabs/);
+  assert.match(page, /selectPreviewTab/);
+  assert.match(page, /closePreviewTab/);
+  assert.match(page, /closePreviewWindow/);
   assert.match(page, /openFilePreview/);
   assert.match(page, /onOpenFile=\{openFilePreview\}/);
   assert.match(page, /function extensionOf/);
-  assert.match(page, /setPreviewTarget\(entry\)/);
   assert.match(searchPanel, /onOpenFile: \(entry: FileSearchResult\) => void/);
   assert.match(searchPanel, /onOpenFile\(result\)/);
   assert.match(searchPanel, /预览 \/ 编辑/);
@@ -731,7 +749,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(propertiesDialog, /目录大小未计算/);
   assert.match(propertiesDialog, /权限/);
   assert.match(propertiesDialog, /UID \/ GID/);
-  assert.match(page, /previewPath/);
+  assert.match(page, /activePreviewPath/);
   assert.match(page, /previewEntry/);
   assert.match(page, /previewFileRead/);
   assert.match(page, /onPreviewRequest=\{\(target\)/);
@@ -741,6 +759,14 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   );
   assert.match(actionsMenu, /label="预览 \/ 编辑（弹窗）"/);
   assert.match(previewPanel, /DocumentWorkbench/);
+  assert.match(previewPanel, /FilePreviewTabStrip/);
+  assert.match(previewPanel, /data-file-preview-tab-strip/);
+  assert.match(previewPanel, /data-file-preview-tab=\{tab\.id\}/);
+  assert.match(previewPanel, /role="tablist"/);
+  assert.match(previewPanel, /onSelectTab\?\.\(tab\.id\)/);
+  assert.match(previewPanel, /onCloseTab\?\.\(tab\.id\)/);
+  assert.doesNotMatch(previewPanel, /role="button"/);
+  assert.match(previewPanel, /可多标签打开文件/);
   assert.match(previewPanel, /type DocumentWorkbenchMode/);
   assert.match(previewPanel, /viewModeLabel/);
   assert.match(previewPanel, /onModeChange=\{setViewMode\}/);
@@ -1655,7 +1681,7 @@ test("file manager owns content index management view instead of placing it in W
     page,
     /LazyContentIndexManager[\s\S]*rootId=\{rootId\}[\s\S]*rootLabel=\{root\?\.labelZh \?\? rootId\}[\s\S]*onRevealPath=\{revealOperationPath\}[\s\S]*onOpenFile=\{openFilePreview\}/,
   );
-  assert.match(page, /previewRootId/);
+  assert.match(page, /activePreviewTab\?\.rootId/);
   assert.match(page, /activePreviewRootId/);
   assert.match(
     contentIndex,

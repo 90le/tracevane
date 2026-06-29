@@ -34,6 +34,8 @@ import type { FileEntrySummary } from "@/features/workspace/files";
 export type ContentIndexRecordStatusFilter = "all" | "valid" | "stale";
 type ContentIndexMaintenanceStatus = "success" | "error";
 const CONTENT_INDEX_RECORDS_PAGE_SIZE = 100;
+const CONTENT_INDEX_RECORD_ROW_HEIGHT = 64;
+const CONTENT_INDEX_RECORD_OVERSCAN = 8;
 
 interface ContentIndexMaintenanceEvent {
   id: string;
@@ -69,6 +71,7 @@ export function ContentIndexManager({
   const data = stats.data;
   const busy =
     stats.isFetching || scan.isPending || clean.isPending || rebuild.isPending;
+  const recordsQueryReady = useIdleReady(140);
   const recordsPage = useFilesContentIndexRecordsQuery(
     {
       rootId: indexScopeRootId,
@@ -77,7 +80,7 @@ export function ContentIndexManager({
       offset: (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE,
       limit: CONTENT_INDEX_RECORDS_PAGE_SIZE,
     },
-    { enabled: Boolean(data) },
+    { enabled: Boolean(data) && recordsQueryReady },
   );
   const records = recordsPage.data?.records ?? data?.recordsPreview ?? [];
   const health = React.useMemo(
@@ -453,19 +456,25 @@ function IndexRecordsPanel({
 }) {
   const offset =
     recordsPage?.offset ?? (page - 1) * CONTENT_INDEX_RECORDS_PAGE_SIZE;
-  const limit = recordsPage?.limit ?? CONTENT_INDEX_RECORDS_PAGE_SIZE;
   const hasPrevious = offset > 0;
   const hasNext = Boolean(recordsPage?.hasMore);
   const visibleStart = totalRecordCount > 0 ? offset + 1 : 0;
   const visibleEnd = Math.min(offset + records.length, totalRecordCount);
+  const virtual = useVirtualRows(records, {
+    rowHeight: CONTENT_INDEX_RECORD_ROW_HEIGHT,
+    overscan: CONTENT_INDEX_RECORD_OVERSCAN,
+  });
   return (
     <div
       className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
       data-content-index-records-panel
     >
       <div
+        ref={virtual.scrollRef}
+        onScroll={virtual.onScroll}
         className="min-h-0 overflow-auto overscroll-contain"
         data-content-index-records-scrollport
+        data-content-index-virtualized-records
       >
         {loading && !records.length ? (
           <div className="px-4 py-8 text-center text-xs text-muted">
@@ -473,17 +482,22 @@ function IndexRecordsPanel({
           </div>
         ) : records.length ? (
           <div
-            className="divide-y divide-line"
+            className="relative divide-y divide-line"
+            style={{ height: virtual.totalHeight }}
             data-content-index-records-table
+            data-content-index-rendered-count={virtual.items.length}
+            data-content-index-total-count={records.length}
           >
-            {records.map((record) => (
-              <IndexRecordRow
-                key={`${record.rootId}:${record.sha256}:${record.path}:${record.status}`}
-                record={record}
-                onRevealPath={onRevealPath}
-                onOpenFile={onOpenFile}
-              />
-            ))}
+            <div style={{ transform: `translateY(${virtual.paddingTop}px)` }}>
+              {virtual.items.map((record) => (
+                <IndexRecordRow
+                  key={`${record.rootId}:${record.sha256}:${record.path}:${record.status}`}
+                  record={record}
+                  onRevealPath={onRevealPath}
+                  onOpenFile={onOpenFile}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <div className="px-4 py-8 text-center text-xs text-muted">
@@ -494,6 +508,9 @@ function IndexRecordsPanel({
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 py-2 text-xs text-muted">
         <span>
           {visibleStart}-{visibleEnd}/{totalRecordCount} · 第 {page} 页
+          {records.length > virtual.items.length
+            ? ` · 已渲染 ${virtual.items.length}/${records.length}`
+            : ""}
         </span>
         <div className="flex items-center gap-2">
           <Button
@@ -549,7 +566,7 @@ function IndexRecordRow({
 }) {
   return (
     <div
-      className="grid gap-2 px-3 py-2 text-xs hover:bg-panel-2 md:grid-cols-[92px_120px_minmax(220px,1fr)_92px_120px] md:items-center"
+      className="grid min-h-[64px] gap-2 px-3 py-2 text-xs [content-visibility:auto] [contain-intrinsic-size:64px] hover:bg-panel-2 md:grid-cols-[92px_120px_minmax(220px,1fr)_92px_120px] md:items-center"
       data-content-index-record-row
       data-content-index-record-card
     >
@@ -614,6 +631,67 @@ function IndexRecordRow({
       </span>
     </div>
   );
+}
+
+function useIdleReady(timeoutMs: number): boolean {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    const win = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === "function") {
+      const id = win.requestIdleCallback(() => setReady(true), {
+        timeout: timeoutMs,
+      });
+      return () => win.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(() => setReady(true), timeoutMs);
+    return () => window.clearTimeout(id);
+  }, [timeoutMs]);
+  return ready;
+}
+
+function useVirtualRows<T>(
+  items: T[],
+  options: { rowHeight: number; overscan: number },
+) {
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = React.useState({ scrollTop: 0, height: 0 });
+  const measure = React.useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    setViewport({ scrollTop: node.scrollTop, height: node.clientHeight });
+  }, []);
+  React.useLayoutEffect(() => {
+    measure();
+  }, [items.length, measure]);
+  const onScroll = React.useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    setViewport({ scrollTop: target.scrollTop, height: target.clientHeight });
+  }, []);
+  const visibleCount = Math.max(
+    16,
+    Math.ceil((viewport.height || options.rowHeight * 16) / options.rowHeight),
+  );
+  const start = Math.max(
+    0,
+    Math.floor(viewport.scrollTop / options.rowHeight) - options.overscan,
+  );
+  const end = Math.min(
+    items.length,
+    start + visibleCount + options.overscan * 2,
+  );
+  return {
+    scrollRef,
+    onScroll,
+    items: items.slice(start, end),
+    paddingTop: start * options.rowHeight,
+    totalHeight: Math.max(items.length * options.rowHeight, options.rowHeight),
+  };
 }
 
 function contentIndexRecordToFileEntry(

@@ -131,6 +131,16 @@ interface FileClipboardState {
   paths: string[];
 }
 
+interface FilePreviewTab {
+  id: string;
+  rootId: string;
+  entry: FileEntrySummary;
+}
+
+function createFilePreviewTabId(rootId: string, path: string): string {
+  return `${rootId}:${path}`;
+}
+
 export function FileManagerPage() {
   const queryClient = useQueryClient();
   const ops = useFileOperations();
@@ -174,11 +184,8 @@ export function FileManagerPage() {
     y: number;
     target: FileActionsMenuTarget | null;
   } | null>(null);
-  const [previewPath, setPreviewPath] = React.useState<string | undefined>();
-  const [previewTarget, setPreviewTarget] = React.useState<
-    FileEntrySummary | undefined
-  >();
-  const [previewRootId, setPreviewRootId] = React.useState<
+  const [previewTabs, setPreviewTabs] = React.useState<FilePreviewTab[]>([]);
+  const [activePreviewTabId, setActivePreviewTabId] = React.useState<
     string | undefined
   >();
   const [propertiesTarget, setPropertiesTarget] = React.useState<
@@ -257,8 +264,6 @@ export function FileManagerPage() {
     setSelectedPaths(new Set());
     setSelectedPath(undefined);
     setLastSelectedPath(undefined);
-    setPreviewPath(undefined);
-    setPreviewTarget(undefined);
     setPropertiesTarget(undefined);
   }, [rootId, directoryPath, showHidden]);
 
@@ -491,13 +496,50 @@ export function FileManagerPage() {
 
   const openFilePreview = React.useCallback(
     (entry: FileEntrySummary, targetRootId?: string) => {
+      const nextRootId = targetRootId ?? rootId;
+      const tabId = createFilePreviewTabId(nextRootId, entry.path);
       setSelectedPath(entry.path);
-      setPreviewPath(entry.path);
-      setPreviewTarget(entry);
-      setPreviewRootId(targetRootId);
+      setPreviewTabs((current) => {
+        const existing = current.find((tab) => tab.id === tabId);
+        if (existing) {
+          return current.map((tab) =>
+            tab.id === tabId ? { ...tab, entry, rootId: nextRootId } : tab,
+          );
+        }
+        return [...current, { id: tabId, rootId: nextRootId, entry }].slice(-8);
+      });
+      setActivePreviewTabId(tabId);
     },
-    [],
+    [rootId],
   );
+
+  const selectPreviewTab = React.useCallback(
+    (tabId: string) => {
+      const tab = previewTabs.find((item) => item.id === tabId);
+      setActivePreviewTabId(tabId);
+      if (tab) setSelectedPath(tab.entry.path);
+    },
+    [previewTabs],
+  );
+
+  const closePreviewTab = React.useCallback(
+    (tabId: string) => {
+      const closingIndex = previewTabs.findIndex((tab) => tab.id === tabId);
+      const nextTabs = previewTabs.filter((tab) => tab.id !== tabId);
+      setPreviewTabs(nextTabs);
+      if (activePreviewTabId === tabId) {
+        const fallback = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
+        setActivePreviewTabId(fallback?.id);
+        if (fallback) setSelectedPath(fallback.entry.path);
+      }
+    },
+    [activePreviewTabId, previewTabs],
+  );
+
+  const closePreviewWindow = React.useCallback(() => {
+    setPreviewTabs([]);
+    setActivePreviewTabId(undefined);
+  }, []);
 
   const openFileProperties = React.useCallback((entry: FileEntrySummary) => {
     setSelectedPath(entry.path);
@@ -789,16 +831,24 @@ export function FileManagerPage() {
     () => entries.find((entry) => entry.path === selectedPath),
     [entries, selectedPath],
   );
+  const activePreviewTab = React.useMemo(() => {
+    const active = previewTabs.find((tab) => tab.id === activePreviewTabId);
+    return active ?? previewTabs[previewTabs.length - 1];
+  }, [activePreviewTabId, previewTabs]);
   const previewEntry = React.useMemo(() => {
-    const loaded = entries.find(
-      (entry) => entry.path === previewPath && entry.kind === "file",
-    );
-    if (loaded) return loaded;
-    return previewTarget?.kind === "file" && previewTarget.path === previewPath
-      ? previewTarget
-      : undefined;
-  }, [entries, previewPath, previewTarget]);
-  const activePreviewRootId = previewRootId ?? rootId;
+    if (!activePreviewTab) return undefined;
+    const loaded =
+      activePreviewTab.rootId === rootId
+        ? entries.find(
+            (entry) =>
+              entry.path === activePreviewTab.entry.path &&
+              entry.kind === "file",
+          )
+        : undefined;
+    return loaded ?? activePreviewTab.entry;
+  }, [activePreviewTab, entries, rootId]);
+  const activePreviewRootId = activePreviewTab?.rootId ?? rootId;
+  const activePreviewPath = activePreviewTab?.entry.path;
   const previewFileRead = useFileReadQuery(
     previewEntry?.kind === "file"
       ? { rootId: activePreviewRootId, path: previewEntry.path }
@@ -1393,16 +1443,12 @@ export function FileManagerPage() {
         />
       ) : null}
 
-      {previewPath ? (
+      {activePreviewPath ? (
         <FileManagerModalErrorBoundary
-          resetKey={`${activePreviewRootId}:${previewPath}`}
+          resetKey={`${activePreviewRootId}:${activePreviewPath}`}
           title="文件预览加载失败"
           description="预览弹窗代码或文件渲染组件加载异常，已阻止前端进入空白页。请关闭后重试，或直接下载文件。"
-          onDismiss={() => {
-            setPreviewPath(undefined);
-            setPreviewTarget(undefined);
-            setPreviewRootId(undefined);
-          }}
+          onDismiss={closePreviewWindow}
         >
           <React.Suspense
             fallback={<FileManagerModalLoading label="文件预览加载中…" />}
@@ -1411,12 +1457,12 @@ export function FileManagerPage() {
               rootId={activePreviewRootId}
               entry={previewEntry}
               readQuery={previewFileRead}
+              tabs={previewTabs}
+              activeTabId={activePreviewTab?.id}
+              onSelectTab={selectPreviewTab}
+              onCloseTab={closePreviewTab}
               onOpenChange={(open) => {
-                if (!open) {
-                  setPreviewPath(undefined);
-                  setPreviewTarget(undefined);
-                  setPreviewRootId(undefined);
-                }
+                if (!open) closePreviewWindow();
               }}
             />
           </React.Suspense>
