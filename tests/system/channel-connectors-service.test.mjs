@@ -12466,6 +12466,58 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(result.progressEvents?.length, 9);
 });
 
+
+test("native Channel Connectors process runner maps Gemini stream-json progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "init", session_id: "gemini-session-1", model: "gemini-2.5-pro" }),
+    JSON.stringify({ type: "message", role: "assistant", content: "我先说明。", delta: true }),
+    JSON.stringify({ type: "tool_use", tool_name: "run_shell_command", tool_id: "gemini-tool-1", parameters: { command: "pwd" } }),
+    JSON.stringify({ type: "tool_result", tool_id: "gemini-tool-1", status: "success", output: "/tmp/project" }),
+    JSON.stringify({ type: "message", role: "assistant", content: "最终回复。", delta: true }),
+    JSON.stringify({ type: "result", status: "success" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "gemini",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 6);
+  assert.equal(progress[0].type, "session");
+  assert.match(progress[0].text, /gemini-session-1/);
+  assert.equal(progress[1].type, "assistant");
+  assert.equal(progress[1].text, "我先说明。");
+  assert.equal(progress[1].phase, "intermediate");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[1]), true);
+  assert.equal(progress[2].type, "tool");
+  assert.equal(progress[2].rawType, "tool_use");
+  assert.equal(progress[2].toolName, "run_shell_command");
+  assert.equal(progress[2].toolCallId, "gemini-tool-1");
+  assert.match(progress[2].text, /pwd/);
+  assert.equal(progress[3].type, "tool");
+  assert.equal(progress[3].rawType, "tool_result");
+  assert.equal(progress[3].toolCallId, "gemini-tool-1");
+  assert.match(progress[3].text, /output:\n\/tmp\/project/);
+  assert.equal(progress[4].type, "assistant");
+  assert.equal(progress[4].text, "最终回复。");
+  assert.equal(progress[4].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[4]), false);
+  assert.equal(progress[5].type, "completed");
+  assert.equal(result.progressEvents?.length, 6);
+});
+
 test("native Channel Connectors process runner keeps OpenCode structured tool output visible", async () => {
   const root = makeTempRoot();
   const progress = [];

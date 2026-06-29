@@ -1714,6 +1714,94 @@ function isOpenCodeToolCallStepBoundary(reason: string | null | undefined): bool
   return lowerReason === "tool-calls" || lowerReason === "tool_calls" || lowerReason === "tool-call";
 }
 
+function parseGeminiProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw) return [];
+  const rawType = normalizeString(raw.type) || normalizeString(raw.event) || null;
+  if (!rawType) return [];
+
+  if (rawType === "init") {
+    const sessionId = normalizeString(raw.session_id) || normalizeString(raw.sessionId);
+    const model = normalizeString(raw.model);
+    const text = [sessionId, model ? `model=${model}` : ""].filter(Boolean).join(" ");
+    return text ? [progressEvent({ type: "session", rawType, text })] : [];
+  }
+
+  if (rawType === "message") {
+    const role = normalizeString(raw.role).toLowerCase();
+    const content = firstProgressTextValue(raw.content, raw.text, raw.delta, raw.message);
+    if (!content || role === "user") return [];
+    const isAssistant = role === "assistant" || role === "model" || !role;
+    return isAssistant
+      ? [progressEvent({ type: "assistant", rawType, itemType: role || null, text: content, phase: "final" })]
+      : [progressEvent({ type: "event", rawType, itemType: role, text: content })];
+  }
+
+  if (rawType === "tool_use") {
+    const toolName = normalizeString(raw.tool_name)
+      || normalizeString(raw.toolName)
+      || normalizeString(raw.name)
+      || "tool";
+    const toolCallId = normalizeString(raw.tool_id)
+      || normalizeString(raw.toolId)
+      || normalizeString(raw.id)
+      || null;
+    const params = firstProgressTextValue(raw.parameters, raw.args, raw.input);
+    const text = [toolName, params ? `input:\n${params}` : ""].filter(Boolean).join("\n");
+    return [progressEvent({ type: "tool", rawType, itemType: "tool_use", text, toolName, toolCallId })];
+  }
+
+  if (rawType === "tool_result") {
+    const toolName = normalizeString(raw.tool_name)
+      || normalizeString(raw.toolName)
+      || normalizeString(raw.name)
+      || "tool";
+    const toolCallId = normalizeString(raw.tool_id)
+      || normalizeString(raw.toolId)
+      || normalizeString(raw.id)
+      || null;
+    const status = normalizeString(raw.status).toLowerCase();
+    const error = recordValue(raw.error);
+    const output = firstProgressTextValue(
+      commandResultProgressText(raw.output),
+      commandResultProgressText(raw.result),
+      raw.output,
+      raw.result,
+      error?.message,
+      raw.message,
+    );
+    const text = [
+      toolName,
+      status ? `status=${status}` : "",
+      output ? `output:\n${output}` : "",
+    ].filter(Boolean).join("\n");
+    return [progressEvent({
+      type: status === "error" || error ? "error" : "tool",
+      rawType,
+      itemType: "tool_result",
+      text: text || toolName,
+      toolName,
+      toolCallId,
+    })];
+  }
+
+  if (rawType === "result") {
+    const status = normalizeString(raw.status).toLowerCase();
+    const isError = status === "error" || Boolean(recordValue(raw.error));
+    const text = firstProgressTextValue(raw.response, raw.result, raw.content, raw.text, raw.message, recordValue(raw.error)?.message)
+      || (isError ? "Gemini CLI turn failed" : "Gemini CLI turn completed");
+    return [progressEvent({ type: isError ? "failed" : "completed", rawType, itemType: status || null, text })];
+  }
+
+  if (rawType === "error") {
+    const severity = normalizeString(raw.severity).toLowerCase();
+    const text = errorMessageFromValue(raw.error) || firstProgressTextValue(raw.message, raw.content, raw.text) || "Gemini CLI error";
+    return [progressEvent({ type: severity === "warning" ? "event" : "error", rawType, itemType: severity || null, text })];
+  }
+
+  return [parseGenericProgressLine(line)].filter((event): event is ChannelConnectorAgentProgressEvent => Boolean(event));
+}
+
 function parseOpenCodeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
   const raw = recordValue(JSON.parse(line));
   if (!raw) return [];
@@ -1963,6 +2051,7 @@ function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): 
     }
     if (agent === "claude-code") return parseClaudeProgressLineEvents(trimmed);
     if (agent === "opencode") return parseOpenCodeProgressLineEvents(trimmed);
+    if (agent === "gemini") return parseGeminiProgressLineEvents(trimmed);
     const event = parseGenericProgressLine(trimmed);
     return event ? [event] : [];
   } catch {
@@ -2042,6 +2131,14 @@ function isSpecializedProtocolEvent(
       || itemType === "tool-result"
       || itemType === "tool_result"
       || itemType === "step-finish";
+  }
+  if (agent === "gemini") {
+    return rawType === "init"
+      || rawType === "message"
+      || rawType === "tool_use"
+      || rawType === "tool_result"
+      || rawType === "result"
+      || rawType === "error";
   }
   return true;
 }
