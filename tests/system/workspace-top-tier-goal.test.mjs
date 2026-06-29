@@ -73,6 +73,8 @@ test("Workspace editor tab commands collect file evidence before AI handoff", ()
   assert.match(tabCommands, /group: "证据"/);
   assert.match(tabCommands, /编辑器：复制当前文件证据/);
   assert.match(tabCommands, /先形成可审查证据/);
+  assert.match(tabCommands, /当前布局尚未开放编辑组移动/);
+  assert.doesNotMatch(tabCommands, /预留 .*编辑组移动能力/);
   assert.match(tabActions, /复制当前文件证据/);
   assert.match(tabActions, /ClipboardCheck/);
   assert.doesNotMatch(tabCommands, /group: "AI"/);

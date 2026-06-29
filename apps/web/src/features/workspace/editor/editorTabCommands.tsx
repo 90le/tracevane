@@ -171,9 +171,11 @@ export function createEditorTabCommands({
       id: "editor.tab.moveToGroup",
       group: "编辑器",
       label: "编辑器：移动当前标签到新组",
-      description: activePath
-        ? `预留 ${activeName} 的编辑组移动能力`
-        : "当前没有打开的文件",
+      description: !activePath
+        ? "当前没有打开的文件"
+        : moveTabToGroup
+          ? `将 ${activeName} 移入新的编辑组`
+          : "当前布局尚未开放编辑组移动",
       icon: <MoveRight />,
       disabled: !activePath || !moveTabToGroup,
       run: () => activePath && moveTabToGroup?.(activePath),
