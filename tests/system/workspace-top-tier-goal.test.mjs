@@ -102,3 +102,14 @@ test("Workspace Git commands prioritize review evidence over generic AI copy", (
   assert.doesNotMatch(gitCommands, /Diff AI 上下文/);
   assert.doesNotMatch(gitCommands, /复制该提交的 AI 上下文/);
 });
+
+test("Workspace context commands collect reviewable evidence before AI handoff", () => {
+  const workspaceCommands = readWeb("features/workspace/workbench/workspaceCommands.tsx");
+  const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
+  assert.match(workspaceCommands, /准备 IDE 上下文证据/);
+  assert.match(workspaceCommands, /交给 AI 扩展前先形成可审查证据/);
+  assert.match(searchCommands, /搜索：复制上下文证据/);
+  assert.match(searchCommands, /可审查上下文证据/);
+  assert.doesNotMatch(workspaceCommands, /准备 AI 上下文入口/);
+  assert.doesNotMatch(searchCommands, /搜索：复制 AI 上下文/);
+});

@@ -44,10 +44,10 @@ export function createSearchPanelCommands({
     {
       id: "search.panel.copyAiContext",
       group: "AI",
-      label: "搜索：复制 AI 上下文",
+      label: "搜索：复制上下文证据",
       description:
         resultCount > 0
-          ? `复制当前 ${resultCount} 条搜索结果的结构化上下文`
+          ? `复制当前 ${resultCount} 条搜索结果作为可审查上下文证据`
           : "当前没有可复制的搜索结果",
       icon: <Sparkles />,
       disabled: !query || resultCount === 0,

@@ -255,8 +255,8 @@ export function createWorkspaceCommandRegistry({
     {
       id: "workspace.ai.context",
       group: "AI",
-      label: "准备 AI 上下文入口",
-      description: "后续接入 @file / @terminal / @git / @selection",
+      label: "准备 IDE 上下文证据",
+      description: "收集 @file / @terminal / @git / @selection，交给 AI 扩展前先形成可审查证据",
       icon: <Search />,
       run: () => openSidePanel("search"),
     },
