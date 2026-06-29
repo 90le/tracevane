@@ -176,8 +176,11 @@ export function createWorkspaceCommandRegistry({
       id: "workspace.side.close",
       group: "布局",
       label: sideOpen ? "收起侧边面板" : "侧边面板已收起",
-      description: "减少界面堆叠，把空间让给编辑器",
+      description: sideOpen
+        ? "减少界面堆叠，把空间让给编辑器"
+        : "侧边面板当前已经收起",
       icon: <PanelLeftClose />,
+      disabled: !sideOpen,
       run: closeSidePanel,
     },
 
@@ -187,6 +190,7 @@ export function createWorkspaceCommandRegistry({
       label: "最大化编辑器工作区",
       description: "临时收起干扰，把当前代码编辑器和 IDE 主舞台全屏化",
       icon: <Maximize2 />,
+      disabled: !toggleMaximizedDockPanel,
       run: () => toggleMaximizedDockPanel?.("editor"),
     },
     {
@@ -195,6 +199,7 @@ export function createWorkspaceCommandRegistry({
       label: "最大化终端区",
       description: "终端排错时一键占满工作台，再次执行恢复",
       icon: <Minimize2 />,
+      disabled: !toggleMaximizedDockPanel,
       run: () => toggleMaximizedDockPanel?.("terminal"),
     },
     {

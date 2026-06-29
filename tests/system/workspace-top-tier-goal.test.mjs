@@ -72,6 +72,9 @@ test("Workspace command system keeps the current IDE UI mainline out of preview/
   assert.match(commands, /最大化编辑器工作区/);
   assert.match(commands, /当前代码编辑器和 IDE 主舞台/);
   assert.match(commands, /审查证据入口/);
+  assert.match(commands, /侧边面板当前已经收起/);
+  assert.match(commands, /disabled: !sideOpen/);
+  assert.match(commands, /disabled: !toggleMaximizedDockPanel/);
   assert.doesNotMatch(commands, /AI Diff 入口/);
   assert.doesNotMatch(commands, /最大化编辑\/预览区/);
   assert.doesNotMatch(commands, /所见即所得画布全屏化/);
