@@ -196,12 +196,14 @@ test("Workspace Git panel uses review language instead of AI-first labels", () =
 test("Workspace Git commands separate evidence from AI generation", () => {
   const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
   assert.match(gitCommands, /Git：生成提交信息建议/);
+  assert.match(gitCommands, /只填入草稿，不会提交/);
   assert.match(gitCommands, /Git：生成变更审查摘要/);
   assert.match(gitCommands, /group: "证据"/);
   assert.match(gitCommands, /group: "证据" as const/);
   assert.match(gitCommands, /Git：复制近期历史上下文/);
   assert.match(gitCommands, /Git：复制 Diff 审查上下文/);
   assert.match(gitCommands, /Git：复制提交证据包/);
+  assert.match(gitCommands, /id: "git\.panel\.ai\.commitMessage"[\s\S]{0,220}group: "证据"/);
   assert.doesNotMatch(gitCommands, /Git：AI 提交信息/);
   assert.doesNotMatch(gitCommands, /Git：AI 总结当前变更/);
   assert.doesNotMatch(gitCommands, /release note|changelog/i);

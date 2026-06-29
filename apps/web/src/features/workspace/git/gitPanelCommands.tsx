@@ -269,9 +269,9 @@ export function createGitPanelCommands({
     },
     {
       id: "git.panel.ai.commitMessage",
-      group: "Git",
+      group: "证据",
       label: "Git：生成提交信息建议",
-      description: "基于 @git staged diff 上下文生成可审查本地草稿",
+      description: "基于 @git staged diff 生成可审查建议；只填入草稿，不会提交",
       icon: <Sparkles />,
       disabled: pending || !canGenerateCommitDraft,
       run: requestAiCommitDraft,
