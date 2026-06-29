@@ -500,7 +500,11 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.doesNotMatch(searchCommands, /search\.panel\.applyReplacePreview/);
   assert.doesNotMatch(searchPanel, /selectedReplaceItems/);
   assert.doesNotMatch(searchPanel, /全选本次预览/);
+  assert.match(searchPanel, /copySearchEvidence/);
+  assert.match(searchPanel, /data-workspace-search-copy-evidence/);
   assert.doesNotMatch(searchPanel, /复制 AI 上下文/);
+  assert.doesNotMatch(searchPanel, /copySearchAiContext/);
+  assert.doesNotMatch(searchPanel, /data-workspace-search-copy-ai-context/);
 });
 
 test("Workspace Git commands prioritize review evidence over generic AI copy", () => {
@@ -583,7 +587,11 @@ test("Workspace context commands collect reviewable evidence before AI handoff",
   assert.match(workspaceCommands, /交给 AI 扩展前先形成可审查证据/);
   assert.match(searchCommands, /group: "证据"/);
   assert.match(searchCommands, /搜索：复制上下文证据/);
+  assert.match(searchCommands, /copySearchEvidence/);
+  assert.match(searchCommands, /search\.panel\.copyEvidence/);
   assert.match(searchCommands, /可审查上下文证据/);
   assert.doesNotMatch(workspaceCommands, /准备 AI 上下文入口/);
   assert.doesNotMatch(searchCommands, /搜索：复制 AI 上下文/);
+  assert.doesNotMatch(searchCommands, /copySearchAiContext/);
+  assert.doesNotMatch(searchCommands, /search\.panel\.copyAiContext/);
 });

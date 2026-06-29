@@ -162,7 +162,7 @@ export function WorkspaceSearchPanel({
     ],
   );
 
-  const copySearchAiContext = React.useCallback(() => {
+  const copySearchEvidence = React.useCallback(() => {
     if (!query || results.length === 0) {
       toast.info("没有可复制的搜索上下文", {
         description: "请先输入关键词并等待搜索结果返回。",
@@ -404,7 +404,7 @@ export function WorkspaceSearchPanel({
         hasUndoPackage: Boolean(undoPackage?.items.length),
         focusSearch: focusSearchInput,
         clearSearch,
-        copySearchAiContext,
+        copySearchEvidence,
         focusReplace: focusReplaceInput,
         clearReplace: clearReplaceInput,
         prepareReplacePlan: () => void prepareReplacePlan(),
@@ -414,7 +414,7 @@ export function WorkspaceSearchPanel({
     [
       applyReplacePlan,
       clearSearch,
-      copySearchAiContext,
+      copySearchEvidence,
       clearReplaceInput,
       focusReplaceInput,
       focusSearchInput,
@@ -534,8 +534,8 @@ export function WorkspaceSearchPanel({
             size="sm"
             className="h-7 px-2 text-xs"
             disabled={!query || results.length === 0}
-            onClick={copySearchAiContext}
-            data-workspace-search-copy-ai-context
+            onClick={copySearchEvidence}
+            data-workspace-search-copy-evidence
           >
             <Sparkles className="size-3.5" />
             复制上下文证据

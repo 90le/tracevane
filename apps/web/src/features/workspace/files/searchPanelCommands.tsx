@@ -12,7 +12,7 @@ export interface SearchPanelCommandRegistryInput {
   hasUndoPackage: boolean;
   focusSearch: () => void;
   clearSearch: () => void;
-  copySearchAiContext: () => void;
+  copySearchEvidence: () => void;
   focusReplace: () => void;
   clearReplace: () => void;
   prepareReplacePlan: () => void;
@@ -29,7 +29,7 @@ export function createSearchPanelCommands({
   hasUndoPackage,
   focusSearch,
   clearSearch,
-  copySearchAiContext,
+  copySearchEvidence,
   focusReplace,
   clearReplace,
   prepareReplacePlan,
@@ -46,7 +46,7 @@ export function createSearchPanelCommands({
       run: focusSearch,
     },
     {
-      id: "search.panel.copyAiContext",
+      id: "search.panel.copyEvidence",
       group: "证据",
       label: "搜索：复制上下文证据",
       description:
@@ -55,7 +55,7 @@ export function createSearchPanelCommands({
           : "当前没有可复制的搜索结果",
       icon: <Sparkles />,
       disabled: !query || resultCount === 0,
-      run: copySearchAiContext,
+      run: copySearchEvidence,
     },
     {
       id: "search.panel.focusReplaceInput",
