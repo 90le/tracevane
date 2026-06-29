@@ -24,7 +24,7 @@ export type EditorTabActionId =
   | "editor.tab.copyRelativePath"
   | "editor.tab.revealInExplorer"
   | "editor.tab.insertPathToTerminal"
-  | "editor.tab.copyAiFileContext"
+  | "editor.tab.copyFileEvidence"
   | "editor.tab.splitRight"
   | "editor.tab.splitDown"
   | "editor.tab.moveToGroup";
@@ -57,6 +57,8 @@ export interface EditorTabActionRegistryInput {
   copyRelativePath?: (path: string) => void;
   revealInExplorer?: (path: string) => void;
   insertPathToTerminal?: (path: string) => void;
+  copyFileEvidence?: (path: string) => void;
+  /** @deprecated Use copyFileEvidence; kept while dirty callers migrate. */
   copyAiFileContext?: (path: string) => void;
   splitTab?: (path: string, direction: "right" | "down") => void;
   moveTabToGroup?: (path: string) => void;
@@ -80,10 +82,12 @@ export function createEditorTabActions({
   copyRelativePath,
   revealInExplorer,
   insertPathToTerminal,
+  copyFileEvidence,
   copyAiFileContext,
   splitTab,
   moveTabToGroup,
 }: EditorTabActionRegistryInput): EditorTabAction[] {
+  const copyEvidence = copyFileEvidence ?? copyAiFileContext;
   return [
     {
       id: "editor.tab.close",
@@ -191,11 +195,11 @@ export function createEditorTabActions({
       run: () => insertPathToTerminal?.(path),
     },
     {
-      id: "editor.tab.copyAiFileContext",
+      id: "editor.tab.copyFileEvidence",
       label: "复制当前文件证据",
-      disabled: !copyAiFileContext,
+      disabled: !copyEvidence,
       icon: <ClipboardCheck />,
-      run: () => copyAiFileContext?.(path),
+      run: () => copyEvidence?.(path),
     },
   ];
 }

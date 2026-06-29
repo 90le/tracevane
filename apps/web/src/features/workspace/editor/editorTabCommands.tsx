@@ -34,6 +34,8 @@ export interface EditorTabCommandRegistryInput {
   relativePathLabel?: string;
   revealInExplorer?: (path: string) => void;
   insertPathToTerminal?: (path: string) => void;
+  copyFileEvidence?: (path: string) => void;
+  /** @deprecated Use copyFileEvidence; kept while dirty callers migrate. */
   copyAiFileContext?: (path: string) => void;
   splitTab?: (path: string, direction: "right" | "down") => void;
   moveTabToGroup?: (path: string) => void;
@@ -58,6 +60,7 @@ export function createEditorTabCommands({
   relativePathLabel,
   revealInExplorer,
   insertPathToTerminal,
+  copyFileEvidence,
   copyAiFileContext,
   splitTab,
   moveTabToGroup,
@@ -66,6 +69,7 @@ export function createEditorTabCommands({
   const activeIndex = activePath ? openTabs.indexOf(activePath) : -1;
   const hasActive = Boolean(activePath);
   const savedCount = openTabs.length - dirtyPathsCount;
+  const copyEvidence = copyFileEvidence ?? copyAiFileContext;
   return [
     {
       id: "editor.tab.saveActive",
@@ -226,15 +230,15 @@ export function createEditorTabCommands({
       run: () => activePath && insertPathToTerminal?.(activePath),
     },
     {
-      id: "editor.tab.copyAiFileContext",
+      id: "editor.tab.copyFileEvidence",
       group: "证据",
       label: "编辑器：复制当前文件证据",
       description: activePath
         ? `复制 @file ${relativePathLabel || activePath}，先形成可审查证据`
         : "当前没有打开的文件",
       icon: <ClipboardCheck />,
-      disabled: !activePath || !copyAiFileContext,
-      run: () => activePath && copyAiFileContext?.(activePath),
+      disabled: !activePath || !copyEvidence,
+      run: () => activePath && copyEvidence?.(activePath),
     },
   ];
 }

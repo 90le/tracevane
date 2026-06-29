@@ -51,7 +51,9 @@ export interface EditorTabsProps {
   onRevealInExplorer?: (path: string) => void;
   /** Insert the tab path into the active terminal input. */
   onInsertPathToTerminal?: (path: string) => void;
-  /** Copy an AI-ready @file context token for this tab. */
+  /** Copy a reviewable @file evidence token for this tab. */
+  onCopyFileEvidence?: (path: string) => void;
+  /** @deprecated Use onCopyFileEvidence; kept while dirty callers migrate. */
   onCopyAiFileContext?: (path: string) => void;
   /** Request placing the tab into another editor group. */
   onSplitTab?: (path: string, direction: "right" | "down") => void;
@@ -92,11 +94,13 @@ export function EditorTabs({
   onCopyRelativePath,
   onRevealInExplorer,
   onInsertPathToTerminal,
+  onCopyFileEvidence,
   onCopyAiFileContext,
   onSplitTab,
   onMoveTabToGroup,
   "aria-label": ariaLabel = "编辑器标签",
 }: EditorTabsProps) {
+  const copyFileEvidence = onCopyFileEvidence ?? onCopyAiFileContext;
   const [menu, setMenu] = React.useState<{
     x: number;
     y: number;
@@ -264,7 +268,7 @@ export function EditorTabs({
             copyRelativePath: onCopyRelativePath,
             revealInExplorer: onRevealInExplorer,
             insertPathToTerminal: onInsertPathToTerminal,
-            copyAiFileContext: onCopyAiFileContext,
+            copyFileEvidence,
             splitTab: onSplitTab,
             moveTabToGroup: onMoveTabToGroup,
           })}
@@ -292,7 +296,7 @@ export function EditorTabs({
             copyRelativePath: onCopyRelativePath,
             revealInExplorer: onRevealInExplorer,
             insertPathToTerminal: onInsertPathToTerminal,
-            copyAiFileContext: onCopyAiFileContext,
+            copyFileEvidence,
             splitTab: onSplitTab,
             moveTabToGroup: onMoveTabToGroup,
           })}
