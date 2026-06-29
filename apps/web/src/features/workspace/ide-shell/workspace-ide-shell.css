@@ -875,6 +875,43 @@
   grid-template-rows: minmax(0, var(--ide-dock-primary-size, 50%)) 6px minmax(0, calc(100% - var(--ide-dock-primary-size, 50%)));
 }
 
+
+.workspace-ide-shell__dock-edge-drop-zone {
+  position: absolute;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: auto;
+  border: 1px dashed transparent;
+  transition: opacity 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-zone="top"] {
+  inset: 0 18% auto;
+  height: 18px;
+}
+
+.workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-zone="right"] {
+  inset: 18% 0 18% auto;
+  width: 18px;
+}
+
+.workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-zone="bottom"] {
+  inset: auto 18% 0;
+  height: 18px;
+}
+
+.workspace-ide-shell__dock-edge-drop-zone[data-ide-dock-edge-drop-zone="left"] {
+  inset: 18% auto 18% 0;
+  width: 18px;
+}
+
+.workspace-ide-shell__dock-edge-drop-zone:hover,
+.workspace-ide-shell__dock-edge-drop-zone:focus-visible {
+  opacity: 1;
+  border-color: rgba(34, 211, 238, 0.72);
+  background: rgba(34, 211, 238, 0.16);
+}
+
 .workspace-ide-shell__dock-split-pane {
   position: relative;
   min-width: 0;

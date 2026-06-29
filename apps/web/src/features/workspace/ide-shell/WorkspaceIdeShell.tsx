@@ -53,6 +53,7 @@ type DockSplitMode = "single" | "vertical" | "horizontal";
 type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
 type DockPaneRole = "primary" | "secondary";
+type DockDropEdge = "top" | "right" | "bottom" | "left";
 type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
 type DockPaneSelections = Record<PanePlacement, Partial<Record<DockPaneRole, PaneId>>>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
@@ -2029,6 +2030,19 @@ export function WorkspaceIdeShell() {
     clearPaneDragState();
   }
 
+  function dropPaneOnDockEdge(placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const paneId = event.dataTransfer.getData("application/x-tracevane-pane");
+    if (isPaneId(paneId)) {
+      const nextSplitMode: DockSplitMode = edge === "left" || edge === "right" ? "vertical" : "horizontal";
+      const nextRole: DockPaneRole = edge === "right" || edge === "bottom" ? "secondary" : "primary";
+      setDockSplitMode(placement, nextSplitMode);
+      movePaneToPlacement(paneId, placement, undefined, nextRole);
+    }
+    clearPaneDragState();
+  }
+
   function activateActivity(nextActivity: PaneId) {
     setActivity(nextActivity);
     const placement = panePlacements[nextActivity];
@@ -2242,6 +2256,7 @@ export function WorkspaceIdeShell() {
                   onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                   onFocusPane={focusDockPane}
                   onDropPaneOnGroup={dropPaneOnDockGroup}
+                  onDropPaneOnEdge={dropPaneOnDockEdge}
                   renderPane={(paneId, role) => (
                     <LeftPane
                       activity={paneId}
@@ -2362,6 +2377,7 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
+                onDropPaneOnEdge={dropPaneOnDockEdge}
               />
               <ResizeHandle
                 pane="top"
@@ -2537,6 +2553,7 @@ export function WorkspaceIdeShell() {
                 onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
                 onFocusPane={focusDockPane}
                 onDropPaneOnGroup={dropPaneOnDockGroup}
+                onDropPaneOnEdge={dropPaneOnDockEdge}
               />
             </section>
           ) : null}
@@ -2618,6 +2635,7 @@ export function WorkspaceIdeShell() {
               onResizeSplitFromKeyboard={resizeDockSplitFromKeyboard}
               onFocusPane={focusDockPane}
               onDropPaneOnGroup={dropPaneOnDockGroup}
+              onDropPaneOnEdge={dropPaneOnDockEdge}
               renderPane={(paneId) => (
                 <RightPane
                   panel={paneId}
@@ -3098,6 +3116,7 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard,
   onFocusPane,
   onDropPaneOnGroup,
+  onDropPaneOnEdge,
   renderPane,
 }: {
   placement: PanePlacement;
@@ -3113,6 +3132,7 @@ function DockPaneFrame({
   onResizeSplitFromKeyboard: (placement: PanePlacement, mode: DockSplitMode, event: React.KeyboardEvent) => void;
   onFocusPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onDropPaneOnGroup: (placement: PanePlacement, role: DockPaneRole, event: React.DragEvent) => void;
+  onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
   renderPane?: (paneId: PaneId, role: "primary" | "secondary") => React.ReactNode;
 }) {
   if (!primaryPane) return <EmptyDockPane placement={placement} onRestore={onRestore} />;
@@ -3155,6 +3175,7 @@ function DockPaneFrame({
       data-ide-dock-split-placement={placement}
       style={style}
     >
+      <DockEdgeDropZones placement={placement} onDropPaneOnEdge={onDropPaneOnEdge} />
       {render(primaryPane, "primary")}
       {shouldSplit && secondaryPane ? (
         <>
@@ -3170,6 +3191,43 @@ function DockPaneFrame({
       ) : null}
     </div>
   );
+}
+
+
+function DockEdgeDropZones({
+  placement,
+  onDropPaneOnEdge,
+}: {
+  placement: PanePlacement;
+  onDropPaneOnEdge: (placement: PanePlacement, edge: DockDropEdge, event: React.DragEvent) => void;
+}) {
+  const edges: DockDropEdge[] = ["top", "right", "bottom", "left"];
+  return (
+    <>
+      {edges.map((edge) => (
+        <div
+          key={edge}
+          className="workspace-ide-shell__dock-edge-drop-zone"
+          data-ide-dock-edge-drop-zone={edge}
+          data-ide-dock-edge-placement={placement}
+          aria-label={`${placementLabel(placement)} Dock ${dockDropEdgeLabel(edge)}拆分落点`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => onDropPaneOnEdge(placement, edge, event)}
+        />
+      ))}
+    </>
+  );
+}
+
+function dockDropEdgeLabel(edge: DockDropEdge): string {
+  if (edge === "top") return "上侧";
+  if (edge === "right") return "右侧";
+  if (edge === "bottom") return "下侧";
+  return "左侧";
 }
 
 function DockSplitHandle({
