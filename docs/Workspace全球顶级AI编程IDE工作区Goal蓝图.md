@@ -319,16 +319,27 @@ AI 不是聊天框，而是 IDE 工作流的一部分。
 
 > 快速 fallback / 兼容模式 / 专业桌面 IDE 模式，而不是唯一长期产品壳。
 
-### 5.2 本 Goal 当前推荐
+### 5.2 本 Goal 当前推荐：真实 IDE 基座 POC 优先
 
-本 Goal 不立即押注唯一实现，而采用“清理 + 架构 Spike + 决策门”的方式：
+用户最新判断是正确的：如果“首先要的是 IDE”，就不能继续默认把当前自研 Workbench 当成唯一主线。当前策略必须从“先继续自研、以后再评估”调整为：
 
-1. Phase 0：清理错误方向和旧文档。
-2. Phase 1：审计当前 Workbench 能力和缺口。
-3. Phase 2：做 Theia Spike，验证深度定制、移动壳、AI/证据扩展可能性。
-4. Phase 3：做 code-server/OpenVSCode Spike，验证最快完整 IDE 集成、反代、身份、项目管理。
-5. Phase 4：形成 ADR，决定主线：Theia 主线 / code-server fallback / 当前 Workbench 继续演进 / 混合策略。
-6. Phase 5：按决策开始真实重建，不再做说明页式 UI。
+> **先验证成熟 IDE 基座，Tracevane 负责 AI-native 产品外壳、任务/证据/审批/移动工作流和项目编排。**
+
+最新路线顺序：
+
+1. **Phase 0：清理错误方向和旧文档**。删除或降级说明页式、写作/预览优先、半成品 Workbench 方向。
+2. **Phase 1：OpenVSCode/code-server 快速 POC**。先用最短路径接入一个真实 VS Code Web IDE 能力基座，验证文件、终端、Git、搜索、扩展、反代、鉴权、多 workspace 和手机端硬限制。
+3. **Phase 2：Theia 长期平台 POC**。验证 Theia 的白标、widget/command/contribution、AI/证据扩展、后端适配、移动壳可塑性和迁移成本。
+4. **Phase 3：Tracevane Native Workbench 收敛**。当前自研 Workbench 只保留为过渡基线、AI-native shell 原型和差异化交互实验场，不再承诺从零补齐完整 VS Code 级 IDE。
+5. **Phase 4：形成 ADR**。用 POC 证据决定主线：Theia 主线 / OpenVSCode-code-server 专业兼容模式 / Tracevane Native AI Shell / 混合策略。
+6. **Phase 5：按 ADR 重建**。开始真实重建，不再做“看起来像 IDE 但缺 IDE 能力”的说明页式 UI。
+
+关键边界：
+
+- code-server/OpenVSCode 不是低级 fallback；它们是最快拿到真实 IDE 能力的第一验证对象。
+- Theia 不是银弹；它是长期产品主权和可扩展 IDE 平台候选，必须验证学习、迁移、移动端和 AI-native 定制成本。
+- 自研 Workbench 不再默认承担完整 IDE 底座职责；它应服务于 Tracevane 独有的 AI 任务上下文、证据、审批、移动任务流和统一命令中心。
+- 手机端必须单独验收：成熟桌面 IDE 嵌入浏览器不等于手机 AI 编程体验成立。
 
 ---
 

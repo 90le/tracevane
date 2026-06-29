@@ -798,3 +798,19 @@ test("Workspace command palette filters commands by IDE work surface", () => {
   assert.match(palette, /命令/);
   assert.match(palette, /终端/);
 });
+
+test("Workspace IDE provider route now prioritizes real IDE base POCs", () => {
+  const blueprint = readRoot("docs/Workspace全球顶级AI编程IDE工作区Goal蓝图.md");
+  const research = readRoot("docs/WorkspaceIDE基座POC路线研究.md");
+  assert.match(blueprint, /真实 IDE 基座 POC 优先/);
+  assert.match(blueprint, /先验证成熟 IDE 基座/);
+  assert.match(blueprint, /OpenVSCode\/code-server 快速 POC/);
+  assert.match(blueprint, /Theia 长期平台 POC/);
+  assert.match(blueprint, /Tracevane Native Workbench 收敛/);
+  assert.match(blueprint, /不再承诺从零补齐完整 VS Code 级 IDE/);
+  assert.match(research, /Eclipse Theia/);
+  assert.match(research, /code-server/);
+  assert.match(research, /OpenVSCode Server/);
+  assert.match(research, /Tracevane Native Workbench 收敛为 AI-native Shell/);
+  assert.match(research, /先接入成熟 IDE 能力做 POC，再决定长期平台/);
+});
