@@ -10,8 +10,10 @@ import {
   FolderPlus,
   FolderInput,
   Info,
+  MessageSquarePlus,
   Package,
   Pencil,
+  TerminalSquare,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -67,8 +69,14 @@ export interface FileActionsMenuProps {
   onPreviewRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional properties dialog entry point used by full file-manager surfaces. */
   onPropertiesRequest?: (target: FileActionsMenuTarget) => void;
+  /** Optional copy-name hook for Workspace/file-manager surfaces. */
+  onCopyNameRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional copy-path hook for Workspace/file-manager surfaces. */
   onCopyPathRequest?: (target: FileActionsMenuTarget, mode: "relative" | "absolute") => void;
+  /** Optional AI context hook for Workspace/file-manager surfaces. */
+  onCopyAiFileContextRequest?: (target: FileActionsMenuTarget) => void;
+  /** Optional terminal bridge used by Workspace surfaces. */
+  onInsertPathToTerminalRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional IDE open-folder/default-directory action. */
   onSetDefaultDirectoryRequest?: (target: FileActionsMenuTarget | null) => void;
   /**
@@ -148,7 +156,10 @@ export function FileActionsMenu({
   onUploadRequest,
   onPreviewRequest,
   onPropertiesRequest,
+  onCopyNameRequest,
   onCopyPathRequest,
+  onCopyAiFileContextRequest,
+  onInsertPathToTerminalRequest,
   onSetDefaultDirectoryRequest,
   initialFlow = "menu",
 }: FileActionsMenuProps) {
@@ -299,6 +310,16 @@ export function FileActionsMenu({
                 }}
               />
             ) : null}
+            {onCopyNameRequest ? (
+              <MenuItem
+                icon={<Copy />}
+                label="复制文件名"
+                onClick={() => {
+                  onCopyNameRequest(target);
+                  closeAll();
+                }}
+              />
+            ) : null}
             {onCopyPathRequest ? (
               <>
                 <MenuItem
@@ -318,6 +339,26 @@ export function FileActionsMenu({
                   }}
                 />
               </>
+            ) : null}
+            {onCopyAiFileContextRequest ? (
+              <MenuItem
+                icon={<MessageSquarePlus />}
+                label="复制 @file 上下文"
+                onClick={() => {
+                  onCopyAiFileContextRequest(target);
+                  closeAll();
+                }}
+              />
+            ) : null}
+            {onInsertPathToTerminalRequest ? (
+              <MenuItem
+                icon={<TerminalSquare />}
+                label="插入路径到终端"
+                onClick={() => {
+                  onInsertPathToTerminalRequest(target);
+                  closeAll();
+                }}
+              />
             ) : null}
             <MenuItem
               icon={<Pencil />}

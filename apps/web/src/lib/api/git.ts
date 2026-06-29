@@ -1,5 +1,10 @@
 import { apiRequest } from "./client";
-import type { GitDiffPayload, GitStatusPayload } from "../../../../../types/git";
+import type {
+  GitCommitDetailPayload,
+  GitDiffPayload,
+  GitStashListPayload,
+  GitStatusPayload,
+} from "../../../../../types/git";
 
 /**
  * Typed transport bindings for the Git HTTP API
@@ -8,6 +13,7 @@ import type { GitDiffPayload, GitStatusPayload } from "../../../../../types/git"
  * Bound here (read GET):
  *  - GET /api/git/status  → branch / changes / commits roll-up for a root
  *  - GET /api/git/diff    → unified diff for one file (working tree or staged)
+ *  - GET /api/git/commit-detail → metadata/body/parents for a commit
  *
  * Bound here (write POST — all return the refreshed `GitStatusPayload`):
  *  - POST /api/git/stage     → stage paths (empty `paths` = `git add -A`)
@@ -15,6 +21,10 @@ import type { GitDiffPayload, GitStatusPayload } from "../../../../../types/git"
  *  - POST /api/git/commit    → commit staged changes with a message
  *  - POST /api/git/branches  → create a branch (optionally checkout, from ref)
  *  - POST /api/git/checkout  → checkout a branch/ref (optionally detached)
+ *  - POST /api/git/pull      → fast-forward pull from upstream/remote
+ *  - POST /api/git/push      → push to upstream/remote
+ *  - POST /api/git/sync      → fast-forward pull, then push
+ *  - POST /api/git/publish   → push -u current branch to a remote
  *
  * The `init` route (POST /api/git/init) is intentionally left unbound for now;
  * it has no UI surface in the workbench. Response shapes come from the shared
@@ -64,6 +74,27 @@ export function getGitDiff(
   return apiRequest<GitDiffPayload>(`${BASE}/diff?${search.toString()}`, {
     signal,
   });
+}
+
+
+export interface GitCommitDetailParams {
+  rootId: string;
+  path?: string;
+  /** Commit hash or ref to inspect. */
+  hash: string;
+}
+
+/** GET /api/git/commit-detail — metadata/body/parents for one commit. */
+export function getGitCommitDetail(
+  params: GitCommitDetailParams,
+  signal?: AbortSignal,
+): Promise<GitCommitDetailPayload> {
+  const search = new URLSearchParams({ rootId: params.rootId, hash: params.hash });
+  if (params.path) search.set("path", params.path);
+  return apiRequest<GitCommitDetailPayload>(
+    `${BASE}/commit-detail?${search.toString()}`,
+    { signal },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -145,5 +176,100 @@ export function checkoutBranch(params: GitCheckoutParams): Promise<GitStatusPayl
   return apiRequest<GitStatusPayload>(`${BASE}/checkout`, {
     method: "POST",
     body: JSON.stringify({ rootId, path: path ?? "", target, detach }),
+  });
+}
+
+/** Shared remote/ref selector for pull/push/sync. Empty remote+branch means upstream. */
+export interface GitRemoteActionParams extends GitMutationParams {
+  remote?: string;
+  branch?: string;
+}
+export function pullBranch(params: GitRemoteActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, remote, branch } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/pull`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+  });
+}
+
+export function pushBranch(params: GitRemoteActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, remote, branch } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/push`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+  });
+}
+
+export function syncBranch(params: GitRemoteActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, remote, branch } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/sync`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+  });
+}
+
+/** Publish a branch to a remote and set upstream (`git push --set-upstream`). */
+export interface GitPublishBranchParams extends GitMutationParams {
+  remote?: string;
+  branch?: string;
+}
+export function publishBranch(
+  params: GitPublishBranchParams,
+): Promise<GitStatusPayload> {
+  const { rootId, path, remote, branch } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/publish`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+  });
+}
+
+export interface GitStashListParams extends GitMutationParams {}
+export function getGitStashes(
+  params: GitStashListParams,
+  signal?: AbortSignal,
+): Promise<GitStashListPayload> {
+  const search = new URLSearchParams({ rootId: params.rootId });
+  if (params.path) search.set("path", params.path);
+  return apiRequest<GitStashListPayload>(`${BASE}/stashes?${search.toString()}`, {
+    signal,
+  });
+}
+
+export interface GitStashSaveParams extends GitMutationParams {
+  message?: string;
+  includeUntracked?: boolean;
+}
+export function saveGitStash(params: GitStashSaveParams): Promise<GitStatusPayload> {
+  const { rootId, path, message, includeUntracked } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/stashes`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", message, includeUntracked }),
+  });
+}
+
+export interface GitStashActionParams extends GitMutationParams {
+  ref?: string;
+}
+export function applyGitStash(params: GitStashActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, ref } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/stashes/apply`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", ref }),
+  });
+}
+
+export function popGitStash(params: GitStashActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, ref } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/stashes/pop`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", ref }),
+  });
+}
+
+export function dropGitStash(params: GitStashActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, ref } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/stashes/drop`, {
+    method: "POST",
+    body: JSON.stringify({ rootId, path: path ?? "", ref }),
   });
 }

@@ -1,2 +1,5 @@
 export { WorkspaceGitPanel } from "./WorkspaceGitPanel";
-export type { WorkspaceGitPanelProps } from "./WorkspaceGitPanel";
+export type {
+  WorkspaceGitDiffTarget,
+  WorkspaceGitPanelProps,
+} from "./WorkspaceGitPanel";

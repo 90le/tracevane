@@ -8,6 +8,7 @@ import { Input } from "@/design/ui/input";
 import { getDocumentVisualEditor } from "./DocumentViewRegistry";
 import { useFilesBrowseQuery } from "@/lib/query/files";
 import type { FileEntrySummary } from "@/features/workspace/files";
+import { useVisualViewportKeyboardInset } from "./useVisualViewportKeyboardInset";
 
 const MarkdownPreview = React.lazy(() =>
   import("@/features/workspace/preview/MarkdownPreview").then((module) => ({
@@ -85,6 +86,8 @@ export function MarkdownLiveEditor({
   const [editingBlockId, setEditingBlockId] = React.useState<string | null>(
     null,
   );
+  const scrollportRef = React.useRef<HTMLDivElement | null>(null);
+  const keyboardInset = useVisualViewportKeyboardInset(scrollportRef);
 
   React.useEffect(() => {
     setDraft(content);
@@ -169,6 +172,7 @@ export function MarkdownLiveEditor({
         className,
       )}
       data-visual-document-editor-shell
+      data-visual-document-keyboard-inset={keyboardInset > 0 ? "true" : "false"}
     >
       <div className="flex min-w-0 items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs text-muted">
         <FileText className="size-4 shrink-0 text-primary" />
@@ -178,8 +182,12 @@ export function MarkdownLiveEditor({
         </span>
       </div>
       <div
+        ref={scrollportRef}
         className="min-h-0 min-w-0 overflow-auto bg-panel"
         data-markdown-visual-scrollport
+        style={{
+          scrollPaddingBottom: keyboardInset ? keyboardInset + 24 : undefined,
+        }}
       >
         <div className="mx-auto min-h-full max-w-4xl px-3 py-5 sm:px-6 sm:py-7">
           <div className="grid gap-1">
@@ -305,7 +313,10 @@ function MarkdownVisualBlock({
         </span>
       </div>
       {editable ? (
-        <div className="absolute right-2 top-2 z-20 flex max-w-[calc(100%-1rem)] items-center justify-end gap-1 overflow-x-auto rounded-full border border-line bg-panel/95 px-1.5 py-1 opacity-0 shadow-lg backdrop-blur transition group-hover/visual-block:opacity-100 group-focus-within/visual-block:opacity-100 sm:flex-wrap" data-markdown-block-toolbar>
+        <div
+          className="absolute right-2 top-2 z-20 flex max-w-[calc(100%-1rem)] items-center justify-end gap-1 overflow-x-auto rounded-full border border-line bg-panel/95 px-1.5 py-1 opacity-0 shadow-lg backdrop-blur transition group-hover/visual-block:opacity-100 group-focus-within/visual-block:opacity-100 sm:flex-wrap"
+          data-markdown-block-toolbar
+        >
           {editing ? (
             <>
               <Button
@@ -503,7 +514,8 @@ function MarkdownTaskListInlineEditor({
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
         <span className="font-medium text-ink-strong">列表直接编辑</span>
         <span className="min-w-0 flex-1 truncate">
-          普通列表保留原 marker；任务列表勾选状态写回 [x]/[ ]。文字离开输入框或 Ctrl/⌘+Enter 后保存。
+          普通列表保留原 marker；任务列表勾选状态写回 [x]/[ ]。文字离开输入框或
+          Ctrl/⌘+Enter 后保存。
         </span>
         <Button
           variant="ghost"
@@ -546,7 +558,11 @@ function MarkdownTaskListInlineEditor({
                 className="mt-1 size-4 rounded border-line accent-[var(--primary)]"
                 checked={item.checked}
                 onChange={(event) =>
-                  updateItem(index, { checked: event.currentTarget.checked }, true)
+                  updateItem(
+                    index,
+                    { checked: event.currentTarget.checked },
+                    true,
+                  )
                 }
                 aria-label={`切换任务 ${index + 1} 完成状态`}
                 data-markdown-task-checkbox
@@ -1798,6 +1814,7 @@ export function HtmlVisualEditor({
   className?: string;
 }) {
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+  const keyboardInset = useVisualViewportKeyboardInset(iframeRef);
   const lastWrittenRef = React.useRef(content);
 
   React.useEffect(() => {
@@ -1832,6 +1849,7 @@ export function HtmlVisualEditor({
         className,
       )}
       data-html-visual-editor-shell
+      data-html-visual-keyboard-inset={keyboardInset > 0 ? "true" : "false"}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs text-muted">
         <Code2 className="size-4 shrink-0 text-primary" />
@@ -1859,7 +1877,11 @@ export function HtmlVisualEditor({
         srcDoc={content}
         onLoad={handleLoad}
         onBlur={syncFromFrame}
-        className="h-full min-h-0 w-full overflow-auto bg-white"
+        className="min-h-0 w-full overflow-auto bg-white"
+        style={{
+          height: "100%",
+          scrollPaddingBottom: keyboardInset ? keyboardInset + 24 : undefined,
+        }}
         data-html-visual-frame
       />
     </div>
@@ -2030,7 +2052,9 @@ function isMarkdownTableLine(line: string): boolean {
 
 function isMarkdownTableDelimiterLine(line: string): boolean {
   const cells = splitMarkdownTableRow(line);
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+  return (
+    cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))
+  );
 }
 
 export function toggleMarkdownTask(
@@ -2256,7 +2280,9 @@ function nextMarkdownListMarker(items: MarkdownListItemEdit[]): string {
 
 function parseMarkdownListItems(raw: string): MarkdownListItemEdit[] {
   return raw.split("\n").map((line) => {
-    const match = /^(\s*(?:[-*+]|\d+[.)])\s+)(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
+    const match = /^(\s*(?:[-*+]|\d+[.)])\s+)(?:\[([ xX])\]\s+)?(.*)$/.exec(
+      line,
+    );
     if (!match) {
       return { marker: "- ", task: false, checked: false, text: line };
     }

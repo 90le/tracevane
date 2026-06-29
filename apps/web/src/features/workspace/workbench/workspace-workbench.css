@@ -44,7 +44,84 @@
   border: 0;
 }
 
-.tracevane-dockview .dv-tabs-and-actions-container.dv-single-tab + .dv-content-container,
-.tracevane-dockview .dv-tabs-and-actions-container.dv-single-tab ~ .dv-content-container {
+.tracevane-dockview
+  .dv-tabs-and-actions-container.dv-single-tab
+  + .dv-content-container,
+.tracevane-dockview
+  .dv-tabs-and-actions-container.dv-single-tab
+  ~ .dv-content-container {
   min-height: 0;
+}
+
+.workspace-shell-immersive {
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+.workspace-shell-immersive > header,
+.workspace-shell-immersive > footer,
+.workspace-shell-immersive > nav {
+  display: none !important;
+}
+
+.workspace-mobile-browser-fullscreen {
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.workspace-mobile-browser-fullscreen > header,
+.workspace-mobile-browser-fullscreen > footer {
+  display: none !important;
+}
+
+.workspace-mobile-browser-fullscreen > nav {
+  display: grid !important;
+}
+
+.workspace-dock-maximized {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+.workspace-dock-maximized > :not(.tracevane-dockview) {
+  display: none !important;
+}
+
+.workspace-dock-maximized .tracevane-dockview {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  background: var(--color-canvas, #f8fafc);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.workspace-mobile-panel-resizing {
+  will-change: height, transform;
+  contain: layout paint;
+}
+
+.workspace-mobile-panel-resizing [data-workspace-mobile-panel-content] {
+  pointer-events: none;
+}
+
+.workspace-mobile-panel-resizing * {
+  user-select: none !important;
+}
+
+[data-workspace-mobile="true"][data-workspace-mobile-panel-nav-reserved="true"]
+  .tracevane-dockview {
+  padding-bottom: var(--workspace-mobile-nav-height);
+}
+
+[data-workspace-mobile="true"][data-workspace-mobile-panel-nav-reserved="true"]
+  [data-workspace-mobile-panel-content],
+[data-workspace-mobile="true"][data-workspace-mobile-panel-nav-reserved="true"]
+  [data-workspace-explorer-scrollport],
+[data-workspace-mobile="true"][data-workspace-mobile-panel-nav-reserved="true"]
+  [data-workspace-search-scrollport],
+[data-workspace-mobile="true"][data-workspace-mobile-panel-nav-reserved="true"]
+  [data-workspace-git-scrollport] {
+  padding-bottom: calc(var(--workspace-mobile-nav-height) + 0.75rem);
+  scroll-padding-bottom: calc(var(--workspace-mobile-nav-height) + 0.75rem);
 }

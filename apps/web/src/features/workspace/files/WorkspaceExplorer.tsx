@@ -3,11 +3,18 @@ import {
   Archive,
   Check,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FilePlus,
+  FileSymlink,
   FolderTree,
+  FolderInput,
+  FolderUp,
+  Info,
+  MoreHorizontal,
   MoveRight,
+  Pencil,
   RefreshCw,
   Trash2,
   Upload,
@@ -52,11 +59,17 @@ import {
   saveUploadTaskSnapshots,
   snapshotsFromUploadJobs,
 } from "./uploadTaskSnapshots";
+import type { WorkspaceOpenFileOptions } from "./WorkspaceSearchPanel";
 import type { FileEntrySummary, FilesUploadConflictPolicy } from "./types";
 import type {
   FilesTransferConflictPolicy,
   FilesTransferDryRunResponse,
 } from "../../../../../../types/files";
+
+export interface WorkspaceExplorerRevealRequest {
+  path: string;
+  signal: number;
+}
 
 export interface WorkspaceExplorerProps {
   /** Root id the explorer is scoped to. */
@@ -64,12 +77,13 @@ export interface WorkspaceExplorerProps {
   /** Currently selected file path (rendered as highlighted in the tree). */
   selectedPath?: string;
   /** Fired when a file row is activated (click / Enter). */
-  onSelectFile?: (path: string) => void;
+  onSelectFile?: (path: string, options?: WorkspaceOpenFileOptions) => void;
   /** Fired when the user picks a different root in the header selector. */
   onChangeRoot?: (rootId: string) => void;
   /** Fired when the focused directory changes; file-manager pages reuse this as their main-list path. */
   onDirectoryChange?: (path: string) => void;
   onWorkspaceDirectoryChange?: (directory: WorkspaceDirectoryContext) => void;
+  revealRequest?: WorkspaceExplorerRevealRequest | null;
 }
 
 export interface WorkspaceDirectoryContext {
@@ -117,6 +131,7 @@ export function WorkspaceExplorer({
   onChangeRoot,
   onDirectoryChange,
   onWorkspaceDirectoryChange,
+  revealRequest,
 }: WorkspaceExplorerProps) {
   const summary = useFilesSummaryQuery();
   const queryClient = useQueryClient();
@@ -130,10 +145,14 @@ export function WorkspaceExplorer({
   const [treeVersion, setTreeVersion] = React.useState(0);
   const [currentDirectory, setCurrentDirectory] = React.useState("");
   const [pathInput, setPathInput] = React.useState("");
+  const [pathEditing, setPathEditing] = React.useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = React.useState(false);
   const [defaultDirectory, setDefaultDirectory] = React.useState(() =>
     loadWorkspaceDefaultDirectory(),
   );
-  const appliedDefaultRootRef = React.useRef<string | null>(null);
+  const defaultDirectoryRef = React.useRef(defaultDirectory);
+  const currentDirectoryByRootRef = React.useRef<Record<string, string>>({});
+  const lastAppliedRootRef = React.useRef<string | null>(null);
   const [uploadJobs, setUploadJobs] = React.useState<UploadJob[]>([]);
   const [uploadSnapshots, setUploadSnapshots] = React.useState(() =>
     loadUploadTaskSnapshots(WORKSPACE_UPLOAD_TASK_SNAPSHOT_KEY),
@@ -195,24 +214,28 @@ export function WorkspaceExplorer({
 
   React.useEffect(() => {
     onDirectoryChange?.(currentDirectory);
+  }, [currentDirectory, onDirectoryChange]);
+
+  const workspaceLaunchDirectory =
+    defaultDirectory.rootId === rootId ? defaultDirectory.relativePath : "";
+
+  React.useEffect(() => {
+    if (!rootId || !root?.absolutePath) return;
     const absolutePath = absoluteDisplayPath(
-      root?.absolutePath,
-      currentDirectory,
+      root.absolutePath,
+      workspaceLaunchDirectory,
     );
-    if (rootId && root?.absolutePath) {
-      onWorkspaceDirectoryChange?.({
-        rootId,
-        rootAbsolutePath: root.absolutePath,
-        relativePath: currentDirectory,
-        absolutePath,
-      });
-    }
+    onWorkspaceDirectoryChange?.({
+      rootId,
+      rootAbsolutePath: root.absolutePath,
+      relativePath: workspaceLaunchDirectory,
+      absolutePath,
+    });
   }, [
-    currentDirectory,
-    onDirectoryChange,
     onWorkspaceDirectoryChange,
     root?.absolutePath,
     rootId,
+    workspaceLaunchDirectory,
   ]);
 
   React.useEffect(() => {
@@ -220,13 +243,38 @@ export function WorkspaceExplorer({
   }, [currentDirectory]);
 
   React.useEffect(() => {
-    if (!rootId || appliedDefaultRootRef.current === rootId) return;
-    appliedDefaultRootRef.current = rootId;
+    defaultDirectoryRef.current = defaultDirectory;
+  }, [defaultDirectory]);
+
+  React.useEffect(() => {
+    if (!rootId) return;
+    currentDirectoryByRootRef.current[rootId] = currentDirectory;
+  }, [currentDirectory, rootId]);
+
+  React.useEffect(() => {
+    if (!rootId || lastAppliedRootRef.current === rootId) return;
+    lastAppliedRootRef.current = rootId;
+    const rememberedDirectory = currentDirectoryByRootRef.current[rootId];
+    const savedDefault = defaultDirectoryRef.current;
     const initialDirectory =
-      defaultDirectory.rootId === rootId ? defaultDirectory.relativePath : "";
+      rememberedDirectory ??
+      (savedDefault.rootId === rootId ? savedDefault.relativePath : "");
     setCurrentDirectory(initialDirectory);
     setPathInput(initialDirectory);
-  }, [defaultDirectory.relativePath, defaultDirectory.rootId, rootId]);
+  }, [rootId]);
+
+  React.useEffect(() => {
+    if (!revealRequest?.path) return;
+    const directory = parentOfPath(revealRequest.path) ?? "";
+    setCurrentDirectory(directory);
+    setPathInput(directory);
+    setActiveEntry({
+      path: revealRequest.path,
+      name: lastSegment(revealRequest.path),
+      kind: "file",
+    });
+    explorerRef.current?.focus();
+  }, [revealRequest?.path, revealRequest?.signal]);
 
   const checkedList = React.useMemo(
     () => Array.from(checkedEntries.values()),
@@ -246,8 +294,23 @@ export function WorkspaceExplorer({
     [checkedList],
   );
   const checkedDirectoryCount = checkedList.length - checkedFileCount;
-  const workspaceBaseDirectory =
-    defaultDirectory.rootId === rootId ? defaultDirectory.relativePath : "";
+  const workspaceBaseDirectory = workspaceLaunchDirectory;
+  const addressCrumbs = React.useMemo(
+    () => createWorkspaceAddressCrumbs(currentDirectory),
+    [currentDirectory],
+  );
+  const touchActionSurface = useTouchActionSurface();
+  const currentDirectoryTarget = React.useMemo<FileActionsMenuTarget | null>(
+    () =>
+      currentDirectory
+        ? {
+            path: currentDirectory,
+            name: lastSegment(currentDirectory),
+            kind: "directory",
+          }
+        : null,
+    [currentDirectory],
+  );
 
   const toggleCheckedEntry = React.useCallback(
     (
@@ -329,6 +392,14 @@ export function WorkspaceExplorer({
     setUploadDialog((state) => ({ ...state, open: false }));
   }, []);
 
+  const clearUploadTaskSnapshots = React.useCallback(() => {
+    uploadHandleRef.current?.cancel();
+    uploadHandleRef.current = null;
+    setUploadJobs([]);
+    setUploadSnapshots([]);
+    saveUploadTaskSnapshots(WORKSPACE_UPLOAD_TASK_SNAPSHOT_KEY, []);
+  }, []);
+
   const reopenUploadManager = React.useCallback(() => {
     setUploadDialog((state) => ({
       ...state,
@@ -336,6 +407,29 @@ export function WorkspaceExplorer({
       targetDirectory: state.targetDirectory || currentDirectory,
     }));
   }, [currentDirectory]);
+
+  const copyName = React.useCallback(async (target: FileActionsMenuTarget) => {
+    try {
+      await navigator.clipboard.writeText(target.name);
+      toast.success("已复制文件名", { description: target.name });
+    } catch {
+      toast.error("复制文件名失败", { description: target.name });
+    }
+  }, []);
+
+  const copyAiFileContext = React.useCallback(
+    async (target: FileActionsMenuTarget) => {
+      const absolutePath = absoluteDisplayPath(root?.absolutePath, target.path);
+      const context = formatExplorerFileAiContext(absolutePath, target.path);
+      try {
+        await navigator.clipboard.writeText(context);
+        toast.success("已复制 @file 上下文", { description: target.path });
+      } catch {
+        toast.error("复制 @file 上下文失败", { description: target.path });
+      }
+    },
+    [root?.absolutePath],
+  );
 
   const copyPath = React.useCallback(
     async (target: FileActionsMenuTarget, mode: "relative" | "absolute") => {
@@ -358,6 +452,24 @@ export function WorkspaceExplorer({
     [root?.absolutePath],
   );
 
+  const insertPathToTerminal = React.useCallback(
+    (target: FileActionsMenuTarget) => {
+      const absolutePath = absoluteDisplayPath(root?.absolutePath, target.path);
+      window.dispatchEvent(
+        new CustomEvent("tracevane:workspace-terminal-insert-input", {
+          detail: {
+            id: `explorer-path-${Date.now().toString(36)}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            value: `${shellQuoteWorkspacePath(absolutePath)} `,
+            label: "已插入文件路径到终端",
+          },
+        }),
+      );
+    },
+    [root?.absolutePath],
+  );
+
   const onNewFile = React.useCallback(() => {
     if (!rootId) return;
     openMenu(
@@ -376,16 +488,35 @@ export function WorkspaceExplorer({
   const refresh = React.useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: filesKeys.all });
   }, [queryClient]);
+  const navigateToDirectory = React.useCallback(
+    (nextPath: string) => {
+      const normalized = normalizeWorkspacePathInput(
+        nextPath,
+        root?.absolutePath,
+      );
+      setCurrentDirectory(normalized);
+      setPathInput(normalized);
+      setPathEditing(false);
+      setActiveEntry(
+        normalized
+          ? {
+              path: normalized,
+              name: lastSegment(normalized),
+              kind: "directory",
+            }
+          : null,
+      );
+    },
+    [root?.absolutePath],
+  );
+
   const jumpToPathInput = React.useCallback(() => {
-    const nextPath = normalizeWorkspacePathInput(pathInput, root?.absolutePath);
-    setCurrentDirectory(nextPath);
-    setPathInput(nextPath);
-    setActiveEntry(
-      nextPath
-        ? { path: nextPath, name: lastSegment(nextPath), kind: "directory" }
-        : null,
-    );
-  }, [pathInput, root?.absolutePath]);
+    navigateToDirectory(pathInput);
+  }, [navigateToDirectory, pathInput]);
+
+  const navigateToParentDirectory = React.useCallback(() => {
+    navigateToDirectory(parentOfPath(currentDirectory) ?? "");
+  }, [currentDirectory, navigateToDirectory]);
 
   const saveDefaultDirectory = React.useCallback(
     (target?: FileActionsMenuTarget | null) => {
@@ -394,15 +525,21 @@ export function WorkspaceExplorer({
       const next = { rootId, relativePath };
       setDefaultDirectory(next);
       saveWorkspaceDefaultDirectory(next);
-      appliedDefaultRootRef.current = rootId;
-      setCurrentDirectory(relativePath);
-      setPathInput(relativePath);
-      setTreeVersion((value) => value + 1);
+      defaultDirectoryRef.current = next;
+      currentDirectoryByRootRef.current[rootId] = currentDirectory;
+      if (root?.absolutePath) {
+        onWorkspaceDirectoryChange?.({
+          rootId,
+          rootAbsolutePath: root.absolutePath,
+          relativePath,
+          absolutePath: absoluteDisplayPath(root.absolutePath, relativePath),
+        });
+      }
       toast.success("已设置工作区主目录", {
         description: absoluteDisplayPath(root?.absolutePath, relativePath),
       });
     },
-    [currentDirectory, root?.absolutePath, rootId],
+    [currentDirectory, onWorkspaceDirectoryChange, root?.absolutePath, rootId],
   );
 
   const openBulkArchive = React.useCallback(() => {
@@ -796,30 +933,63 @@ export function WorkspaceExplorer({
         );
       }}
     >
-      <header className="grid shrink-0 gap-2 border-b border-line px-2 py-2">
-        <div className="grid min-w-0 gap-1" data-workspace-explorer-address-bar>
-          <div className="flex min-w-0 items-center gap-1">
-            <RootSelector
-              rootId={rootId}
-              roots={roots}
-              onChange={onChangeRoot}
-            />
-            <Input
-              value={pathInput}
-              onChange={(event) => setPathInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  jumpToPathInput();
-                }
-                if (event.key === "Escape") setPathInput(currentDirectory);
-              }}
-              onBlur={() => setPathInput(currentDirectory)}
-              className="h-7 min-w-0 flex-1 font-mono text-xs"
-              placeholder="输入目录路径，Enter 跳转"
-              title="支持相对路径或当前 root 下的绝对路径"
-              data-workspace-explorer-path-input
-            />
+      <header
+        className="grid shrink-0 gap-2 border-b border-line bg-panel/85 px-2 py-2 backdrop-blur"
+        data-workspace-explorer-compact-header
+      >
+        <div
+          className="flex min-w-0 items-center gap-1.5"
+          data-workspace-explorer-address-bar
+        >
+          <ToolbarButton
+            label="返回上级目录"
+            disabled={!rootId || !currentDirectory}
+            onClick={navigateToParentDirectory}
+          >
+            <FolderUp />
+          </ToolbarButton>
+          <RootSelector rootId={rootId} roots={roots} onChange={onChangeRoot} />
+          <div className="min-w-0 flex-1">
+            {pathEditing ? (
+              <Input
+                value={pathInput}
+                onChange={(event) => setPathInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    jumpToPathInput();
+                  }
+                  if (event.key === "Escape") {
+                    setPathInput(currentDirectory);
+                    setPathEditing(false);
+                  }
+                }}
+                onBlur={() => {
+                  setPathInput(currentDirectory);
+                  setPathEditing(false);
+                }}
+                className="h-8 min-w-0 font-mono text-xs"
+                placeholder="输入目录路径，Enter 跳转"
+                title="文件路径地址栏：可输入相对路径或当前 root 下的绝对路径"
+                autoFocus
+                data-workspace-explorer-path-input
+              />
+            ) : (
+              <WorkspaceAddressBar
+                rootLabel={root?.labelZh ?? rootId ?? "root"}
+                currentDirectory={currentDirectory}
+                absolutePath={absoluteDisplayPath(
+                  root?.absolutePath,
+                  currentDirectory,
+                )}
+                crumbs={addressCrumbs}
+                defaultDirectory={workspaceBaseDirectory}
+                onNavigate={navigateToDirectory}
+                onEdit={() => setPathEditing(true)}
+              />
+            )}
+          </div>
+          {pathEditing ? (
             <ToolbarButton
               label="跳转目录"
               disabled={!rootId}
@@ -827,61 +997,38 @@ export function WorkspaceExplorer({
             >
               <Check />
             </ToolbarButton>
-          </div>
-          <div className="flex min-w-0 items-center gap-1 text-2xs text-subtle">
-            <span
-              className="min-w-0 flex-1 truncate"
-              title={absoluteDisplayPath(root?.absolutePath, currentDirectory)}
+          ) : null}
+          <div className="relative shrink-0">
+            <ToolbarButton
+              label="更多文件操作"
+              disabled={!rootId}
+              active={moreActionsOpen}
+              onClick={() => {
+                if (touchActionSurface) {
+                  setMoreActionsOpen(false);
+                  openMenu(0, window.innerHeight, currentDirectoryTarget);
+                  return;
+                }
+                setMoreActionsOpen((open) => !open);
+              }}
             >
-              当前：{absoluteDisplayPath(root?.absolutePath, currentDirectory)}
-            </span>
-            {workspaceBaseDirectory ? (
-              <span
-                className="shrink-0 rounded bg-primary-soft px-1 py-0.5 text-primary"
-                title={absoluteDisplayPath(
-                  root?.absolutePath,
-                  workspaceBaseDirectory,
-                )}
-                data-workspace-explorer-default-directory
-              >
-                主目录：{lastSegment(workspaceBaseDirectory)}
-              </span>
+              <MoreHorizontal />
+            </ToolbarButton>
+            {moreActionsOpen ? (
+              <WorkspaceExplorerMoreMenu
+                showHidden={showHidden}
+                currentDirectory={currentDirectory}
+                workspaceBaseDirectory={workspaceBaseDirectory}
+                onClose={() => setMoreActionsOpen(false)}
+                onNewFile={onNewFile}
+                onUpload={() => openUploadManager(currentDirectory)}
+                onRefresh={refresh}
+                onCollapseAll={collapseAll}
+                onToggleHidden={() => setShowHidden((value) => !value)}
+                onSetDefaultDirectory={() => saveDefaultDirectory(null)}
+              />
             ) : null}
           </div>
-        </div>
-        <div className="flex min-w-0 items-center gap-1">
-          <ToolbarButton
-            label={`新建到 ${displayDir(currentDirectory)}`}
-            disabled={!rootId}
-            onClick={onNewFile}
-          >
-            <FilePlus />
-          </ToolbarButton>
-          <ToolbarButton
-            label={`打开上传管理 · ${displayDir(currentDirectory)}`}
-            disabled={!rootId}
-            onClick={() => openUploadManager(currentDirectory)}
-          >
-            <Upload />
-          </ToolbarButton>
-          <ToolbarButton label="刷新" disabled={!rootId} onClick={refresh}>
-            <RefreshCw />
-          </ToolbarButton>
-          <ToolbarButton
-            label="折叠全部"
-            disabled={!rootId}
-            onClick={collapseAll}
-          >
-            <FolderTree />
-          </ToolbarButton>
-          <ToolbarButton
-            label={showHidden ? "隐藏隐藏文件" : "显示隐藏文件"}
-            disabled={!rootId}
-            active={showHidden}
-            onClick={() => setShowHidden((value) => !value)}
-          >
-            {showHidden ? <EyeOff /> : <Eye />}
-          </ToolbarButton>
           <input
             ref={fileInputRef}
             type="file"
@@ -915,7 +1062,10 @@ export function WorkspaceExplorer({
         />
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto px-1.5 py-2">
+      <div
+        className="min-h-0 flex-1 overflow-auto px-1.5 py-2"
+        data-workspace-explorer-scrollport
+      >
         {rootId ? (
           <FileTree
             key={`${rootId}:${treeVersion}:${showHidden ? "hidden" : "visible"}`}
@@ -924,6 +1074,7 @@ export function WorkspaceExplorer({
             basePath=""
             focusedPath={currentDirectory}
             rootAbsolutePath={root?.absolutePath}
+            showBreadcrumb={false}
             selectedPath={activeEntry?.path ?? selectedPath}
             checkedPaths={checkedPaths}
             onToggleChecked={toggleCheckedEntry}
@@ -937,7 +1088,7 @@ export function WorkspaceExplorer({
                 setCurrentDirectory(path);
                 return;
               }
-              onSelectFile?.(path);
+              onSelectFile?.(path, { rootId });
             }}
             onActiveEntryChange={(path, entry) => {
               setActiveEntry({ path, name: entry.name, kind: entry.kind });
@@ -970,11 +1121,74 @@ export function WorkspaceExplorer({
           onOpen={reopenUploadManager}
           onPause={() => uploadHandleRef.current?.pause()}
           onResume={() => void resumeUpload()}
-          onCancel={() => uploadHandleRef.current?.cancel()}
+          onCancel={clearUploadTaskSnapshots}
         />
       ) : null}
 
-      {menu && (
+      {menu && touchActionSurface && menu.initialFlow === "menu" ? (
+        <WorkspaceExplorerActionSheet
+          target={menu.target}
+          currentDirectoryTarget={currentDirectoryTarget}
+          currentDirectory={currentDirectory}
+          rootId={rootId}
+          rootAbsolutePath={root?.absolutePath}
+          showHidden={showHidden}
+          workspaceBaseDirectory={workspaceBaseDirectory}
+          onClose={closeMenu}
+          onOpenDirectory={(path) => {
+            navigateToDirectory(path);
+            closeMenu();
+          }}
+          onUpload={(targetDirectory) => {
+            openUploadManager(targetDirectory);
+            closeMenu();
+          }}
+          onFlow={(flow, target) => {
+            setMenu({
+              x: Math.max(16, window.innerWidth / 2 - 160),
+              y: Math.max(80, window.innerHeight / 3),
+              target,
+              initialFlow: flow,
+            });
+          }}
+          onPreview={(target) => {
+            setPreviewEntry(target);
+            closeMenu();
+          }}
+          onProperties={(target) => {
+            setPropertiesEntry(target);
+            closeMenu();
+          }}
+          onCopyPath={(target, mode) => {
+            void copyPath(target, mode);
+            closeMenu();
+          }}
+          onInsertPathToTerminal={(target) => {
+            insertPathToTerminal(target);
+            closeMenu();
+          }}
+          onDownload={(target) => {
+            openWorkspaceDownload(rootId, target);
+            closeMenu();
+          }}
+          onSetDefaultDirectory={(target) => {
+            saveDefaultDirectory(target);
+            closeMenu();
+          }}
+          onRefresh={() => {
+            refresh();
+            closeMenu();
+          }}
+          onCollapseAll={() => {
+            collapseAll();
+            closeMenu();
+          }}
+          onToggleHidden={() => {
+            setShowHidden((value) => !value);
+            closeMenu();
+          }}
+        />
+      ) : menu ? (
         <FileActionsMenu
           open
           x={menu.x}
@@ -989,12 +1203,17 @@ export function WorkspaceExplorer({
             if (target.kind === "file") setPreviewEntry(target);
           }}
           onPropertiesRequest={setPropertiesEntry}
+          onCopyNameRequest={(target) => void copyName(target)}
           onCopyPathRequest={(target, mode) => void copyPath(target, mode)}
+          onCopyAiFileContextRequest={(target) =>
+            void copyAiFileContext(target)
+          }
+          onInsertPathToTerminalRequest={insertPathToTerminal}
           onSetDefaultDirectoryRequest={(target) =>
             saveDefaultDirectory(target)
           }
         />
-      )}
+      ) : null}
 
       {previewEntry?.kind === "file" ? (
         <FilePreviewDialog
@@ -1137,6 +1356,19 @@ function saveWorkspaceDefaultDirectory(
   } catch {}
 }
 
+function useTouchActionSurface(): boolean {
+  const [matches, setMatches] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const media = window.matchMedia("(pointer: coarse), (max-width: 768px)");
+    const sync = () => setMatches(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return matches;
+}
+
 function normalizeWorkspacePathInput(
   value: string,
   rootAbsolutePath?: string,
@@ -1182,6 +1414,496 @@ function fileEntryFromActionTarget(
     uid: null,
     gid: null,
   };
+}
+
+function openWorkspaceDownload(
+  rootId: string,
+  target: FileActionsMenuTarget,
+): void {
+  if (!rootId || target.kind !== "file") return;
+  const params = new URLSearchParams({
+    rootId,
+    path: target.path,
+  });
+  window.open(`/api/files/download?${params.toString()}`, "_blank", "noopener");
+}
+
+function WorkspaceAddressBar({
+  rootLabel,
+  currentDirectory,
+  absolutePath,
+  crumbs,
+  defaultDirectory,
+  onNavigate,
+  onEdit,
+}: {
+  rootLabel: string;
+  currentDirectory: string;
+  absolutePath: string;
+  crumbs: WorkspaceAddressCrumb[];
+  defaultDirectory: string;
+  onNavigate: (path: string) => void;
+  onEdit: () => void;
+}) {
+  return (
+    <div
+      className="flex h-8 min-w-0 items-center gap-1 overflow-hidden rounded-md border border-line bg-panel-2 px-2 text-xs text-ink shadow-sm"
+      title={`${absolutePath} · 点击空白处可输入路径`}
+      data-workspace-explorer-breadcrumb-address
+    >
+      <button
+        type="button"
+        className="shrink-0 rounded px-1 font-semibold text-muted hover:bg-panel-3 hover:text-ink"
+        onClick={() => onNavigate("")}
+        title={rootLabel}
+      >
+        {rootLabel || "root"}
+      </button>
+      {crumbs.map((crumb) =>
+        crumb.ellipsis ? (
+          <span key={crumb.key} className="shrink-0 text-subtle">
+            …
+          </span>
+        ) : (
+          <React.Fragment key={crumb.key}>
+            <span className="shrink-0 text-subtle">/</span>
+            <button
+              type="button"
+              className="max-w-[9rem] truncate rounded px-1 hover:bg-panel-3 hover:text-primary"
+              onClick={() => onNavigate(crumb.path)}
+              title={crumb.path || "/"}
+            >
+              {crumb.label}
+            </button>
+          </React.Fragment>
+        ),
+      )}
+      {defaultDirectory ? (
+        <span
+          className="ml-1 shrink-0 rounded bg-primary-soft px-1 py-0.5 text-[10px] font-semibold text-primary"
+          title={`工作区主目录：${defaultDirectory}`}
+          data-workspace-explorer-default-directory
+        >
+          默认 {lastSegment(defaultDirectory)}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="min-w-6 flex-1 self-stretch"
+        aria-label="输入文件路径地址"
+        onClick={onEdit}
+        data-workspace-explorer-address-edit-hotspot
+      />
+      <button
+        type="button"
+        className="shrink-0 rounded px-1 text-[10px] text-subtle hover:bg-panel-3 hover:text-ink"
+        onClick={onEdit}
+      >
+        编辑
+      </button>
+    </div>
+  );
+}
+
+interface WorkspaceAddressCrumb {
+  key: string;
+  label: string;
+  path: string;
+  ellipsis?: boolean;
+}
+
+function createWorkspaceAddressCrumbs(path: string): WorkspaceAddressCrumb[] {
+  const parts = path.split("/").filter(Boolean);
+  const visibleParts =
+    parts.length > 4 ? [parts[0], "…", ...parts.slice(-2)] : parts;
+  let accumulated: string[] = [];
+  return visibleParts.map((part, index) => {
+    if (part === "…") {
+      return { key: `ellipsis:${index}`, label: "…", path: "", ellipsis: true };
+    }
+    accumulated.push(part);
+    if (parts.length > 4 && index > 1) {
+      accumulated = parts.slice(
+        0,
+        parts.length - (visibleParts.length - index - 1),
+      );
+    }
+    return {
+      key: `crumb:${index}:${part}`,
+      label: part,
+      path: accumulated.join("/"),
+    };
+  });
+}
+
+function WorkspaceExplorerMoreMenu({
+  showHidden,
+  currentDirectory,
+  workspaceBaseDirectory,
+  onClose,
+  onNewFile,
+  onUpload,
+  onRefresh,
+  onCollapseAll,
+  onToggleHidden,
+  onSetDefaultDirectory,
+}: {
+  showHidden: boolean;
+  currentDirectory: string;
+  workspaceBaseDirectory: string;
+  onClose: () => void;
+  onNewFile: () => void;
+  onUpload: () => void;
+  onRefresh: () => void;
+  onCollapseAll: () => void;
+  onToggleHidden: () => void;
+  onSetDefaultDirectory: () => void;
+}) {
+  const run = (action: () => void) => {
+    action();
+    onClose();
+  };
+  return (
+    <div
+      className="absolute right-0 top-9 z-40 grid w-56 gap-1 rounded-lg border border-line bg-panel p-1 text-xs shadow-xl"
+      data-workspace-explorer-more-menu
+    >
+      <MoreMenuButton onClick={() => run(onUpload)} icon={<Upload />}>
+        上传到当前目录
+      </MoreMenuButton>
+      <MoreMenuButton onClick={() => run(onNewFile)} icon={<FilePlus />}>
+        新建文件 / 目录
+      </MoreMenuButton>
+      <MoreMenuButton onClick={() => run(onRefresh)} icon={<RefreshCw />}>
+        刷新列表
+      </MoreMenuButton>
+      <MoreMenuButton onClick={() => run(onCollapseAll)} icon={<FolderTree />}>
+        折叠全部
+      </MoreMenuButton>
+      <MoreMenuButton
+        onClick={() => run(onToggleHidden)}
+        icon={showHidden ? <EyeOff /> : <Eye />}
+      >
+        {showHidden ? "隐藏隐藏文件" : "显示隐藏文件"}
+      </MoreMenuButton>
+      <MoreMenuButton
+        onClick={() => run(onSetDefaultDirectory)}
+        icon={<Check />}
+      >
+        {workspaceBaseDirectory === currentDirectory
+          ? "已是默认工作区"
+          : "设当前目录为默认工作区"}
+      </MoreMenuButton>
+    </div>
+  );
+}
+
+function MoreMenuButton({
+  onClick,
+  icon,
+  children,
+}: {
+  onClick: () => void;
+  icon: React.ReactElement<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-2 rounded-md px-2 py-2 text-left text-muted hover:bg-panel-2 hover:text-ink"
+      onClick={onClick}
+    >
+      {React.cloneElement(icon, { className: "size-3.5" })}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  );
+}
+
+function WorkspaceExplorerActionSheet({
+  target,
+  currentDirectoryTarget,
+  currentDirectory,
+  rootId,
+  rootAbsolutePath,
+  showHidden,
+  workspaceBaseDirectory,
+  onClose,
+  onOpenDirectory,
+  onUpload,
+  onFlow,
+  onPreview,
+  onProperties,
+  onCopyPath,
+  onInsertPathToTerminal,
+  onDownload,
+  onSetDefaultDirectory,
+  onRefresh,
+  onCollapseAll,
+  onToggleHidden,
+}: {
+  target: FileActionsMenuTarget | null;
+  currentDirectoryTarget: FileActionsMenuTarget | null;
+  currentDirectory: string;
+  rootId: string;
+  rootAbsolutePath?: string;
+  showHidden: boolean;
+  workspaceBaseDirectory: string;
+  onClose: () => void;
+  onOpenDirectory: (path: string) => void;
+  onUpload: (targetDirectory: string) => void;
+  onFlow: (
+    flow: Exclude<FileActionInitialFlow, "menu">,
+    target: FileActionsMenuTarget | null,
+  ) => void;
+  onPreview: (target: FileActionsMenuTarget) => void;
+  onProperties: (target: FileActionsMenuTarget) => void;
+  onCopyPath: (
+    target: FileActionsMenuTarget,
+    mode: "relative" | "absolute",
+  ) => void;
+  onInsertPathToTerminal: (target: FileActionsMenuTarget) => void;
+  onDownload: (target: FileActionsMenuTarget) => void;
+  onSetDefaultDirectory: (target: FileActionsMenuTarget | null) => void;
+  onRefresh: () => void;
+  onCollapseAll: () => void;
+  onToggleHidden: () => void;
+}) {
+  const scopeTarget = target ?? currentDirectoryTarget;
+  const isFile = target?.kind === "file";
+  const isDirectory = scopeTarget?.kind === "directory";
+  const scopeDirectory = isDirectory ? scopeTarget.path : currentDirectory;
+  const title = target
+    ? target.name
+    : currentDirectory
+      ? lastSegment(currentDirectory)
+      : "当前目录";
+  const pathTitle = target
+    ? absoluteDisplayPath(rootAbsolutePath, target.path)
+    : absoluteDisplayPath(rootAbsolutePath, currentDirectory);
+
+  return (
+    <div className="fixed inset-0 z-[90]" data-workspace-explorer-action-sheet>
+      <button
+        type="button"
+        aria-label="关闭文件操作面板"
+        className="absolute inset-0 bg-black/25"
+        onClick={onClose}
+      />
+      <section className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-hidden rounded-t-3xl border border-line bg-panel shadow-2xl">
+        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-line" />
+        <div className="flex min-w-0 items-start gap-3 border-b border-line px-4 py-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
+            {isFile ? (
+              <FileSymlink className="size-5" />
+            ) : (
+              <FolderInput className="size-5" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ink-strong">
+              触屏文件操作 · {title}
+            </div>
+            <div className="mt-0.5 truncate font-mono text-[11px] text-subtle">
+              {pathTitle}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="grid size-10 shrink-0 place-items-center rounded-2xl border border-line bg-panel-2 text-muted"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div
+          className="max-h-[min(72dvh,calc(100dvh-6rem))] overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+          tabIndex={0}
+          role="group"
+          aria-label="文件操作列表"
+          data-workspace-explorer-action-sheet-scrollport
+        >
+          <div className="grid gap-3" data-workspace-explorer-touch-actions>
+            <div
+              className="grid grid-cols-2 gap-2"
+              data-workspace-explorer-touch-action-group="target"
+            >
+              {target?.kind === "directory" ? (
+                <TouchActionButton
+                  icon={<FolderInput />}
+                  label="进入目录"
+                  description="切换到此目录"
+                  onClick={() => onOpenDirectory(target.path)}
+                />
+              ) : null}
+              {isFile && target ? (
+                <>
+                  <TouchActionButton
+                    icon={<Eye />}
+                    label="预览文件"
+                    description="打开预览面板"
+                    onClick={() => onPreview(target)}
+                  />
+                  <TouchActionButton
+                    icon={<Download />}
+                    label="下载"
+                    description="保存到本机"
+                    onClick={() => onDownload(target)}
+                  />
+                </>
+              ) : null}
+            </div>
+            <div
+              className="grid grid-cols-2 gap-2"
+              data-workspace-explorer-touch-action-group="workspace"
+            >
+              <TouchActionButton
+                icon={<Upload />}
+                label="上传到当前"
+                description={displayDir(scopeDirectory)}
+                onClick={() => onUpload(scopeDirectory)}
+              />
+              <TouchActionButton
+                icon={<FilePlus />}
+                label="新建"
+                description="文件或目录"
+                onClick={() => onFlow("newFile", scopeTarget)}
+              />
+              <TouchActionButton
+                icon={<RefreshCw />}
+                label="刷新"
+                description="重新加载列表"
+                onClick={onRefresh}
+              />
+              <TouchActionButton
+                icon={<FolderTree />}
+                label="折叠全部"
+                description="收起树节点"
+                onClick={onCollapseAll}
+              />
+              <TouchActionButton
+                icon={showHidden ? <EyeOff /> : <Eye />}
+                label={showHidden ? "隐藏点文件" : "显示隐藏"}
+                description="切换隐藏项"
+                onClick={onToggleHidden}
+              />
+              <TouchActionButton
+                icon={<Check />}
+                label={
+                  workspaceBaseDirectory === scopeDirectory
+                    ? "已是默认"
+                    : "设为默认"
+                }
+                description="工作区主目录"
+                onClick={() => onSetDefaultDirectory(scopeTarget)}
+              />
+            </div>
+            {target ? (
+              <div
+                className="grid grid-cols-2 gap-2"
+                data-workspace-explorer-touch-action-group="manage"
+              >
+                <TouchActionButton
+                  icon={<Info />}
+                  label="属性"
+                  description="查看文件信息"
+                  onClick={() => onProperties(target)}
+                />
+                <TouchActionButton
+                  icon={<Pencil />}
+                  label="重命名"
+                  description="修改名称"
+                  onClick={() => onFlow("rename", target)}
+                />
+                <TouchActionButton
+                  icon={<Copy />}
+                  label="复制路径"
+                  description="绝对路径"
+                  onClick={() => onCopyPath(target, "absolute")}
+                />
+                <TouchActionButton
+                  icon={<FileSymlink />}
+                  label="相对路径"
+                  description="复制 root 内路径"
+                  onClick={() => onCopyPath(target, "relative")}
+                />
+                <TouchActionButton
+                  icon={<FileSymlink />}
+                  label="插入终端"
+                  description="发送路径到终端输入"
+                  onClick={() => onInsertPathToTerminal(target)}
+                />
+                <TouchActionButton
+                  icon={<Copy />}
+                  label="复制到"
+                  description="选择目标目录"
+                  onClick={() => onFlow("copy", target)}
+                />
+                <TouchActionButton
+                  icon={<MoveRight />}
+                  label="移动到"
+                  description="剪切到目录"
+                  onClick={() => onFlow("move", target)}
+                />
+                <TouchActionButton
+                  icon={<Archive />}
+                  label="打包 / 解压"
+                  description={isFile ? "按类型处理" : "打包目录"}
+                  onClick={() => onFlow("archive", target)}
+                />
+                <TouchActionButton
+                  icon={<Trash2 />}
+                  label="移入回收站"
+                  description="危险操作需确认"
+                  tone="danger"
+                  onClick={() => onFlow("delete", target)}
+                />
+              </div>
+            ) : null}
+          </div>
+          <p className="mt-4 rounded-2xl border border-line bg-panel-2 px-3 py-2 text-xs leading-5 text-muted">
+            手机端不依赖鼠标右键：长按文件或点击“更多”会打开这个底部操作面板；常用操作使用大触控目标，复杂确认继续进入专用流程。
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TouchActionButton({
+  icon,
+  label,
+  description,
+  tone = "default",
+  onClick,
+}: {
+  icon: React.ReactElement<{ className?: string }>;
+  label: string;
+  description: string;
+  tone?: "default" | "danger";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "min-h-16 rounded-2xl border border-line bg-panel-2 px-3 py-3 text-left shadow-sm outline-none transition active:scale-[.98] focus-visible:shadow-[var(--ring)]",
+        tone === "danger"
+          ? "text-red hover:border-red/30 hover:bg-red-soft"
+          : "text-ink hover:border-primary/30 hover:bg-primary-soft/50",
+      )}
+      onClick={onClick}
+      data-workspace-explorer-touch-action={label}
+    >
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        {React.cloneElement(icon, { className: "size-4 shrink-0" })}
+        <span className="min-w-0 truncate">{label}</span>
+      </span>
+      <span className="mt-1 block truncate text-[11px] text-subtle">
+        {description}
+      </span>
+    </button>
+  );
 }
 
 function WorkspaceBulkActionBar({
@@ -1628,6 +2350,15 @@ function RootSelector({ rootId, roots, onChange }: RootSelectorProps) {
   );
 }
 
+function formatExplorerFileAiContext(path: string, relativePath: string): string {
+  return [
+    "@file",
+    `path: ${path}`,
+    `relative: ${relativePath}`,
+    "intent: use this file tree item as Workspace AI context",
+  ].join("\n");
+}
+
 function absoluteDisplayPath(
   rootAbsolutePath: string | undefined,
   path: string,
@@ -1640,6 +2371,10 @@ function normalizeAbsolutePath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+/g, "/");
   if (normalized === "/") return "/";
   return normalized.replace(/\/$/, "");
+}
+
+function shellQuoteWorkspacePath(path: string): string {
+  return `'${path.replace(/'/g, `'\''`)}'`;
 }
 
 function displayDir(dir: string): string {
@@ -1673,6 +2408,12 @@ function findTreeRowMenuPoint(
     x: Math.min(rect.left + 24, window.innerWidth - 240),
     y: Math.min(rect.top + Math.max(rect.height, 24), window.innerHeight - 380),
   };
+}
+
+function parentOfPath(path: string): string | null {
+  if (!path) return null;
+  const index = path.lastIndexOf("/");
+  return index >= 0 ? path.slice(0, index) : "";
 }
 
 function lastSegment(path: string): string {

@@ -40,6 +40,10 @@ export interface GitCommitDetailPayload extends GitCommitSummary {
   body: string;
   message: string;
   parents: string[];
+  files: GitFileChange[];
+  diff: string;
+  binary: boolean;
+  truncated: boolean;
 }
 
 export interface GitDiffPayload {
@@ -54,6 +58,33 @@ export interface GitDiffPayload {
   truncated: boolean;
   diff: string;
   message: string | null;
+}
+
+
+export interface GitStashEntry {
+  ref: string;
+  selector: string;
+  branch: string;
+  message: string;
+}
+
+export interface GitStashListPayload {
+  checkedAt: string;
+  rootId: string;
+  directoryPath: string;
+  repositoryRoot: string | null;
+  available: boolean;
+  message: string | null;
+  stashes: GitStashEntry[];
+}
+
+export interface GitStashSaveRequest extends GitRepositoryRequest {
+  message?: string;
+  includeUntracked?: boolean;
+}
+
+export interface GitStashActionRequest extends GitRepositoryRequest {
+  ref?: string;
 }
 
 export interface GitStatusPayload {
@@ -106,4 +137,18 @@ export interface GitCreateBranchRequest extends GitRepositoryRequest {
 export interface GitCheckoutRequest extends GitRepositoryRequest {
   target?: string;
   detach?: boolean;
+}
+
+export interface GitRemoteActionRequest extends GitRepositoryRequest {
+  /** Optional remote name. When omitted, Git uses the current branch upstream. */
+  remote?: string;
+  /** Optional branch/ref name. When omitted, Git uses the current branch upstream. */
+  branch?: string;
+}
+
+export interface GitPublishBranchRequest extends GitRepositoryRequest {
+  /** Remote name to publish to. Defaults to origin. */
+  remote?: string;
+  /** Branch name to publish. Defaults to current branch. */
+  branch?: string;
 }

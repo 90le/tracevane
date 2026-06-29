@@ -9,6 +9,8 @@ import type {
   GitCommitSummary,
   GitDiffPayload,
   GitFileChange,
+  GitStashEntry,
+  GitStashListPayload,
   GitFileChangeKind,
   GitStatusPayload,
 } from "../../../../types/git.js";
@@ -35,6 +37,15 @@ export interface GitService {
   commit(rootId: string, directoryPath: string | undefined, message?: string): GitStatusPayload;
   createBranch(rootId: string, directoryPath: string | undefined, name?: string, checkout?: boolean, from?: string): GitStatusPayload;
   checkout(rootId: string, directoryPath: string | undefined, target?: string, detach?: boolean): GitStatusPayload;
+  pull(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
+  push(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
+  sync(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
+  publishBranch(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
+  listStashes(rootId: string, directoryPath?: string): GitStashListPayload;
+  saveStash(rootId: string, directoryPath: string | undefined, message?: string, includeUntracked?: boolean): GitStatusPayload;
+  applyStash(rootId: string, directoryPath: string | undefined, ref?: string): GitStatusPayload;
+  popStash(rootId: string, directoryPath: string | undefined, ref?: string): GitStatusPayload;
+  dropStash(rootId: string, directoryPath: string | undefined, ref?: string): GitStatusPayload;
 }
 
 function toIsoNow(): string {
@@ -213,6 +224,75 @@ function normalizeCommitMessage(value: string | null | undefined): string {
   return normalized;
 }
 
+function normalizeOptionalRemoteRef(value: string | null | undefined, label: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return normalizeGitRefName(normalized, label);
+}
+
+function buildRemoteArgs(remote?: string, branch?: string): string[] {
+  const remoteName = normalizeOptionalRemoteRef(remote, "Git remote");
+  const branchName = normalizeOptionalRemoteRef(branch, "Git branch");
+  if (!remoteName && branchName) {
+    throw new Error("Git remote is required when branch is provided");
+  }
+  return remoteName ? [remoteName, ...(branchName ? [branchName] : [])] : [];
+}
+
+function currentBranchName(repositoryRoot: string): string {
+  const branch = runGit(repositoryRoot, ["branch", "--show-current"]).trim();
+  if (!branch) {
+    throw new Error("Current Git branch is detached or unavailable");
+  }
+  return normalizeGitRefName(branch, "Current branch");
+}
+
+function normalizeStashRef(value: string | null | undefined): string {
+  const normalized = String(value || "stash@{0}").trim();
+  if (!/^stash@\{\d+\}$/.test(normalized)) {
+    throw new Error("Git stash reference is invalid");
+  }
+  return normalized;
+}
+
+function normalizeStashMessage(value: string | null | undefined): string {
+  const normalized = String(value || "Workspace stash").replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "Workspace stash";
+  if (normalized.length > 500) {
+    throw new Error("Git stash message is too long");
+  }
+  return normalized;
+}
+
+function parseStashLine(line: string): GitStashEntry | null {
+  const [ref = "", branch = "", message = ""] = line.split("\0");
+  const normalizedRef = ref.trim();
+  if (!normalizedRef) return null;
+  return {
+    ref: normalizedRef,
+    selector: normalizedRef,
+    branch: branch.trim(),
+    message: message.trim(),
+  };
+}
+
+function listRepositoryStashes(repositoryRoot: string): GitStashEntry[] {
+  try {
+    const output = runGit(repositoryRoot, [
+      "stash",
+      "list",
+      "--format=%gd%x00%gs%x00%cr",
+    ]);
+    return output
+      .split(/\r?\n/)
+      .map(parseStashLine)
+      .filter((entry): entry is GitStashEntry => Boolean(entry))
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
+}
+
 function resolveRepositoryRoot(
   config: TracevaneServerConfig,
   rootId: string,
@@ -347,7 +427,74 @@ function listCommits(repositoryRoot: string): GitCommitSummary[] {
   }
 }
 
-function parseCommitDetail(output: string, fallbackHash: string): GitCommitDetailPayload {
+function listCommitFiles(repositoryRoot: string, hash: string): GitFileChange[] {
+  try {
+    const output = runGit(repositoryRoot, [
+      "diff-tree",
+      "--root",
+      "--no-commit-id",
+      "--name-status",
+      "-r",
+      hash,
+    ]);
+    return output
+      .split(/\r?\n/)
+      .map((line) => parseCommitFileLine(line))
+      .filter((change): change is GitFileChange => Boolean(change));
+  } catch {
+    return [];
+  }
+}
+
+function parseCommitFileLine(line: string): GitFileChange | null {
+  const [status = "", firstPath = "", secondPath = ""] = line.split("\t");
+  const code = status.trim();
+  const pathValue = secondPath || firstPath;
+  if (!code || !pathValue) return null;
+  return {
+    path: toPortablePath(pathValue),
+    previousPath: secondPath ? toPortablePath(firstPath) : null,
+    status: code,
+    kind: statusToKind(code),
+    staged: false,
+    unstaged: false,
+  };
+}
+
+function getCommitDiff(repositoryRoot: string, hash: string): {
+  diff: string;
+  binary: boolean;
+  truncated: boolean;
+} {
+  try {
+    const output = runGitForDiff(repositoryRoot, [
+      "show",
+      "--format=",
+      "--find-renames",
+      "--patch",
+      hash,
+    ]);
+    const truncated = truncateGitDiff(output);
+    return {
+      diff: truncated.diff,
+      binary: isBinaryDiff(output),
+      truncated: truncated.truncated,
+    };
+  } catch {
+    return { diff: "", binary: false, truncated: false };
+  }
+}
+
+function parseCommitDetail(
+  output: string,
+  fallbackHash: string,
+  files: GitFileChange[] = [],
+  diffInfo: { diff: string; binary: boolean; truncated: boolean } = {
+    diff: "",
+    binary: false,
+    truncated: false,
+  },
+): GitCommitDetailPayload {
   const [
     hash = "",
     shortHash = "",
@@ -372,6 +519,10 @@ function parseCommitDetail(output: string, fallbackHash: string): GitCommitDetai
     date: date.trim(),
     refs: refs.trim(),
     parents: parents.trim().split(/\s+/).filter(Boolean),
+    files,
+    diff: diffInfo.diff,
+    binary: diffInfo.binary,
+    truncated: diffInfo.truncated,
   };
 }
 
@@ -492,7 +643,9 @@ export function createGitService(config: TracevaneServerConfig): GitService {
         "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%ad%x00%D%x00%P%x00%B",
         normalizedHash,
       ]);
-      return parseCommitDetail(output, normalizedHash);
+      const files = listCommitFiles(repositoryRoot, normalizedHash);
+      const diffInfo = getCommitDiff(repositoryRoot, normalizedHash);
+      return parseCommitDetail(output, normalizedHash, files, diffInfo);
     },
 
     initRepository(rootId: string, directoryPath = ""): GitStatusPayload {
@@ -537,6 +690,90 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       const normalizedTarget = normalizeGitRefName(target, "Checkout target");
       runGit(repositoryRoot, detach ? ["checkout", "--detach", normalizedTarget] : ["checkout", normalizedTarget]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    pull(rootId: string, directoryPath = "", remote = "", branch = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["pull", "--ff-only", ...buildRemoteArgs(remote, branch)]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    push(rootId: string, directoryPath = "", remote = "", branch = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["push", ...buildRemoteArgs(remote, branch)]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    sync(rootId: string, directoryPath = "", remote = "", branch = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const args = buildRemoteArgs(remote, branch);
+      runGit(repositoryRoot, ["pull", "--ff-only", ...args]);
+      runGit(repositoryRoot, ["push", ...args]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    publishBranch(rootId: string, directoryPath = "", remote = "origin", branch = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const remoteName = normalizeOptionalRemoteRef(remote, "Git remote") || "origin";
+      const branchName = normalizeOptionalRemoteRef(branch, "Git branch") || currentBranchName(repositoryRoot);
+      runGit(repositoryRoot, ["push", "--set-upstream", remoteName, branchName]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    listStashes(rootId: string, directoryPath = ""): GitStashListPayload {
+      const resolved = resolveGitDirectory(config, rootId, directoryPath);
+      try {
+        const repositoryRoot = runGit(resolved.absolutePath, ["rev-parse", "--show-toplevel"]).trim();
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot,
+          available: true,
+          message: null,
+          stashes: listRepositoryStashes(repositoryRoot),
+        };
+      } catch {
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot: null,
+          available: false,
+          message: "Selected directory is not inside a Git repository",
+          stashes: [],
+        };
+      }
+    },
+
+    saveStash(rootId: string, directoryPath = "", message = "", includeUntracked = true): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, [
+        "stash",
+        "push",
+        ...(includeUntracked ? ["--include-untracked"] : []),
+        "-m",
+        normalizeStashMessage(message),
+      ]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    applyStash(rootId: string, directoryPath = "", ref = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["stash", "apply", normalizeStashRef(ref)]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    popStash(rootId: string, directoryPath = "", ref = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["stash", "pop", normalizeStashRef(ref)]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    dropStash(rootId: string, directoryPath = "", ref = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["stash", "drop", normalizeStashRef(ref)]);
       return buildStatus(resolved.root.id, resolved.relativePath);
     },
   };

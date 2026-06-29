@@ -5,6 +5,7 @@ import {
   Folder,
   FolderOpen,
   Home,
+  MoreHorizontal,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -74,6 +75,8 @@ export interface FileTreeProps {
   focusedPath?: string;
   /** Absolute root path for drag-to-terminal payloads. */
   rootAbsolutePath?: string;
+  /** Hide internal breadcrumb when the owning shell provides a richer address bar. */
+  showBreadcrumb?: boolean;
 }
 
 /**
@@ -106,6 +109,7 @@ export function FileTree({
   basePath = "",
   focusedPath: controlledFocusedPath,
   rootAbsolutePath,
+  showBreadcrumb = true,
 }: FileTreeProps) {
   // Expanded directory paths. `basePath` is the IDE-opened folder root.
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set([basePath]));
@@ -251,11 +255,13 @@ export function FileTree({
       onKeyDown={onKeyDown}
       className="grid min-w-0 content-start gap-2 outline-none"
     >
-      <Breadcrumb
-        basePath={basePath}
-        focusedPath={focusedPath}
-        onNavigate={setFocusedPath}
-      />
+      {showBreadcrumb ? (
+        <Breadcrumb
+          basePath={basePath}
+          focusedPath={focusedPath}
+          onNavigate={setFocusedPath}
+        />
+      ) : null}
       <DirNode
         rootId={rootId}
         path={basePath}
@@ -531,6 +537,37 @@ const Row = React.memo(function Row({
   absolutePath,
 }: RowProps) {
   const isDir = kind === "directory";
+  const longPressRef = React.useRef<{
+    timer: number;
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const clearLongPressTimer = React.useCallback(() => {
+    const state = longPressRef.current;
+    if (!state) return;
+    window.clearTimeout(state.timer);
+    longPressRef.current = null;
+  }, []);
+  const openContextMenuAt = React.useCallback(
+    (clientX: number, clientY: number, event: React.SyntheticEvent) => {
+      if (!onContextMenu) return;
+      onSelectRow();
+      onContextMenu(
+        {
+          preventDefault: () => event.preventDefault(),
+          stopPropagation: () => event.stopPropagation(),
+          clientX,
+          clientY,
+        } as React.MouseEvent,
+        path,
+        { name, kind },
+      );
+    },
+    [kind, name, onContextMenu, onSelectRow, path],
+  );
+  React.useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
+
   return (
     <div
       role="treeitem"
@@ -546,6 +583,37 @@ const Row = React.memo(function Row({
       onDoubleClick={onOpen}
       onFocus={onKbFocus}
       draggable
+      onPointerDown={
+        onContextMenu
+          ? (event) => {
+              if (event.pointerType === "mouse") return;
+              clearLongPressTimer();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              longPressRef.current = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                timer: window.setTimeout(() => {
+                  openContextMenuAt(event.clientX, event.clientY, event);
+                  longPressRef.current = null;
+                }, 520),
+              };
+            }
+          : undefined
+      }
+      onPointerMove={
+        onContextMenu
+          ? (event) => {
+              const state = longPressRef.current;
+              if (!state || state.pointerId !== event.pointerId) return;
+              const moved = Math.hypot(event.clientX - state.x, event.clientY - state.y);
+              if (moved > 12) clearLongPressTimer();
+            }
+          : undefined
+      }
+      onPointerUp={clearLongPressTimer}
+      onPointerCancel={clearLongPressTimer}
+      onLostPointerCapture={clearLongPressTimer}
       onDragStart={(event) => {
         const absolute = absolutePath || path;
         event.dataTransfer.effectAllowed = "copy";
@@ -560,7 +628,7 @@ const Row = React.memo(function Row({
       }
       style={{ paddingLeft: `${depth * 14 + 8}px` }}
       className={cn(
-        "flex items-center gap-1.5 rounded-sm pr-2 py-1 text-left text-sm outline-none transition-colors",
+        "group flex items-center gap-1.5 rounded-sm pr-1 py-1 text-left text-sm outline-none transition-colors",
         "[&_svg]:size-4 [&_svg]:shrink-0",
         "focus-visible:shadow-[var(--ring)]",
         checked
@@ -600,6 +668,26 @@ const Row = React.memo(function Row({
         <FileTypeIcon entry={fileIconEntry(name, path, kind)} size="sm" />
       )}
       <span className="min-w-0 flex-1 truncate">{name}</span>
+      {onContextMenu ? (
+        <button
+          type="button"
+          className={cn(
+            "grid size-6 shrink-0 place-items-center rounded-sm text-muted outline-none transition-colors",
+            "hover:bg-panel hover:text-ink focus-visible:shadow-[var(--ring)]",
+            "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+          )}
+          title="更多文件操作"
+          aria-label={`更多文件操作 ${name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openContextMenuAt(rect.right, rect.bottom, event);
+          }}
+          data-workspace-file-tree-row-more
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 });

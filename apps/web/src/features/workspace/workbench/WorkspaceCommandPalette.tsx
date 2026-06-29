@@ -40,9 +40,25 @@ export function WorkspaceCommandPalette({
   );
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      contentClassName="max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:w-full max-md:max-w-none max-md:translate-y-0 max-md:rounded-b-none max-md:rounded-t-[1.35rem] max-md:border-b-0 max-md:pb-[env(safe-area-inset-bottom)]"
+      commandClassName="max-md:max-h-[min(76dvh,42rem)] max-md:rounded-b-none max-md:rounded-t-[1.35rem]"
+    >
+      <div
+        aria-hidden
+        className="flex justify-center pt-2 md:hidden"
+        data-workspace-command-palette-mobile-handle
+      >
+        <span className="h-1 w-10 rounded-full bg-line-2" />
+      </div>
       <CommandInput placeholder="搜索 Workspace 命令、面板、AI 上下文…" />
-      <CommandList data-workspace-command-palette>
+      <CommandList
+        className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
+        data-workspace-command-palette
+        data-workspace-command-palette-mobile-sheet
+      >
         {keybindingConflicts.length ? (
           <div
             className="mx-2 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"

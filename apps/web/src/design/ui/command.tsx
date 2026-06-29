@@ -20,17 +20,32 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
+interface CommandDialogProps extends React.ComponentProps<typeof Dialog> {
+  contentClassName?: string;
+  commandClassName?: string;
+}
+
 function CommandDialog({
   children,
+  contentClassName,
+  commandClassName,
   ...props
-}: React.ComponentProps<typeof Dialog>) {
+}: CommandDialogProps) {
   return (
     <Dialog {...props}>
       <DialogContent
         showClose={false}
-        className="w-[min(560px,92vw)] overflow-hidden rounded-md border-line-2 p-0"
+        className={cn(
+          "w-[min(560px,92vw)] overflow-hidden rounded-md border-line-2 p-0",
+          contentClassName,
+        )}
       >
-        <Command className="[&_[cmdk-group-heading]]:px-[10px] [&_[cmdk-group-heading]]:py-[9px] [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[.08em] [&_[cmdk-group-heading]]:text-subtle">
+        <Command
+          className={cn(
+            "[&_[cmdk-group-heading]]:px-[10px] [&_[cmdk-group-heading]]:py-[9px] [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[.08em] [&_[cmdk-group-heading]]:text-subtle",
+            commandClassName,
+          )}
+        >
           {children}
         </Command>
       </DialogContent>

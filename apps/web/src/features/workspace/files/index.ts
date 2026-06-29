@@ -2,12 +2,24 @@ export { FileActionsMenu } from "./FileActionsMenu";
 export { FileTree } from "./FileTree";
 export { WorkspaceExplorer } from "./WorkspaceExplorer";
 export { useFileOperations } from "./fileOperations";
-export type { FileActionsMenuProps, FileActionsMenuTarget } from "./FileActionsMenu";
+export type {
+  FileActionsMenuProps,
+  FileActionsMenuTarget,
+} from "./FileActionsMenu";
 export type { FileTreeEntry, FileTreeProps } from "./FileTree";
-export type { WorkspaceDirectoryContext, WorkspaceExplorerProps } from "./WorkspaceExplorer";
+export type {
+  WorkspaceDirectoryContext,
+  WorkspaceExplorerProps,
+  WorkspaceExplorerRevealRequest,
+} from "./WorkspaceExplorer";
 export type * from "./types";
 export { WorkspaceSearchPanel } from "./WorkspaceSearchPanel";
-export type { WorkspaceOpenFileOptions, WorkspaceSearchPanelProps } from "./WorkspaceSearchPanel";
+export type {
+  WorkspaceOpenFileOptions,
+  WorkspaceSearchPanelProps,
+} from "./WorkspaceSearchPanel";
 export { UploadManagerDialog } from "./UploadManagerDialog";
 export { UploadTaskStrip } from "./UploadTaskStrip";
 export type { UploadTaskSnapshot } from "./UploadTaskStrip";
+export { createSearchPanelCommands } from "./searchPanelCommands";
+export type { SearchPanelCommandRegistryInput } from "./searchPanelCommands";

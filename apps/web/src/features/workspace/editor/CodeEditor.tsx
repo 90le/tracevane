@@ -96,13 +96,28 @@ import { cn } from "@/design/lib/utils";
 
 configureMonacoWorkers();
 
+const MONACO_KEYBOARD_CARET_GAP = 24;
+const MONACO_KEYBOARD_MIN_OVERLAP = 8;
+const MONACO_KEYBOARD_MAX_INSET_RATIO = 0.38;
+const MONACO_KEYBOARD_MAX_SCROLL_DELTA = 96;
+
 export interface CodeEditorProps {
   path: string;
   initialContent: string;
   readOnly?: boolean;
+  fontSize?: number;
   onChange?: (value: string) => void;
+  onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   searchHighlights?: CodeEditorSearchHighlights;
   className?: string;
+}
+
+export interface CodeEditorSelectionContext {
+  text: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
 }
 
 export interface CodeEditorSearchHighlights {
@@ -116,7 +131,9 @@ export function CodeEditor({
   path,
   initialContent,
   readOnly = false,
+  fontSize = 13,
   onChange,
+  onSelectionChange,
   searchHighlights,
   className,
 }: CodeEditorProps) {
@@ -129,10 +146,75 @@ export function CodeEditor({
   const decorationsRef =
     React.useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const onChangeRef = React.useRef(onChange);
+  const onSelectionChangeRef = React.useRef(onSelectionChange);
+  const pendingKeyboardScrollDeltaRef = React.useRef(0);
+  const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
 
   React.useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  React.useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
+  const updateEditorKeyboardInset = React.useCallback(() => {
+    const editor = editorRef.current;
+    const container = containerRef.current;
+    const viewport = window.visualViewport;
+    if (!editor || !container || !viewport) {
+      setEditorKeyboardInset(0);
+      return;
+    }
+
+    const position = editor.getPosition();
+    const caret = position ? editor.getScrolledVisiblePosition(position) : null;
+    if (!caret) {
+      setEditorKeyboardInset(0);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const visualBottom = Math.round(viewport.height + viewport.offsetTop);
+    const visibleBottom = Math.min(
+      Math.round(containerRect.bottom),
+      visualBottom,
+    );
+    const viewportOverlap = Math.max(
+      0,
+      Math.round(containerRect.bottom - visibleBottom),
+    );
+    if (viewportOverlap <= MONACO_KEYBOARD_MIN_OVERLAP) {
+      setEditorKeyboardInset(0);
+      pendingKeyboardScrollDeltaRef.current = 0;
+      return;
+    }
+    const caretBottom = Math.round(
+      containerRect.top + caret.top + caret.height + MONACO_KEYBOARD_CARET_GAP,
+    );
+    const caretOverlap = Math.max(0, caretBottom - visibleBottom);
+    const maxEditorInset = Math.round(
+      containerRect.height * MONACO_KEYBOARD_MAX_INSET_RATIO,
+    );
+    // Do not blindly apply the full soft-keyboard overlap to Monaco. Mobile
+    // browsers may already move/resize the visual viewport, and Monaco also
+    // owns its own scroll model. Applying the whole keyboard height as padding
+    // double-compensates and creates a blank strip before the first visible
+    // line. Use only the measured intersection between this editor and the
+    // current VisualViewport, then further cap it by the caret's real overlap.
+    const nextInset =
+      caretOverlap > MONACO_KEYBOARD_MIN_OVERLAP
+        ? Math.min(viewportOverlap, caretOverlap, maxEditorInset)
+        : 0;
+    const remainingOverlap = Math.max(0, caretOverlap - nextInset);
+    pendingKeyboardScrollDeltaRef.current =
+      nextInset > 0 && editor.hasTextFocus()
+        ? Math.min(remainingOverlap, MONACO_KEYBOARD_MAX_SCROLL_DELTA)
+        : 0;
+    setEditorKeyboardInset((previous) =>
+      previous === nextInset ? previous : nextInset,
+    );
+  }, []);
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -151,7 +233,7 @@ export function CodeEditor({
       cursorBlinking: "smooth",
       fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
       fontLigatures: true,
-      fontSize: 13,
+      fontSize,
       lineNumbers: "on",
       minimap: { enabled: false },
       padding: { top: 16, bottom: 16 },
@@ -170,11 +252,25 @@ export function CodeEditor({
     const subscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
     });
+    const cursorSubscription = editor.onDidChangeCursorPosition(() => {
+      window.requestAnimationFrame(updateEditorKeyboardInset);
+    });
+    const selectionSubscription = editor.onDidChangeCursorSelection(() => {
+      onSelectionChangeRef.current?.(readCodeEditorSelection(editor));
+    });
+    onSelectionChangeRef.current?.(readCodeEditorSelection(editor));
+    const scrollSubscription = editor.onDidScrollChange(() => {
+      window.requestAnimationFrame(updateEditorKeyboardInset);
+    });
     const frame = requestAnimationFrame(() => editor.layout());
 
     return () => {
       cancelAnimationFrame(frame);
       subscription.dispose();
+      cursorSubscription.dispose();
+      selectionSubscription.dispose();
+      onSelectionChangeRef.current?.(null);
+      scrollSubscription.dispose();
       decorationsRef.current?.clear();
       decorationsRef.current = null;
       editor.dispose();
@@ -184,7 +280,7 @@ export function CodeEditor({
     };
     // Recreate the Monaco model only when the backing file changes. Content updates from typing are owned by Monaco.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  }, [path, updateEditorKeyboardInset]);
 
   React.useEffect(() => {
     const editor = editorRef.current;
@@ -201,6 +297,52 @@ export function CodeEditor({
   }, [initialContent]);
 
   React.useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return undefined;
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updateEditorKeyboardInset);
+    };
+    schedule();
+    viewport.addEventListener("resize", schedule);
+    viewport.addEventListener("scroll", schedule);
+    viewport.addEventListener("scrollend", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("focusin", schedule);
+    window.addEventListener("focusout", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", schedule);
+      viewport.removeEventListener("scroll", schedule);
+      viewport.removeEventListener("scrollend", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("focusin", schedule);
+      window.removeEventListener("focusout", schedule);
+    };
+  }, [updateEditorKeyboardInset]);
+
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.updateOptions({
+      padding: { top: 16, bottom: 16 + editorKeyboardInset },
+    });
+    const scrollTop = editor.getScrollTop();
+    const scrollDelta = pendingKeyboardScrollDeltaRef.current;
+    pendingKeyboardScrollDeltaRef.current = 0;
+    window.requestAnimationFrame(() => {
+      editor.layout();
+      // Keep Monaco's scroll anchor stable while keyboard padding changes.
+      // `revealPosition*` is intentionally avoided here because it may add an
+      // extra top gap on mobile after the browser has already moved the visual
+      // viewport. When the caret is truly covered, use only the measured overlap
+      // as a small downward scroll delta after layout instead of recentering.
+      editor.setScrollTop(Math.max(0, scrollTop + scrollDelta));
+    });
+  }, [editorKeyboardInset]);
+
+  React.useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     monaco.editor.setTheme(theme === "dark" ? "vs-dark" : "vs");
@@ -211,6 +353,11 @@ export function CodeEditor({
   React.useEffect(() => {
     editorRef.current?.updateOptions({ readOnly });
   }, [readOnly]);
+
+  React.useEffect(() => {
+    editorRef.current?.updateOptions({ fontSize });
+    requestAnimationFrame(() => editorRef.current?.layout());
+  }, [fontSize]);
 
   React.useEffect(() => {
     const editor = editorRef.current;
@@ -278,14 +425,35 @@ export function CodeEditor({
       data-editor-language={languageForPath(path)}
       data-editor-theme={theme === "dark" ? "vs-dark" : "vs"}
       data-code-editor="monaco-direct"
+      data-code-editor-keyboard-inset={
+        editorKeyboardInset > 0 ? "true" : "false"
+      }
     >
       <div
         ref={containerRef}
-        className="h-full w-full"
+        className="w-full"
         data-code-editor-container
+        style={{ height: "100%" }}
       />
     </div>
   );
+}
+
+function readCodeEditorSelection(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): CodeEditorSelectionContext | null {
+  const model = editor.getModel();
+  const selection = editor.getSelection();
+  if (!model || !selection || selection.isEmpty()) return null;
+  const text = model.getValueInRange(selection);
+  if (!text.trim()) return null;
+  return {
+    text,
+    startLine: selection.startLineNumber,
+    startColumn: selection.startColumn,
+    endLine: selection.endLineNumber,
+    endColumn: selection.endColumn,
+  };
 }
 
 function modelUriForPath(path: string): monaco.Uri {

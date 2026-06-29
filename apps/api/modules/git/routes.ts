@@ -9,7 +9,11 @@ import type {
   GitCreateBranchRequest,
   GitDiffRequest,
   GitPathActionRequest,
+  GitPublishBranchRequest,
+  GitRemoteActionRequest,
   GitRepositoryRequest,
+  GitStashActionRequest,
+  GitStashSaveRequest,
 } from "../../../../types/git.js";
 
 function readUrl(req: http.IncomingMessage): URL {
@@ -69,6 +73,18 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     );
   });
 
+  router.get("/api/git/stashes", (req, res, routeCtx) => {
+    const url = readUrl(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.listStashes(
+        url.searchParams.get("rootId") || "",
+        url.searchParams.get("path") || "",
+      ),
+    );
+  });
+
   router.post("/api/git/init", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<GitRepositoryRequest>(req);
     sendJson(res, 200, routeCtx.services.git.initRepository(payload.rootId || "", payload.path || ""));
@@ -116,5 +132,54 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
         payload.detach === true,
       ),
     );
+  });
+
+  router.post("/api/git/pull", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRemoteActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.pull(payload.rootId || "", payload.path || "", payload.remote || "", payload.branch || ""));
+  });
+
+  router.post("/api/git/push", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRemoteActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.push(payload.rootId || "", payload.path || "", payload.remote || "", payload.branch || ""));
+  });
+
+  router.post("/api/git/sync", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRemoteActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.sync(payload.rootId || "", payload.path || "", payload.remote || "", payload.branch || ""));
+  });
+
+  router.post("/api/git/publish", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitPublishBranchRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.publishBranch(payload.rootId || "", payload.path || "", payload.remote || "origin", payload.branch || ""));
+  });
+
+  router.post("/api/git/stashes", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitStashSaveRequest>(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.saveStash(
+        payload.rootId || "",
+        payload.path || "",
+        payload.message || "",
+        payload.includeUntracked !== false,
+      ),
+    );
+  });
+
+  router.post("/api/git/stashes/apply", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitStashActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.applyStash(payload.rootId || "", payload.path || "", payload.ref || ""));
+  });
+
+  router.post("/api/git/stashes/pop", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitStashActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.popStash(payload.rootId || "", payload.path || "", payload.ref || ""));
+  });
+
+  router.post("/api/git/stashes/drop", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitStashActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.dropStash(payload.rootId || "", payload.path || "", payload.ref || ""));
   });
 }

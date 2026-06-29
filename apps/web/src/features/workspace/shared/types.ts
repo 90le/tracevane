@@ -26,6 +26,7 @@ export type {
 export type {
   GitStatusPayload,
   GitDiffPayload,
+  GitCommitDetailPayload,
   GitFileChange,
   GitFileChangeKind,
   GitCommitSummary,
