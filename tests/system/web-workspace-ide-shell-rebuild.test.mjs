@@ -1515,3 +1515,17 @@ test("new Workspace IDE shell exposes dock size controls in the pane layout mana
   assert.match(shellSource, /onClick=\{\(\) => onResizeDock\(placement, KEYBOARD_RESIZE_LARGE_STEP\)\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-size/);
 });
+
+test("new Workspace IDE shell exposes dock size presets in the pane layout manager", () => {
+  assert.match(shellSource, /type DockSizePreset = "compact" \| "balanced" \| "expanded"/);
+  assert.match(shellSource, /const DOCK_SIZE_PRESETS = \["compact", "balanced", "expanded"\] as const satisfies readonly DockSizePreset\[\]/);
+  assert.match(shellSource, /function setDockPlacementSizePreset\(placement: PanePlacement, preset: DockSizePreset\)/);
+  assert.match(shellSource, /const nextSize = preset === "compact" \? min : preset === "expanded" \? max : Math\.round\(\(min \+ max\) \/ 2\)/);
+  assert.match(shellSource, /onSetDockSizePreset=\{setDockPlacementSizePreset\}/);
+  assert.match(shellSource, /onSetDockSizePreset: \(placement: PanePlacement, preset: DockSizePreset\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-size-presets=\{placement\}/);
+  assert.match(shellSource, /DOCK_SIZE_PRESETS\.map\(\(preset\) =>/);
+  assert.match(shellSource, /onClick=\{\(\) => onSetDockSizePreset\(placement, preset\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-size-preset=\{preset\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-size-presets/);
+});

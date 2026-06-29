@@ -1301,6 +1301,7 @@
 
 .workspace-ide-shell__dock-layout-size {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
 }
@@ -1310,6 +1311,17 @@
   color: var(--ide-muted);
   font-size: 10px;
   text-align: center;
+}
+
+.workspace-ide-shell__dock-layout-size-presets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.workspace-ide-shell__dock-layout-size-presets button {
+  padding-inline: 6px;
+  border-color: rgba(125, 211, 252, 0.18);
 }
 
 .workspace-ide-shell__dock-layout-groups {
