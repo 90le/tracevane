@@ -1707,7 +1707,7 @@ function createGitCommitActions(
       ? [
           {
             id: "git.commit.copyReleaseNote" as const,
-            label: "复制变更日志条目",
+            label: "复制提交审查条目",
             icon: <Sparkles className="size-3.5" />,
             run: () => handlers.copyReleaseNote?.(commit),
           },
@@ -1870,7 +1870,7 @@ function GitCommitDetailsPanel({
           data-workspace-git-commit-details-copy-release-note
         >
           <Sparkles className="size-3.5" />
-          变更日志
+          审查条目
         </Button>
         <Button
           type="button"
