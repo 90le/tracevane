@@ -137,3 +137,29 @@
   padding-bottom: calc(var(--workspace-mobile-nav-height) + 0.75rem);
   scroll-padding-bottom: calc(var(--workspace-mobile-nav-height) + 0.75rem);
 }
+
+/* Command Palette is the IDE command center: dense on desktop, thumb-safe as a
+   mobile sheet. Keep this surface task/action oriented instead of turning it
+   into a generic AI prompt box. */
+[data-workspace-command-palette-surface="ide-command-center"] {
+  --workspace-command-hit-target: 2.75rem;
+}
+
+[data-workspace-command-palette-surface="ide-command-center"] [cmdk-group-heading] {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-workspace-command-palette-surface="ide-command-center"] [cmdk-item] {
+  min-height: var(--workspace-command-hit-target);
+}
+
+@media (max-width: 768px) {
+  [data-workspace-command-palette-mobile-sheet] {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  }
+
+  [data-workspace-command-palette-surface="ide-command-center"] {
+    --workspace-command-hit-target: 3.25rem;
+  }
+}
