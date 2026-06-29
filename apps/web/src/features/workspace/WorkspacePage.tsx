@@ -1,13 +1,13 @@
 import * as React from "react";
 
-import { WorkspaceWorkbench } from "./workbench";
+import { WorkspaceSeasonOnePreviewPage } from "./season-one";
 
 export function WorkspacePage() {
   React.useEffect(() => {
-    document.title = "工作区 · Tracevane";
+    document.title = "Workspace Season One · Tracevane";
   }, []);
 
-  return <WorkspaceWorkbench />;
+  return <WorkspaceSeasonOnePreviewPage />;
 }
 
 export default WorkspacePage;
