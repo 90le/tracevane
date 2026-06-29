@@ -654,6 +654,14 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /setPaneOrder\(\(current\) => reorderPaneWithinPlacement\(current, paneId, placement, direction\)\)/);
   assert.match(shellSource, /focusDockPane\(placement, role, paneId\)/);
   assert.match(shellSource, /ide\.dock\.active\.reset-ratio/);
+  assert.match(shellSource, /ide\.dock\.active\.reset-size/);
+  assert.match(shellSource, /重置当前 Dock 尺寸/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧0"/);
+  assert.match(shellSource, /resetDockSize\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /ide\.dock\.active\.reset-composition/);
+  assert.match(shellSource, /恢复当前 Dock 默认组合/);
+  assert.match(shellSource, /shortcut: "⌘⌥⇧R"/);
+  assert.match(shellSource, /resetDockComposition\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /ide\.dock\.active\.grow/);
   assert.match(shellSource, /ide\.dock\.active\.shrink/);
   assert.match(shellSource, /放大当前 Dock/);
@@ -678,6 +686,10 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /toggleMaximizedPane\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /if \(!event\.shiftKey && key === "h"\)/);
   assert.match(shellSource, /closeDockPlacement\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /if \(event\.shiftKey && key === "r"\)/);
+  assert.match(shellSource, /if \(activeDockFocus\) resetDockComposition\(activeDockFocus\.placement\)/);
+  assert.match(shellSource, /if \(event\.shiftKey && event\.key === "0"\)/);
+  assert.match(shellSource, /if \(activeDockFocus\) resetDockSize\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /disabled: !activeDockFocus \|\| !canSwapDockSplit\(activeDockFocus\.placement\)/);
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "vertical"\)/);
   assert.match(shellSource, /setDockSplitMode\(activeDockFocus\.placement, "horizontal"\)/);

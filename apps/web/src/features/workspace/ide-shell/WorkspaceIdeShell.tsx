@@ -381,6 +381,16 @@ export function WorkspaceIdeShell() {
           if (activeDockFocus) closeDockPlacement(activeDockFocus.placement);
           return;
         }
+        if (event.shiftKey && key === "r") {
+          event.preventDefault();
+          if (activeDockFocus) resetDockComposition(activeDockFocus.placement);
+          return;
+        }
+        if (event.shiftKey && event.key === "0") {
+          event.preventDefault();
+          if (activeDockFocus) resetDockSize(activeDockFocus.placement);
+          return;
+        }
         if (event.shiftKey && event.key === "]") {
           event.preventDefault();
           moveActiveEditorFileToOtherGroup();
@@ -1295,6 +1305,36 @@ export function WorkspaceIdeShell() {
         run: () => {
           if (!activeDockFocus) return;
           resetDockSplitRatio(activeDockFocus.placement);
+        },
+      },
+      {
+        id: "ide.dock.active.reset-size",
+        group: "布局",
+        label: "重置当前 Dock 尺寸",
+        description: activeDockFocus ? `把当前聚焦的${placementLabel(activeDockFocus.placement)} Dock 尺寸恢复到默认值` : "先聚焦一个 Dock，再重置它的尺寸",
+        shortcut: "⌘⌥⇧0",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          resetDockSize(activeDockFocus.placement);
+        },
+      },
+      {
+        id: "ide.dock.active.reset-composition",
+        group: "窗格",
+        label: "恢复当前 Dock 默认组合",
+        description: activeDockFocus ? `只恢复当前${placementLabel(activeDockFocus.placement)} Dock 的默认 Pane、顺序、主副选择和拆分状态` : "先聚焦一个 Dock，再恢复该 Dock 的默认组合",
+        shortcut: "⌘⌥⇧R",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          resetDockComposition(activeDockFocus.placement);
         },
       },
       {
