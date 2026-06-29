@@ -369,8 +369,8 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /draggable/);
   assert.match(shellSource, /onDragStart=\{\(event\) => onBeginTabDrag\(group, tab, event\)\}/);
   assert.match(shellSource, /data-ide-editor-tab-drop-zone=\{group\}/);
-  assert.match(shellSource, /onDrop=\{\(event\) => onDropTabAtEnd\(group, event\)\}/);
-  assert.match(shellSource, /onDrop=\{\(event\) => onDropTabBefore\(group, tab, event\)\}/);
+  assert.match(shellSource, /onDrop=\{\(event\) => \{[\s\S]*?onDropTabAtEnd\(group, event\);[\s\S]*?\}\}/);
+  assert.match(shellSource, /onDrop=\{\(event\) => \{[\s\S]*?onDropTabBefore\(group, tab, event\);[\s\S]*?\}\}/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-label/);
   assert.match(shellSource, /workspace-ide-shell__editor-tab-close/);
   assert.match(shellSource, /event\.stopPropagation\(\)/);
@@ -1455,4 +1455,24 @@ test("new Workspace IDE shell exposes pane group swap and merge in the layout ma
   assert.match(shellSource, /data-ide-pane-layout-merge-secondary=\{placement\}/);
   assert.match(shellSource, /disabled=\{layoutLocked \|\| splitModes\[placement\] === "single"\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-combine/);
+});
+
+test("new Workspace IDE shell exposes editor tab drag target feedback", () => {
+  assert.match(shellSource, /const \[tabDropTarget, setTabDropTarget\] = React\.useState<\{ group: EditorGroupId; path\?: string \} \| null>\(null\)/);
+  assert.match(shellSource, /function markTabDropTarget\(groupId: EditorGroupId, event: React\.DragEvent, path\?: string\)/);
+  assert.match(shellSource, /setTabDropTarget\(\{ group: groupId, path \}\)/);
+  assert.match(shellSource, /data-ide-editor-tab-drop-active=\{tabDropTarget\?\.group === group && !tabDropTarget\.path \? "true" : "false"\}/);
+  assert.match(shellSource, /onDragOver=\{\(event\) => markTabDropTarget\(group, event\)\}/);
+  assert.match(shellSource, /onDragLeave=\{\(\) => setTabDropTarget\(null\)\}/);
+  assert.match(shellSource, /data-ide-editor-tab-drop-active=\{tabDropTarget\?\.group === group && tabDropTarget\.path === tab\.path \? "true" : "false"\}/);
+  assert.match(shellSource, /onDragOver=\{\(event\) => markTabDropTarget\(group, event, tab\.path\)\}/);
+  assert.match(shellSource, /setTabDropTarget\(null\);[\s\S]*?onDropTabBefore\(group, tab, event\);/);
+  assert.match(shellSource, /function reorderEditorTab\(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\)/);
+  assert.match(shellSource, /function dropEditorTabBefore\(group: EditorGroupId, beforeTab: EditorTab, event: React\.DragEvent\)/);
+  assert.match(shellSource, /function dropEditorTabAtEnd\(group: EditorGroupId, event: React\.DragEvent\)/);
+  assert.match(shellSource, /function moveEditorTabToGroup\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab, beforeTab: EditorTab\)/);
+  assert.match(shellSource, /function moveEditorTabToGroupEnd\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab\)/);
+  assert.match(cssSource, /workspace-ide-shell__editor-tabs\[data-ide-editor-tab-drop-active="true"\]/);
+  assert.match(cssSource, /workspace-ide-shell__editor-tab\[data-ide-editor-tab-drop-active="true"\]/);
+  assert.match(cssSource, /workspace-ide-shell__editor-tab\[draggable="true"\]/);
 });

@@ -4676,6 +4676,14 @@ function EditorGroupFrame({
   onSplitDown: () => void;
   onClose?: () => void;
 }) {
+  const [tabDropTarget, setTabDropTarget] = React.useState<{ group: EditorGroupId; path?: string } | null>(null);
+
+  function markTabDropTarget(groupId: EditorGroupId, event: React.DragEvent, path?: string) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setTabDropTarget({ group: groupId, path });
+  }
+
   return (
     <section
       className={cn("workspace-ide-shell__editor-group", active && "is-active")}
@@ -4692,25 +4700,29 @@ function EditorGroupFrame({
           className="workspace-ide-shell__editor-tabs"
           data-ide-editor-tabs={group}
           data-ide-editor-tab-drop-zone={group}
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
+          data-ide-editor-tab-drop-active={tabDropTarget?.group === group && !tabDropTarget.path ? "true" : "false"}
+          onDragOver={(event) => markTabDropTarget(group, event)}
+          onDragLeave={() => setTabDropTarget(null)}
+          onDrop={(event) => {
+            setTabDropTarget(null);
+            onDropTabAtEnd(group, event);
           }}
-          onDrop={(event) => onDropTabAtEnd(group, event)}
         >
           {tabs.map((tab) => (
             <span
               key={`${tab.rootId}:${tab.path}`}
               className={cn("workspace-ide-shell__editor-tab", filePath === tab.path && "is-active")}
               data-ide-editor-tab={tab.path}
+              data-ide-editor-tab-drop-active={tabDropTarget?.group === group && tabDropTarget.path === tab.path ? "true" : "false"}
               title={tab.path}
               draggable
               onDragStart={(event) => onBeginTabDrag(group, tab, event)}
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
+              onDragOver={(event) => markTabDropTarget(group, event, tab.path)}
+              onDragLeave={() => setTabDropTarget(null)}
+              onDrop={(event) => {
+                setTabDropTarget(null);
+                onDropTabBefore(group, tab, event);
               }}
-              onDrop={(event) => onDropTabBefore(group, tab, event)}
             >
               <button type="button" className="workspace-ide-shell__editor-tab-label" onClick={() => onSelectTab(group, tab)}>
                 {editorTabLabel(tab.path)}

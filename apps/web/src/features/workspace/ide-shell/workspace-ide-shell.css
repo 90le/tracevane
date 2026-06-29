@@ -1369,3 +1369,18 @@
 .workspace-ide-shell__dock-layout-combine button {
   border-color: rgba(45, 212, 191, 0.18);
 }
+
+.workspace-ide-shell__editor-tabs[data-ide-editor-tab-drop-active="true"],
+.workspace-ide-shell__editor-tab[data-ide-editor-tab-drop-active="true"] {
+  outline: 1px solid rgba(34, 211, 238, 0.68);
+  outline-offset: -1px;
+  background: rgba(34, 211, 238, 0.14);
+}
+
+.workspace-ide-shell__editor-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.workspace-ide-shell__editor-tab[draggable="true"]:active {
+  cursor: grabbing;
+}
