@@ -48,6 +48,7 @@ type DockSplitModes = Record<PanePlacement, DockSplitMode>;
 type DockSplitRatios = Record<PanePlacement, number>;
 type DockPaneRole = "primary" | "secondary";
 type ActiveDockFocus = { placement: PanePlacement; role: DockPaneRole; paneId: PaneId } | null;
+type DockPaneSelections = Record<PanePlacement, Partial<Record<DockPaneRole, PaneId>>>;
 type MobilePanel = "editor" | "top" | "left" | "right" | "bottom";
 
 const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
@@ -112,6 +113,7 @@ const KEYBOARD_RESIZE_STEP = 16;
 const KEYBOARD_RESIZE_LARGE_STEP = 40;
 const DEFAULT_DOCK_SPLIT_MODES: DockSplitModes = { top: "single", left: "single", right: "single", bottom: "single" };
 const DEFAULT_DOCK_SPLIT_RATIOS: DockSplitRatios = { top: 50, left: 50, right: 50, bottom: 50 };
+const DEFAULT_DOCK_PANE_SELECTIONS: DockPaneSelections = { top: {}, left: {}, right: {}, bottom: {} };
 const DEFAULT_EDITOR_SPLIT_RATIO = 50;
 const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
@@ -128,6 +130,7 @@ interface IdeLayoutState {
   editorSplitRatio?: number;
   dockSplitModes?: Partial<DockSplitModes>;
   dockSplitRatios?: Partial<DockSplitRatios>;
+  dockPaneSelections?: Partial<DockPaneSelections>;
   panePlacements?: Partial<IdePanePlacements>;
   paneOrder?: Partial<PaneOrder>;
 }
@@ -196,6 +199,7 @@ export function WorkspaceIdeShell() {
     ...layoutState.dockSplitRatios,
   }));
   const [editorSplitRatio, setEditorSplitRatio] = React.useState(layoutState.editorSplitRatio ?? DEFAULT_EDITOR_SPLIT_RATIO);
+  const [dockPaneSelections, setDockPaneSelections] = React.useState<DockPaneSelections>(() => mergeDockPaneSelections(layoutState.dockPaneSelections));
   const [activeEditorGroup, setActiveEditorGroup] = React.useState<EditorGroupId>("primary");
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const [mobilePanel, setMobilePanel] = React.useState<MobilePanel>("editor");
@@ -223,14 +227,14 @@ export function WorkspaceIdeShell() {
   const leftPaneIds = panesByPlacement.left;
   const rightPaneIds = panesByPlacement.right;
   const bottomPaneIds = panesByPlacement.bottom;
-  const activeTopPane = topPaneIds.includes(topPanel) ? topPanel : topPaneIds[0];
-  const activeLeftPane = leftPaneIds.includes(activity) ? activity : leftPaneIds[0];
-  const activeRightPane = rightPaneIds.includes(rightPanel) ? rightPanel : rightPaneIds[0];
-  const activeBottomPane = bottomPaneIds.includes(bottomPanel) ? bottomPanel : bottomPaneIds[0];
-  const secondaryTopPane = secondaryDockPane(topPaneIds, activeTopPane);
-  const secondaryLeftPane = secondaryDockPane(leftPaneIds, activeLeftPane);
-  const secondaryRightPane = secondaryDockPane(rightPaneIds, activeRightPane);
-  const secondaryBottomPane = secondaryDockPane(bottomPaneIds, activeBottomPane);
+  const activeTopPane = dockPaneSelection(topPaneIds, dockPaneSelections.top.primary, topPanel);
+  const activeLeftPane = dockPaneSelection(leftPaneIds, dockPaneSelections.left.primary, activity);
+  const activeRightPane = dockPaneSelection(rightPaneIds, dockPaneSelections.right.primary, rightPanel);
+  const activeBottomPane = dockPaneSelection(bottomPaneIds, dockPaneSelections.bottom.primary, bottomPanel);
+  const secondaryTopPane = dockPaneSelection(topPaneIds, dockPaneSelections.top.secondary, secondaryDockPane(topPaneIds, activeTopPane));
+  const secondaryLeftPane = dockPaneSelection(leftPaneIds, dockPaneSelections.left.secondary, secondaryDockPane(leftPaneIds, activeLeftPane));
+  const secondaryRightPane = dockPaneSelection(rightPaneIds, dockPaneSelections.right.secondary, secondaryDockPane(rightPaneIds, activeRightPane));
+  const secondaryBottomPane = dockPaneSelection(bottomPaneIds, dockPaneSelections.bottom.secondary, secondaryDockPane(bottomPaneIds, activeBottomPane));
 
   React.useEffect(() => {
     if (!rootId && defaultRootId) {
@@ -263,8 +267,9 @@ export function WorkspaceIdeShell() {
       paneOrder,
       dockSplitModes,
       dockSplitRatios,
+      dockPaneSelections,
     });
-  }, [bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
+  }, [bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -625,7 +630,7 @@ export function WorkspaceIdeShell() {
         run: () => restoreLayoutSnapshot(snapshot),
       })),
     ],
-    [layoutSnapshots, bottomOpen, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
+    [layoutSnapshots, bottomOpen, dockPaneSelections, dockSplitModes, dockSplitRatios, editorSplitMode, editorSplitRatio, layoutPreset, leftOpen, maximizedPane, paneOrder, panePlacements, paneSizes, rightOpen, topOpen],
   );
 
   const commands = React.useMemo(
@@ -654,6 +659,7 @@ export function WorkspaceIdeShell() {
     setPaneSizes(DEFAULT_PANE_SIZES);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
+    setDockPaneSelections(DEFAULT_DOCK_PANE_SELECTIONS);
     setMaximizedPane(null);
     closeEditorSplit();
     resetPanePlacements();
@@ -664,6 +670,7 @@ export function WorkspaceIdeShell() {
     setPaneOrder(DEFAULT_PANE_ORDER);
     setDockSplitModes(DEFAULT_DOCK_SPLIT_MODES);
     setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
+    setDockPaneSelections(DEFAULT_DOCK_PANE_SELECTIONS);
     setActivity("explorer");
     setTopPanel("output");
     setRightPanel("ai");
@@ -689,6 +696,7 @@ export function WorkspaceIdeShell() {
       paneOrder,
       dockSplitModes,
       dockSplitRatios,
+      dockPaneSelections,
     };
   }
 
@@ -729,6 +737,7 @@ export function WorkspaceIdeShell() {
     setPaneOrder(nextPaneOrder);
     setDockSplitModes({ ...DEFAULT_DOCK_SPLIT_MODES, ...sanitized.dockSplitModes });
     setDockSplitRatios({ ...DEFAULT_DOCK_SPLIT_RATIOS, ...sanitized.dockSplitRatios });
+    setDockPaneSelections(mergeDockPaneSelections(sanitized.dockPaneSelections));
     setTopOpen(sanitized.topOpen ?? false);
     setLeftOpen(sanitized.leftOpen ?? true);
     setRightOpen(sanitized.rightOpen ?? true);
@@ -867,6 +876,31 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function selectDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
+    setDockPaneSelections((current) => ({
+      ...current,
+      [placement]: {
+        ...current[placement],
+        [role]: paneId,
+      },
+    }));
+    if (role === "primary") setPrimaryDockPanel(placement, paneId);
+    openDockPlacement(placement);
+    focusDockPane(placement, role, paneId);
+  }
+
+  function selectDockTab(placement: PanePlacement, paneId: PaneId) {
+    const role = activeDockFocus?.placement === placement ? activeDockFocus.role : "primary";
+    selectDockPane(placement, role, paneId);
+  }
+
+  function setPrimaryDockPanel(placement: PanePlacement, paneId: PaneId) {
+    if (placement === "top") setTopPanel(paneId);
+    if (placement === "left") setActivity(paneId);
+    if (placement === "right") setRightPanel(paneId);
+    if (placement === "bottom") setBottomPanel(paneId);
+  }
+
   function focusDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
     setActiveDockFocus({ placement, role, paneId });
   }
@@ -910,7 +944,7 @@ export function WorkspaceIdeShell() {
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId) {
     setPanePlacements((current) => ({ ...current, [paneId]: placement }));
     setPaneOrder((current) => reorderPane(current, paneId, placement, beforePaneId));
-    focusDockPane(placement, "primary", paneId);
+    selectDockPane(placement, "primary", paneId);
     if (placement === "top") {
       setTopPanel(paneId);
       setTopOpen(true);
@@ -971,28 +1005,28 @@ export function WorkspaceIdeShell() {
     const placement = panePlacements[nextActivity];
     if (placement === "top") {
       setTopPanel(nextActivity);
+      selectDockPane("top", "primary", nextActivity);
       setTopOpen(true);
       setMobilePanel("top");
-      focusDockPane("top", "primary", nextActivity);
       return;
     }
     if (placement === "bottom") {
       setBottomPanel(nextActivity);
+      selectDockPane("bottom", "primary", nextActivity);
       setBottomOpen(true);
       setMobilePanel("bottom");
-      focusDockPane("bottom", "primary", nextActivity);
       return;
     }
     if (placement === "right") {
       setRightPanel(nextActivity);
+      selectDockPane("right", "primary", nextActivity);
       setRightOpen(true);
       setMobilePanel("right");
-      focusDockPane("right", "primary", nextActivity);
       return;
     }
     setLeftOpen(true);
     setMobilePanel("left");
-    focusDockPane("left", "primary", nextActivity);
+    selectDockPane("left", "primary", nextActivity);
   }
 
   return (
@@ -1006,6 +1040,7 @@ export function WorkspaceIdeShell() {
       data-ide-dragging-pane={draggingPane ?? ""}
       data-ide-drop-target={dropTarget ?? ""}
       data-ide-mobile-panel={mobilePanel}
+      data-ide-dock-selection-state={dockSelectionState(dockPaneSelections)}
       style={{
         "--ide-top-height": `${paneSizes.top}px`,
         "--ide-left-width": `${paneSizes.left}px`,
@@ -1123,7 +1158,7 @@ export function WorkspaceIdeShell() {
                 key={item.id}
                 type="button"
                 className={cn("workspace-ide-shell__activity-button", activeLeftPane === item.id && "is-active")}
-                onClick={() => activateActivity(item.id)}
+                onClick={() => selectDockTab("left", item.id)}
                 title={`${item.label} ${item.shortcut ?? ""}`}
                 data-ide-pane-draggable={item.id}
                 draggable
@@ -1247,7 +1282,7 @@ export function WorkspaceIdeShell() {
                       dropPaneOnDock("top", event, paneId);
                     }}
                   >
-                    <button type="button" className="workspace-ide-shell__top-tab" onClick={() => setTopPanel(paneId)}>
+                    <button type="button" className="workspace-ide-shell__top-tab" onClick={() => selectDockTab("top", paneId)}>
                       {paneLabel(paneId)}
                     </button>
                     <PaneDockControls
@@ -1399,7 +1434,7 @@ export function WorkspaceIdeShell() {
                       dropPaneOnDock("bottom", event, paneId);
                     }}
                   >
-                    <button type="button" className="workspace-ide-shell__panel-tab" onClick={() => setBottomPanel(paneId)}>
+                    <button type="button" className="workspace-ide-shell__panel-tab" onClick={() => selectDockTab("bottom", paneId)}>
                       {paneLabel(paneId)}
                     </button>
                     <PaneDockControls
@@ -1479,7 +1514,7 @@ export function WorkspaceIdeShell() {
                     dropPaneOnDock("right", event, paneId);
                   }}
                 >
-                  <button type="button" className="workspace-ide-shell__right-tab" onClick={() => setRightPanel(paneId)}>
+                  <button type="button" className="workspace-ide-shell__right-tab" onClick={() => selectDockTab("right", paneId)}>
                     {paneLabel(paneId)}
                   </button>
                   <PaneDockControls
@@ -2042,6 +2077,29 @@ function secondaryDockPane(panes: PaneId[], primaryPane?: PaneId): PaneId | unde
   return panes.find((paneId) => paneId !== primaryPane);
 }
 
+function dockPaneSelection(panes: PaneId[], selectedPane?: PaneId, fallbackPane?: PaneId): PaneId | undefined {
+  if (selectedPane && panes.includes(selectedPane)) return selectedPane;
+  if (fallbackPane && panes.includes(fallbackPane)) return fallbackPane;
+  return panes[0];
+}
+
+function dockSelectionState(selections: DockPaneSelections): string {
+  return DOCK_PLACEMENTS.map((placement) => {
+    const selection = selections[placement];
+    return `${placement}:${selection.primary ?? "-"}:${selection.secondary ?? "-"}`;
+  }).join("|");
+}
+
+function mergeDockPaneSelections(value: Partial<DockPaneSelections> | undefined): DockPaneSelections {
+  return {
+    top: { ...DEFAULT_DOCK_PANE_SELECTIONS.top, ...value?.top },
+    left: { ...DEFAULT_DOCK_PANE_SELECTIONS.left, ...value?.left },
+    right: { ...DEFAULT_DOCK_PANE_SELECTIONS.right, ...value?.right },
+    bottom: { ...DEFAULT_DOCK_PANE_SELECTIONS.bottom, ...value?.bottom },
+  };
+}
+
+
 function groupPanesByPlacement(placements: IdePanePlacements, order: PaneOrder): PaneOrder {
   const groups = PANE_REGISTRY.reduce(
     (nextGroups, pane) => {
@@ -2216,9 +2274,24 @@ function sanitizeIdeLayoutState(value: IdeLayoutState): IdeLayoutState {
     paneOrder: sanitizePaneOrder(value.paneOrder),
     dockSplitModes: sanitizeDockSplitModes(value.dockSplitModes),
     dockSplitRatios: sanitizeDockSplitRatios(value.dockSplitRatios),
+    dockPaneSelections: sanitizeDockPaneSelections(value.dockPaneSelections),
   };
 }
 
+
+function sanitizeDockPaneSelections(value: Partial<DockPaneSelections> | undefined): Partial<DockPaneSelections> | undefined {
+  if (!value) return undefined;
+  const selections: Partial<DockPaneSelections> = {};
+  for (const placement of DOCK_PLACEMENTS) {
+    const selection = value[placement];
+    if (!selection) continue;
+    const nextSelection: Partial<Record<DockPaneRole, PaneId>> = {};
+    if (isPaneId(selection.primary ?? "")) nextSelection.primary = selection.primary;
+    if (isPaneId(selection.secondary ?? "")) nextSelection.secondary = selection.secondary;
+    selections[placement] = nextSelection;
+  }
+  return selections;
+}
 
 function sanitizeDockSplitModes(value: Partial<DockSplitModes> | undefined): Partial<DockSplitModes> | undefined {
   if (!value) return undefined;
