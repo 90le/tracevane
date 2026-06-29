@@ -91,7 +91,8 @@ test("file manager fills the routed viewport instead of using hard-coded list he
   const chrome = read("apps/web/src/features/file-manager/FileManagerChrome.tsx");
   const shell = read("apps/web/src/app/AppShell.tsx");
 
-  assert.match(shell, /pathname === "\/chat" \|\| pathname === "\/file-manager"/);
+  assert.match(shell, /const isChromeLessRoute = pathname === "\/chat"/);
+  assert.doesNotMatch(shell, /pathname === "\/file-manager"/);
   assert.match(shell, /"h-full min-h-0 min-w-0 overflow-auto"/);
   assert.match(page, /data-file-manager-shell="true"/);
   assert.match(page, /relative flex h-full min-h-0 min-w-0 flex-col outline-none/);

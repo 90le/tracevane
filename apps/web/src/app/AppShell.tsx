@@ -345,7 +345,7 @@ export function AppShell() {
     () => resolvePageMeta(pathname, search),
     [pathname, search],
   );
-  const isChromeLessRoute = pathname === "/chat" || pathname === "/file-manager";
+  const isChromeLessRoute = pathname === "/chat";
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
