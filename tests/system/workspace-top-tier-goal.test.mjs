@@ -600,6 +600,17 @@ test("Workspace Git panel uses review language instead of AI-first labels", () =
   assert.doesNotMatch(gitPanel, />\s*AI 上下文\s*<\/Button>/);
 });
 
+test("Workspace Git change actions frame diff help as review work", () => {
+  const changeActions = readWeb("features/workspace/git/gitChangeActions.tsx");
+  assert.match(changeActions, /git\.change\.reviewDiff/);
+  assert.match(changeActions, /生成 Diff 审查摘要/);
+  assert.match(changeActions, /reviewable diff summary/);
+  assert.match(changeActions, /Git review evidence/);
+  assert.doesNotMatch(changeActions, /git\.change\.explain/);
+  assert.doesNotMatch(changeActions, /AI 解释 Diff/);
+  assert.doesNotMatch(changeActions, /AI-first explanation/);
+});
+
 test("Workspace Git commands separate evidence from AI generation", () => {
   const gitCommands = readWeb("features/workspace/git/gitPanelCommands.tsx");
   assert.match(gitCommands, /Git：生成提交信息建议/);

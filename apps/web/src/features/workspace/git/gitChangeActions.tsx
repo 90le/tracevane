@@ -21,7 +21,7 @@ export type GitChangeActionId =
   | "git.change.copyRelativePath"
   | "git.change.revealInExplorer"
   | "git.change.insertPathToTerminal"
-  | "git.change.explain";
+  | "git.change.reviewDiff";
 
 export interface GitChangeAction {
   id: GitChangeActionId;
@@ -43,6 +43,11 @@ export interface GitChangeActionRegistryInput {
   copyRelativePath?: (path: string) => void;
   revealInExplorer?: (path: string) => void;
   insertPathToTerminal?: (path: string) => void;
+  /**
+   * Produces a reviewable diff summary. The legacy callback name is kept while
+   * WorkspaceGitPanel is dirty, but the action is framed as Git review evidence
+   * rather than a generation-first shortcut.
+   */
   explainDiff: (change: GitFileChange) => void;
 }
 
@@ -130,8 +135,8 @@ export function createGitChangeActions({
         ]
       : []),
     {
-      id: "git.change.explain",
-      label: "AI 解释 Diff",
+      id: "git.change.reviewDiff",
+      label: "生成 Diff 审查摘要",
       icon: <Sparkles className="size-3.5" />,
       run: () => explainDiff(change),
     },
