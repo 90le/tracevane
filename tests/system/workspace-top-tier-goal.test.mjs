@@ -121,6 +121,8 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
 test("Workspace search commands frame replace as reviewable IDE plans", () => {
   const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
   const searchPanel = readWeb("features/workspace/files/WorkspaceSearchPanel.tsx");
+  assert.match(searchCommands, /搜索：聚焦替换输入/);
+  assert.match(searchCommands, /搜索：清空替换文本/);
   assert.match(searchCommands, /搜索：审查跨文件替换计划/);
   assert.match(searchCommands, /可审查替换计划/);
   assert.match(searchCommands, /hasReplacePlan/);
@@ -132,6 +134,9 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.match(searchPanel, /审查跨文件替换计划/);
   assert.match(searchPanel, /审查替换计划/);
   assert.match(searchPanel, /ReplacePlanDialog/);
+  assert.match(searchPanel, /replaceInputRef/);
+  assert.match(searchPanel, /focusReplaceInput/);
+  assert.match(searchPanel, /clearReplaceInput/);
   assert.match(searchPanel, /prepareReplacePlan/);
   assert.match(searchPanel, /selectedReplacePlanItems/);
   assert.match(searchPanel, /全选本次计划/);

@@ -13,6 +13,8 @@ export interface SearchPanelCommandRegistryInput {
   focusSearch: () => void;
   clearSearch: () => void;
   copySearchAiContext: () => void;
+  focusReplace: () => void;
+  clearReplace: () => void;
   prepareReplacePlan: () => void;
   applyReplacePlan: () => void;
   undoLastReplace: () => void;
@@ -28,6 +30,8 @@ export function createSearchPanelCommands({
   focusSearch,
   clearSearch,
   copySearchAiContext,
+  focusReplace,
+  clearReplace,
   prepareReplacePlan,
   applyReplacePlan,
   undoLastReplace,
@@ -52,6 +56,25 @@ export function createSearchPanelCommands({
       icon: <Sparkles />,
       disabled: !query || resultCount === 0,
       run: copySearchAiContext,
+    },
+    {
+      id: "search.panel.focusReplaceInput",
+      group: "编辑器",
+      label: "搜索：聚焦替换输入",
+      description: query
+        ? "编辑跨文件替换文本，随后生成可审查计划"
+        : "请先输入搜索关键词，再编辑替换文本",
+      icon: <Replace />,
+      disabled: !query,
+      run: focusReplace,
+    },
+    {
+      id: "search.panel.clearReplaceInput",
+      group: "编辑器",
+      label: "搜索：清空替换文本",
+      description: "清空替换文本并保持搜索结果不变",
+      icon: <Eraser />,
+      run: clearReplace,
     },
     {
       id: "search.panel.prepareReplacePreview",

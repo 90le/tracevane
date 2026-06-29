@@ -98,6 +98,7 @@ export function WorkspaceSearchPanel({
     React.useState<ReplaceUndoPackage | null>(null);
   const [includeHidden, setIncludeHidden] = React.useState(false);
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const replaceInputRef = React.useRef<HTMLInputElement | null>(null);
   const [resultMenu, setResultMenu] = React.useState<SearchResultMenuState | null>(null);
 
   React.useEffect(() => {
@@ -193,6 +194,18 @@ export function WorkspaceSearchPanel({
     setReplacePlan(null);
     setReplaceSelection(new Set());
     searchInputRef.current?.focus();
+  }, []);
+
+  const focusReplaceInput = React.useCallback(() => {
+    replaceInputRef.current?.focus();
+    replaceInputRef.current?.select();
+  }, []);
+
+  const clearReplaceInput = React.useCallback(() => {
+    setReplaceWith("");
+    setReplacePlan(null);
+    setReplaceSelection(new Set());
+    replaceInputRef.current?.focus();
   }, []);
 
   const prepareReplacePlan = React.useCallback(async () => {
@@ -392,6 +405,8 @@ export function WorkspaceSearchPanel({
         focusSearch: focusSearchInput,
         clearSearch,
         copySearchAiContext,
+        focusReplace: focusReplaceInput,
+        clearReplace: clearReplaceInput,
         prepareReplacePlan: () => void prepareReplacePlan(),
         applyReplacePlan: () => void applyReplacePlan(),
         undoLastReplace: () => void undoLastReplace(),
@@ -400,6 +415,8 @@ export function WorkspaceSearchPanel({
       applyReplacePlan,
       clearSearch,
       copySearchAiContext,
+      clearReplaceInput,
+      focusReplaceInput,
       focusSearchInput,
       prepareReplacePlan,
       query,
@@ -513,6 +530,7 @@ export function WorkspaceSearchPanel({
           </div>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Input
+              ref={replaceInputRef}
               value={replaceWith}
               onChange={(event) => setReplaceWith(event.target.value)}
               placeholder="替换为…"
