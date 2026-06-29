@@ -194,9 +194,16 @@ test("new Workspace IDE shell supports split editor groups", () => {
   assert.match(shellSource, /function reorderEditorTab\(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\)/);
   assert.match(shellSource, /function dropEditorTabBefore\(group: EditorGroupId, beforeTab: EditorTab, event: React\.DragEvent\)/);
   assert.match(shellSource, /parseEditorTabDragPayload\(event\.dataTransfer\.getData\("application\/x-tracevane-editor-tab"\)\)/);
-  assert.match(shellSource, /payload\.group !== group/);
+  assert.match(shellSource, /payload\.group === group/);
+  assert.match(shellSource, /moveEditorTabToGroup\(payload\.group, group, payload, beforeTab\)/);
+  assert.match(shellSource, /function moveEditorTabToGroup\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab, beforeTab: EditorTab\)/);
+  assert.match(shellSource, /\[sourceGroup\]: current\[sourceGroup\]\.filter/);
+  assert.match(shellSource, /\[targetGroup\]: insertEditorTabBefore\(current\[targetGroup\], tab, beforeTab\)/);
+  assert.match(shellSource, /selectEditorTab\(targetGroup, tab\)/);
   assert.match(shellSource, /function reorderEditorTabs\(tabs: EditorTab\[\], draggedTab: EditorTab, beforeTab: EditorTab\): EditorTab\[\]/);
+  assert.match(shellSource, /function insertEditorTabBefore\(tabs: EditorTab\[\], draggedTab: EditorTab, beforeTab: EditorTab\): EditorTab\[\]/);
   assert.match(shellSource, /nextTabs\.splice\(targetIndex, 0, draggedTab\)/);
+  assert.match(shellSource, /if \(targetIndex < 0\) return upsertEditorTab\(tabs, draggedTab\)/);
   assert.match(shellSource, /function parseEditorTabDragPayload\(value: string\)/);
   assert.match(shellSource, /draggable/);
   assert.match(shellSource, /onDragStart=\{\(event\) => onBeginTabDrag\(group, tab, event\)\}/);

@@ -1508,8 +1508,21 @@ export function WorkspaceIdeShell() {
   function dropEditorTabBefore(group: EditorGroupId, beforeTab: EditorTab, event: React.DragEvent) {
     event.preventDefault();
     const payload = parseEditorTabDragPayload(event.dataTransfer.getData("application/x-tracevane-editor-tab"));
-    if (!payload || payload.group !== group) return;
-    reorderEditorTab(group, payload, beforeTab);
+    if (!payload) return;
+    if (payload.group === group) {
+      reorderEditorTab(group, payload, beforeTab);
+    } else {
+      moveEditorTabToGroup(payload.group, group, payload, beforeTab);
+    }
+  }
+
+  function moveEditorTabToGroup(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab, beforeTab: EditorTab) {
+    setEditorGroupTabs((current) => ({
+      ...current,
+      [sourceGroup]: current[sourceGroup].filter((item) => item.path !== tab.path || item.rootId !== tab.rootId),
+      [targetGroup]: insertEditorTabBefore(current[targetGroup], tab, beforeTab),
+    }));
+    selectEditorTab(targetGroup, tab);
   }
 
   function splitEditor(mode: Exclude<EditorSplitMode, "single">) {
@@ -3128,9 +3141,13 @@ function upsertEditorTab(tabs: EditorTab[], tab: EditorTab): EditorTab[] {
 }
 
 function reorderEditorTabs(tabs: EditorTab[], draggedTab: EditorTab, beforeTab: EditorTab): EditorTab[] {
+  return insertEditorTabBefore(tabs, draggedTab, beforeTab);
+}
+
+function insertEditorTabBefore(tabs: EditorTab[], draggedTab: EditorTab, beforeTab: EditorTab): EditorTab[] {
   const withoutDragged = tabs.filter((item) => item.path !== draggedTab.path || item.rootId !== draggedTab.rootId);
   const targetIndex = withoutDragged.findIndex((item) => item.path === beforeTab.path && item.rootId === beforeTab.rootId);
-  if (targetIndex < 0) return tabs;
+  if (targetIndex < 0) return upsertEditorTab(tabs, draggedTab);
   const nextTabs = [...withoutDragged];
   nextTabs.splice(targetIndex, 0, draggedTab);
   return nextTabs;
