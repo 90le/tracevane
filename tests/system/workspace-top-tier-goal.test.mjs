@@ -712,3 +712,16 @@ test("Workspace terminal session actions expose mobile IDE risk and surface meta
   assert.match(terminalSessionActions, /id: "terminal\.session\.copyEvidenceContext"[\s\S]{0,180}surface: "evidence"/);
   assert.match(terminalSessionActions, /id: "terminal\.session\.insertCwd"[\s\S]{0,180}surface: "input"/);
 });
+
+test("Workspace search commands classify replace writes separately from safe IDE actions", () => {
+  const searchCommands = readWeb("features/workspace/files/searchPanelCommands.tsx");
+  assert.match(searchCommands, /SearchPanelCommandRisk = "safe" \| "mutating"/);
+  assert.match(searchCommands, /SearchPanelCommandSurface =/);
+  assert.match(searchCommands, /SearchPanelWorkspaceCommand = WorkspaceCommand & SearchPanelCommandMetadata/);
+  assert.match(searchCommands, /createSearchPanelCommands[\s\S]{0,900}: SearchPanelWorkspaceCommand\[\]/);
+  assert.match(searchCommands, /id: "search\.panel\.copyEvidence"[\s\S]{0,260}surface: "clipboard"/);
+  assert.match(searchCommands, /id: "search\.panel\.prepareReplacePlan"[\s\S]{0,260}risk: "safe"[\s\S]{0,120}surface: "replace-plan"/);
+  assert.match(searchCommands, /id: "search\.panel\.applyReplacePlan"[\s\S]{0,260}risk: "mutating"[\s\S]{0,120}surface: "replace-plan"/);
+  assert.match(searchCommands, /id: "search\.panel\.undoLastReplace"[\s\S]{0,260}risk: "mutating"[\s\S]{0,120}surface: "replace-plan"/);
+  assert.match(searchCommands, /id: "search\.panel\.focusReplaceInput"[\s\S]{0,220}surface: "input"/);
+});

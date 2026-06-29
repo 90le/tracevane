@@ -3,6 +3,20 @@ import { Clipboard, Eraser, Replace, Search, Sparkles } from "lucide-react";
 
 import type { WorkspaceCommand } from "../workbench/workspaceCommands";
 
+export type SearchPanelCommandRisk = "safe" | "mutating";
+export type SearchPanelCommandSurface =
+  | "search"
+  | "replace-plan"
+  | "clipboard"
+  | "input";
+
+export interface SearchPanelCommandMetadata {
+  risk: SearchPanelCommandRisk;
+  surface: SearchPanelCommandSurface;
+}
+
+export type SearchPanelWorkspaceCommand = WorkspaceCommand & SearchPanelCommandMetadata;
+
 export interface SearchPanelCommandRegistryInput {
   query: string;
   resultCount: number;
@@ -35,13 +49,15 @@ export function createSearchPanelCommands({
   prepareReplacePlan,
   applyReplacePlan,
   undoLastReplace,
-}: SearchPanelCommandRegistryInput): WorkspaceCommand[] {
+}: SearchPanelCommandRegistryInput): SearchPanelWorkspaceCommand[] {
   return [
     {
       id: "search.panel.focusInput",
       group: "导航",
       label: "搜索：聚焦搜索框",
       description: query ? `继续搜索 “${query}”` : "聚焦 Workspace 搜索输入框",
+      risk: "safe",
+      surface: "search",
       icon: <Search />,
       run: focusSearch,
     },
@@ -53,6 +69,8 @@ export function createSearchPanelCommands({
         resultCount > 0
           ? `复制当前 ${resultCount} 条搜索结果作为可审查上下文证据`
           : "当前没有可复制的搜索结果",
+      risk: "safe",
+      surface: "clipboard",
       icon: <Sparkles />,
       disabled: !query || resultCount === 0,
       run: copySearchEvidence,
@@ -64,6 +82,8 @@ export function createSearchPanelCommands({
       description: query
         ? "编辑跨文件替换文本，随后生成可审查计划"
         : "请先输入搜索关键词，再编辑替换文本",
+      risk: "safe",
+      surface: "input",
       icon: <Replace />,
       disabled: !query,
       run: focusReplace,
@@ -73,6 +93,8 @@ export function createSearchPanelCommands({
       group: "编辑器",
       label: "搜索：清空替换文本",
       description: "清空替换文本并保持搜索结果不变",
+      risk: "safe",
+      surface: "input",
       icon: <Eraser />,
       run: clearReplace,
     },
@@ -84,6 +106,8 @@ export function createSearchPanelCommands({
         replaceTargetCount > 0
           ? `为 ${replaceTargetCount} 个文本文件生成可审查替换计划`
           : "当前结果内没有可替换文本文件",
+      risk: "safe",
+      surface: "replace-plan",
       icon: <Replace />,
       disabled: !query || replaceTargetCount === 0 || replaceBusy,
       run: prepareReplacePlan,
@@ -95,6 +119,8 @@ export function createSearchPanelCommands({
       description: hasReplacePlan
         ? "写入当前替换计划中勾选的文件"
         : "请先生成可审查替换计划",
+      risk: "mutating",
+      surface: "replace-plan",
       icon: <Clipboard />,
       disabled: !hasReplacePlan || replaceBusy,
       run: applyReplacePlan,
@@ -106,6 +132,8 @@ export function createSearchPanelCommands({
       description: hasUndoPackage
         ? "恢复上次批量替换前的文件内容"
         : "当前没有可撤销的替换包",
+      risk: "mutating",
+      surface: "replace-plan",
       icon: <Eraser />,
       disabled: !hasUndoPackage || replaceBusy,
       run: undoLastReplace,
@@ -115,6 +143,8 @@ export function createSearchPanelCommands({
       group: "导航",
       label: "搜索：清空搜索",
       description: query ? "清空搜索关键词和结果" : "搜索框已经为空",
+      risk: "safe",
+      surface: "search",
       icon: <Eraser />,
       disabled: !query,
       run: clearSearch,
