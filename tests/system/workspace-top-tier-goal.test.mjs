@@ -86,6 +86,10 @@ test("Workspace command palette is framed as an IDE command center", () => {
   assert.match(palette, /文件、搜索、Git、终端、布局的统一动作入口/);
   assert.match(palette, /输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作/);
   assert.match(palette, /enabledCommandCount/);
+  assert.match(palette, /所有命令必须映射到真实 IDE 操作/);
+  assert.match(palette, /不可用动作会被禁用/);
+  assert.match(palette, /data-workspace-command-palette-summary/);
+  assert.match(palette, /data-workspace-keybinding-conflicts="header-alert"/);
   assert.match(palette, /data-workspace-command-palette-header="ide-command-console"/);
   assert.match(palette, /data-workspace-command-palette-surface="ide-command-center"/);
   assert.match(palette, /没有匹配的 IDE 命令/);
@@ -99,6 +103,8 @@ test("Workspace command palette has IDE command-center styling hooks", () => {
   assert.match(css, /data-workspace-command-palette-surface="ide-command-center"/);
   assert.match(css, /data-workspace-command-palette-header="ide-command-console"/);
   assert.match(css, /data-workspace-command-palette-scope/);
+  assert.match(css, /data-workspace-command-palette-summary/);
+  assert.match(css, /data-workspace-keybinding-conflicts="header-alert"/);
   assert.match(css, /--workspace-command-hit-target: 2\.75rem/);
   assert.match(css, /--workspace-command-hit-target: 3\.25rem/);
   assert.match(css, /data-workspace-command-palette-mobile-sheet/);

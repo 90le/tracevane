@@ -61,6 +61,7 @@ export function WorkspaceCommandPalette({
       </div>
       <header
         className="border-b border-line px-4 py-3"
+        aria-describedby="workspace-command-palette-summary"
         data-workspace-command-palette-header="ide-command-console"
       >
         <div className="flex items-start justify-between gap-3">
@@ -87,18 +88,17 @@ export function WorkspaceCommandPalette({
           <span>移动：拇指安全 Sheet</span>
           <span>冲突：{keybindingConflicts.length}</span>
         </div>
-      </header>
-      <CommandInput placeholder="输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作…" />
-      <CommandList
-        className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
-        data-workspace-command-palette
-        data-workspace-command-palette-surface="ide-command-center"
-        data-workspace-command-palette-mobile-sheet
-      >
+        <p
+          id="workspace-command-palette-summary"
+          className="mt-2 text-2xs leading-5 text-subtle"
+          data-workspace-command-palette-summary
+        >
+          所有命令必须映射到真实 IDE 操作；不可用动作会被禁用，证据/AI 扩展动作不会直接写入文件或执行命令。
+        </p>
         {keybindingConflicts.length ? (
           <div
-            className="mx-2 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"
-            data-workspace-keybinding-conflicts
+            className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"
+            data-workspace-keybinding-conflicts="header-alert"
           >
             <span className="font-semibold">快捷键冲突：</span>
             {keybindingConflicts
@@ -109,6 +109,14 @@ export function WorkspaceCommandPalette({
               .join("；")}
           </div>
         ) : null}
+      </header>
+      <CommandInput placeholder="输入 IDE 命令：打开文件、搜索项目、Git 审查、终端动作…" />
+      <CommandList
+        className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
+        data-workspace-command-palette
+        data-workspace-command-palette-surface="ide-command-center"
+        data-workspace-command-palette-mobile-sheet
+      >
         <CommandEmpty>没有匹配的 IDE 命令</CommandEmpty>
         {WORKSPACE_COMMAND_GROUPS.map((group, index) => (
           <CommandGroup key={group} heading={group}>
