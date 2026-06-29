@@ -41,6 +41,9 @@ test("Workspace design contract keeps the active goal IDE-only", () => {
   assert.match(blueprint, /Codex Goal 文本修正声明/);
   assert.match(blueprint, /当前执行目标只推进 IDE 工作区本体和 UI\/UX/);
   assert.match(blueprint, /文件\/编辑器、终端、Git、搜索、命令、状态、布局/);
+  assert.match(blueprint, /IDE Core Features[\s\S]*code editor[\s\S]*terminal[\s\S]*search[\s\S]*git[\s\S]*command\/status\/layout/);
+  assert.match(blueprint, /Future Extension Placeholders \(not Phase 0\/1\/2 scope\)[\s\S]*preview\/rendering[\s\S]*writing/);
+  assert.doesNotMatch(blueprint, /IDE Core Features[\s\S]{0,160}preview/);
   assert.match(design, /real AI coding IDE workbench/);
   assert.match(design, /writing, rendering and preview enhancement are future extension lines only/);
   assert.doesNotMatch(design, /AI writing workbench/);

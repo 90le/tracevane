@@ -491,18 +491,21 @@ Workspace Shell
 
 IDE Core Features
   - explorer
-  - editor
+  - code editor
   - terminal
   - search
   - git
-  - preview
+  - command/status/layout
 
-Extension Features
+Current Extension Features
   - ai context
   - evidence
-  - writing
   - agent handoff
   - review
+
+Future Extension Placeholders (not Phase 0/1/2 scope)
+  - preview/rendering
+  - writing
 ```
 
 禁止：
