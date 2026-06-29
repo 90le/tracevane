@@ -268,7 +268,7 @@ export function createGitPanelCommands({
       run: generateCommitDraft,
     },
     {
-      id: "git.panel.ai.commitMessage",
+      id: "git.panel.commitMessageAdvice",
       group: "证据",
       label: "Git：生成提交信息建议",
       description: "基于 @git staged diff 生成可审查建议；只填入草稿，不会提交",
@@ -290,7 +290,7 @@ export function createGitPanelCommands({
       run: commitStaged,
     },
     {
-      id: "git.panel.explainStatus",
+      id: "git.panel.changeReviewSummary",
       group: "Git",
       label: "Git：生成变更审查摘要",
       description: "基于 @git status / @git diff 上下文生成可审查摘要",
