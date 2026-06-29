@@ -269,6 +269,8 @@ const WORKBENCH_LAYOUT_RECIPES: WorkbenchLayoutRecipe[] = [
   },
 ];
 const DEFAULT_EDITOR_SPLIT_RATIO = 50;
+const SPLIT_RATIO_PRESETS = [33, 50, 67] as const;
+type SplitRatioPreset = (typeof SPLIT_RATIO_PRESETS)[number];
 const SPLIT_RATIO_LIMITS = { min: 25, max: 75 };
 const EDITOR_SPLIT_RATIO_LIMITS = SPLIT_RATIO_LIMITS;
 
@@ -990,6 +992,16 @@ export function WorkspaceIdeShell() {
         disabled: !activeEditorTab(),
         run: moveActiveEditorFileToOtherGroup,
       },
+      ...SPLIT_RATIO_PRESETS.map((ratio) => ({
+        id: `ide.editor.split-ratio.${ratio}`,
+        group: "布局" as const,
+        label: `编辑器拆分比例：${ratio}/${100 - ratio}`,
+        description: `把主编辑器组设置为 ${ratio}%，副编辑器组设置为 ${100 - ratio}%；未拆分时先向右拆分`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        run: () => setEditorSplitRatioPreset(ratio),
+      })),
       {
         id: "ide.editor.focus-primary",
         group: "布局",
@@ -1564,6 +1576,20 @@ export function WorkspaceIdeShell() {
           resetDockSplitRatio(activeDockFocus.placement);
         },
       },
+      ...SPLIT_RATIO_PRESETS.map((ratio) => ({
+        id: `ide.dock.active.split-ratio.${ratio}`,
+        group: "窗格" as const,
+        label: `当前 Dock 拆分比例：${ratio}/${100 - ratio}`,
+        description: activeDockFocus ? `把当前${placementLabel(activeDockFocus.placement)} Dock 主窗格组设置为 ${ratio}%` : "先聚焦一个已拆分 Dock，再设置主/副窗格比例",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        disabled: !activeDockFocus,
+        run: () => {
+          if (!activeDockFocus) return;
+          setDockSplitRatioPreset(activeDockFocus.placement, ratio);
+        },
+      })),
       {
         id: "ide.dock.active.reset-size",
         group: "布局",
@@ -2587,6 +2613,18 @@ export function WorkspaceIdeShell() {
     }));
   }
 
+  function setDockSplitRatioPreset(placement: PanePlacement, ratio: SplitRatioPreset) {
+    setDockSplitRatios((current) => ({
+      ...current,
+      [placement]: ratio,
+    }));
+  }
+
+  function setEditorSplitRatioPreset(ratio: SplitRatioPreset) {
+    if (editorSplitMode === "single") splitEditor("vertical");
+    setEditorSplitRatio(ratio);
+  }
+
   function resizeDockSplitGroup(placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") {
     const signedStep = direction === "grow" ? 5 : -5;
     const roleStep = role === "primary" ? signedStep : -signedStep;
@@ -3035,6 +3073,7 @@ export function WorkspaceIdeShell() {
                   onCloseDock={closeDockPlacement}
                   onResetSplitRatio={resetDockSplitRatio}
                   onResizeSplitGroup={resizeDockSplitGroup}
+                  onSetSplitRatioPreset={setDockSplitRatioPreset}
                   onMovePaneToGroup={movePaneToPlacement}
                   onSwapGroups={swapDockSplitPanes}
                   onMergeGroups={mergeDockSplitGroups}
@@ -3196,6 +3235,7 @@ export function WorkspaceIdeShell() {
                 onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
                 onResizeSplitGroup={resizeDockSplitGroup}
+                onSetSplitRatioPreset={setDockSplitRatioPreset}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
@@ -3260,6 +3300,12 @@ export function WorkspaceIdeShell() {
                   onPointerDown={startEditorSplitResize}
                   onKeyDown={resizeEditorSplitFromKeyboard}
                   onDoubleClick={() => setEditorSplitRatio(DEFAULT_EDITOR_SPLIT_RATIO)}
+                />
+                <SplitRatioPresetStrip
+                  label="编辑器拆分比例预设"
+                  value={editorSplitRatio}
+                  onSelect={setEditorSplitRatioPreset}
+                  dataAttribute="editor"
                 />
                 <EditorGroupFrame
                   group="secondary"
@@ -3402,6 +3448,7 @@ export function WorkspaceIdeShell() {
                 onCloseDock={closeDockPlacement}
                 onResetSplitRatio={resetDockSplitRatio}
                 onResizeSplitGroup={resizeDockSplitGroup}
+                onSetSplitRatioPreset={setDockSplitRatioPreset}
                 onMovePaneToGroup={movePaneToPlacement}
                 onSwapGroups={swapDockSplitPanes}
                 onMergeGroups={mergeDockSplitGroups}
@@ -3513,6 +3560,7 @@ export function WorkspaceIdeShell() {
               onCloseDock={closeDockPlacement}
               onResetSplitRatio={resetDockSplitRatio}
               onResizeSplitGroup={resizeDockSplitGroup}
+              onSetSplitRatioPreset={setDockSplitRatioPreset}
               onMovePaneToGroup={movePaneToPlacement}
               onSwapGroups={swapDockSplitPanes}
               onMergeGroups={mergeDockSplitGroups}
@@ -4102,6 +4150,7 @@ function DockPaneFrame({
   onCloseDock,
   onResetSplitRatio,
   onResizeSplitGroup,
+  onSetSplitRatioPreset,
   onMovePaneToGroup,
   onSwapGroups,
   onMergeGroups,
@@ -4137,6 +4186,7 @@ function DockPaneFrame({
   onCloseDock: (placement: PanePlacement) => void;
   onResetSplitRatio: (placement: PanePlacement) => void;
   onResizeSplitGroup: (placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") => void;
+  onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapGroups: (placement: PanePlacement) => void;
   onMergeGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
@@ -4304,6 +4354,14 @@ function DockPaneFrame({
           >
             50
           </button>
+          <SplitRatioPresetStrip
+            label={`${placementLabel(placement)} Dock 拆分比例预设`}
+            value={splitRatio}
+            disabled={!shouldSplit}
+            onSelect={(ratio) => onSetSplitRatioPreset(placement, ratio)}
+            dataAttribute={`${placement}-${role}`}
+            onPointerDown={stopGroupAction}
+          />
           <button
             type="button"
             className="workspace-ide-shell__dock-split-pane-action"
@@ -4397,6 +4455,45 @@ function DockPaneFrame({
   );
 }
 
+
+function SplitRatioPresetStrip({
+  label,
+  value,
+  disabled = false,
+  onSelect,
+  dataAttribute,
+  onPointerDown,
+}: {
+  label: string;
+  value: number;
+  disabled?: boolean;
+  onSelect: (ratio: SplitRatioPreset) => void;
+  dataAttribute: string;
+  onPointerDown?: (event: React.SyntheticEvent) => void;
+}) {
+  return (
+    <div className="workspace-ide-shell__split-ratio-presets" aria-label={label} data-ide-split-ratio-presets={dataAttribute}>
+      {SPLIT_RATIO_PRESETS.map((ratio) => (
+        <button
+          key={ratio}
+          type="button"
+          className="workspace-ide-shell__dock-split-pane-action"
+          disabled={disabled}
+          data-ide-split-ratio-preset={ratio}
+          data-active={Math.round(value) === ratio ? "true" : "false"}
+          aria-label={`${label}: ${ratio}/${100 - ratio}`}
+          onPointerDown={onPointerDown}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(ratio);
+          }}
+        >
+          {ratio}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function DockEdgeDropZones({
   placement,

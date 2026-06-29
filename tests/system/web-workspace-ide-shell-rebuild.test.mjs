@@ -1132,6 +1132,28 @@ test("new Workspace IDE shell supports keyboard focus between IDE regions", () =
 
 
 
+
+
+test("new Workspace IDE shell supports split ratio presets", () => {
+  assert.match(shellSource, /const SPLIT_RATIO_PRESETS = \[33, 50, 67\] as const/);
+  assert.match(shellSource, /type SplitRatioPreset = \(typeof SPLIT_RATIO_PRESETS\)\[number\]/);
+  assert.match(shellSource, /function setDockSplitRatioPreset\(placement: PanePlacement, ratio: SplitRatioPreset\)/);
+  assert.match(shellSource, /function setEditorSplitRatioPreset\(ratio: SplitRatioPreset\)/);
+  assert.match(shellSource, /ide\.editor\.split-ratio\.\$\{ratio\}/);
+  assert.match(shellSource, /ide\.dock\.active\.split-ratio\.\$\{ratio\}/);
+  assert.match(shellSource, /编辑器拆分比例：\$\{ratio\}\/\$\{100 - ratio\}/);
+  assert.match(shellSource, /当前 Dock 拆分比例：\$\{ratio\}\/\$\{100 - ratio\}/);
+  assert.match(shellSource, /function SplitRatioPresetStrip/);
+  assert.match(shellSource, /data-ide-split-ratio-presets=\{dataAttribute\}/);
+  assert.match(shellSource, /data-ide-split-ratio-preset=\{ratio\}/);
+  assert.match(shellSource, /onSetSplitRatioPreset: \(placement: PanePlacement, ratio: SplitRatioPreset\) => void/);
+  assert.match(shellSource, /onSetSplitRatioPreset\(placement, ratio\)/);
+  assert.match(shellSource, /onSelect=\{setEditorSplitRatioPreset\}/);
+  assert.match(cssSource, /workspace-ide-shell__split-ratio-presets/);
+  assert.match(cssSource, /data-ide-split-ratio-presets="editor"/);
+  assert.match(cssSource, /data-active="true"/);
+});
+
 test("new Workspace IDE shell supports complete workbench layout recipes", () => {
   assert.match(shellSource, /type WorkbenchRecipeId = "classic" \| "ai-pair" \| "terminal-debug" \| "review"/);
   assert.match(shellSource, /interface WorkbenchLayoutRecipe/);

@@ -1135,6 +1135,30 @@
   padding: 2px 3px;
 }
 
+
+.workspace-ide-shell__split-ratio-presets {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.workspace-ide-shell__split-ratio-presets[data-ide-split-ratio-presets="editor"] {
+  position: absolute;
+  z-index: 7;
+  right: 12px;
+  bottom: 12px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.35);
+}
+
+.workspace-ide-shell__split-ratio-presets .workspace-ide-shell__dock-split-pane-action[data-active="true"] {
+  background: rgba(34, 211, 238, 0.2);
+  color: #a5f3fc;
+}
+
 .workspace-ide-shell__dock-split-pane-action {
   display: grid;
   width: 16px;
