@@ -373,6 +373,12 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /ide\.dock\.active\.shrink/);
   assert.match(shellSource, /放大当前 Dock/);
   assert.match(shellSource, /缩小当前 Dock/);
+  assert.match(shellSource, /shortcut: "⌘⌥="/);
+  assert.match(shellSource, /shortcut: "⌘⌥-"/);
+  assert.match(shellSource, /event\.key === "=" \|\| event\.key === "\+"/);
+  assert.match(shellSource, /resizeActiveDockPlacement\(KEYBOARD_RESIZE_LARGE_STEP\)/);
+  assert.match(shellSource, /event\.key === "-"/);
+  assert.match(shellSource, /resizeActiveDockPlacement\(-KEYBOARD_RESIZE_LARGE_STEP\)/);
   assert.match(shellSource, /function resizeActiveDockPlacement\(delta: number\)/);
   assert.match(shellSource, /const pane = activeDockFocus\.placement/);
   assert.match(shellSource, /clamp\(current\[pane\] \+ delta, min, max\)/);

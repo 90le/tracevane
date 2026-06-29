@@ -318,6 +318,16 @@ export function WorkspaceIdeShell() {
           focusOppositeDockGroup();
           return;
         }
+        if (!event.shiftKey && (event.key === "=" || event.key === "+")) {
+          event.preventDefault();
+          resizeActiveDockPlacement(KEYBOARD_RESIZE_LARGE_STEP);
+          return;
+        }
+        if (!event.shiftKey && event.key === "-") {
+          event.preventDefault();
+          resizeActiveDockPlacement(-KEYBOARD_RESIZE_LARGE_STEP);
+          return;
+        }
         if (event.shiftKey && event.key === "ArrowLeft") {
           event.preventDefault();
           moveActiveDockPaneToPlacement("left");
@@ -983,6 +993,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "放大当前 Dock",
         description: activeDockFocus ? `扩大当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock，再扩大它的布局尺寸",
+        shortcut: "⌘⌥=",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <Maximize2 />,
@@ -994,6 +1005,7 @@ export function WorkspaceIdeShell() {
         group: "布局",
         label: "缩小当前 Dock",
         description: activeDockFocus ? `缩小当前聚焦的${placementLabel(activeDockFocus.placement)} Dock` : "先聚焦一个 Dock，再缩小它的布局尺寸",
+        shortcut: "⌘⌥-",
         risk: "safe" as const,
         surface: "layout" as const,
         icon: <PanelLeft />,
