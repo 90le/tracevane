@@ -1,5 +1,12 @@
 import * as React from "react";
-import { ExternalLink, Loader2, MonitorSmartphone, PlugZap, Square } from "lucide-react";
+import {
+  ExternalLink,
+  Loader2,
+  MonitorSmartphone,
+  PlugZap,
+  RefreshCw,
+  Square,
+} from "lucide-react";
 
 import { Button } from "@/design/ui/button";
 import { cn } from "@/design/lib/utils";
@@ -29,21 +36,40 @@ export function WorkspaceIdeProviderPanel({
   mobile = false,
 }: WorkspaceIdeProviderPanelProps) {
   const providers = useWorkspaceIdeProvidersQuery();
-  const sessions = useWorkspaceIdeProviderSessionsQuery({ refetchInterval: 4_000 });
-  const createSession = useCreateWorkspaceIdeProviderSessionMutation();
-  const stopSession = useStopWorkspaceIdeProviderSessionMutation();
-
+  const [trackedSessionId, setTrackedSessionId] = React.useState<string | null>(null);
   const providerKind = preferredKind ?? providers.data?.defaultKind ?? "native-workbench";
+  const sessions = useWorkspaceIdeProviderSessionsQuery({
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const selected = selectActiveProviderSession(data?.sessions ?? [], providerKind, trackedSessionId);
+      return selected?.status === "starting" ? 1_000 : 4_000;
+    },
+  });
+  const createSession = useCreateWorkspaceIdeProviderSessionMutation({
+    onSuccess: (data) => {
+      setTrackedSessionId(data.session.id);
+    },
+  });
+  const stopSession = useStopWorkspaceIdeProviderSessionMutation({
+    onSuccess: () => {
+      setTrackedSessionId(null);
+    },
+  });
+
   const providerSessions = sessions.data?.sessions ?? [];
   const activeSession = React.useMemo(
-    () => selectActiveProviderSession(providerSessions, providerKind),
-    [providerKind, providerSessions],
+    () => selectActiveProviderSession(providerSessions, providerKind, trackedSessionId),
+    [providerKind, providerSessions, trackedSessionId],
   );
   const canLaunchProvider =
     providers.data?.enabled === true && providerKind !== "native-workbench";
   const proxyUrl = activeSession?.status === "ready"
     ? buildWorkspaceIdeProviderProxyUrl(activeSession.id, "/")
     : null;
+  const busy = createSession.isPending || activeSession?.status === "starting";
+  const statusTone = getProviderStatusTone(activeSession, canLaunchProvider);
+  const operationError =
+    providers.error || sessions.error || createSession.error || stopSession.error;
 
   return (
     <section
@@ -67,13 +93,9 @@ export function WorkspaceIdeProviderPanel({
           <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300">
             {providerKind}
           </span>
-          <span className={cn(
-            "rounded-full px-3 py-1 text-xs font-medium",
-            activeSession?.status === "ready"
-              ? "bg-emerald-400/15 text-emerald-200"
-              : "bg-amber-400/15 text-amber-200",
-          )}>
-            {activeSession?.status ?? (canLaunchProvider ? "not started" : "native")}
+          <span className={cn("rounded-full px-3 py-1 text-xs font-medium", statusTone.className)}>
+            {busy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden="true" /> : null}
+            {statusTone.label}
           </span>
         </div>
       </header>
@@ -90,8 +112,15 @@ export function WorkspaceIdeProviderPanel({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 px-4 py-3">
-        <div className="text-sm text-slate-300">
-          {workspaceRoot ? `Workspace: ${workspaceRoot}` : "Workspace root will be resolved by the API."}
+        <div className="min-w-0 text-sm text-slate-300">
+          <div className="truncate">
+            {workspaceRoot ? `Workspace: ${workspaceRoot}` : "Workspace root will be resolved by the API."}
+          </div>
+          {activeSession ? (
+            <div className="mt-1 truncate text-xs text-slate-500">
+              Session {activeSession.id} · {activeSession.kind} · {activeSession.status}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -101,7 +130,16 @@ export function WorkspaceIdeProviderPanel({
             onClick={() => createSession.mutate({ kind: providerKind, payload: { workspaceRoot } })}
           >
             {createSession.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            启动 Provider
+            {activeSession?.status === "failed" ? "重新启动" : "启动 Provider"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={sessions.isFetching}
+            onClick={() => void sessions.refetch()}
+          >
+            <RefreshCw className={cn("mr-2 h-3.5 w-3.5", sessions.isFetching && "animate-spin")} aria-hidden="true" />
+            刷新
           </Button>
           <Button
             size="sm"
@@ -135,19 +173,25 @@ export function WorkspaceIdeProviderPanel({
           <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-4 px-6 text-center">
             <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-5 text-slate-300">
               <PlugZap className="mx-auto h-10 w-10 text-cyan-200" aria-hidden="true" />
-              <h3 className="mt-4 text-lg font-semibold text-slate-100">等待真实 IDE provider</h3>
+              <h3 className="mt-4 text-lg font-semibold text-slate-100">
+                {activeSession?.status === "starting"
+                  ? "正在启动真实 IDE provider"
+                  : activeSession?.status === "failed"
+                    ? "IDE provider 启动失败"
+                    : "等待真实 IDE provider"}
+              </h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
                 这里不是说明文档页。启动 OpenVSCode/code-server provider 后，Tracevane 会通过自己的 HTTP/WebSocket proxy 加载真实 IDE 能力层，并继续保留全局顶栏、AI 接管和审计边界。
               </p>
+              {activeSession?.failureReason ? (
+                <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-left text-xs text-red-100">
+                  {activeSession.failureReason}
+                </p>
+              ) : null}
             </div>
-            {providers.error || sessions.error || createSession.error || stopSession.error ? (
+            {operationError ? (
               <p className="max-w-xl rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                Provider 操作失败：{String(
-                  providers.error?.message ||
-                    sessions.error?.message ||
-                    createSession.error?.message ||
-                    stopSession.error?.message,
-                )}
+                Provider 操作失败：{String(operationError.message)}
               </p>
             ) : null}
           </div>
@@ -160,12 +204,29 @@ export function WorkspaceIdeProviderPanel({
 export function selectActiveProviderSession(
   sessions: WorkspaceIdeProviderSession[],
   kind: WorkspaceIdeProviderKind,
+  preferredSessionId?: string | null,
 ): WorkspaceIdeProviderSession | null {
   const matching = sessions.filter((session) => session.kind === kind);
   return (
+    matching.find((session) => session.id === preferredSessionId) ||
     matching.find((session) => session.status === "ready") ||
     matching.find((session) => session.status === "starting") ||
     matching[0] ||
     null
   );
+}
+
+function getProviderStatusTone(
+  session: WorkspaceIdeProviderSession | null,
+  canLaunchProvider: boolean,
+): { label: string; className: string } {
+  if (!session) {
+    return canLaunchProvider
+      ? { label: "not started", className: "bg-amber-400/15 text-amber-200" }
+      : { label: "native", className: "bg-slate-400/15 text-slate-300" };
+  }
+  if (session.status === "ready") return { label: "ready", className: "bg-emerald-400/15 text-emerald-200" };
+  if (session.status === "starting") return { label: "starting", className: "bg-cyan-400/15 text-cyan-200" };
+  if (session.status === "failed") return { label: "failed", className: "bg-red-400/15 text-red-200" };
+  return { label: session.status, className: "bg-slate-400/15 text-slate-300" };
 }
