@@ -79,7 +79,10 @@ test("Workspace terminal commands treat terminal as a first-class IDE panel", ()
   const sessionActions = readWeb("features/workspace/terminal/terminalSessionActions.tsx");
   assert.match(panelCommands, /终端：停靠到 IDE 主工作区/);
   assert.match(panelCommands, /一等 IDE 面板参与工作区布局/);
+  assert.match(panelCommands, /终端：复制上下文证据/);
+  assert.match(panelCommands, /可审查终端证据/);
   assert.match(sessionActions, /停靠到 IDE 主工作区/);
+  assert.doesNotMatch(panelCommands, /AI：复制当前终端上下文/);
   assert.doesNotMatch(panelCommands, /预留终端编辑器标签能力/);
   assert.doesNotMatch(sessionActions, /移动到编辑区域/);
 });

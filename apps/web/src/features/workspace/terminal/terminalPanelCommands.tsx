@@ -207,11 +207,11 @@ export function createTerminalPanelCommands({
     },
     {
       id: "terminal.panel.copyAiContext",
-      group: "AI",
-      label: "AI：复制当前终端上下文",
+      group: "终端",
+      label: "终端：复制上下文证据",
       description: activeSessionId
-        ? `复制 @terminal ${activeSession?.title || activeSessionId}`
-        : "当前没有可复制上下文的终端会话",
+        ? `复制 @terminal ${activeSession?.title || activeSessionId} 作为可审查终端证据`
+        : "当前没有可复制上下文证据的终端会话",
       icon: <MessageSquarePlus />,
       disabled: !activeSession,
       run: () => {
