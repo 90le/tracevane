@@ -14,8 +14,24 @@ import {
 import {
   WORKSPACE_COMMAND_GROUPS,
   type WorkspaceCommand,
+  type WorkspaceCommandSurface,
 } from "./workspaceCommands";
 import type { WorkspaceKeybindingConflict } from "./workspaceKeymap";
+
+const IDE_SURFACE_FILTERS: readonly {
+  surface: WorkspaceCommandSurface | "all";
+  label: string;
+}[] = [
+  { surface: "all", label: "全部" },
+  { surface: "files", label: "文件" },
+  { surface: "search", label: "搜索" },
+  { surface: "git", label: "Git" },
+  { surface: "terminal", label: "终端" },
+  { surface: "editor", label: "编辑" },
+  { surface: "layout", label: "布局" },
+  { surface: "evidence", label: "证据" },
+  { surface: "ai-handoff", label: "AI" },
+];
 
 export interface WorkspaceCommandPaletteProps {
   open: boolean;
@@ -30,6 +46,8 @@ export function WorkspaceCommandPalette({
   commands,
   keybindingConflicts = [],
 }: WorkspaceCommandPaletteProps) {
+  const [activeSurface, setActiveSurface] =
+    React.useState<WorkspaceCommandSurface | "all">("all");
   const enabledCommandCount = React.useMemo(
     () => commands.filter((command) => !command.disabled).length,
     [commands],
@@ -43,13 +61,29 @@ export function WorkspaceCommandPalette({
     () => commands.filter((command) => command.risk === "destructive").length,
     [commands],
   );
+  const surfaceCommandCounts = React.useMemo(() => {
+    const counts = new Map<WorkspaceCommandSurface | "all", number>();
+    counts.set("all", commands.length);
+    for (const command of commands) {
+      if (!command.surface) continue;
+      counts.set(command.surface, (counts.get(command.surface) ?? 0) + 1);
+    }
+    return counts;
+  }, [commands]);
+  const visibleCommands = React.useMemo(
+    () =>
+      activeSurface === "all"
+        ? commands
+        : commands.filter((command) => command.surface === activeSurface),
+    [activeSurface, commands],
+  );
   const commandGroups = React.useMemo(
     () =>
       WORKSPACE_COMMAND_GROUPS.map((group) => ({
         group,
-        commands: commands.filter((command) => command.group === group),
+        commands: visibleCommands.filter((command) => command.group === group),
       })).filter(({ commands: groupCommands }) => groupCommands.length > 0),
-    [commands],
+    [visibleCommands],
   );
 
   const runCommand = React.useCallback(
@@ -113,6 +147,36 @@ export function WorkspaceCommandPalette({
         >
           所有命令必须映射到真实 IDE 操作；不可用动作会被禁用，证据/自动化扩展动作不会直接写入文件或执行命令。
         </p>
+        <div
+          className="mt-3 flex gap-1.5 overflow-x-auto pb-1"
+          role="tablist"
+          aria-label="按 IDE 工作面过滤命令"
+          data-workspace-command-surface-filter-bar
+        >
+          {IDE_SURFACE_FILTERS.map(({ surface, label }) => {
+            const count = surfaceCommandCounts.get(surface) ?? 0;
+            return (
+              <button
+                key={surface}
+                type="button"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-2xs font-semibold text-muted outline-none transition-colors hover:bg-panel-3 hover:text-ink focus-visible:shadow-[var(--ring)] data-[active=true]:border-primary-line data-[active=true]:bg-primary-soft data-[active=true]:text-primary"
+                data-active={activeSurface === surface ? "true" : "false"}
+                data-workspace-command-surface-filter={surface}
+                role="tab"
+                aria-selected={activeSurface === surface}
+                onClick={() => setActiveSurface(surface)}
+              >
+                <span>{label}</span>
+                <span
+                  className="rounded-full bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-subtle"
+                  data-workspace-command-surface-filter-count={surface}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         {keybindingConflicts.length ? (
           <div
             className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"
@@ -133,6 +197,8 @@ export function WorkspaceCommandPalette({
         className="max-md:max-h-[calc(min(76dvh,42rem)-4.25rem)] max-md:px-2 max-md:pb-3"
         data-workspace-command-palette
         data-workspace-command-palette-groups={commandGroups.length}
+        data-workspace-command-palette-active-surface={activeSurface}
+        data-workspace-command-palette-visible-commands={visibleCommands.length}
         data-workspace-command-palette-surface="ide-command-center"
         data-workspace-command-palette-mobile-sheet
       >

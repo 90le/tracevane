@@ -784,3 +784,17 @@ test("Workspace IDE shell has a visible coding-workbench visual contract", () =>
   assert.match(css, /data-workspace-mobile-nav\]/);
   assert.match(css, /data-workspace-mobile-panel-dock\]/);
 });
+
+test("Workspace command palette filters commands by IDE work surface", () => {
+  const palette = readWeb("features/workspace/workbench/WorkspaceCommandPalette.tsx");
+  assert.match(palette, /IDE_SURFACE_FILTERS/);
+  assert.match(palette, /activeSurface/);
+  assert.match(palette, /surfaceCommandCounts/);
+  assert.match(palette, /visibleCommands/);
+  assert.match(palette, /data-workspace-command-surface-filter-bar/);
+  assert.match(palette, /data-workspace-command-surface-filter=\{surface\}/);
+  assert.match(palette, /data-workspace-command-palette-active-surface=\{activeSurface\}/);
+  assert.match(palette, /data-workspace-command-palette-visible-commands=\{visibleCommands\.length\}/);
+  assert.match(palette, /命令/);
+  assert.match(palette, /终端/);
+});
