@@ -934,11 +934,81 @@ export function WorkspaceIdeShell() {
         shortcut: placement === "left" ? "⌘⌥⇧←" : placement === "right" ? "⌘⌥⇧→" : placement === "top" ? "⌘⌥⇧↑" : "⌘⌥⇧↓",
         risk: "safe" as const,
         surface: "layout" as const,
-        icon: placement === "left" ? <PanelLeft /> : placement === "right" ? <PanelRight /> : <PanelBottom />,
+        icon: dockPlacementIcon(placement),
         disabled: !activeDockFocus,
         run: () => moveActiveDockPaneToPlacement(placement),
       })),
     [activeDockFocus, activeBottomPane, activeLeftPane, activeRightPane, activeTopPane],
+  );
+
+  const activeDockExactGroupMoveCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      DOCK_PLACEMENTS.flatMap((placement) =>
+        (["primary", "secondary"] as const).map((role) => ({
+          id: `ide.dock.active.move-pane.${placement}.${role}`,
+          group: "窗格" as const,
+          label: `移动当前 Pane 到${placementLabel(placement)} Dock ${role === "primary" ? "主" : "副"}组`,
+          description: activeDockFocus
+            ? `把当前聚焦 Pane 精确移动到${placementLabel(placement)} Dock 的${role === "primary" ? "主" : "副"}窗格组；移动到副组时会自动建立拆分布局`
+            : "先聚焦一个 Dock Pane，再选择目标 Dock 与主/副组",
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: dockPlacementIcon(placement),
+          disabled: !activeDockFocus,
+          run: () => moveActiveDockPaneToPlacementGroup(placement, role),
+        })),
+      ),
+    [activeDockFocus, activeBottomPane, activeLeftPane, activeRightPane, activeTopPane],
+  );
+
+  const dockPlacementLayoutCommands = React.useMemo<WorkspaceCommand[]>(
+    () =>
+      DOCK_PLACEMENTS.flatMap((placement) => [
+        {
+          id: `ide.dock.open.${placement}`,
+          group: "布局" as const,
+          label: `打开${placementLabel(placement)} Dock`,
+          description: `恢复并聚焦${placementLabel(placement)} Dock，不改变窗格组合、拆分方向或当前 Pane`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: dockPlacementIcon(placement),
+          run: () => focusIdeRegion(placement),
+        },
+        {
+          id: `ide.dock.close.${placement}`,
+          group: "布局" as const,
+          label: `收起${placementLabel(placement)} Dock`,
+          description: `只收起${placementLabel(placement)} Dock，保留 Pane 停靠、顺序、主副组和拆分比例`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: dockPlacementIcon(placement),
+          run: () => closeDockPlacement(placement),
+        },
+        {
+          id: `ide.dock.maximize.${placement}`,
+          group: "布局" as const,
+          label: `最大化${placementLabel(placement)} Dock`,
+          description: `聚焦${placementLabel(placement)} Dock 为当前主工作区，便于全屏查看终端、Git、搜索或 AI Pane`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <Maximize2 />,
+          run: () => {
+            openDockPlacement(placement);
+            toggleMaximizedPane(placement);
+          },
+        },
+        {
+          id: `ide.dock.reset-size.${placement}`,
+          group: "布局" as const,
+          label: `重置${placementLabel(placement)} Dock 尺寸`,
+          description: `把${placementLabel(placement)} Dock 尺寸恢复到默认设计尺寸，其他 Dock 不受影响`,
+          risk: "safe" as const,
+          surface: "layout" as const,
+          icon: <RotateCcw />,
+          run: () => resetDockSize(placement),
+        },
+      ]),
+    [],
   );
 
   const focusRegionCommands = React.useMemo<WorkspaceCommand[]>(
@@ -1343,8 +1413,8 @@ export function WorkspaceIdeShell() {
   );
 
   const commands = React.useMemo(
-    () => [...layoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...dockPlacementLayoutCommands, ...layoutSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockExactGroupMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockExactGroupMoveCommands, activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockPlacementLayoutCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -1372,6 +1442,11 @@ export function WorkspaceIdeShell() {
     setMaximizedPane(null);
     closeEditorSplit();
     resetPanePlacements();
+  }
+
+  function resetDockSize(placement: PanePlacement) {
+    setPaneSizes((current) => ({ ...current, [placement]: DEFAULT_PANE_SIZES[placement] }));
+    setLayoutPreset("balanced");
   }
 
   function resetPanePlacements() {
@@ -2067,6 +2142,15 @@ export function WorkspaceIdeShell() {
     if (!activeDockFocus) return;
     const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
     movePaneToPlacement(paneId, placement);
+  }
+
+  function moveActiveDockPaneToPlacementGroup(placement: PanePlacement, role: DockPaneRole) {
+    if (!activeDockFocus) return;
+    const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+    if (role === "secondary" && dockSplitModes[placement] === "single") {
+      setDockSplitMode(placement, placement === "top" || placement === "bottom" ? "horizontal" : "vertical");
+    }
+    movePaneToPlacement(paneId, placement, undefined, role);
   }
 
   function movePaneToPlacement(paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role: DockPaneRole = "primary") {
@@ -3998,6 +4082,12 @@ function placementShortLabel(placement: PanePlacement): string {
   if (placement === "left") return "L";
   if (placement === "right") return "R";
   return "B";
+}
+
+function dockPlacementIcon(placement: PanePlacement) {
+  if (placement === "left") return <PanelLeft />;
+  if (placement === "right") return <PanelRight />;
+  return <PanelBottom />;
 }
 
 function upsertEditorTab(tabs: EditorTab[], tab: EditorTab): EditorTab[] {
