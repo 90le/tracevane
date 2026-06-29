@@ -25,9 +25,17 @@ test("Season One preview composes the first-class workspace product model", () =
   assert.match(preview, /data-season-one-real-ide-stage/);
   assert.match(preview, /data-season-one-editor-grid/);
   assert.match(preview, /data-season-one-live-editor/);
+  assert.match(preview, /data-season-one-editor-toolbar/);
+  assert.match(preview, /data-season-one-edit-buffer/);
+  assert.match(preview, /data-season-one-dirty-state/);
   assert.match(preview, /data-season-one-draft-diff-gate/);
+  assert.match(preview, /data-season-one-open-draft/);
+  assert.match(preview, /data-season-one-open-diff/);
+  assert.match(preview, /data-season-one-apply-guard/);
+  assert.match(preview, /data-season-one-apply-disabled/);
+  assert.match(preview, /createSeasonOneDraftDiffPreview/);
   assert.match(preview, /IDE Stage/);
-  assert.match(preview, /Live file preview/);
+  assert.match(preview, /Live file editor/);
   assert.doesNotMatch(preview, /data-season-one-viewport-manifest/);
   assert.match(preview, /data-season-one-resource-map/);
   assert.match(preview, /data-season-one-primary-workstage/);

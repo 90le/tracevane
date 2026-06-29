@@ -75,9 +75,15 @@ async function run() {
         await page.waitForFunction(
           () => {
             const text = document.body.innerText.toLowerCase();
+            const buffer = document.querySelector("[data-season-one-edit-buffer]");
+            const bufferValue =
+              buffer instanceof HTMLTextAreaElement
+                ? buffer.value.toLowerCase()
+                : "";
             return (
               text.includes("live file preview:") ||
-              text.includes("live document loaded from")
+              text.includes("live document loaded from") ||
+              bufferValue.includes("live file preview:")
             );
           },
           { timeout: 10_000 },
@@ -100,6 +106,11 @@ async function run() {
           const body = document.body;
           const text = body.innerText;
           const normalizedText = text.toLowerCase();
+          const buffer = document.querySelector("[data-season-one-edit-buffer]");
+          const bufferValue =
+            buffer instanceof HTMLTextAreaElement
+              ? buffer.value.toLowerCase()
+              : "";
           return {
             title: document.title,
             scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth),
@@ -122,11 +133,17 @@ async function run() {
             hasRunPanel: text.includes("Run panel"),
             hasLiveAdapterStatus: text.includes("Season One Live Adapter"),
             hasLiveFocusedPath: text.includes("DESIGN.md"),
-            hasLiveEvidenceCount: text.includes("3 evidence items"),
+            hasLiveEvidenceCount:
+              /3\s+evidence\s+items/.test(text) ||
+              /3\s+evidence\s+items/.test(
+                document.querySelector("[data-season-one-evidence-count]")
+                  ?.textContent ?? "",
+              ),
             hasLiveTerminalRun: text.includes("Season One browser smoke"),
             hasLiveFilePreview:
               normalizedText.includes("live file preview:") ||
-              normalizedText.includes("live document loaded from"),
+              normalizedText.includes("live document loaded from") ||
+              bufferValue.includes("live file preview:"),
             hasRebuildStudio: normalizedText.includes("rebuild studio"),
             hasLegacyReplacement: normalizedText.includes(
               "legacy shell replacement",
@@ -143,6 +160,15 @@ async function run() {
             ),
             hasLiveEditor: Boolean(
               document.querySelector("[data-season-one-live-editor]"),
+            ),
+            hasEditBuffer: Boolean(
+              document.querySelector("[data-season-one-edit-buffer]"),
+            ),
+            hasApplyGuard: Boolean(
+              document.querySelector("[data-season-one-apply-guard]"),
+            ),
+            applyLocked: Boolean(
+              document.querySelector("[data-season-one-apply-disabled]:disabled"),
             ),
             hasRedesignManifest: Boolean(
               document.querySelector("[data-season-one-redesign-manifest]"),
@@ -206,6 +232,9 @@ async function run() {
           [metrics.hasRealIdeStage, "real IDE stage region should render"],
           [metrics.hasEditorGrid, "editor grid region should render"],
           [metrics.hasLiveEditor, "live editor region should render"],
+          [metrics.hasEditBuffer, "edit buffer should render"],
+          [metrics.hasApplyGuard, "apply guard should render"],
+          [metrics.applyLocked, "apply guard should be locked"],
           [
             metrics.hasRedesignManifest,
             "redesign manifest region should render",

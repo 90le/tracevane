@@ -217,6 +217,31 @@ function SeasonOnePrimaryStage({
 }: {
   model: WorkspaceSeasonOneProductModel;
 }) {
+  const [editorMode, setEditorMode] = React.useState<
+    "source" | "draft" | "diff"
+  >("source");
+  const [draftText, setDraftText] = React.useState(model.canvas.codeSample);
+
+  React.useEffect(() => {
+    setDraftText(model.canvas.codeSample);
+    setEditorMode("source");
+  }, [model.canvas.codeSample]);
+
+  const isDraftDirty = draftText !== model.canvas.codeSample;
+  const editorValue =
+    editorMode === "diff"
+      ? createSeasonOneDraftDiffPreview(model.canvas.codeSample, draftText)
+      : editorMode === "draft"
+        ? draftText
+        : model.canvas.codeSample;
+  const editorReadOnly = editorMode !== "draft";
+  const dirtyStateLabel = isDraftDirty
+    ? "Draft has unsaved changes"
+    : "Draft matches live file";
+  const evidenceCountLabel =
+    model.mission.resourceSummary.match(/\d+ evidence items?/)?.[0] ??
+    "evidence required";
+
   return (
     <article
       className="grid h-full min-h-0 gap-3 p-3 sm:p-4"
@@ -224,8 +249,8 @@ function SeasonOnePrimaryStage({
       data-season-one-real-ide-stage
       data-season-one-work-canvas
     >
-      <section className="grid min-h-0 overflow-hidden rounded-[1.5rem] border border-cyan-200/16 bg-slate-950/82 shadow-[0_24px_80px_rgba(0,0,0,0.24)] lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+      <section className="grid min-h-0 min-w-0 overflow-hidden rounded-[1.5rem] border border-cyan-200/16 bg-slate-950/82 shadow-[0_24px_80px_rgba(0,0,0,0.24)] 2xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
           <header className="flex min-h-11 items-center gap-2 border-b border-white/10 bg-black/28 px-3 text-xs">
             <Badge variant="info">IDE Stage</Badge>
             <span className="truncate font-semibold text-slate-100">
@@ -237,18 +262,22 @@ function SeasonOnePrimaryStage({
             >
               {model.canvas.badge}
             </Badge>
-            <div className="ml-auto hidden items-center gap-2 text-slate-500 sm:flex">
+            <div
+              className="ml-auto hidden items-center gap-2 text-slate-500 sm:flex"
+              data-season-one-editor-capabilities
+            >
               <span>真实文件</span>
+              <span>可编辑草稿</span>
               <span>AI 审查</span>
               <span>证据门禁</span>
             </div>
           </header>
 
           <div
-            className="grid min-h-0 lg:grid-cols-[minmax(280px,0.42fr)_minmax(0,0.58fr)]"
+            className="grid min-h-0 min-w-0 2xl:grid-cols-[minmax(240px,0.42fr)_minmax(0,0.58fr)]"
             data-season-one-editor-grid
           >
-            <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-b border-white/10 bg-slate-900/72 lg:border-b-0 lg:border-r">
+            <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-b border-white/10 bg-slate-900/72 2xl:border-b-0 2xl:border-r">
               <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-400">
                 <PenLine
                   className="size-3.5 text-cyan-300"
@@ -277,24 +306,80 @@ function SeasonOnePrimaryStage({
             </section>
 
             <section
-              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#050816]"
+              className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#050816]"
               data-season-one-live-editor
             >
-              <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-400">
+              <div
+                className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-slate-400"
+                data-season-one-editor-toolbar
+              >
                 <FileCode2
                   className="size-3.5 text-cyan-300"
                   aria-hidden="true"
                 />
                 <span className="font-semibold text-slate-200">
-                  Live file preview
+                  Live file editor
                 </span>
-                <span className="ml-auto rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
-                  read → draft → diff
-                </span>
+                <div className="ml-auto flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+                  {([
+                    ["source", "Source"],
+                    ["draft", "Draft"],
+                    ["diff", "Diff"],
+                  ] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={[
+                        "rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition",
+                        editorMode === mode
+                          ? "bg-cyan-300 text-slate-950"
+                          : "text-slate-400 hover:bg-white/10 hover:text-cyan-100",
+                      ].join(" ")}
+                      aria-pressed={editorMode === mode}
+                      data-season-one-editor-mode={mode}
+                      onClick={() => setEditorMode(mode)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <pre className="min-h-0 overflow-auto p-4 font-mono text-xs leading-6 text-cyan-100">
-                {model.canvas.codeSample}
-              </pre>
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+                <div className="flex items-center gap-2 border-b border-white/10 bg-black/18 px-3 py-2 text-[11px] text-slate-500">
+                  <span
+                    className={[
+                      "size-2 rounded-full",
+                      isDraftDirty ? "bg-amber-300" : "bg-emerald-300",
+                    ].join(" ")}
+                    aria-hidden="true"
+                  />
+                  <span data-season-one-dirty-state>{dirtyStateLabel}</span>
+                  <span
+                    className="ml-auto rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200"
+                    data-season-one-evidence-count
+                  >
+                    {evidenceCountLabel}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {editorMode === "draft"
+                      ? "Edit buffer is local until evidence approval."
+                      : editorMode === "diff"
+                        ? "Review exact intent before apply."
+                        : "Source is the live file snapshot."}
+                  </span>
+                </div>
+                <textarea
+                  className="min-h-0 resize-none overflow-auto border-0 bg-[#050816] p-4 font-mono text-xs leading-6 text-cyan-100 outline-none placeholder:text-slate-600 read-only:cursor-default read-only:text-cyan-100/82"
+                  aria-label={`${model.canvas.fileName} Season One edit buffer`}
+                  data-season-one-edit-buffer
+                  data-season-one-edit-mode={editorMode}
+                  data-season-one-edit-dirty={isDraftDirty ? "true" : "false"}
+                  readOnly={editorReadOnly}
+                  spellCheck={false}
+                  value={editorValue}
+                  onChange={(event) => setDraftText(event.target.value)}
+                />
+              </div>
               <div
                 className="grid gap-2 border-t border-white/10 p-3 text-xs md:grid-cols-3"
                 data-season-one-draft-diff-gate
@@ -304,20 +389,41 @@ function SeasonOnePrimaryStage({
                     Draft
                   </div>
                   <p className="mt-2 leading-5 text-cyan-50/80">
-                    AI changes must land as a controlled draft before touching
-                    the file.
+                    AI or human edits land in the local draft buffer before
+                    touching the file.
                   </p>
+                  <Button
+                    className="mt-3 w-full border-cyan-300/20 bg-cyan-300/10 text-cyan-50 hover:bg-cyan-300/15"
+                    size="sm"
+                    variant="outline"
+                    data-season-one-open-draft
+                    onClick={() => setEditorMode("draft")}
+                  >
+                    Open draft buffer
+                  </Button>
                 </section>
                 <section className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-3 text-amber-50">
                   <div className="font-black uppercase tracking-[0.18em] text-amber-200">
                     Diff
                   </div>
                   <p className="mt-2 leading-5 text-amber-50/80">
-                    Every proposal needs exact hunks, command evidence and
+                    Every proposal needs exact intent, command evidence and
                     rollback notes.
                   </p>
+                  <Button
+                    className="mt-3 w-full border-amber-300/20 bg-amber-300/10 text-amber-50 hover:bg-amber-300/15"
+                    size="sm"
+                    variant="outline"
+                    data-season-one-open-diff
+                    onClick={() => setEditorMode("diff")}
+                  >
+                    Review diff
+                  </Button>
                 </section>
-                <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-emerald-50">
+                <section
+                  className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-emerald-50"
+                  data-season-one-apply-guard
+                >
                   <div className="font-black uppercase tracking-[0.18em] text-emerald-200">
                     Apply gate
                   </div>
@@ -325,6 +431,15 @@ function SeasonOnePrimaryStage({
                     Apply stays locked until evidence and human approval are
                     attached.
                   </p>
+                  <Button
+                    className="mt-3 w-full border-emerald-300/20 bg-emerald-300/10 text-emerald-50"
+                    size="sm"
+                    variant="outline"
+                    disabled
+                    data-season-one-apply-disabled
+                  >
+                    Apply locked
+                  </Button>
                 </section>
               </div>
             </section>
@@ -332,7 +447,7 @@ function SeasonOnePrimaryStage({
         </div>
 
         <aside
-          className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border-t border-white/10 bg-black/42 lg:border-l lg:border-t-0"
+          className="hidden min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border-t border-white/10 bg-black/42 2xl:grid 2xl:border-l 2xl:border-t-0"
           data-season-one-ai-copilot
         >
           <header className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
@@ -492,4 +607,33 @@ function SeasonOneMobileSwitcher({
       })}
     </nav>
   );
+}
+
+function createSeasonOneDraftDiffPreview(source: string, draft: string) {
+  if (source === draft) {
+    return [
+      "// Draft diff preview",
+      "// No draft changes yet. Open Draft, edit the buffer, then review exact intent here before apply.",
+    ].join("\n");
+  }
+
+  const sourceLines = source.split(/\r\n|\r|\n/);
+  const draftLines = draft.split(/\r\n|\r|\n/);
+  const maxLines = Math.max(sourceLines.length, draftLines.length);
+  const changed: string[] = ["// Draft diff preview", "// - live snapshot", "// + draft buffer"];
+
+  for (let index = 0; index < maxLines && changed.length < 42; index += 1) {
+    const before = sourceLines[index] ?? "";
+    const after = draftLines[index] ?? "";
+    if (before === after) continue;
+    changed.push(`@@ line ${index + 1} @@`);
+    if (before) changed.push(`- ${before}`);
+    if (after) changed.push(`+ ${after}`);
+  }
+
+  if (changed.length === 3) {
+    changed.push("// Whitespace-only draft delta detected.");
+  }
+
+  return changed.join("\n");
 }

@@ -30,16 +30,30 @@ async function run() {
     await page.waitForFunction(
       () => {
         const text = document.body.innerText.toLowerCase();
+        const buffer = document.querySelector("[data-season-one-edit-buffer]");
+        const bufferValue =
+          buffer instanceof HTMLTextAreaElement ? buffer.value.toLowerCase() : "";
         return (
           text.includes("live file preview:") ||
-          text.includes("live document loaded from")
+          text.includes("live document loaded from") ||
+          bufferValue.includes("live file preview:")
         );
       },
       { timeout: 10_000 },
     );
 
+    await page.click("[data-season-one-open-draft]");
+    await page.fill(
+      "[data-season-one-edit-buffer]",
+      "// smoke draft edit\nconst seasonOne = 'real editable IDE';",
+    );
+    await page.click("[data-season-one-open-diff]");
+
     const metrics = await page.evaluate(() => {
       const text = document.body.innerText.toLowerCase();
+      const buffer = document.querySelector("[data-season-one-edit-buffer]");
+      const bufferValue =
+        buffer instanceof HTMLTextAreaElement ? buffer.value.toLowerCase() : "";
       return {
         title: document.title,
         hasFrame: Boolean(
@@ -53,7 +67,8 @@ async function run() {
         hasCommandDeck: text.includes("command deck"),
         hasLiveFilePreview:
           text.includes("live file preview:") ||
-          text.includes("live document loaded from"),
+          text.includes("live document loaded from") ||
+          bufferValue.includes("live file preview:"),
         hasRealIdeStage: Boolean(
           document.querySelector("[data-season-one-real-ide-stage]"),
         ),
@@ -62,6 +77,19 @@ async function run() {
         ),
         hasLiveEditor: Boolean(
           document.querySelector("[data-season-one-live-editor]"),
+        ),
+        hasEditBuffer: Boolean(
+          document.querySelector("[data-season-one-edit-buffer]"),
+        ),
+        editMode: document
+          .querySelector("[data-season-one-edit-buffer]")
+          ?.getAttribute("data-season-one-edit-mode"),
+        editDirty: document
+          .querySelector("[data-season-one-edit-buffer]")
+          ?.getAttribute("data-season-one-edit-dirty"),
+        diffShowsDraft: bufferValue.includes("real editable ide"),
+        applyLocked: Boolean(
+          document.querySelector("[data-season-one-apply-disabled]:disabled"),
         ),
         hasOldWorkbenchOnlyTitle: text.includes("工作区 · tracevane"),
       };
@@ -95,6 +123,11 @@ async function run() {
       ],
       [metrics.hasEditorGrid, "editor grid should render on /workspace"],
       [metrics.hasLiveEditor, "live editor should render on /workspace"],
+      [metrics.hasEditBuffer, "editable buffer should render on /workspace"],
+      [metrics.editMode === "diff", "diff mode should be reachable"],
+      [metrics.editDirty === "true", "draft dirty state should be tracked"],
+      [metrics.diffShowsDraft, "diff preview should include draft edit"],
+      [metrics.applyLocked, "apply should stay locked without evidence approval"],
       [
         !metrics.hasOldWorkbenchOnlyTitle,
         "old Workbench title should not be the default entry",

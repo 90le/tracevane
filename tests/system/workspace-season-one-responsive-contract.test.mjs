@@ -46,6 +46,8 @@ test("Season One responsive contract covers desktop tablet and phone explicitly"
   assert.match(preview, /data-season-one-real-ide-stage/);
   assert.match(preview, /data-season-one-editor-grid/);
   assert.match(preview, /data-season-one-live-editor/);
+  assert.match(preview, /data-season-one-edit-buffer/);
+  assert.match(preview, /data-season-one-apply-disabled/);
   assert.doesNotMatch(preview, /Desktop command deck/);
   assert.match(model, /id: "files", label: "Files", icon: "files"/);
   assert.match(model, /id: "stage", label: "Stage", icon: "code"/);
