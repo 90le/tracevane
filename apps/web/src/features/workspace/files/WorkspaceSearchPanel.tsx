@@ -455,9 +455,29 @@ export function WorkspaceSearchPanel({
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-panel">
       <header className="grid gap-2 border-b border-line px-3 py-2">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.08em] text-subtle">
-          <Search className="size-3.5" />
-          搜索
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.08em] text-subtle">
+              <Search className="size-3.5" />
+              项目搜索
+            </div>
+            <p className="mt-1 text-xs text-muted" data-workspace-search-panel-summary>
+              文件名、内容、上下文证据和跨文件替换计划都在同一个 IDE 搜索面板内完成。
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-1.5 text-2xs" data-workspace-search-panel-metrics>
+            <span className="rounded-full border border-line bg-panel-2 px-2 py-0.5 text-muted">
+              结果 {results.length}/{searchLimit}
+            </span>
+            <span className="rounded-full border border-line bg-panel-2 px-2 py-0.5 text-muted">
+              可替换 {replaceTargets.length}
+            </span>
+            {replacePlan?.length ? (
+              <span className="rounded-full border border-primary/30 bg-primary-soft px-2 py-0.5 text-primary">
+                计划 {selectedReplacePlanItems.length}/{replacePlan.length}
+              </span>
+            ) : null}
+          </div>
         </div>
         <Input
           ref={searchInputRef}
@@ -522,10 +542,15 @@ export function WorkspaceSearchPanel({
           </Button>
         </div>
         <div className="grid gap-2 rounded border border-line bg-panel-2 p-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-medium text-ink-strong">跨文件替换</span>
-            <span className="text-subtle">
-              当前结果内批量替换；支持大小写、正则、审查确认和撤销。
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-ink-strong">审查替换计划</span>
+              <span className="text-subtle">
+                当前结果内批量替换；支持大小写、正则、审查确认和撤销。
+              </span>
+            </div>
+            <span className="rounded-full border border-line bg-panel px-2 py-0.5 text-2xs text-muted">
+              显式审查后写入
             </span>
           </div>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">

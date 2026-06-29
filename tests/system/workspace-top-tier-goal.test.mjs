@@ -146,8 +146,14 @@ test("Workspace search commands frame replace as reviewable IDE plans", () => {
   assert.match(searchCommands, /search\.panel\.prepareReplacePreview/);
   assert.match(searchCommands, /search\.panel\.applyReplacePreview/);
   assert.match(searchCommands, /搜索：应用本次替换计划/);
+  assert.match(searchPanel, /项目搜索/);
+  assert.match(searchPanel, /data-workspace-search-panel-summary/);
+  assert.match(searchPanel, /data-workspace-search-panel-metrics/);
+  assert.match(searchPanel, /结果 \{results\.length\}\/\{searchLimit\}/);
+  assert.match(searchPanel, /可替换 \{replaceTargets\.length\}/);
   assert.match(searchPanel, /审查跨文件替换计划/);
   assert.match(searchPanel, /审查替换计划/);
+  assert.match(searchPanel, /显式审查后写入/);
   assert.match(searchPanel, /ReplacePlanDialog/);
   assert.match(searchPanel, /replaceInputRef/);
   assert.match(searchPanel, /focusReplaceInput/);
