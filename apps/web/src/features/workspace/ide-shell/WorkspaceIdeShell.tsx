@@ -307,6 +307,11 @@ export function WorkspaceIdeShell() {
         return;
       }
       if (mod && event.altKey) {
+        if (event.shiftKey && event.key === "Tab") {
+          event.preventDefault();
+          moveActiveDockPaneToOppositeGroup();
+          return;
+        }
         if (event.key === "Tab") {
           event.preventDefault();
           focusOppositeDockGroup();
@@ -869,6 +874,18 @@ export function WorkspaceIdeShell() {
         run: focusOppositeDockGroup,
       },
       {
+        id: "ide.dock.active.move-pane-other-group",
+        group: "窗格",
+        label: "移动当前 Pane 到另一窗格组",
+        description: activeDockFocus ? `把当前聚焦的 Pane 移到${placementLabel(activeDockFocus.placement)} Dock 的另一主/副拆分组` : "先聚焦一个已拆分的 Dock Pane，再移动到另一窗格组",
+        shortcut: "⌘⌥⇧Tab",
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Columns3 />,
+        disabled: !canMoveActiveDockPaneToOppositeGroup(),
+        run: moveActiveDockPaneToOppositeGroup,
+      },
+      {
         id: "ide.dock.active.next-pane",
         group: "窗格",
         label: "当前窗格组切到下一个 Pane",
@@ -1359,6 +1376,17 @@ export function WorkspaceIdeShell() {
     const nextPane = activeDockPaneForPlacement(activeDockFocus.placement, nextRole);
     if (!nextPane) return;
     focusDockPane(activeDockFocus.placement, nextRole, nextPane);
+  }
+
+  function canMoveActiveDockPaneToOppositeGroup() {
+    return Boolean(activeDockFocus && dockSplitModes[activeDockFocus.placement] !== "single");
+  }
+
+  function moveActiveDockPaneToOppositeGroup() {
+    if (!activeDockFocus || dockSplitModes[activeDockFocus.placement] === "single") return;
+    const paneId = activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId;
+    const nextRole: DockPaneRole = activeDockFocus.role === "primary" ? "secondary" : "primary";
+    movePaneToPlacement(paneId, activeDockFocus.placement, undefined, nextRole);
   }
 
   function selectAdjacentDockPane(direction: "next" | "previous") {
