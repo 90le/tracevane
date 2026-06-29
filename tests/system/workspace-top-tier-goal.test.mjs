@@ -156,6 +156,16 @@ test("legacy Workspace design doc is downgraded behind the IDE-first UI contract
   assert.doesNotMatch(designDoc, /Preview[\s\S]{0,80}File Info/);
 });
 
+test("Workspace workbench immersive CSS preserves the global app shell contract", () => {
+  const css = readWeb("features/workspace/workbench/workspace-workbench.css");
+  assert.match(css, /Workspace immersive mode may hide only Workspace-internal chrome/);
+  assert.match(css, /global\s+AppShell top bar belongs outside this element and must stay mounted/);
+  assert.match(css, /never the application-level navigation bar/);
+  assert.match(css, /workspace-shell-immersive > header/);
+  assert.match(css, /workspace-mobile-browser-fullscreen > header/);
+  assert.doesNotMatch(css, /global AppShell top bar[\s\S]{0,160}display: none !important/);
+});
+
 test("Workspace IDE rebuild backlog sequences the full redesign around IDE core", () => {
   const backlog = readRoot("docs/WorkspaceIDE重建设计执行Backlog.md");
   assert.match(backlog, /Active Execution Backlog/);

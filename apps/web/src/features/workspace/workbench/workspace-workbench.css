@@ -53,6 +53,9 @@
   min-height: 0;
 }
 
+/* Workspace immersive mode may hide only Workspace-internal chrome. The global
+   AppShell top bar belongs outside this element and must stay mounted so the
+   IDE never turns into a frameless explanation page. */
 .workspace-shell-immersive {
   grid-template-rows: minmax(0, 1fr) !important;
 }
@@ -63,6 +66,9 @@
   display: none !important;
 }
 
+/* Mobile browser-fullscreen follows the same rule: hide only internal
+   Workspace project/status chrome, never the application-level navigation bar
+   when the user is not explicitly in browser fullscreen. */
 .workspace-mobile-browser-fullscreen {
   grid-template-rows: minmax(0, 1fr) auto !important;
 }
