@@ -1359,3 +1359,27 @@ test("new Workspace IDE shell supports cross-dock pane keyboard navigation", () 
   assert.match(shellSource, /!event\.shiftKey && event\.key === "PageDown"/);
   assert.match(shellSource, /!event\.shiftKey && event\.key === "PageUp"/);
 });
+
+test("new Workspace IDE shell supports editor group layout snapshots", () => {
+  assert.match(shellSource, /interface IdeEditorGroupSnapshot/);
+  assert.match(shellSource, /const IDE_EDITOR_GROUP_SNAPSHOTS_STORAGE_KEY = "tracevane\.workspace\.ide-shell\.editor-group-snapshots\.v1"/);
+  assert.match(shellSource, /const MAX_EDITOR_GROUP_SNAPSHOTS = 12/);
+  assert.match(shellSource, /const \[editorGroupSnapshots, setEditorGroupSnapshots\] = React\.useState<IdeEditorGroupSnapshot\[\]>\(\(\) => loadIdeEditorGroupSnapshots\(\)\)/);
+  assert.match(shellSource, /function currentEditorGroupSnapshotState\(name: string/);
+  assert.match(shellSource, /function saveEditorGroupSnapshot\(\)/);
+  assert.match(shellSource, /function restoreEditorGroupSnapshot\(snapshot: IdeEditorGroupSnapshot\)/);
+  assert.match(shellSource, /function updateEditorGroupSnapshot\(snapshotId: string\)/);
+  assert.match(shellSource, /function deleteEditorGroupSnapshot\(snapshotId: string\)/);
+  assert.match(shellSource, /function loadIdeEditorGroupSnapshots\(\): IdeEditorGroupSnapshot\[\]/);
+  assert.match(shellSource, /function storeIdeEditorGroupSnapshots\(snapshots: IdeEditorGroupSnapshot\[\]\)/);
+  assert.match(shellSource, /function sanitizeIdeEditorGroupSnapshot\(value: unknown\): IdeEditorGroupSnapshot \| null/);
+  assert.match(shellSource, /ide\.editor-groups\.snapshot\.save/);
+  assert.match(shellSource, /ide\.editor-groups\.snapshot\.restore\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /ide\.editor-groups\.snapshot\.update\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /ide\.editor-groups\.snapshot\.delete\.\$\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-editor-group-snapshot-save/);
+  assert.match(shellSource, /data-ide-editor-group-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-editor-group-snapshot-update=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-editor-group-snapshot-delete=\{snapshot\.id\}/);
+  assert.match(shellSource, /编辑器组: \{editorGroupSnapshots\.length\}/);
+});

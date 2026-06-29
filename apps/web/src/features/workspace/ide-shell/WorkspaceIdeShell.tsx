@@ -127,8 +127,10 @@ const DEFAULT_PANE_ORDER = PANE_REGISTRY.reduce(
 const IDE_LAYOUT_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.v1";
 const IDE_LAYOUT_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.layout.snapshots.v1";
 const IDE_DOCK_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.dock-snapshots.v1";
+const IDE_EDITOR_GROUP_SNAPSHOTS_STORAGE_KEY = "tracevane.workspace.ide-shell.editor-group-snapshots.v1";
 const MAX_LAYOUT_SNAPSHOTS = 8;
 const MAX_DOCK_SNAPSHOTS = 16;
+const MAX_EDITOR_GROUP_SNAPSHOTS = 12;
 const MAX_LAYOUT_HISTORY = 32;
 
 const DEFAULT_PANE_SIZES: IdePaneSizes = { top: 170, left: 320, right: 340, bottom: 260 };
@@ -326,6 +328,20 @@ interface IdeDockSnapshot {
   size: number;
 }
 
+interface IdeEditorGroupSnapshot {
+  id: string;
+  name: string;
+  createdAt: string;
+  activeEditorGroup: EditorGroupId;
+  activePath?: string;
+  activePathRootId?: string;
+  secondaryPath?: string;
+  secondaryPathRootId?: string;
+  editorGroupTabs: EditorGroupTabs;
+  editorSplitMode: EditorSplitMode;
+  editorSplitRatio: number;
+}
+
 const LazyWorkspaceTerminal = React.lazy(() =>
   import("../terminal/WorkspaceTerminal").then((module) => ({
     default: module.WorkspaceTerminal,
@@ -350,6 +366,7 @@ export function WorkspaceIdeShell() {
   const [layoutState] = React.useState(() => loadIdeLayoutState());
   const [layoutSnapshots, setLayoutSnapshots] = React.useState<IdeLayoutSnapshot[]>(() => loadIdeLayoutSnapshots());
   const [dockSnapshots, setDockSnapshots] = React.useState<IdeDockSnapshot[]>(() => loadIdeDockSnapshots());
+  const [editorGroupSnapshots, setEditorGroupSnapshots] = React.useState<IdeEditorGroupSnapshot[]>(() => loadIdeEditorGroupSnapshots());
   const [activity, setActivity] = React.useState<PaneId>("explorer");
   const [topPanel, setTopPanel] = React.useState<PaneId>("output");
   const [rightPanel, setRightPanel] = React.useState<PaneId>("ai");
@@ -2042,9 +2059,55 @@ export function WorkspaceIdeShell() {
     [dockSnapshots, dockPaneSelections, dockSplitModes, dockSplitRatios, hiddenPanes, paneOrder, paneSizes, pinnedPanes, topOpen, leftOpen, rightOpen, bottomOpen],
   );
 
+  const editorGroupSnapshotCommands = React.useMemo<WorkspaceCommand[]>(
+    () => [
+      {
+        id: "ide.editor-groups.snapshot.save",
+        group: "编辑器",
+        label: "保存当前编辑器组布局",
+        description: "只保存主/副编辑器组、拆分方向、比例、活动组和标签组，不覆盖其它 Dock 布局",
+        risk: "safe",
+        surface: "layout",
+        icon: <Columns3 />,
+        run: saveEditorGroupSnapshot,
+      },
+      ...editorGroupSnapshots.map((snapshot) => ({
+        id: `ide.editor-groups.snapshot.restore.${snapshot.id}`,
+        group: "编辑器" as const,
+        label: `恢复编辑器组布局：${snapshot.name}`,
+        description: `恢复 ${formatSnapshotTime(snapshot.createdAt)} 保存的编辑器拆分与标签组`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <RotateCcw />,
+        run: () => restoreEditorGroupSnapshot(snapshot),
+      })),
+      ...editorGroupSnapshots.map((snapshot) => ({
+        id: `ide.editor-groups.snapshot.update.${snapshot.id}`,
+        group: "编辑器" as const,
+        label: `用当前编辑器组覆盖布局：${snapshot.name}`,
+        description: `把当前主/副编辑器组、拆分方向、比例和标签组写回 ${snapshot.name}`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Settings2 />,
+        run: () => updateEditorGroupSnapshot(snapshot.id),
+      })),
+      ...editorGroupSnapshots.map((snapshot) => ({
+        id: `ide.editor-groups.snapshot.delete.${snapshot.id}`,
+        group: "编辑器" as const,
+        label: `删除编辑器组布局：${snapshot.name}`,
+        description: `删除 ${formatSnapshotTime(snapshot.createdAt)} 保存的编辑器组布局快照`,
+        risk: "safe" as const,
+        surface: "layout" as const,
+        icon: <Trash2 />,
+        run: () => deleteEditorGroupSnapshot(snapshot.id),
+      })),
+    ],
+    [activeEditorGroup, activePath, activePathRootId, editorGroupSnapshots, editorGroupTabs, editorSplitMode, editorSplitRatio, secondaryPath, secondaryPathRootId],
+  );
+
   const commands = React.useMemo(
-    () => [...layoutCommands, ...dockPlacementLayoutCommands, ...layoutSnapshotCommands, ...dockSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockExactGroupMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
-    [activeDockExactGroupMoveCommands, activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockPlacementLayoutCommands, dockSnapshotCommands, dockSplitCommands, editorCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
+    () => [...layoutCommands, ...dockPlacementLayoutCommands, ...layoutSnapshotCommands, ...dockSnapshotCommands, ...editorGroupSnapshotCommands, ...focusRegionCommands, ...mobilePanelCommands, ...paneVisibilityCommands, ...panePlacementCommands, ...activeDockGroupCommands, ...activeDockMoveCommands, ...activeDockExactGroupMoveCommands, ...activeDockLayoutCommands, ...dockSplitCommands, ...editorCommands, ...searchCommands, ...gitCommands, ...terminalCommands],
+    [activeDockExactGroupMoveCommands, activeDockGroupCommands, activeDockLayoutCommands, activeDockMoveCommands, dockPlacementLayoutCommands, dockSnapshotCommands, dockSplitCommands, editorCommands, editorGroupSnapshotCommands, focusRegionCommands, gitCommands, layoutCommands, layoutSnapshotCommands, mobilePanelCommands, panePlacementCommands, paneVisibilityCommands, searchCommands, terminalCommands],
   );
 
   function applyLayoutPreset(preset: LayoutPreset) {
@@ -2419,6 +2482,60 @@ export function WorkspaceIdeShell() {
     setPaneSizes((current) => ({ ...current, [placement]: sanitized.size }));
     setDockOpen(placement, sanitized.open);
     if (sanitized.open) setMobilePanel(placement);
+  }
+
+  function currentEditorGroupSnapshotState(name: string, id = `editor-groups-${Date.now()}`): IdeEditorGroupSnapshot {
+    return {
+      id,
+      name,
+      createdAt: new Date().toISOString(),
+      activeEditorGroup,
+      activePath,
+      activePathRootId: activePathRootId || "",
+      secondaryPath,
+      secondaryPathRootId: secondaryPathRootId || "",
+      editorGroupTabs,
+      editorSplitMode,
+      editorSplitRatio,
+    };
+  }
+
+  function saveEditorGroupSnapshot() {
+    const defaultName = `编辑器组 ${editorGroupSnapshots.length + 1}`;
+    const requestedName = typeof window !== "undefined" ? window.prompt("命名当前编辑器组布局", defaultName) : defaultName;
+    const snapshot = currentEditorGroupSnapshotState(sanitizeSnapshotName(requestedName, defaultName));
+    const nextSnapshots = [snapshot, ...editorGroupSnapshots].slice(0, MAX_EDITOR_GROUP_SNAPSHOTS);
+    setEditorGroupSnapshots(nextSnapshots);
+    storeIdeEditorGroupSnapshots(nextSnapshots);
+  }
+
+  function updateEditorGroupSnapshot(snapshotId: string) {
+    const nextSnapshots = editorGroupSnapshots.map((snapshot) => (
+      snapshot.id === snapshotId ? currentEditorGroupSnapshotState(snapshot.name, snapshot.id) : snapshot
+    ));
+    setEditorGroupSnapshots(nextSnapshots);
+    storeIdeEditorGroupSnapshots(nextSnapshots);
+  }
+
+  function deleteEditorGroupSnapshot(snapshotId: string) {
+    const nextSnapshots = editorGroupSnapshots.filter((snapshot) => snapshot.id !== snapshotId);
+    setEditorGroupSnapshots(nextSnapshots);
+    storeIdeEditorGroupSnapshots(nextSnapshots);
+  }
+
+  function restoreEditorGroupSnapshot(snapshot: IdeEditorGroupSnapshot) {
+    if (layoutLocked) return;
+    const sanitized = sanitizeIdeEditorGroupSnapshot(snapshot);
+    if (!sanitized) return;
+    setActiveEditorGroup(sanitized.activeEditorGroup);
+    setActivePath(sanitized.activePath);
+    setActivePathRootId(sanitized.activePathRootId ?? "");
+    setSecondaryPath(sanitized.secondaryPath);
+    setSecondaryPathRootId(sanitized.secondaryPathRootId ?? "");
+    setEditorGroupTabs(sanitized.editorGroupTabs);
+    setEditorSplitMode(sanitized.editorSplitMode);
+    setEditorSplitRatio(sanitized.editorSplitRatio);
+    setMobilePanel("editor");
   }
 
   function applyIdeLayoutState(state: IdeLayoutState) {
@@ -3391,6 +3508,22 @@ export function WorkspaceIdeShell() {
             </span>
           ))}
         </div>
+        <div className="workspace-ide-shell__layout-snapshots" aria-label="IDE 编辑器组快照">
+          <button type="button" onClick={saveEditorGroupSnapshot} data-ide-editor-group-snapshot-save>保存编辑器组</button>
+          {editorGroupSnapshots.slice(0, 4).map((snapshot) => (
+            <span key={snapshot.id} className="workspace-ide-shell__layout-snapshot" data-ide-editor-group-snapshot={snapshot.id}>
+              <button type="button" onClick={() => restoreEditorGroupSnapshot(snapshot)} title={`恢复 ${snapshot.name}`}>
+                {snapshot.editorSplitMode} · {snapshot.name}
+              </button>
+              <button type="button" aria-label={`用当前编辑器组覆盖布局 ${snapshot.name}`} onClick={() => updateEditorGroupSnapshot(snapshot.id)} data-ide-editor-group-snapshot-update={snapshot.id}>
+                ↻
+              </button>
+              <button type="button" aria-label={`删除编辑器组布局 ${snapshot.name}`} onClick={() => deleteEditorGroupSnapshot(snapshot.id)} data-ide-editor-group-snapshot-delete={snapshot.id}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
             <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}
@@ -4075,6 +4208,7 @@ export function WorkspaceIdeShell() {
         <span>固定 Pane: {pinnedPanes.length}</span>
         <span>快照: {layoutSnapshots.length}</span>
         <span>Dock组合: {dockSnapshots.length}</span>
+        <span>编辑器组: {editorGroupSnapshots.length}</span>
         <span>移动面板: {mobilePanel} ({MOBILE_PANEL_ORDER.indexOf(mobilePanel) + 1}/{MOBILE_PANEL_ORDER.length})</span>
         <span>尺寸: {paneSizes.top}/{paneSizes.left}/{paneSizes.right}/{paneSizes.bottom}</span>
         <span>编辑器: {editorSplitMode}/{Math.round(editorSplitRatio)}%</span>
@@ -5392,6 +5526,27 @@ function storeIdeDockSnapshots(snapshots: IdeDockSnapshot[]) {
   }
 }
 
+function loadIdeEditorGroupSnapshots(): IdeEditorGroupSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(IDE_EDITOR_GROUP_SNAPSHOTS_STORAGE_KEY);
+    if (!raw) return [];
+    const value = JSON.parse(raw) as IdeEditorGroupSnapshot[];
+    return sanitizeIdeEditorGroupSnapshots(value);
+  } catch {
+    return [];
+  }
+}
+
+function storeIdeEditorGroupSnapshots(snapshots: IdeEditorGroupSnapshot[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(IDE_EDITOR_GROUP_SNAPSHOTS_STORAGE_KEY, JSON.stringify(sanitizeIdeEditorGroupSnapshots(snapshots)));
+  } catch {
+    // Editor group snapshots are local preferences; storage denial must not break the IDE shell.
+  }
+}
+
 function sanitizeImportedLayoutSnapshots(value: unknown): IdeLayoutSnapshot[] {
   if (Array.isArray(value)) return sanitizeIdeLayoutSnapshots(value);
   if (value && typeof value === "object" && Array.isArray((value as { snapshots?: unknown }).snapshots)) {
@@ -5462,6 +5617,34 @@ function sanitizeIdeDockSnapshot(value: unknown): IdeDockSnapshot | null {
     paneSelection: normalizeDockPaneSelection(snapshot.paneSelection ?? {}, paneIds),
     open: typeof snapshot.open === "boolean" ? snapshot.open : true,
     size: sanitizePaneSize(placement, snapshot.size) ?? DEFAULT_PANE_SIZES[placement],
+  };
+}
+
+function sanitizeIdeEditorGroupSnapshots(value: unknown): IdeEditorGroupSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((snapshot) => sanitizeIdeEditorGroupSnapshot(snapshot))
+    .filter((snapshot): snapshot is IdeEditorGroupSnapshot => Boolean(snapshot))
+    .slice(0, MAX_EDITOR_GROUP_SNAPSHOTS);
+}
+
+function sanitizeIdeEditorGroupSnapshot(value: unknown): IdeEditorGroupSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<IdeEditorGroupSnapshot>;
+  const editorSplitMode = isEditorSplitMode(snapshot.editorSplitMode) ? snapshot.editorSplitMode : "single";
+  const splitEditorActive = editorSplitMode === "vertical" || editorSplitMode === "horizontal";
+  return {
+    id: typeof snapshot.id === "string" ? snapshot.id : `editor-groups-${Date.now()}`,
+    name: sanitizeSnapshotName(snapshot.name, "编辑器组布局"),
+    createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : new Date().toISOString(),
+    activeEditorGroup: splitEditorActive && isEditorGroupId(snapshot.activeEditorGroup) ? snapshot.activeEditorGroup : "primary",
+    activePath: sanitizeLayoutPath(snapshot.activePath),
+    activePathRootId: sanitizeLayoutPath(snapshot.activePathRootId),
+    secondaryPath: splitEditorActive ? sanitizeLayoutPath(snapshot.secondaryPath) : undefined,
+    secondaryPathRootId: splitEditorActive ? sanitizeLayoutPath(snapshot.secondaryPathRootId) : undefined,
+    editorGroupTabs: sanitizeEditorGroupTabs(snapshot.editorGroupTabs),
+    editorSplitMode,
+    editorSplitRatio: sanitizeEditorSplitRatio(snapshot.editorSplitRatio) ?? DEFAULT_EDITOR_SPLIT_RATIO,
   };
 }
 
