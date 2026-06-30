@@ -1586,6 +1586,52 @@
   background: rgba(34, 211, 238, 0.14);
 }
 
+.workspace-ide-shell__dock-layout-workbench-snapshots {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  border: 1px solid rgba(34, 211, 238, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.34);
+  padding: 8px;
+}
+
+.workspace-ide-shell__dock-layout-workbench-snapshots > span {
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.workspace-ide-shell__dock-layout-workbench-snapshots > small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.workspace-ide-shell__dock-layout-workbench-snapshots button {
+  min-height: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--ide-muted);
+  font-size: 10px;
+}
+
+.workspace-ide-shell__dock-layout-workbench-snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.workspace-ide-shell__dock-layout-workbench-snapshot-row button:first-child {
+  overflow: hidden;
+  justify-content: flex-start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workspace-ide-shell__dock-layout-manager-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));
@@ -1811,6 +1857,14 @@
   .workspace-ide-shell__dock-layout-manager {
     min-width: min(320px, calc(100vw - 24px));
     max-width: calc(100vw - 24px);
+  }
+
+  .workspace-ide-shell__dock-layout-workbench-snapshots {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-ide-shell__dock-layout-workbench-snapshot-row {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
   }
 
   .workspace-ide-shell__dock-layout-manager-grid {

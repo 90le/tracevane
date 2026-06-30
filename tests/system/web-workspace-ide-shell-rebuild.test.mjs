@@ -1393,8 +1393,13 @@ test("new Workspace IDE shell exposes a visual pane layout manager", () => {
   assert.match(shellSource, /splitModes=\{dockSplitModes\}/);
   assert.match(shellSource, /splitRatios=\{dockSplitRatios\}/);
   assert.match(shellSource, /dockPaneSelections=\{dockPaneSelections\}/);
+  assert.match(shellSource, /layoutSnapshots=\{layoutSnapshots\}/);
   assert.match(shellSource, /dockSnapshots=\{dockSnapshots\}/);
   assert.match(shellSource, /onSaveDockSnapshot=\{saveDockSnapshot\}/);
+  assert.match(shellSource, /onRestoreLayoutSnapshot=\{restoreLayoutSnapshot\}/);
+  assert.match(shellSource, /onUpdateLayoutSnapshot=\{updateLayoutSnapshot\}/);
+  assert.match(shellSource, /onRenameLayoutSnapshot=\{renameLayoutSnapshot\}/);
+  assert.match(shellSource, /onDeleteLayoutSnapshot=\{deleteLayoutSnapshot\}/);
   assert.match(shellSource, /onRestoreDockSnapshot=\{restoreDockSnapshot\}/);
   assert.match(shellSource, /onUpdateDockSnapshot=\{updateDockSnapshot\}/);
   assert.match(shellSource, /onDeleteDockSnapshot=\{deleteDockSnapshot\}/);
@@ -1414,6 +1419,13 @@ test("new Workspace IDE shell exposes a visual pane layout manager", () => {
   assert.match(shellSource, /data-ide-pane-layout-assign=\{paneId\}/);
   assert.match(shellSource, /data-ide-pane-layout-assign-placement=\{placement\}/);
   assert.match(shellSource, /data-ide-pane-layout-assign-role=\{role\}/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshots/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot-save/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot-restore=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot-update=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot-rename=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-pane-layout-snapshot-delete=\{snapshot\.id\}/);
   assert.match(shellSource, /const placementDockSnapshots = dockSnapshots\.filter\(\(snapshot\) => snapshot\.placement === placement\)/);
   assert.match(shellSource, /data-ide-pane-layout-dock-snapshots=\{placement\}/);
   assert.match(shellSource, /data-ide-pane-layout-dock-snapshot-save=\{placement\}/);
@@ -1430,6 +1442,8 @@ test("new Workspace IDE shell exposes a visual pane layout manager", () => {
   assert.match(cssSource, /workspace-ide-shell__dock-layout-group/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-snapshots/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-snapshot-row/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-workbench-snapshots/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-workbench-snapshot-row/);
   assert.match(cssSource, /@media \(max-width: 1200px\)/);
   assert.match(cssSource, /@media \(max-width: 760px\)/);
 });

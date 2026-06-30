@@ -3676,7 +3676,12 @@ export function WorkspaceIdeShell() {
           canUndoLayout={layoutHistoryPast.length > 0}
           canRedoLayout={layoutHistoryFuture.length > 0}
           hasLayoutSnapshots={layoutSnapshots.length > 0}
+          layoutSnapshots={layoutSnapshots}
           dockSnapshots={dockSnapshots}
+          onRestoreLayoutSnapshot={restoreLayoutSnapshot}
+          onUpdateLayoutSnapshot={updateLayoutSnapshot}
+          onRenameLayoutSnapshot={renameLayoutSnapshot}
+          onDeleteLayoutSnapshot={deleteLayoutSnapshot}
           onSaveDockSnapshot={saveDockSnapshot}
           onRestoreDockSnapshot={restoreDockSnapshot}
           onUpdateDockSnapshot={updateDockSnapshot}
@@ -4726,11 +4731,16 @@ function DockLayoutManager({
   canUndoLayout,
   canRedoLayout,
   hasLayoutSnapshots,
+  layoutSnapshots,
   dockSnapshots,
   onUndoLayout,
   onRedoLayout,
   onSaveLayoutSnapshot,
   onRestoreLatestLayoutSnapshot,
+  onRestoreLayoutSnapshot,
+  onUpdateLayoutSnapshot,
+  onRenameLayoutSnapshot,
+  onDeleteLayoutSnapshot,
   onSaveDockSnapshot,
   onRestoreDockSnapshot,
   onUpdateDockSnapshot,
@@ -4776,11 +4786,16 @@ function DockLayoutManager({
   canUndoLayout: boolean;
   canRedoLayout: boolean;
   hasLayoutSnapshots: boolean;
+  layoutSnapshots: IdeLayoutSnapshot[];
   dockSnapshots: IdeDockSnapshot[];
   onUndoLayout: () => void;
   onRedoLayout: () => void;
   onSaveLayoutSnapshot: () => void;
   onRestoreLatestLayoutSnapshot: () => void;
+  onRestoreLayoutSnapshot: (snapshot: IdeLayoutSnapshot) => void;
+  onUpdateLayoutSnapshot: (snapshotId: string) => void;
+  onRenameLayoutSnapshot: (snapshotId: string) => void;
+  onDeleteLayoutSnapshot: (snapshotId: string) => void;
   onSaveDockSnapshot: (placement: PanePlacement) => void;
   onRestoreDockSnapshot: (snapshot: IdeDockSnapshot) => void;
   onUpdateDockSnapshot: (snapshotId: string) => void;
@@ -4922,6 +4937,21 @@ function DockLayoutManager({
         <button type="button" disabled={layoutLocked} onClick={onFocusEditorOnly} data-ide-pane-layout-editor-only>
           编辑器专注
         </button>
+      </div>
+      <div className="workspace-ide-shell__dock-layout-workbench-snapshots" aria-label="布局管理器内的 IDE 全局快照" data-ide-pane-layout-snapshots>
+        <span>全局布局快照 · {layoutSnapshots.length}</span>
+        <button type="button" disabled={layoutLocked} onClick={onSaveLayoutSnapshot} data-ide-pane-layout-snapshot-save>保存当前布局</button>
+        {layoutSnapshots.length === 0 ? <small data-ide-pane-layout-snapshot-empty>暂无布局快照</small> : null}
+        {layoutSnapshots.slice(0, 4).map((snapshot) => (
+          <div key={snapshot.id} className="workspace-ide-shell__dock-layout-workbench-snapshot-row" data-ide-pane-layout-snapshot={snapshot.id}>
+            <button type="button" disabled={layoutLocked} onClick={() => onRestoreLayoutSnapshot(snapshot)} title={`恢复 ${snapshot.name}`} data-ide-pane-layout-snapshot-restore={snapshot.id}>
+              {snapshot.name}
+            </button>
+            <button type="button" disabled={layoutLocked} onClick={() => onUpdateLayoutSnapshot(snapshot.id)} aria-label={`用当前布局覆盖 ${snapshot.name}`} data-ide-pane-layout-snapshot-update={snapshot.id}>↻</button>
+            <button type="button" onClick={() => onRenameLayoutSnapshot(snapshot.id)} aria-label={`重命名布局 ${snapshot.name}`} data-ide-pane-layout-snapshot-rename={snapshot.id}>✎</button>
+            <button type="button" onClick={() => onDeleteLayoutSnapshot(snapshot.id)} aria-label={`删除布局 ${snapshot.name}`} data-ide-pane-layout-snapshot-delete={snapshot.id}>×</button>
+          </div>
+        ))}
       </div>
       <div className="workspace-ide-shell__dock-layout-manager-grid">
         {DOCK_PLACEMENTS.map((placement) => {
