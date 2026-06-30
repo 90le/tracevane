@@ -1441,6 +1441,21 @@ test("new Workspace IDE shell supports drag assignment in the pane layout manage
   assert.match(cssSource, /cursor: grab/);
 });
 
+
+test("new Workspace IDE shell exposes direct split orientation controls in the pane layout manager", () => {
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-orientation/);
+  assert.match(shellSource, /data-ide-pane-layout-orientation=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-orientation-vertical=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSetDockSplitMode\(placement, "vertical"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-orientation-horizontal=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSetDockSplitMode\(placement, "horizontal"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-orientation-single=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSetDockSplitMode\(placement, "single"\)\}/);
+  assert.match(shellSource, /主｜副/);
+  assert.match(shellSource, /主／副/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-orientation/);
+});
+
 test("new Workspace IDE shell exposes pane group swap and merge in the layout manager", () => {
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);

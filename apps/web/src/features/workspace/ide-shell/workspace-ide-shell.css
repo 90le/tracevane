@@ -1286,6 +1286,7 @@
 
 .workspace-ide-shell__dock-layout-card header,
 .workspace-ide-shell__dock-layout-modes,
+.workspace-ide-shell__dock-layout-orientation,
 .workspace-ide-shell__dock-layout-groups {
   display: flex;
   align-items: center;
@@ -1320,8 +1321,18 @@
   opacity: 0.36;
 }
 
-.workspace-ide-shell__dock-layout-modes {
+.workspace-ide-shell__dock-layout-modes,
+.workspace-ide-shell__dock-layout-orientation {
   flex-wrap: wrap;
+}
+
+.workspace-ide-shell__dock-layout-orientation {
+  padding: 4px 0;
+}
+
+.workspace-ide-shell__dock-layout-orientation > span {
+  color: var(--ide-muted);
+  font-size: 10px;
 }
 
 .workspace-ide-shell__dock-layout-card .workspace-ide-shell__split-ratio-presets {

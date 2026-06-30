@@ -4638,6 +4638,35 @@ function DockLayoutManager({
                   合到副组
                 </button>
               </div>
+              <div className="workspace-ide-shell__dock-layout-orientation" data-ide-pane-layout-orientation={placement}>
+                <span>拆分方向</span>
+                <button
+                  type="button"
+                  disabled={layoutLocked}
+                  data-ide-pane-layout-orientation-vertical={placement}
+                  data-active={splitModes[placement] === "vertical" ? "true" : "false"}
+                  onClick={() => onSetDockSplitMode(placement, "vertical")}
+                >
+                  主｜副
+                </button>
+                <button
+                  type="button"
+                  disabled={layoutLocked}
+                  data-ide-pane-layout-orientation-horizontal={placement}
+                  data-active={splitModes[placement] === "horizontal" ? "true" : "false"}
+                  onClick={() => onSetDockSplitMode(placement, "horizontal")}
+                >
+                  主／副
+                </button>
+                <button
+                  type="button"
+                  disabled={layoutLocked || splitModes[placement] === "single"}
+                  data-ide-pane-layout-orientation-single={placement}
+                  onClick={() => onSetDockSplitMode(placement, "single")}
+                >
+                  收回单组
+                </button>
+              </div>
               <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
                 {(["primary", "secondary"] as const).map((role) => (
                   <div
