@@ -1442,6 +1442,23 @@ test("new Workspace IDE shell supports drag assignment in the pane layout manage
 });
 
 
+
+test("new Workspace IDE shell exposes dock visibility state controls in the pane layout manager", () => {
+  assert.match(shellSource, /function restoreDockPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /setDockOpen\(placement, true\);[\s\S]*?setMaximizedPane\(null\);[\s\S]*?setMobilePanel\(placement\);/);
+  assert.match(shellSource, /onRestoreDock=\{restoreDockPlacement\}/);
+  assert.match(shellSource, /onRestoreDock: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-visibility/);
+  assert.match(shellSource, /data-ide-pane-layout-visibility=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-minimize=\{placement\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| !open\[placement\]\}/);
+  assert.match(shellSource, /data-ide-pane-layout-focus-only=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-visibility-maximize=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-restore-dock=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onRestoreDock\(placement\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-visibility/);
+});
+
 test("new Workspace IDE shell exposes direct split orientation controls in the pane layout manager", () => {
   assert.match(shellSource, /workspace-ide-shell__dock-layout-orientation/);
   assert.match(shellSource, /data-ide-pane-layout-orientation=\{placement\}/);

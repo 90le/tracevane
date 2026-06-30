@@ -2305,6 +2305,13 @@ export function WorkspaceIdeShell() {
     setMobilePanel(placement);
   }
 
+  function restoreDockPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
+    setDockOpen(placement, true);
+    setMaximizedPane(null);
+    setMobilePanel(placement);
+  }
+
   function cycleMobilePanel(direction: MobilePanelDirection) {
     const currentIndex = Math.max(0, MOBILE_PANEL_ORDER.indexOf(mobilePanel));
     const offset = direction === "next" ? 1 : -1;
@@ -3608,6 +3615,7 @@ export function WorkspaceIdeShell() {
           onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onIsolateDock={isolateDockPlacement}
+          onRestoreDock={restoreDockPlacement}
           onSetDockSplitMode={setDockSplitMode}
           onResizeDock={resizeDockPlacement}
           onSetDockSize={setDockPlacementSize}
@@ -4435,6 +4443,7 @@ function DockLayoutManager({
   onFocusEditorOnly,
   onToggleDockOpen,
   onIsolateDock,
+  onRestoreDock,
   onSetDockSplitMode,
   onResizeDock,
   onSetDockSize,
@@ -4470,6 +4479,7 @@ function DockLayoutManager({
   onFocusEditorOnly: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onIsolateDock: (placement: PanePlacement) => void;
+  onRestoreDock: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
   onResizeDock: (placement: PanePlacement, delta: number) => void;
   onSetDockSize: (placement: PanePlacement, size: number) => void;
@@ -4579,6 +4589,21 @@ function DockLayoutManager({
                   重置
                 </button>
               </header>
+              <div className="workspace-ide-shell__dock-layout-visibility" data-ide-pane-layout-visibility={placement}>
+                <span>可见性</span>
+                <button type="button" disabled={layoutLocked || !open[placement]} onClick={() => onToggleDockOpen(placement)} data-ide-pane-layout-minimize={placement}>
+                  最小化
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onIsolateDock(placement)} data-ide-pane-layout-focus-only={placement}>
+                  专注
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onToggleMaximizedDock(placement)} data-ide-pane-layout-visibility-maximize={placement} data-active={isMaximized ? "true" : "false"} aria-pressed={isMaximized}>
+                  {isMaximized ? "退出最大化" : "最大化"}
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onRestoreDock(placement)} data-ide-pane-layout-restore-dock={placement}>
+                  恢复
+                </button>
+              </div>
               <div className="workspace-ide-shell__dock-layout-modes" data-ide-pane-layout-modes={placement}>
                 {(["single", "vertical", "horizontal"] as const).map((mode) => (
                   <button
