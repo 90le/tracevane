@@ -108,12 +108,6 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(chrome, /data-file-manager-view-switcher/);
   assert.match(chrome, /data-file-manager-actions-menu/);
   assert.match(chrome, /data-file-manager-actions-popover/);
-  assert.match(chrome, /data-file-manager-directory-tabs/);
-  assert.match(chrome, /role="tablist"/);
-  assert.match(chrome, /data-file-manager-directory-tab=\{active \? "active" : "inactive"\}/);
-  assert.match(chrome, /data-file-manager-directory-tab-pin/);
-  assert.match(chrome, /data-file-manager-desktop-quick-actions/);
-  assert.match(chrome, /收藏标签/);
   assert.doesNotMatch(chrome, /Web 系统文件管理器/);
   assert.doesNotMatch(chrome, /默认列表视图/);
   assert.match(chrome, /回收站/);
@@ -421,8 +415,10 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     /data-file-manager-mobile-action-dock[\s\S]*xl:hidden/,
   );
   assert.match(chrome, /data-file-manager-visible-filter-actions/);
-  assert.match(chrome, /data-file-manager-desktop-quick-actions/);
-  assert.match(chrome, /data-file-manager-quick-locations/);
+  assert.match(
+    chrome,
+    /hidden min-w-0 flex-wrap items-center gap-1.5 text-xs xl:flex/,
+  );
   assert.match(page, /搜索与统计/);
   assert.match(list, /data-file-manager-responsive-header/);
   assert.match(list, /data-file-manager-list-scrollport/);
@@ -439,9 +435,6 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(list, /data-file-manager-virtual-spacer="bottom"/);
   assert.match(list, /data-file-manager-mobile-meta/);
   assert.match(list, /overflow-y-auto overflow-x-hidden/);
-  assert.match(list, /grid content-start p-3/);
-  assert.match(list, /grid-cols-\[repeat\(auto-fill,minmax\(72px,86px\)\)\]/);
-  assert.match(list, /min-h-\[86px\]/);
   assert.match(list, /grid-cols-\[36px_minmax\(0,1fr\)_44px\]/);
   assert.match(
     list,

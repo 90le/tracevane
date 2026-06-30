@@ -632,7 +632,7 @@ export interface FileListPanelProps {
   columnWidths: FileManagerColumnWidths;
   canLoadMore: boolean;
   isFetching: boolean;
-  pagination: { totalEntries: number; page?: number; totalPages?: number } | undefined;
+  pagination: { totalEntries: number } | undefined;
   onRefetch: () => void;
   onLoadMore: () => void;
   onOpen: (entry: FileEntrySummary) => void;
@@ -1257,7 +1257,7 @@ export function FileListPanel({
               type="checkbox"
               checked={allVisibleSelected}
               onChange={onToggleAllVisible}
-              className="size-3 accent-primary"
+              className="size-3.5 accent-primary"
               aria-label="选择当前可见文件"
             />
           </label>
@@ -1315,7 +1315,7 @@ export function FileListPanel({
               type="checkbox"
               checked={allVisibleSelected}
               onChange={onToggleAllVisible}
-              className="size-3 accent-primary"
+              className="size-3.5 accent-primary"
               aria-label="选择当前可见文件"
             />
             全选可见
@@ -1377,10 +1377,10 @@ export function FileListPanel({
         ) : displayMode === "grid" ? (
           <div
             className={cn(
-              "grid content-start p-3",
+              "grid gap-1.5 p-2",
               density === "compact"
-                ? "grid-cols-[repeat(auto-fill,minmax(72px,86px))] gap-x-3 gap-y-2 sm:grid-cols-[repeat(auto-fill,minmax(78px,92px))] lg:grid-cols-[repeat(auto-fill,minmax(82px,96px))]"
-                : "grid-cols-[repeat(auto-fill,minmax(86px,104px))] gap-x-4 gap-y-3 sm:grid-cols-[repeat(auto-fill,minmax(92px,112px))] lg:grid-cols-[repeat(auto-fill,minmax(96px,116px))]",
+                ? "grid-cols-[repeat(auto-fill,minmax(84px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(92px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"
+                : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(108px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(112px,1fr))]",
             )}
             data-file-manager-grid-density={density}
           >
@@ -1604,11 +1604,6 @@ export function FileListPanel({
               {filteredEntries.length} 可见 /{" "}
               {pagination?.totalEntries ?? entries.length} 总项
             </span>
-            {pagination?.page && pagination.totalPages ? (
-              <span className="rounded-full bg-panel-2 px-2 py-0.5 text-subtle">
-                第 {pagination.page} / {pagination.totalPages} 页
-              </span>
-            ) : null}
             {selectedStatus.count > 0 ? (
               <span
                 className="rounded-full bg-primary-soft px-2 py-0.5 text-primary"
@@ -2416,18 +2411,18 @@ function FileGridCard({
         }
       }}
       className={cn(
-        "group relative grid justify-items-center rounded-md border border-transparent bg-transparent text-center transition-colors hover:border-primary-line hover:bg-primary-soft/45 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
-        density === "compact" ? "min-h-[86px] p-1" : "min-h-[100px] p-1.5",
+        "group grid content-between rounded-md border border-transparent bg-transparent text-left transition-colors hover:border-primary-line hover:bg-primary-soft/45 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
+        density === "compact" ? "min-h-[96px] p-1.5" : "min-h-[118px] p-2",
         selected && "border-primary-line bg-primary-soft/80",
         dropOperation &&
           "border-primary-line bg-primary-soft ring-2 ring-primary/40",
       )}
       title={entry.path}
     >
-      <div className="absolute inset-x-1 top-1 flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <label
           className={cn(
-            "grid size-4 place-items-center rounded bg-panel opacity-0 shadow-sm transition-opacity",
+            "grid size-5 place-items-center rounded bg-panel opacity-0 shadow-sm transition-opacity",
             "group-hover:opacity-100 group-focus-within:opacity-100",
             (checked || selected) && "opacity-100",
           )}
@@ -2438,13 +2433,13 @@ function FileGridCard({
             type="checkbox"
             checked={checked}
             onChange={onToggleChecked}
-            className="size-3 accent-primary"
+            className="size-3.5 accent-primary"
             aria-label={`选择 ${entry.name}`}
           />
         </label>
         <button
           type="button"
-          className="grid size-5 place-items-center rounded text-subtle opacity-0 hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)] focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100"
+          className="grid size-6 place-items-center rounded text-subtle opacity-70 hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)] focus-visible:outline-none group-hover:opacity-100"
           aria-label={`打开 ${entry.name} 的操作菜单`}
           onClick={(event) => {
             event.stopPropagation();
@@ -2455,12 +2450,12 @@ function FileGridCard({
           <MoreHorizontal className="size-3.5" />
         </button>
       </div>
-      <div className="grid w-full justify-items-center gap-1 pt-3">
+      <div className="grid justify-items-center gap-1 py-1">
         <div
           className={cn(
             density === "compact"
-              ? "grid size-9 place-items-center rounded-md border"
-              : "grid size-11 place-items-center rounded-lg border",
+              ? "grid size-8 place-items-center rounded-md border"
+              : "grid size-10 place-items-center rounded-lg border",
             entry.kind === "directory"
               ? "border-primary-line bg-primary-soft text-primary"
               : "border-line bg-panel text-muted",
@@ -2472,10 +2467,14 @@ function FileGridCard({
           <div className="truncate text-xs font-medium text-ink-strong">
             {entry.name}
           </div>
-          <div className="mt-0.5 flex items-center justify-center gap-1 text-[10px] text-subtle">
-            <span>{entry.kind === "directory" ? "目录" : entry.ext || "文件"}</span>
-            {entry.kind === "file" ? <span>·</span> : null}
-            {entry.kind === "file" ? <span>{formatBytes(entry.size ?? 0)}</span> : null}
+          <div className="mt-0.5 flex items-center justify-center gap-1 text-2xs text-subtle">
+            <span>
+              {entry.kind === "directory" ? "目录" : entry.ext || "文件"}
+            </span>
+            <span>·</span>
+            <span>
+              {entry.kind === "file" ? formatBytes(entry.size ?? 0) : "—"}
+            </span>
           </div>
           {dropOperation ? (
             <div className="mt-1 rounded-full bg-primary px-2 py-0.5 text-2xs font-semibold text-white">
@@ -2488,9 +2487,16 @@ function FileGridCard({
           ) : null}
         </div>
       </div>
-      {density === "comfortable" && entry.hidden ? (
+      {density === "comfortable" ? (
         <div className="truncate text-center text-[10px] text-muted">
-          <span className="rounded bg-panel-3 px-1 py-0.5 text-subtle">hidden</span>
+          {entry.modifiedAt
+            ? new Date(entry.modifiedAt).toLocaleString()
+            : "无修改时间"}
+          {entry.hidden ? (
+            <span className="ml-1 rounded bg-panel-3 px-1 py-0.5 text-subtle">
+              hidden
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -467,18 +467,50 @@ function findNearestExistingAncestor(targetPath: string): string {
 }
 
 function createRootDescriptors(config: TracevaneServerConfig): FileRootSummary[] {
-  const filesystemRoot = path.resolve(path.parse(config.openclawRoot).root || "/");
-  return [
+  const candidates: FileRootSummary[] = [
     {
       id: "openclaw-root",
-      labelZh: "文件系统",
-      labelEn: "Filesystem",
-      descriptionZh: "统一文件系统入口；标签页决定当前打开路径。",
-      descriptionEn: "Single filesystem entry; tabs own the active path.",
-      absolutePath: filesystemRoot,
+      labelZh: "OpenClaw 根目录",
+      labelEn: "OpenClaw root",
+      descriptionZh: "宿主 .openclaw 工作根目录。",
+      descriptionEn: "The host .openclaw working root.",
+      absolutePath: path.resolve(config.openclawRoot),
       preferred: true,
     },
-  ].filter((root) => fs.existsSync(root.absolutePath));
+    {
+      id: "home-root",
+      labelZh: "用户目录",
+      labelEn: "Home",
+      descriptionZh: "当前用户主目录。",
+      descriptionEn: "Current user home directory.",
+      absolutePath: path.resolve(process.env.HOME || os.homedir()),
+    },
+    {
+      id: "system-root",
+      labelZh: "系统根目录",
+      labelEn: "System",
+      descriptionZh: "系统文件树根目录。",
+      descriptionEn: "Filesystem root.",
+      absolutePath: path.resolve(path.parse(config.openclawRoot).root || "/"),
+    },
+    {
+      id: "project-root",
+      labelZh: "Tracevane 项目",
+      labelEn: "Tracevane project",
+      descriptionZh: "当前 Tracevane 扩展项目目录。",
+      descriptionEn: "The current Tracevane extension project.",
+      absolutePath: path.resolve(config.projectRoot),
+    },
+  ];
+
+  const seen = new Set<string>();
+  return candidates.filter((root) => {
+    if (!fs.existsSync(root.absolutePath)) return false;
+    const key = path.resolve(root.absolutePath);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildRootContexts(config: TracevaneServerConfig): FileRootContext[] {
