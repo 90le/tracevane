@@ -3600,6 +3600,7 @@ export function WorkspaceIdeShell() {
           pinnedPanes={pinnedPanes}
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
+          mobilePanel={mobilePanel}
           layoutLocked={layoutLocked}
           layoutSnapshotCount={layoutSnapshots.length}
           layoutHistoryCounts={{ past: layoutHistoryPast.length, future: layoutHistoryFuture.length }}
@@ -3613,6 +3614,7 @@ export function WorkspaceIdeShell() {
           onApplyWorkbenchRecipe={applyWorkbenchRecipe}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
+          onShowMobilePanel={showMobilePanel}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onIsolateDock={isolateDockPlacement}
           onRestoreDock={restoreDockPlacement}
@@ -4428,6 +4430,7 @@ function DockLayoutManager({
   pinnedPanes,
   paneSizes,
   maximizedPane,
+  mobilePanel,
   layoutLocked,
   layoutSnapshotCount,
   layoutHistoryCounts,
@@ -4441,6 +4444,7 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe,
   onOpenAllDocks,
   onFocusEditorOnly,
+  onShowMobilePanel,
   onToggleDockOpen,
   onIsolateDock,
   onRestoreDock,
@@ -4464,6 +4468,7 @@ function DockLayoutManager({
   pinnedPanes: PaneId[];
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
+  mobilePanel: MobilePanel;
   layoutLocked: boolean;
   layoutSnapshotCount: number;
   layoutHistoryCounts: { past: number; future: number };
@@ -4477,6 +4482,7 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe: (recipeId: WorkbenchRecipeId) => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
+  onShowMobilePanel: (panel: MobilePanel) => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onIsolateDock: (placement: PanePlacement) => void;
   onRestoreDock: (placement: PanePlacement) => void;
@@ -4553,6 +4559,24 @@ function DockLayoutManager({
               </button>
             );
           })}
+        </div>
+        <div className="workspace-ide-shell__dock-layout-mobile-rail" aria-label="移动端 Dock 激活条" data-ide-pane-layout-mobile-rail>
+          <button type="button" disabled={layoutLocked} data-active={mobilePanel === "editor" ? "true" : "false"} data-ide-pane-layout-mobile-panel="editor" onClick={() => onShowMobilePanel("editor")}>
+            编辑器
+          </button>
+          {DOCK_PLACEMENTS.map((placement) => (
+            <button
+              key={placement}
+              type="button"
+              disabled={layoutLocked}
+              data-active={mobilePanel === placement ? "true" : "false"}
+              data-ide-pane-layout-mobile-panel={placement}
+              data-ide-pane-layout-mobile-open={open[placement] ? "true" : "false"}
+              onClick={() => onShowMobilePanel(placement)}
+            >
+              {placementLabel(placement)}
+            </button>
+          ))}
         </div>
         <div className="workspace-ide-shell__dock-layout-recipes" aria-label="工作台组合预案" data-ide-pane-layout-recipes>
           {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (

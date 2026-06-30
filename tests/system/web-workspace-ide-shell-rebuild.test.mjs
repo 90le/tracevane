@@ -1698,6 +1698,25 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
 });
 
 
+
+test("new Workspace IDE shell exposes a mobile dock rail inside the pane layout manager", () => {
+  assert.match(shellSource, /mobilePanel=\{mobilePanel\}/);
+  assert.match(shellSource, /mobilePanel: MobilePanel/);
+  assert.match(shellSource, /onShowMobilePanel=\{showMobilePanel\}/);
+  assert.match(shellSource, /onShowMobilePanel: \(panel: MobilePanel\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-mobile-rail/);
+  assert.match(shellSource, /aria-label="移动端 Dock 激活条"/);
+  assert.match(shellSource, /data-ide-pane-layout-mobile-rail/);
+  assert.match(shellSource, /data-ide-pane-layout-mobile-panel="editor"/);
+  assert.match(shellSource, /onClick=\{\(\) => onShowMobilePanel\("editor"\)\}/);
+  assert.match(shellSource, /data-active=\{mobilePanel === placement \? "true" : "false"\}/);
+  assert.match(shellSource, /data-ide-pane-layout-mobile-panel=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-mobile-open=\{open\[placement\] \? "true" : "false"\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onShowMobilePanel\(placement\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-mobile-rail/);
+  assert.match(cssSource, /data-ide-pane-layout-mobile-open="false"/);
+});
+
 test("new Workspace IDE shell exposes a dock switchboard in the pane layout manager", () => {
   assert.match(shellSource, /workspace-ide-shell__dock-layout-switchboard/);
   assert.match(shellSource, /aria-label="Dock 开关矩阵"/);
