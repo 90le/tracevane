@@ -3180,6 +3180,18 @@ export function WorkspaceIdeShell() {
     setEditorSplitRatio(ratio);
   }
 
+  function setEditorSplitRatioFromManager(ratio: number) {
+    if (layoutLocked) return;
+    if (editorSplitMode === "single") splitEditor("vertical");
+    setEditorSplitRatio(clamp(ratio, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max));
+  }
+
+  function resizeEditorSplitFromManager(delta: number) {
+    if (layoutLocked) return;
+    if (editorSplitMode === "single") splitEditor("vertical");
+    setEditorSplitRatio((current) => clamp(current + delta, EDITOR_SPLIT_RATIO_LIMITS.min, EDITOR_SPLIT_RATIO_LIMITS.max));
+  }
+
   function resizeDockSplitGroup(placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") {
     if (layoutLocked) return;
     const signedStep = direction === "grow" ? 5 : -5;
@@ -3600,6 +3612,8 @@ export function WorkspaceIdeShell() {
           editorGroupSnapshotCount={editorGroupSnapshots.length}
           onSplitEditor={splitEditor}
           onSetEditorSplitRatioPreset={setEditorSplitRatioPreset}
+          onSetEditorSplitRatio={setEditorSplitRatioFromManager}
+          onResizeEditorSplit={resizeEditorSplitFromManager}
           onFocusEditorGroup={focusEditorGroup}
           onSwapEditorGroups={swapEditorGroups}
           onMergeEditorGroups={mergeEditorSplitToGroup}
@@ -4452,6 +4466,8 @@ function EditorLayoutManager({
   editorGroupSnapshotCount,
   onSplitEditor,
   onSetEditorSplitRatioPreset,
+  onSetEditorSplitRatio,
+  onResizeEditorSplit,
   onFocusEditorGroup,
   onSwapEditorGroups,
   onMergeEditorGroups,
@@ -4466,6 +4482,8 @@ function EditorLayoutManager({
   editorGroupSnapshotCount: number;
   onSplitEditor: (mode: Exclude<EditorSplitMode, "single">) => void;
   onSetEditorSplitRatioPreset: (ratio: SplitRatioPreset) => void;
+  onSetEditorSplitRatio: (ratio: number) => void;
+  onResizeEditorSplit: (delta: number) => void;
   onFocusEditorGroup: (group: EditorGroupId) => void;
   onSwapEditorGroups: () => void;
   onMergeEditorGroups: (preferredGroup: EditorGroupId) => void;
@@ -4537,6 +4555,26 @@ function EditorLayoutManager({
           <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("primary")} data-ide-editor-layout-orientation-single>
             收回单组
           </button>
+        </div>
+        <div className="workspace-ide-shell__editor-layout-ratio" data-ide-editor-layout-ratio>
+          <button type="button" disabled={layoutLocked} onClick={() => onResizeEditorSplit(-KEYBOARD_RESIZE_LARGE_STEP)} data-ide-editor-layout-ratio-decrease aria-label="缩小主编辑器组">
+            −
+          </button>
+          <span data-ide-editor-layout-ratio-value>主 {Math.round(editorSplitRatio)}% / 副 {100 - Math.round(editorSplitRatio)}%</span>
+          <button type="button" disabled={layoutLocked} onClick={() => onResizeEditorSplit(KEYBOARD_RESIZE_LARGE_STEP)} data-ide-editor-layout-ratio-increase aria-label="放大主编辑器组">
+            ＋
+          </button>
+          <input
+            type="range"
+            min={EDITOR_SPLIT_RATIO_LIMITS.min}
+            max={EDITOR_SPLIT_RATIO_LIMITS.max}
+            step={1}
+            value={editorSplitRatio}
+            disabled={layoutLocked}
+            aria-label="编辑器组拆分比例"
+            data-ide-editor-layout-ratio-slider
+            onChange={(event) => onSetEditorSplitRatio(Number(event.currentTarget.value))}
+          />
         </div>
         <SplitRatioPresetStrip
           label="编辑器组拆分比例"

@@ -1856,3 +1856,32 @@ test("new Workspace IDE shell exposes an editor group layout manager", () => {
   assert.match(cssSource, /workspace-ide-shell__editor-layout-card/);
   assert.match(cssSource, /workspace-ide-shell__editor-layout-orientation/);
 });
+
+
+test("new Workspace IDE shell exposes continuous editor group ratio controls in the layout manager", () => {
+  assert.match(shellSource, /function setEditorSplitRatioFromManager\(ratio: number\)/);
+  assert.match(shellSource, /if \(editorSplitMode === "single"\) splitEditor\("vertical"\)/);
+  assert.match(shellSource, /setEditorSplitRatio\(clamp\(ratio, EDITOR_SPLIT_RATIO_LIMITS\.min, EDITOR_SPLIT_RATIO_LIMITS\.max\)\)/);
+  assert.match(shellSource, /function resizeEditorSplitFromManager\(delta: number\)/);
+  assert.match(shellSource, /setEditorSplitRatio\(\(current\) => clamp\(current \+ delta, EDITOR_SPLIT_RATIO_LIMITS\.min, EDITOR_SPLIT_RATIO_LIMITS\.max\)\)/);
+  assert.match(shellSource, /onSetEditorSplitRatio=\{setEditorSplitRatioFromManager\}/);
+  assert.match(shellSource, /onResizeEditorSplit=\{resizeEditorSplitFromManager\}/);
+  assert.match(shellSource, /onSetEditorSplitRatio: \(ratio: number\) => void/);
+  assert.match(shellSource, /onResizeEditorSplit: \(delta: number\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-ratio/);
+  assert.match(shellSource, /data-ide-editor-layout-ratio/);
+  assert.match(shellSource, /data-ide-editor-layout-ratio-decrease/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeEditorSplit\(-KEYBOARD_RESIZE_LARGE_STEP\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-ratio-value/);
+  assert.match(shellSource, /主 \{Math\.round\(editorSplitRatio\)\}% \/ 副 \{100 - Math\.round\(editorSplitRatio\)\}%/);
+  assert.match(shellSource, /data-ide-editor-layout-ratio-increase/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeEditorSplit\(KEYBOARD_RESIZE_LARGE_STEP\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-ratio-slider/);
+  assert.match(shellSource, /min=\{EDITOR_SPLIT_RATIO_LIMITS\.min\}/);
+  assert.match(shellSource, /max=\{EDITOR_SPLIT_RATIO_LIMITS\.max\}/);
+  assert.match(shellSource, /value=\{editorSplitRatio\}/);
+  assert.match(shellSource, /onChange=\{\(event\) => onSetEditorSplitRatio\(Number\(event\.currentTarget\.value\)\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-ratio/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-ratio input\[type="range"\]/);
+  assert.match(cssSource, /accent-color: #22d3ee/);
+});

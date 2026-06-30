@@ -1302,13 +1302,45 @@
 }
 
 .workspace-ide-shell__editor-layout-orientation,
+.workspace-ide-shell__editor-layout-ratio,
 .workspace-ide-shell__editor-layout-grid > .workspace-ide-shell__split-ratio-presets {
   grid-column: 1 / -1;
+}
+
+.workspace-ide-shell__editor-layout-ratio {
+  display: grid;
+  grid-template-columns: auto minmax(120px, auto) auto minmax(160px, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.42);
+  padding: 10px;
+}
+
+.workspace-ide-shell__editor-layout-ratio span {
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.workspace-ide-shell__editor-layout-ratio input[type="range"] {
+  width: 100%;
+  accent-color: #22d3ee;
 }
 
 @media (max-width: 760px) {
   .workspace-ide-shell__editor-layout-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-ide-shell__editor-layout-ratio {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .workspace-ide-shell__editor-layout-ratio input[type="range"] {
+    grid-column: 1 / -1;
   }
 }
 
