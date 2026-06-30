@@ -1821,3 +1821,38 @@ test("new Workspace IDE shell exposes a layout summary in the pane layout manage
   assert.match(shellSource, /历史 \{layoutHistoryCounts\.past\}\/\{layoutHistoryCounts\.future\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-summary/);
 });
+
+test("new Workspace IDE shell exposes an editor group layout manager", () => {
+  assert.match(shellSource, /function EditorLayoutManager\(\{/);
+  assert.match(shellSource, /editorSplitMode=\{editorSplitMode\}/);
+  assert.match(shellSource, /editorSplitRatio=\{editorSplitRatio\}/);
+  assert.match(shellSource, /editorGroupTabs=\{editorGroupTabs\}/);
+  assert.match(shellSource, /activeEditorGroup=\{activeEditorGroup\}/);
+  assert.match(shellSource, /editorGroupSnapshotCount=\{editorGroupSnapshots\.length\}/);
+  assert.match(shellSource, /onSplitEditor=\{splitEditor\}/);
+  assert.match(shellSource, /onSetEditorSplitRatioPreset=\{setEditorSplitRatioPreset\}/);
+  assert.match(shellSource, /onFocusEditorGroup=\{focusEditorGroup\}/);
+  assert.match(shellSource, /onSwapEditorGroups=\{swapEditorGroups\}/);
+  assert.match(shellSource, /onMergeEditorGroups=\{mergeEditorSplitToGroup\}/);
+  assert.match(shellSource, /onSaveEditorGroupSnapshot=\{saveEditorGroupSnapshot\}/);
+  assert.match(shellSource, /onFocusEditorOnly=\{focusEditorOnlyLayout\}/);
+  assert.match(shellSource, /data-ide-editor-layout-manager/);
+  assert.match(shellSource, /aria-label="编辑器组布局管理器"/);
+  assert.match(shellSource, /data-ide-editor-layout-summary/);
+  assert.match(shellSource, /data-ide-editor-layout-card="primary"/);
+  assert.match(shellSource, /data-ide-editor-layout-card="secondary"/);
+  assert.match(shellSource, /data-ide-editor-layout-split-vertical/);
+  assert.match(shellSource, /data-ide-editor-layout-split-horizontal/);
+  assert.match(shellSource, /data-ide-editor-layout-swap-groups/);
+  assert.match(shellSource, /data-ide-editor-layout-merge-primary/);
+  assert.match(shellSource, /data-ide-editor-layout-merge-secondary/);
+  assert.match(shellSource, /data-ide-editor-layout-orientation/);
+  assert.match(shellSource, /data-ide-editor-layout-orientation-vertical/);
+  assert.match(shellSource, /data-ide-editor-layout-orientation-horizontal/);
+  assert.match(shellSource, /data-ide-editor-layout-orientation-single/);
+  assert.match(shellSource, /dataAttribute="manager-editor"/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-manager/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-grid/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-card/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-orientation/);
+});

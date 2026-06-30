@@ -3591,6 +3591,21 @@ export function WorkspaceIdeShell() {
             </span>
           ))}
         </div>
+        <EditorLayoutManager
+          editorSplitMode={editorSplitMode}
+          editorSplitRatio={editorSplitRatio}
+          editorGroupTabs={editorGroupTabs}
+          activeEditorGroup={activeEditorGroup}
+          layoutLocked={layoutLocked}
+          editorGroupSnapshotCount={editorGroupSnapshots.length}
+          onSplitEditor={splitEditor}
+          onSetEditorSplitRatioPreset={setEditorSplitRatioPreset}
+          onFocusEditorGroup={focusEditorGroup}
+          onSwapEditorGroups={swapEditorGroups}
+          onMergeEditorGroups={mergeEditorSplitToGroup}
+          onSaveEditorGroupSnapshot={saveEditorGroupSnapshot}
+          onFocusEditorOnly={focusEditorOnlyLayout}
+        />
         <DockLayoutManager
           panesByPlacement={panesByPlacement}
           open={{ top: topOpen, left: leftOpen, right: rightOpen, bottom: bottomOpen }}
@@ -4425,6 +4440,113 @@ function CollapsedDockDropTarget({
       <span>{placementLabel(placement)} Dock</span>
       <span>{paneCount} Pane</span>
     </button>
+  );
+}
+
+function EditorLayoutManager({
+  editorSplitMode,
+  editorSplitRatio,
+  editorGroupTabs,
+  activeEditorGroup,
+  layoutLocked,
+  editorGroupSnapshotCount,
+  onSplitEditor,
+  onSetEditorSplitRatioPreset,
+  onFocusEditorGroup,
+  onSwapEditorGroups,
+  onMergeEditorGroups,
+  onSaveEditorGroupSnapshot,
+  onFocusEditorOnly,
+}: {
+  editorSplitMode: EditorSplitMode;
+  editorSplitRatio: number;
+  editorGroupTabs: EditorGroupTabs;
+  activeEditorGroup: EditorGroupId;
+  layoutLocked: boolean;
+  editorGroupSnapshotCount: number;
+  onSplitEditor: (mode: Exclude<EditorSplitMode, "single">) => void;
+  onSetEditorSplitRatioPreset: (ratio: SplitRatioPreset) => void;
+  onFocusEditorGroup: (group: EditorGroupId) => void;
+  onSwapEditorGroups: () => void;
+  onMergeEditorGroups: (preferredGroup: EditorGroupId) => void;
+  onSaveEditorGroupSnapshot: () => void;
+  onFocusEditorOnly: () => void;
+}) {
+  const splitActive = editorSplitMode !== "single";
+  const primaryCount = editorGroupTabs.primary.length;
+  const secondaryCount = editorGroupTabs.secondary.length;
+
+  return (
+    <section className="workspace-ide-shell__editor-layout-manager" aria-label="编辑器组布局管理器" data-ide-editor-layout-manager>
+      <div className="workspace-ide-shell__editor-layout-manager-head">
+        <span>Editor 布局管理器</span>
+        <span data-ide-editor-layout-summary>
+          {editorSplitMode === "single" ? "单组" : editorSplitMode === "vertical" ? "左右拆分" : "上下拆分"} · 主 {Math.round(editorSplitRatio)}% · 副 {100 - Math.round(editorSplitRatio)}% · 快照 {editorGroupSnapshotCount}
+        </span>
+        <button type="button" disabled={layoutLocked} onClick={onFocusEditorOnly} data-ide-editor-layout-focus-only>
+          编辑器专注
+        </button>
+        <button type="button" disabled={layoutLocked} onClick={onSaveEditorGroupSnapshot} data-ide-editor-layout-save-snapshot>
+          保存编辑器布局
+        </button>
+      </div>
+      <div className="workspace-ide-shell__editor-layout-grid">
+        <article className="workspace-ide-shell__editor-layout-card" data-ide-editor-layout-card="primary" data-active={activeEditorGroup === "primary" ? "true" : "false"}>
+          <header>
+            <button type="button" onClick={() => onFocusEditorGroup("primary")} data-ide-editor-layout-focus="primary">
+              主编辑器组
+            </button>
+            <span>{primaryCount} tabs</span>
+          </header>
+          <div className="workspace-ide-shell__editor-layout-group-actions">
+            <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("vertical")} data-ide-editor-layout-split-vertical>
+              右侧拆分
+            </button>
+            <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("horizontal")} data-ide-editor-layout-split-horizontal>
+              下方拆分
+            </button>
+          </div>
+        </article>
+        <article className="workspace-ide-shell__editor-layout-card" data-ide-editor-layout-card="secondary" data-active={activeEditorGroup === "secondary" ? "true" : "false"}>
+          <header>
+            <button type="button" disabled={!splitActive} onClick={() => onFocusEditorGroup("secondary")} data-ide-editor-layout-focus="secondary">
+              副编辑器组
+            </button>
+            <span>{secondaryCount} tabs</span>
+          </header>
+          <div className="workspace-ide-shell__editor-layout-group-actions">
+            <button type="button" disabled={layoutLocked || !splitActive} onClick={onSwapEditorGroups} data-ide-editor-layout-swap-groups>
+              交换主副
+            </button>
+            <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("primary")} data-ide-editor-layout-merge-primary>
+              合并到主组
+            </button>
+            <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("secondary")} data-ide-editor-layout-merge-secondary>
+              合并到副组
+            </button>
+          </div>
+        </article>
+        <div className="workspace-ide-shell__editor-layout-orientation" data-ide-editor-layout-orientation>
+          <span>拆分方向</span>
+          <button type="button" disabled={layoutLocked} data-active={editorSplitMode === "vertical" ? "true" : "false"} onClick={() => onSplitEditor("vertical")} data-ide-editor-layout-orientation-vertical>
+            主｜副
+          </button>
+          <button type="button" disabled={layoutLocked} data-active={editorSplitMode === "horizontal" ? "true" : "false"} onClick={() => onSplitEditor("horizontal")} data-ide-editor-layout-orientation-horizontal>
+            主／副
+          </button>
+          <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("primary")} data-ide-editor-layout-orientation-single>
+            收回单组
+          </button>
+        </div>
+        <SplitRatioPresetStrip
+          label="编辑器组拆分比例"
+          value={editorSplitRatio}
+          disabled={layoutLocked || !splitActive}
+          onSelect={onSetEditorSplitRatioPreset}
+          dataAttribute="manager-editor"
+        />
+      </div>
+    </section>
   );
 }
 
