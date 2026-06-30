@@ -1928,3 +1928,25 @@ test("new Workspace IDE shell exposes editor tab ordering controls in the layout
   assert.match(cssSource, /workspace-ide-shell__editor-layout-tab-order/);
   assert.match(cssSource, /grid-template-columns: minmax\(0, 1fr\) auto auto auto/);
 });
+
+test("new Workspace IDE shell exposes editor group bulk controls in the layout manager", () => {
+  assert.match(shellSource, /function clearEditorGroupTabs\(group: EditorGroupId\)/);
+  assert.match(shellSource, /setEditorGroupTabs\(\(current\) => \(\{ \.\.\.current, \[group\]: \[\] \}\)\)/);
+  assert.match(shellSource, /function duplicateEditorGroupTabs\(sourceGroup: EditorGroupId, targetGroup: EditorGroupId\)/);
+  assert.match(shellSource, /if \(targetGroup === "secondary" && editorSplitMode === "single"\) splitEditor\("vertical"\)/);
+  assert.match(shellSource, /\[targetGroup\]: mergeEditorTabs\(current\[targetGroup\], sourceTabs\)/);
+  assert.match(shellSource, /onClearEditorGroup=\{clearEditorGroupTabs\}/);
+  assert.match(shellSource, /onDuplicateEditorGroup=\{duplicateEditorGroupTabs\}/);
+  assert.match(shellSource, /onClearEditorGroup: \(group: EditorGroupId\) => void/);
+  assert.match(shellSource, /onDuplicateEditorGroup: \(sourceGroup: EditorGroupId, targetGroup: EditorGroupId\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-bulk-actions/);
+  assert.match(shellSource, /data-ide-editor-layout-bulk-actions=\{group\}/);
+  assert.match(shellSource, /data-ide-editor-layout-duplicate-group=\{group\}/);
+  assert.match(shellSource, /data-ide-editor-layout-duplicate-target=\{targetGroup\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onDuplicateEditorGroup\(group, targetGroup\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-clear-group=\{group\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onClearEditorGroup\(group\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| tabs\.length === 0\}/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-bulk-actions/);
+  assert.match(cssSource, /data-ide-editor-layout-clear-group/);
+});

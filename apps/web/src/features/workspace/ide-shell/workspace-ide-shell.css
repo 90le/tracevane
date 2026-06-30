@@ -1301,6 +1301,20 @@
   margin-top: 8px;
 }
 
+.workspace-ide-shell__editor-layout-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.workspace-ide-shell__editor-layout-bulk-actions button[data-ide-editor-layout-clear-group] {
+  border-color: rgba(248, 113, 113, 0.28);
+  color: #fecaca;
+}
+
 .workspace-ide-shell__editor-layout-tabs {
   display: grid;
   gap: 6px;

@@ -2836,6 +2836,32 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function clearEditorGroupTabs(group: EditorGroupId) {
+    if (layoutLocked) return;
+    setEditorGroupTabs((current) => ({ ...current, [group]: [] }));
+    if (group === "primary") {
+      setActivePath(undefined);
+      setActivePathRootId("");
+    } else {
+      setSecondaryPath(undefined);
+      setSecondaryPathRootId("");
+    }
+    focusEditorGroup(group);
+  }
+
+  function duplicateEditorGroupTabs(sourceGroup: EditorGroupId, targetGroup: EditorGroupId) {
+    if (layoutLocked) return;
+    const sourceTabs = editorGroupTabs[sourceGroup];
+    if (sourceTabs.length === 0) return;
+    if (targetGroup === "secondary" && editorSplitMode === "single") splitEditor("vertical");
+    setEditorGroupTabs((current) => ({
+      ...current,
+      [targetGroup]: mergeEditorTabs(current[targetGroup], sourceTabs),
+    }));
+    const nextActiveTab = sourceTabs.at(-1);
+    if (nextActiveTab) selectEditorTab(targetGroup, nextActiveTab);
+  }
+
   function beginEditorTabDrag(group: EditorGroupId, tab: EditorTab, event: React.DragEvent) {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/x-tracevane-editor-tab", JSON.stringify({ group, ...tab }));
@@ -3617,6 +3643,8 @@ export function WorkspaceIdeShell() {
           onSelectEditorTab={selectEditorTab}
           onMoveEditorTabToGroup={moveEditorTabToGroupEnd}
           onReorderEditorTab={reorderEditorTab}
+          onClearEditorGroup={clearEditorGroupTabs}
+          onDuplicateEditorGroup={duplicateEditorGroupTabs}
           onCloseEditorTab={closeEditorTab}
           onFocusEditorGroup={focusEditorGroup}
           onSwapEditorGroups={swapEditorGroups}
@@ -4475,6 +4503,8 @@ function EditorLayoutManager({
   onSelectEditorTab,
   onMoveEditorTabToGroup,
   onReorderEditorTab,
+  onClearEditorGroup,
+  onDuplicateEditorGroup,
   onCloseEditorTab,
   onFocusEditorGroup,
   onSwapEditorGroups,
@@ -4495,6 +4525,8 @@ function EditorLayoutManager({
   onSelectEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
   onMoveEditorTabToGroup: (sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab) => void;
   onReorderEditorTab: (group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab) => void;
+  onClearEditorGroup: (group: EditorGroupId) => void;
+  onDuplicateEditorGroup: (sourceGroup: EditorGroupId, targetGroup: EditorGroupId) => void;
   onCloseEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
   onFocusEditorGroup: (group: EditorGroupId) => void;
   onSwapEditorGroups: () => void;
@@ -4554,6 +4586,14 @@ function EditorLayoutManager({
                   </button>
                 </div>
               )}
+              <div className="workspace-ide-shell__editor-layout-bulk-actions" data-ide-editor-layout-bulk-actions={group}>
+                <button type="button" disabled={layoutLocked || tabs.length === 0} onClick={() => onDuplicateEditorGroup(group, targetGroup)} data-ide-editor-layout-duplicate-group={group} data-ide-editor-layout-duplicate-target={targetGroup}>
+                  复制到{targetGroup === "primary" ? "主组" : "副组"}
+                </button>
+                <button type="button" disabled={layoutLocked || tabs.length === 0} onClick={() => onClearEditorGroup(group)} data-ide-editor-layout-clear-group={group}>
+                  清空本组
+                </button>
+              </div>
               <div className="workspace-ide-shell__editor-layout-tabs" data-ide-editor-layout-tabs={group}>
                 {tabs.length === 0 ? <span data-ide-editor-layout-empty-tabs={group}>无打开文件</span> : null}
                 {tabs.map((tab, tabIndex) => (
