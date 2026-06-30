@@ -1950,3 +1950,14 @@ test("new Workspace IDE shell exposes editor group bulk controls in the layout m
   assert.match(cssSource, /workspace-ide-shell__editor-layout-bulk-actions/);
   assert.match(cssSource, /data-ide-editor-layout-clear-group/);
 });
+
+test("new Workspace IDE shell keeps editor layout manager touch-friendly on mobile", () => {
+  assert.match(cssSource, /@media \(max-width: 760px\) \{[\s\S]*?\.workspace-ide-shell__editor-layout-manager \{[\s\S]*?padding: 10px/);
+  assert.match(cssSource, /@media \(max-width: 760px\) \{[\s\S]*?\.workspace-ide-shell__editor-layout-manager button \{[\s\S]*?min-height: 34px/);
+  assert.match(cssSource, /\.workspace-ide-shell__editor-layout-bulk-actions,\n  \.workspace-ide-shell__editor-layout-group-actions,\n  \.workspace-ide-shell__editor-layout-orientation \{\n    display: grid;\n    grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(cssSource, /\.workspace-ide-shell__editor-layout-tab-row \{\n    grid-template-columns: minmax\(0, 1fr\) auto;\n    grid-template-areas:\n      "label close"\n      "order move"/);
+  assert.match(cssSource, /\.workspace-ide-shell__editor-layout-tab-row > button:first-child \{\n    grid-area: label/);
+  assert.match(cssSource, /\.workspace-ide-shell__editor-layout-tab-order \{\n    grid-area: order/);
+  assert.match(cssSource, /button\[data-ide-editor-layout-tab-move\] \{\n    grid-area: move/);
+  assert.match(cssSource, /button\[data-ide-editor-layout-tab-close\] \{\n    grid-area: close/);
+});

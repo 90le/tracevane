@@ -1389,8 +1389,46 @@
 }
 
 @media (max-width: 760px) {
+  .workspace-ide-shell__editor-layout-manager {
+    padding: 10px;
+  }
+
+  .workspace-ide-shell__editor-layout-manager button {
+    min-height: 34px;
+  }
+
   .workspace-ide-shell__editor-layout-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-ide-shell__editor-layout-bulk-actions,
+  .workspace-ide-shell__editor-layout-group-actions,
+  .workspace-ide-shell__editor-layout-orientation {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-ide-shell__editor-layout-tab-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "label close"
+      "order move";
+  }
+
+  .workspace-ide-shell__editor-layout-tab-row > button:first-child {
+    grid-area: label;
+  }
+
+  .workspace-ide-shell__editor-layout-tab-order {
+    grid-area: order;
+  }
+
+  .workspace-ide-shell__editor-layout-tab-row > button[data-ide-editor-layout-tab-move] {
+    grid-area: move;
+  }
+
+  .workspace-ide-shell__editor-layout-tab-row > button[data-ide-editor-layout-tab-close] {
+    grid-area: close;
   }
 
   .workspace-ide-shell__editor-layout-ratio {
