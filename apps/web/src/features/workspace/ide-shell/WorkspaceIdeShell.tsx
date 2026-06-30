@@ -3594,6 +3594,8 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          layoutSnapshotCount={layoutSnapshots.length}
+          layoutHistoryCounts={{ past: layoutHistoryPast.length, future: layoutHistoryFuture.length }}
           canUndoLayout={layoutHistoryPast.length > 0}
           canRedoLayout={layoutHistoryFuture.length > 0}
           hasLayoutSnapshots={layoutSnapshots.length > 0}
@@ -4419,6 +4421,8 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   layoutLocked,
+  layoutSnapshotCount,
+  layoutHistoryCounts,
   canUndoLayout,
   canRedoLayout,
   hasLayoutSnapshots,
@@ -4452,6 +4456,8 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  layoutSnapshotCount: number;
+  layoutHistoryCounts: { past: number; future: number };
   canUndoLayout: boolean;
   canRedoLayout: boolean;
   hasLayoutSnapshots: boolean;
@@ -4477,6 +4483,7 @@ function DockLayoutManager({
   onFocusRegion: (region: IdeFocusRegion) => void;
 }) {
   const [dragTarget, setDragTarget] = React.useState<{ placement: PanePlacement; role: DockPaneRole } | null>(null);
+  const openDockCount = DOCK_PLACEMENTS.filter((placement) => open[placement]).length;
 
   function beginManagerPaneDrag(paneId: PaneId, event: React.DragEvent) {
     if (layoutLocked || pinnedPanes.includes(paneId)) return;
@@ -4510,6 +4517,12 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-head">
         <span>Pane 布局管理器</span>
         <span>开合 · 拆分 · 比例 · 主/副组</span>
+        <div className="workspace-ide-shell__dock-layout-summary" data-ide-pane-layout-summary>
+          <span data-ide-pane-layout-summary-open>打开 {openDockCount}/4</span>
+          <span data-ide-pane-layout-summary-max>{maximizedPane ? `最大化 ${maximizedPane === "center" ? "编辑器" : placementLabel(maximizedPane)}` : "未最大化"}</span>
+          <span data-ide-pane-layout-summary-snapshots>快照 {layoutSnapshotCount}</span>
+          <span data-ide-pane-layout-summary-history>历史 {layoutHistoryCounts.past}/{layoutHistoryCounts.future}</span>
+        </div>
         <div className="workspace-ide-shell__dock-layout-recipes" aria-label="工作台组合预案" data-ide-pane-layout-recipes>
           {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
             <button key={recipe.id} type="button" disabled={layoutLocked} onClick={() => onApplyWorkbenchRecipe(recipe.id)} title={recipe.description} data-ide-pane-layout-recipe={recipe.id}>

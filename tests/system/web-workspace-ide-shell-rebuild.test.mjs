@@ -1649,3 +1649,21 @@ test("new Workspace IDE shell exposes workbench recipes in the pane layout manag
   assert.match(shellSource, /title=\{recipe\.description\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-recipes/);
 });
+
+test("new Workspace IDE shell exposes a layout summary in the pane layout manager", () => {
+  assert.match(shellSource, /layoutSnapshotCount=\{layoutSnapshots\.length\}/);
+  assert.match(shellSource, /layoutHistoryCounts=\{\{ past: layoutHistoryPast\.length, future: layoutHistoryFuture\.length \}\}/);
+  assert.match(shellSource, /layoutSnapshotCount: number/);
+  assert.match(shellSource, /layoutHistoryCounts: \{ past: number; future: number \}/);
+  assert.match(shellSource, /const openDockCount = DOCK_PLACEMENTS\.filter\(\(placement\) => open\[placement\]\)\.length/);
+  assert.match(shellSource, /data-ide-pane-layout-summary/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-open/);
+  assert.match(shellSource, /打开 \{openDockCount\}\/4/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-max/);
+  assert.match(shellSource, /maximizedPane \? `最大化 \$\{maximizedPane === "center" \? "编辑器" : placementLabel\(maximizedPane\)\}` : "未最大化"/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-snapshots/);
+  assert.match(shellSource, /快照 \{layoutSnapshotCount\}/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-history/);
+  assert.match(shellSource, /历史 \{layoutHistoryCounts\.past\}\/\{layoutHistoryCounts\.future\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-summary/);
+});
