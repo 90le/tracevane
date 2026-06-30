@@ -3590,6 +3590,7 @@ export function WorkspaceIdeShell() {
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
           onOpenAllDocks={openAllDocks}
+          onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onIsolateDock={isolateDockPlacement}
           onSetDockSplitMode={setDockSplitMode}
@@ -4406,6 +4407,7 @@ function DockLayoutManager({
   maximizedPane,
   layoutLocked,
   onOpenAllDocks,
+  onFocusEditorOnly,
   onToggleDockOpen,
   onIsolateDock,
   onSetDockSplitMode,
@@ -4430,6 +4432,7 @@ function DockLayoutManager({
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
   onOpenAllDocks: () => void;
+  onFocusEditorOnly: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onIsolateDock: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
@@ -4480,6 +4483,9 @@ function DockLayoutManager({
         <span>开合 · 拆分 · 比例 · 主/副组</span>
         <button type="button" disabled={layoutLocked} onClick={onOpenAllDocks} data-ide-pane-layout-open-all>
           打开全部
+        </button>
+        <button type="button" disabled={layoutLocked} onClick={onFocusEditorOnly} data-ide-pane-layout-editor-only>
+          编辑器专注
         </button>
       </div>
       <div className="workspace-ide-shell__dock-layout-manager-grid">

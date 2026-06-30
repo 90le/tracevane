@@ -1591,3 +1591,11 @@ test("new Workspace IDE shell exposes open-all controls in the pane layout manag
   assert.match(cssSource, /workspace-ide-shell__dock-layout-manager-head button/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-manager-head span:nth-child\(2\)/);
 });
+
+test("new Workspace IDE shell exposes editor-only controls in the pane layout manager", () => {
+  assert.match(shellSource, /onFocusEditorOnly=\{focusEditorOnlyLayout\}/);
+  assert.match(shellSource, /onFocusEditorOnly: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-editor-only/);
+  assert.match(shellSource, /onClick=\{onFocusEditorOnly\}/);
+  assert.match(shellSource, />\n          编辑器专注\n        <\/button>/);
+});
