@@ -1529,3 +1529,20 @@ test("new Workspace IDE shell exposes dock size presets in the pane layout manag
   assert.match(shellSource, /data-ide-pane-layout-size-preset=\{preset\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-size-presets/);
 });
+
+test("new Workspace IDE shell exposes continuous dock size sliders in the pane layout manager", () => {
+  assert.match(shellSource, /function setDockPlacementSize\(placement: PanePlacement, size: number\)/);
+  assert.match(shellSource, /setPaneSizes\(\(current\) => \(\{ \.\.\.current, \[placement\]: clamp\(size, min, max\) \}\)\)/);
+  assert.match(shellSource, /onSetDockSize=\{setDockPlacementSize\}/);
+  assert.match(shellSource, /onSetDockSize: \(placement: PanePlacement, size: number\) => void/);
+  assert.match(shellSource, /const sizeLimits = getPaneSizeLimits\(placement\)/);
+  assert.match(shellSource, /type="range"/);
+  assert.match(shellSource, /min=\{sizeLimits\.min\}/);
+  assert.match(shellSource, /max=\{sizeLimits\.max\}/);
+  assert.match(shellSource, /step=\{KEYBOARD_RESIZE_STEP\}/);
+  assert.match(shellSource, /value=\{paneSizes\[placement\]\}/);
+  assert.match(shellSource, /data-ide-pane-layout-size-slider=\{placement\}/);
+  assert.match(shellSource, /onChange=\{\(event\) => onSetDockSize\(placement, Number\(event\.currentTarget\.value\)\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-size input\[type="range"\]/);
+  assert.match(cssSource, /accent-color: #22d3ee/);
+});

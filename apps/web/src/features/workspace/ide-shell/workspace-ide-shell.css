@@ -1324,6 +1324,12 @@
   border-color: rgba(125, 211, 252, 0.18);
 }
 
+.workspace-ide-shell__dock-layout-size input[type="range"] {
+  flex: 1 1 100%;
+  min-width: 120px;
+  accent-color: #22d3ee;
+}
+
 .workspace-ide-shell__dock-layout-groups {
   align-items: stretch;
 }

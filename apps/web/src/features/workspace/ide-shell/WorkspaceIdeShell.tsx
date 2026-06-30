@@ -2642,13 +2642,19 @@ export function WorkspaceIdeShell() {
     openDockPlacement(placement);
   }
 
+  function setDockPlacementSize(placement: PanePlacement, size: number) {
+    if (layoutLocked) return;
+    const { min, max } = getPaneSizeLimits(placement);
+    setPaneSizes((current) => ({ ...current, [placement]: clamp(size, min, max) }));
+    setLayoutPreset("balanced");
+    openDockPlacement(placement);
+  }
+
   function setDockPlacementSizePreset(placement: PanePlacement, preset: DockSizePreset) {
     if (layoutLocked) return;
     const { min, max } = getPaneSizeLimits(placement);
     const nextSize = preset === "compact" ? min : preset === "expanded" ? max : Math.round((min + max) / 2);
-    setPaneSizes((current) => ({ ...current, [placement]: nextSize }));
-    setLayoutPreset("balanced");
-    openDockPlacement(placement);
+    setDockPlacementSize(placement, nextSize);
   }
 
   function resizeActiveDockPlacement(delta: number) {
@@ -3574,6 +3580,7 @@ export function WorkspaceIdeShell() {
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onSetDockSplitMode={setDockSplitMode}
           onResizeDock={resizeDockPlacement}
+          onSetDockSize={setDockPlacementSize}
           onSetDockSizePreset={setDockPlacementSizePreset}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
           onMovePaneToGroup={movePaneToPlacement}
@@ -4384,6 +4391,7 @@ function DockLayoutManager({
   onToggleDockOpen,
   onSetDockSplitMode,
   onResizeDock,
+  onSetDockSize,
   onSetDockSizePreset,
   onSetSplitRatioPreset,
   onMovePaneToGroup,
@@ -4402,6 +4410,7 @@ function DockLayoutManager({
   onToggleDockOpen: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
   onResizeDock: (placement: PanePlacement, delta: number) => void;
+  onSetDockSize: (placement: PanePlacement, size: number) => void;
   onSetDockSizePreset: (placement: PanePlacement, preset: DockSizePreset) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
@@ -4447,6 +4456,7 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-grid">
         {DOCK_PLACEMENTS.map((placement) => {
           const paneIds = panesByPlacement[placement];
+          const sizeLimits = getPaneSizeLimits(placement);
           return (
             <article
               key={placement}
@@ -4492,6 +4502,17 @@ function DockLayoutManager({
                     </button>
                   ))}
                 </div>
+                <input
+                  type="range"
+                  min={sizeLimits.min}
+                  max={sizeLimits.max}
+                  step={KEYBOARD_RESIZE_STEP}
+                  value={paneSizes[placement]}
+                  disabled={layoutLocked}
+                  aria-label={`${placementLabel(placement)} Dock 尺寸`}
+                  data-ide-pane-layout-size-slider={placement}
+                  onChange={(event) => onSetDockSize(placement, Number(event.currentTarget.value))}
+                />
               </div>
               <SplitRatioPresetStrip
                 label={`${placementLabel(placement)} Dock 拆分比例`}
