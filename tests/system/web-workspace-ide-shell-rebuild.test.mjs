@@ -1912,3 +1912,19 @@ test("new Workspace IDE shell exposes editor tab group controls in the layout ma
   assert.match(cssSource, /workspace-ide-shell__editor-layout-tab-row/);
   assert.match(cssSource, /grid-template-columns: minmax\(0, 1fr\) auto auto/);
 });
+
+test("new Workspace IDE shell exposes editor tab ordering controls in the layout manager", () => {
+  assert.match(shellSource, /onReorderEditorTab=\{reorderEditorTab\}/);
+  assert.match(shellSource, /onReorderEditorTab: \(group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab\) => void/);
+  assert.match(shellSource, /tabs\.map\(\(tab, tabIndex\) => \(/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-tab-order/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-order=\{tab\.path\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-order-up=\{tab\.path\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| tabIndex === 0\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onReorderEditorTab\(group, tab, tabs\[tabIndex - 1\]\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-order-down=\{tab\.path\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| tabIndex === tabs\.length - 1\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onReorderEditorTab\(group, tab, tabs\[tabIndex \+ 2\] \?\? tab\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-tab-order/);
+  assert.match(cssSource, /grid-template-columns: minmax\(0, 1fr\) auto auto auto/);
+});

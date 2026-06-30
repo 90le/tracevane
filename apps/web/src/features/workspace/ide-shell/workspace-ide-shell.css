@@ -1319,7 +1319,7 @@
 
 .workspace-ide-shell__editor-layout-tab-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 6px;
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -1333,6 +1333,16 @@
   justify-content: flex-start;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workspace-ide-shell__editor-layout-tab-order {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.workspace-ide-shell__editor-layout-tab-order button {
+  min-width: 28px;
+  padding-inline: 6px;
 }
 
 .workspace-ide-shell__editor-layout-orientation,

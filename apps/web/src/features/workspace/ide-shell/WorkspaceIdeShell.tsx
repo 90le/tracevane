@@ -3616,6 +3616,7 @@ export function WorkspaceIdeShell() {
           onResizeEditorSplit={resizeEditorSplitFromManager}
           onSelectEditorTab={selectEditorTab}
           onMoveEditorTabToGroup={moveEditorTabToGroupEnd}
+          onReorderEditorTab={reorderEditorTab}
           onCloseEditorTab={closeEditorTab}
           onFocusEditorGroup={focusEditorGroup}
           onSwapEditorGroups={swapEditorGroups}
@@ -4473,6 +4474,7 @@ function EditorLayoutManager({
   onResizeEditorSplit,
   onSelectEditorTab,
   onMoveEditorTabToGroup,
+  onReorderEditorTab,
   onCloseEditorTab,
   onFocusEditorGroup,
   onSwapEditorGroups,
@@ -4492,6 +4494,7 @@ function EditorLayoutManager({
   onResizeEditorSplit: (delta: number) => void;
   onSelectEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
   onMoveEditorTabToGroup: (sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab) => void;
+  onReorderEditorTab: (group: EditorGroupId, draggedTab: EditorTab, beforeTab: EditorTab) => void;
   onCloseEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
   onFocusEditorGroup: (group: EditorGroupId) => void;
   onSwapEditorGroups: () => void;
@@ -4553,11 +4556,19 @@ function EditorLayoutManager({
               )}
               <div className="workspace-ide-shell__editor-layout-tabs" data-ide-editor-layout-tabs={group}>
                 {tabs.length === 0 ? <span data-ide-editor-layout-empty-tabs={group}>无打开文件</span> : null}
-                {tabs.map((tab) => (
+                {tabs.map((tab, tabIndex) => (
                   <div key={`${tab.rootId}:${tab.path}`} className="workspace-ide-shell__editor-layout-tab-row" data-ide-editor-layout-tab={tab.path} data-ide-editor-layout-tab-group={group}>
                     <button type="button" onClick={() => onSelectEditorTab(group, tab)} title={tab.path} data-ide-editor-layout-tab-focus={tab.path}>
                       {editorTabLabel(tab.path)}
                     </button>
+                    <div className="workspace-ide-shell__editor-layout-tab-order" data-ide-editor-layout-tab-order={tab.path}>
+                      <button type="button" disabled={layoutLocked || tabIndex === 0} onClick={() => onReorderEditorTab(group, tab, tabs[tabIndex - 1])} data-ide-editor-layout-tab-order-up={tab.path} aria-label={`上移 ${editorTabLabel(tab.path)}`}>
+                        ↑
+                      </button>
+                      <button type="button" disabled={layoutLocked || tabIndex === tabs.length - 1} onClick={() => onReorderEditorTab(group, tab, tabs[tabIndex + 2] ?? tab)} data-ide-editor-layout-tab-order-down={tab.path} aria-label={`下移 ${editorTabLabel(tab.path)}`}>
+                        ↓
+                      </button>
+                    </div>
                     <button type="button" disabled={layoutLocked} onClick={() => onMoveEditorTabToGroup(group, targetGroup, tab)} data-ide-editor-layout-tab-move={tab.path} data-ide-editor-layout-tab-target={targetGroup}>
                       移到{targetGroup === "primary" ? "主组" : "副组"}
                     </button>
