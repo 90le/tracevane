@@ -1,5 +1,13 @@
 import * as React from "react";
-import { Activity, Check, Globe, KeyRound, Loader2, RouteOff, Terminal, ZapOff } from "lucide-react";
+import {
+  Activity,
+  Check,
+  KeyRound,
+  Loader2,
+  RouteOff,
+  Terminal,
+  ZapOff,
+} from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
@@ -15,7 +23,6 @@ import {
 import { toast } from "@/design/ui/sonner";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
   useModelGatewayAppConnectionsQuery,
@@ -37,9 +44,20 @@ import { RuntimeDiagnosticsPanel } from "./RuntimeDiagnosticsPanel";
 import { DaemonServicePanel } from "./DaemonServicePanel";
 
 /** Panel shell matching the prototype `.panel` block. */
-function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
+function Panel({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className={cn("rounded-md border border-line bg-panel shadow-sm", className)}>
+    <section
+      className={cn(
+        "rounded-md border border-line bg-panel shadow-sm",
+        className,
+      )}
+    >
       {children}
     </section>
   );
@@ -91,7 +109,9 @@ function Row({
       </span>
       <span className="grid min-w-0 flex-1">
         <strong className="truncate text-base text-ink-strong">{title}</strong>
-        {subtitle && <span className="truncate text-sm text-muted">{subtitle}</span>}
+        {subtitle && (
+          <span className="truncate text-sm text-muted">{subtitle}</span>
+        )}
       </span>
       {trailing && <span className="ml-auto shrink-0">{trailing}</span>}
     </div>
@@ -113,18 +133,28 @@ function providerHealthBadge(provider: ModelGatewayProviderView): {
   variant: "ok" | "warn" | "bad";
   label: string;
 } {
-  const endpointProfiles = provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
-  const openEndpointCount = endpointProfiles.filter((profile) => profile.health.circuitState === "open").length;
-  const degradedEndpointCount = endpointProfiles.filter((profile) =>
-    profile.health.circuitState !== "closed"
-    || profile.health.retryAfterUntil
-    || profile.health.consecutiveFailures > 0
-    || profile.health.lastError,
+  const endpointProfiles =
+    provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
+  const openEndpointCount = endpointProfiles.filter(
+    (profile) => profile.health.circuitState === "open",
   ).length;
-  if (provider.health.circuitState === "open") return { variant: "bad", label: "熔断" };
+  const degradedEndpointCount = endpointProfiles.filter(
+    (profile) =>
+      profile.health.circuitState !== "closed" ||
+      profile.health.retryAfterUntil ||
+      profile.health.consecutiveFailures > 0 ||
+      profile.health.lastError,
+  ).length;
+  if (provider.health.circuitState === "open")
+    return { variant: "bad", label: "熔断" };
   if (openEndpointCount > 0) return { variant: "bad", label: "部分熔断" };
-  if (provider.health.circuitState === "half-open") return { variant: "warn", label: "观察" };
-  if (degradedEndpointCount > 0 || provider.health.consecutiveFailures > 0 || provider.health.lastError) {
+  if (provider.health.circuitState === "half-open")
+    return { variant: "warn", label: "观察" };
+  if (
+    degradedEndpointCount > 0 ||
+    provider.health.consecutiveFailures > 0 ||
+    provider.health.lastError
+  ) {
     return { variant: "warn", label: "部分异常" };
   }
   if (!provider.enabled) return { variant: "warn", label: "停用" };
@@ -136,12 +166,14 @@ function providerNeedsAttention(provider: ModelGatewayProviderView): boolean {
 }
 
 function providerAttentionSummary(provider: ModelGatewayProviderView): string {
-  const endpointProfiles = provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
-  const riskyEndpoint = endpointProfiles.find((profile) =>
-    profile.health.circuitState !== "closed"
-    || profile.health.retryAfterUntil
-    || profile.health.consecutiveFailures > 0
-    || profile.health.lastError,
+  const endpointProfiles =
+    provider.endpointProfiles?.filter((profile) => profile.enabled) ?? [];
+  const riskyEndpoint = endpointProfiles.find(
+    (profile) =>
+      profile.health.circuitState !== "closed" ||
+      profile.health.retryAfterUntil ||
+      profile.health.consecutiveFailures > 0 ||
+      profile.health.lastError,
   );
   if (riskyEndpoint) {
     return `${riskyEndpoint.name} · ${riskyEndpoint.health.lastError || `circuit ${riskyEndpoint.health.circuitState}`} · 连续失败 ${riskyEndpoint.health.consecutiveFailures}`;
@@ -171,7 +203,9 @@ function connectionForScope(
   scope: ModelGatewayAppScope,
   connections: ModelGatewayAppConnection[],
 ): ModelGatewayAppConnection | null {
-  return connections.find((connection) => connection.appScope === scope) ?? null;
+  return (
+    connections.find((connection) => connection.appScope === scope) ?? null
+  );
 }
 
 function routeForScope(
@@ -189,15 +223,91 @@ type RouteSmokeResult = {
   message: string;
 };
 
+const ROUTE_SMOKE_STORAGE_KEY = "tracevane:model-gateway:overview-route-smoke:v1";
+const ROUTE_SMOKE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function routeSmokeKey(route: ModelGatewayActiveRouteStatus): string {
+  return [
+    route.scope,
+    route.resolvedProviderId ?? "",
+    route.resolvedModel ?? "",
+    route.resolvedEndpointProfileId ?? "",
+    route.routeId,
+  ].join("::");
+}
+
+function isRouteSmokeResult(value: unknown): value is RouteSmokeResult {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<RouteSmokeResult>;
+  return (
+    typeof item.ok === "boolean" &&
+    typeof item.checkedAt === "string" &&
+    (typeof item.latencyMs === "number" || item.latencyMs === null) &&
+    (typeof item.providerId === "string" || item.providerId === null) &&
+    typeof item.message === "string"
+  );
+}
+
+function readStoredRouteSmokeResults(): Record<string, RouteSmokeResult> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(ROUTE_SMOKE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const now = Date.now();
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(([, value]) => {
+        if (!isRouteSmokeResult(value)) return false;
+        const checkedAtMs = Date.parse(value.checkedAt);
+        return Number.isFinite(checkedAtMs) && now - checkedAtMs <= ROUTE_SMOKE_MAX_AGE_MS;
+      }) as Array<[string, RouteSmokeResult]>,
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredRouteSmokeResults(
+  results: Record<string, RouteSmokeResult>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      ROUTE_SMOKE_STORAGE_KEY,
+      JSON.stringify(results),
+    );
+  } catch {
+    // Best-effort UI cache only; route smoke itself has already completed.
+  }
+}
+
+function formatRouteSmokeCheckedAt(checkedAt: string): string {
+  const checkedAtMs = Date.parse(checkedAt);
+  if (!Number.isFinite(checkedAtMs)) return "上次检查时间未知";
+  const diffMs = Date.now() - checkedAtMs;
+  if (diffMs >= 0 && diffMs < 60_000) return "刚刚检查";
+  if (diffMs >= 0 && diffMs < 60 * 60_000) {
+    return `${Math.max(1, Math.floor(diffMs / 60_000))} 分钟前`;
+  }
+  if (diffMs >= 0 && diffMs < 24 * 60 * 60_000) {
+    return `${Math.max(1, Math.floor(diffMs / (60 * 60_000)))} 小时前`;
+  }
+  return `上次 ${new Date(checkedAt).toLocaleString()}`;
+}
+
 function routeBudgetLabel(
   route: ModelGatewayActiveRouteStatus,
   providers: ModelGatewayProviderView[],
 ): string | null {
   if (!route.resolvedProviderId || !route.resolvedModel) return null;
   const resolvedModel = route.resolvedModel;
-  const provider = providers.find((item) => item.id === route.resolvedProviderId);
+  const provider = providers.find(
+    (item) => item.id === route.resolvedProviderId,
+  );
   const model = provider?.models?.models.find(
-    (item) => item.id === resolvedModel || item.aliases?.includes(resolvedModel),
+    (item) =>
+      item.id === resolvedModel || item.aliases?.includes(resolvedModel),
   );
   return formatModelBudgetPair({
     contextWindow: model?.contextWindow,
@@ -205,36 +315,36 @@ function routeBudgetLabel(
   });
 }
 
+const OVERVIEW_STALE_MS = 30_000;
+
 export function OverviewView({ goToView }: ModelGatewayViewProps) {
-  const statusQuery = useModelGatewayStatusQuery();
-  const providersQuery = useModelGatewayProvidersQuery();
-  const connectionsQuery = useModelGatewayAppConnectionsQuery();
+  const statusQuery = useModelGatewayStatusQuery({
+    staleTime: OVERVIEW_STALE_MS,
+    retry: false,
+  });
+  const providersQuery = useModelGatewayProvidersQuery({
+    staleTime: OVERVIEW_STALE_MS,
+    retry: false,
+  });
+  const connectionsQuery = useModelGatewayAppConnectionsQuery({
+    staleTime: OVERVIEW_STALE_MS,
+    retry: false,
+  });
   const smokeMutation = useSmokeModelGatewayActiveRouteMutation();
 
   const [keyDialogOpen, setKeyDialogOpen] = React.useState(false);
   const [smokingScope, setSmokingScope] = React.useState<string | null>(null);
   const [batchSmoking, setBatchSmoking] = React.useState(false);
-  const [routeSmokeResults, setRouteSmokeResults] = React.useState<Record<string, RouteSmokeResult>>({});
+  const [diagnosticsEnabled, setDiagnosticsEnabled] = React.useState(false);
+  const [serviceEnabled, setServiceEnabled] = React.useState(false);
+  const [routeSmokeResults, setRouteSmokeResults] = React.useState<
+    Record<string, RouteSmokeResult>
+  >(() => readStoredRouteSmokeResults());
 
-  const isLoading =
-    statusQuery.isLoading || providersQuery.isLoading || connectionsQuery.isLoading;
-  const error = statusQuery.error ?? providersQuery.error ?? connectionsQuery.error;
-
-  if (isLoading) {
-    return (
-      <div className="grid gap-[18px]" role="status" aria-busy="true">
-        <Skeleton className="h-[132px] w-full" />
-        <section className="rounded-md border border-line bg-panel shadow-sm">
-          <Skeleton className="h-12 w-full rounded-b-none" />
-          <div className="py-1.5">
-            <SkeletonRow />
-            <SkeletonRow />
-            <SkeletonRow />
-          </div>
-        </section>
-      </div>
-    );
-  }
+  const error =
+    statusQuery.error && providersQuery.error && connectionsQuery.error
+      ? statusQuery.error
+      : null;
 
   if (error) {
     return (
@@ -266,8 +376,12 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const routeAlerts = providers?.activeRouteAlerts ?? [];
   const providerList = providers?.providers ?? [];
   const appConnections = connections?.connections ?? [];
-  const checkableRoutes = activeRoutes.filter((route) => Boolean(route.resolvedProviderId));
-  const configuredConnectionCount = appConnections.filter((connection) => connection.configured).length;
+  const checkableRoutes = activeRoutes.filter((route) =>
+    Boolean(route.resolvedProviderId),
+  );
+  const configuredConnectionCount = appConnections.filter(
+    (connection) => connection.configured,
+  ).length;
   const appConnectionIssues = appConnections.filter(
     (connection) => !connection.configured || connection.issues.length > 0,
   );
@@ -278,9 +392,26 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
   // Attention items are built ONLY from live provider health — no fabrication.
   const attentionProviders = providerList.filter(providerNeedsAttention);
-  const healthyProviders = providerList.filter((provider) => !providerNeedsAttention(provider));
+  const healthyProviders = providerList.filter(
+    (provider) => !providerNeedsAttention(provider),
+  );
 
-  const degraded = (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
+  const degraded =
+    (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
+
+  const rememberRouteSmokeResult = (
+    route: ModelGatewayActiveRouteStatus,
+    result: RouteSmokeResult,
+  ) => {
+    setRouteSmokeResults((prev) => {
+      const next = {
+        ...prev,
+        [routeSmokeKey(route)]: result,
+      };
+      writeStoredRouteSmokeResults(next);
+      return next;
+    });
+  };
 
   const smokeActiveRoute = async (route: ModelGatewayActiveRouteStatus) => {
     setSmokingScope(route.scope);
@@ -290,24 +421,22 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         model: route.resolvedModel ?? undefined,
       });
       const providerDrift =
-        route.resolvedProviderId && result.providerId !== route.resolvedProviderId
+        route.resolvedProviderId &&
+        result.providerId !== route.resolvedProviderId
           ? `实际 Provider：${result.providerId}`
           : undefined;
       const description = [providerDrift, result.responsePreview ?? undefined]
         .filter(Boolean)
         .join(" · ");
-      setRouteSmokeResults((prev) => ({
-        ...prev,
-        [route.scope]: {
-          ok: result.ok,
-          checkedAt: result.checkedAt,
-          latencyMs: result.latencyMs,
-          providerId: result.providerId || null,
-          message: result.ok
-            ? providerDrift || "路由 smoke 通过"
-            : result.error?.message ?? providerDrift ?? "路由 smoke 失败",
-        },
-      }));
+      rememberRouteSmokeResult(route, {
+        ok: result.ok,
+        checkedAt: result.checkedAt,
+        latencyMs: result.latencyMs,
+        providerId: result.providerId || null,
+        message: result.ok
+          ? providerDrift || "路由 smoke 通过"
+          : (result.error?.message ?? providerDrift ?? "路由 smoke 失败"),
+      });
       if (result.ok) {
         toast.success(`${route.scope} 路由正常 · ${result.latencyMs}ms`, {
           description: description || undefined,
@@ -318,17 +447,15 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "路由检查请求失败";
-      setRouteSmokeResults((prev) => ({
-        ...prev,
-        [route.scope]: {
-          ok: false,
-          checkedAt: new Date().toISOString(),
-          latencyMs: null,
-          providerId: route.resolvedProviderId,
-          message,
-        },
-      }));
+      const message =
+        error instanceof Error ? error.message : "路由检查请求失败";
+      rememberRouteSmokeResult(route, {
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        latencyMs: null,
+        providerId: route.resolvedProviderId,
+        message,
+      });
       toast.error(`${route.scope} 路由检查失败`, { description: message });
     } finally {
       setSmokingScope(null);
@@ -363,7 +490,9 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             </Badge>
           )}
           <span className="text-sm text-muted">
-            {listener ? `Gateway ${listener.host}:${listener.port}` : "Gateway 监听信息不可用"}
+            {listener
+              ? `Gateway ${listener.host}:${listener.port}`
+              : "Gateway 监听信息不可用"}
           </span>
           <Button
             variant="ghost"
@@ -373,7 +502,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           >
             <KeyRound />
             网关密钥
-            <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="ml-0.5">
+            <Badge
+              variant={clientAuthConfigured ? "ok" : "mute"}
+              className="ml-0.5"
+            >
               {clientAuthConfigured ? "已配置" : "未配置"}
             </Badge>
           </Button>
@@ -402,18 +534,27 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               </small>
             </dd>
             <dd className="truncate text-xs text-muted">
-              {health?.degradedProviders ?? 0} 降级 · {health?.openCircuits ?? 0} 熔断
+              {health?.degradedProviders ?? 0} 降级 ·{" "}
+              {health?.openCircuits ?? 0} 熔断
             </dd>
           </div>
           <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
             <dt className="text-xs text-subtle">客户端 scope</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{activeRoutes.length}</dd>
-            <dd className="truncate text-xs text-muted">{routeAlerts.length} 条告警</dd>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
+              {activeRoutes.length}
+            </dd>
+            <dd className="truncate text-xs text-muted">
+              {routeAlerts.length} 条告警
+            </dd>
           </div>
           <div className="min-w-0 px-3 py-2.5">
             <dt className="text-xs text-subtle">需关注</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{degraded}</dd>
-            <dd className="truncate text-xs text-muted">降级 / 熔断 Provider</dd>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
+              {degraded}
+            </dd>
+            <dd className="truncate text-xs text-muted">
+              降级 / 熔断 Provider
+            </dd>
           </div>
         </dl>
       </section>
@@ -421,22 +562,34 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
       {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. */}
       <Panel className="overflow-hidden border-primary-line/40 bg-panel-2">
         <PanelHead
-          title="路由 Cockpit"
-          sub="每个客户端 scope 的真实路由、模型预算、配置状态与最近检查"
+          title="模型路由总览"
+          sub="每个客户端入口的真实 Provider、模型预算、配置状态与最近检查"
           action={
             <span className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => void smokeAllActiveRoutes()}
-                disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
-                aria-label="检查全部客户端当前路由"
-                title="按 Codex / Claude Code / OpenCode / OpenClaw scope 逐条检查真实路由"
+                disabled={
+                  checkableRoutes.length === 0 ||
+                  smokeMutation.isPending ||
+                  batchSmoking
+                }
+                aria-label="检查全部客户端入口当前模型路由"
+                title="按 Codex / Claude Code / OpenCode / OpenClaw 逐条检查真实模型路由"
               >
-                {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
-                检查全部路由
+                {batchSmoking ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Activity className="size-3.5" />
+                )}
+                检查全部
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => goToView("apps")}
+              >
                 <Terminal className="size-3.5" />
                 客户端接入
               </Button>
@@ -444,95 +597,176 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           }
         />
         <div className="p-3">
-          <Table>
+          <Table className="table-fixed">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[45%]" />
+              <col className="hidden lg:table-column lg:w-[18%]" />
+              <col className="hidden xl:table-column xl:w-[12%]" />
+              <col className="w-[23%] lg:w-[23%] xl:w-[11%]" />
+            </colgroup>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[150px]">客户端</TableHead>
-                <TableHead className="min-w-[260px]">实际路由</TableHead>
-                <TableHead className="hidden min-w-[210px] lg:table-cell">客户端配置</TableHead>
-                <TableHead className="hidden min-w-[130px] xl:table-cell">最近检查</TableHead>
-                <TableHead className="min-w-[180px] text-right">操作</TableHead>
+                <TableHead>客户端入口</TableHead>
+                <TableHead>实际路由</TableHead>
+                <TableHead className="hidden lg:table-cell">本地配置</TableHead>
+                <TableHead className="hidden xl:table-cell">最近检查</TableHead>
+                <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {MODEL_GATEWAY_APP_SCOPES.map((scope) => {
                 const route = routeForScope(scope, activeRoutes);
                 const connection = connectionForScope(scope, appConnections);
-                const stateBadge = route ? ROUTE_STATE_BADGE[route.state] : { variant: "bad" as const, label: "未解析" };
+                const stateBadge = route
+                  ? ROUTE_STATE_BADGE[route.state]
+                  : providersQuery.isLoading
+                    ? { variant: "mute" as const, label: "检测中" }
+                    : { variant: "bad" as const, label: "未解析" };
                 const configBadge = connection
                   ? appConnectionBadge(connection)
-                  : { variant: "mute" as const, label: "无客户端" };
-                const lastSmoke = route ? routeSmokeResults[route.scope] : null;
-                const budget = route ? routeBudgetLabel(route, providerList) : null;
+                  : connectionsQuery.isLoading
+                    ? { variant: "mute" as const, label: "检测中" }
+                    : { variant: "mute" as const, label: "无客户端" };
+                const lastSmoke = route
+                  ? routeSmokeResults[routeSmokeKey(route)]
+                  : null;
+                const budget = route
+                  ? routeBudgetLabel(route, providerList)
+                  : null;
                 const routeLine = route
                   ? [
-                    route.resolvedProviderName,
-                    route.resolvedModel,
-                    route.resolvedEndpointProfileName ?? route.routeId,
-                    budget,
-                  ].filter(Boolean).join(" · ")
-                  : "未解析到 active route";
+                      route.resolvedProviderName,
+                      route.resolvedModel,
+                      route.resolvedEndpointProfileName ?? route.routeId,
+                      budget,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : providersQuery.isLoading
+                    ? "正在解析当前模型路由"
+                    : "未解析到 active route";
                 const canSmoke = Boolean(route?.resolvedProviderId);
                 return (
-                  <TableRow key={scope} className={cn(
-                    route?.state === "missing" && "bg-red-soft/20",
-                    route?.state === "fallback" && "bg-amber-soft/20",
-                  )}>
-                    <TableCell>
+                  <TableRow
+                    key={scope}
+                    className={cn(
+                      route?.state === "missing" && "bg-red-soft/20",
+                      route?.state === "fallback" && "bg-amber-soft/20",
+                    )}
+                  >
+                    <TableCell className="min-w-0">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <strong className="text-base text-ink-strong">{APP_SCOPE_LABEL[scope]}</strong>
-                          <Badge variant={stateBadge.variant}>{stateBadge.label}</Badge>
+                          <strong className="text-base text-ink-strong">
+                            {APP_SCOPE_LABEL[scope]}
+                          </strong>
+                          <Badge variant={stateBadge.variant}>
+                            {stateBadge.label}
+                          </Badge>
                         </div>
-                        <div className="truncate text-xs text-subtle">{scope}</div>
+                        <div className="truncate text-xs text-subtle">
+                          {scope}
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-ink-strong" title={routeLine}>
+                        <div
+                          className="break-words text-sm font-medium leading-5 text-ink-strong"
+                          title={routeLine}
+                        >
                           {routeLine}
                         </div>
-                        <div className="truncate text-xs text-muted" title={route?.upstreamUrl ?? route?.resolvedBaseUrl ?? undefined}>
+                        <div
+                          className="break-all text-xs leading-5 text-muted"
+                          title={
+                            route?.upstreamUrl ??
+                            route?.resolvedBaseUrl ??
+                            undefined
+                          }
+                        >
                           {route?.resolvedApiFormat ?? "协议未知"}
-                          {route?.upstreamUrl ? ` · ${route.upstreamUrl}` : route?.resolvedBaseUrl ? ` · ${route.resolvedBaseUrl}` : ""}
+                          {route?.upstreamUrl
+                            ? ` · ${route.upstreamUrl}`
+                            : route?.resolvedBaseUrl
+                              ? ` · ${route.resolvedBaseUrl}`
+                              : ""}
                         </div>
                         <button
                           type="button"
-                          onClick={() => goToView("apps", connection ? { app: connection.id } : undefined)}
+                          onClick={() =>
+                            goToView(
+                              "apps",
+                              connection ? { app: connection.id } : undefined,
+                            )
+                          }
                           className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs text-muted outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)] lg:hidden"
                         >
-                          <span className="truncate">{connection?.label ?? "未检测到本地客户端"}</span>
-                          <Badge variant={configBadge.variant}>{configBadge.label}</Badge>
+                          <span className="truncate">
+                            {connectionsQuery.isLoading
+                              ? "正在检查本地客户端"
+                              : (connection?.label ?? "未检测到本地客户端")}
+                          </span>
+                          <Badge variant={configBadge.variant}>
+                            {configBadge.label}
+                          </Badge>
                         </button>
-                        {lastSmoke?.message && lastSmoke.message !== "路由 smoke 通过" && (
-                          <div className={cn("mt-1 truncate text-xs", lastSmoke.ok ? "text-muted" : "text-red")} title={lastSmoke.message}>
-                            {lastSmoke.message}
-                          </div>
-                        )}
+                        {lastSmoke?.message &&
+                          lastSmoke.message !== "路由 smoke 通过" && (
+                            <div
+                              className={cn(
+                                "mt-1 truncate text-xs",
+                                lastSmoke.ok ? "text-muted" : "text-red",
+                              )}
+                              title={lastSmoke.message}
+                            >
+                              {lastSmoke.message}
+                            </div>
+                          )}
                       </div>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <button
                         type="button"
-                        onClick={() => goToView("apps", connection ? { app: connection.id } : undefined)}
+                        onClick={() =>
+                          goToView(
+                            "apps",
+                            connection ? { app: connection.id } : undefined,
+                          )
+                        }
                         className="flex min-w-0 items-center justify-between gap-2 rounded-sm border border-line bg-panel-2 px-2 py-1.5 text-left outline-none transition-colors hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
                       >
                         <span className="truncate text-sm text-muted">
-                          {connection?.label ?? "未检测到本地客户端"}
+                          {connectionsQuery.isLoading
+                            ? "正在检查本地客户端"
+                            : (connection?.label ?? "未检测到本地客户端")}
                         </span>
-                        <Badge variant={configBadge.variant}>{configBadge.label}</Badge>
+                        <Badge variant={configBadge.variant}>
+                          {configBadge.label}
+                        </Badge>
                       </button>
                     </TableCell>
                     <TableCell className="hidden xl:table-cell">
                       {lastSmoke ? (
-                        <Badge variant={lastSmoke.ok ? "ok" : "bad"}>
-                          {lastSmoke.ok ? `已验 ${lastSmoke.latencyMs ?? "—"}ms` : "失败"}
-                        </Badge>
+                        <div className="grid justify-start gap-1">
+                          <Badge variant={lastSmoke.ok ? "ok" : "bad"}>
+                            {lastSmoke.ok
+                              ? `已验 ${lastSmoke.latencyMs ?? "—"}ms`
+                              : "失败"}
+                          </Badge>
+                          <span
+                            className="text-xs text-subtle"
+                            title={new Date(lastSmoke.checkedAt).toLocaleString()}
+                          >
+                            {formatRouteSmokeCheckedAt(lastSmoke.checkedAt)}
+                          </span>
+                        </div>
                       ) : (
                         <span className="text-sm text-subtle">未检查</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0">
                       <div className="flex flex-wrap justify-end gap-1.5">
                         <Button
                           variant="ghost"
@@ -541,6 +775,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                           disabled={!canSmoke || smokeMutation.isPending}
                           aria-label={`检查 ${scope} 当前路由`}
                           title={`按 ${scope} scope 检查当前真实路由`}
+                          className="px-2"
                         >
                           {smokeMutation.isPending && smokingScope === scope ? (
                             <Loader2 className="size-3.5 animate-spin" />
@@ -549,7 +784,12 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                           )}
                           检查路由
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => goToView("providers")}
+                          className="px-2"
+                        >
                           Provider
                         </Button>
                       </div>
@@ -562,109 +802,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         </div>
       </Panel>
 
-      {/* Current routes — collapsed detail because Route Cockpit is the primary surface. */}
-      <details className="rounded-md border border-line bg-panel shadow-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-3 border-b border-line px-4 py-3 outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]">
-          <span className="min-w-0 flex-1">
-            <strong className="block text-md font-semibold text-ink-strong">路由详情（可展开）</strong>
-            <span className="text-sm text-subtle">次级诊断：每个客户端解析到的 Provider / endpoint / 模型</span>
-          </span>
-          <Badge variant={routeAlerts.length > 0 ? "warn" : "ok"}>
-            {activeRoutes.length} routes
-          </Badge>
-        </summary>
-        <div className="flex flex-wrap justify-end gap-2 border-b border-line px-4 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void smokeAllActiveRoutes()}
-            disabled={checkableRoutes.length === 0 || smokeMutation.isPending || batchSmoking}
-            aria-label="检查全部当前路由"
-            title="按每个客户端 scope 逐条检查当前真实路由"
-          >
-            {batchSmoking ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
-            检查全部
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
-            <Activity className="size-3.5" />
-            查看 Provider
-          </Button>
-        </div>
-        {activeRoutes.length === 0 ? (
-          <EmptyState
-            title="暂无解析路由"
-            description="尚未配置任何客户端路由，前往 Provider 设置默认路由。"
-          />
-        ) : (
-          <div className="py-1.5">
-            {activeRoutes.map((route) => {
-              const badge = ROUTE_STATE_BADGE[route.state];
-              const lastSmoke = routeSmokeResults[route.scope];
-              const detail = [
-                route.resolvedApiFormat,
-                route.resolvedProviderName,
-                route.resolvedModel,
-                routeBudgetLabel(route, providerList),
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <Row
-                  key={route.scope}
-                  icon={route.resolvedProviderId ? <Terminal /> : <Globe />}
-                  title={route.scope}
-                  subtitle={
-                    <span className="truncate">
-                      <span>{detail || route.message}</span>
-                      {lastSmoke && (
-                        <>
-                          <span> · </span>
-                          <span className={lastSmoke.ok ? "text-green" : "text-red"}>
-                            {lastSmoke.ok ? "最近通过" : "最近失败"}
-                            {lastSmoke.latencyMs != null ? ` ${lastSmoke.latencyMs}ms` : ""}
-                          </span>
-                          {lastSmoke.message && lastSmoke.message !== "路由 smoke 通过" && (
-                            <>
-                              <span> · </span>
-                              <span title={lastSmoke.message}>{lastSmoke.message}</span>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </span>
-                  }
-                  trailing={
-                    <span className="flex items-center gap-2">
-                      {lastSmoke && (
-                        <Badge variant={lastSmoke.ok ? "ok" : "bad"}>
-                          {lastSmoke.ok ? "已验" : "失败"}
-                        </Badge>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void smokeActiveRoute(route)}
-                        disabled={!route.resolvedProviderId || smokeMutation.isPending}
-                        aria-label={`检查 ${route.scope} 当前路由`}
-                        title={`按 ${route.scope} scope 检查当前真实路由`}
-                      >
-                        {smokeMutation.isPending && smokingScope === route.scope ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Activity className="size-3.5" />
-                        )}
-                        检查
-                      </Button>
-                      <Badge variant={badge.variant}>{badge.label}</Badge>
-                    </span>
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
-      </details>
-
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         {/* Health overview — only live provider health */}
         <Panel>
@@ -672,13 +809,20 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             title="健康概览"
             sub="熔断器状态"
             action={
-              <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => goToView("providers")}
+              >
                 查看 Provider
               </Button>
             }
           />
           {providerList.length === 0 ? (
-            <EmptyState title="暂无 Provider" description="尚未配置任何 Provider。" />
+            <EmptyState
+              title="暂无 Provider"
+              description="尚未配置任何 Provider。"
+            />
           ) : (
             <div className="py-1.5">
               {attentionProviders.map((provider) => {
@@ -688,10 +832,16 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   <Row
                     key={provider.id}
                     icon={isOpen ? <ZapOff /> : <RouteOff />}
-                    iconClass={isOpen ? "bg-red-soft text-red" : "bg-amber-soft text-amber"}
+                    iconClass={
+                      isOpen
+                        ? "bg-red-soft text-red"
+                        : "bg-amber-soft text-amber"
+                    }
                     title={provider.name}
                     subtitle={providerAttentionSummary(provider)}
-                    trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
+                    trailing={
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    }
                   />
                 );
               })}
@@ -714,13 +864,20 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             title="客户端接入风险"
             sub="配置写入 / 回滚入口；运行中状态看 CLI Agents"
             action={
-              <Button variant="ghost" size="sm" onClick={() => goToView("apps")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => goToView("apps")}
+              >
                 管理
               </Button>
             }
           />
           {appConnections.length === 0 ? (
-            <EmptyState title="暂无客户端" description="尚无可接入的本地客户端。" />
+            <EmptyState
+              title="暂无客户端"
+              description="尚无可接入的本地客户端。"
+            />
           ) : appConnectionIssues.length === 0 ? (
             <div className="grid gap-3 p-4">
               <div className="rounded-sm border border-line bg-panel-2 p-3">
@@ -729,10 +886,15 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   {configuredConnectionCount}/{appConnections.length}
                 </div>
                 <span className="text-xs text-muted">
-                  本地客户端配置均已应用；实际路由以路由 Cockpit 为准，进程运行态看 CLI Agents。
+                  本地客户端配置均已应用；实际路由以模型路由总览为准，进程运行态看
+                  CLI Agents。
                 </span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => goToView("apps")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToView("apps")}
+              >
                 <Terminal className="size-3.5" />
                 打开配置写入 / 回滚
               </Button>
@@ -756,7 +918,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                         {connection.label}
                       </strong>
                       <span className="truncate text-sm text-muted">
-                        {connection.issues[0] ?? "未应用，需要进入客户端接入页处理"}
+                        {connection.issues[0] ??
+                          "未应用，需要进入客户端接入页处理"}
                       </span>
                     </span>
                     <Badge variant={badge.variant}>{badge.label}</Badge>
@@ -770,8 +933,13 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
       {/* Secondary cockpit diagnostics — collapsed by default so the route /
           health summary above stays primary. */}
-      <RuntimeDiagnosticsPanel />
+      <RuntimeDiagnosticsPanel
+        enabled={diagnosticsEnabled}
+        onEnable={() => setDiagnosticsEnabled(true)}
+      />
       <DaemonServicePanel
+        enabled={serviceEnabled}
+        onEnable={() => setServiceEnabled(true)}
         onMutated={() => {
           void statusQuery.refetch();
         }}

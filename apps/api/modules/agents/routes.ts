@@ -10,7 +10,6 @@ import type {
   AgentUpdatePayload,
 } from "../../../../types/agents.js";
 import { isAgentsServiceError } from "./service.js";
-import { buildAgentRuntimeRunsPayload } from "./runtime-runs.js";
 function sendAgentError(
   res: Parameters<typeof sendJson>[0],
   error: unknown,
@@ -41,25 +40,6 @@ export function registerAgentsRoutes(
   router.get("/api/agents", (_req, res) => {
     try {
       sendJson(res, 200, ctx.services.agents.getSummary());
-    } catch (error) {
-      sendAgentError(res, error);
-    }
-  });
-
-  router.get("/api/agents/runs", async (_req, res, routeCtx) => {
-    try {
-      const [terminalSessions, channelSessions] = await Promise.all([
-        routeCtx.services.terminal.listPersistedSessions(),
-        routeCtx.services.channelConnectors.getAgentSessions(),
-      ]);
-      sendJson(
-        res,
-        200,
-        buildAgentRuntimeRunsPayload({
-          terminalSessions,
-          channelSessions,
-        }),
-      );
     } catch (error) {
       sendAgentError(res, error);
     }

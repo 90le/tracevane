@@ -98,19 +98,6 @@ function tracevaneManualChunk(id: string): string | undefined {
   if (id.includes("/@xterm/") || id.includes("/xterm")) return "vendor-xterm";
   if (id.includes("/katex/")) return "vendor-katex";
 
-  if (
-    id.includes("/highlight.js/") ||
-    id.includes("/dompurify/") ||
-    id.includes("/html-to-image/") ||
-    id.includes("/rehype-") ||
-    id.includes("/remark-") ||
-    id.includes("/unified/") ||
-    id.includes("/micromark") ||
-    id.includes("/mdast-") ||
-    id.includes("/hast-")
-  ) {
-    return "vendor-markdown";
-  }
 
   return undefined;
 }
@@ -170,7 +157,7 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ["katex", "monaco-editor", "dockview-react", "dompurify"],
+    exclude: ["katex", "monaco-editor", "dockview-react"],
   },
   plugins: [
     createKatexOptimizedDepFallbackPlugin(),

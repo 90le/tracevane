@@ -113,7 +113,7 @@ function WorkspaceBrand() {
             Tracevane
           </div>
           <div className="truncate text-2xs uppercase tracking-[.12em] text-subtle">
-            工作台
+            AI 控制台
           </div>
         </div>
       )}
@@ -256,7 +256,7 @@ function MobileDrawerBrand() {
       <div className="min-w-0">
         <SheetTitle>Tracevane</SheetTitle>
         <div className="truncate text-xs text-subtle">
-          选择工作域或打开全局操作
+          选择工作流、接入或底座能力
         </div>
       </div>
     </div>
@@ -271,11 +271,11 @@ function TopbarActions({ onOpenCommand }: { onOpenCommand: () => void }) {
         size="sm"
         onClick={onOpenCommand}
         className="hidden max-w-[220px] justify-start gap-2 rounded-full border border-line bg-[color-mix(in_srgb,var(--panel)_82%,var(--canvas))] px-3 text-subtle shadow-sm hover:text-ink sm:inline-flex"
-        aria-label="搜索 / 跳转"
-        title="搜索 / 跳转（⌘K / Ctrl K）"
+        aria-label="快速打开"
+        title="快速打开（⌘K / Ctrl K）"
       >
         <Search />
-        <span className="min-w-0 truncate">搜索 / 跳转</span>
+        <span className="min-w-0 truncate">快速打开</span>
         <kbd className="ml-1 rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
           ⌘K
         </kbd>
@@ -285,8 +285,8 @@ function TopbarActions({ onOpenCommand }: { onOpenCommand: () => void }) {
         size="icon"
         onClick={onOpenCommand}
         className="sm:hidden"
-        aria-label="搜索 / 跳转"
-        title="搜索 / 跳转"
+        aria-label="快速打开"
+        title="快速打开"
       >
         <Search />
       </Button>
@@ -311,7 +311,7 @@ function CommandPalette({
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="跳转到…" />
+      <CommandInput placeholder="搜索页面或输入功能名…" />
       <CommandList>
         <CommandEmpty>未找到匹配项</CommandEmpty>
         {navItemsByGroup().map(({ group, items }) => (
@@ -479,8 +479,13 @@ export function AppShell() {
                 ))}
               </div>
               <div className="flex min-w-0 items-center gap-2">
-                <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
-                  {pageMeta.title}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
+                    {pageMeta.title}
+                  </div>
+                  <div className="hidden max-w-[58vw] truncate text-xs text-subtle lg:block">
+                    {pageMeta.subtitle}
+                  </div>
                 </div>
               </div>
             </div>

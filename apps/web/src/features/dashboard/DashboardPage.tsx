@@ -21,7 +21,6 @@ import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import type {
   AttentionIconKey,
@@ -77,22 +76,22 @@ const SEVERITY_BADGE: Record<
 const QUICK_LAUNCH: QuickLaunchEntry[] = [
   {
     id: "model-gateway",
-    label: "模型网关",
+    label: "模型路由",
     detail: "Provider / 路由 / 用量",
     icon: "gateway",
     to: ROUTES.modelGateway,
   },
   {
     id: "im-channels",
-    label: "IM 渠道",
+    label: "消息接入",
     detail: "绑定 / 会话 / 守护进程",
     icon: "channel",
     to: ROUTES.imChannels,
   },
   {
     id: "cli-agents",
-    label: "CLI 代理",
-    detail: "本地 Agent CLI 运行",
+    label: "Agent CLI",
+    detail: "安装 / 配置 / 修复",
     icon: "system",
     to: ROUTES.cliAgents,
   },
@@ -116,7 +115,8 @@ export function DashboardPage() {
     activeWork,
     recentActivity,
     summary,
-    isLoading,
+    isBootstrapping,
+    secondarySourcesEnabled,
     isFetching,
     allFailed,
     error,
@@ -129,31 +129,6 @@ export function DashboardPage() {
     const id = window.setInterval(() => refetchAll(), REFRESH_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [refetchAll]);
-
-  if (isLoading) {
-    return (
-      <div className="grid gap-[18px]" role="status" aria-busy="true">
-        <Skeleton className="h-[168px] w-full" />
-        <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <section className="rounded-md border border-line bg-panel shadow-sm">
-            <Skeleton className="h-12 w-full rounded-b-none" />
-            <div className="py-1.5">
-              <SkeletonRow />
-              <SkeletonRow />
-              <SkeletonRow />
-            </div>
-          </section>
-          <section className="rounded-md border border-line bg-panel shadow-sm">
-            <Skeleton className="h-12 w-full rounded-b-none" />
-            <div className="py-1.5">
-              <SkeletonRow />
-              <SkeletonRow />
-            </div>
-          </section>
-        </div>
-      </div>
-    );
-  }
 
   if (allFailed) {
     return (
@@ -171,6 +146,11 @@ export function DashboardPage() {
 
   const checkedAt =
     summary?.checkedAt ?? sources.health.data?.checkedAt ?? null;
+  const hydrationLabel = secondarySourcesEnabled
+    ? isFetching
+      ? "正在更新"
+      : "实时来源已补齐"
+    : "首屏已就绪，后台检测排队中";
   const releaseVersion =
     summary?.server.version ?? sources.health.data?.version;
 
@@ -184,14 +164,17 @@ export function DashboardPage() {
             {readiness.label}
           </ToneBadge>
           <span className="text-sm text-muted">
-            {readiness.attentionCount > 0
-              ? `${readiness.attentionCount} 项需要关注`
-              : "暂无需要关注的事项"}
+            {isBootstrapping
+              ? "正在读取轻量摘要"
+              : readiness.attentionCount > 0
+                ? `${readiness.attentionCount} 项需要关注`
+                : "暂无需要关注的事项"}
           </span>
           {releaseVersion && (
             <span className="text-sm text-subtle">v{releaseVersion}</span>
           )}
           <span className="ml-auto flex items-center gap-2 text-xs text-subtle">
+            <span>{hydrationLabel}</span>
             {checkedAt && <span>更新于 {formatTime(checkedAt)}</span>}
             <Button
               variant="ghost"
@@ -209,6 +192,10 @@ export function DashboardPage() {
 
         <p className="mt-3 text-base text-ink-strong">
           一个屏幕看清 Agent 工作是否能继续推进。
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          首屏先展示导航、关键入口和静态驾驶舱；网关、消息、平台守护与
+          Agent CLI 状态随后补齐，不再让慢探测挡住 Dashboard。
         </p>
 
         {/* Readiness pillars — one glance, each deep-links to its domain. */}
@@ -247,8 +234,12 @@ export function DashboardPage() {
           {attention.length === 0 ? (
             <EmptyState
               icon={<CheckCircle2 />}
-              title="一切就绪"
-              description="当前没有从运行态综合出的待处理事项。"
+              title={secondarySourcesEnabled ? "一切就绪" : "正在补齐后台检测"}
+              description={
+                secondarySourcesEnabled
+                  ? "当前没有从运行态综合出的待处理事项。"
+                  : "摘要和入口已可用；较慢的 owner-domain 探测将在首屏后补齐。"
+              }
             />
           ) : (
             <div className="py-1.5">
@@ -297,8 +288,12 @@ export function DashboardPage() {
           {activeWork.length === 0 ? (
             <EmptyState
               icon={<Activity />}
-              title="暂无进行中的工作"
-              description="没有活跃的渠道 Agent 会话。"
+              title={secondarySourcesEnabled ? "暂无进行中的工作" : "正在检查进行中的工作"}
+              description={
+                secondarySourcesEnabled
+                  ? "没有活跃的渠道 Agent 会话。"
+                  : "活跃会话会在消息接入状态返回后显示；现在可以先进入关键工作域。"
+              }
             />
           ) : (
             <div className="py-1.5">

@@ -1,90 +1,5 @@
 import * as React from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
-import "monaco-editor/esm/vs/language/css/monaco.contribution.js";
-import "monaco-editor/esm/vs/language/html/monaco.contribution.js";
-import "monaco-editor/esm/vs/language/json/monaco.contribution.js";
-import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/abap/abap.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/apex/apex.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/azcli/azcli.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/bat/bat.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/bicep/bicep.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/cameligo/cameligo.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/clojure/clojure.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/coffee/coffee.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/csp/csp.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/css/css.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/cypher/cypher.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/dart/dart.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/ecl/ecl.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/elixir/elixir.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/flow9/flow9.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/fsharp/fsharp.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/go/go.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/graphql/graphql.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/handlebars/handlebars.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/hcl/hcl.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/html/html.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/java/java.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/julia/julia.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/kotlin/kotlin.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/less/less.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/lexon/lexon.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/liquid/liquid.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/lua/lua.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/m3/m3.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/mdx/mdx.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/mips/mips.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/msdax/msdax.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/mysql/mysql.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/objective-c/objective-c.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/pascal/pascal.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/pascaligo/pascaligo.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/perl/perl.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/pgsql/pgsql.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/php/php.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/pla/pla.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/postiats/postiats.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/powerquery/powerquery.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/powershell/powershell.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/protobuf/protobuf.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/pug/pug.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/python/python.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/qsharp/qsharp.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/r/r.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/razor/razor.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/redis/redis.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/redshift/redshift.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/restructuredtext/restructuredtext.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/sb/sb.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/scala/scala.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/scheme/scheme.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/scss/scss.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/solidity/solidity.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/sophia/sophia.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/sparql/sparql.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/st/st.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/swift/swift.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/tcl/tcl.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/twig/twig.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/typespec/typespec.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/vb/vb.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/wgsl/wgsl.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -100,6 +15,103 @@ const MONACO_KEYBOARD_CARET_GAP = 24;
 const MONACO_KEYBOARD_MIN_OVERLAP = 8;
 const MONACO_KEYBOARD_MAX_INSET_RATIO = 0.38;
 const MONACO_KEYBOARD_MAX_SCROLL_DELTA = 96;
+
+type MonacoLanguageLoader = () => Promise<unknown>;
+
+const monacoLanguageLoadCache = new Map<string, Promise<unknown>>();
+
+const MONACO_RICH_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
+  css: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
+  scss: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
+  less: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
+  html: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
+  handlebars: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
+  razor: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
+  json: () => import("monaco-editor/esm/vs/language/json/monaco.contribution.js"),
+  javascript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
+  typescript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
+};
+
+const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
+  abap: () => import("monaco-editor/esm/vs/basic-languages/abap/abap.contribution.js"),
+  apex: () => import("monaco-editor/esm/vs/basic-languages/apex/apex.contribution.js"),
+  azcli: () => import("monaco-editor/esm/vs/basic-languages/azcli/azcli.contribution.js"),
+  bat: () => import("monaco-editor/esm/vs/basic-languages/bat/bat.contribution.js"),
+  bicep: () => import("monaco-editor/esm/vs/basic-languages/bicep/bicep.contribution.js"),
+  cameligo: () => import("monaco-editor/esm/vs/basic-languages/cameligo/cameligo.contribution.js"),
+  clojure: () => import("monaco-editor/esm/vs/basic-languages/clojure/clojure.contribution.js"),
+  coffee: () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.contribution.js"),
+  cpp: () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"),
+  csharp: () => import("monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution.js"),
+  csp: () => import("monaco-editor/esm/vs/basic-languages/csp/csp.contribution.js"),
+  cypher: () => import("monaco-editor/esm/vs/basic-languages/cypher/cypher.contribution.js"),
+  dart: () => import("monaco-editor/esm/vs/basic-languages/dart/dart.contribution.js"),
+  dockerfile: () => import("monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.contribution.js"),
+  ecl: () => import("monaco-editor/esm/vs/basic-languages/ecl/ecl.contribution.js"),
+  elixir: () => import("monaco-editor/esm/vs/basic-languages/elixir/elixir.contribution.js"),
+  flow9: () => import("monaco-editor/esm/vs/basic-languages/flow9/flow9.contribution.js"),
+  freemarker2: () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"),
+  fsharp: () => import("monaco-editor/esm/vs/basic-languages/fsharp/fsharp.contribution.js"),
+  go: () => import("monaco-editor/esm/vs/basic-languages/go/go.contribution.js"),
+  graphql: () => import("monaco-editor/esm/vs/basic-languages/graphql/graphql.contribution.js"),
+  hcl: () => import("monaco-editor/esm/vs/basic-languages/hcl/hcl.contribution.js"),
+  ini: () => import("monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js"),
+  java: () => import("monaco-editor/esm/vs/basic-languages/java/java.contribution.js"),
+  julia: () => import("monaco-editor/esm/vs/basic-languages/julia/julia.contribution.js"),
+  kotlin: () => import("monaco-editor/esm/vs/basic-languages/kotlin/kotlin.contribution.js"),
+  lexon: () => import("monaco-editor/esm/vs/basic-languages/lexon/lexon.contribution.js"),
+  liquid: () => import("monaco-editor/esm/vs/basic-languages/liquid/liquid.contribution.js"),
+  lua: () => import("monaco-editor/esm/vs/basic-languages/lua/lua.contribution.js"),
+  m3: () => import("monaco-editor/esm/vs/basic-languages/m3/m3.contribution.js"),
+  markdown: () => import("monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js"),
+  mdx: () => import("monaco-editor/esm/vs/basic-languages/mdx/mdx.contribution.js"),
+  mips: () => import("monaco-editor/esm/vs/basic-languages/mips/mips.contribution.js"),
+  msdax: () => import("monaco-editor/esm/vs/basic-languages/msdax/msdax.contribution.js"),
+  mysql: () => import("monaco-editor/esm/vs/basic-languages/mysql/mysql.contribution.js"),
+  "objective-c": () => import("monaco-editor/esm/vs/basic-languages/objective-c/objective-c.contribution.js"),
+  pascal: () => import("monaco-editor/esm/vs/basic-languages/pascal/pascal.contribution.js"),
+  "pascaligo": () => import("monaco-editor/esm/vs/basic-languages/pascaligo/pascaligo.contribution.js"),
+  perl: () => import("monaco-editor/esm/vs/basic-languages/perl/perl.contribution.js"),
+  pgsql: () => import("monaco-editor/esm/vs/basic-languages/pgsql/pgsql.contribution.js"),
+  php: () => import("monaco-editor/esm/vs/basic-languages/php/php.contribution.js"),
+  pla: () => import("monaco-editor/esm/vs/basic-languages/pla/pla.contribution.js"),
+  postiats: () => import("monaco-editor/esm/vs/basic-languages/postiats/postiats.contribution.js"),
+  "powerquery": () => import("monaco-editor/esm/vs/basic-languages/powerquery/powerquery.contribution.js"),
+  powershell: () => import("monaco-editor/esm/vs/basic-languages/powershell/powershell.contribution.js"),
+  protobuf: () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.contribution.js"),
+  pug: () => import("monaco-editor/esm/vs/basic-languages/pug/pug.contribution.js"),
+  python: () => import("monaco-editor/esm/vs/basic-languages/python/python.contribution.js"),
+  qsharp: () => import("monaco-editor/esm/vs/basic-languages/qsharp/qsharp.contribution.js"),
+  "r": () => import("monaco-editor/esm/vs/basic-languages/r/r.contribution.js"),
+  redis: () => import("monaco-editor/esm/vs/basic-languages/redis/redis.contribution.js"),
+  redshift: () => import("monaco-editor/esm/vs/basic-languages/redshift/redshift.contribution.js"),
+  "restructuredtext": () => import("monaco-editor/esm/vs/basic-languages/restructuredtext/restructuredtext.contribution.js"),
+  ruby: () => import("monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution.js"),
+  rust: () => import("monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js"),
+  "sb": () => import("monaco-editor/esm/vs/basic-languages/sb/sb.contribution.js"),
+  scala: () => import("monaco-editor/esm/vs/basic-languages/scala/scala.contribution.js"),
+  scheme: () => import("monaco-editor/esm/vs/basic-languages/scheme/scheme.contribution.js"),
+  shell: () => import("monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js"),
+  solidity: () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.contribution.js"),
+  sophia: () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.contribution.js"),
+  sparql: () => import("monaco-editor/esm/vs/basic-languages/sparql/sparql.contribution.js"),
+  sql: () => import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js"),
+  "st": () => import("monaco-editor/esm/vs/basic-languages/st/st.contribution.js"),
+  swift: () => import("monaco-editor/esm/vs/basic-languages/swift/swift.contribution.js"),
+  "systemverilog": () => import("monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.contribution.js"),
+  tcl: () => import("monaco-editor/esm/vs/basic-languages/tcl/tcl.contribution.js"),
+  twig: () => import("monaco-editor/esm/vs/basic-languages/twig/twig.contribution.js"),
+  typespec: () => import("monaco-editor/esm/vs/basic-languages/typespec/typespec.contribution.js"),
+  vb: () => import("monaco-editor/esm/vs/basic-languages/vb/vb.contribution.js"),
+  wgsl: () => import("monaco-editor/esm/vs/basic-languages/wgsl/wgsl.contribution.js"),
+  xml: () => import("monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js"),
+  yaml: () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js"),
+};
+
+const MONACO_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
+  ...MONACO_BASIC_LANGUAGE_LOADERS,
+  ...MONACO_RICH_LANGUAGE_LOADERS,
+};
 
 export interface CodeEditorProps {
   path: string;
@@ -220,10 +232,10 @@ export function CodeEditor({
     const container = containerRef.current;
     if (!container) return undefined;
 
-    const language = languageForPath(path);
+    let disposed = false;
     const model = monaco.editor.createModel(
       initialContent,
-      language,
+      "plaintext",
       modelUriForPath(path),
     );
     const editor = monaco.editor.create(container, {
@@ -245,7 +257,14 @@ export function CodeEditor({
       theme: theme === "dark" ? "vs-dark" : "vs",
       wordWrap: "on",
     });
-    monaco.editor.setModelLanguage(model, language);
+    const cancelLanguageLoad = scheduleDeferredMonacoLanguageLoad(() => {
+      const language = languageForPath(path);
+      void ensureMonacoLanguage(language).then((loadedLanguage) => {
+        if (disposed || model.isDisposed()) return;
+        monaco.editor.setModelLanguage(model, loadedLanguage);
+        requestAnimationFrame(() => editor.layout());
+      });
+    });
     editorRef.current = editor;
     modelRef.current = model;
     decorationsRef.current = editor.createDecorationsCollection([]);
@@ -265,7 +284,9 @@ export function CodeEditor({
     const frame = requestAnimationFrame(() => editor.layout());
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(frame);
+      cancelLanguageLoad();
       subscription.dispose();
       cursorSubscription.dispose();
       selectionSubscription.dispose();
@@ -464,6 +485,38 @@ function modelUriForPath(path: string): monaco.Uri {
   });
 }
 
+type DeferredMonacoLanguageScheduler = Window & {
+  requestIdleCallback?: (
+    callback: IdleRequestCallback,
+    options?: IdleRequestOptions,
+  ) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+function scheduleDeferredMonacoLanguageLoad(callback: () => void): () => void {
+  const scheduler = window as DeferredMonacoLanguageScheduler;
+  let timeoutHandle = 0;
+  let idleHandle = 0;
+
+  const frameHandle = window.requestAnimationFrame(() => {
+    if (scheduler.requestIdleCallback) {
+      idleHandle = scheduler.requestIdleCallback(callback, { timeout: 600 });
+      return;
+    }
+    timeoutHandle = window.setTimeout(callback, 0);
+  });
+
+  return () => {
+    window.cancelAnimationFrame(frameHandle);
+    if (idleHandle && scheduler.cancelIdleCallback) {
+      scheduler.cancelIdleCallback(idleHandle);
+    }
+    if (timeoutHandle) {
+      window.clearTimeout(timeoutHandle);
+    }
+  };
+}
+
 export function languageForPath(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   const fileName = normalized.split("/").pop()?.toLowerCase() ?? "";
@@ -472,11 +525,10 @@ export function languageForPath(path: string): string {
   const override = languageOverrideForFile(fileName, lowerPath);
   if (override) return override;
 
-  const registry = getRegisteredMonacoLanguageIndex();
-  const exact = registry.filenames.get(fileName);
+  const exact = MONACO_EXACT_FILENAME_LANGUAGES[fileName];
   if (exact) return exact;
 
-  for (const [extension, languageId] of registry.extensions) {
+  for (const [extension, languageId] of MONACO_EXTENSION_LANGUAGES) {
     if (fileName.endsWith(extension)) return languageId;
   }
 
@@ -484,40 +536,65 @@ export function languageForPath(path: string): string {
   return "plaintext";
 }
 
-interface MonacoLanguageIndex {
-  filenames: Map<string, string>;
-  extensions: Array<[string, string]>;
-}
-
-let cachedMonacoLanguageIndex: MonacoLanguageIndex | null = null;
-
-function getRegisteredMonacoLanguageIndex(): MonacoLanguageIndex {
-  if (cachedMonacoLanguageIndex) return cachedMonacoLanguageIndex;
-
-  const filenames = new Map<string, string>();
-  const extensions: Array<[string, string]> = [];
-
-  for (const language of monaco.languages.getLanguages()) {
-    for (const filename of language.filenames ?? []) {
-      filenames.set(filename.toLowerCase(), language.id);
-    }
-    for (const extension of language.extensions ?? []) {
-      extensions.push([extension.toLowerCase(), language.id]);
-    }
+async function ensureMonacoLanguage(language: string): Promise<string> {
+  if (language === "plaintext") return language;
+  const loader = MONACO_LANGUAGE_LOADERS[language];
+  if (!loader) return "plaintext";
+  const cached = monacoLanguageLoadCache.get(language) ?? loader();
+  monacoLanguageLoadCache.set(language, cached);
+  try {
+    await cached;
+    return language;
+  } catch (error) {
+    console.warn(`[tracevane] Monaco language loader failed for ${language}`, error);
+    monacoLanguageLoadCache.delete(language);
+    return "plaintext";
   }
-
-  extensions.sort((left, right) => right[0].length - left[0].length);
-  cachedMonacoLanguageIndex = { filenames, extensions };
-  return cachedMonacoLanguageIndex;
 }
+
+const MONACO_EXACT_FILENAME_LANGUAGES: Record<string, string> = {
+  "dockerfile": "dockerfile",
+  "containerfile": "dockerfile",
+  "makefile": "shell",
+  "rakefile": "ruby",
+  "gemfile": "ruby",
+  "podfile": "ruby",
+  "cmakelists.txt": "plaintext",
+};
+
+const MONACO_EXTENSION_LANGUAGES = ([
+  [".abap", "abap"], [".cls", "apex"], [".azcli", "azcli"], [".bat", "bat"], [".cmd", "bat"],
+  [".bicep", "bicep"], [".mligo", "cameligo"], [".clj", "clojure"], [".cljs", "clojure"],
+  [".coffee", "coffee"], [".c", "cpp"], [".cc", "cpp"], [".cpp", "cpp"], [".cxx", "cpp"], [".h", "cpp"], [".hpp", "cpp"],
+  [".cs", "csharp"], [".csp", "csp"], [".css", "css"], [".cypher", "cypher"], [".dart", "dart"],
+  [".dockerfile", "dockerfile"], [".ecl", "ecl"], [".ex", "elixir"], [".exs", "elixir"], [".flow", "flow9"],
+  [".ftl", "freemarker2"], [".fsx", "fsharp"], [".fsi", "fsharp"], [".fs", "fsharp"], [".go", "go"],
+  [".graphql", "graphql"], [".gql", "graphql"], [".hcl", "hcl"], [".tf", "hcl"], [".tfvars", "hcl"],
+  [".handlebars", "handlebars"], [".hbs", "handlebars"], [".html", "html"], [".htm", "html"],
+  [".ini", "ini"], [".properties", "ini"], [".conf", "ini"], [".java", "java"],
+  [".js", "javascript"], [".jsx", "javascript"], [".mjs", "javascript"], [".cjs", "javascript"],
+  [".json", "json"], [".jsonc", "json"], [".ipynb", "json"], [".jl", "julia"], [".kt", "kotlin"], [".kts", "kotlin"],
+  [".less", "less"], [".lex", "lexon"], [".liquid", "liquid"], [".lua", "lua"], [".m3", "m3"],
+  [".mdx", "mdx"], [".markdown", "markdown"], [".md", "markdown"], [".s", "mips"], [".dax", "msdax"],
+  [".mysql", "mysql"], [".m", "objective-c"], [".mm", "objective-c"], [".pas", "pascal"], [".p", "pascal"],
+  [".ligo", "pascaligo"], [".pl", "perl"], [".pm", "perl"], [".pgsql", "pgsql"], [".php", "php"],
+  [".pla", "pla"], [".dats", "postiats"], [".sats", "postiats"], [".pq", "powerquery"], [".pqm", "powerquery"],
+  [".ps1", "powershell"], [".psm1", "powershell"], [".proto", "protobuf"], [".pug", "pug"], [".jade", "pug"],
+  [".py", "python"], [".pyw", "python"], [".qs", "qsharp"], [".r", "r"], [".rmd", "r"],
+  [".cshtml", "razor"], [".razor", "razor"], [".redis", "redis"], [".rsql", "redshift"], [".rst", "restructuredtext"],
+  [".rb", "ruby"], [".rs", "rust"], [".sb", "sb"], [".scala", "scala"], [".sc", "scala"], [".scm", "scheme"], [".ss", "scheme"],
+  [".scss", "scss"], [".sh", "shell"], [".bash", "shell"], [".zsh", "shell"], [".fish", "shell"], [".env", "shell"],
+  [".sol", "solidity"], [".aes", "sophia"], [".rq", "sparql"], [".sparql", "sparql"], [".sql", "sql"],
+  [".st", "st"], [".swift", "swift"], [".sv", "systemverilog"], [".svh", "systemverilog"], [".tcl", "tcl"],
+  [".twig", "twig"], [".ts", "typescript"], [".tsx", "typescript"], [".cts", "typescript"], [".mts", "typescript"],
+  [".tsp", "typespec"], [".vb", "vb"], [".wgsl", "wgsl"], [".xml", "xml"], [".xsd", "xml"], [".xsl", "xml"],
+  [".yaml", "yaml"], [".yml", "yaml"], [".svg", "xml"],
+] as Array<[string, string]>).sort((left, right) => right[0].length - left[0].length);
 
 function languageOverrideForFile(
   fileName: string,
   lowerPath: string,
 ): string | null {
-  // Keep only product-specific or Monaco-gap aliases here. The default source of
-  // truth is Monaco's own language registry (extensions/filenames), not a local
-  // hand-maintained language table.
   if (fileName === "containerfile") return "dockerfile";
   if (fileName === "makefile") return "shell";
   if (fileName.startsWith(".env")) return "shell";

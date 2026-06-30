@@ -2229,7 +2229,7 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
 
   return {
     async getSummary(options = {}): Promise<SkillsSummaryPayload> {
-      return loadSummary(Boolean(options.refresh));
+      return loadSummary(Boolean(options.refresh), Boolean(options.fast));
     },
 
     async getTargets(): Promise<SkillsTargetsPayload> {

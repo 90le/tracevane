@@ -1,5 +1,5 @@
 /**
- * CLI Agent Workbench (`/cli-agents`) feature types.
+ * CLI Agent management page (`/cli-agents`) feature types.
  *
  * The wire contracts live in the repo-level `types/*.ts` (the same files the
  * backend imports). We re-export the pieces the workbench data layer + views
@@ -23,24 +23,18 @@ export type {
   AgentSessionStats,
   AgentSessionSummary,
   AgentDocumentSummary,
-  AgentRuntimeRunSource,
-  AgentRuntimeRunStatus,
-  AgentRuntimeRunEvidenceRef,
-  AgentRuntimeRunSummary,
-  AgentRuntimeRunsResponse,
 } from "../../../../../types/agents";
 
-// --- Terminal (CLI binary readiness + Agent Run evidence references) --------
+// --- Terminal (CLI binary readiness + install/repair contracts) ------------
 export type {
   TerminalStatusPayload,
   TerminalBinaryStatus,
   TerminalSessionDescriptor,
   TerminalSessionStatus,
   TerminalSessionSummaryResponse,
-  TerminalLaunchCli,
-  TerminalLaunchPayload,
-  TerminalLaunchResponse,
+  TerminalAgentCliId,
   TerminalInstallRequestId,
+  TerminalInstallTarget,
   TerminalInstallResponse,
   TerminalEndPayload,
   TerminalEndResponse,
@@ -48,33 +42,20 @@ export type {
 } from "../../../../../types/terminal";
 
 // ---------------------------------------------------------------------------
-// View routing
+// Page scope
 // ---------------------------------------------------------------------------
 
 /**
- * The `data-view` set for the workbench, driven from the URL (`?view=`):
- *  - runs      — primary Agent Run table across terminal / IM sources
- *  - cli       — Codex / Claude Code / OpenCode readiness, install repair and launch handoff
+ * CLI Agents is now a single management surface. It intentionally has no
+ * secondary "runs" view: install/config/repair status must render first, then
+ * async readiness data fills in per CLI.
  */
-export const CLI_AGENTS_VIEWS = ["runs", "cli"] as const;
-
-export type CliAgentsView = (typeof CLI_AGENTS_VIEWS)[number];
-
-/** Navigation params a view can carry across a sub-view switch. */
-export interface CliAgentsViewNavParams {
-  /** Reserved for future deep-link params; currently unused after CLI/terminal scope reduction. */
-  agent?: string;
-}
-
-/** Imperative navigation the page passes down to its views. */
-export interface CliAgentsViewNavigation {
-  goToView: (view: CliAgentsView, params?: CliAgentsViewNavParams) => void;
-}
-
-export interface CliAgentsViewProps extends CliAgentsViewNavigation {
-  /** Reserved compatibility prop for view components; currently always null. */
-  selectedAgent: string | null;
-}
+export const CLI_AGENT_MANAGEMENT_SCOPE = [
+  "install",
+  "configure",
+  "reinstall",
+  "repair",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Derived view-model tones (mirrors the dashboard readiness tone vocabulary)

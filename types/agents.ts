@@ -193,69 +193,6 @@ export interface AgentsSummaryPayload {
   agents: AgentSummary[];
 }
 
-export type AgentRuntimeRunSource = "terminal" | "im-channel";
-
-export type AgentRuntimeRunStatus =
-  | "running"
-  | "idle"
-  | "detached"
-  | "completed"
-  | "failed"
-  | "lost"
-  | "aborted"
-  | "unknown";
-
-export interface AgentRuntimeRunEvidenceRef {
-  kind: "terminal-session" | "im-session" | "event";
-  label: string;
-  href: string | null;
-}
-
-export interface AgentRuntimeRunSummary {
-  id: string;
-  source: AgentRuntimeRunSource;
-  /** Human-readable source label, e.g. 终端 / 飞书私聊 / 本地对话. */
-  sourceLabel: string;
-  originId: string;
-  /** Operator-facing title; raw ids are kept in metadata instead of the title. */
-  title: string;
-  agentId: string | null;
-  cli: string | null;
-  model: string | null;
-  providerId: string | null;
-  routeScope: string | null;
-  workspace: string | null;
-  status: AgentRuntimeRunStatus;
-  statusLabel: string;
-  startedAt: string | null;
-  updatedAt: string | null;
-  error: string | null;
-  lastErrorSummary: string | null;
-  /** Primary owning page for this run; write actions still stay in that owner. */
-  primaryHref: string | null;
-  canOpen: boolean;
-  canStop: boolean;
-  canDelete: boolean;
-  /** Short operator-facing action summary for the current owner boundary. */
-  actionLabel: string;
-  /** Explains why the run can or cannot be controlled from CLI Agents. */
-  actionReason: string;
-  metadata: Record<string, string | number | boolean | null>;
-  evidenceRefs: AgentRuntimeRunEvidenceRef[];
-}
-
-export interface AgentRuntimeRunsResponse {
-  checkedAt: string;
-  runs: AgentRuntimeRunSummary[];
-  totals: {
-    total: number;
-    running: number;
-    failed: number;
-    terminal: number;
-    imChannel: number;
-  };
-}
-
 export interface AgentDocumentPayload {
   checkedAt: string;
   agentId: string;

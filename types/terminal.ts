@@ -1,19 +1,9 @@
 export type TerminalBinaryId =
-  | "claude"
-  | "codex"
-  | "opencode"
-  | "gemini"
-  | "clawhub"
-  | "skillhub"
-  | "bash";
+  "claude" | "codex" | "opencode" | "gemini" | "clawhub" | "skillhub" | "bash";
 export type TerminalInstallRequestId = TerminalBinaryId | "all" | "all-missing";
-export type TerminalLaunchCli = "claude" | "codex" | "opencode" | "gemini" | "bash";
+export type TerminalAgentCliId = "claude" | "codex" | "opencode";
 export type TerminalProfileKind =
-  | "shell"
-  | "agent"
-  | "marketplace"
-  | "task"
-  | "remote";
+  "shell" | "agent" | "marketplace" | "task" | "remote";
 export type TerminalTargetKind = "local" | "ssh" | "container" | "kubernetes";
 
 export interface TerminalProfileDescriptor {
@@ -120,17 +110,10 @@ export interface TerminalInstallResponse {
 }
 
 export type TerminalSessionStatus =
-  | "running"
-  | "detached"
-  | "completed"
-  | "failed"
-  | "lost";
+  "running" | "detached" | "completed" | "failed" | "lost";
 
 export type TerminalSessionSource =
-  | "manual"
-  | "system_action"
-  | "linked_context"
-  | "system-handoff";
+  "manual" | "system_action" | "linked_context" | "system-handoff";
 
 export type TerminalSessionControlState = "controller" | "observer";
 
@@ -223,18 +206,6 @@ export interface TerminalActionGroup {
 
 export interface TerminalActionCatalogResponse {
   groups: TerminalActionGroup[];
-}
-
-export interface TerminalLaunchPayload {
-  cli: TerminalLaunchCli;
-  profileId?: string | null;
-  model?: string;
-}
-
-export interface TerminalLaunchResponse {
-  cli: TerminalLaunchCli;
-  command: string;
-  label: string;
 }
 
 export interface TerminalEndPayload {

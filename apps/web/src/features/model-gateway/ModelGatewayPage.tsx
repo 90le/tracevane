@@ -3,20 +3,17 @@ import { useSearchParams } from "react-router-dom";
 import { BarChart3, Box, LayoutDashboard, Route } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
+import { LoadingState } from "@/shared/states/LoadingState";
 
-import { MODEL_GATEWAY_APP_CONNECTION_IDS, type ModelGatewayAppConnectionId } from "./types";
 import {
-  AccountPoolView,
-  AppConnectionsView,
-  ModelsView,
-  OverviewView,
-  ProviderConfigView,
-  ProvidersView,
-  UsageView,
+  MODEL_GATEWAY_APP_CONNECTION_IDS,
+  type ModelGatewayAppConnectionId,
+} from "./types";
+import {
   MODEL_GATEWAY_VIEWS,
   type ModelGatewayView,
   type ModelGatewayViewProps,
-} from "./views";
+} from "./views/types";
 
 /** Primary `viewbar` tabs (IA contract: overview / providers / models / usage). */
 const PRIMARY_TABS: ReadonlyArray<{
@@ -43,23 +40,69 @@ const SUB_VIEW_PARENT: Record<ModelGatewayView, ModelGatewayView> = {
 
 const VIEW_COMPONENTS: Record<
   ModelGatewayView,
-  (props: ModelGatewayViewProps) => React.JSX.Element
+  React.LazyExoticComponent<(props: ModelGatewayViewProps) => React.JSX.Element>
 > = {
-  overview: OverviewView,
-  providers: ProvidersView,
-  providercfg: ProviderConfigView,
-  models: ModelsView,
-  accounts: AccountPoolView,
-  apps: AppConnectionsView,
-  usage: UsageView,
+  overview: React.lazy(() =>
+    import("./views/OverviewView").then((module) => ({
+      default: module.OverviewView,
+    })),
+  ),
+  providers: React.lazy(() =>
+    import("./views/ProvidersView").then((module) => ({
+      default: module.ProvidersView,
+    })),
+  ),
+  providercfg: React.lazy(() =>
+    import("./views/ProviderConfigView").then((module) => ({
+      default: module.ProviderConfigView,
+    })),
+  ),
+  models: React.lazy(() =>
+    import("./views/ModelsView").then((module) => ({
+      default: module.ModelsView,
+    })),
+  ),
+  accounts: React.lazy(() =>
+    import("./views/AccountPoolView").then((module) => ({
+      default: module.AccountPoolView,
+    })),
+  ),
+  apps: React.lazy(() =>
+    import("./views/AppConnectionsView").then((module) => ({
+      default: module.AppConnectionsView,
+    })),
+  ),
+  usage: React.lazy(() =>
+    import("./views/UsageView").then((module) => ({
+      default: module.UsageView,
+    })),
+  ),
 };
 
 function isModelGatewayView(value: string | null): value is ModelGatewayView {
-  return value != null && (MODEL_GATEWAY_VIEWS as readonly string[]).includes(value);
+  return (
+    value != null && (MODEL_GATEWAY_VIEWS as readonly string[]).includes(value)
+  );
 }
 
-function isAppConnectionId(value: string | null): value is ModelGatewayAppConnectionId {
-  return value != null && (MODEL_GATEWAY_APP_CONNECTION_IDS as readonly string[]).includes(value);
+function isAppConnectionId(
+  value: string | null,
+): value is ModelGatewayAppConnectionId {
+  return (
+    value != null &&
+    (MODEL_GATEWAY_APP_CONNECTION_IDS as readonly string[]).includes(value)
+  );
+}
+
+function ModelGatewayViewFallback() {
+  return (
+    <div className="rounded-md border border-line bg-panel p-6 shadow-sm">
+      <LoadingState
+        title="正在打开模型路由视图"
+        description="只加载当前视图所需代码，避免概览页携带其它管理页。"
+      />
+    </div>
+  );
 }
 
 /**
@@ -68,7 +111,9 @@ function isAppConnectionId(value: string | null): value is ModelGatewayAppConnec
  * (`overview|providers|providercfg|models|accounts|apps|usage`). The active
  * view and the `apps` deep-link are driven entirely from the URL search params
  * (`?view=`, `?tab=connections&app=<cli>`), so views are deep-linkable and the
- * browser back/forward buttons work. Content lives in `./views`.
+ * browser back/forward buttons work. Content lives in `./views` and is lazy
+ * loaded per view so `/model-gateway?view=overview` does not ship every
+ * provider/model/usage management screen up front.
  */
 export function ModelGatewayPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -87,7 +132,8 @@ export function ModelGatewayPage() {
       : "overview";
 
   const selectedApp = isAppConnectionId(appParam) ? appParam : null;
-  const selectedProvider = providerParam && providerParam.length > 0 ? providerParam : null;
+  const selectedProvider =
+    providerParam && providerParam.length > 0 ? providerParam : null;
   const createMode = createParam === "1" || createParam === "true";
 
   const goToView = React.useCallback<ModelGatewayViewProps["goToView"]>(
@@ -128,7 +174,7 @@ export function ModelGatewayPage() {
       {/* Primary viewbar */}
       <div className="border-b border-line pb-2 sm:hidden">
         <label className="sr-only" htmlFor="model-gateway-mobile-view">
-          模型网关视图
+          模型路由视图
         </label>
         <select
           id="model-gateway-mobile-view"
@@ -145,7 +191,7 @@ export function ModelGatewayPage() {
       </div>
       <nav
         className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex"
-        aria-label="模型网关视图"
+        aria-label="模型路由视图"
       >
         {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
           const active = activeTab === view;
@@ -170,7 +216,14 @@ export function ModelGatewayPage() {
         })}
       </nav>
 
-      <ActiveView goToView={goToView} selectedApp={selectedApp} selectedProvider={selectedProvider} createMode={createMode} />
+      <React.Suspense fallback={<ModelGatewayViewFallback />}>
+        <ActiveView
+          goToView={goToView}
+          selectedApp={selectedApp}
+          selectedProvider={selectedProvider}
+          createMode={createMode}
+        />
+      </React.Suspense>
     </div>
   );
 }

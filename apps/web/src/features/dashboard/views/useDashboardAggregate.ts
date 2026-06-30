@@ -27,27 +27,78 @@ import type {
   RecentActivityItem,
 } from "../types";
 
+const CRITICAL_STALE_MS = 10_000;
+const SECONDARY_STALE_MS = 30_000;
+const SECONDARY_SOURCE_DELAY_MS = 250;
+
+function useAfterFirstPaint(): boolean {
+  const [enabled, setEnabled] = React.useState(false);
+
+  React.useEffect(() => {
+    if (enabled) return;
+    let timeout: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      timeout = window.setTimeout(
+        () => setEnabled(true),
+        SECONDARY_SOURCE_DELAY_MS,
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [enabled]);
+
+  return enabled;
+}
+
 /**
- * Loads every live source the Dashboard cockpit aggregates and derives the
- * task-first view-models (readiness rollup, attention queue, in-progress work,
- * recent activity). Model-gateway status + channel-connectors status/sessions
- * are reused from their owning feature modules; the rest come from the
- * dashboard data layer.
+ * Loads the Dashboard cockpit in two phases. The first paint only starts the
+ * critical, lightweight summary/health requests so the shell and static task
+ * frame are visible immediately. Slower owner-domain probes (gateway, channel
+ * daemon/sessions, terminal binary status, platform guard) start after first
+ * paint and hydrate the same view-models progressively.
  *
- * Sources are independent: a partial failure degrades one slice (its rows show
- * empty/warn) rather than blanking the whole cockpit. The aggregate only
- * reports a hard error when *every* source has failed.
+ * Sources are independent: a partial failure degrades one slice rather than
+ * blanking the whole cockpit. A hard error is shown only after the deferred
+ * probes have run and every source failed.
  */
 export function useDashboardAggregate() {
-  const summaryQuery = useDashboardSummaryQuery({ retry: false });
-  const healthQuery = useSystemHealthQuery({ retry: false });
-  const gatewayQuery = useModelGatewayStatusQuery({ retry: false });
-  const channelStatusQuery = useChannelConnectorsStatusQuery({ retry: false });
-  const channelSessionsQuery = useChannelConnectorsAgentSessionsQuery({
+  const secondarySourcesEnabled = useAfterFirstPaint();
+  const summaryQuery = useDashboardSummaryQuery({
     retry: false,
+    staleTime: CRITICAL_STALE_MS,
   });
-  const terminalQuery = useTerminalStatusQuery({ retry: false });
-  const recoveryQuery = useOpenClawRecoveryStatusQuery({ retry: false });
+  const healthQuery = useSystemHealthQuery({
+    retry: false,
+    staleTime: CRITICAL_STALE_MS,
+  });
+  const gatewayQuery = useModelGatewayStatusQuery({
+    enabled: secondarySourcesEnabled,
+    retry: false,
+    staleTime: SECONDARY_STALE_MS,
+  });
+  const channelStatusQuery = useChannelConnectorsStatusQuery({
+    enabled: secondarySourcesEnabled,
+    retry: false,
+    staleTime: SECONDARY_STALE_MS,
+  });
+  const channelSessionsQuery = useChannelConnectorsAgentSessionsQuery({
+    enabled: secondarySourcesEnabled,
+    retry: false,
+    staleTime: SECONDARY_STALE_MS,
+  });
+  const terminalQuery = useTerminalStatusQuery({
+    enabled: secondarySourcesEnabled,
+    retry: false,
+    staleTime: SECONDARY_STALE_MS,
+  });
+  const recoveryQuery = useOpenClawRecoveryStatusQuery({
+    enabled: secondarySourcesEnabled,
+    retry: false,
+    staleTime: SECONDARY_STALE_MS,
+  });
 
   const queries = [
     summaryQuery,
@@ -101,26 +152,38 @@ export function useDashboardAggregate() {
     [pillars, attention],
   );
 
-  const isLoading = queries.every((q) => q.isLoading);
-  const allFailed = queries.every((q) => q.isError);
+  const isBootstrapping =
+    !summaryQuery.data && !healthQuery.data &&
+    (summaryQuery.isLoading || healthQuery.isLoading);
+  const allFailed = secondarySourcesEnabled && queries.every((q) => q.isError);
   const firstError = queries.find((q) => q.isError)?.error ?? null;
 
+  const refetchSummary = summaryQuery.refetch;
+  const refetchHealth = healthQuery.refetch;
+  const refetchGateway = gatewayQuery.refetch;
+  const refetchChannelStatus = channelStatusQuery.refetch;
+  const refetchChannelSessions = channelSessionsQuery.refetch;
+  const refetchTerminal = terminalQuery.refetch;
+  const refetchRecovery = recoveryQuery.refetch;
+
   const refetchAll = React.useCallback(() => {
-    void summaryQuery.refetch();
-    void healthQuery.refetch();
-    void gatewayQuery.refetch();
-    void channelStatusQuery.refetch();
-    void channelSessionsQuery.refetch();
-    void terminalQuery.refetch();
-    void recoveryQuery.refetch();
+    void refetchSummary();
+    void refetchHealth();
+    if (!secondarySourcesEnabled) return;
+    void refetchGateway();
+    void refetchChannelStatus();
+    void refetchChannelSessions();
+    void refetchTerminal();
+    void refetchRecovery();
   }, [
-    summaryQuery,
-    healthQuery,
-    gatewayQuery,
-    channelStatusQuery,
-    channelSessionsQuery,
-    terminalQuery,
-    recoveryQuery,
+    refetchSummary,
+    refetchHealth,
+    refetchGateway,
+    refetchChannelStatus,
+    refetchChannelSessions,
+    refetchTerminal,
+    refetchRecovery,
+    secondarySourcesEnabled,
   ]);
 
   const isFetching = queries.some((q) => q.isFetching);
@@ -132,7 +195,8 @@ export function useDashboardAggregate() {
     activeWork,
     recentActivity,
     summary: summaryQuery.data,
-    isLoading,
+    isBootstrapping,
+    secondarySourcesEnabled,
     isFetching,
     allFailed,
     error: firstError,

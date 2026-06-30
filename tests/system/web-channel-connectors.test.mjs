@@ -27,8 +27,33 @@ test("Channel Connectors page uses the Aurora IM Channels view contract", () => 
   assert.match(page, /routes/);
   assert.match(page, /deliveries/);
   assert.match(page, /diagnostics/);
+  assert.match(page, /React\.lazy/);
+  assert.match(page, /React\.Suspense/);
+  assert.match(page, /import\("\.\/views\/OverviewView"\)/);
+  assert.match(page, /import\("\.\/views\/AccountsView"\)/);
+  assert.match(page, /from "\.\/views\/types"/);
+  assert.doesNotMatch(
+    page,
+    /import\s*\{[\s\S]*(OverviewView|AccountsView|RoutesView|SessionsView|DiagnosticsView)[\s\S]*\}\s*from "\.\/views"/,
+  );
   assert.doesNotMatch(page, /bindings/);
   assert.doesNotMatch(page, /logs/);
+});
+
+
+
+test("Channel Connectors views barrel exports only metadata and types", () => {
+  const barrel = read(`${VIEWS_DIR}/index.ts`);
+  assert.match(barrel, /CHANNEL_CONNECTORS_VIEWS/);
+  for (const componentName of [
+    "OverviewView",
+    "AccountsView",
+    "RoutesView",
+    "SessionsView",
+    "DiagnosticsView",
+  ]) {
+    assert.doesNotMatch(barrel, new RegExp(`\\b${componentName}\\b`));
+  }
 });
 
 test("Channel Connectors overview derives daemon readiness and links to layered views", () => {

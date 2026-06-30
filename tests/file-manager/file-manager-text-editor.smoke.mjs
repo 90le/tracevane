@@ -29,13 +29,13 @@ async function run() {
     const textRow = page.locator(`[data-file-manager-entry-path="${textPath.replaceAll('"', '\\"')}"]`).first();
     await textRow.scrollIntoViewIfNeeded();
     await textRow.dblclick({ force: true });
-    await page.waitForSelector('[data-document-workbench-viewport]', { timeout: 30_000 });
+    await page.waitForSelector('[data-file-preview-editor-shell]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await page.waitForSelector('.monaco-editor', { timeout: 30_000 });
     const metrics = await page.evaluate(() => {
       const editor = document.querySelector('[data-code-editor="monaco-direct"]')?.getBoundingClientRect();
       const monacoEditor = document.querySelector('.monaco-editor')?.getBoundingClientRect();
-      const viewport = document.querySelector('[data-document-workbench-viewport]')?.getBoundingClientRect();
+      const viewport = document.querySelector('[data-file-preview-workbench-region]')?.getBoundingClientRect();
       return {
         editor: editor ? { width: editor.width, height: editor.height } : null,
         monacoEditor: monacoEditor ? { width: monacoEditor.width, height: monacoEditor.height } : null,

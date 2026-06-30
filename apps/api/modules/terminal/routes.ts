@@ -10,7 +10,6 @@ import type {
   TerminalEndPayload,
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
-  TerminalLaunchPayload,
   TerminalTargetKind,
 } from "../../../../types/terminal.js";
 
@@ -37,9 +36,8 @@ export function registerTerminalRoutes(
   router.post("/api/terminal/sessions", async (req, res, routeCtx) => {
     const body = await parseJsonBody<TerminalGatewayAttachPayload>(req);
     try {
-      const session = await routeCtx.services.terminal.createPersistedSession(
-        body,
-      );
+      const session =
+        await routeCtx.services.terminal.createPersistedSession(body);
       sendJson(res, 201, session);
     } catch (error) {
       sendJson(res, 400, {
@@ -138,11 +136,11 @@ export function registerTerminalRoutes(
             lastSeq: Number(url.searchParams.get("lastSeq") || 0) || null,
             instanceId: url.searchParams.get("instanceId"),
             skipReplay:
-              url.searchParams.get("skipReplay") === "1"
-              || url.searchParams.get("skipReplay") === "true",
+              url.searchParams.get("skipReplay") === "1" ||
+              url.searchParams.get("skipReplay") === "true",
             resume:
-              url.searchParams.get("resume") === "1"
-              || url.searchParams.get("resume") === "true",
+              url.searchParams.get("resume") === "1" ||
+              url.searchParams.get("resume") === "true",
           },
           {
             streamId,
@@ -168,7 +166,11 @@ export function registerTerminalRoutes(
   });
 
   router.get("/api/terminal/profiles", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.terminal.listWorkspaceProfiles());
+    sendJson(
+      res,
+      200,
+      await routeCtx.services.terminal.listWorkspaceProfiles(),
+    );
   });
 
   router.post(
@@ -257,11 +259,6 @@ export function registerTerminalRoutes(
     } finally {
       res.end();
     }
-  });
-
-  router.post("/api/terminal/launch", async (req, res, routeCtx) => {
-    const body = await parseJsonBody<TerminalLaunchPayload>(req);
-    sendJson(res, 200, await routeCtx.services.terminal.getLaunchCommand(body));
   });
 
   router.post("/api/terminal/end", async (req, res, routeCtx) => {

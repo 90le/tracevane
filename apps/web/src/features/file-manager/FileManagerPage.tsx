@@ -39,10 +39,12 @@ import {
 import {
   FileManagerHeader,
   FileManagerNavigationBar,
+  type FileManagerBookmarkItem,
+  type FileManagerDirectoryTab,
   type FileManagerLocation,
   type FileManagerViewMode,
 } from "./FileManagerChrome";
-import { FilePropertiesDialog } from "@/features/file-manager/preview-shared/FilePropertiesDialog";
+import { FilePropertiesDialog } from "./FilePropertiesDialog";
 import type { FileManagerDialog } from "./FileManagerActionDialog";
 import { FileManagerSearchPanel } from "./FileManagerSearchPanel";
 import type { FileSearchResult } from "../../../../../types/files";
@@ -61,9 +63,11 @@ const LazyFilePreviewDialog = React.lazy(() =>
   })),
 );
 const LazyUploadManagerDialog = React.lazy(() =>
-  import("@/features/file-manager/file-tools/UploadManagerDialog").then((module) => ({
-    default: module.UploadManagerDialog,
-  })),
+  import("@/features/file-manager/file-tools/UploadManagerDialog").then(
+    (module) => ({
+      default: module.UploadManagerDialog,
+    }),
+  ),
 );
 const LazyFileManagerActionDialog = React.lazy(() =>
   import("./FileManagerActionDialog").then((module) => ({
@@ -96,11 +100,13 @@ import type {
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
 const FAVORITE_PATHS_STORAGE_KEY = "tracevane:file-manager:favorite-paths";
+const DIRECTORY_TABS_STORAGE_KEY = "tracevane:file-manager:directory-tabs:v2";
 const VIEW_PREFERENCES_STORAGE_KEY = "tracevane:file-manager:view-preferences";
 const FILE_MANAGER_SESSION_STORAGE_KEY =
   "tracevane:file-manager:session-state:v1";
 const MAX_RECENT_PATHS = 8;
-const MAX_FAVORITE_PATHS = 12;
+const MAX_FAVORITE_BOOKMARK_ITEMS = 200;
+const MAX_DIRECTORY_TABS = 12;
 const MAX_PATH_SUGGESTIONS = 8;
 
 interface FileManagerViewPreferences {
@@ -114,6 +120,7 @@ interface FileManagerViewPreferences {
 interface FileManagerSessionState {
   rootId?: string;
   directoryPath?: string;
+  activeDirectoryTabId?: string;
   showHidden?: boolean;
   viewMode?: FileManagerViewMode;
   filterText?: string;
@@ -150,11 +157,16 @@ export function FileManagerPage() {
   const [sessionStateLoaded] = React.useState(() =>
     loadFileManagerSessionState(),
   );
-  const [rootId, setRootId] = React.useState(
-    () => (sessionStateLoaded.rootId ?? defaultRootId) || "openclaw-root",
+  const initialTabSeed = React.useMemo(
+    () => createInitialDirectoryTab(sessionStateLoaded, defaultRootId),
+    [defaultRootId, sessionStateLoaded],
   );
+  const [activeDirectoryTabId, setActiveDirectoryTabId] = React.useState(
+    () => sessionStateLoaded.activeDirectoryTabId ?? initialTabSeed.id,
+  );
+  const [rootId, setRootId] = React.useState(() => initialTabSeed.rootId);
   const [directoryPath, setDirectoryPath] = React.useState(
-    () => sessionStateLoaded.directoryPath ?? "",
+    () => initialTabSeed.directoryPath,
   );
   const [pathInput, setPathInput] = React.useState("");
   const [selectedPath, setSelectedPath] = React.useState<string | undefined>();
@@ -210,9 +222,12 @@ export function FileManagerPage() {
   const [recentLocations, setRecentLocations] = React.useState<
     FileManagerLocation[]
   >(() => loadRecentFileManagerLocations());
-  const [favoriteLocations, setFavoriteLocations] = React.useState<
-    FileManagerLocation[]
-  >(() => loadFavoriteFileManagerLocations());
+  const [favoriteTree, setFavoriteTree] = React.useState<
+    FileManagerBookmarkItem[]
+  >(() => loadFavoriteBookmarkTree());
+  const [directoryTabs, setDirectoryTabs] = React.useState<
+    FileManagerDirectoryTab[]
+  >(() => loadDirectoryTabLocations(initialTabSeed));
   const [pathSuggestionsOpen, setPathSuggestionsOpen] = React.useState(false);
   const [activePathSuggestionIndex, setActivePathSuggestionIndex] =
     React.useState(0);
@@ -232,19 +247,54 @@ export function FileManagerPage() {
     const savedRootAvailable = roots.some((item) => item.id === rootId);
     if (!rootId || !savedRootAvailable) {
       setRootId(defaultRootId);
-      if (!savedRootAvailable) setDirectoryPath("");
+      setDirectoryPath("");
+      setDirectoryTabs((prev) => {
+        const repaired = normalizeDirectoryTabs(prev).map((tab) =>
+          tab.id === activeDirectoryTabId
+            ? {
+                ...tab,
+                rootId: defaultRootId,
+                directoryPath: "",
+                label: labelForDirectoryTab(roots, defaultRootId, ""),
+              }
+            : tab,
+        );
+        storeDirectoryTabLocations(repaired);
+        return repaired;
+      });
     }
-  }, [defaultRootId, rootId, roots]);
+  }, [activeDirectoryTabId, defaultRootId, rootId, roots]);
 
   React.useEffect(() => {
     storeFileManagerSessionState({
       rootId,
       directoryPath,
+      activeDirectoryTabId,
       showHidden,
       viewMode,
       filterText,
     });
-  }, [directoryPath, filterText, rootId, showHidden, viewMode]);
+  }, [
+    activeDirectoryTabId,
+    directoryPath,
+    filterText,
+    rootId,
+    showHidden,
+    viewMode,
+  ]);
+
+  React.useEffect(() => {
+    const normalized = normalizeDirectoryTabs(directoryTabs);
+    const active = normalized.find((tab) => tab.id === activeDirectoryTabId);
+    if (active) return;
+    const fallback =
+      normalized[0] ?? createDirectoryTab(defaultRootId || rootId, "", roots);
+    setDirectoryTabs([fallback]);
+    storeDirectoryTabLocations([fallback]);
+    setActiveDirectoryTabId(fallback.id);
+    setRootId(fallback.rootId);
+    setDirectoryPath(fallback.directoryPath);
+  }, [activeDirectoryTabId, defaultRootId, directoryTabs, rootId, roots]);
 
   React.useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
@@ -364,37 +414,40 @@ export function FileManagerPage() {
     () => ({ rootId, directoryPath, label: displayPath }),
     [directoryPath, displayPath, rootId],
   );
+  const favoriteBookmarkLocations = React.useMemo(
+    () => flattenFavoriteBookmarkLocations(favoriteTree),
+    [favoriteTree],
+  );
+  const favoriteCount = React.useMemo(
+    () => countFavoriteBookmarks(favoriteTree),
+    [favoriteTree],
+  );
   const quickLocations = React.useMemo(
-    () => buildQuickLocations(roots, favoriteLocations, recentLocations),
-    [favoriteLocations, recentLocations, roots],
+    () => buildQuickLocations(favoriteBookmarkLocations, recentLocations),
+    [favoriteBookmarkLocations, recentLocations],
   );
   const quickLocationViews = React.useMemo(
     () =>
       quickLocations.map((location) => ({
         ...location,
-        favorited: favoriteLocations.some((item) =>
+        favorited: favoriteBookmarkLocations.some((item) =>
           sameLocation(item, location),
         ),
       })),
-    [favoriteLocations, quickLocations],
-  );
-  const favoriteLocationViews = React.useMemo(
-    () =>
-      favoriteLocations.map((location) => ({ ...location, favorited: true })),
-    [favoriteLocations],
+    [favoriteBookmarkLocations, quickLocations],
   );
   const recentLocationViews = React.useMemo(
     () =>
       recentLocations
         .filter(
           (location) =>
-            !favoriteLocations.some((favorite) =>
+            !favoriteBookmarkLocations.some((favorite) =>
               sameLocation(favorite, location),
             ),
         )
         .slice(0, MAX_RECENT_PATHS)
         .map((location) => ({ ...location, favorited: false })),
-    [favoriteLocations, recentLocations],
+    [favoriteBookmarkLocations, recentLocations],
   );
   const pathSuggestions = React.useMemo(
     () =>
@@ -408,8 +461,15 @@ export function FileManagerPage() {
     [entries, pathInput, quickLocations, root?.absolutePath, rootId],
   );
   const currentLocationFavorited = React.useMemo(
-    () => favoriteLocations.some((item) => sameLocation(item, currentLocation)),
-    [currentLocation, favoriteLocations],
+    () =>
+      favoriteBookmarkLocations.some((item) =>
+        sameLocation(item, currentLocation),
+      ),
+    [currentLocation, favoriteBookmarkLocations],
+  );
+  const directoryTabViews = React.useMemo(
+    () => normalizeDirectoryTabs(directoryTabs),
+    [directoryTabs],
   );
 
   React.useEffect(() => {
@@ -418,36 +478,207 @@ export function FileManagerPage() {
     );
   }, [pathSuggestions.length]);
 
-  const navigateToLocation = React.useCallback(
-    (location: FileManagerLocation) => {
-      setRootId(location.rootId);
-      setDirectoryPath(location.directoryPath);
+  const updateActiveDirectoryTab = React.useCallback(
+    (patch: Pick<FileManagerLocation, "rootId" | "directoryPath">) => {
+      const nextRootId = patch.rootId;
+      const nextDirectoryPath = normalizeRelativePathForUi(patch.directoryPath);
+      setRootId(nextRootId);
+      setDirectoryPath(nextDirectoryPath);
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        const next = normalized.map((tab) =>
+          tab.id === activeDirectoryTabId
+            ? {
+                ...tab,
+                rootId: nextRootId,
+                directoryPath: nextDirectoryPath,
+                label: labelForDirectoryTab(
+                  roots,
+                  nextRootId,
+                  nextDirectoryPath,
+                ),
+              }
+            : tab,
+        );
+        const stable = next.length
+          ? next
+          : [createDirectoryTab(nextRootId, nextDirectoryPath, roots)];
+        storeDirectoryTabLocations(stable);
+        return stable;
+      });
       setSelectedPath(undefined);
       setSelectedPaths(new Set());
       setLastSelectedPath(undefined);
     },
-    [],
+    [activeDirectoryTabId, roots],
+  );
+
+  const navigateToLocation = React.useCallback(
+    (location: FileManagerLocation) => {
+      updateActiveDirectoryTab({
+        rootId: location.rootId,
+        directoryPath: location.directoryPath,
+      });
+    },
+    [updateActiveDirectoryTab],
+  );
+
+  const addCurrentFavoriteToFolder = React.useCallback(
+    (parentId: string | undefined, title?: string) => {
+      const bookmarkTitle =
+        title?.trim() || displayNameForFavoriteLocation(currentLocation);
+      setFavoriteTree((prev) => {
+        const next = addFavoriteBookmarkItem(
+          prev,
+          parentId,
+          createFavoriteBookmark(currentLocation, bookmarkTitle),
+        );
+        storeFavoriteBookmarkTree(next);
+        return next;
+      });
+      toast.success("已收藏当前位置", { description: bookmarkTitle });
+    },
+    [currentLocation],
   );
 
   const toggleFavoriteCurrentLocation = React.useCallback(() => {
-    setFavoriteLocations((prev) => {
+    setFavoriteTree((prev) => {
       const next = currentLocationFavorited
-        ? prev.filter((item) => !sameLocation(item, currentLocation))
-        : rememberFavoriteFileManagerLocation(prev, currentLocation);
-      storeFavoriteFileManagerLocations(next);
+        ? removeFavoriteBookmarksMatchingLocation(prev, currentLocation)
+        : addFavoriteBookmarkItem(
+            prev,
+            undefined,
+            createFavoriteBookmark(
+              currentLocation,
+              displayNameForFavoriteLocation(currentLocation),
+            ),
+          );
+      storeFavoriteBookmarkTree(next);
       return next;
     });
   }, [currentLocation, currentLocationFavorited]);
 
-  const removeFavoriteLocation = React.useCallback(
-    (location: FileManagerLocation) => {
-      setFavoriteLocations((prev) => {
-        const next = prev.filter((item) => !sameLocation(item, location));
-        storeFavoriteFileManagerLocations(next);
+  const openFavoriteItem = React.useCallback(
+    (itemId: string) => {
+      const item = findFavoriteBookmarkItem(favoriteTree, itemId);
+      if (item?.type !== "bookmark" || !item.location) return;
+      navigateToLocation(item.location);
+      setPathSuggestionsOpen(false);
+      setActivePathSuggestionIndex(0);
+    },
+    [favoriteTree, navigateToLocation],
+  );
+
+  const addFavoriteFolder = React.useCallback(
+    (parentId: string | undefined, title: string) => {
+      if (!title.trim()) return;
+      setFavoriteTree((prev) => {
+        const next = addFavoriteBookmarkItem(
+          prev,
+          parentId,
+          createFavoriteFolder(title.trim()),
+        );
+        storeFavoriteBookmarkTree(next);
         return next;
       });
     },
     [],
+  );
+
+  const renameFavoriteItem = React.useCallback(
+    (itemId: string, title: string) => {
+      if (!title.trim()) return;
+      setFavoriteTree((prev) => {
+        const next = updateFavoriteBookmarkItem(prev, itemId, (current) => ({
+          ...current,
+          title: title.trim(),
+        }));
+        storeFavoriteBookmarkTree(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const removeFavoriteItem = React.useCallback((itemId: string) => {
+    setFavoriteTree((prev) => {
+      const next = removeFavoriteBookmarkItem(prev, itemId);
+      storeFavoriteBookmarkTree(next);
+      return next;
+    });
+  }, []);
+
+  const moveFavoriteItem = React.useCallback(
+    (
+      itemId: string,
+      targetParentId: string | undefined,
+      targetIndex: number,
+    ) => {
+      setFavoriteTree((prev) => {
+        const next = moveFavoriteBookmarkItem(
+          prev,
+          itemId,
+          targetParentId,
+          targetIndex,
+        );
+        storeFavoriteBookmarkTree(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const selectDirectoryTab = React.useCallback(
+    (tabId: string) => {
+      const tab = directoryTabs.find((item) => item.id === tabId);
+      if (!tab) return;
+      setActiveDirectoryTabId(tab.id);
+      setRootId(tab.rootId);
+      setDirectoryPath(tab.directoryPath);
+      setSelectedPath(undefined);
+      setSelectedPaths(new Set());
+      setLastSelectedPath(undefined);
+    },
+    [directoryTabs],
+  );
+
+  const addCurrentDirectoryTab = React.useCallback(() => {
+    const nextTab = createDirectoryTab(defaultRootId || rootId, "", roots);
+    setDirectoryTabs((prev) => {
+      const next = [...normalizeDirectoryTabs(prev), nextTab].slice(
+        -MAX_DIRECTORY_TABS,
+      );
+      storeDirectoryTabLocations(next);
+      return next;
+    });
+    setActiveDirectoryTabId(nextTab.id);
+    setRootId(nextTab.rootId);
+    setDirectoryPath(nextTab.directoryPath);
+    setSelectedPath(undefined);
+    setSelectedPaths(new Set());
+    setLastSelectedPath(undefined);
+  }, [defaultRootId, rootId, roots]);
+
+  const closeDirectoryTab = React.useCallback(
+    (tabId: string) => {
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        if (normalized.length <= 1) return normalized;
+        const closingIndex = normalized.findIndex((item) => item.id === tabId);
+        const next = normalized.filter((item) => item.id !== tabId);
+        storeDirectoryTabLocations(next);
+        if (tabId === activeDirectoryTabId) {
+          const fallback = next[Math.max(0, closingIndex - 1)] ?? next[0];
+          if (fallback) {
+            setActiveDirectoryTabId(fallback.id);
+            setRootId(fallback.rootId);
+            setDirectoryPath(fallback.directoryPath);
+          }
+        }
+        return next;
+      });
+    },
+    [activeDirectoryTabId],
   );
 
   const clearRecentLocations = React.useCallback(() => {
@@ -456,22 +687,22 @@ export function FileManagerPage() {
     toast.success("最近路径已清空");
   }, []);
 
-  const navigateToDirectory = React.useCallback((nextPath: string) => {
-    setDirectoryPath(nextPath);
-    setSelectedPath(undefined);
-    setLastSelectedPath(undefined);
-  }, []);
+  const navigateToDirectory = React.useCallback(
+    (nextPath: string) => {
+      updateActiveDirectoryTab({ rootId, directoryPath: nextPath });
+    },
+    [rootId, updateActiveDirectoryTab],
+  );
 
   const jumpToPathInput = React.useCallback(() => {
     const resolved = resolvePathInput(pathInput, roots, rootId);
-    navigateToLocation({
+    updateActiveDirectoryTab({
       rootId: resolved.rootId,
       directoryPath: resolved.directoryPath,
-      label: pathInput.trim(),
     });
     setPathSuggestionsOpen(false);
     setActivePathSuggestionIndex(0);
-  }, [navigateToLocation, pathInput, rootId, roots]);
+  }, [pathInput, rootId, roots, updateActiveDirectoryTab]);
 
   const copyPathToClipboard = React.useCallback(
     (path: string, successTitle = "路径已复制") => {
@@ -1198,8 +1429,11 @@ export function FileManagerPage() {
             pathSuggestionsOpen={pathSuggestionsOpen}
             activePathSuggestionIndex={activePathSuggestionIndex}
             quickLocations={quickLocationViews}
-            favoriteLocations={favoriteLocationViews}
+            favoriteTree={favoriteTree}
+            favoriteCount={favoriteCount}
             recentLocations={recentLocationViews}
+            directoryTabs={directoryTabViews}
+            activeDirectoryTabId={activeDirectoryTabId}
             filterText={filterText}
             showHidden={showHidden}
             currentLocationFavorited={currentLocationFavorited}
@@ -1209,6 +1443,9 @@ export function FileManagerPage() {
               setPathSuggestionsOpen(false);
               setActivePathSuggestionIndex(0);
             }}
+            onSelectDirectoryTab={selectDirectoryTab}
+            onAddDirectoryTab={addCurrentDirectoryTab}
+            onCloseDirectoryTab={closeDirectoryTab}
             onPathInputFocus={() => {
               setPathSuggestionsOpen(true);
               setActivePathSuggestionIndex(0);
@@ -1235,7 +1472,12 @@ export function FileManagerPage() {
               setActivePathSuggestionIndex(0);
             }}
             onToggleFavoriteCurrent={toggleFavoriteCurrentLocation}
-            onRemoveFavoriteLocation={removeFavoriteLocation}
+            onOpenFavoriteItem={openFavoriteItem}
+            onAddFavoriteFolder={addFavoriteFolder}
+            onAddCurrentFavoriteToFolder={addCurrentFavoriteToFolder}
+            onRenameFavoriteItem={renameFavoriteItem}
+            onRemoveFavoriteItem={removeFavoriteItem}
+            onMoveFavoriteItem={moveFavoriteItem}
             onClearRecentLocations={clearRecentLocations}
             filterInputRef={fileManagerFilterRef}
             onFilterTextChange={setFilterText}
@@ -1247,6 +1489,7 @@ export function FileManagerPage() {
             onUpload={() => openUploadManager(directoryPath)}
             onChangeViewMode={setViewMode}
             onRefresh={refresh}
+            currentLocation={currentLocation}
           />
         </header>
 
@@ -1914,6 +2157,10 @@ function loadFileManagerSessionState(): FileManagerSessionState {
         typeof parsed.directoryPath === "string"
           ? parsed.directoryPath
           : undefined,
+      activeDirectoryTabId:
+        typeof parsed.activeDirectoryTabId === "string"
+          ? parsed.activeDirectoryTabId
+          : undefined,
       showHidden:
         typeof parsed.showHidden === "boolean" ? parsed.showHidden : undefined,
       viewMode:
@@ -1977,11 +2224,412 @@ function storeRecentFileManagerLocations(
   }
 }
 
-function loadFavoriteFileManagerLocations(): FileManagerLocation[] {
+function loadFavoriteBookmarkTree(): FileManagerBookmarkItem[] {
   if (typeof window === "undefined") return [];
   try {
     const parsed = JSON.parse(
       window.localStorage.getItem(FAVORITE_PATHS_STORAGE_KEY) || "[]",
+    ) as unknown;
+    return normalizeFavoriteBookmarkTree(parsed).slice(
+      0,
+      MAX_FAVORITE_BOOKMARK_ITEMS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function storeFavoriteBookmarkTree(tree: FileManagerBookmarkItem[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      FAVORITE_PATHS_STORAGE_KEY,
+      JSON.stringify(trimFavoriteBookmarkTree(tree)),
+    );
+  } catch {
+    // Favorites are convenience-only; storage failures must not block file access.
+  }
+}
+
+function normalizeFavoriteBookmarkTree(
+  value: unknown,
+): FileManagerBookmarkItem[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value.flatMap((item) =>
+    normalizeFavoriteBookmarkItem(item),
+  );
+  return trimFavoriteBookmarkTree(normalized);
+}
+
+function normalizeFavoriteBookmarkItem(
+  value: unknown,
+): FileManagerBookmarkItem[] {
+  if (!value || typeof value !== "object") return [];
+  const candidate = value as Partial<FileManagerBookmarkItem> &
+    Partial<FileManagerLocation>;
+  if (candidate.type === "folder") {
+    const title = sanitizeBookmarkTitle(candidate.title, "文件夹");
+    return [
+      {
+        id:
+          typeof candidate.id === "string" ? candidate.id : createBookmarkId(),
+        type: "folder",
+        title,
+        children: normalizeFavoriteBookmarkTree(candidate.children),
+      },
+    ];
+  }
+  const location = normalizeFavoriteLocationCandidate(
+    candidate.location ?? candidate,
+  );
+  if (!location) return [];
+  return [
+    createFavoriteBookmark(
+      location,
+      sanitizeBookmarkTitle(
+        candidate.title ?? location.displayName,
+        displayNameForFavoriteLocation(location),
+      ),
+      typeof candidate.id === "string" ? candidate.id : undefined,
+    ),
+  ];
+}
+
+function normalizeFavoriteLocationCandidate(
+  value: unknown,
+): FileManagerLocation | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<FileManagerLocation>;
+  if (
+    typeof candidate.rootId !== "string" ||
+    typeof candidate.directoryPath !== "string" ||
+    typeof candidate.label !== "string"
+  ) {
+    return null;
+  }
+  return {
+    rootId: candidate.rootId,
+    directoryPath: normalizeRelativePathForUi(candidate.directoryPath),
+    label: normalizeAbsolutePath(candidate.label),
+    displayName:
+      typeof candidate.displayName === "string" && candidate.displayName.trim()
+        ? candidate.displayName.trim()
+        : undefined,
+  };
+}
+
+function trimFavoriteBookmarkTree(
+  tree: FileManagerBookmarkItem[],
+): FileManagerBookmarkItem[] {
+  let remaining = MAX_FAVORITE_BOOKMARK_ITEMS;
+  const visit = (
+    items: FileManagerBookmarkItem[],
+  ): FileManagerBookmarkItem[] => {
+    const next: FileManagerBookmarkItem[] = [];
+    for (const item of items) {
+      if (remaining <= 0) break;
+      remaining -= 1;
+      if (item.type === "folder") {
+        next.push({
+          id: item.id || createBookmarkId(),
+          type: "folder",
+          title: sanitizeBookmarkTitle(item.title, "文件夹"),
+          children: visit(item.children ?? []),
+        });
+      } else if (item.location) {
+        next.push(
+          createFavoriteBookmark(
+            item.location,
+            sanitizeBookmarkTitle(
+              item.title,
+              displayNameForFavoriteLocation(item.location),
+            ),
+            item.id,
+          ),
+        );
+      }
+    }
+    return next;
+  };
+  return visit(tree);
+}
+
+function createFavoriteFolder(title: string): FileManagerBookmarkItem {
+  return {
+    id: createBookmarkId(),
+    type: "folder",
+    title: sanitizeBookmarkTitle(title, "文件夹"),
+    children: [],
+  };
+}
+
+function createFavoriteBookmark(
+  location: FileManagerLocation,
+  title?: string,
+  id?: string,
+): FileManagerBookmarkItem {
+  const normalized: FileManagerLocation = {
+    rootId: location.rootId,
+    directoryPath: normalizeRelativePathForUi(location.directoryPath),
+    label: normalizeAbsolutePath(location.label),
+    displayName: location.displayName,
+  };
+  return {
+    id: id || createBookmarkId(),
+    type: "bookmark",
+    title: sanitizeBookmarkTitle(
+      title,
+      displayNameForFavoriteLocation(normalized),
+    ),
+    location: normalized,
+  };
+}
+
+function createBookmarkId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `bookmark:${crypto.randomUUID()}`;
+  }
+  return `bookmark:${Date.now().toString(36)}:${Math.random()
+    .toString(36)
+    .slice(2)}`;
+}
+
+function sanitizeBookmarkTitle(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function displayNameForFavoriteLocation(location: FileManagerLocation): string {
+  if (location.displayName?.trim()) return location.displayName.trim();
+  const parts = (location.label || location.directoryPath || location.rootId)
+    .split("/")
+    .filter(Boolean);
+  return parts.at(-1) || location.label || "root";
+}
+
+function flattenFavoriteBookmarkLocations(
+  tree: FileManagerBookmarkItem[],
+): FileManagerLocation[] {
+  const locations: FileManagerLocation[] = [];
+  const visit = (items: FileManagerBookmarkItem[]) => {
+    for (const item of items) {
+      if (item.type === "bookmark" && item.location)
+        locations.push(item.location);
+      if (item.type === "folder" && item.children) visit(item.children);
+    }
+  };
+  visit(tree);
+  return locations;
+}
+
+function countFavoriteBookmarks(tree: FileManagerBookmarkItem[]): number {
+  return flattenFavoriteBookmarkLocations(tree).length;
+}
+
+function addFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  parentId: string | undefined,
+  item: FileManagerBookmarkItem,
+): FileManagerBookmarkItem[] {
+  if (!parentId) return trimFavoriteBookmarkTree([...tree, item]);
+  let inserted = false;
+  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
+    items.map((current) => {
+      if (current.type !== "folder") return current;
+      if (current.id === parentId) {
+        inserted = true;
+        return {
+          ...current,
+          children: [...(current.children ?? []), item],
+        };
+      }
+      return {
+        ...current,
+        children: visit(current.children ?? []),
+      };
+    });
+  const next = visit(tree);
+  return trimFavoriteBookmarkTree(inserted ? next : [...next, item]);
+}
+
+function updateFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+  updater: (item: FileManagerBookmarkItem) => FileManagerBookmarkItem,
+): FileManagerBookmarkItem[] {
+  return tree.map((item) => {
+    if (item.id === itemId) return updater(item);
+    if (item.type === "folder") {
+      return {
+        ...item,
+        children: updateFavoriteBookmarkItem(
+          item.children ?? [],
+          itemId,
+          updater,
+        ),
+      };
+    }
+    return item;
+  });
+}
+
+function removeFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+): FileManagerBookmarkItem[] {
+  return tree
+    .filter((item) => item.id !== itemId)
+    .map((item) =>
+      item.type === "folder"
+        ? {
+            ...item,
+            children: removeFavoriteBookmarkItem(item.children ?? [], itemId),
+          }
+        : item,
+    );
+}
+
+function moveFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+  targetParentId: string | undefined,
+  targetIndex: number,
+): FileManagerBookmarkItem[] {
+  if (itemId === targetParentId) return tree;
+  const extracted = extractFavoriteBookmarkItem(tree, itemId);
+  if (!extracted.item) return tree;
+  if (
+    targetParentId &&
+    favoriteBookmarkItemContains(extracted.item, targetParentId)
+  ) {
+    return tree;
+  }
+  const next = insertFavoriteBookmarkItem(
+    extracted.tree,
+    targetParentId,
+    extracted.item,
+    targetIndex,
+  );
+  return trimFavoriteBookmarkTree(next);
+}
+
+function extractFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+): { item?: FileManagerBookmarkItem; tree: FileManagerBookmarkItem[] } {
+  let found: FileManagerBookmarkItem | undefined;
+  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
+    items.flatMap((item) => {
+      if (item.id === itemId) {
+        found = item;
+        return [];
+      }
+      if (item.type === "folder") {
+        return [
+          {
+            ...item,
+            children: visit(item.children ?? []),
+          },
+        ];
+      }
+      return [item];
+    });
+  return { item: found, tree: visit(tree) };
+}
+
+function insertFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  parentId: string | undefined,
+  item: FileManagerBookmarkItem,
+  targetIndex: number,
+): FileManagerBookmarkItem[] {
+  if (!parentId) return insertAtIndex(tree, item, targetIndex);
+  let inserted = false;
+  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
+    items.map((current) => {
+      if (current.type !== "folder") return current;
+      if (current.id === parentId) {
+        inserted = true;
+        return {
+          ...current,
+          children: insertAtIndex(current.children ?? [], item, targetIndex),
+        };
+      }
+      return {
+        ...current,
+        children: visit(current.children ?? []),
+      };
+    });
+  const next = visit(tree);
+  return inserted ? next : insertAtIndex(next, item, targetIndex);
+}
+
+function insertAtIndex(
+  items: FileManagerBookmarkItem[],
+  item: FileManagerBookmarkItem,
+  index: number,
+): FileManagerBookmarkItem[] {
+  const next = [...items];
+  const boundedIndex = Math.max(0, Math.min(index, next.length));
+  next.splice(boundedIndex, 0, item);
+  return next;
+}
+
+function favoriteBookmarkItemContains(
+  item: FileManagerBookmarkItem,
+  childId: string,
+): boolean {
+  if (item.id === childId) return true;
+  if (item.type !== "folder") return false;
+  return (item.children ?? []).some((child) =>
+    favoriteBookmarkItemContains(child, childId),
+  );
+}
+
+function removeFavoriteBookmarksMatchingLocation(
+  tree: FileManagerBookmarkItem[],
+  location: FileManagerLocation,
+): FileManagerBookmarkItem[] {
+  return tree
+    .filter(
+      (item) =>
+        item.type !== "bookmark" ||
+        !item.location ||
+        !sameLocation(item.location, location),
+    )
+    .map((item) =>
+      item.type === "folder"
+        ? {
+            ...item,
+            children: removeFavoriteBookmarksMatchingLocation(
+              item.children ?? [],
+              location,
+            ),
+          }
+        : item,
+    );
+}
+
+function findFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+): FileManagerBookmarkItem | undefined {
+  for (const item of tree) {
+    if (item.id === itemId) return item;
+    if (item.type === "folder") {
+      const child = findFavoriteBookmarkItem(item.children ?? [], itemId);
+      if (child) return child;
+    }
+  }
+  return undefined;
+}
+
+function loadDirectoryTabLocations(
+  fallback: FileManagerDirectoryTab,
+): FileManagerDirectoryTab[] {
+  if (typeof window === "undefined") return [fallback];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(DIRECTORY_TABS_STORAGE_KEY) || "[]",
     ) as FileManagerLocation[];
     return Array.isArray(parsed)
       ? parsed
@@ -1991,24 +2639,38 @@ function loadFavoriteFileManagerLocations(): FileManagerLocation[] {
               typeof item?.directoryPath === "string" &&
               typeof item?.label === "string",
           )
-          .slice(0, MAX_FAVORITE_PATHS)
-      : [];
+          .map((item) => ({
+            id:
+              typeof (item as unknown as { id?: unknown }).id === "string"
+                ? (item as unknown as { id: string }).id
+                : createDirectoryTabId(),
+            rootId: item.rootId,
+            directoryPath: normalizeRelativePathForUi(item.directoryPath),
+            label: normalizeAbsolutePath(item.label),
+            displayName:
+              typeof (item as unknown as { displayName?: unknown })
+                .displayName === "string"
+                ? (item as unknown as { displayName: string }).displayName
+                : undefined,
+          }))
+          .slice(0, MAX_DIRECTORY_TABS)
+      : [fallback];
   } catch {
-    return [];
+    return [fallback];
   }
 }
 
-function storeFavoriteFileManagerLocations(
-  locations: FileManagerLocation[],
+function storeDirectoryTabLocations(
+  locations: FileManagerDirectoryTab[],
 ): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
-      FAVORITE_PATHS_STORAGE_KEY,
-      JSON.stringify(locations.slice(0, MAX_FAVORITE_PATHS)),
+      DIRECTORY_TABS_STORAGE_KEY,
+      JSON.stringify(locations.slice(0, MAX_DIRECTORY_TABS)),
     );
   } catch {
-    // Favorites are convenience-only; storage failures must not block file access.
+    // Directory tabs are convenience-only; storage failures must not block file access.
   }
 }
 
@@ -2145,21 +2807,69 @@ function isValidSortState(value: unknown): value is FileManagerSortState {
   );
 }
 
-function rememberFavoriteFileManagerLocation(
-  prev: FileManagerLocation[],
-  location: FileManagerLocation,
-): FileManagerLocation[] {
-  const normalized: FileManagerLocation = {
-    rootId: location.rootId,
-    directoryPath: normalizeRelativePathForUi(location.directoryPath),
-    label: normalizeAbsolutePath(location.label),
+function createDirectoryTabId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `tab:${crypto.randomUUID()}`;
+  }
+  return `tab:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+function createInitialDirectoryTab(
+  session: FileManagerSessionState,
+  defaultRootId: string,
+): FileManagerDirectoryTab {
+  const rootId = session.rootId || defaultRootId || "openclaw-root";
+  const directoryPath = normalizeRelativePathForUi(session.directoryPath || "");
+  return {
+    id: session.activeDirectoryTabId || createDirectoryTabId(),
+    rootId,
+    directoryPath,
+    label: directoryPath || "根目录",
   };
-  const next = [
-    normalized,
-    ...prev.filter((item) => !sameLocation(item, normalized)),
-  ].slice(0, MAX_FAVORITE_PATHS);
-  storeFavoriteFileManagerLocations(next);
-  return next;
+}
+
+function createDirectoryTab(
+  rootId: string,
+  directoryPath: string,
+  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
+): FileManagerDirectoryTab {
+  const normalizedPath = normalizeRelativePathForUi(directoryPath);
+  return {
+    id: createDirectoryTabId(),
+    rootId,
+    directoryPath: normalizedPath,
+    label: labelForDirectoryTab(roots, rootId, normalizedPath),
+  };
+}
+
+function labelForDirectoryTab(
+  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
+  rootId: string,
+  directoryPath: string,
+): string {
+  const root = roots.find((item) => item.id === rootId);
+  if (directoryPath)
+    return directoryPath.split("/").filter(Boolean).at(-1) || directoryPath;
+  return root?.labelZh || "根目录";
+}
+
+function normalizeDirectoryTabs(
+  tabs: FileManagerDirectoryTab[],
+): FileManagerDirectoryTab[] {
+  const seen = new Set<string>();
+  const normalized: FileManagerDirectoryTab[] = [];
+  for (const tab of tabs) {
+    const next = {
+      ...tab,
+      id: tab.id || createDirectoryTabId(),
+      directoryPath: normalizeRelativePathForUi(tab.directoryPath),
+      label: tab.label || tab.directoryPath || "根目录",
+    };
+    if (seen.has(next.id)) continue;
+    seen.add(next.id);
+    normalized.push(next);
+  }
+  return normalized.slice(-MAX_DIRECTORY_TABS);
 }
 
 function rememberFileManagerLocation(
@@ -2185,24 +2895,12 @@ function rememberFileManagerLocation(
 }
 
 function buildQuickLocations(
-  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
   favoriteLocations: FileManagerLocation[],
   recentLocations: FileManagerLocation[],
 ): FileManagerLocation[] {
-  const rootLocations = roots.map((root) => ({
-    rootId: root.id,
-    directoryPath: "",
-    label: root.labelZh
-      ? `${root.labelZh} · ${normalizeAbsolutePath(root.absolutePath)}`
-      : normalizeAbsolutePath(root.absolutePath),
-  }));
   const seen = new Set<string>();
   const merged: FileManagerLocation[] = [];
-  for (const location of [
-    ...rootLocations,
-    ...favoriteLocations,
-    ...recentLocations,
-  ]) {
+  for (const location of [...favoriteLocations, ...recentLocations]) {
     const normalized = {
       ...location,
       directoryPath: normalizeRelativePathForUi(location.directoryPath),

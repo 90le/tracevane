@@ -1,69 +1,122 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(here, "../..");
 const read = (relative) => readFileSync(path.join(rootDir, relative), "utf8");
+const exists = (relative) => existsSync(path.join(rootDir, relative));
 
-test("CLI Agents page keeps only the two useful workbench entries", () => {
+test("CLI Agents page is a single install/configure/repair management surface", () => {
   const page = read("apps/web/src/features/cli-agents/CliAgentsPage.tsx");
   const types = read("apps/web/src/features/cli-agents/types.ts");
 
-  assert.match(types, /CLI_AGENTS_VIEWS = \["runs", "cli"\]/);
-  assert.match(page, /label: "运行台"/);
-  assert.match(page, /label: "启动 \/ 修复"/);
-  assert.match(page, /: "runs"/);
-  assert.doesNotMatch(page, /label: "概览"|label: "证据索引"/);
-  assert.doesNotMatch(page, /Persona|OpenClaw generic|通用频道 CRUD/);
+  assert.match(page, /return <CliRuntimeView \/>/);
+  assert.match(types, /CLI_AGENT_MANAGEMENT_SCOPE = \[/);
+  assert.match(types, /"install"/);
+  assert.match(types, /"configure"/);
+  assert.match(types, /"reinstall"/);
+  assert.match(types, /"repair"/);
+  assert.doesNotMatch(
+    page,
+    /useSearchParams|label: "运行台"|ListChecks|TABS|VIEW_COMPONENTS/,
+  );
+  assert.doesNotMatch(
+    types,
+    /CLI_AGENTS_VIEWS|CliAgentsView|AgentRuntimeRunsResponse/,
+  );
+  assert.equal(
+    exists("apps/web/src/features/cli-agents/views/RunsView.tsx"),
+    false,
+  );
+  assert.equal(
+    exists("apps/web/src/features/cli-agents/views/OverviewView.tsx"),
+    false,
+  );
+  assert.equal(
+    exists("apps/web/src/features/cli-agents/views/EvidenceView.tsx"),
+    false,
+  );
 });
 
-test("Runs view uses a no-scroll operational run list and only exposes proven terminal controls", () => {
-  const source = read("apps/web/src/features/cli-agents/views/RunsView.tsx");
+test("CLI management view renders static roster before status probes settle", () => {
+  const source = read(
+    "apps/web/src/features/cli-agents/views/CliRuntimeView.tsx",
+  );
 
-  assert.match(source, /role="table" aria-label="Agent Runs"/);
-  assert.match(source, /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(84px,\.45fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)_minmax\(0,\.8fr\)_minmax\(150px,\.8fr\)\]/);
-  assert.doesNotMatch(source, /TableHeader|TableCell|TableRow/);
-  assert.match(source, /FILTERS/);
-  assert.match(source, /placeholder="搜索 run \/ 模型 \/ 目录 \/ 错误 \/ session"/);
-  assert.match(source, /rowMatchesSearch/);
-  assert.match(source, /run\.actionReason/);
-  assert.match(source, /run\.canStop/);
-  assert.match(source, /run\.canDelete/);
-  assert.match(source, /DialogTitle>停止 Agent 终端会话/);
-  assert.match(source, /DialogTitle>删除终端会话记录/);
-  assert.match(source, /useEndTerminalSessionMutation/);
-  assert.match(source, /useDeleteTerminalSessionMutation/);
-  assert.match(source, /待处理操作/);
-  assert.doesNotMatch(source, /边界说明|为什么不是把三个域硬合并/);
-  assert.doesNotMatch(source, /grid-cols-3.*card/i);
-});
-
-test("CLI Runtime view owns launch and install repair without provider or IM editing", () => {
-  const source = read("apps/web/src/features/cli-agents/views/CliRuntimeView.tsx");
-
-  assert.match(source, /Agent CLI 启动 \/ 修复/);
-  assert.match(source, /useLaunchTerminalMutation/);
-  assert.match(source, /useInstallTerminalCliMutation/);
-  assert.match(source, /Agent CLI 启动 \/ 修复/);
-  assert.match(source, /修复队列/);
-  assert.match(source, /确认安装/);
-  assert.match(source, /安装结果/);
-  assert.match(source, /复制提示/);
+  assert.match(source, /AGENT_CLI_ROSTER/);
+  assert.match(source, /Static first-paint roster/);
+  assert.match(source, /Codex/);
+  assert.match(source, /Claude Code/);
+  assert.match(source, /OpenCode/);
+  assert.match(source, /statusPending/);
+  assert.match(source, /检测中/);
+  assert.match(source, /列表已可操作/);
+  assert.match(source, /安装、配置、重装与修复/);
+  assert.match(source, /重装\/修复/);
+  assert.match(source, /配置 Codex 路由/);
+  assert.match(source, /复制全部安装命令/);
   assert.match(source, /navigator\.clipboard\?\.writeText/);
   assert.match(source, /document\.execCommand\("copy"\)/);
-  assert.match(source, /void gateway\.refetch\(\)/);
-  assert.match(source, /window\.location\.hash = "#\/ide"/);
-  assert.match(source, /window\.location\.hash = "#\/model-gateway"/);
-  assert.match(source, /不会登录你的 OpenAI \/ Anthropic \/ OpenCode 账号/);
-  assert.match(source, /不自动写 shell/);
-  assert.doesNotMatch(source, /title="依赖引用"|这里只显示 CLI 运行必须知道的最小依赖/);
+  assert.match(
+    source,
+    /useTerminalStatusQuery\(\{[\s\S]*staleTime: 30_000,[\s\S]*retry: false,[\s\S]*\}\)/,
+  );
+  assert.match(
+    source,
+    /useModelGatewayStatusQuery\(\{[\s\S]*staleTime: 30_000,[\s\S]*retry: false,[\s\S]*\}\)/,
+  );
+  assert.match(source, /useInstallTerminalCliMutation/);
+  assert.doesNotMatch(
+    source,
+    /useLaunchTerminalMutation|启动命令|Agent Runs|运行台/,
+  );
   assert.doesNotMatch(source, /apiKey|secret|botId|绑定路由/);
 });
 
-test("Terminal data layer exposes install as an explicit mutation", () => {
+test("runtime run projection and launch command endpoints are removed from this domain", () => {
+  const agentsRoutes = read("apps/api/modules/agents/routes.ts");
+  const terminalRoutes = read("apps/api/modules/terminal/routes.ts");
+  const terminalService = read("apps/api/modules/terminal/service.ts");
+  const terminalApi = read("apps/web/src/lib/api/terminal.ts");
+  const terminalQuery = read("apps/web/src/lib/query/terminal.ts");
+  const agentsApi = read("apps/web/src/lib/api/agents.ts");
+  const agentsQuery = read("apps/web/src/lib/query/agents.ts");
+
+  assert.equal(exists("apps/api/modules/agents/runtime-runs.ts"), false);
+  assert.doesNotMatch(
+    agentsRoutes,
+    /\/api\/agents\/runs|buildAgentRuntimeRunsPayload/,
+  );
+  assert.doesNotMatch(
+    agentsApi,
+    /getAgentRuntimeRuns|AgentRuntimeRunsResponse|\/runs/,
+  );
+  assert.doesNotMatch(
+    agentsQuery,
+    /useAgentRuntimeRunsQuery|runtimeRuns|getAgentRuntimeRuns/,
+  );
+  assert.doesNotMatch(
+    terminalRoutes,
+    /\/api\/terminal\/launch|TerminalLaunchPayload/,
+  );
+  assert.doesNotMatch(
+    terminalService,
+    /getLaunchCommand|TerminalLaunchPayload|TerminalLaunchResponse/,
+  );
+  assert.doesNotMatch(
+    terminalApi,
+    /launchTerminal|TerminalLaunchPayload|TerminalLaunchResponse|`\$\{BASE\}\/launch`|"\/api\/terminal\/launch"/,
+  );
+  assert.doesNotMatch(
+    terminalQuery,
+    /useLaunchTerminalMutation|launchTerminal|TerminalLaunchPayload|TerminalLaunchResponse/,
+  );
+});
+
+test("Terminal data layer keeps install as an explicit mutation", () => {
   const api = read("apps/web/src/lib/api/terminal.ts");
   const query = read("apps/web/src/lib/query/terminal.ts");
 

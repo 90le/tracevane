@@ -27,11 +27,6 @@ import {
 import { toast } from "@/design/ui/sonner";
 import { readFileVersion } from "@/lib/api/files";
 import {
-  DocumentWorkbench,
-  buildFileDownloadUrl,
-  type DocumentWorkbenchMode,
-} from "@/features/file-manager/preview-shared";
-import {
   useDeleteFileVersionMutation,
   useFileReadQuery,
   useFileVersionReadQuery,
@@ -56,6 +51,12 @@ const FILE_PREVIEW_DIALOG_MIN_SIZE: FilePreviewDialogSize = {
 };
 const FILE_PREVIEW_DIALOG_MARGIN = 24;
 const FILE_PREVIEW_DIALOG_KEYBOARD_STEP = 32;
+
+const LazyCodeEditor = React.lazy(() =>
+  import("@/features/file-manager/code-editor").then((module) => ({
+    default: module.CodeEditor,
+  })),
+);
 
 export function FilePreviewDialog({
   rootId,
@@ -223,194 +224,161 @@ export function FilePreviewDialog({
         startHeight: base.height,
       };
       event.currentTarget.setPointerCapture(event.pointerId);
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        const state = resizeStateRef.current;
-        if (!state) return;
-        setDialogSize(
-          clampDialogSize({
-            width: state.startWidth + moveEvent.clientX - state.startX,
-            height: state.startHeight + moveEvent.clientY - state.startY,
-          }),
-        );
-      };
-      const onPointerUp = () => {
-        resizeStateRef.current = null;
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-      };
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp, { once: true });
     },
-    [clampDialogSize, currentDialogSize, maximized],
+    [currentDialogSize, maximized],
   );
 
-  if (!entry) {
-    return (
-      <Dialog open onOpenChange={requestOpenChange}>
-        <DialogContent
-          className="w-[min(92vw,520px)]"
-          data-file-preview-missing-target
-        >
-          <DialogHeader>
-            <DialogTitle>文件预览目标不可用</DialogTitle>
-            <DialogDescription>
-              文件列表刷新或路径切换后，当前预览目标已不在可用列表中。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="text-sm text-muted">
-            请关闭弹窗后重新双击文件；前端会保留主文件管理器，不再因为缺失预览目标显示空白。
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => onOpenChange(false)}
-            >
-              关闭
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  const resizeWithPointer = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const state = resizeStateRef.current;
+      if (!state) return;
+      const deltaX = event.clientX - state.startX;
+      const deltaY = event.clientY - state.startY;
+      setDialogSize(
+        clampDialogSize({
+          width: state.startWidth + deltaX,
+          height: state.startHeight + deltaY,
+        }),
+      );
+    },
+    [clampDialogSize],
+  );
+
+  const stopResize = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      resizeStateRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [],
+  );
+
+  const dialogStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (compactViewport) return undefined;
+    if (maximized) {
+      return {
+        width: "calc(100vw - 16px)",
+        height: "calc(100dvh - 16px)",
+      };
+    }
+    const size = currentDialogSize();
+    return { width: size.width, height: size.height };
+  }, [compactViewport, currentDialogSize, maximized]);
+
   return (
-    <>
-      <Dialog open onOpenChange={requestOpenChange}>
-        <DialogContent
-          data-file-preview-dialog
-          className={
-            maximized
-              ? "grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none p-0 sm:h-[calc(100dvh-24px)] sm:w-[calc(100vw-24px)] sm:rounded-lg"
-              : "grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none p-0 sm:h-[min(86dvh,860px)] sm:w-[min(94vw,1180px)] sm:rounded-lg"
-          }
-          style={
-            !maximized && dialogSize && !compactViewport
-              ? {
-                  width: `${dialogSize.width}px`,
-                  height: `${dialogSize.height}px`,
-                }
-              : undefined
-          }
-        >
-          <DialogHeader className="grid min-h-0 grid-rows-[auto_auto] border-b border-line bg-panel-2 p-0 pr-12 sm:pr-24">
+    <Dialog open={Boolean(entry)} onOpenChange={requestOpenChange}>
+      <DialogContent
+        className={cn(
+          "grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none border-line bg-canvas p-0 shadow-2xl sm:max-h-[calc(100dvh-16px)] sm:max-w-[calc(100vw-16px)] sm:rounded-xl",
+          maximized && "sm:rounded-lg",
+        )}
+        style={dialogStyle}
+        data-file-preview-dialog
+        data-file-preview-maximized={maximized ? "true" : "false"}
+      >
+        <DialogHeader className="border-b border-line bg-panel p-0">
+          {tabs.length > 1 ? (
             <FilePreviewTabStrip
               tabs={tabs}
               activeTabId={activeTabId}
               onSelectTab={onSelectTab}
               onCloseTab={onCloseTab}
             />
-            <div className="grid min-w-0 gap-2 px-3 py-2 sm:flex sm:items-start sm:gap-3 sm:px-4 sm:py-3">
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="truncate text-sm sm:text-base">
-                  {entry.name}
-                </DialogTitle>
-                <DialogDescription className="truncate text-2xs sm:text-xs">
-                  {entry.path} ·{" "}
-                  <span className="hidden sm:inline">
-                    在线预览/编辑 · 可多标签打开文件 · 拖拽右下角调整窗口尺寸
-                  </span>
-                  <span className="sm:hidden">在线预览/编辑</span>
-                </DialogDescription>
-              </div>
-              <div className="hidden min-w-0 items-center gap-2 overflow-x-auto sm:flex sm:justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="hidden h-7 shrink-0 px-2 text-xs sm:inline-flex"
-                  onClick={() => {
-                    setMaximized(false);
-                    setDialogSize(null);
-                  }}
-                >
-                  默认尺寸
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 px-2 text-xs"
-                  onClick={() => setMaximized((value) => !value)}
-                  aria-label={
-                    maximized
-                      ? "还原文件预览编辑窗口"
-                      : "最大化文件预览编辑窗口"
-                  }
-                >
-                  {maximized ? (
-                    <Minimize2 className="size-3.5" />
-                  ) : (
-                    <Maximize2 className="size-3.5" />
-                  )}
-                  {maximized ? "还原" : "最大化"}
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-          <DialogBody
-            className="min-h-0 overflow-hidden p-0"
-            data-file-preview-dialog-body
-          >
-            <FileDetailsPanel
-              rootId={rootId}
-              entry={entry}
-              readQuery={readQuery}
-              onOpenDirectory={() => undefined}
-              className="h-full rounded-none border-0"
-              modal
-              onDirtyChange={setDirty}
-              onSaveHandlerChange={(handler) => {
-                saveHandlerRef.current = handler;
-              }}
-            />
-          </DialogBody>
-          {!maximized ? (
-            <button
-              type="button"
-              aria-label="调整文件预览编辑窗口尺寸"
-              title="拖拽调整窗口尺寸；聚焦后可用方向键调整"
-              data-file-preview-resize-handle
-              className="absolute bottom-1 right-1 z-10 hidden size-5 cursor-nwse-resize rounded-sm text-subtle outline-none transition-colors hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)] sm:block"
-              onPointerDown={startResize}
-              onKeyDown={(event) => {
-                const step = event.shiftKey
-                  ? FILE_PREVIEW_DIALOG_KEYBOARD_STEP * 3
-                  : FILE_PREVIEW_DIALOG_KEYBOARD_STEP;
-                if (event.key === "ArrowRight") {
-                  event.preventDefault();
-                  resizeDialogBy(step, 0);
-                } else if (event.key === "ArrowLeft") {
-                  event.preventDefault();
-                  resizeDialogBy(-step, 0);
-                } else if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  resizeDialogBy(0, step);
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  resizeDialogBy(0, -step);
-                } else if (event.key === "Home") {
-                  event.preventDefault();
-                  setDialogSize(FILE_PREVIEW_DIALOG_MIN_SIZE);
-                } else if (event.key === "End") {
-                  event.preventDefault();
-                  setDialogSize(currentDialogSize());
-                }
-              }}
-            >
-              <span className="absolute bottom-1 right-1 block size-3 rounded-br border-b-2 border-r-2 border-current" />
-            </button>
           ) : null}
-        </DialogContent>
-      </Dialog>
+          <div className="grid min-w-0 gap-2 px-4 py-3 sm:flex sm:items-start sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate text-base">
+                {entry?.name ?? "文件编辑"}
+              </DialogTitle>
+              <DialogDescription className="mt-1 truncate text-xs">
+                {entry?.path ?? ""} · 源码编辑弹窗；渲染/Markdown 预览能力已移除
+              </DialogDescription>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {!compactViewport ? (
+                <>
+                  <span className="hidden text-xs text-subtle md:inline">
+                    {maximized ? "最大尺寸" : "默认尺寸"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMaximized((value) => !value)}
+                    aria-label={maximized ? "还原窗口" : "最大化窗口"}
+                  >
+                    {maximized ? (
+                      <Minimize2 className="size-3.5" />
+                    ) : (
+                      <Maximize2 className="size-3.5" />
+                    )}
+                    {maximized ? "还原" : "最大化"}
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="关闭文件编辑弹窗"
+                onClick={() => requestOpenChange(false)}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+        <DialogBody className="min-h-0 overflow-hidden p-0">
+          <FileDetailsPanel
+            rootId={rootId}
+            entry={entry}
+            readQuery={readQuery}
+            onOpenDirectory={() => undefined}
+            modal
+            onDirtyChange={setDirty}
+            onSaveHandlerChange={(handler) => {
+              saveHandlerRef.current = handler;
+            }}
+          />
+        </DialogBody>
+        {!compactViewport && !maximized ? (
+          <button
+            type="button"
+            className="absolute bottom-2 right-2 size-5 cursor-nwse-resize rounded border border-line bg-panel/90 text-subtle hover:text-ink-strong focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="拖拽调整文件编辑弹窗尺寸"
+            onPointerDown={startResize}
+            onPointerMove={resizeWithPointer}
+            onPointerUp={stopResize}
+            onPointerCancel={stopResize}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                resizeDialogBy(FILE_PREVIEW_DIALOG_KEYBOARD_STEP, 0);
+              } else if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                resizeDialogBy(-FILE_PREVIEW_DIALOG_KEYBOARD_STEP, 0);
+              } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                resizeDialogBy(0, FILE_PREVIEW_DIALOG_KEYBOARD_STEP);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                resizeDialogBy(0, -FILE_PREVIEW_DIALOG_KEYBOARD_STEP);
+              }
+            }}
+          >
+            ↘
+          </button>
+        ) : null}
+      </DialogContent>
       <Dialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
-        <DialogContent>
+        <DialogContent className="w-[min(92vw,420px)] max-w-none">
           <DialogHeader>
-            <DialogTitle>关闭文件预览/编辑</DialogTitle>
+            <DialogTitle>关闭前处理未保存修改</DialogTitle>
+            <DialogDescription>
+              当前文件仍有未保存草稿。你可以先审阅差异并保存，或丢弃本地草稿后关闭。
+            </DialogDescription>
           </DialogHeader>
-          <DialogBody>
-            <strong>{entry.name}</strong>{" "}
-            有未保存的更改。可以先保存再关闭，或明确丢弃这些编辑。
-          </DialogBody>
           <DialogFooter className="grid grid-cols-1 gap-2 sm:flex">
             <Button
               variant="ghost"
@@ -421,22 +389,22 @@ export function FilePreviewDialog({
             </Button>
             <Button
               variant="outline"
-              onClick={() => void reviewSaveAndClose()}
-              disabled={savingAndClosing}
-            >
-              {savingAndClosing ? "等待审阅…" : "审阅差异并保存关闭"}
-            </Button>
-            <Button
-              variant="danger"
               onClick={discardAndClose}
               disabled={savingAndClosing}
             >
               不保存并关闭
             </Button>
+            <Button
+              variant="primary"
+              onClick={() => void reviewSaveAndClose()}
+              disabled={savingAndClosing}
+            >
+              {savingAndClosing ? "保存中…" : "审阅并保存"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Dialog>
   );
 }
 
@@ -451,13 +419,10 @@ function FilePreviewTabStrip({
   onSelectTab?: (tabId: string) => void;
   onCloseTab?: (tabId: string) => void;
 }) {
-  if (!tabs.length) return null;
   return (
     <div
-      className="flex min-h-10 items-end overflow-x-auto border-b border-line bg-panel px-2 pt-2"
-      role="tablist"
-      aria-label="已打开文件"
-      data-file-preview-tab-strip
+      className="flex min-h-9 gap-1 overflow-x-auto border-b border-line bg-panel-2 px-2 pt-2"
+      data-file-preview-tabs
     >
       {tabs.map((tab) => {
         const active = tab.id === activeTabId;
@@ -465,28 +430,28 @@ function FilePreviewTabStrip({
           <div
             key={tab.id}
             className={cn(
-              "mr-1 flex h-8 max-w-[220px] shrink-0 items-center rounded-t-lg border border-b-0 border-line text-xs text-muted transition-colors hover:bg-panel-2 hover:text-ink-strong",
-              active && "bg-panel-2 text-ink-strong shadow-sm",
+              "group flex min-w-36 max-w-64 items-center gap-2 rounded-t-lg border border-b-0 px-2 py-1 text-xs",
+              active
+                ? "border-line bg-panel text-ink-strong"
+                : "border-transparent bg-transparent text-muted hover:bg-panel",
             )}
-            title={`${tab.entry.name} · ${tab.entry.path}`}
+            data-file-preview-tab={tab.id}
           >
             <button
               type="button"
-              role="tab"
-              aria-selected={active}
-              className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
-              data-file-preview-tab={tab.id}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left"
               onClick={() => onSelectTab?.(tab.id)}
+              title={tab.entry.path}
             >
               <File className="size-3.5 shrink-0" />
               <span className="truncate">{tab.entry.name}</span>
             </button>
-            {tabs.length > 1 ? (
+            {onCloseTab ? (
               <button
                 type="button"
+                className="grid size-5 shrink-0 place-items-center rounded text-subtle hover:bg-panel-2 hover:text-ink-strong"
+                onClick={() => onCloseTab(tab.id)}
                 aria-label={`关闭 ${tab.entry.name}`}
-                className="mr-1 rounded p-0.5 text-subtle hover:bg-panel hover:text-danger"
-                onClick={() => onCloseTab?.(tab.id)}
               >
                 <X className="size-3" />
               </button>
@@ -523,8 +488,6 @@ export function FileDetailsPanel({
     key: string;
     content: string;
   } | null>(null);
-  const [viewMode, setViewMode] =
-    React.useState<DocumentWorkbenchMode>("preview");
   const [metadataOpen, setMetadataOpen] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
@@ -545,9 +508,6 @@ export function FileDetailsPanel({
     entry?.kind === "file" && read?.editable && read?.textLike,
   );
   const dirty = draftContent !== null && draftContent !== loadedContent;
-  const preferredInitialMode = entry
-    ? initialFilePreviewMode(entry, read)
-    : "preview";
   const serverVersionsQuery = useFileVersionsQuery(
     rootId,
     entry?.kind === "file" ? entry.path : null,
@@ -561,7 +521,6 @@ export function FileDetailsPanel({
 
   React.useEffect(() => {
     setDraft(null);
-    setViewMode(preferredInitialMode);
     setSaveError(null);
     setLastSavedAt(null);
     setRestoredDraftAt(null);
@@ -570,7 +529,7 @@ export function FileDetailsPanel({
       entry ? loadFileVersionSnapshots(rootId, entry.path) : [],
     );
     onDirtyChange?.(false);
-  }, [entry, fileKey, onDirtyChange, preferredInitialMode, rootId]);
+  }, [entry, fileKey, onDirtyChange, rootId]);
 
   React.useEffect(() => {
     if (!entry || entry.kind !== "file" || !editable || !read) return;
@@ -714,21 +673,16 @@ export function FileDetailsPanel({
       >
         <File className="mx-auto mb-2 size-8 text-subtle" />
         <div className="font-medium text-ink-strong">文件详情</div>
-        <p className="mt-1 text-xs">
-          双击文件或通过右键菜单打开弹窗预览/编辑。
-        </p>
+        <p className="mt-1 text-xs">双击文件或通过右键菜单打开源码编辑弹窗。</p>
       </aside>
     );
   }
 
   const downloadUrl =
-    entry.kind === "file"
-      ? buildFileDownloadUrl(rootId, entry.path, false)
-      : null;
+    entry.kind === "file" ? buildFileDownloadUrl(rootId, entry.path, false) : null;
   const attachmentUrl =
-    entry.kind === "file"
-      ? buildFileDownloadUrl(rootId, entry.path, true)
-      : null;
+    entry.kind === "file" ? buildFileDownloadUrl(rootId, entry.path, true) : null;
+
   return (
     <aside
       ref={panelRef}
@@ -748,7 +702,7 @@ export function FileDetailsPanel({
             </h2>
             {entry.kind === "file" ? (
               <span className="rounded-full bg-panel px-2 py-0.5 text-2xs text-muted">
-                {dirty ? "● 未保存" : viewModeLabel(viewMode)}
+                {dirty ? "● 未保存" : "源码"}
               </span>
             ) : null}
           </div>
@@ -787,9 +741,6 @@ export function FileDetailsPanel({
           onDeleteServerVersion={deleteServerVersion}
           fileKey={fileKey}
           effectiveContent={effectiveContent}
-          viewMode={viewMode}
-          preferredInitialMode={preferredInitialMode}
-          onModeChange={setViewMode}
           onChange={(content) => {
             setSaveError(null);
             setDraft({ key: fileKey, content });
@@ -818,7 +769,7 @@ export function FileDetailsPanel({
                       window.open(downloadUrl, "_blank", "noopener,noreferrer")
                     }
                   >
-                    打开预览
+                    打开原始文件
                   </Button>
                 ) : null}
                 {attachmentUrl ? (
@@ -858,18 +809,13 @@ export function FileDetailsPanel({
 
           {entry.kind === "file" ? (
             <section className="border-t border-line pt-3">
-              <FilePreviewWorkbench
+              <FileSourceEditorRegion
                 entry={entry}
                 read={read}
                 readQuery={readQuery}
-                rootId={rootId}
-                downloadUrl={downloadUrl}
                 fileKey={fileKey}
                 effectiveContent={effectiveContent}
                 editable={editable}
-                viewMode={viewMode}
-                preferredInitialMode={preferredInitialMode}
-                onModeChange={setViewMode}
                 onChange={(content) => {
                   setSaveError(null);
                   setDraft({ key: fileKey, content });
@@ -885,7 +831,6 @@ export function FileDetailsPanel({
           entry={entry}
           dirty={dirty}
           editable={editable}
-          viewMode={viewMode}
           readOnlyReason={read?.editable === false ? "只读" : undefined}
           mimeType={read?.mimeType}
           contentBytes={read?.contentBytes}
@@ -925,9 +870,6 @@ function FilePreviewEditorShell({
   onDeleteServerVersion,
   fileKey,
   effectiveContent,
-  viewMode,
-  preferredInitialMode,
-  onModeChange,
   onChange,
 }: {
   entry: FileEntrySummary;
@@ -957,9 +899,6 @@ function FilePreviewEditorShell({
   onDeleteServerVersion: (versionId: string) => void;
   fileKey: string;
   effectiveContent: string;
-  viewMode: DocumentWorkbenchMode;
-  preferredInitialMode: DocumentWorkbenchMode;
-  onModeChange: (mode: DocumentWorkbenchMode) => void;
   onChange: (content: string) => void;
 }) {
   const [saveReviewOpen, setSaveReviewOpen] = React.useState(false);
@@ -1062,7 +1001,7 @@ function FilePreviewEditorShell({
             </span>
           ) : null}
           <span className="hidden min-w-0 flex-1 truncate text-subtle md:block">
-            专注式弹窗编辑器 · 双击打开 · 右键预览/编辑 · Ctrl/⌘+S 保存
+            专注式源码编辑器 · 渲染/Markdown 预览能力已移除 · Ctrl/⌘+S 保存
           </span>
           <span className="min-w-0 flex-1" aria-hidden="true" />
           {editable ? (
@@ -1085,7 +1024,7 @@ function FilePreviewEditorShell({
             className="h-7 shrink-0 px-2 text-xs sm:hidden"
             onClick={() => setMobileToolsOpen((value) => !value)}
             aria-expanded={mobileToolsOpen}
-            aria-label="展开文件预览更多操作"
+            aria-label="展开文件编辑更多操作"
           >
             <MoreHorizontal className="size-3.5" />
             更多
@@ -1130,7 +1069,7 @@ function FilePreviewEditorShell({
                 window.open(downloadUrl, "_blank", "noopener,noreferrer")
               }
             >
-              打开预览
+              打开原始文件
             </Button>
           ) : null}
           {attachmentUrl ? (
@@ -1195,7 +1134,7 @@ function FilePreviewEditorShell({
                 window.open(downloadUrl, "_blank", "noopener,noreferrer")
               }
             >
-              打开预览
+              打开原始文件
             </Button>
           ) : null}
           {attachmentUrl ? (
@@ -1280,18 +1219,13 @@ function FilePreviewEditorShell({
         className="min-h-0 flex-1 overflow-hidden"
         data-file-preview-workbench-region
       >
-        <FilePreviewWorkbench
+        <FileSourceEditorRegion
           entry={entry}
           read={read}
           readQuery={readQuery}
-          rootId={rootId}
-          downloadUrl={downloadUrl}
           fileKey={fileKey}
           effectiveContent={effectiveContent}
           editable={editable}
-          viewMode={viewMode}
-          preferredInitialMode={preferredInitialMode}
-          onModeChange={onModeChange}
           onChange={onChange}
           modal
         />
@@ -1319,7 +1253,6 @@ function FilePreviewEditorShell({
       />
       <FileSaveReviewDialog
         open={saveReviewOpen}
-        rootId={rootId}
         entry={entry}
         before={read?.content ?? ""}
         after={effectiveContent}
@@ -1474,10 +1407,10 @@ function FileVersionHistoryDialog({
           </div>
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded border border-line bg-panel">
             <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-3 py-2 text-xs text-muted">
-              <span className="font-medium text-ink-strong">快照预览</span>
+              <span className="font-medium text-ink-strong">快照内容</span>
               {selected ? <span>{formatBytes(selected.size)}</span> : null}
               <span className="min-w-0 flex-1 truncate">
-                服务器/本地历史均可先预览，也可与当前草稿对比；不会立即覆盖磁盘。
+                服务器/本地历史均可先查看，也可与当前草稿对比；不会立即覆盖磁盘。
               </span>
               <Button
                 type="button"
@@ -1575,7 +1508,6 @@ function FileSaveReviewDialog({
   onConfirm,
 }: {
   open: boolean;
-  rootId: string;
   entry: FileEntrySummary;
   before: string;
   after: string;
@@ -1785,7 +1717,7 @@ export function clearFileUnsavedDraft(rootId: string, path: string): void {
       ),
     );
   } catch {
-    // localStorage can be unavailable or full; draft recovery is best-effort.
+    // Browser storage can be unavailable or full; draft recovery is best-effort.
   }
 }
 
@@ -1981,39 +1913,29 @@ function diffLinePrefix(kind: FileSaveDiffLine["kind"]): string {
   return " ";
 }
 
-function FilePreviewWorkbench({
+function FileSourceEditorRegion({
   entry,
   read,
   readQuery,
-  rootId,
-  downloadUrl,
   fileKey,
   effectiveContent,
   editable,
-  viewMode,
-  preferredInitialMode,
-  onModeChange,
   onChange,
   modal = false,
 }: {
   entry: FileEntrySummary;
   read: ReturnType<typeof useFileReadQuery>["data"];
   readQuery: ReturnType<typeof useFileReadQuery>;
-  rootId: string;
-  downloadUrl: string | null;
   fileKey: string;
   effectiveContent: string;
   editable: boolean;
-  viewMode: DocumentWorkbenchMode;
-  preferredInitialMode: DocumentWorkbenchMode;
-  onModeChange: (mode: DocumentWorkbenchMode) => void;
   onChange: (content: string) => void;
   modal?: boolean;
 }) {
   if (readQuery.isLoading) {
     return (
       <div className="m-4 rounded border border-line bg-panel-2 p-3 text-muted">
-        读取预览中...
+        读取文件中...
       </div>
     );
   }
@@ -2024,35 +1946,65 @@ function FilePreviewWorkbench({
       </div>
     );
   }
+  if (!read?.textLike || read.content == null) {
+    return (
+      <div className="grid h-full min-h-72 place-items-center p-4 text-center text-sm text-muted">
+        <div className="max-w-md rounded border border-line bg-panel-2 p-4">
+          <File className="mx-auto mb-2 size-8 text-subtle" />
+          <div className="font-medium text-ink-strong">非文本文件</div>
+          <p className="mt-1 text-xs">
+            渲染/媒体预览能力已删除。请使用“打开原始文件”或“下载”交给系统/浏览器处理。
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <FilePreviewErrorBoundary resetKey={fileKey} fileName={entry.name}>
-      <DocumentWorkbench
-        key={fileKey}
-        path={entry.path}
-        rootId={rootId}
-        name={entry.name}
-        content={effectiveContent}
-        editable={editable}
-        textLike={Boolean(entry.textLike || read?.textLike)}
-        imageLike={entry.imageLike}
-        mimeType={read?.mimeType}
-        downloadUrl={downloadUrl}
-        size={read?.size ?? entry.size ?? undefined}
-        truncated={read?.truncated}
-        contentOffset={read?.contentOffset}
-        contentBytes={read?.contentBytes}
-        readLimitBytes={read?.readLimitBytes}
-        mode={viewMode}
-        defaultMode={preferredInitialMode}
-        onModeChange={onModeChange}
-        compact
-        className={modal ? "h-full" : undefined}
-        minHeightClassName={modal ? "min-h-0 h-full" : "min-h-72"}
-        editorClassName="rounded border border-line"
-        idleHint="当前文件查找/替换；替换后进入未保存状态，由保存按钮写回文件"
-        onChange={onChange}
-      />
+      <React.Suspense fallback={<FileSourceEditorLoading content={effectiveContent} modal={modal} />}>
+        <LazyCodeEditor
+          key={fileKey}
+          path={entry.path}
+          initialContent={effectiveContent}
+          readOnly={!editable}
+          onChange={editable ? onChange : undefined}
+          className={cn(
+            "min-h-72 overflow-hidden rounded border border-line bg-panel",
+            modal ? "h-full min-h-0 rounded-none border-0" : "h-[420px]",
+          )}
+        />
+      </React.Suspense>
     </FilePreviewErrorBoundary>
+  );
+}
+
+function FileSourceEditorLoading({
+  content,
+  modal = false,
+}: {
+  content: string;
+  modal?: boolean;
+}) {
+  const visibleContent =
+    content.length > 60_000
+      ? `${content.slice(0, 60_000)}\n\n…源码编辑器加载中，剩余内容稍后接管显示。`
+      : content;
+
+  return (
+    <div
+      className={cn(
+        "min-h-72 overflow-auto rounded border border-line bg-panel text-sm text-muted",
+        modal ? "h-full min-h-0 rounded-none border-0" : "h-[420px]",
+      )}
+      data-file-source-editor-loading
+    >
+      <div className="border-b border-line px-3 py-2 text-xs text-subtle">
+        文件内容已加载，源码编辑器与高亮正在后台准备…
+      </div>
+      <pre className="m-0 whitespace-pre-wrap break-words p-4 font-mono text-[12px] leading-relaxed text-ink">
+        {visibleContent}
+      </pre>
+    </div>
   );
 }
 
@@ -2076,29 +2028,18 @@ class FilePreviewErrorBoundary extends React.Component<
     }
   }
 
-  componentDidCatch(error: Error) {
-    console.error("Tracevane file preview crashed", error);
-  }
-
   render() {
-    if (!this.state.error) return this.props.children;
-    return (
-      <div
-        className="grid h-full min-h-72 place-items-center rounded border border-danger/30 bg-danger/5 p-4 text-center text-sm text-danger"
-        data-file-preview-error-boundary
-      >
-        <div className="max-w-xl">
-          <div className="font-semibold">文件预览渲染失败</div>
-          <p className="mt-1 text-xs text-muted">
-            {this.props.fileName}{" "}
-            的预览组件出现异常，已阻止页面整体空白。可切换其它文件或刷新后重试。
+    if (this.state.error) {
+      return (
+        <div className="m-4 rounded border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          <div className="font-medium">文件编辑器加载失败</div>
+          <p className="mt-1 text-xs">
+            {this.props.fileName}：{this.state.error.message}
           </p>
-          <pre className="mt-3 max-h-32 overflow-auto rounded border border-danger/20 bg-panel p-2 text-left font-mono text-2xs text-danger">
-            {this.state.error.message}
-          </pre>
         </div>
-      </div>
-    );
+      );
+    }
+    return this.props.children;
   }
 }
 
@@ -2111,31 +2052,32 @@ function FilePreviewMetadataGrid({
 }) {
   return (
     <div
-      className={
+      className={cn(
+        "grid gap-x-3 gap-y-2 text-xs",
         compact
-          ? "grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-2 sm:grid-cols-[72px_minmax(0,1fr)_72px_minmax(0,1fr)]"
-          : "grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-2"
-      }
+          ? "grid-cols-[96px_minmax(0,1fr)] sm:grid-cols-[96px_minmax(0,1fr)_96px_minmax(0,1fr)]"
+          : "grid-cols-[90px_minmax(0,1fr)]",
+      )}
     >
       <span className="text-subtle">名称</span>
-      <span className="truncate text-ink-strong" title={entry.name}>
+      <span className="min-w-0 truncate text-muted" title={entry.name}>
         {entry.name}
       </span>
       <span className="text-subtle">类型</span>
       <span className="text-muted">
-        {entry.kind === "directory" ? "目录" : entry.ext || "文件"}
+        {entry.kind === "directory" ? "目录" : (entry.ext ?? "文件")}
       </span>
       <span className="text-subtle">大小</span>
       <span className="text-muted">
         {entry.kind === "file" ? formatBytes(entry.size ?? 0) : "—"}
       </span>
       <span className="text-subtle">修改时间</span>
-      <span className="truncate text-muted">
-        {entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleString() : "—"}
+      <span className="text-muted">
+        {entry.modifiedAt ? formatFileDateTime(entry.modifiedAt) : "—"}
       </span>
       <span className="text-subtle">权限</span>
       <span className="font-mono text-muted">
-        {entry.permissions ? `${entry.permissions} (${entry.mode})` : "—"}
+        {entry.permissions || entry.mode || "—"}
       </span>
       <span className="text-subtle">UID/GID</span>
       <span className="font-mono text-muted">
@@ -2153,7 +2095,6 @@ function FilePreviewEditorStatusBar({
   entry,
   dirty,
   editable,
-  viewMode,
   readOnlyReason,
   mimeType,
   contentBytes,
@@ -2163,7 +2104,6 @@ function FilePreviewEditorStatusBar({
   entry: FileEntrySummary;
   dirty: boolean;
   editable: boolean;
-  viewMode: DocumentWorkbenchMode;
   readOnlyReason?: string;
   mimeType?: string | null;
   contentBytes?: number;
@@ -2186,8 +2126,8 @@ function FilePreviewEditorStatusBar({
       >
         {saveError ? "保存失败" : dirty ? "● 未保存" : "✓ 已保存"}
       </span>
-      <span>{viewModeLabel(viewMode)}</span>
-      <span>{editable ? "可编辑" : (readOnlyReason ?? "只读预览")}</span>
+      <span>源码</span>
+      <span>{editable ? "可编辑" : (readOnlyReason ?? "只读")}</span>
       <span>{editorLanguageLabel(entry.path)}</span>
       <span className="hidden sm:inline">
         {mimeType || entry.ext || "未知类型"}
@@ -2202,33 +2142,24 @@ function FilePreviewEditorStatusBar({
       ) : null}
       <span className="ml-auto hidden md:inline">UTF-8</span>
       <span className="hidden md:inline">LF</span>
-      <span className="hidden lg:inline">
-        Ctrl/⌘+F 查找 · Ctrl/⌘+H 替换 · Ctrl/⌘+S 保存
-      </span>
+      <span className="hidden lg:inline">Ctrl/⌘+F 查找 · Ctrl/⌘+S 保存</span>
     </footer>
   );
 }
 
-function initialFilePreviewMode(
-  entry: FileEntrySummary,
-  read: ReturnType<typeof useFileReadQuery>["data"],
-): DocumentWorkbenchMode {
-  if (entry.kind !== "file") return "preview";
-  const lower = entry.path.toLowerCase();
-  if (
-    lower.endsWith(".md") ||
-    lower.endsWith(".mdx") ||
-    lower.endsWith(".html") ||
-    lower.endsWith(".htm")
-  )
-    return "preview";
-  if (entry.textLike || read?.textLike) return "source";
-  return "preview";
+export function buildFileDownloadUrl(
+  rootId: string,
+  path: string,
+  attachment = false,
+): string {
+  const search = new URLSearchParams({ rootId, path });
+  if (attachment) search.set("download", "1");
+  return `/api/files/download?${search.toString()}`;
 }
 
 function editorLanguageLabel(path: string): string {
   const lower = path.toLowerCase();
-  if (lower.endsWith(".md") || lower.endsWith(".mdx")) return "Markdown";
+  if (lower.endsWith(".md") || lower.endsWith(".mdx")) return "Markdown 源码";
   if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "TypeScript";
   if (
     lower.endsWith(".js") ||
@@ -2239,7 +2170,7 @@ function editorLanguageLabel(path: string): string {
     return "JavaScript";
   if (lower.endsWith(".json") || lower.endsWith(".jsonc")) return "JSON";
   if (lower.endsWith(".css")) return "CSS";
-  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "HTML";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "HTML 源码";
   if (lower.endsWith(".py")) return "Python";
   if (lower.endsWith(".sql")) return "SQL";
   if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "YAML";
@@ -2269,18 +2200,4 @@ function formatBytes(value: number): string {
     units.length - 1,
   );
   return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function viewModeLabel(mode: DocumentWorkbenchMode): string {
-  switch (mode) {
-    case "source":
-      return "源码";
-    case "split":
-      return "编辑+预览";
-    case "visual":
-      return "预览时编辑";
-    case "preview":
-    default:
-      return "预览";
-  }
 }

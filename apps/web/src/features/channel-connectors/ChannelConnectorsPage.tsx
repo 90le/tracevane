@@ -5,15 +5,10 @@ import { Activity, LayoutDashboard, MessageSquare, PlugZap, RadioTower } from "l
 import { cn } from "@/design/lib/utils";
 
 import {
-  AccountsView,
-  DiagnosticsView,
-  OverviewView,
-  RoutesView,
-  SessionsView,
   CHANNEL_CONNECTORS_VIEWS,
   type ChannelConnectorsView,
   type ChannelConnectorsViewProps,
-} from "./views";
+} from "./views/types";
 
 /** Primary local viewbar tabs per docs/IM渠道前端设计契约.md. */
 const PRIMARY_TABS: ReadonlyArray<{
@@ -30,14 +25,48 @@ const PRIMARY_TABS: ReadonlyArray<{
 
 const VIEW_COMPONENTS: Record<
   ChannelConnectorsView,
-  (props: ChannelConnectorsViewProps) => React.JSX.Element
+  React.LazyExoticComponent<
+    (props: ChannelConnectorsViewProps) => React.JSX.Element
+  >
 > = {
-  overview: OverviewView,
-  accounts: AccountsView,
-  routes: RoutesView,
-  deliveries: SessionsView,
-  diagnostics: DiagnosticsView,
+  overview: React.lazy(() =>
+    import("./views/OverviewView").then((module) => ({
+      default: module.OverviewView,
+    })),
+  ),
+  accounts: React.lazy(() =>
+    import("./views/AccountsView").then((module) => ({
+      default: module.AccountsView,
+    })),
+  ),
+  routes: React.lazy(() =>
+    import("./views/RoutesView").then((module) => ({
+      default: module.RoutesView,
+    })),
+  ),
+  deliveries: React.lazy(() =>
+    import("./views/SessionsView").then((module) => ({
+      default: module.SessionsView,
+    })),
+  ),
+  diagnostics: React.lazy(() =>
+    import("./views/DiagnosticsView").then((module) => ({
+      default: module.DiagnosticsView,
+    })),
+  ),
 };
+
+
+function ChannelConnectorsViewFallback() {
+  return (
+    <div className="grid min-h-[220px] place-items-center rounded-md border border-line bg-panel p-6 text-sm text-muted">
+      <div className="grid justify-items-center gap-3">
+        <span className="size-7 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+        <span>正在打开消息接入视图…</span>
+      </div>
+    </div>
+  );
+}
 
 function isChannelConnectorsView(value: string | null): value is ChannelConnectorsView {
   return value != null && (CHANNEL_CONNECTORS_VIEWS as readonly string[]).includes(value);
@@ -119,7 +148,9 @@ export function ChannelConnectorsPage() {
         })}
       </nav>
 
-      <ActiveView goToView={goToView} selectedBinding={selectedBinding} />
+      <React.Suspense fallback={<ChannelConnectorsViewFallback />}>
+        <ActiveView goToView={goToView} selectedBinding={selectedBinding} />
+      </React.Suspense>
     </div>
   );
 }

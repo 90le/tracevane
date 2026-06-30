@@ -38,9 +38,6 @@ import type {
   TerminalInstallResponse,
   TerminalInstallResult,
   TerminalInstallTarget,
-  TerminalLaunchCli,
-  TerminalLaunchPayload,
-  TerminalLaunchResponse,
   TerminalInstallStreamEvent,
   TerminalProfileCatalogResponse,
   TerminalProfileDescriptor,
@@ -488,9 +485,6 @@ export interface TerminalService {
     target: TerminalInstallRequestId,
     emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
   ): Promise<TerminalInstallResponse>;
-  getLaunchCommand(
-    payload: TerminalLaunchPayload,
-  ): Promise<TerminalLaunchResponse>;
   endSession(payload: TerminalEndPayload): Promise<TerminalEndResponse>;
   attachGatewayClient(
     payload: TerminalGatewayAttachPayload,
@@ -1736,6 +1730,8 @@ export function createTerminalService(
 
     const binaryPath =
       candidates.find((item) => !isWindowsMountedPath(item)) || "";
+    const hasOnlyWindowsMountedCandidates =
+      !binaryPath && candidates.some((item) => isWindowsMountedPath(item));
 
     const verifyArgs = spec.verifyArgs || ["--version"];
     async function verifyAt(pathToBinary: string): Promise<{
@@ -1757,9 +1753,10 @@ export function createTerminalService(
     }
 
     const verifyFromPath = binaryPath ? await verifyAt(binaryPath) : null;
-    const fallbackVerify = verifyFromPath?.success
-      ? null
-      : await verifyAt(spec.binary);
+    const fallbackVerify =
+      verifyFromPath?.success || hasOnlyWindowsMountedCandidates
+        ? null
+        : await verifyAt(spec.binary);
     const installed = Boolean(
       binaryPath || verifyFromPath?.success || fallbackVerify?.success,
     );
@@ -2050,7 +2047,7 @@ export function createTerminalService(
   }
 
   async function buildSkillsDependencySummary() {
-    const summary = await options.skills.getSummary();
+    const summary = await options.skills.getSummary({ fast: true });
     const needsSetupSkills = summary.skills.filter(
       (skill) => skill.status === "needs-setup",
     );
@@ -2534,37 +2531,6 @@ export function createTerminalService(
       emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
     ): Promise<TerminalInstallResponse> {
       return runInstallWorkflow(target, emit);
-    },
-
-    async getLaunchCommand(
-      payload: TerminalLaunchPayload,
-    ): Promise<TerminalLaunchResponse> {
-      const status = await buildStatusPayload();
-      const selectedModel = payload.model || status.config.model || "";
-      let command = "";
-      let label = "";
-
-      if (payload.cli === "claude") {
-        command = "claude --dangerously-skip-permissions";
-        if (selectedModel) command += ` --model ${selectedModel}`;
-        label = "Claude CLI";
-      } else if (payload.cli === "codex") {
-        command = "codex --full-auto";
-        if (selectedModel) command += ` --model ${selectedModel}`;
-        label = "Codex CLI";
-      } else if (payload.cli === "opencode") {
-        command = "opencode";
-        label = "OpenCode CLI";
-      } else {
-        command = "bash";
-        label = "Bash";
-      }
-
-      return {
-        cli: payload.cli,
-        command,
-        label,
-      };
     },
 
     async endSession(

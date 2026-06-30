@@ -1,17 +1,20 @@
 import { apiRequest } from "./client";
 import type {
   AgentDetailPayload,
-  AgentRuntimeRunsResponse,
   AgentsSummaryPayload,
 } from "../../features/cli-agents/types";
-import type { AgentCreatePayload, AgentDeletePayload, AgentUpdatePayload, AgentsMutationResponse } from "../../../../../types/agents";
+import type {
+  AgentCreatePayload,
+  AgentDeletePayload,
+  AgentUpdatePayload,
+  AgentsMutationResponse,
+} from "../../../../../types/agents";
 
 /**
  * Typed transport bindings for the read surfaces of the Agents HTTP API
- * (`apps/api/modules/agents/routes.ts`) that the CLI Agent Workbench consumes.
+ * (`apps/api/modules/agents/routes.ts`) used by Platform/OpenClaw agent pages.
  *
- * The CLI Agent domain consumes runtime/evidence reads from this module. The
- * OpenClaw platform domain also uses the native create/update/delete endpoints
+ * OpenClaw platform pages use the native create/update/delete endpoints
  * for upstream OpenClaw agent definitions. Runtime sessions stay separate.
  *
  * Response shapes come from the shared contract (`types/agents.ts`).
@@ -24,13 +27,6 @@ export function getAgentsSummary(
   signal?: AbortSignal,
 ): Promise<AgentsSummaryPayload> {
   return apiRequest<AgentsSummaryPayload>(BASE, { signal });
-}
-
-/** GET /api/agents/runs — unified Agent Run projection across Terminal, IM and Chat. */
-export function getAgentRuntimeRuns(
-  signal?: AbortSignal,
-): Promise<AgentRuntimeRunsResponse> {
-  return apiRequest<AgentRuntimeRunsResponse>(`${BASE}/runs`, { signal });
 }
 
 /**
@@ -47,15 +43,31 @@ export async function getAgentDetail(
   });
 }
 
-
-export function createAgent(payload: AgentCreatePayload): Promise<AgentsMutationResponse> {
-  return apiRequest<AgentsMutationResponse>(BASE, { method: "POST", body: JSON.stringify(payload) });
+export function createAgent(
+  payload: AgentCreatePayload,
+): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(BASE, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
-export function updateAgent(id: string, payload: AgentUpdatePayload): Promise<AgentsMutationResponse> {
-  return apiRequest<AgentsMutationResponse>(`${BASE}/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+export function updateAgent(
+  id: string,
+  payload: AgentUpdatePayload,
+): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(
+    `${BASE}/${encodeURIComponent(id)}`,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
 }
 
-export function deleteAgent(id: string, payload: AgentDeletePayload = {}): Promise<AgentsMutationResponse> {
-  return apiRequest<AgentsMutationResponse>(`${BASE}/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify(payload) });
+export function deleteAgent(
+  id: string,
+  payload: AgentDeletePayload = {},
+): Promise<AgentsMutationResponse> {
+  return apiRequest<AgentsMutationResponse>(
+    `${BASE}/${encodeURIComponent(id)}`,
+    { method: "DELETE", body: JSON.stringify(payload) },
+  );
 }

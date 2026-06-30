@@ -5,21 +5,18 @@ import type {
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
-  TerminalLaunchPayload,
-  TerminalLaunchResponse,
   TerminalSessionDescriptor,
   TerminalSessionSummaryResponse,
 } from "../../features/cli-agents/types";
 
 /**
  * Typed transport bindings for the Terminal HTTP API
- * (`apps/api/modules/terminal/routes.ts`) the CLI Agent Workbench drives.
+ * (`apps/api/modules/terminal/routes.ts`) the CLI Agent management page uses.
  *
  * Bound here:
-  *  - GET  /api/terminal/sessions               → persisted session roster
+ *  - GET  /api/terminal/sessions               → persisted session roster
  *  - POST /api/terminal/sessions               → create a PTY session descriptor
-  *  - GET  /api/terminal/sessions/:id           → single session descriptor
- *  - POST /api/terminal/launch                 → resolve a launch command (write)
+ *  - GET  /api/terminal/sessions/:id           → single session descriptor
  *  - POST /api/terminal/end                    → end a live session by sid (write)
  *  - POST /api/terminal/sessions/:id/rename    → rename a persisted session (write)
  *  - POST /api/terminal/sessions/:id/delete    → delete a persisted session (write)
@@ -28,7 +25,7 @@ import type {
  *  - GET /api/terminal/status   → already wrapped by `useTerminalStatusQuery`
  *    in the Dashboard data layer (`@/lib/query/dashboard`); the workbench reuses it.
  *  - SSE stream / gateway attach / install streaming → live-PTY transport that
- *    belongs to the terminal surface, not this read/launch console.
+ *    belongs to the terminal surface, not this CLI management page.
  *
  * Response shapes come from the shared contract (`types/terminal.ts`).
  */
@@ -67,20 +64,6 @@ export function getTerminalSession(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}`,
     { signal },
   );
-}
-
-/**
- * POST /api/terminal/launch — resolve the launch command for a CLI. This does
- * NOT spawn a PTY; it returns the resolved command + label the operator would
- * run, which the workbench surfaces as launch evidence.
- */
-export function launchTerminal(
-  payload: TerminalLaunchPayload,
-): Promise<TerminalLaunchResponse> {
-  return apiRequest<TerminalLaunchResponse>(`${BASE}/launch`, {
-    method: "POST",
-    body: jsonBody(payload),
-  });
 }
 
 /** POST /api/terminal/install — install one supported CLI or all missing CLIs. */

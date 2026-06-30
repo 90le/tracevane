@@ -13,7 +13,6 @@ import {
   getTerminalSession,
   getTerminalSessions,
   installTerminalCli,
-  launchTerminal,
   renameTerminalSession,
 } from "../api/terminal";
 import type { ApiError } from "../api/errors";
@@ -23,15 +22,13 @@ import type {
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
-  TerminalLaunchPayload,
-  TerminalLaunchResponse,
   TerminalSessionDescriptor,
   TerminalSessionSummaryResponse,
 } from "../../features/cli-agents/types";
 
 /**
  * TanStack Query hooks for the Terminal session control surface consumed by the
- * CLI Agent Workbench (`/cli-agents`).
+ * CLI Agent management page (`/cli-agents`).
  *
  * Query keys are namespaced under `["cli-agents", "terminal", ...]` so the
  * launch / end / delete mutations can invalidate the session roster coherently.
@@ -73,10 +70,17 @@ export function useTerminalSessionsQuery(
 
 /** Create a detached PTY session descriptor before attaching the SSE stream. */
 export function useCreateTerminalSessionMutation(
-  options?: MutationOpts<TerminalSessionDescriptor, TerminalGatewayAttachPayload>,
+  options?: MutationOpts<
+    TerminalSessionDescriptor,
+    TerminalGatewayAttachPayload
+  >,
 ) {
   const queryClient = useQueryClient();
-  return useMutation<TerminalSessionDescriptor, ApiError, TerminalGatewayAttachPayload>({
+  return useMutation<
+    TerminalSessionDescriptor,
+    ApiError,
+    TerminalGatewayAttachPayload
+  >({
     mutationFn: (payload) => createTerminalSession(payload),
     ...options,
     onSuccess: (...args) => {
@@ -103,24 +107,15 @@ export function useTerminalSessionQuery(
 // Mutations (dangerous writes — always confirmed + evidenced in the UI)
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve a CLI launch command (`POST /api/terminal/launch`). Read-only on the
- * server (returns the resolved command), so it does not invalidate the roster.
- */
-export function useLaunchTerminalMutation(
-  options?: MutationOpts<TerminalLaunchResponse, TerminalLaunchPayload>,
-) {
-  return useMutation<TerminalLaunchResponse, ApiError, TerminalLaunchPayload>({
-    mutationFn: (payload) => launchTerminal(payload),
-    ...options,
-  });
-}
-
 /** Install a supported CLI (`POST /api/terminal/install`). Invalidates status by caller refetch. */
 export function useInstallTerminalCliMutation(
   options?: MutationOpts<TerminalInstallResponse, TerminalInstallRequestId>,
 ) {
-  return useMutation<TerminalInstallResponse, ApiError, TerminalInstallRequestId>({
+  return useMutation<
+    TerminalInstallResponse,
+    ApiError,
+    TerminalInstallRequestId
+  >({
     mutationFn: (cli) => installTerminalCli(cli),
     ...options,
   });
@@ -154,7 +149,8 @@ export function useRenameTerminalSessionMutation(
     ApiError,
     { sessionId: string; title: string }
   >({
-    mutationFn: ({ sessionId, title }) => renameTerminalSession(sessionId, title),
+    mutationFn: ({ sessionId, title }) =>
+      renameTerminalSession(sessionId, title),
     ...options,
     onSuccess: (data, ...rest) => {
       void queryClient.invalidateQueries({ queryKey: terminalKeys.sessions() });

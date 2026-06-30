@@ -1,5 +1,11 @@
 import * as React from "react";
-import { AlertTriangle, ChevronDown, RefreshCw, RotateCw, Server } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  RefreshCw,
+  RotateCw,
+  Server,
+} from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
@@ -53,8 +59,16 @@ function lastCommand(
  * Bound to `useModelGatewayDaemonServiceQuery` +
  * `useManageModelGatewayDaemonServiceMutation`.
  */
-export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
-  const serviceQuery = useModelGatewayDaemonServiceQuery();
+export function DaemonServicePanel({
+  enabled = false,
+  onEnable,
+  onMutated,
+}: {
+  enabled?: boolean;
+  onEnable?: () => void;
+  onMutated?: () => void;
+}) {
+  const serviceQuery = useModelGatewayDaemonServiceQuery({ enabled });
   const manageMutation = useManageModelGatewayDaemonServiceMutation();
 
   const [openPanel, setOpenPanel] = React.useState(false);
@@ -66,8 +80,11 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
   const local = data?.lifecycle.localDaemon;
   const manager = data?.serviceManager;
   const serviceName = data?.plan.serviceName ?? local?.supervisor.serviceName;
-  const endpoint = local?.endpoint ?? data?.lifecycle.endpointPolicy.preferredCliEndpoint;
-  const stateBadge = local ? DAEMON_STATE_BADGE[local.state] : DAEMON_STATE_BADGE.unknown;
+  const endpoint =
+    local?.endpoint ?? data?.lifecycle.endpointPolicy.preferredCliEndpoint;
+  const stateBadge = local
+    ? DAEMON_STATE_BADGE[local.state]
+    : DAEMON_STATE_BADGE.unknown;
 
   const run = (action: ModelGatewayDaemonServiceAction, successMsg: string) => {
     manageMutation.mutate(
@@ -79,16 +96,20 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
           setEvidence(cmd);
           if (cmd && !cmd.ok) {
             toast.error(`${successMsg}：命令返回非零`, {
-              description: cmd.stderr || cmd.error || `exit ${cmd.exitCode ?? "?"}`,
+              description:
+                cmd.stderr || cmd.error || `exit ${cmd.exitCode ?? "?"}`,
             });
           } else {
             toast.success(successMsg, {
-              description: cmd ? cmd.label : `状态：${result.lifecycle.localDaemon.state}`,
+              description: cmd
+                ? cmd.label
+                : `状态：${result.lifecycle.localDaemon.state}`,
             });
           }
           void serviceQuery.refetch();
         },
-        onError: (error) => toast.error("操作失败", { description: error.message }),
+        onError: (error) =>
+          toast.error("操作失败", { description: error.message }),
         onSettled: () => setConfirm(null),
       },
     );
@@ -100,7 +121,10 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
     <section className="rounded-md border border-line bg-panel shadow-sm">
       <button
         type="button"
-        onClick={() => setOpenPanel((v) => !v)}
+        onClick={() => {
+          if (!openPanel) onEnable?.();
+          setOpenPanel((v) => !v);
+        }}
         aria-expanded={openPanel}
         className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
       >
@@ -126,12 +150,22 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
 
       {openPanel && (
         <div className="grid gap-3 p-4">
-          {serviceQuery.isLoading ? (
+          {!enabled ? (
+            <div className="rounded-sm border border-line bg-panel-2 p-3 text-sm text-muted">
+              守护服务状态将在展开后读取，避免首页首屏被 supervisor 探测阻塞。
+            </div>
+          ) : serviceQuery.isLoading ? (
             <SkeletonRow />
           ) : serviceQuery.error ? (
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-red">{serviceQuery.error.message}</span>
-              <Button variant="outline" size="sm" onClick={() => void serviceQuery.refetch()}>
+              <span className="text-sm text-red">
+                {serviceQuery.error.message}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void serviceQuery.refetch()}
+              >
                 <RefreshCw />
                 重试
               </Button>
@@ -143,18 +177,28 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
                 <div className="grid gap-0.5">
                   <dt className="text-xs text-subtle">激活</dt>
                   <dd className="text-ink-strong">
-                    {manager?.active == null ? "未知" : manager.active ? "是" : "否"}
+                    {manager?.active == null
+                      ? "未知"
+                      : manager.active
+                        ? "是"
+                        : "否"}
                   </dd>
                 </div>
                 <div className="grid gap-0.5">
                   <dt className="text-xs text-subtle">开机自启</dt>
                   <dd className="text-ink-strong">
-                    {manager?.enabled == null ? "未知" : manager.enabled ? "是" : "否"}
+                    {manager?.enabled == null
+                      ? "未知"
+                      : manager.enabled
+                        ? "是"
+                        : "否"}
                   </dd>
                 </div>
                 <div className="grid min-w-0 gap-0.5">
                   <dt className="text-xs text-subtle">端点</dt>
-                  <dd className="truncate text-ink-strong">{endpoint ?? "—"}</dd>
+                  <dd className="truncate text-ink-strong">
+                    {endpoint ?? "—"}
+                  </dd>
                 </div>
               </dl>
               {manager?.lastError && (
@@ -193,10 +237,17 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
                     <Badge variant={evidence.ok ? "ok" : "bad"}>
                       {evidence.ok ? "成功" : "失败"}
                     </Badge>
-                    <span className="truncate text-sm text-ink-strong">{evidence.label}</span>
+                    <span className="truncate text-sm text-ink-strong">
+                      {evidence.label}
+                    </span>
                   </div>
                   <code className="block max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-panel-3 px-2 py-1 font-mono text-xs text-muted">
-                    {(evidence.stdout || evidence.stderr || evidence.error || "(无输出)").trim()}
+                    {(
+                      evidence.stdout ||
+                      evidence.stderr ||
+                      evidence.error ||
+                      "(无输出)"
+                    ).trim()}
                   </code>
                 </div>
               )}
@@ -226,7 +277,10 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
       )}
 
       {/* Restart confirmation. */}
-      <Dialog open={confirm === "restart"} onOpenChange={(o) => !o && setConfirm(null)}>
+      <Dialog
+        open={confirm === "restart"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
@@ -238,7 +292,12 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
             重启会短暂中断网关服务（通常数秒），期间客户端请求可能失败。确认重启？
           </DialogBody>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirm(null)}
+              disabled={pending}
+            >
               取消
             </Button>
             <Button
@@ -254,7 +313,10 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
       </Dialog>
 
       {/* Stop confirmation — strong warning. */}
-      <Dialog open={confirm === "stop"} onOpenChange={(o) => !o && setConfirm(null)}>
+      <Dialog
+        open={confirm === "stop"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
@@ -266,7 +328,12 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
             停止后网关将下线，所有客户端会立即断连，直到你手动重新启动服务。确认停止？
           </DialogBody>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setConfirm(null)} disabled={pending}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirm(null)}
+              disabled={pending}
+            >
               取消
             </Button>
             <Button

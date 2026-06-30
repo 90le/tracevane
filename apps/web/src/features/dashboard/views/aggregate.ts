@@ -25,7 +25,6 @@ export const ROUTES = {
   recovery: "/platforms/openclaw/guard",
   platforms: "/platforms",
   cliAgents: "/cli-agents",
-  workspace: "/workspace",
 } as const;
 
 /** Inputs the synthesis functions consume — every field may be undefined. */
@@ -241,7 +240,7 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
     const listener = gateway.listener;
     pillars.push({
       id: "gateway",
-      label: "模型网关",
+      label: "模型路由",
       tone: degraded > 0 ? "warn" : "ok",
       value: degraded > 0 ? "降级" : "在线",
       detail: listener
@@ -252,10 +251,10 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   } else {
     pillars.push({
       id: "gateway",
-      label: "模型网关",
+      label: "模型路由",
       tone: "mute",
       value: "未知",
-      detail: "网关状态不可用",
+      detail: "首屏后补齐",
       to: ROUTES.modelGateway,
     });
   }
@@ -269,7 +268,7 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
       (channelRuntime.octoConnections ?? 0);
     pillars.push({
       id: "channel",
-      label: "IM 渠道",
+      label: "消息接入",
       tone: reachable ? "ok" : "bad",
       value: reachable ? "可达" : "离线",
       detail: reachable
@@ -280,10 +279,10 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
   } else {
     pillars.push({
       id: "channel",
-      label: "IM 渠道",
+      label: "消息接入",
       tone: "mute",
       value: "未知",
-      detail: "渠道状态不可用",
+      detail: "首屏后补齐",
       to: ROUTES.imChannels,
     });
   }
@@ -318,7 +317,7 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
       label: "平台守护",
       tone: "mute",
       value: "未知",
-      detail: "平台守护状态不可用",
+      detail: "首屏后补齐",
       to: ROUTES.recovery,
     });
   }
@@ -342,7 +341,7 @@ export function buildPillars(sources: DashboardSources): ReadinessPillar[] {
       label: "系统运行时",
       tone: "mute",
       value: "未知",
-      detail: "健康信息不可用",
+      detail: "读取摘要中",
       to: ROUTES.platforms,
     });
   }
