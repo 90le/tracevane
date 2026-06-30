@@ -1559,3 +1559,11 @@ test("new Workspace IDE shell exposes dock maximize controls in the pane layout 
   assert.match(shellSource, /aria-pressed=\{isMaximized\}/);
   assert.match(shellSource, /\{isMaximized \? "还原" : "最大化"\}/);
 });
+
+test("new Workspace IDE shell exposes dock reset controls in the pane layout manager", () => {
+  assert.match(shellSource, /onResetDockComposition=\{resetDockComposition\}/);
+  assert.match(shellSource, /onResetDockComposition: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-reset=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResetDockComposition\(placement\)\}/);
+  assert.match(shellSource, />\n                  重置\n                <\/button>/);
+});

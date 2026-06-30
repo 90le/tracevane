@@ -3587,6 +3587,7 @@ export function WorkspaceIdeShell() {
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
           onMergeDockGroups={mergeDockSplitGroups}
+          onResetDockComposition={resetDockComposition}
           onToggleMaximizedDock={toggleMaximizedPane}
           onFocusRegion={focusIdeRegion}
         />
@@ -4400,6 +4401,7 @@ function DockLayoutManager({
   onMovePaneToGroup,
   onSwapDockGroups,
   onMergeDockGroups,
+  onResetDockComposition,
   onToggleMaximizedDock,
   onFocusRegion,
 }: {
@@ -4421,6 +4423,7 @@ function DockLayoutManager({
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
   onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
+  onResetDockComposition: (placement: PanePlacement) => void;
   onToggleMaximizedDock: (placement: PanePlacement) => void;
   onFocusRegion: (region: IdeFocusRegion) => void;
 }) {
@@ -4481,6 +4484,9 @@ function DockLayoutManager({
                 </button>
                 <button type="button" disabled={layoutLocked} onClick={() => onToggleMaximizedDock(placement)} data-ide-pane-layout-maximize={placement} data-active={isMaximized ? "true" : "false"} aria-pressed={isMaximized}>
                   {isMaximized ? "还原" : "最大化"}
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onResetDockComposition(placement)} data-ide-pane-layout-reset={placement}>
+                  重置
                 </button>
               </header>
               <div className="workspace-ide-shell__dock-layout-modes" data-ide-pane-layout-modes={placement}>
