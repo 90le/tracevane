@@ -1186,10 +1186,15 @@ test("new Workspace IDE shell supports pinned panes", () => {
   assert.match(shellSource, /data-ide-pane-pinned=\{pinned \? "true" : "false"\}/);
   assert.match(shellSource, /data-ide-pane-pin=\{paneId\}/);
   assert.match(shellSource, /onTogglePanePinned=\{togglePanePinned\}/);
+  assert.match(shellSource, /onFocusDockPane=\{focusDockPane\}/);
   assert.match(shellSource, /onTogglePanePinned: \(paneId: PaneId\) => void/);
+  assert.match(shellSource, /onFocusDockPane: \(placement: PanePlacement, role: DockPaneRole, paneId: PaneId\) => void/);
   assert.match(shellSource, /data-ide-pane-layout-pin-pane=\{paneId\}/);
   assert.match(shellSource, /aria-pressed=\{pinned\}/);
   assert.match(shellSource, /onClick=\{\(\) => onTogglePanePinned\(paneId\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-focus-pane=\{paneId\}/);
+  assert.match(shellSource, /data-ide-pane-layout-focus-pane-role=\{role\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onFocusDockPane\(placement, role, paneId\)\}/);
   assert.match(shellSource, /固定 Pane: \{pinnedPanes\.length\}/);
 });
 
@@ -1764,6 +1769,7 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
   assert.match(cssSource, /workspace-ide-shell__dock-layout-pane-row/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-order/);
   assert.match(cssSource, /data-ide-pane-layout-pin-pane/);
+  assert.match(cssSource, /data-ide-pane-layout-focus-pane/);
 });
 
 

@@ -3721,6 +3721,7 @@ export function WorkspaceIdeShell() {
           onCycleMobilePanel={cycleMobilePanel}
           onHidePane={hidePane}
           onTogglePanePinned={togglePanePinned}
+          onFocusDockPane={focusDockPane}
           onRestorePane={restorePane}
           onRestoreAllHiddenPanes={restoreAllHiddenPanes}
           onRestoreHiddenPanesForPlacement={restoreHiddenPanesForPlacement}
@@ -4784,6 +4785,7 @@ function DockLayoutManager({
   onCycleMobilePanel,
   onHidePane,
   onTogglePanePinned,
+  onFocusDockPane,
   onRestorePane,
   onRestoreAllHiddenPanes,
   onRestoreHiddenPanesForPlacement,
@@ -4847,6 +4849,7 @@ function DockLayoutManager({
   onCycleMobilePanel: (direction: MobilePanelDirection) => void;
   onHidePane: (paneId: PaneId) => void;
   onTogglePanePinned: (paneId: PaneId) => void;
+  onFocusDockPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onRestorePane: (paneId: PaneId) => void;
   onRestoreAllHiddenPanes: () => void;
   onRestoreHiddenPanesForPlacement: (placement: PanePlacement) => void;
@@ -5258,6 +5261,15 @@ function DockLayoutManager({
                             onClick={() => onTogglePanePinned(paneId)}
                           >
                             {pinned ? "取消固定" : "固定"}
+                          </button>
+                          <button
+                            type="button"
+                            data-ide-pane-layout-focus-pane={paneId}
+                            data-ide-pane-layout-focus-pane-role={role}
+                            aria-label={`聚焦 ${paneLabel(paneId)} Pane`}
+                            onClick={() => onFocusDockPane(placement, role, paneId)}
+                          >
+                            聚焦
                           </button>
                           <span className="workspace-ide-shell__dock-layout-role-switch" aria-label={`${paneLabel(paneId)} 主副组`}>
                             {(["primary", "secondary"] as const).map((targetRole) => (
