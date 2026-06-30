@@ -3589,6 +3589,7 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          onSaveLayoutSnapshot={saveLayoutSnapshot}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
@@ -4406,6 +4407,7 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   layoutLocked,
+  onSaveLayoutSnapshot,
   onOpenAllDocks,
   onFocusEditorOnly,
   onToggleDockOpen,
@@ -4431,6 +4433,7 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  onSaveLayoutSnapshot: () => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
@@ -4481,6 +4484,9 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-head">
         <span>Pane 布局管理器</span>
         <span>开合 · 拆分 · 比例 · 主/副组</span>
+        <button type="button" disabled={layoutLocked} onClick={onSaveLayoutSnapshot} data-ide-pane-layout-save-snapshot>
+          保存布局
+        </button>
         <button type="button" disabled={layoutLocked} onClick={onOpenAllDocks} data-ide-pane-layout-open-all>
           打开全部
         </button>

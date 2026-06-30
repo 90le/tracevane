@@ -1599,3 +1599,11 @@ test("new Workspace IDE shell exposes editor-only controls in the pane layout ma
   assert.match(shellSource, /onClick=\{onFocusEditorOnly\}/);
   assert.match(shellSource, />\n          编辑器专注\n        <\/button>/);
 });
+
+test("new Workspace IDE shell exposes layout snapshot save in the pane layout manager", () => {
+  assert.match(shellSource, /onSaveLayoutSnapshot=\{saveLayoutSnapshot\}/);
+  assert.match(shellSource, /onSaveLayoutSnapshot: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-save-snapshot/);
+  assert.match(shellSource, /onClick=\{onSaveLayoutSnapshot\}/);
+  assert.match(shellSource, />\n          保存布局\n        <\/button>/);
+});
