@@ -3676,6 +3676,11 @@ export function WorkspaceIdeShell() {
           canUndoLayout={layoutHistoryPast.length > 0}
           canRedoLayout={layoutHistoryFuture.length > 0}
           hasLayoutSnapshots={layoutSnapshots.length > 0}
+          dockSnapshots={dockSnapshots}
+          onSaveDockSnapshot={saveDockSnapshot}
+          onRestoreDockSnapshot={restoreDockSnapshot}
+          onUpdateDockSnapshot={updateDockSnapshot}
+          onDeleteDockSnapshot={deleteDockSnapshot}
           onUndoLayout={undoIdeLayoutChange}
           onRedoLayout={redoIdeLayoutChange}
           onSaveLayoutSnapshot={saveLayoutSnapshot}
@@ -4721,10 +4726,15 @@ function DockLayoutManager({
   canUndoLayout,
   canRedoLayout,
   hasLayoutSnapshots,
+  dockSnapshots,
   onUndoLayout,
   onRedoLayout,
   onSaveLayoutSnapshot,
   onRestoreLatestLayoutSnapshot,
+  onSaveDockSnapshot,
+  onRestoreDockSnapshot,
+  onUpdateDockSnapshot,
+  onDeleteDockSnapshot,
   onApplyWorkbenchRecipe,
   onOpenAllDocks,
   onFocusEditorOnly,
@@ -4766,10 +4776,15 @@ function DockLayoutManager({
   canUndoLayout: boolean;
   canRedoLayout: boolean;
   hasLayoutSnapshots: boolean;
+  dockSnapshots: IdeDockSnapshot[];
   onUndoLayout: () => void;
   onRedoLayout: () => void;
   onSaveLayoutSnapshot: () => void;
   onRestoreLatestLayoutSnapshot: () => void;
+  onSaveDockSnapshot: (placement: PanePlacement) => void;
+  onRestoreDockSnapshot: (snapshot: IdeDockSnapshot) => void;
+  onUpdateDockSnapshot: (snapshotId: string) => void;
+  onDeleteDockSnapshot: (snapshotId: string) => void;
   onApplyWorkbenchRecipe: (recipeId: WorkbenchRecipeId) => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
@@ -4913,6 +4928,7 @@ function DockLayoutManager({
           const paneIds = panesByPlacement[placement];
           const sizeLimits = getPaneSizeLimits(placement);
           const isMaximized = maximizedPane === placement;
+          const placementDockSnapshots = dockSnapshots.filter((snapshot) => snapshot.placement === placement);
           return (
             <article
               key={placement}
@@ -5050,6 +5066,26 @@ function DockLayoutManager({
                   <button key={paneId} type="button" disabled={layoutLocked} onClick={() => onRestorePane(paneId)} data-ide-pane-layout-hidden-pane={paneId}>
                     {paneLabel(paneId)}
                   </button>
+                ))}
+              </div>
+              <div className="workspace-ide-shell__dock-layout-snapshots" data-ide-pane-layout-dock-snapshots={placement}>
+                <span>{placementLabel(placement)} Dock 组合 · {placementDockSnapshots.length}</span>
+                <button type="button" disabled={layoutLocked} onClick={() => onSaveDockSnapshot(placement)} data-ide-pane-layout-dock-snapshot-save={placement}>
+                  保存当前组合
+                </button>
+                {placementDockSnapshots.length === 0 ? <small data-ide-pane-layout-dock-snapshot-empty={placement}>暂无组合快照</small> : null}
+                {placementDockSnapshots.slice(0, 4).map((snapshot) => (
+                  <div key={snapshot.id} className="workspace-ide-shell__dock-layout-snapshot-row" data-ide-pane-layout-dock-snapshot={snapshot.id} data-ide-pane-layout-dock-snapshot-placement={snapshot.placement}>
+                    <button type="button" disabled={layoutLocked} onClick={() => onRestoreDockSnapshot(snapshot)} title={`恢复 ${snapshot.name}`} data-ide-pane-layout-dock-snapshot-restore={snapshot.id}>
+                      {snapshot.name}
+                    </button>
+                    <button type="button" disabled={layoutLocked} onClick={() => onUpdateDockSnapshot(snapshot.id)} aria-label={`用当前${placementLabel(snapshot.placement)} Dock 覆盖 ${snapshot.name}`} data-ide-pane-layout-dock-snapshot-update={snapshot.id}>
+                      ↻
+                    </button>
+                    <button type="button" onClick={() => onDeleteDockSnapshot(snapshot.id)} aria-label={`删除${placementLabel(snapshot.placement)} Dock 组合 ${snapshot.name}`} data-ide-pane-layout-dock-snapshot-delete={snapshot.id}>
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
               <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
