@@ -3576,6 +3576,7 @@ export function WorkspaceIdeShell() {
           dockPaneSelections={dockPaneSelections}
           pinnedPanes={pinnedPanes}
           paneSizes={paneSizes}
+          maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onSetDockSplitMode={setDockSplitMode}
@@ -3586,6 +3587,7 @@ export function WorkspaceIdeShell() {
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
           onMergeDockGroups={mergeDockSplitGroups}
+          onToggleMaximizedDock={toggleMaximizedPane}
           onFocusRegion={focusIdeRegion}
         />
         <div className="workspace-ide-shell__top-actions">
@@ -4387,6 +4389,7 @@ function DockLayoutManager({
   dockPaneSelections,
   pinnedPanes,
   paneSizes,
+  maximizedPane,
   layoutLocked,
   onToggleDockOpen,
   onSetDockSplitMode,
@@ -4397,6 +4400,7 @@ function DockLayoutManager({
   onMovePaneToGroup,
   onSwapDockGroups,
   onMergeDockGroups,
+  onToggleMaximizedDock,
   onFocusRegion,
 }: {
   panesByPlacement: PaneOrder;
@@ -4406,6 +4410,7 @@ function DockLayoutManager({
   dockPaneSelections: DockPaneSelections;
   pinnedPanes: PaneId[];
   paneSizes: IdePaneSizes;
+  maximizedPane: MaximizedPane;
   layoutLocked: boolean;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
@@ -4416,6 +4421,7 @@ function DockLayoutManager({
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
   onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
+  onToggleMaximizedDock: (placement: PanePlacement) => void;
   onFocusRegion: (region: IdeFocusRegion) => void;
 }) {
   const [dragTarget, setDragTarget] = React.useState<{ placement: PanePlacement; role: DockPaneRole } | null>(null);
@@ -4457,6 +4463,7 @@ function DockLayoutManager({
         {DOCK_PLACEMENTS.map((placement) => {
           const paneIds = panesByPlacement[placement];
           const sizeLimits = getPaneSizeLimits(placement);
+          const isMaximized = maximizedPane === placement;
           return (
             <article
               key={placement}
@@ -4471,6 +4478,9 @@ function DockLayoutManager({
                 </button>
                 <button type="button" disabled={layoutLocked} onClick={() => onToggleDockOpen(placement)} data-ide-pane-layout-toggle-open={placement}>
                   {open[placement] ? "收起" : "打开"}
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onToggleMaximizedDock(placement)} data-ide-pane-layout-maximize={placement} data-active={isMaximized ? "true" : "false"} aria-pressed={isMaximized}>
+                  {isMaximized ? "还原" : "最大化"}
                 </button>
               </header>
               <div className="workspace-ide-shell__dock-layout-modes" data-ide-pane-layout-modes={placement}>

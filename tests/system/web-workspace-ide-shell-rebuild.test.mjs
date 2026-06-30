@@ -1546,3 +1546,16 @@ test("new Workspace IDE shell exposes continuous dock size sliders in the pane l
   assert.match(cssSource, /workspace-ide-shell__dock-layout-size input\[type="range"\]/);
   assert.match(cssSource, /accent-color: #22d3ee/);
 });
+
+test("new Workspace IDE shell exposes dock maximize controls in the pane layout manager", () => {
+  assert.match(shellSource, /maximizedPane=\{maximizedPane\}/);
+  assert.match(shellSource, /onToggleMaximizedDock=\{toggleMaximizedPane\}/);
+  assert.match(shellSource, /maximizedPane: MaximizedPane/);
+  assert.match(shellSource, /onToggleMaximizedDock: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /const isMaximized = maximizedPane === placement/);
+  assert.match(shellSource, /data-ide-pane-layout-maximize=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onToggleMaximizedDock\(placement\)\}/);
+  assert.match(shellSource, /data-active=\{isMaximized \? "true" : "false"\}/);
+  assert.match(shellSource, /aria-pressed=\{isMaximized\}/);
+  assert.match(shellSource, /\{isMaximized \? "还原" : "最大化"\}/);
+});
