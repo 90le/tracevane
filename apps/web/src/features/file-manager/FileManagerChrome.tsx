@@ -8,7 +8,9 @@ import {
   EyeOff,
   FilePlus,
   Folder,
+  FolderOpen,
   FolderPlus,
+  GripVertical,
   HardDrive,
   History,
   Plus,
@@ -312,10 +314,18 @@ export interface FileManagerNavigationBarProps {
   onAcceptPathSuggestion: (location: FileManagerLocation) => void;
   onToggleFavoriteCurrent: () => void;
   onOpenFavoriteItem: (itemId: string) => void;
-  onAddFavoriteFolder: (parentId?: string) => void;
-  onAddCurrentFavoriteToFolder: (parentId?: string) => void;
-  onRenameFavoriteItem: (itemId: string) => void;
+  onAddFavoriteFolder: (parentId: string | undefined, title: string) => void;
+  onAddCurrentFavoriteToFolder: (
+    parentId: string | undefined,
+    title?: string,
+  ) => void;
+  onRenameFavoriteItem: (itemId: string, title: string) => void;
   onRemoveFavoriteItem: (itemId: string) => void;
+  onMoveFavoriteItem: (
+    itemId: string,
+    targetParentId: string | undefined,
+    targetIndex: number,
+  ) => void;
   onClearRecentLocations: () => void;
   filterInputRef?: React.RefObject<HTMLInputElement | null>;
   onFilterTextChange: (value: string) => void;
@@ -327,6 +337,7 @@ export interface FileManagerNavigationBarProps {
   onUpload: () => void;
   onChangeViewMode: (mode: FileManagerViewMode) => void;
   onRefresh: () => void;
+  currentLocation: FileManagerLocation;
 }
 
 function locationShortLabel(location: FileManagerLocation): string {
@@ -339,111 +350,562 @@ function locationShortLabel(location: FileManagerLocation): string {
   return parts.at(-1) ?? label ?? "root";
 }
 
-function FavoriteTreeItem({
+type FavoriteEditState =
+  | { mode: "createFolder"; parentId?: string }
+  | { mode: "addBookmark"; parentId?: string }
+  | { mode: "rename"; itemId: string; currentTitle: string };
+
+interface FavoriteDropTarget {
+  parentId?: string;
+  index: number;
+}
+
+function flattenFavoriteItemsForManager(
+  items: FileManagerBookmarkItem[],
+  expandedIds: Set<string>,
+  depth = 0,
+  parentId?: string,
+): Array<{
+  item: FileManagerBookmarkItem;
+  depth: number;
+  parentId?: string;
+  index: number;
+}> {
+  const rows: Array<{
+    item: FileManagerBookmarkItem;
+    depth: number;
+    parentId?: string;
+    index: number;
+  }> = [];
+  items.forEach((item, index) => {
+    rows.push({ item, depth, parentId, index });
+    if (item.type === "folder" && expandedIds.has(item.id)) {
+      rows.push(
+        ...flattenFavoriteItemsForManager(
+          item.children ?? [],
+          expandedIds,
+          depth + 1,
+          item.id,
+        ),
+      );
+    }
+  });
+  return rows;
+}
+
+function countBookmarkChildren(item: FileManagerBookmarkItem): number {
+  if (item.type !== "folder") return 0;
+  return item.children?.length ?? 0;
+}
+
+function BookmarkEditorDialog({
+  state,
+  onCancel,
+  onSubmit,
+}: {
+  state: FavoriteEditState | null;
+  onCancel: () => void;
+  onSubmit: (title: string) => void;
+}) {
+  const defaultValue =
+    state?.mode === "rename"
+      ? state.currentTitle
+      : state?.mode === "createFolder"
+        ? "新文件夹"
+        : "当前位置";
+  const [value, setValue] = React.useState(defaultValue);
+
+  React.useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue, state?.mode]);
+
+  if (!state) return null;
+
+  const title =
+    state.mode === "createFolder"
+      ? "新建收藏夹文件夹"
+      : state.mode === "addBookmark"
+        ? "收藏当前位置"
+        : "重命名收藏项";
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] grid place-items-center bg-[rgba(8,12,22,.35)] p-4 backdrop-blur-sm"
+      role="presentation"
+      data-file-manager-bookmark-editor-dialog
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
+        className="grid w-[min(420px,94vw)] gap-4 rounded-2xl border border-line bg-panel p-4 shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const nextTitle = value.trim();
+          if (!nextTitle) return;
+          onSubmit(nextTitle);
+        }}
+      >
+        <div className="grid gap-1">
+          <h3 className="text-sm font-semibold text-ink-strong">{title}</h3>
+          <p className="text-xs text-subtle">
+            使用内部弹层管理名称，避免浏览器原生弹窗阻塞文件操作。
+          </p>
+        </div>
+        <label className="grid gap-1 text-xs font-medium text-muted">
+          名称
+          <Input
+            autoFocus
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="输入名称"
+            data-file-manager-bookmark-title-input
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            取消
+          </Button>
+          <Button type="submit" variant="primary" size="sm">
+            保存
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function FavoriteManagerTreeRow({
   item,
   depth,
+  isExpanded,
+  isDragging,
+  dragOver,
+  onToggleExpanded,
+  onOpenFavoriteItem,
+  onStartEdit,
+  onRemoveFavoriteItem,
+  onDragStart,
+  onDragEnd,
+  onDragOverRow,
+  onDropOnRow,
+}: {
+  item: FileManagerBookmarkItem;
+  depth: number;
+  isExpanded: boolean;
+  isDragging: boolean;
+  dragOver: "before" | "after" | "inside" | null;
+  onToggleExpanded: (itemId: string) => void;
+  onOpenFavoriteItem: (itemId: string) => void;
+  onStartEdit: (state: FavoriteEditState) => void;
+  onRemoveFavoriteItem: (itemId: string) => void;
+  onDragStart: (itemId: string) => void;
+  onDragEnd: () => void;
+  onDragOverRow: (
+    itemId: string,
+    position: "before" | "after" | "inside",
+  ) => void;
+  onDropOnRow: (
+    itemId: string,
+    position: "before" | "after" | "inside",
+  ) => void;
+}) {
+  const isFolder = item.type === "folder";
+  return (
+    <div
+      className={cn(
+        "relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2 py-1.5 text-xs transition-colors",
+        isDragging
+          ? "border-primary-line bg-primary-soft/70 opacity-70"
+          : "border-transparent hover:border-line hover:bg-panel-2",
+        dragOver === "inside" && "border-primary-line bg-primary-soft",
+      )}
+      style={{ paddingLeft: `${8 + depth * 18}px` }}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", item.id);
+        onDragStart(item.id);
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        const rect = event.currentTarget.getBoundingClientRect();
+        const y = event.clientY - rect.top;
+        const position = isFolder
+          ? y < rect.height * 0.25
+            ? "before"
+            : y > rect.height * 0.75
+              ? "after"
+              : "inside"
+          : y < rect.height / 2
+            ? "before"
+            : "after";
+        onDragOverRow(item.id, position);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = event.currentTarget.getBoundingClientRect();
+        const y = event.clientY - rect.top;
+        const position = isFolder
+          ? y < rect.height * 0.25
+            ? "before"
+            : y > rect.height * 0.75
+              ? "after"
+              : "inside"
+          : y < rect.height / 2
+            ? "before"
+            : "after";
+        onDropOnRow(item.id, position);
+      }}
+      data-file-manager-bookmark-manager-row={item.type}
+    >
+      {dragOver === "before" ? (
+        <span className="absolute left-2 right-2 top-0 h-0.5 rounded-full bg-primary" />
+      ) : null}
+      {dragOver === "after" ? (
+        <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-primary" />
+      ) : null}
+      <div className="flex min-w-0 items-center gap-1.5">
+        <GripVertical className="size-3.5 shrink-0 cursor-grab text-subtle" />
+        {isFolder ? (
+          <button
+            type="button"
+            className="grid size-5 shrink-0 place-items-center rounded hover:bg-panel-3"
+            onClick={() => onToggleExpanded(item.id)}
+            aria-label={isExpanded ? "收起文件夹" : "展开文件夹"}
+          >
+            <ChevronRight
+              className={cn(
+                "size-3.5 text-subtle transition-transform",
+                isExpanded && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <span className="size-5 shrink-0" />
+        )}
+        {isFolder ? (
+          isExpanded ? (
+            <FolderOpen className="size-4 shrink-0 text-primary" />
+          ) : (
+            <Folder className="size-4 shrink-0 text-primary" />
+          )
+        ) : (
+          <Star className="size-4 shrink-0 text-primary" />
+        )}
+        <button
+          type="button"
+          className="min-w-0 truncate text-left font-medium text-ink-strong hover:text-primary"
+          onClick={() =>
+            isFolder ? onToggleExpanded(item.id) : onOpenFavoriteItem(item.id)
+          }
+          title={item.location?.label || item.title}
+        >
+          {item.title}
+        </button>
+        {isFolder ? (
+          <span className="rounded-full bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">
+            {countBookmarkChildren(item)}
+          </span>
+        ) : item.location ? (
+          <span className="hidden min-w-0 truncate font-mono text-2xs text-subtle md:inline">
+            {item.location.label}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+        {isFolder ? (
+          <>
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
+              onClick={() =>
+                onStartEdit({ mode: "createFolder", parentId: item.id })
+              }
+            >
+              子文件夹
+            </button>
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
+              onClick={() =>
+                onStartEdit({ mode: "addBookmark", parentId: item.id })
+              }
+            >
+              收藏当前
+            </button>
+          </>
+        ) : null}
+        <button
+          type="button"
+          className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
+          onClick={() =>
+            onStartEdit({
+              mode: "rename",
+              itemId: item.id,
+              currentTitle: item.title,
+            })
+          }
+        >
+          重命名
+        </button>
+        <button
+          type="button"
+          className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
+          onClick={() => onRemoveFavoriteItem(item.id)}
+        >
+          删除
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FavoriteBookmarkManager({
+  favoriteTree,
+  favoriteCount,
+  currentLocation,
   onOpenFavoriteItem,
   onAddFavoriteFolder,
   onAddCurrentFavoriteToFolder,
   onRenameFavoriteItem,
   onRemoveFavoriteItem,
+  onMoveFavoriteItem,
 }: {
-  item: FileManagerBookmarkItem;
-  depth: number;
+  favoriteTree: FileManagerBookmarkItem[];
+  favoriteCount: number;
+  currentLocation: FileManagerLocation;
   onOpenFavoriteItem: (itemId: string) => void;
-  onAddFavoriteFolder: (parentId?: string) => void;
-  onAddCurrentFavoriteToFolder: (parentId?: string) => void;
-  onRenameFavoriteItem: (itemId: string) => void;
+  onAddFavoriteFolder: (parentId: string | undefined, title: string) => void;
+  onAddCurrentFavoriteToFolder: (
+    parentId: string | undefined,
+    title?: string,
+  ) => void;
+  onRenameFavoriteItem: (itemId: string, title: string) => void;
   onRemoveFavoriteItem: (itemId: string) => void;
+  onMoveFavoriteItem: (
+    itemId: string,
+    targetParentId: string | undefined,
+    targetIndex: number,
+  ) => void;
 }) {
-  const isFolder = item.type === "folder";
+  const rootDropZoneRef = React.useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  const [dragOver, setDragOver] = React.useState<{
+    itemId?: string;
+    root?: boolean;
+    position: "before" | "after" | "inside";
+  } | null>(null);
+  const [editState, setEditState] = React.useState<FavoriteEditState | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      const visit = (items: FileManagerBookmarkItem[]) => {
+        for (const item of items) {
+          if (item.type !== "folder") continue;
+          if (item.children?.length) next.add(item.id);
+          visit(item.children ?? []);
+        }
+      };
+      visit(favoriteTree);
+      return next;
+    });
+  }, [favoriteTree]);
+
+  const flatRows = React.useMemo(
+    () => flattenFavoriteItemsForManager(favoriteTree, expandedIds),
+    [expandedIds, favoriteTree],
+  );
+
+  const toggleExpanded = React.useCallback((itemId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }, []);
+
+  const submitEdit = React.useCallback(
+    (title: string) => {
+      if (!editState) return;
+      if (editState.mode === "createFolder") {
+        onAddFavoriteFolder(editState.parentId, title);
+      } else if (editState.mode === "addBookmark") {
+        onAddCurrentFavoriteToFolder(editState.parentId, title);
+      } else {
+        onRenameFavoriteItem(editState.itemId, title);
+      }
+      setEditState(null);
+    },
+    [
+      editState,
+      onAddCurrentFavoriteToFolder,
+      onAddFavoriteFolder,
+      onRenameFavoriteItem,
+    ],
+  );
+
+  const handleDropOnRow = React.useCallback(
+    (targetId: string, position: "before" | "after" | "inside") => {
+      if (!draggingId || draggingId === targetId) return;
+      const targetRow = flatRows.find((row) => row.item.id === targetId);
+      if (!targetRow) return;
+      if (position === "inside" && targetRow.item.type === "folder") {
+        onMoveFavoriteItem(
+          draggingId,
+          targetRow.item.id,
+          targetRow.item.children?.length ?? 0,
+        );
+        setExpandedIds((prev) => new Set(prev).add(targetRow.item.id));
+      } else {
+        onMoveFavoriteItem(
+          draggingId,
+          targetRow.parentId,
+          targetRow.index + (position === "after" ? 1 : 0),
+        );
+      }
+      setDragOver(null);
+      setDraggingId(null);
+    },
+    [draggingId, flatRows, onMoveFavoriteItem],
+  );
+
   return (
-    <div className="grid gap-1" data-file-manager-bookmark-item={item.type}>
-      <div
-        className="grid grid-cols-1 items-center gap-1 rounded-md px-2 py-1 hover:bg-panel-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
+    <>
+      <details
+        className="relative"
+        data-file-manager-favorites-manage
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
       >
-        <button
-          type="button"
-          className="inline-flex min-w-0 items-center gap-2 text-left"
-          onClick={() => (isFolder ? undefined : onOpenFavoriteItem(item.id))}
-          disabled={isFolder}
-          title={item.location?.label || item.title}
-        >
-          {isFolder ? (
-            <Folder className="size-3.5 shrink-0 text-primary" />
-          ) : (
-            <Star className="size-3.5 shrink-0 text-primary" />
-          )}
-          <span className="min-w-0 truncate font-medium text-ink-strong">
-            {item.title}
-          </span>
-          {isFolder ? (
-            <span className="text-2xs text-subtle">
-              {item.children?.length ?? 0}
-            </span>
-          ) : null}
-        </button>
-        <div className="flex flex-wrap items-center gap-1 text-2xs sm:justify-end">
-          {isFolder ? (
-            <>
+        <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
+          收藏夹{favoriteCount ? ` · ${favoriteCount}` : ""}
+        </summary>
+        <div className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] top-auto z-50 grid max-h-[min(82dvh,720px)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-[calc(100%+6px)] sm:h-[min(72dvh,680px)] sm:w-[min(780px,calc(100vw-2rem))]">
+          <div className="grid gap-3 border-b border-line bg-panel-2/80 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-ink-strong">
+                  收藏夹管理
+                </div>
+                <div className="mt-0.5 text-2xs text-subtle">
+                  像浏览器书签一样管理：展开/收起文件夹，拖拽排序或移动到文件夹。
+                </div>
+              </div>
               <button
                 type="button"
-                className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
-                onClick={() => onAddFavoriteFolder(item.id)}
+                className="grid size-7 shrink-0 place-items-center rounded-md text-subtle hover:bg-panel hover:text-ink-strong"
+                onClick={() => setOpen(false)}
+                aria-label="关闭收藏夹"
               >
-                子文件夹
+                <X className="size-4" />
               </button>
-              <button
-                type="button"
-                className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
-                onClick={() => onAddCurrentFavoriteToFolder(item.id)}
-              >
-                收藏当前
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="rounded px-1.5 py-0.5 text-primary hover:bg-primary-soft"
-              onClick={() => onOpenFavoriteItem(item.id)}
-            >
-              打开
-            </button>
-          )}
-          <button
-            type="button"
-            className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
-            onClick={() => onRenameFavoriteItem(item.id)}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0 rounded-lg border border-line bg-panel px-3 py-2 text-2xs text-subtle">
+                当前路径：
+                <span className="font-mono text-ink-strong">
+                  {currentLocation.label}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditState({ mode: "createFolder" })}
+                >
+                  <FolderPlus className="size-3.5" />
+                  新建文件夹
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => setEditState({ mode: "addBookmark" })}
+                >
+                  <Star className="size-3.5" />
+                  收藏当前
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div
+            ref={rootDropZoneRef}
+            className={cn(
+              "grid content-start gap-1 overflow-y-auto p-2",
+              dragOver?.root && "bg-primary-soft/40",
+            )}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (event.target === rootDropZoneRef.current) {
+                setDragOver({ root: true, position: "after" });
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (!draggingId) return;
+              onMoveFavoriteItem(draggingId, undefined, favoriteTree.length);
+              setDragOver(null);
+              setDraggingId(null);
+            }}
+            data-file-manager-bookmark-manager-tree
           >
-            重命名
-          </button>
-          <button
-            type="button"
-            className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
-            onClick={() => onRemoveFavoriteItem(item.id)}
-          >
-            删除
-          </button>
+            {flatRows.length ? (
+              flatRows.map((row) => (
+                <FavoriteManagerTreeRow
+                  key={row.item.id}
+                  item={row.item}
+                  depth={row.depth}
+                  isExpanded={expandedIds.has(row.item.id)}
+                  isDragging={draggingId === row.item.id}
+                  dragOver={
+                    dragOver?.itemId === row.item.id ? dragOver.position : null
+                  }
+                  onToggleExpanded={toggleExpanded}
+                  onOpenFavoriteItem={(itemId) => {
+                    onOpenFavoriteItem(itemId);
+                    setOpen(false);
+                  }}
+                  onStartEdit={setEditState}
+                  onRemoveFavoriteItem={onRemoveFavoriteItem}
+                  onDragStart={setDraggingId}
+                  onDragEnd={() => {
+                    setDraggingId(null);
+                    setDragOver(null);
+                  }}
+                  onDragOverRow={(itemId, position) =>
+                    setDragOver({ itemId, position })
+                  }
+                  onDropOnRow={handleDropOnRow}
+                />
+              ))
+            ) : (
+              <div className="grid place-items-center rounded-xl border border-dashed border-line bg-panel-2 p-8 text-center text-xs text-subtle">
+                <Star className="mb-2 size-6 text-primary" />
+                <div className="font-semibold text-ink-strong">还没有收藏</div>
+                <div className="mt-1">点击“收藏当前”创建第一个书签。</div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      {isFolder && item.children?.length ? (
-        <div className="grid gap-1">
-          {item.children.map((child) => (
-            <FavoriteTreeItem
-              key={child.id}
-              item={child}
-              depth={depth + 1}
-              onOpenFavoriteItem={onOpenFavoriteItem}
-              onAddFavoriteFolder={onAddFavoriteFolder}
-              onAddCurrentFavoriteToFolder={onAddCurrentFavoriteToFolder}
-              onRenameFavoriteItem={onRenameFavoriteItem}
-              onRemoveFavoriteItem={onRemoveFavoriteItem}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
+      </details>
+      <BookmarkEditorDialog
+        state={editState}
+        onCancel={() => setEditState(null)}
+        onSubmit={submitEdit}
+      />
+    </>
   );
 }
 
@@ -486,6 +948,7 @@ export function FileManagerNavigationBar({
   onAddCurrentFavoriteToFolder,
   onRenameFavoriteItem,
   onRemoveFavoriteItem,
+  onMoveFavoriteItem,
   onClearRecentLocations,
   filterInputRef,
   onFilterTextChange,
@@ -497,6 +960,7 @@ export function FileManagerNavigationBar({
   onUpload,
   onChangeViewMode,
   onRefresh,
+  currentLocation,
 }: FileManagerNavigationBarProps) {
   const suggestionListId = React.useId();
   const activeSuggestion = pathSuggestions[activePathSuggestionIndex];
@@ -842,59 +1306,17 @@ export function FileManagerNavigationBar({
           className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs xl:justify-end"
           data-file-manager-quick-locations
         >
-          <details className="relative" data-file-manager-favorites-manage>
-            <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
-              收藏夹{favoriteCount ? ` · ${favoriteCount}` : ""}
-            </summary>
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(68dvh,560px)] w-[min(620px,calc(100vw-2rem))] gap-2 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
-              <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
-                <div className="min-w-0">
-                  <div className="font-semibold text-ink-strong">收藏夹</div>
-                  <div className="text-2xs text-subtle">
-                    支持多级文件夹、重命名、删除和添加当前位置
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    className="rounded border border-line bg-panel-2 px-2 py-1 text-2xs text-muted hover:text-primary"
-                    onClick={() => onAddFavoriteFolder()}
-                  >
-                    新建文件夹
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-primary-line bg-primary-soft px-2 py-1 text-2xs text-primary hover:bg-primary-soft/80"
-                    onClick={() => onAddCurrentFavoriteToFolder()}
-                  >
-                    收藏当前
-                  </button>
-                </div>
-              </div>
-              {favoriteTree.length ? (
-                <div className="grid gap-1" data-file-manager-bookmark-tree>
-                  {favoriteTree.map((item) => (
-                    <FavoriteTreeItem
-                      key={item.id}
-                      item={item}
-                      depth={0}
-                      onOpenFavoriteItem={onOpenFavoriteItem}
-                      onAddFavoriteFolder={onAddFavoriteFolder}
-                      onAddCurrentFavoriteToFolder={
-                        onAddCurrentFavoriteToFolder
-                      }
-                      onRenameFavoriteItem={onRenameFavoriteItem}
-                      onRemoveFavoriteItem={onRemoveFavoriteItem}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-md bg-panel-2 px-3 py-2 text-muted">
-                  当前没有收藏。点击“收藏当前”或地址栏右侧星标可收藏当前位置。
-                </div>
-              )}
-            </div>
-          </details>
+          <FavoriteBookmarkManager
+            favoriteTree={favoriteTree}
+            favoriteCount={favoriteCount}
+            currentLocation={currentLocation}
+            onOpenFavoriteItem={onOpenFavoriteItem}
+            onAddFavoriteFolder={onAddFavoriteFolder}
+            onAddCurrentFavoriteToFolder={onAddCurrentFavoriteToFolder}
+            onRenameFavoriteItem={onRenameFavoriteItem}
+            onRemoveFavoriteItem={onRemoveFavoriteItem}
+            onMoveFavoriteItem={onMoveFavoriteItem}
+          />
 
           {recentLocations.length ? (
             <details className="relative" data-file-manager-recent-locations>

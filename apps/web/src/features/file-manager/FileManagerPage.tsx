@@ -524,20 +524,19 @@ export function FileManagerPage() {
   );
 
   const addCurrentFavoriteToFolder = React.useCallback(
-    (parentId?: string) => {
-      const defaultName = displayNameForFavoriteLocation(currentLocation);
-      const nextName = window.prompt("收藏名称", defaultName);
-      const title = nextName?.trim() || defaultName;
+    (parentId: string | undefined, title?: string) => {
+      const bookmarkTitle =
+        title?.trim() || displayNameForFavoriteLocation(currentLocation);
       setFavoriteTree((prev) => {
         const next = addFavoriteBookmarkItem(
           prev,
           parentId,
-          createFavoriteBookmark(currentLocation, title),
+          createFavoriteBookmark(currentLocation, bookmarkTitle),
         );
         storeFavoriteBookmarkTree(next);
         return next;
       });
-      toast.success("已收藏当前位置", { description: title });
+      toast.success("已收藏当前位置", { description: bookmarkTitle });
     },
     [currentLocation],
   );
@@ -570,36 +569,35 @@ export function FileManagerPage() {
     [favoriteTree, navigateToLocation],
   );
 
-  const addFavoriteFolder = React.useCallback((parentId?: string) => {
-    const nextName = window.prompt("文件夹名称", "新文件夹");
-    if (!nextName?.trim()) return;
-    setFavoriteTree((prev) => {
-      const next = addFavoriteBookmarkItem(
-        prev,
-        parentId,
-        createFavoriteFolder(nextName.trim()),
-      );
-      storeFavoriteBookmarkTree(next);
-      return next;
-    });
-  }, []);
+  const addFavoriteFolder = React.useCallback(
+    (parentId: string | undefined, title: string) => {
+      if (!title.trim()) return;
+      setFavoriteTree((prev) => {
+        const next = addFavoriteBookmarkItem(
+          prev,
+          parentId,
+          createFavoriteFolder(title.trim()),
+        );
+        storeFavoriteBookmarkTree(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const renameFavoriteItem = React.useCallback(
-    (itemId: string) => {
-      const item = findFavoriteBookmarkItem(favoriteTree, itemId);
-      if (!item) return;
-      const nextName = window.prompt("名称", item.title);
-      if (!nextName?.trim()) return;
+    (itemId: string, title: string) => {
+      if (!title.trim()) return;
       setFavoriteTree((prev) => {
         const next = updateFavoriteBookmarkItem(prev, itemId, (current) => ({
           ...current,
-          title: nextName.trim(),
+          title: title.trim(),
         }));
         storeFavoriteBookmarkTree(next);
         return next;
       });
     },
-    [favoriteTree],
+    [],
   );
 
   const removeFavoriteItem = React.useCallback((itemId: string) => {
@@ -609,6 +607,26 @@ export function FileManagerPage() {
       return next;
     });
   }, []);
+
+  const moveFavoriteItem = React.useCallback(
+    (
+      itemId: string,
+      targetParentId: string | undefined,
+      targetIndex: number,
+    ) => {
+      setFavoriteTree((prev) => {
+        const next = moveFavoriteBookmarkItem(
+          prev,
+          itemId,
+          targetParentId,
+          targetIndex,
+        );
+        storeFavoriteBookmarkTree(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const selectDirectoryTab = React.useCallback(
     (tabId: string) => {
@@ -1459,6 +1477,7 @@ export function FileManagerPage() {
             onAddCurrentFavoriteToFolder={addCurrentFavoriteToFolder}
             onRenameFavoriteItem={renameFavoriteItem}
             onRemoveFavoriteItem={removeFavoriteItem}
+            onMoveFavoriteItem={moveFavoriteItem}
             onClearRecentLocations={clearRecentLocations}
             filterInputRef={fileManagerFilterRef}
             onFilterTextChange={setFilterText}
@@ -1470,6 +1489,7 @@ export function FileManagerPage() {
             onUpload={() => openUploadManager(directoryPath)}
             onChangeViewMode={setViewMode}
             onRefresh={refresh}
+            currentLocation={currentLocation}
           />
         </header>
 
@@ -2466,6 +2486,103 @@ function removeFavoriteBookmarkItem(
           }
         : item,
     );
+}
+
+function moveFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+  targetParentId: string | undefined,
+  targetIndex: number,
+): FileManagerBookmarkItem[] {
+  if (itemId === targetParentId) return tree;
+  const extracted = extractFavoriteBookmarkItem(tree, itemId);
+  if (!extracted.item) return tree;
+  if (
+    targetParentId &&
+    favoriteBookmarkItemContains(extracted.item, targetParentId)
+  ) {
+    return tree;
+  }
+  const next = insertFavoriteBookmarkItem(
+    extracted.tree,
+    targetParentId,
+    extracted.item,
+    targetIndex,
+  );
+  return trimFavoriteBookmarkTree(next);
+}
+
+function extractFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  itemId: string,
+): { item?: FileManagerBookmarkItem; tree: FileManagerBookmarkItem[] } {
+  let found: FileManagerBookmarkItem | undefined;
+  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
+    items.flatMap((item) => {
+      if (item.id === itemId) {
+        found = item;
+        return [];
+      }
+      if (item.type === "folder") {
+        return [
+          {
+            ...item,
+            children: visit(item.children ?? []),
+          },
+        ];
+      }
+      return [item];
+    });
+  return { item: found, tree: visit(tree) };
+}
+
+function insertFavoriteBookmarkItem(
+  tree: FileManagerBookmarkItem[],
+  parentId: string | undefined,
+  item: FileManagerBookmarkItem,
+  targetIndex: number,
+): FileManagerBookmarkItem[] {
+  if (!parentId) return insertAtIndex(tree, item, targetIndex);
+  let inserted = false;
+  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
+    items.map((current) => {
+      if (current.type !== "folder") return current;
+      if (current.id === parentId) {
+        inserted = true;
+        return {
+          ...current,
+          children: insertAtIndex(current.children ?? [], item, targetIndex),
+        };
+      }
+      return {
+        ...current,
+        children: visit(current.children ?? []),
+      };
+    });
+  const next = visit(tree);
+  return inserted ? next : insertAtIndex(next, item, targetIndex);
+}
+
+function insertAtIndex(
+  items: FileManagerBookmarkItem[],
+  item: FileManagerBookmarkItem,
+  index: number,
+): FileManagerBookmarkItem[] {
+  const next = [...items];
+  const boundedIndex = Math.max(0, Math.min(index, next.length));
+  next.splice(boundedIndex, 0, item);
+  return next;
+}
+
+function favoriteBookmarkItemContains(
+  item: FileManagerBookmarkItem,
+  childId: string,
+): boolean {
+  if (item.id === childId) return true;
+  if (item.type !== "folder") return false;
+  return (item.children ?? []).some((child) =>
+    favoriteBookmarkItemContains(child, childId),
+  );
 }
 
 function removeFavoriteBookmarksMatchingLocation(
