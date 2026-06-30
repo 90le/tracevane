@@ -1961,3 +1961,15 @@ test("new Workspace IDE shell keeps editor layout manager touch-friendly on mobi
   assert.match(cssSource, /button\[data-ide-editor-layout-tab-move\] \{\n    grid-area: move/);
   assert.match(cssSource, /button\[data-ide-editor-layout-tab-close\] \{\n    grid-area: close/);
 });
+
+test("new Workspace IDE shell exposes center editor maximize controls in the editor layout manager", () => {
+  assert.match(shellSource, /maximizedPane=\{maximizedPane\}/);
+  assert.match(shellSource, /onToggleCenterMaximized=\{\(\) => toggleMaximizedPane\("center"\)\}/);
+  assert.match(shellSource, /maximizedPane: MaximizedPane/);
+  assert.match(shellSource, /onToggleCenterMaximized: \(\) => void/);
+  assert.match(shellSource, /data-ide-editor-layout-maximize-center/);
+  assert.match(shellSource, /onClick=\{onToggleCenterMaximized\}/);
+  assert.match(shellSource, /data-active=\{maximizedPane === "center" \? "true" : "false"\}/);
+  assert.match(shellSource, /aria-pressed=\{maximizedPane === "center"\}/);
+  assert.match(shellSource, /maximizedPane === "center" \? "退出最大化" : "最大化编辑器"/);
+});

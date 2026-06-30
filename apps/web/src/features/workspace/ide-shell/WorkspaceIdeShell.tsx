@@ -3634,6 +3634,7 @@ export function WorkspaceIdeShell() {
           editorSplitRatio={editorSplitRatio}
           editorGroupTabs={editorGroupTabs}
           activeEditorGroup={activeEditorGroup}
+          maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
           editorGroupSnapshotCount={editorGroupSnapshots.length}
           onSplitEditor={splitEditor}
@@ -3651,6 +3652,7 @@ export function WorkspaceIdeShell() {
           onMergeEditorGroups={mergeEditorSplitToGroup}
           onSaveEditorGroupSnapshot={saveEditorGroupSnapshot}
           onFocusEditorOnly={focusEditorOnlyLayout}
+          onToggleCenterMaximized={() => toggleMaximizedPane("center")}
         />
         <DockLayoutManager
           panesByPlacement={panesByPlacement}
@@ -4494,6 +4496,7 @@ function EditorLayoutManager({
   editorSplitRatio,
   editorGroupTabs,
   activeEditorGroup,
+  maximizedPane,
   layoutLocked,
   editorGroupSnapshotCount,
   onSplitEditor,
@@ -4511,11 +4514,13 @@ function EditorLayoutManager({
   onMergeEditorGroups,
   onSaveEditorGroupSnapshot,
   onFocusEditorOnly,
+  onToggleCenterMaximized,
 }: {
   editorSplitMode: EditorSplitMode;
   editorSplitRatio: number;
   editorGroupTabs: EditorGroupTabs;
   activeEditorGroup: EditorGroupId;
+  maximizedPane: MaximizedPane;
   layoutLocked: boolean;
   editorGroupSnapshotCount: number;
   onSplitEditor: (mode: Exclude<EditorSplitMode, "single">) => void;
@@ -4533,6 +4538,7 @@ function EditorLayoutManager({
   onMergeEditorGroups: (preferredGroup: EditorGroupId) => void;
   onSaveEditorGroupSnapshot: () => void;
   onFocusEditorOnly: () => void;
+  onToggleCenterMaximized: () => void;
 }) {
   const splitActive = editorSplitMode !== "single";
   const primaryCount = editorGroupTabs.primary.length;
@@ -4547,6 +4553,9 @@ function EditorLayoutManager({
         </span>
         <button type="button" disabled={layoutLocked} onClick={onFocusEditorOnly} data-ide-editor-layout-focus-only>
           编辑器专注
+        </button>
+        <button type="button" disabled={layoutLocked} onClick={onToggleCenterMaximized} data-ide-editor-layout-maximize-center data-active={maximizedPane === "center" ? "true" : "false"} aria-pressed={maximizedPane === "center"}>
+          {maximizedPane === "center" ? "退出最大化" : "最大化编辑器"}
         </button>
         <button type="button" disabled={layoutLocked} onClick={onSaveEditorGroupSnapshot} data-ide-editor-layout-save-snapshot>
           保存编辑器布局
