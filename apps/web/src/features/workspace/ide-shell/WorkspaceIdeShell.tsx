@@ -2294,6 +2294,17 @@ export function WorkspaceIdeShell() {
     if (placement === "bottom") setBottomOpen(open);
   }
 
+  function isolateDockPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
+    setTopOpen(placement === "top");
+    setLeftOpen(placement === "left");
+    setRightOpen(placement === "right");
+    setBottomOpen(placement === "bottom");
+    setMaximizedPane(null);
+    openDockPlacement(placement);
+    setMobilePanel(placement);
+  }
+
   function cycleMobilePanel(direction: MobilePanelDirection) {
     const currentIndex = Math.max(0, MOBILE_PANEL_ORDER.indexOf(mobilePanel));
     const offset = direction === "next" ? 1 : -1;
@@ -3579,6 +3590,7 @@ export function WorkspaceIdeShell() {
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
+          onIsolateDock={isolateDockPlacement}
           onSetDockSplitMode={setDockSplitMode}
           onResizeDock={resizeDockPlacement}
           onSetDockSize={setDockPlacementSize}
@@ -4393,6 +4405,7 @@ function DockLayoutManager({
   maximizedPane,
   layoutLocked,
   onToggleDockOpen,
+  onIsolateDock,
   onSetDockSplitMode,
   onResizeDock,
   onSetDockSize,
@@ -4415,6 +4428,7 @@ function DockLayoutManager({
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
   onToggleDockOpen: (placement: PanePlacement) => void;
+  onIsolateDock: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
   onResizeDock: (placement: PanePlacement, delta: number) => void;
   onSetDockSize: (placement: PanePlacement, size: number) => void;
@@ -4481,6 +4495,9 @@ function DockLayoutManager({
                 </button>
                 <button type="button" disabled={layoutLocked} onClick={() => onToggleDockOpen(placement)} data-ide-pane-layout-toggle-open={placement}>
                   {open[placement] ? "收起" : "打开"}
+                </button>
+                <button type="button" disabled={layoutLocked} onClick={() => onIsolateDock(placement)} data-ide-pane-layout-isolate={placement}>
+                  独占
                 </button>
                 <button type="button" disabled={layoutLocked} onClick={() => onToggleMaximizedDock(placement)} data-ide-pane-layout-maximize={placement} data-active={isMaximized ? "true" : "false"} aria-pressed={isMaximized}>
                   {isMaximized ? "还原" : "最大化"}

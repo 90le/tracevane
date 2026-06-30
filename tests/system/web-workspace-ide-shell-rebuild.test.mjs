@@ -1567,3 +1567,17 @@ test("new Workspace IDE shell exposes dock reset controls in the pane layout man
   assert.match(shellSource, /onClick=\{\(\) => onResetDockComposition\(placement\)\}/);
   assert.match(shellSource, />\n                  重置\n                <\/button>/);
 });
+
+test("new Workspace IDE shell exposes dock isolation controls in the pane layout manager", () => {
+  assert.match(shellSource, /function isolateDockPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /setTopOpen\(placement === "top"\)/);
+  assert.match(shellSource, /setLeftOpen\(placement === "left"\)/);
+  assert.match(shellSource, /setRightOpen\(placement === "right"\)/);
+  assert.match(shellSource, /setBottomOpen\(placement === "bottom"\)/);
+  assert.match(shellSource, /setMaximizedPane\(null\);[\s\S]*?openDockPlacement\(placement\);[\s\S]*?setMobilePanel\(placement\)/);
+  assert.match(shellSource, /onIsolateDock=\{isolateDockPlacement\}/);
+  assert.match(shellSource, /onIsolateDock: \(placement: PanePlacement\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-isolate=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onIsolateDock\(placement\)\}/);
+  assert.match(shellSource, />\n                  独占\n                <\/button>/);
+});
