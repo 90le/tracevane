@@ -1842,6 +1842,21 @@ test("new Workspace IDE shell exposes per-pane dock destination controls in the 
   assert.match(cssSource, /data-active="true"/);
 });
 
+
+
+test("new Workspace IDE shell exposes adjacent dock quick moves in the pane layout manager", () => {
+  assert.match(shellSource, /const ADJACENT_DOCK_PLACEMENTS: Record<PanePlacement, PanePlacement\[\]>/);
+  assert.match(shellSource, /top: \["left", "right"\]/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-adjacent/);
+  assert.match(shellSource, /ADJACENT_DOCK_PLACEMENTS\[placement\]\.map\(\(targetPlacement\) => \(/);
+  assert.match(shellSource, /data-ide-pane-layout-adjacent=\{targetPlacement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-adjacent-pane=\{paneId\}/);
+  assert.match(shellSource, /快速移动 \$\{paneLabel\(paneId\)\} 到相邻的 \$\{placementLabel\(targetPlacement\)\} Dock/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, targetPlacement, undefined, role\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-adjacent/);
+  assert.match(cssSource, /border-style: dashed/);
+});
+
 test("new Workspace IDE shell exposes a mobile dock rail inside the pane layout manager", () => {
   assert.match(shellSource, /mobilePanel=\{mobilePanel\}/);
   assert.match(shellSource, /mobilePanel: MobilePanel/);

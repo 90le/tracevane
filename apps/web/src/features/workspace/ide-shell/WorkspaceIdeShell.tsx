@@ -66,6 +66,12 @@ type MobilePanelDirection = "next" | "previous";
 type IdeFocusRegion = "top" | "left" | "center" | "right" | "bottom";
 
 const DOCK_PLACEMENTS = ["top", "left", "right", "bottom"] as const satisfies readonly PanePlacement[];
+const ADJACENT_DOCK_PLACEMENTS: Record<PanePlacement, PanePlacement[]> = {
+  top: ["left", "right"],
+  left: ["top", "bottom"],
+  right: ["top", "bottom"],
+  bottom: ["left", "right"],
+};
 const MOBILE_PANEL_ORDER = ["editor", "top", "left", "right", "bottom"] as const satisfies readonly MobilePanel[];
 
 interface IdePaneSizes {
@@ -5303,6 +5309,21 @@ function DockLayoutManager({
                                 onClick={() => onMovePaneToGroup(paneId, targetPlacement, undefined, role)}
                               >
                                 {placementLabel(targetPlacement)}
+                              </button>
+                            ))}
+                          </span>
+                          <span className="workspace-ide-shell__dock-layout-adjacent" aria-label={`${paneLabel(paneId)} 相邻 Dock 快速移动`}>
+                            {ADJACENT_DOCK_PLACEMENTS[placement].map((targetPlacement) => (
+                              <button
+                                key={targetPlacement}
+                                type="button"
+                                disabled={layoutLocked || pinned || (role === "secondary" && splitModes[targetPlacement] === "single")}
+                                data-ide-pane-layout-adjacent={targetPlacement}
+                                data-ide-pane-layout-adjacent-pane={paneId}
+                                aria-label={`快速移动 ${paneLabel(paneId)} 到相邻的 ${placementLabel(targetPlacement)} Dock`}
+                                onClick={() => onMovePaneToGroup(paneId, targetPlacement, undefined, role)}
+                              >
+                                ↔ {placementLabel(targetPlacement)}
                               </button>
                             ))}
                           </span>

@@ -1869,14 +1869,16 @@
 
 .workspace-ide-shell__dock-layout-order,
 .workspace-ide-shell__dock-layout-role-switch,
-.workspace-ide-shell__dock-layout-destinations {
+.workspace-ide-shell__dock-layout-destinations,
+.workspace-ide-shell__dock-layout-adjacent {
   display: inline-flex;
   gap: 3px;
   align-items: center;
 }
 
 .workspace-ide-shell__dock-layout-role-switch,
-.workspace-ide-shell__dock-layout-destinations {
+.workspace-ide-shell__dock-layout-destinations,
+.workspace-ide-shell__dock-layout-adjacent {
   grid-column: 1 / -1;
   flex-wrap: wrap;
 }
@@ -1891,6 +1893,10 @@
 
 .workspace-ide-shell__dock-layout-pane-row button[data-ide-pane-layout-focus-pane] {
   border-color: rgba(125, 211, 252, 0.22);
+}
+
+.workspace-ide-shell__dock-layout-adjacent button {
+  border-style: dashed;
 }
 
 .workspace-ide-shell__dock-layout-order button {
