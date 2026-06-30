@@ -1581,3 +1581,13 @@ test("new Workspace IDE shell exposes dock isolation controls in the pane layout
   assert.match(shellSource, /onClick=\{\(\) => onIsolateDock\(placement\)\}/);
   assert.match(shellSource, />\n                  独占\n                <\/button>/);
 });
+
+test("new Workspace IDE shell exposes open-all controls in the pane layout manager", () => {
+  assert.match(shellSource, /onOpenAllDocks=\{openAllDocks\}/);
+  assert.match(shellSource, /onOpenAllDocks: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-open-all/);
+  assert.match(shellSource, /onClick=\{onOpenAllDocks\}/);
+  assert.match(shellSource, />\n          打开全部\n        <\/button>/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-manager-head button/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-manager-head span:nth-child\(2\)/);
+});

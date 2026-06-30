@@ -1229,9 +1229,18 @@
   letter-spacing: 0.02em;
 }
 
-.workspace-ide-shell__dock-layout-manager-head span:last-child {
+.workspace-ide-shell__dock-layout-manager-head span:nth-child(2) {
   color: var(--ide-muted);
   font-weight: 500;
+}
+
+.workspace-ide-shell__dock-layout-manager-head button {
+  min-height: 24px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 999px;
+  padding: 0 9px;
+  color: #cffafe;
+  font-size: 10px;
 }
 
 .workspace-ide-shell__dock-layout-manager-grid {

@@ -3589,6 +3589,7 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          onOpenAllDocks={openAllDocks}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onIsolateDock={isolateDockPlacement}
           onSetDockSplitMode={setDockSplitMode}
@@ -4404,6 +4405,7 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   layoutLocked,
+  onOpenAllDocks,
   onToggleDockOpen,
   onIsolateDock,
   onSetDockSplitMode,
@@ -4427,6 +4429,7 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  onOpenAllDocks: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onIsolateDock: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
@@ -4475,6 +4478,9 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-head">
         <span>Pane 布局管理器</span>
         <span>开合 · 拆分 · 比例 · 主/副组</span>
+        <button type="button" disabled={layoutLocked} onClick={onOpenAllDocks} data-ide-pane-layout-open-all>
+          打开全部
+        </button>
       </div>
       <div className="workspace-ide-shell__dock-layout-manager-grid">
         {DOCK_PLACEMENTS.map((placement) => {
