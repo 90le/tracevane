@@ -2992,6 +2992,15 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function setAllDockSplitMode(mode: DockSplitMode) {
+    if (layoutLocked) return;
+    setDockSplitModes(() => DOCK_PLACEMENTS.reduce((modes, placement) => {
+      modes[placement] = mode;
+      return modes;
+    }, {} as DockSplitModes));
+    if (mode !== "single") setDockSplitRatios(DEFAULT_DOCK_SPLIT_RATIOS);
+  }
+
   function selectDockPane(placement: PanePlacement, role: DockPaneRole, paneId: PaneId) {
     const oppositeRole: DockPaneRole = role === "primary" ? "secondary" : "primary";
     setDockPaneSelections((current) => {
@@ -3713,6 +3722,7 @@ export function WorkspaceIdeShell() {
           onIsolateDock={isolateDockPlacement}
           onRestoreDock={restoreDockPlacement}
           onSetDockSplitMode={setDockSplitMode}
+          onSetAllDockSplitMode={setAllDockSplitMode}
           onResizeDock={resizeDockPlacement}
           onSetDockSize={setDockPlacementSize}
           onSetDockSizePreset={setDockPlacementSizePreset}
@@ -4769,6 +4779,7 @@ function DockLayoutManager({
   onIsolateDock,
   onRestoreDock,
   onSetDockSplitMode,
+  onSetAllDockSplitMode,
   onResizeDock,
   onSetDockSize,
   onSetDockSizePreset,
@@ -4825,6 +4836,7 @@ function DockLayoutManager({
   onIsolateDock: (placement: PanePlacement) => void;
   onRestoreDock: (placement: PanePlacement) => void;
   onSetDockSplitMode: (placement: PanePlacement, mode: DockSplitMode) => void;
+  onSetAllDockSplitMode: (mode: DockSplitMode) => void;
   onResizeDock: (placement: PanePlacement, delta: number) => void;
   onSetDockSize: (placement: PanePlacement, size: number) => void;
   onSetDockSizePreset: (placement: PanePlacement, preset: DockSizePreset) => void;
@@ -4936,6 +4948,13 @@ function DockLayoutManager({
           {DOCK_SIZE_PRESETS.map((preset) => (
             <button key={preset} type="button" disabled={layoutLocked} onClick={() => onSetAllDockSizePreset(preset)} data-ide-pane-layout-size-matrix-preset={preset}>
               全部{preset === "compact" ? "紧凑" : preset === "expanded" ? "扩展" : "平衡"}
+            </button>
+          ))}
+        </div>
+        <div className="workspace-ide-shell__dock-layout-split-matrix" aria-label="全部 Dock 拆分模式" data-ide-pane-layout-split-matrix>
+          {(["single", "vertical", "horizontal"] as const).map((mode) => (
+            <button key={mode} type="button" disabled={layoutLocked} onClick={() => onSetAllDockSplitMode(mode)} data-ide-pane-layout-split-matrix-mode={mode}>
+              全部{mode === "single" ? "单组" : mode === "vertical" ? "左右" : "上下"}
             </button>
           ))}
         </div>

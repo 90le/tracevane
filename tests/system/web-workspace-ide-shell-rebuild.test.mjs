@@ -603,6 +603,14 @@ test("new Workspace IDE shell supports split dock groups", () => {
   assert.match(shellSource, /dockPaneSelections/);
   assert.match(shellSource, /activeDockFocus/);
   assert.match(shellSource, /function setDockSplitMode/);
+  assert.match(shellSource, /function setAllDockSplitMode\(mode: DockSplitMode\)/);
+  assert.match(shellSource, /setDockSplitModes\(\(\) => DOCK_PLACEMENTS\.reduce\(\(modes, placement\) =>/);
+  assert.match(shellSource, /if \(mode !== "single"\) setDockSplitRatios\(DEFAULT_DOCK_SPLIT_RATIOS\)/);
+  assert.match(shellSource, /onSetAllDockSplitMode=\{setAllDockSplitMode\}/);
+  assert.match(shellSource, /onSetAllDockSplitMode: \(mode: DockSplitMode\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-split-matrix/);
+  assert.match(shellSource, /data-ide-pane-layout-split-matrix-mode=\{mode\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSetAllDockSplitMode\(mode\)\}/);
   assert.match(shellSource, /function selectDockPane/);
   assert.match(shellSource, /const oppositeRole: DockPaneRole = role === "primary" \? "secondary" : "primary"/);
   assert.match(shellSource, /if \(nextSelection\[oppositeRole\] === paneId\)/);
@@ -1597,6 +1605,7 @@ test("new Workspace IDE shell exposes dock size presets in the pane layout manag
   assert.match(shellSource, /data-ide-pane-layout-size-preset=\{preset\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-size-presets/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-size-matrix/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-split-matrix/);
 });
 
 test("new Workspace IDE shell exposes continuous dock size sliders in the pane layout manager", () => {
