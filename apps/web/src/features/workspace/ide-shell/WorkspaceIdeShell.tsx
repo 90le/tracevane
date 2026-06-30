@@ -2680,6 +2680,16 @@ export function WorkspaceIdeShell() {
     setDockPlacementSize(placement, nextSize);
   }
 
+  function setAllDockPlacementSizePreset(preset: DockSizePreset) {
+    if (layoutLocked) return;
+    setPaneSizes(() => DOCK_PLACEMENTS.reduce((sizes, placement) => {
+      const { min, max } = getPaneSizeLimits(placement);
+      sizes[placement] = preset === "compact" ? min : preset === "expanded" ? max : Math.round((min + max) / 2);
+      return sizes;
+    }, {} as IdePaneSizes));
+    setLayoutPreset("balanced");
+  }
+
   function resizeActiveDockPlacement(delta: number) {
     if (!activeDockFocus) return;
     const pane = activeDockFocus.placement;
@@ -3706,6 +3716,7 @@ export function WorkspaceIdeShell() {
           onResizeDock={resizeDockPlacement}
           onSetDockSize={setDockPlacementSize}
           onSetDockSizePreset={setDockPlacementSizePreset}
+          onSetAllDockSizePreset={setAllDockPlacementSizePreset}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
@@ -4761,6 +4772,7 @@ function DockLayoutManager({
   onResizeDock,
   onSetDockSize,
   onSetDockSizePreset,
+  onSetAllDockSizePreset,
   onSetSplitRatioPreset,
   onMovePaneToGroup,
   onSwapDockGroups,
@@ -4816,6 +4828,7 @@ function DockLayoutManager({
   onResizeDock: (placement: PanePlacement, delta: number) => void;
   onSetDockSize: (placement: PanePlacement, size: number) => void;
   onSetDockSizePreset: (placement: PanePlacement, preset: DockSizePreset) => void;
+  onSetAllDockSizePreset: (preset: DockSizePreset) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
@@ -4916,6 +4929,13 @@ function DockLayoutManager({
           {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
             <button key={recipe.id} type="button" disabled={layoutLocked} onClick={() => onApplyWorkbenchRecipe(recipe.id)} title={recipe.description} data-ide-pane-layout-recipe={recipe.id}>
               {recipe.label}
+            </button>
+          ))}
+        </div>
+        <div className="workspace-ide-shell__dock-layout-size-matrix" aria-label="全部 Dock 尺寸档位" data-ide-pane-layout-size-matrix>
+          {DOCK_SIZE_PRESETS.map((preset) => (
+            <button key={preset} type="button" disabled={layoutLocked} onClick={() => onSetAllDockSizePreset(preset)} data-ide-pane-layout-size-matrix-preset={preset}>
+              全部{preset === "compact" ? "紧凑" : preset === "expanded" ? "扩展" : "平衡"}
             </button>
           ))}
         </div>
