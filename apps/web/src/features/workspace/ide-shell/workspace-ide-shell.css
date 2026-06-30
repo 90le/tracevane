@@ -1569,6 +1569,12 @@
   color: #cffafe;
 }
 
+.workspace-ide-shell__dock-layout-mobile-rail button[data-ide-pane-layout-mobile-cycle] {
+  min-width: 30px;
+  justify-content: center;
+  border-color: rgba(125, 211, 252, 0.24);
+}
+
 .workspace-ide-shell__dock-layout-mobile-rail button[data-ide-pane-layout-mobile-open="false"] {
   opacity: 0.62;
 }

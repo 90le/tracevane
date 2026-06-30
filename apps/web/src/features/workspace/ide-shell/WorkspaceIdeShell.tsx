@@ -3718,6 +3718,7 @@ export function WorkspaceIdeShell() {
           onResetAllDockSplitRatios={resetAllDockSplitRatios}
           onToggleLayoutLock={() => setLayoutLocked((locked) => !locked)}
           onShowMobilePanel={showMobilePanel}
+          onCycleMobilePanel={cycleMobilePanel}
           onHidePane={hidePane}
           onRestorePane={restorePane}
           onRestoreAllHiddenPanes={restoreAllHiddenPanes}
@@ -4779,6 +4780,7 @@ function DockLayoutManager({
   onResetAllDockSplitRatios,
   onToggleLayoutLock,
   onShowMobilePanel,
+  onCycleMobilePanel,
   onHidePane,
   onRestorePane,
   onRestoreAllHiddenPanes,
@@ -4840,6 +4842,7 @@ function DockLayoutManager({
   onResetAllDockSplitRatios: () => void;
   onToggleLayoutLock: () => void;
   onShowMobilePanel: (panel: MobilePanel) => void;
+  onCycleMobilePanel: (direction: MobilePanelDirection) => void;
   onHidePane: (paneId: PaneId) => void;
   onRestorePane: (paneId: PaneId) => void;
   onRestoreAllHiddenPanes: () => void;
@@ -4932,6 +4935,7 @@ function DockLayoutManager({
           })}
         </div>
         <div className="workspace-ide-shell__dock-layout-mobile-rail" aria-label="移动端 Dock 激活条" data-ide-pane-layout-mobile-rail>
+          <button type="button" disabled={layoutLocked} aria-label="布局管理器上一个手机 IDE 面板" onClick={() => onCycleMobilePanel("previous")} data-ide-pane-layout-mobile-cycle="previous">‹</button>
           <button type="button" disabled={layoutLocked} data-active={mobilePanel === "editor" ? "true" : "false"} data-ide-pane-layout-mobile-panel="editor" onClick={() => onShowMobilePanel("editor")}>
             编辑器
           </button>
@@ -4948,6 +4952,7 @@ function DockLayoutManager({
               {placementLabel(placement)}
             </button>
           ))}
+          <button type="button" disabled={layoutLocked} aria-label="布局管理器下一个手机 IDE 面板" onClick={() => onCycleMobilePanel("next")} data-ide-pane-layout-mobile-cycle="next">›</button>
         </div>
         <div className="workspace-ide-shell__dock-layout-recipes" aria-label="工作台组合预案" data-ide-pane-layout-recipes>
           {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
