@@ -3601,6 +3601,11 @@ export function WorkspaceIdeShell() {
           <span className="text-slate-500">⌘⇧P</span>
           <span>命令、文件、符号、Git、终端、AI 上下文</span>
         </button>
+        <details className="workspace-ide-shell__layout-planner" data-ide-layout-planner>
+          <summary data-ide-layout-planner-summary>
+            <span>布局</span>
+            <small>高级 Pane / 编辑器规划</small>
+          </summary>
         <div className="workspace-ide-shell__layout-presets" aria-label="IDE 布局预设">
           <button type="button" data-active={layoutPreset === "balanced"} onClick={() => applyLayoutPreset("balanced")}>平衡</button>
           <button type="button" data-active={layoutPreset === "code"} onClick={() => applyLayoutPreset("code")}>代码</button>
@@ -3768,6 +3773,7 @@ export function WorkspaceIdeShell() {
           onToggleMaximizedDock={toggleMaximizedPane}
           onFocusRegion={focusIdeRegion}
         />
+        </details>
         <div className="workspace-ide-shell__top-actions">
           <Button size="sm" variant={layoutLocked ? "outline" : "ghost"} onClick={() => setLayoutLocked((locked) => !locked)} data-ide-layout-lock-toggle>
             <Settings2 className="mr-2 h-4 w-4" />{layoutLocked ? "已锁" : "锁定"}

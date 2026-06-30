@@ -122,6 +122,24 @@ test("new Workspace IDE shell owns commands without importing the old workbench"
   assert.match(ideCommandsSource, /WorkspaceCommand/);
 });
 
+
+
+test("new Workspace IDE shell keeps advanced layout planning opt-in", () => {
+  assert.match(shellSource, /<details className="workspace-ide-shell__layout-planner" data-ide-layout-planner>/);
+  assert.match(shellSource, /<summary data-ide-layout-planner-summary>/);
+  assert.match(shellSource, /高级 Pane \/ 编辑器规划/);
+  assert.match(cssSource, /workspace-ide-shell__layout-planner:not\(\[open\]\) > :not\(summary\)/);
+  assert.match(cssSource, /display: none !important/);
+  assert.match(cssSource, /workspace-ide-shell__layout-planner\[open\]/);
+});
+
+test("new Workspace IDE shell hides pane chrome until dock interaction", () => {
+  assert.match(cssSource, /workspace-ide-shell__pane-dock-controls \{[\s\S]*?opacity: 0;[\s\S]*?max-height: 0;[\s\S]*?pointer-events: none;/);
+  assert.match(cssSource, /workspace-ide-shell__left-pane:hover \.workspace-ide-shell__pane-dock-controls/);
+  assert.match(cssSource, /workspace-ide-shell__pane-dock-controls:focus-within/);
+  assert.match(cssSource, /max-height: 44px/);
+});
+
 test("new Workspace IDE shell supports real pane layout controls", () => {
   assert.match(shellSource, /type MaximizedPane/);
   assert.match(shellSource, /type LayoutPreset/);

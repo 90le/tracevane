@@ -1981,3 +1981,84 @@
 .workspace-ide-shell__editor-tab[draggable="true"]:active {
   cursor: grabbing;
 }
+
+/* Default IDE mode must stay calm: advanced layout planning is opt-in. */
+.workspace-ide-shell__layout-planner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 88px;
+}
+
+.workspace-ide-shell__layout-planner > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 999px;
+  background: rgba(8, 13, 26, 0.9);
+  color: var(--ide-text);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.workspace-ide-shell__layout-planner > summary::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-ide-shell__layout-planner > summary small {
+  color: var(--ide-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workspace-ide-shell__layout-planner:not([open]) > :not(summary) {
+  display: none !important;
+}
+
+.workspace-ide-shell__layout-planner[open] {
+  position: absolute;
+  top: 8px;
+  left: 300px;
+  right: 12px;
+  z-index: 60;
+  display: grid;
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 16px;
+  background: rgba(5, 8, 18, 0.98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  padding: 12px;
+}
+
+.workspace-ide-shell__layout-planner[open] > summary {
+  grid-column: 1 / -1;
+  width: max-content;
+}
+
+.workspace-ide-shell__pane-dock-controls {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  padding-block: 0;
+  transition: opacity 120ms ease, max-height 120ms ease, padding 120ms ease;
+}
+
+.workspace-ide-shell__left-pane:hover .workspace-ide-shell__pane-dock-controls,
+.workspace-ide-shell__right-pane:hover .workspace-ide-shell__pane-dock-controls,
+.workspace-ide-shell__top-pane:hover .workspace-ide-shell__pane-dock-controls,
+.workspace-ide-shell__bottom-pane:hover .workspace-ide-shell__pane-dock-controls,
+.workspace-ide-shell__pane-dock-controls:focus-within {
+  opacity: 1;
+  max-height: 44px;
+  pointer-events: auto;
+  padding-block: 6px;
+}
