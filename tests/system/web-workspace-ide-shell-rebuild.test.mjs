@@ -1845,7 +1845,11 @@ test("new Workspace IDE shell exposes hidden pane controls in the pane layout ma
   assert.match(shellSource, /hiddenPanesByPlacement=\{\{ top: hiddenPanesForPlacement\("top"\), left: hiddenPanesForPlacement\("left"\), right: hiddenPanesForPlacement\("right"\), bottom: hiddenPanesForPlacement\("bottom"\) \}\}/);
   assert.match(shellSource, /hiddenPanes: PaneId\[\]/);
   assert.match(shellSource, /hiddenPanesByPlacement: PaneOrder/);
+  assert.match(shellSource, /function hidePanesForPlacement\(placement: PanePlacement\)/);
+  assert.match(shellSource, /const panesToHide = panesByPlacement\[placement\]\.filter\(\(paneId\) => !isPanePinned\(paneId\)\)/);
+  assert.match(shellSource, /for \(const paneId of panesToHide\) \{[\s\S]*?hidePane\(paneId\);[\s\S]*?\}/);
   assert.match(shellSource, /onHidePane=\{hidePane\}/);
+  assert.match(shellSource, /onHidePanesForPlacement=\{hidePanesForPlacement\}/);
   assert.match(shellSource, /onRestorePane=\{restorePane\}/);
   assert.match(shellSource, /onRestoreAllHiddenPanes=\{restoreAllHiddenPanes\}/);
   assert.match(shellSource, /onRestoreHiddenPanesForPlacement=\{restoreHiddenPanesForPlacement\}/);
@@ -1855,6 +1859,9 @@ test("new Workspace IDE shell exposes hidden pane controls in the pane layout ma
   assert.match(shellSource, /onClick=\{onRestoreAllHiddenPanes\}/);
   assert.match(shellSource, /workspace-ide-shell__dock-layout-hidden/);
   assert.match(shellSource, /data-ide-pane-layout-hidden=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-hide-dock-panes=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onHidePanesForPlacement\(placement\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| paneIds\.every\(\(paneId\) => pinnedPanes\.includes\(paneId\)\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-restore-hidden=\{placement\}/);
   assert.match(shellSource, /hiddenPanesByPlacement\[placement\]\.map\(\(paneId\) => \(/);
   assert.match(shellSource, /data-ide-pane-layout-hidden-pane=\{paneId\}/);

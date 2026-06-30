@@ -3367,6 +3367,14 @@ export function WorkspaceIdeShell() {
     hidePane(activeDockPaneForPlacement(activeDockFocus.placement, activeDockFocus.role) ?? activeDockFocus.paneId);
   }
 
+  function hidePanesForPlacement(placement: PanePlacement) {
+    if (layoutLocked) return;
+    const panesToHide = panesByPlacement[placement].filter((paneId) => !isPanePinned(paneId));
+    for (const paneId of panesToHide) {
+      hidePane(paneId);
+    }
+  }
+
   function restoreAllHiddenPanes() {
     if (layoutLocked) return;
     const panesToRestore = hiddenPanes;
@@ -3734,6 +3742,7 @@ export function WorkspaceIdeShell() {
           onShowMobilePanel={showMobilePanel}
           onCycleMobilePanel={cycleMobilePanel}
           onHidePane={hidePane}
+          onHidePanesForPlacement={hidePanesForPlacement}
           onTogglePanePinned={togglePanePinned}
           onFocusDockPane={focusDockPane}
           onRestorePane={restorePane}
@@ -4801,6 +4810,7 @@ function DockLayoutManager({
   onShowMobilePanel,
   onCycleMobilePanel,
   onHidePane,
+  onHidePanesForPlacement,
   onTogglePanePinned,
   onFocusDockPane,
   onRestorePane,
@@ -4868,6 +4878,7 @@ function DockLayoutManager({
   onShowMobilePanel: (panel: MobilePanel) => void;
   onCycleMobilePanel: (direction: MobilePanelDirection) => void;
   onHidePane: (paneId: PaneId) => void;
+  onHidePanesForPlacement: (placement: PanePlacement) => void;
   onTogglePanePinned: (paneId: PaneId) => void;
   onFocusDockPane: (placement: PanePlacement, role: DockPaneRole, paneId: PaneId) => void;
   onRestorePane: (paneId: PaneId) => void;
@@ -5211,6 +5222,9 @@ function DockLayoutManager({
               </div>
               <div className="workspace-ide-shell__dock-layout-hidden" data-ide-pane-layout-hidden={placement}>
                 <span>隐藏 Pane</span>
+                <button type="button" disabled={layoutLocked || paneIds.every((paneId) => pinnedPanes.includes(paneId))} onClick={() => onHidePanesForPlacement(placement)} data-ide-pane-layout-hide-dock-panes={placement}>
+                  隐藏本 Dock
+                </button>
                 <button type="button" disabled={layoutLocked || hiddenPanesByPlacement[placement].length === 0} onClick={() => onRestoreHiddenPanesForPlacement(placement)} data-ide-pane-layout-restore-hidden={placement}>
                   恢复本 Dock
                 </button>
