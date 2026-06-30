@@ -168,6 +168,7 @@
 - Framework/styling system: React 19, React Router, TanStack Query, Tailwind v4/Aurora tokens.
 - Current dependencies available: `monaco-editor`, `dockview`, `dockview-react`, `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-web-links`, `@xterm/addon-webgl`, `pretty-file-icons`.
 - Design-token constraints: use `theme.css` variables and existing primitives before adding component styling systems.
+  - Monaco, xterm, Dockview, diff, Problems and Output themes must be adapter-mapped from Aurora CSS variables; no component-local hardcoded VS Code/terminal color systems.
 - Performance constraints:
   - File contents live in Monaco models, not long-lived React state/store.
   - Large files need thresholds, read-only/truncated fallback and explicit messaging.
