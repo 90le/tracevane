@@ -1638,3 +1638,14 @@ test("new Workspace IDE shell exposes layout undo redo in the pane layout manage
   assert.match(shellSource, /disabled=\{layoutLocked \|\| !canRedoLayout\}/);
   assert.match(shellSource, /onClick=\{onRedoLayout\}/);
 });
+
+test("new Workspace IDE shell exposes workbench recipes in the pane layout manager", () => {
+  assert.match(shellSource, /onApplyWorkbenchRecipe=\{applyWorkbenchRecipe\}/);
+  assert.match(shellSource, /onApplyWorkbenchRecipe: \(recipeId: WorkbenchRecipeId\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-recipes/);
+  assert.match(shellSource, /WORKBENCH_LAYOUT_RECIPES\.map\(\(recipe\) =>/);
+  assert.match(shellSource, /onClick=\{\(\) => onApplyWorkbenchRecipe\(recipe\.id\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-recipe=\{recipe\.id\}/);
+  assert.match(shellSource, /title=\{recipe\.description\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-recipes/);
+});

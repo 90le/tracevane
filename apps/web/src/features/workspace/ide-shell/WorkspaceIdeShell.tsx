@@ -3601,6 +3601,7 @@ export function WorkspaceIdeShell() {
           onRedoLayout={redoIdeLayoutChange}
           onSaveLayoutSnapshot={saveLayoutSnapshot}
           onRestoreLatestLayoutSnapshot={restoreLatestLayoutSnapshot}
+          onApplyWorkbenchRecipe={applyWorkbenchRecipe}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
@@ -4425,6 +4426,7 @@ function DockLayoutManager({
   onRedoLayout,
   onSaveLayoutSnapshot,
   onRestoreLatestLayoutSnapshot,
+  onApplyWorkbenchRecipe,
   onOpenAllDocks,
   onFocusEditorOnly,
   onToggleDockOpen,
@@ -4457,6 +4459,7 @@ function DockLayoutManager({
   onRedoLayout: () => void;
   onSaveLayoutSnapshot: () => void;
   onRestoreLatestLayoutSnapshot: () => void;
+  onApplyWorkbenchRecipe: (recipeId: WorkbenchRecipeId) => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
@@ -4507,6 +4510,13 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-head">
         <span>Pane 布局管理器</span>
         <span>开合 · 拆分 · 比例 · 主/副组</span>
+        <div className="workspace-ide-shell__dock-layout-recipes" aria-label="工作台组合预案" data-ide-pane-layout-recipes>
+          {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
+            <button key={recipe.id} type="button" disabled={layoutLocked} onClick={() => onApplyWorkbenchRecipe(recipe.id)} title={recipe.description} data-ide-pane-layout-recipe={recipe.id}>
+              {recipe.label}
+            </button>
+          ))}
+        </div>
         <button type="button" disabled={layoutLocked || !canUndoLayout} onClick={onUndoLayout} data-ide-pane-layout-undo>
           撤销
         </button>

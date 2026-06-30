@@ -1243,6 +1243,16 @@
   font-size: 10px;
 }
 
+.workspace-ide-shell__dock-layout-recipes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.workspace-ide-shell__dock-layout-recipes button {
+  border-color: rgba(45, 212, 191, 0.24);
+}
+
 .workspace-ide-shell__dock-layout-manager-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));
