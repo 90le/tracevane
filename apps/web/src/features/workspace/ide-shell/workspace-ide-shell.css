@@ -1382,10 +1382,29 @@
   font-style: normal;
 }
 
+.workspace-ide-shell__dock-layout-pane-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+
 .workspace-ide-shell__dock-layout-group button {
   justify-content: start;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.workspace-ide-shell__dock-layout-order {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.workspace-ide-shell__dock-layout-order button {
+  min-width: 22px;
+  padding-inline: 5px;
+  justify-content: center;
 }
 
 @media (max-width: 1200px) {

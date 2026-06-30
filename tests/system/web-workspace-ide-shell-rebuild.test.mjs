@@ -1650,6 +1650,21 @@ test("new Workspace IDE shell exposes workbench recipes in the pane layout manag
   assert.match(cssSource, /workspace-ide-shell__dock-layout-recipes/);
 });
 
+
+test("new Workspace IDE shell exposes pane order controls in the pane layout manager", () => {
+  assert.match(shellSource, /paneIds\.map\(\(paneId, paneIndex\) =>/);
+  assert.match(shellSource, /data-ide-pane-layout-pane-row=\{paneId\}/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-order/);
+  assert.match(shellSource, /data-ide-pane-layout-order-up=\{paneId\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, paneIds\[paneIndex - 1\], role\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-order-down=\{paneId\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, paneIds\[paneIndex \+ 2\], role\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned \|\| paneIndex === 0 \|\| \(role === "secondary" && splitModes\[placement\] === "single"\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned \|\| paneIndex === paneIds\.length - 1 \|\| \(role === "secondary" && splitModes\[placement\] === "single"\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-pane-row/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-order/);
+});
+
 test("new Workspace IDE shell exposes a layout summary in the pane layout manager", () => {
   assert.match(shellSource, /layoutSnapshotCount=\{layoutSnapshots\.length\}/);
   assert.match(shellSource, /layoutHistoryCounts=\{\{ past: layoutHistoryPast\.length, future: layoutHistoryFuture\.length \}\}/);

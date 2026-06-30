@@ -4650,25 +4650,50 @@ function DockLayoutManager({
                     onDrop={(event) => dropManagerPaneOnGroup(placement, role, event)}
                   >
                     <span>{role === "primary" ? "主组" : "副组"}</span>
-                    {paneIds.map((paneId) => {
+                    {paneIds.map((paneId, paneIndex) => {
                       const selected = dockPaneSelections[placement][role] === paneId;
                       const pinned = pinnedPanes.includes(paneId);
                       return (
-                        <button
+                        <div
                           key={`${role}-${paneId}`}
-                          type="button"
-                          disabled={layoutLocked || pinned || (role === "secondary" && splitModes[placement] === "single")}
-                          data-ide-pane-layout-assign={paneId}
-                          data-ide-pane-layout-assign-placement={placement}
-                          data-ide-pane-layout-assign-role={role}
-                          data-active={selected ? "true" : "false"}
-                          draggable={!layoutLocked && !pinned}
-                          onDragStart={(event) => beginManagerPaneDrag(paneId, event)}
-                          onDragEnd={() => setDragTarget(null)}
-                          onClick={() => onMovePaneToGroup(paneId, placement, undefined, role)}
+                          className="workspace-ide-shell__dock-layout-pane-row"
+                          data-ide-pane-layout-pane-row={paneId}
                         >
-                          {paneLabel(paneId)}{pinned ? " · 固定" : ""}
-                        </button>
+                          <button
+                            type="button"
+                            disabled={layoutLocked || pinned || (role === "secondary" && splitModes[placement] === "single")}
+                            data-ide-pane-layout-assign={paneId}
+                            data-ide-pane-layout-assign-placement={placement}
+                            data-ide-pane-layout-assign-role={role}
+                            data-active={selected ? "true" : "false"}
+                            draggable={!layoutLocked && !pinned}
+                            onDragStart={(event) => beginManagerPaneDrag(paneId, event)}
+                            onDragEnd={() => setDragTarget(null)}
+                            onClick={() => onMovePaneToGroup(paneId, placement, undefined, role)}
+                          >
+                            {paneLabel(paneId)}{pinned ? " · 固定" : ""}
+                          </button>
+                          <span className="workspace-ide-shell__dock-layout-order" aria-label={`${paneLabel(paneId)} 顺序`}>
+                            <button
+                              type="button"
+                              disabled={layoutLocked || pinned || paneIndex === 0 || (role === "secondary" && splitModes[placement] === "single")}
+                              data-ide-pane-layout-order-up={paneId}
+                              aria-label={`上移 ${paneLabel(paneId)}`}
+                              onClick={() => onMovePaneToGroup(paneId, placement, paneIds[paneIndex - 1], role)}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={layoutLocked || pinned || paneIndex === paneIds.length - 1 || (role === "secondary" && splitModes[placement] === "single")}
+                              data-ide-pane-layout-order-down={paneId}
+                              aria-label={`下移 ${paneLabel(paneId)}`}
+                              onClick={() => onMovePaneToGroup(paneId, placement, paneIds[paneIndex + 2], role)}
+                            >
+                              ↓
+                            </button>
+                          </span>
+                        </div>
                       );
                     })}
                     {paneIds.length === 0 ? <em>空 Dock</em> : null}
