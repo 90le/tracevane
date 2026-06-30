@@ -46,6 +46,14 @@ export interface FileManagerDirectoryTab extends FileManagerLocation {
   id: string;
 }
 
+export interface FileManagerBookmarkItem {
+  id: string;
+  type: "folder" | "bookmark";
+  title: string;
+  location?: FileManagerLocation;
+  children?: FileManagerBookmarkItem[];
+}
+
 export interface FileManagerHeaderProps {
   rootId: string;
   roots: FileRootSummary[];
@@ -281,7 +289,8 @@ export interface FileManagerNavigationBarProps {
   pathSuggestionsOpen: boolean;
   activePathSuggestionIndex: number;
   quickLocations: FileManagerQuickLocation[];
-  favoriteLocations: FileManagerQuickLocation[];
+  favoriteTree: FileManagerBookmarkItem[];
+  favoriteCount: number;
   recentLocations: FileManagerQuickLocation[];
   directoryTabs: FileManagerDirectoryTab[];
   activeDirectoryTabId?: string;
@@ -302,8 +311,11 @@ export interface FileManagerNavigationBarProps {
   onPathSuggestionActiveChange: (index: number) => void;
   onAcceptPathSuggestion: (location: FileManagerLocation) => void;
   onToggleFavoriteCurrent: () => void;
-  onRemoveFavoriteLocation: (location: FileManagerLocation) => void;
-  onRenameFavoriteLocation: (location: FileManagerLocation) => void;
+  onOpenFavoriteItem: (itemId: string) => void;
+  onAddFavoriteFolder: (parentId?: string) => void;
+  onAddCurrentFavoriteToFolder: (parentId?: string) => void;
+  onRenameFavoriteItem: (itemId: string) => void;
+  onRemoveFavoriteItem: (itemId: string) => void;
   onClearRecentLocations: () => void;
   filterInputRef?: React.RefObject<HTMLInputElement | null>;
   onFilterTextChange: (value: string) => void;
@@ -315,7 +327,6 @@ export interface FileManagerNavigationBarProps {
   onUpload: () => void;
   onChangeViewMode: (mode: FileManagerViewMode) => void;
   onRefresh: () => void;
-  currentLocation?: FileManagerLocation;
 }
 
 function locationShortLabel(location: FileManagerLocation): string {
@@ -326,6 +337,114 @@ function locationShortLabel(location: FileManagerLocation): string {
     location.rootId;
   const parts = label.split("/").filter(Boolean);
   return parts.at(-1) ?? label ?? "root";
+}
+
+function FavoriteTreeItem({
+  item,
+  depth,
+  onOpenFavoriteItem,
+  onAddFavoriteFolder,
+  onAddCurrentFavoriteToFolder,
+  onRenameFavoriteItem,
+  onRemoveFavoriteItem,
+}: {
+  item: FileManagerBookmarkItem;
+  depth: number;
+  onOpenFavoriteItem: (itemId: string) => void;
+  onAddFavoriteFolder: (parentId?: string) => void;
+  onAddCurrentFavoriteToFolder: (parentId?: string) => void;
+  onRenameFavoriteItem: (itemId: string) => void;
+  onRemoveFavoriteItem: (itemId: string) => void;
+}) {
+  const isFolder = item.type === "folder";
+  return (
+    <div className="grid gap-1" data-file-manager-bookmark-item={item.type}>
+      <div
+        className="grid grid-cols-1 items-center gap-1 rounded-md px-2 py-1 hover:bg-panel-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+      >
+        <button
+          type="button"
+          className="inline-flex min-w-0 items-center gap-2 text-left"
+          onClick={() => (isFolder ? undefined : onOpenFavoriteItem(item.id))}
+          disabled={isFolder}
+          title={item.location?.label || item.title}
+        >
+          {isFolder ? (
+            <Folder className="size-3.5 shrink-0 text-primary" />
+          ) : (
+            <Star className="size-3.5 shrink-0 text-primary" />
+          )}
+          <span className="min-w-0 truncate font-medium text-ink-strong">
+            {item.title}
+          </span>
+          {isFolder ? (
+            <span className="text-2xs text-subtle">
+              {item.children?.length ?? 0}
+            </span>
+          ) : null}
+        </button>
+        <div className="flex flex-wrap items-center gap-1 text-2xs sm:justify-end">
+          {isFolder ? (
+            <>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
+                onClick={() => onAddFavoriteFolder(item.id)}
+              >
+                子文件夹
+              </button>
+              <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
+                onClick={() => onAddCurrentFavoriteToFolder(item.id)}
+              >
+                收藏当前
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-primary hover:bg-primary-soft"
+              onClick={() => onOpenFavoriteItem(item.id)}
+            >
+              打开
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
+            onClick={() => onRenameFavoriteItem(item.id)}
+          >
+            重命名
+          </button>
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
+            onClick={() => onRemoveFavoriteItem(item.id)}
+          >
+            删除
+          </button>
+        </div>
+      </div>
+      {isFolder && item.children?.length ? (
+        <div className="grid gap-1">
+          {item.children.map((child) => (
+            <FavoriteTreeItem
+              key={child.id}
+              item={child}
+              depth={depth + 1}
+              onOpenFavoriteItem={onOpenFavoriteItem}
+              onAddFavoriteFolder={onAddFavoriteFolder}
+              onAddCurrentFavoriteToFolder={onAddCurrentFavoriteToFolder}
+              onRenameFavoriteItem={onRenameFavoriteItem}
+              onRemoveFavoriteItem={onRemoveFavoriteItem}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function FileManagerNavigationBar({
@@ -340,7 +459,8 @@ export function FileManagerNavigationBar({
   pathSuggestionsOpen,
   activePathSuggestionIndex,
   quickLocations,
-  favoriteLocations,
+  favoriteTree,
+  favoriteCount,
   recentLocations,
   directoryTabs,
   activeDirectoryTabId,
@@ -361,8 +481,11 @@ export function FileManagerNavigationBar({
   onPathSuggestionActiveChange,
   onAcceptPathSuggestion,
   onToggleFavoriteCurrent,
-  onRemoveFavoriteLocation,
-  onRenameFavoriteLocation,
+  onOpenFavoriteItem,
+  onAddFavoriteFolder,
+  onAddCurrentFavoriteToFolder,
+  onRenameFavoriteItem,
+  onRemoveFavoriteItem,
   onClearRecentLocations,
   filterInputRef,
   onFilterTextChange,
@@ -374,7 +497,6 @@ export function FileManagerNavigationBar({
   onUpload,
   onChangeViewMode,
   onRefresh,
-  currentLocation,
 }: FileManagerNavigationBarProps) {
   const suggestionListId = React.useId();
   const activeSuggestion = pathSuggestions[activePathSuggestionIndex];
@@ -717,61 +839,58 @@ export function FileManagerNavigationBar({
           </div>
         ) : null}
         <div
-          className="hidden min-w-0 flex-wrap items-center justify-end gap-1.5 text-xs xl:flex"
+          className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs xl:justify-end"
           data-file-manager-quick-locations
         >
           <details className="relative" data-file-manager-favorites-manage>
             <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
-              收藏夹
-              {favoriteLocations.length ? ` · ${favoriteLocations.length}` : ""}
+              收藏夹{favoriteCount ? ` · ${favoriteCount}` : ""}
             </summary>
-            <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(62dvh,520px)] w-[min(520px,calc(100vw-2rem))] gap-2 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(68dvh,560px)] w-[min(620px,calc(100vw-2rem))] gap-2 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
               <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
-                <span className="font-semibold text-ink-strong">收藏夹</span>
-                <span className="text-2xs text-subtle">
-                  类似浏览器书签，可打开、重命名或删除
-                </span>
-              </div>
-              {favoriteLocations.length ? (
-                favoriteLocations.map((location) => (
-                  <div
-                    key={`favorite-manage:${location.rootId}:${location.directoryPath}`}
-                    className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1 rounded-md px-2 py-1 hover:bg-panel-2"
-                  >
-                    <button
-                      type="button"
-                      className="min-w-0 truncate text-left"
-                      title={location.label}
-                      onClick={() => onNavigateToLocation(location)}
-                    >
-                      {location.displayName || location.label}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded px-1.5 py-0.5 text-primary hover:bg-primary-soft"
-                      onClick={() => onNavigateToLocation(location)}
-                    >
-                      打开
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
-                      onClick={() => onRenameFavoriteLocation(location)}
-                    >
-                      重命名
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
-                      onClick={() => onRemoveFavoriteLocation(location)}
-                    >
-                      删除
-                    </button>
+                <div className="min-w-0">
+                  <div className="font-semibold text-ink-strong">收藏夹</div>
+                  <div className="text-2xs text-subtle">
+                    支持多级文件夹、重命名、删除和添加当前位置
                   </div>
-                ))
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    className="rounded border border-line bg-panel-2 px-2 py-1 text-2xs text-muted hover:text-primary"
+                    onClick={() => onAddFavoriteFolder()}
+                  >
+                    新建文件夹
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-primary-line bg-primary-soft px-2 py-1 text-2xs text-primary hover:bg-primary-soft/80"
+                    onClick={() => onAddCurrentFavoriteToFolder()}
+                  >
+                    收藏当前
+                  </button>
+                </div>
+              </div>
+              {favoriteTree.length ? (
+                <div className="grid gap-1" data-file-manager-bookmark-tree>
+                  {favoriteTree.map((item) => (
+                    <FavoriteTreeItem
+                      key={item.id}
+                      item={item}
+                      depth={0}
+                      onOpenFavoriteItem={onOpenFavoriteItem}
+                      onAddFavoriteFolder={onAddFavoriteFolder}
+                      onAddCurrentFavoriteToFolder={
+                        onAddCurrentFavoriteToFolder
+                      }
+                      onRenameFavoriteItem={onRenameFavoriteItem}
+                      onRemoveFavoriteItem={onRemoveFavoriteItem}
+                    />
+                  ))}
+                </div>
               ) : (
                 <div className="rounded-md bg-panel-2 px-3 py-2 text-muted">
-                  当前没有收藏。点击地址栏右侧星标可收藏当前位置。
+                  当前没有收藏。点击“收藏当前”或地址栏右侧星标可收藏当前位置。
                 </div>
               )}
             </div>
