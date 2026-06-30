@@ -3601,6 +3601,8 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           mobilePanel={mobilePanel}
+          hiddenPanes={hiddenPanes}
+          hiddenPanesByPlacement={{ top: hiddenPanesForPlacement("top"), left: hiddenPanesForPlacement("left"), right: hiddenPanesForPlacement("right"), bottom: hiddenPanesForPlacement("bottom") }}
           layoutLocked={layoutLocked}
           layoutSnapshotCount={layoutSnapshots.length}
           layoutHistoryCounts={{ past: layoutHistoryPast.length, future: layoutHistoryFuture.length }}
@@ -3615,6 +3617,10 @@ export function WorkspaceIdeShell() {
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
           onShowMobilePanel={showMobilePanel}
+          onHidePane={hidePane}
+          onRestorePane={restorePane}
+          onRestoreAllHiddenPanes={restoreAllHiddenPanes}
+          onRestoreHiddenPanesForPlacement={restoreHiddenPanesForPlacement}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
           onIsolateDock={isolateDockPlacement}
           onRestoreDock={restoreDockPlacement}
@@ -4431,6 +4437,8 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   mobilePanel,
+  hiddenPanes,
+  hiddenPanesByPlacement,
   layoutLocked,
   layoutSnapshotCount,
   layoutHistoryCounts,
@@ -4445,6 +4453,10 @@ function DockLayoutManager({
   onOpenAllDocks,
   onFocusEditorOnly,
   onShowMobilePanel,
+  onHidePane,
+  onRestorePane,
+  onRestoreAllHiddenPanes,
+  onRestoreHiddenPanesForPlacement,
   onToggleDockOpen,
   onIsolateDock,
   onRestoreDock,
@@ -4469,6 +4481,8 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   mobilePanel: MobilePanel;
+  hiddenPanes: PaneId[];
+  hiddenPanesByPlacement: PaneOrder;
   layoutLocked: boolean;
   layoutSnapshotCount: number;
   layoutHistoryCounts: { past: number; future: number };
@@ -4483,6 +4497,10 @@ function DockLayoutManager({
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
   onShowMobilePanel: (panel: MobilePanel) => void;
+  onHidePane: (paneId: PaneId) => void;
+  onRestorePane: (paneId: PaneId) => void;
+  onRestoreAllHiddenPanes: () => void;
+  onRestoreHiddenPanesForPlacement: (placement: PanePlacement) => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
   onIsolateDock: (placement: PanePlacement) => void;
   onRestoreDock: (placement: PanePlacement) => void;
@@ -4536,8 +4554,12 @@ function DockLayoutManager({
         <div className="workspace-ide-shell__dock-layout-summary" data-ide-pane-layout-summary>
           <span data-ide-pane-layout-summary-open>打开 {openDockCount}/4</span>
           <span data-ide-pane-layout-summary-max>{maximizedPane ? `最大化 ${maximizedPane === "center" ? "编辑器" : placementLabel(maximizedPane)}` : "未最大化"}</span>
+          <span data-ide-pane-layout-summary-hidden>隐藏 {hiddenPanes.length}</span>
           <span data-ide-pane-layout-summary-snapshots>快照 {layoutSnapshotCount}</span>
           <span data-ide-pane-layout-summary-history>历史 {layoutHistoryCounts.past}/{layoutHistoryCounts.future}</span>
+          <button type="button" disabled={layoutLocked || hiddenPanes.length === 0} onClick={onRestoreAllHiddenPanes} data-ide-pane-layout-restore-all-hidden>
+            恢复隐藏
+          </button>
         </div>
         <div className="workspace-ide-shell__dock-layout-switchboard" aria-label="Dock 开关矩阵" data-ide-pane-layout-switchboard>
           {DOCK_PLACEMENTS.map((placement) => {
@@ -4737,6 +4759,17 @@ function DockLayoutManager({
                   收回单组
                 </button>
               </div>
+              <div className="workspace-ide-shell__dock-layout-hidden" data-ide-pane-layout-hidden={placement}>
+                <span>隐藏 Pane</span>
+                <button type="button" disabled={layoutLocked || hiddenPanesByPlacement[placement].length === 0} onClick={() => onRestoreHiddenPanesForPlacement(placement)} data-ide-pane-layout-restore-hidden={placement}>
+                  恢复本 Dock
+                </button>
+                {hiddenPanesByPlacement[placement].map((paneId) => (
+                  <button key={paneId} type="button" disabled={layoutLocked} onClick={() => onRestorePane(paneId)} data-ide-pane-layout-hidden-pane={paneId}>
+                    {paneLabel(paneId)}
+                  </button>
+                ))}
+              </div>
               <div className="workspace-ide-shell__dock-layout-groups" data-ide-pane-layout-groups={placement}>
                 {(["primary", "secondary"] as const).map((role) => (
                   <div
@@ -4792,6 +4825,15 @@ function DockLayoutManager({
                               ↓
                             </button>
                           </span>
+                          <button
+                            type="button"
+                            disabled={layoutLocked || pinned}
+                            data-ide-pane-layout-hide-pane={paneId}
+                            aria-label={`隐藏 ${paneLabel(paneId)} Pane`}
+                            onClick={() => onHidePane(paneId)}
+                          >
+                            隐藏
+                          </button>
                           <span className="workspace-ide-shell__dock-layout-destinations" aria-label={`${paneLabel(paneId)} Dock 目的地`}>
                             {DOCK_PLACEMENTS.map((targetPlacement) => (
                               <button

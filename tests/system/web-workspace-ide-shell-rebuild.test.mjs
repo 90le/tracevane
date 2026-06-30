@@ -1700,6 +1700,30 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
 
 
 
+
+test("new Workspace IDE shell exposes hidden pane controls in the pane layout manager", () => {
+  assert.match(shellSource, /hiddenPanes=\{hiddenPanes\}/);
+  assert.match(shellSource, /hiddenPanesByPlacement=\{\{ top: hiddenPanesForPlacement\("top"\), left: hiddenPanesForPlacement\("left"\), right: hiddenPanesForPlacement\("right"\), bottom: hiddenPanesForPlacement\("bottom"\) \}\}/);
+  assert.match(shellSource, /hiddenPanes: PaneId\[\]/);
+  assert.match(shellSource, /hiddenPanesByPlacement: PaneOrder/);
+  assert.match(shellSource, /onHidePane=\{hidePane\}/);
+  assert.match(shellSource, /onRestorePane=\{restorePane\}/);
+  assert.match(shellSource, /onRestoreAllHiddenPanes=\{restoreAllHiddenPanes\}/);
+  assert.match(shellSource, /onRestoreHiddenPanesForPlacement=\{restoreHiddenPanesForPlacement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-hidden/);
+  assert.match(shellSource, /隐藏 \{hiddenPanes\.length\}/);
+  assert.match(shellSource, /data-ide-pane-layout-restore-all-hidden/);
+  assert.match(shellSource, /onClick=\{onRestoreAllHiddenPanes\}/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-hidden/);
+  assert.match(shellSource, /data-ide-pane-layout-hidden=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-restore-hidden=\{placement\}/);
+  assert.match(shellSource, /hiddenPanesByPlacement\[placement\]\.map\(\(paneId\) => \(/);
+  assert.match(shellSource, /data-ide-pane-layout-hidden-pane=\{paneId\}/);
+  assert.match(shellSource, /data-ide-pane-layout-hide-pane=\{paneId\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onHidePane\(paneId\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-hidden/);
+});
+
 test("new Workspace IDE shell exposes per-pane dock destination controls in the pane layout manager", () => {
   assert.match(shellSource, /workspace-ide-shell__dock-layout-destinations/);
   assert.match(shellSource, /DOCK_PLACEMENTS\.map\(\(targetPlacement\) => \(/);

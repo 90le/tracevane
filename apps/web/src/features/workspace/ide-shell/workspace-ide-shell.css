@@ -1336,6 +1336,7 @@
 .workspace-ide-shell__dock-layout-modes,
 .workspace-ide-shell__dock-layout-visibility,
 .workspace-ide-shell__dock-layout-orientation,
+.workspace-ide-shell__dock-layout-hidden,
 .workspace-ide-shell__dock-layout-groups {
   display: flex;
   align-items: center;
@@ -1372,17 +1373,20 @@
 
 .workspace-ide-shell__dock-layout-modes,
 .workspace-ide-shell__dock-layout-visibility,
-.workspace-ide-shell__dock-layout-orientation {
+.workspace-ide-shell__dock-layout-orientation,
+.workspace-ide-shell__dock-layout-hidden {
   flex-wrap: wrap;
 }
 
 .workspace-ide-shell__dock-layout-visibility,
-.workspace-ide-shell__dock-layout-orientation {
+.workspace-ide-shell__dock-layout-orientation,
+.workspace-ide-shell__dock-layout-hidden {
   padding: 4px 0;
 }
 
 .workspace-ide-shell__dock-layout-visibility > span,
-.workspace-ide-shell__dock-layout-orientation > span {
+.workspace-ide-shell__dock-layout-orientation > span,
+.workspace-ide-shell__dock-layout-hidden > span {
   color: var(--ide-muted);
   font-size: 10px;
 }
