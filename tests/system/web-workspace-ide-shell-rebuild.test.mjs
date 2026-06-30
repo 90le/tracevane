@@ -1701,6 +1701,22 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
 
 
 
+
+test("new Workspace IDE shell exposes per-pane primary secondary group controls in the pane layout manager", () => {
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-role-switch/);
+  assert.match(shellSource, /\(\["primary", "secondary"\] as const\)\.map\(\(targetRole\) => \(/);
+  assert.match(shellSource, /data-ide-pane-layout-role-switch=\{targetRole\}/);
+  assert.match(shellSource, /data-ide-pane-layout-role-switch-pane=\{paneId\}/);
+  assert.match(shellSource, /data-active=\{role === targetRole \? "true" : "false"\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned\}/);
+  assert.match(shellSource, /targetRole === "secondary" && splitModes\[placement\] === "single"/);
+  assert.match(shellSource, /onSetDockSplitMode\(placement, "vertical"\)/);
+  assert.match(shellSource, /onMovePaneToGroup\(paneId, placement, undefined, targetRole\)/);
+  assert.match(shellSource, /targetRole === "primary" \? "主组" : "副组"/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-role-switch/);
+  assert.match(cssSource, /grid-column: 1 \/ -1/);
+});
+
 test("new Workspace IDE shell exposes hidden pane controls in the pane layout manager", () => {
   assert.match(shellSource, /hiddenPanes=\{hiddenPanes\}/);
   assert.match(shellSource, /hiddenPanesByPlacement=\{\{ top: hiddenPanesForPlacement\("top"\), left: hiddenPanesForPlacement\("left"\), right: hiddenPanesForPlacement\("right"\), bottom: hiddenPanesForPlacement\("bottom"\) \}\}/);

@@ -1463,17 +1463,20 @@
 }
 
 .workspace-ide-shell__dock-layout-order,
+.workspace-ide-shell__dock-layout-role-switch,
 .workspace-ide-shell__dock-layout-destinations {
   display: inline-flex;
   gap: 3px;
   align-items: center;
 }
 
+.workspace-ide-shell__dock-layout-role-switch,
 .workspace-ide-shell__dock-layout-destinations {
   grid-column: 1 / -1;
   flex-wrap: wrap;
 }
 
+.workspace-ide-shell__dock-layout-role-switch button[data-active="true"],
 .workspace-ide-shell__dock-layout-destinations button[data-active="true"] {
   border-color: rgba(45, 212, 191, 0.48);
   background: rgba(45, 212, 191, 0.12);

@@ -4834,6 +4834,25 @@ function DockLayoutManager({
                           >
                             隐藏
                           </button>
+                          <span className="workspace-ide-shell__dock-layout-role-switch" aria-label={`${paneLabel(paneId)} 主副组`}>
+                            {(["primary", "secondary"] as const).map((targetRole) => (
+                              <button
+                                key={targetRole}
+                                type="button"
+                                disabled={layoutLocked || pinned}
+                                data-ide-pane-layout-role-switch={targetRole}
+                                data-ide-pane-layout-role-switch-pane={paneId}
+                                data-active={role === targetRole ? "true" : "false"}
+                                aria-label={`移动 ${paneLabel(paneId)} 到 ${targetRole === "primary" ? "主组" : "副组"}`}
+                                onClick={() => {
+                                  if (targetRole === "secondary" && splitModes[placement] === "single") onSetDockSplitMode(placement, "vertical");
+                                  onMovePaneToGroup(paneId, placement, undefined, targetRole);
+                                }}
+                              >
+                                {targetRole === "primary" ? "主组" : "副组"}
+                              </button>
+                            ))}
+                          </span>
                           <span className="workspace-ide-shell__dock-layout-destinations" aria-label={`${paneLabel(paneId)} Dock 目的地`}>
                             {DOCK_PLACEMENTS.map((targetPlacement) => (
                               <button
