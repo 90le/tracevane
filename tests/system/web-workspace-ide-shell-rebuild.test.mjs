@@ -1839,8 +1839,8 @@ test("new Workspace IDE shell exposes an editor group layout manager", () => {
   assert.match(shellSource, /data-ide-editor-layout-manager/);
   assert.match(shellSource, /aria-label="编辑器组布局管理器"/);
   assert.match(shellSource, /data-ide-editor-layout-summary/);
-  assert.match(shellSource, /data-ide-editor-layout-card="primary"/);
-  assert.match(shellSource, /data-ide-editor-layout-card="secondary"/);
+  assert.match(shellSource, /data-ide-editor-layout-card=\{group\}/);
+  assert.match(shellSource, /\(\["primary", "secondary"\] as const\)\.map\(\(group\) => \{/);
   assert.match(shellSource, /data-ide-editor-layout-split-vertical/);
   assert.match(shellSource, /data-ide-editor-layout-split-horizontal/);
   assert.match(shellSource, /data-ide-editor-layout-swap-groups/);
@@ -1884,4 +1884,31 @@ test("new Workspace IDE shell exposes continuous editor group ratio controls in 
   assert.match(cssSource, /workspace-ide-shell__editor-layout-ratio/);
   assert.match(cssSource, /workspace-ide-shell__editor-layout-ratio input\[type="range"\]/);
   assert.match(cssSource, /accent-color: #22d3ee/);
+});
+
+test("new Workspace IDE shell exposes editor tab group controls in the layout manager", () => {
+  assert.match(shellSource, /onSelectEditorTab=\{selectEditorTab\}/);
+  assert.match(shellSource, /onMoveEditorTabToGroup=\{moveEditorTabToGroupEnd\}/);
+  assert.match(shellSource, /onCloseEditorTab=\{closeEditorTab\}/);
+  assert.match(shellSource, /onSelectEditorTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
+  assert.match(shellSource, /onMoveEditorTabToGroup: \(sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab\) => void/);
+  assert.match(shellSource, /onCloseEditorTab: \(group: EditorGroupId, tab: EditorTab\) => void/);
+  assert.match(shellSource, /\(\["primary", "secondary"\] as const\)\.map\(\(group\) => \{/);
+  assert.match(shellSource, /const targetGroup: EditorGroupId = group === "primary" \? "secondary" : "primary"/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-tabs/);
+  assert.match(shellSource, /data-ide-editor-layout-tabs=\{group\}/);
+  assert.match(shellSource, /data-ide-editor-layout-empty-tabs=\{group\}/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-tab-row/);
+  assert.match(shellSource, /data-ide-editor-layout-tab=\{tab\.path\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-group=\{group\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onSelectEditorTab\(group, tab\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-focus=\{tab\.path\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMoveEditorTabToGroup\(group, targetGroup, tab\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-move=\{tab\.path\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-target=\{targetGroup\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onCloseEditorTab\(group, tab\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-tab-close=\{tab\.path\}/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-tabs/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-tab-row/);
+  assert.match(cssSource, /grid-template-columns: minmax\(0, 1fr\) auto auto/);
 });

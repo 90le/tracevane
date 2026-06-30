@@ -3614,6 +3614,9 @@ export function WorkspaceIdeShell() {
           onSetEditorSplitRatioPreset={setEditorSplitRatioPreset}
           onSetEditorSplitRatio={setEditorSplitRatioFromManager}
           onResizeEditorSplit={resizeEditorSplitFromManager}
+          onSelectEditorTab={selectEditorTab}
+          onMoveEditorTabToGroup={moveEditorTabToGroupEnd}
+          onCloseEditorTab={closeEditorTab}
           onFocusEditorGroup={focusEditorGroup}
           onSwapEditorGroups={swapEditorGroups}
           onMergeEditorGroups={mergeEditorSplitToGroup}
@@ -4468,6 +4471,9 @@ function EditorLayoutManager({
   onSetEditorSplitRatioPreset,
   onSetEditorSplitRatio,
   onResizeEditorSplit,
+  onSelectEditorTab,
+  onMoveEditorTabToGroup,
+  onCloseEditorTab,
   onFocusEditorGroup,
   onSwapEditorGroups,
   onMergeEditorGroups,
@@ -4484,6 +4490,9 @@ function EditorLayoutManager({
   onSetEditorSplitRatioPreset: (ratio: SplitRatioPreset) => void;
   onSetEditorSplitRatio: (ratio: number) => void;
   onResizeEditorSplit: (delta: number) => void;
+  onSelectEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
+  onMoveEditorTabToGroup: (sourceGroup: EditorGroupId, targetGroup: EditorGroupId, tab: EditorTab) => void;
+  onCloseEditorTab: (group: EditorGroupId, tab: EditorTab) => void;
   onFocusEditorGroup: (group: EditorGroupId) => void;
   onSwapEditorGroups: () => void;
   onMergeEditorGroups: (preferredGroup: EditorGroupId) => void;
@@ -4509,41 +4518,58 @@ function EditorLayoutManager({
         </button>
       </div>
       <div className="workspace-ide-shell__editor-layout-grid">
-        <article className="workspace-ide-shell__editor-layout-card" data-ide-editor-layout-card="primary" data-active={activeEditorGroup === "primary" ? "true" : "false"}>
-          <header>
-            <button type="button" onClick={() => onFocusEditorGroup("primary")} data-ide-editor-layout-focus="primary">
-              主编辑器组
-            </button>
-            <span>{primaryCount} tabs</span>
-          </header>
-          <div className="workspace-ide-shell__editor-layout-group-actions">
-            <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("vertical")} data-ide-editor-layout-split-vertical>
-              右侧拆分
-            </button>
-            <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("horizontal")} data-ide-editor-layout-split-horizontal>
-              下方拆分
-            </button>
-          </div>
-        </article>
-        <article className="workspace-ide-shell__editor-layout-card" data-ide-editor-layout-card="secondary" data-active={activeEditorGroup === "secondary" ? "true" : "false"}>
-          <header>
-            <button type="button" disabled={!splitActive} onClick={() => onFocusEditorGroup("secondary")} data-ide-editor-layout-focus="secondary">
-              副编辑器组
-            </button>
-            <span>{secondaryCount} tabs</span>
-          </header>
-          <div className="workspace-ide-shell__editor-layout-group-actions">
-            <button type="button" disabled={layoutLocked || !splitActive} onClick={onSwapEditorGroups} data-ide-editor-layout-swap-groups>
-              交换主副
-            </button>
-            <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("primary")} data-ide-editor-layout-merge-primary>
-              合并到主组
-            </button>
-            <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("secondary")} data-ide-editor-layout-merge-secondary>
-              合并到副组
-            </button>
-          </div>
-        </article>
+        {(["primary", "secondary"] as const).map((group) => {
+          const tabs = editorGroupTabs[group];
+          const targetGroup: EditorGroupId = group === "primary" ? "secondary" : "primary";
+          return (
+            <article key={group} className="workspace-ide-shell__editor-layout-card" data-ide-editor-layout-card={group} data-active={activeEditorGroup === group ? "true" : "false"}>
+              <header>
+                <button type="button" disabled={group === "secondary" && !splitActive} onClick={() => onFocusEditorGroup(group)} data-ide-editor-layout-focus={group}>
+                  {group === "primary" ? "主编辑器组" : "副编辑器组"}
+                </button>
+                <span>{tabs.length} tabs</span>
+              </header>
+              {group === "primary" ? (
+                <div className="workspace-ide-shell__editor-layout-group-actions">
+                  <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("vertical")} data-ide-editor-layout-split-vertical>
+                    右侧拆分
+                  </button>
+                  <button type="button" disabled={layoutLocked} onClick={() => onSplitEditor("horizontal")} data-ide-editor-layout-split-horizontal>
+                    下方拆分
+                  </button>
+                </div>
+              ) : (
+                <div className="workspace-ide-shell__editor-layout-group-actions">
+                  <button type="button" disabled={layoutLocked || !splitActive} onClick={onSwapEditorGroups} data-ide-editor-layout-swap-groups>
+                    交换主副
+                  </button>
+                  <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("primary")} data-ide-editor-layout-merge-primary>
+                    合并到主组
+                  </button>
+                  <button type="button" disabled={layoutLocked || !splitActive} onClick={() => onMergeEditorGroups("secondary")} data-ide-editor-layout-merge-secondary>
+                    合并到副组
+                  </button>
+                </div>
+              )}
+              <div className="workspace-ide-shell__editor-layout-tabs" data-ide-editor-layout-tabs={group}>
+                {tabs.length === 0 ? <span data-ide-editor-layout-empty-tabs={group}>无打开文件</span> : null}
+                {tabs.map((tab) => (
+                  <div key={`${tab.rootId}:${tab.path}`} className="workspace-ide-shell__editor-layout-tab-row" data-ide-editor-layout-tab={tab.path} data-ide-editor-layout-tab-group={group}>
+                    <button type="button" onClick={() => onSelectEditorTab(group, tab)} title={tab.path} data-ide-editor-layout-tab-focus={tab.path}>
+                      {editorTabLabel(tab.path)}
+                    </button>
+                    <button type="button" disabled={layoutLocked} onClick={() => onMoveEditorTabToGroup(group, targetGroup, tab)} data-ide-editor-layout-tab-move={tab.path} data-ide-editor-layout-tab-target={targetGroup}>
+                      移到{targetGroup === "primary" ? "主组" : "副组"}
+                    </button>
+                    <button type="button" disabled={layoutLocked} onClick={() => onCloseEditorTab(group, tab)} data-ide-editor-layout-tab-close={tab.path} aria-label={`关闭 ${editorTabLabel(tab.path)}`}>
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
         <div className="workspace-ide-shell__editor-layout-orientation" data-ide-editor-layout-orientation>
           <span>拆分方向</span>
           <button type="button" disabled={layoutLocked} data-active={editorSplitMode === "vertical" ? "true" : "false"} onClick={() => onSplitEditor("vertical")} data-ide-editor-layout-orientation-vertical>
