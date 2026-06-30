@@ -1621,3 +1621,20 @@ test("new Workspace IDE shell exposes latest layout restore in the pane layout m
   assert.match(shellSource, /onClick=\{onRestoreLatestLayoutSnapshot\}/);
   assert.match(shellSource, />\n          恢复最近\n        <\/button>/);
 });
+
+test("new Workspace IDE shell exposes layout undo redo in the pane layout manager", () => {
+  assert.match(shellSource, /canUndoLayout=\{layoutHistoryPast\.length > 0\}/);
+  assert.match(shellSource, /canRedoLayout=\{layoutHistoryFuture\.length > 0\}/);
+  assert.match(shellSource, /onUndoLayout=\{undoIdeLayoutChange\}/);
+  assert.match(shellSource, /onRedoLayout=\{redoIdeLayoutChange\}/);
+  assert.match(shellSource, /canUndoLayout: boolean/);
+  assert.match(shellSource, /canRedoLayout: boolean/);
+  assert.match(shellSource, /onUndoLayout: \(\) => void/);
+  assert.match(shellSource, /onRedoLayout: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-undo/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| !canUndoLayout\}/);
+  assert.match(shellSource, /onClick=\{onUndoLayout\}/);
+  assert.match(shellSource, /data-ide-pane-layout-redo/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| !canRedoLayout\}/);
+  assert.match(shellSource, /onClick=\{onRedoLayout\}/);
+});

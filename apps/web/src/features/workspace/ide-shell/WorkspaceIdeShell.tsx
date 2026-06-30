@@ -3594,7 +3594,11 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          canUndoLayout={layoutHistoryPast.length > 0}
+          canRedoLayout={layoutHistoryFuture.length > 0}
           hasLayoutSnapshots={layoutSnapshots.length > 0}
+          onUndoLayout={undoIdeLayoutChange}
+          onRedoLayout={redoIdeLayoutChange}
           onSaveLayoutSnapshot={saveLayoutSnapshot}
           onRestoreLatestLayoutSnapshot={restoreLatestLayoutSnapshot}
           onOpenAllDocks={openAllDocks}
@@ -4414,7 +4418,11 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   layoutLocked,
+  canUndoLayout,
+  canRedoLayout,
   hasLayoutSnapshots,
+  onUndoLayout,
+  onRedoLayout,
   onSaveLayoutSnapshot,
   onRestoreLatestLayoutSnapshot,
   onOpenAllDocks,
@@ -4442,7 +4450,11 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  canUndoLayout: boolean;
+  canRedoLayout: boolean;
   hasLayoutSnapshots: boolean;
+  onUndoLayout: () => void;
+  onRedoLayout: () => void;
   onSaveLayoutSnapshot: () => void;
   onRestoreLatestLayoutSnapshot: () => void;
   onOpenAllDocks: () => void;
@@ -4495,6 +4507,12 @@ function DockLayoutManager({
       <div className="workspace-ide-shell__dock-layout-manager-head">
         <span>Pane 布局管理器</span>
         <span>开合 · 拆分 · 比例 · 主/副组</span>
+        <button type="button" disabled={layoutLocked || !canUndoLayout} onClick={onUndoLayout} data-ide-pane-layout-undo>
+          撤销
+        </button>
+        <button type="button" disabled={layoutLocked || !canRedoLayout} onClick={onRedoLayout} data-ide-pane-layout-redo>
+          重做
+        </button>
         <button type="button" disabled={layoutLocked} onClick={onSaveLayoutSnapshot} data-ide-pane-layout-save-snapshot>
           保存布局
         </button>
