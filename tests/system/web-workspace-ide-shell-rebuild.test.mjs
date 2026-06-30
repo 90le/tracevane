@@ -1607,3 +1607,17 @@ test("new Workspace IDE shell exposes layout snapshot save in the pane layout ma
   assert.match(shellSource, /onClick=\{onSaveLayoutSnapshot\}/);
   assert.match(shellSource, />\n          保存布局\n        <\/button>/);
 });
+
+test("new Workspace IDE shell exposes latest layout restore in the pane layout manager", () => {
+  assert.match(shellSource, /function restoreLatestLayoutSnapshot\(\)/);
+  assert.match(shellSource, /const snapshot = layoutSnapshots\[0\]/);
+  assert.match(shellSource, /if \(snapshot\) restoreLayoutSnapshot\(snapshot\)/);
+  assert.match(shellSource, /hasLayoutSnapshots=\{layoutSnapshots\.length > 0\}/);
+  assert.match(shellSource, /onRestoreLatestLayoutSnapshot=\{restoreLatestLayoutSnapshot\}/);
+  assert.match(shellSource, /hasLayoutSnapshots: boolean/);
+  assert.match(shellSource, /onRestoreLatestLayoutSnapshot: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-restore-latest/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| !hasLayoutSnapshots\}/);
+  assert.match(shellSource, /onClick=\{onRestoreLatestLayoutSnapshot\}/);
+  assert.match(shellSource, />\n          恢复最近\n        <\/button>/);
+});

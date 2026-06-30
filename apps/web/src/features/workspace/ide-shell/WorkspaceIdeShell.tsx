@@ -2430,6 +2430,11 @@ export function WorkspaceIdeShell() {
     applyIdeLayoutState(snapshot.state);
   }
 
+  function restoreLatestLayoutSnapshot() {
+    const snapshot = layoutSnapshots[0];
+    if (snapshot) restoreLayoutSnapshot(snapshot);
+  }
+
   function deleteLayoutSnapshot(snapshotId: string) {
     const nextSnapshots = layoutSnapshots.filter((snapshot) => snapshot.id !== snapshotId);
     setLayoutSnapshots(nextSnapshots);
@@ -3589,7 +3594,9 @@ export function WorkspaceIdeShell() {
           paneSizes={paneSizes}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          hasLayoutSnapshots={layoutSnapshots.length > 0}
           onSaveLayoutSnapshot={saveLayoutSnapshot}
+          onRestoreLatestLayoutSnapshot={restoreLatestLayoutSnapshot}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleDockOpen={(placement) => setDockOpen(placement, !isDockOpen(placement))}
@@ -4407,7 +4414,9 @@ function DockLayoutManager({
   paneSizes,
   maximizedPane,
   layoutLocked,
+  hasLayoutSnapshots,
   onSaveLayoutSnapshot,
+  onRestoreLatestLayoutSnapshot,
   onOpenAllDocks,
   onFocusEditorOnly,
   onToggleDockOpen,
@@ -4433,7 +4442,9 @@ function DockLayoutManager({
   paneSizes: IdePaneSizes;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  hasLayoutSnapshots: boolean;
   onSaveLayoutSnapshot: () => void;
+  onRestoreLatestLayoutSnapshot: () => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
   onToggleDockOpen: (placement: PanePlacement) => void;
@@ -4486,6 +4497,9 @@ function DockLayoutManager({
         <span>开合 · 拆分 · 比例 · 主/副组</span>
         <button type="button" disabled={layoutLocked} onClick={onSaveLayoutSnapshot} data-ide-pane-layout-save-snapshot>
           保存布局
+        </button>
+        <button type="button" disabled={layoutLocked || !hasLayoutSnapshots} onClick={onRestoreLatestLayoutSnapshot} data-ide-pane-layout-restore-latest>
+          恢复最近
         </button>
         <button type="button" disabled={layoutLocked} onClick={onOpenAllDocks} data-ide-pane-layout-open-all>
           打开全部
