@@ -1580,7 +1580,9 @@ test("new Workspace IDE shell exposes editor group swap and directional merge co
 
 test("new Workspace IDE shell exposes split group nudge controls in the pane layout manager", () => {
   assert.match(shellSource, /onResizeDockSplitGroup=\{resizeDockSplitGroup\}/);
+  assert.match(shellSource, /onResetDockSplitRatio=\{resetDockSplitRatio\}/);
   assert.match(shellSource, /onResizeDockSplitGroup: \(placement: PanePlacement, role: DockPaneRole, direction: "grow" \| "shrink"\) => void/);
+  assert.match(shellSource, /onResetDockSplitRatio: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /workspace-ide-shell__dock-layout-split-nudge/);
   assert.match(shellSource, /data-ide-pane-layout-split-nudge=\{placement\}/);
   assert.match(shellSource, /主\/副组比例 · \{Math\.round\(splitRatios\[placement\]\)\}\/\{100 - Math\.round\(splitRatios\[placement\]\)\}/);
@@ -1592,6 +1594,8 @@ test("new Workspace IDE shell exposes split group nudge controls in the pane lay
   assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "secondary", "shrink"\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-split-nudge-secondary-grow=\{placement\}/);
   assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "secondary", "grow"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge-reset=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResetDockSplitRatio\(placement\)\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-split-nudge/);
 });
 

@@ -3742,6 +3742,7 @@ export function WorkspaceIdeShell() {
           onSetAllDockSizePreset={setAllDockPlacementSizePreset}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
           onResizeDockSplitGroup={resizeDockSplitGroup}
+          onResetDockSplitRatio={resetDockSplitRatio}
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
           onMergeDockGroups={mergeDockSplitGroups}
@@ -4807,6 +4808,7 @@ function DockLayoutManager({
   onSetAllDockSizePreset,
   onSetSplitRatioPreset,
   onResizeDockSplitGroup,
+  onResetDockSplitRatio,
   onMovePaneToGroup,
   onSwapDockGroups,
   onMergeDockGroups,
@@ -4872,6 +4874,7 @@ function DockLayoutManager({
   onSetAllDockSizePreset: (preset: DockSizePreset) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
   onResizeDockSplitGroup: (placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") => void;
+  onResetDockSplitRatio: (placement: PanePlacement) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
   onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
@@ -5138,6 +5141,9 @@ function DockLayoutManager({
                 </button>
                 <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResizeDockSplitGroup(placement, "secondary", "grow")} data-ide-pane-layout-split-nudge-secondary-grow={placement}>
                   副组 ＋
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResetDockSplitRatio(placement)} data-ide-pane-layout-split-nudge-reset={placement}>
+                  归中
                 </button>
               </div>
               <div className="workspace-ide-shell__dock-layout-combine" data-ide-pane-layout-combine={placement}>
