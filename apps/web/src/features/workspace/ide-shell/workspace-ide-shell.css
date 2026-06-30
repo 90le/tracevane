@@ -1244,7 +1244,8 @@
 }
 
 .workspace-ide-shell__dock-layout-summary,
-.workspace-ide-shell__dock-layout-recipes {
+.workspace-ide-shell__dock-layout-recipes,
+.workspace-ide-shell__dock-layout-switchboard {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 5px;
@@ -1261,6 +1262,34 @@
 
 .workspace-ide-shell__dock-layout-recipes button {
   border-color: rgba(45, 212, 191, 0.24);
+}
+
+.workspace-ide-shell__dock-layout-switchboard button {
+  display: inline-grid;
+  gap: 2px;
+  min-height: 34px;
+  padding-block: 4px;
+  text-align: left;
+}
+
+.workspace-ide-shell__dock-layout-switchboard button strong {
+  color: #e0f2fe;
+  font-size: 10px;
+}
+
+.workspace-ide-shell__dock-layout-switchboard button span {
+  color: var(--ide-muted);
+  font-size: 9px;
+}
+
+.workspace-ide-shell__dock-layout-switchboard button[data-ide-pane-layout-switch-open="false"] {
+  border-style: dashed;
+  opacity: 0.68;
+}
+
+.workspace-ide-shell__dock-layout-switchboard button[data-ide-pane-layout-switch-maximized="true"] {
+  border-color: rgba(34, 211, 238, 0.58);
+  background: rgba(34, 211, 238, 0.14);
 }
 
 .workspace-ide-shell__dock-layout-manager-grid {

@@ -1697,6 +1697,26 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
   assert.match(cssSource, /workspace-ide-shell__dock-layout-order/);
 });
 
+
+test("new Workspace IDE shell exposes a dock switchboard in the pane layout manager", () => {
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-switchboard/);
+  assert.match(shellSource, /aria-label="Dock 开关矩阵"/);
+  assert.match(shellSource, /data-ide-pane-layout-switchboard/);
+  assert.match(shellSource, /DOCK_PLACEMENTS\.map\(\(placement\) => \{/);
+  assert.match(shellSource, /data-ide-pane-layout-switch=\{placement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-switch-open=\{open\[placement\] \? "true" : "false"\}/);
+  assert.match(shellSource, /data-ide-pane-layout-switch-maximized=\{isMaximized \? "true" : "false"\}/);
+  assert.match(shellSource, /aria-pressed=\{open\[placement\]\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onToggleDockOpen\(placement\)\}/);
+  assert.match(shellSource, /onDoubleClick=\{\(\) => onToggleMaximizedDock\(placement\)\}/);
+  assert.match(shellSource, /<strong>\{placementLabel\(placement\)\}<\/strong>/);
+  assert.match(shellSource, /已打开/);
+  assert.match(shellSource, /已收起/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-switchboard/);
+  assert.match(cssSource, /data-ide-pane-layout-switch-open="false"/);
+  assert.match(cssSource, /data-ide-pane-layout-switch-maximized="true"/);
+});
+
 test("new Workspace IDE shell exposes a layout summary in the pane layout manager", () => {
   assert.match(shellSource, /layoutSnapshotCount=\{layoutSnapshots\.length\}/);
   assert.match(shellSource, /layoutHistoryCounts=\{\{ past: layoutHistoryPast\.length, future: layoutHistoryFuture\.length \}\}/);

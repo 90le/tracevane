@@ -4533,6 +4533,27 @@ function DockLayoutManager({
           <span data-ide-pane-layout-summary-snapshots>快照 {layoutSnapshotCount}</span>
           <span data-ide-pane-layout-summary-history>历史 {layoutHistoryCounts.past}/{layoutHistoryCounts.future}</span>
         </div>
+        <div className="workspace-ide-shell__dock-layout-switchboard" aria-label="Dock 开关矩阵" data-ide-pane-layout-switchboard>
+          {DOCK_PLACEMENTS.map((placement) => {
+            const isMaximized = maximizedPane === placement;
+            return (
+              <button
+                key={placement}
+                type="button"
+                disabled={layoutLocked}
+                data-ide-pane-layout-switch={placement}
+                data-ide-pane-layout-switch-open={open[placement] ? "true" : "false"}
+                data-ide-pane-layout-switch-maximized={isMaximized ? "true" : "false"}
+                aria-pressed={open[placement]}
+                onClick={() => onToggleDockOpen(placement)}
+                onDoubleClick={() => onToggleMaximizedDock(placement)}
+              >
+                <strong>{placementLabel(placement)}</strong>
+                <span>{open[placement] ? "已打开" : "已收起"}{isMaximized ? " · 最大化" : ""}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="workspace-ide-shell__dock-layout-recipes" aria-label="工作台组合预案" data-ide-pane-layout-recipes>
           {WORKBENCH_LAYOUT_RECIPES.map((recipe) => (
             <button key={recipe.id} type="button" disabled={layoutLocked} onClick={() => onApplyWorkbenchRecipe(recipe.id)} title={recipe.description} data-ide-pane-layout-recipe={recipe.id}>
