@@ -18,6 +18,7 @@ import {
   Star,
   Upload,
   MoreHorizontal,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -34,10 +35,15 @@ export interface FileManagerLocation {
   rootId: string;
   directoryPath: string;
   label: string;
+  displayName?: string;
 }
 
 export interface FileManagerQuickLocation extends FileManagerLocation {
   favorited: boolean;
+}
+
+export interface FileManagerDirectoryTab extends FileManagerLocation {
+  id: string;
 }
 
 export interface FileManagerHeaderProps {
@@ -83,9 +89,7 @@ export function FileManagerHeader({
         <span className="inline-grid size-7 shrink-0 place-items-center rounded-lg border border-primary-line bg-primary-soft text-primary">
           <HardDrive className="size-4" />
         </span>
-        <span className="font-semibold text-ink-strong">
-          文件管理器
-        </span>
+        <span className="font-semibold text-ink-strong">文件管理器</span>
         <span className="hidden max-w-[180px] truncate rounded-full border border-line bg-panel px-2 py-1 text-2xs text-subtle md:inline-flex">
           {currentRoot?.labelZh ?? rootId ?? "未选择根目录"}
         </span>
@@ -253,7 +257,9 @@ type CompactBreadcrumb =
   | (FileBreadcrumb & { collapsed?: false })
   | { label: "…"; path: "__tracevane_breadcrumb_ellipsis__"; collapsed: true };
 
-function compactBreadcrumbs(breadcrumbs: FileBreadcrumb[]): CompactBreadcrumb[] {
+function compactBreadcrumbs(
+  breadcrumbs: FileBreadcrumb[],
+): CompactBreadcrumb[] {
   const pathCrumbs = breadcrumbs.slice(1);
   if (pathCrumbs.length <= 4) return pathCrumbs;
   return [
@@ -277,11 +283,16 @@ export interface FileManagerNavigationBarProps {
   quickLocations: FileManagerQuickLocation[];
   favoriteLocations: FileManagerQuickLocation[];
   recentLocations: FileManagerQuickLocation[];
+  directoryTabs: FileManagerDirectoryTab[];
+  activeDirectoryTabId?: string;
   filterText: string;
   showHidden: boolean;
   currentLocationFavorited: boolean;
   onNavigateToDirectory: (path: string) => void;
   onNavigateToLocation: (location: FileManagerLocation) => void;
+  onSelectDirectoryTab: (tabId: string) => void;
+  onAddDirectoryTab: () => void;
+  onCloseDirectoryTab: (tabId: string) => void;
   onPathInputFocus: () => void;
   onPathInputBlur: () => void;
   onPathInputChange: (value: string) => void;
@@ -292,6 +303,7 @@ export interface FileManagerNavigationBarProps {
   onAcceptPathSuggestion: (location: FileManagerLocation) => void;
   onToggleFavoriteCurrent: () => void;
   onRemoveFavoriteLocation: (location: FileManagerLocation) => void;
+  onRenameFavoriteLocation: (location: FileManagerLocation) => void;
   onClearRecentLocations: () => void;
   filterInputRef?: React.RefObject<HTMLInputElement | null>;
   onFilterTextChange: (value: string) => void;
@@ -306,38 +318,14 @@ export interface FileManagerNavigationBarProps {
   currentLocation?: FileManagerLocation;
 }
 
-function tabKey(location: Pick<FileManagerLocation, "rootId" | "directoryPath">): string {
-  return `${location.rootId}:${location.directoryPath}`;
-}
-
 function locationShortLabel(location: FileManagerLocation): string {
-  const label = location.label || location.directoryPath || location.rootId;
+  const label =
+    location.displayName ||
+    location.label ||
+    location.directoryPath ||
+    location.rootId;
   const parts = label.split("/").filter(Boolean);
   return parts.at(-1) ?? label ?? "root";
-}
-
-function buildDirectoryTabs({
-  currentLocation,
-  favoriteLocations,
-  recentLocations,
-}: {
-  currentLocation?: FileManagerLocation;
-  favoriteLocations: FileManagerQuickLocation[];
-  recentLocations: FileManagerQuickLocation[];
-}): FileManagerQuickLocation[] {
-  const tabs: FileManagerQuickLocation[] = [];
-  const seen = new Set<string>();
-  const push = (location: FileManagerQuickLocation | undefined) => {
-    if (!location) return;
-    const key = tabKey(location);
-    if (seen.has(key)) return;
-    seen.add(key);
-    tabs.push(location);
-  };
-  push(currentLocation ? { ...currentLocation, favorited: false } : undefined);
-  favoriteLocations.forEach(push);
-  recentLocations.forEach(push);
-  return tabs.slice(0, 7);
 }
 
 export function FileManagerNavigationBar({
@@ -354,11 +342,16 @@ export function FileManagerNavigationBar({
   quickLocations,
   favoriteLocations,
   recentLocations,
+  directoryTabs,
+  activeDirectoryTabId,
   filterText,
   showHidden,
   currentLocationFavorited,
   onNavigateToDirectory,
   onNavigateToLocation,
+  onSelectDirectoryTab,
+  onAddDirectoryTab,
+  onCloseDirectoryTab,
   onPathInputFocus,
   onPathInputBlur,
   onPathInputChange,
@@ -369,6 +362,7 @@ export function FileManagerNavigationBar({
   onAcceptPathSuggestion,
   onToggleFavoriteCurrent,
   onRemoveFavoriteLocation,
+  onRenameFavoriteLocation,
   onClearRecentLocations,
   filterInputRef,
   onFilterTextChange,
@@ -410,15 +404,6 @@ export function FileManagerNavigationBar({
   }, [onPathInputBlur]);
 
   const visibleBreadcrumbs = compactBreadcrumbs(breadcrumbs);
-  const directoryTabs = React.useMemo(
-    () =>
-      buildDirectoryTabs({
-        currentLocation,
-        favoriteLocations,
-        recentLocations,
-      }),
-    [currentLocation, favoriteLocations, recentLocations],
-  );
 
   return (
     <div
@@ -432,44 +417,56 @@ export function FileManagerNavigationBar({
         data-file-manager-directory-tabs
       >
         {directoryTabs.map((location) => {
-          const active =
-            currentLocation &&
-            location.rootId === currentLocation.rootId &&
-            location.directoryPath === currentLocation.directoryPath;
+          const active = location.id === activeDirectoryTabId;
           return (
-            <button
-              key={`directory-tab:${location.rootId}:${location.directoryPath}`}
-              type="button"
-              role="tab"
-              aria-selected={Boolean(active)}
-              onClick={() => onNavigateToLocation(location)}
-              title={location.label}
+            <span
+              key={location.id}
               className={cn(
-                "inline-flex h-9 max-w-[240px] shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-3 text-xs transition-colors",
+                "group/tab inline-flex h-9 max-w-[240px] shrink-0 items-center rounded-t-md border border-b-0 text-xs transition-colors",
                 active
                   ? "border-line bg-panel font-semibold text-primary shadow-sm"
                   : "border-transparent bg-panel-3/60 text-muted hover:border-line hover:bg-panel hover:text-ink-strong",
               )}
+              title={location.displayName || location.label}
               data-file-manager-directory-tab={active ? "active" : "inactive"}
             >
-              <Folder className="size-3.5 shrink-0 text-primary" />
-              <span className="min-w-0 truncate">{locationShortLabel(location)}</span>
-              {location.favorited ? (
-                <Star className="size-3 shrink-0 fill-current text-primary" />
-              ) : null}
-            </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={Boolean(active)}
+                onClick={() => onSelectDirectoryTab(location.id)}
+                className="inline-flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+              >
+                <Folder className="size-3.5 shrink-0 text-primary" />
+                <span className="min-w-0 truncate">
+                  {locationShortLabel(location)}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="mr-1 grid size-5 shrink-0 place-items-center rounded text-subtle opacity-70 hover:bg-panel-2 hover:text-danger group-hover/tab:opacity-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseDirectoryTab(location.id);
+                }}
+                aria-label={`关闭标签 ${locationShortLabel(location)}`}
+                title="关闭标签"
+                data-file-manager-directory-tab-close
+              >
+                <X className="size-3" />
+              </button>
+            </span>
           );
         })}
         <button
           type="button"
           className="inline-flex h-9 shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-line bg-panel px-2 text-xs text-muted hover:text-primary"
-          onClick={onToggleFavoriteCurrent}
-          aria-pressed={currentLocationFavorited}
-          title={currentLocationFavorited ? "取消收藏当前目录" : "收藏当前目录为标签"}
-          data-file-manager-directory-tab-pin
+          onClick={onAddDirectoryTab}
+          title="把当前目录新建为标签"
+          data-file-manager-directory-tab-add
         >
           <Plus className="size-3.5" />
-          收藏标签
+          新建标签
         </button>
       </div>
 
@@ -483,7 +480,10 @@ export function FileManagerNavigationBar({
             data-file-manager-display-path={displayPath}
             onDoubleClick={enterPathEditMode}
             onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "l") {
+              if (
+                (event.metaKey || event.ctrlKey) &&
+                event.key.toLowerCase() === "l"
+              ) {
                 event.preventDefault();
                 enterPathEditMode();
               }
@@ -560,7 +560,9 @@ export function FileManagerNavigationBar({
                   }}
                   role="combobox"
                   aria-autocomplete="list"
-                  aria-expanded={pathSuggestionsOpen && pathSuggestions.length > 0}
+                  aria-expanded={
+                    pathSuggestionsOpen && pathSuggestions.length > 0
+                  }
                   aria-controls={suggestionListId}
                   aria-activedescendant={activeSuggestionId}
                   className="min-w-[120px] flex-1 bg-transparent font-mono text-xs text-ink-strong outline-none sm:min-w-[220px]"
@@ -714,109 +716,96 @@ export function FileManagerNavigationBar({
             </span>
           </div>
         ) : null}
-
         <div
-          className="hidden min-w-0 flex-wrap items-center gap-1.5 text-xs xl:flex"
+          className="hidden min-w-0 flex-wrap items-center justify-end gap-1.5 text-xs xl:flex"
           data-file-manager-quick-locations
         >
-          <span className="mr-1 flex items-center gap-1 text-subtle">
-            <History className="size-3.5" />
-            快速访问
-          </span>
-          {favoriteLocations.length ? (
-            <span
-              className="inline-flex items-center gap-1"
-              data-file-manager-favorite-locations
-            >
-              <span className="rounded-full bg-primary-soft px-2 py-1 font-medium text-primary">
-                收藏
-              </span>
-              {favoriteLocations.map((location) => (
-                <span
-                  key={`favorite:${location.rootId}:${location.directoryPath}`}
-                  className="inline-flex max-w-[220px] items-center overflow-hidden rounded-full border border-primary-line bg-panel text-primary hover:bg-primary-soft"
-                >
+          <details className="relative" data-file-manager-favorites-manage>
+            <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
+              收藏夹
+              {favoriteLocations.length ? ` · ${favoriteLocations.length}` : ""}
+            </summary>
+            <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(62dvh,520px)] w-[min(520px,calc(100vw-2rem))] gap-2 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
+              <div className="flex items-center justify-between gap-2 border-b border-line pb-2">
+                <span className="font-semibold text-ink-strong">收藏夹</span>
+                <span className="text-2xs text-subtle">
+                  类似浏览器书签，可打开、重命名或删除
+                </span>
+              </div>
+              {favoriteLocations.length ? (
+                favoriteLocations.map((location) => (
+                  <div
+                    key={`favorite-manage:${location.rootId}:${location.directoryPath}`}
+                    className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1 rounded-md px-2 py-1 hover:bg-panel-2"
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 truncate text-left"
+                      title={location.label}
+                      onClick={() => onNavigateToLocation(location)}
+                    >
+                      {location.displayName || location.label}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-1.5 py-0.5 text-primary hover:bg-primary-soft"
+                      onClick={() => onNavigateToLocation(location)}
+                    >
+                      打开
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
+                      onClick={() => onRenameFavoriteLocation(location)}
+                    >
+                      重命名
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
+                      onClick={() => onRemoveFavoriteLocation(location)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-md bg-panel-2 px-3 py-2 text-muted">
+                  当前没有收藏。点击地址栏右侧星标可收藏当前位置。
+                </div>
+              )}
+            </div>
+          </details>
+
+          {recentLocations.length ? (
+            <details className="relative" data-file-manager-recent-locations>
+              <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
+                最近 · {recentLocations.length}
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(62dvh,520px)] w-[min(520px,calc(100vw-2rem))] gap-1 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
+                {recentLocations.slice(0, 8).map((location) => (
                   <button
+                    key={`recent:${location.rootId}:${location.directoryPath}`}
                     type="button"
                     onClick={() => onNavigateToLocation(location)}
                     title={location.label}
-                    className="min-w-0 truncate px-2 py-1"
+                    className="min-w-0 truncate rounded-md px-2 py-1 text-left text-muted hover:bg-panel-2 hover:text-primary"
                   >
                     {location.label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveFavoriteLocation(location)}
-                    className="border-l border-primary-line px-1.5 py-1 text-subtle hover:text-danger"
-                    title="移除收藏"
-                    aria-label={`移除收藏 ${location.label}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </span>
-          ) : null}
-          {recentLocations.length ? (
-            <span
-              className="inline-flex items-center gap-1"
-              data-file-manager-recent-locations
-            >
-              <span className="rounded-full bg-panel-2 px-2 py-1 font-medium text-muted">
-                最近
-              </span>
-              {recentLocations.map((location) => (
+                ))}
                 <button
-                  key={`recent:${location.rootId}:${location.directoryPath}`}
                   type="button"
-                  onClick={() => onNavigateToLocation(location)}
-                  title={location.label}
-                  className="max-w-[220px] truncate rounded-full border border-line bg-panel px-2 py-1 text-muted hover:border-primary-line hover:bg-primary-soft hover:text-primary"
+                  onClick={onClearRecentLocations}
+                  className="rounded-md px-2 py-1 text-left text-danger hover:bg-danger/10"
+                  data-file-manager-clear-recent-locations
                 >
-                  {location.label}
+                  清空最近
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={onClearRecentLocations}
-                className="rounded-full px-2 py-1 text-subtle hover:bg-panel-2 hover:text-danger"
-                title="清空最近路径"
-                aria-label="清空最近路径"
-                data-file-manager-clear-recent-locations
-              >
-                清空最近
-              </button>
-            </span>
+              </div>
+            </details>
           ) : null}
-        </div>
-      </div>
-
-      <div
-        className="hidden min-w-0 items-center gap-1.5 overflow-x-auto xl:flex"
-        data-file-manager-desktop-quick-actions
-      >
-        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onUpload} disabled={!rootId}>
-          <Upload className="size-3.5" /> 上传
-        </Button>
-        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onNewDirectory} disabled={!rootId}>
-          <FolderPlus className="size-3.5" /> 新目录
-        </Button>
-        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onNewFile} disabled={!rootId}>
-          <FilePlus className="size-3.5" /> 新文件
-        </Button>
-        <Button variant="ghost" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={() => filterInputRef?.current?.focus()}>
-          <Search className="size-3.5" /> 内容筛选
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn("h-9 shrink-0 px-2 text-xs", showHidden && "bg-primary-soft text-primary")}
-          onClick={onToggleShowHidden}
-          aria-pressed={showHidden}
-        >
-          {showHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          隐藏文件
-        </Button>
+        </div>{" "}
       </div>
 
       <details

@@ -39,10 +39,11 @@ import {
 import {
   FileManagerHeader,
   FileManagerNavigationBar,
+  type FileManagerDirectoryTab,
   type FileManagerLocation,
   type FileManagerViewMode,
 } from "./FileManagerChrome";
-import { FilePropertiesDialog } from "@/features/file-manager/preview-shared/FilePropertiesDialog";
+import { FilePropertiesDialog } from "./FilePropertiesDialog";
 import type { FileManagerDialog } from "./FileManagerActionDialog";
 import { FileManagerSearchPanel } from "./FileManagerSearchPanel";
 import type { FileSearchResult } from "../../../../../types/files";
@@ -61,9 +62,11 @@ const LazyFilePreviewDialog = React.lazy(() =>
   })),
 );
 const LazyUploadManagerDialog = React.lazy(() =>
-  import("@/features/file-manager/file-tools/UploadManagerDialog").then((module) => ({
-    default: module.UploadManagerDialog,
-  })),
+  import("@/features/file-manager/file-tools/UploadManagerDialog").then(
+    (module) => ({
+      default: module.UploadManagerDialog,
+    }),
+  ),
 );
 const LazyFileManagerActionDialog = React.lazy(() =>
   import("./FileManagerActionDialog").then((module) => ({
@@ -96,11 +99,13 @@ import type {
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
 const FAVORITE_PATHS_STORAGE_KEY = "tracevane:file-manager:favorite-paths";
+const DIRECTORY_TABS_STORAGE_KEY = "tracevane:file-manager:directory-tabs:v2";
 const VIEW_PREFERENCES_STORAGE_KEY = "tracevane:file-manager:view-preferences";
 const FILE_MANAGER_SESSION_STORAGE_KEY =
   "tracevane:file-manager:session-state:v1";
 const MAX_RECENT_PATHS = 8;
 const MAX_FAVORITE_PATHS = 12;
+const MAX_DIRECTORY_TABS = 12;
 const MAX_PATH_SUGGESTIONS = 8;
 
 interface FileManagerViewPreferences {
@@ -114,6 +119,7 @@ interface FileManagerViewPreferences {
 interface FileManagerSessionState {
   rootId?: string;
   directoryPath?: string;
+  activeDirectoryTabId?: string;
   showHidden?: boolean;
   viewMode?: FileManagerViewMode;
   filterText?: string;
@@ -150,11 +156,16 @@ export function FileManagerPage() {
   const [sessionStateLoaded] = React.useState(() =>
     loadFileManagerSessionState(),
   );
-  const [rootId, setRootId] = React.useState(
-    () => (sessionStateLoaded.rootId ?? defaultRootId) || "openclaw-root",
+  const initialTabSeed = React.useMemo(
+    () => createInitialDirectoryTab(sessionStateLoaded, defaultRootId),
+    [defaultRootId, sessionStateLoaded],
   );
+  const [activeDirectoryTabId, setActiveDirectoryTabId] = React.useState(
+    () => sessionStateLoaded.activeDirectoryTabId ?? initialTabSeed.id,
+  );
+  const [rootId, setRootId] = React.useState(() => initialTabSeed.rootId);
   const [directoryPath, setDirectoryPath] = React.useState(
-    () => sessionStateLoaded.directoryPath ?? "",
+    () => initialTabSeed.directoryPath,
   );
   const [pathInput, setPathInput] = React.useState("");
   const [selectedPath, setSelectedPath] = React.useState<string | undefined>();
@@ -213,6 +224,9 @@ export function FileManagerPage() {
   const [favoriteLocations, setFavoriteLocations] = React.useState<
     FileManagerLocation[]
   >(() => loadFavoriteFileManagerLocations());
+  const [directoryTabs, setDirectoryTabs] = React.useState<
+    FileManagerDirectoryTab[]
+  >(() => loadDirectoryTabLocations(initialTabSeed));
   const [pathSuggestionsOpen, setPathSuggestionsOpen] = React.useState(false);
   const [activePathSuggestionIndex, setActivePathSuggestionIndex] =
     React.useState(0);
@@ -232,19 +246,54 @@ export function FileManagerPage() {
     const savedRootAvailable = roots.some((item) => item.id === rootId);
     if (!rootId || !savedRootAvailable) {
       setRootId(defaultRootId);
-      if (!savedRootAvailable) setDirectoryPath("");
+      setDirectoryPath("");
+      setDirectoryTabs((prev) => {
+        const repaired = normalizeDirectoryTabs(prev).map((tab) =>
+          tab.id === activeDirectoryTabId
+            ? {
+                ...tab,
+                rootId: defaultRootId,
+                directoryPath: "",
+                label: labelForDirectoryTab(roots, defaultRootId, ""),
+              }
+            : tab,
+        );
+        storeDirectoryTabLocations(repaired);
+        return repaired;
+      });
     }
-  }, [defaultRootId, rootId, roots]);
+  }, [activeDirectoryTabId, defaultRootId, rootId, roots]);
 
   React.useEffect(() => {
     storeFileManagerSessionState({
       rootId,
       directoryPath,
+      activeDirectoryTabId,
       showHidden,
       viewMode,
       filterText,
     });
-  }, [directoryPath, filterText, rootId, showHidden, viewMode]);
+  }, [
+    activeDirectoryTabId,
+    directoryPath,
+    filterText,
+    rootId,
+    showHidden,
+    viewMode,
+  ]);
+
+  React.useEffect(() => {
+    const normalized = normalizeDirectoryTabs(directoryTabs);
+    const active = normalized.find((tab) => tab.id === activeDirectoryTabId);
+    if (active) return;
+    const fallback =
+      normalized[0] ?? createDirectoryTab(defaultRootId || rootId, "", roots);
+    setDirectoryTabs([fallback]);
+    storeDirectoryTabLocations([fallback]);
+    setActiveDirectoryTabId(fallback.id);
+    setRootId(fallback.rootId);
+    setDirectoryPath(fallback.directoryPath);
+  }, [activeDirectoryTabId, defaultRootId, directoryTabs, rootId, roots]);
 
   React.useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
@@ -365,8 +414,8 @@ export function FileManagerPage() {
     [directoryPath, displayPath, rootId],
   );
   const quickLocations = React.useMemo(
-    () => buildQuickLocations(roots, favoriteLocations, recentLocations),
-    [favoriteLocations, recentLocations, roots],
+    () => buildQuickLocations(favoriteLocations, recentLocations),
+    [favoriteLocations, recentLocations],
   );
   const quickLocationViews = React.useMemo(
     () =>
@@ -411,6 +460,10 @@ export function FileManagerPage() {
     () => favoriteLocations.some((item) => sameLocation(item, currentLocation)),
     [currentLocation, favoriteLocations],
   );
+  const directoryTabViews = React.useMemo(
+    () => normalizeDirectoryTabs(directoryTabs),
+    [directoryTabs],
+  );
 
   React.useEffect(() => {
     setActivePathSuggestionIndex((index) =>
@@ -418,15 +471,49 @@ export function FileManagerPage() {
     );
   }, [pathSuggestions.length]);
 
-  const navigateToLocation = React.useCallback(
-    (location: FileManagerLocation) => {
-      setRootId(location.rootId);
-      setDirectoryPath(location.directoryPath);
+  const updateActiveDirectoryTab = React.useCallback(
+    (patch: Pick<FileManagerLocation, "rootId" | "directoryPath">) => {
+      const nextRootId = patch.rootId;
+      const nextDirectoryPath = normalizeRelativePathForUi(patch.directoryPath);
+      setRootId(nextRootId);
+      setDirectoryPath(nextDirectoryPath);
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        const next = normalized.map((tab) =>
+          tab.id === activeDirectoryTabId
+            ? {
+                ...tab,
+                rootId: nextRootId,
+                directoryPath: nextDirectoryPath,
+                label: labelForDirectoryTab(
+                  roots,
+                  nextRootId,
+                  nextDirectoryPath,
+                ),
+              }
+            : tab,
+        );
+        const stable = next.length
+          ? next
+          : [createDirectoryTab(nextRootId, nextDirectoryPath, roots)];
+        storeDirectoryTabLocations(stable);
+        return stable;
+      });
       setSelectedPath(undefined);
       setSelectedPaths(new Set());
       setLastSelectedPath(undefined);
     },
-    [],
+    [activeDirectoryTabId, roots],
+  );
+
+  const navigateToLocation = React.useCallback(
+    (location: FileManagerLocation) => {
+      updateActiveDirectoryTab({
+        rootId: location.rootId,
+        directoryPath: location.directoryPath,
+      });
+    },
+    [updateActiveDirectoryTab],
   );
 
   const toggleFavoriteCurrentLocation = React.useCallback(() => {
@@ -450,28 +537,99 @@ export function FileManagerPage() {
     [],
   );
 
+  const renameFavoriteLocation = React.useCallback(
+    (location: FileManagerLocation) => {
+      const currentName = location.displayName || location.label;
+      const nextName = window.prompt("收藏名称", currentName);
+      if (!nextName?.trim()) return;
+      setFavoriteLocations((prev) => {
+        const next = prev.map((item) =>
+          sameLocation(item, location)
+            ? { ...item, displayName: nextName.trim(), label: item.label }
+            : item,
+        );
+        storeFavoriteFileManagerLocations(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const selectDirectoryTab = React.useCallback(
+    (tabId: string) => {
+      const tab = directoryTabs.find((item) => item.id === tabId);
+      if (!tab) return;
+      setActiveDirectoryTabId(tab.id);
+      setRootId(tab.rootId);
+      setDirectoryPath(tab.directoryPath);
+      setSelectedPath(undefined);
+      setSelectedPaths(new Set());
+      setLastSelectedPath(undefined);
+    },
+    [directoryTabs],
+  );
+
+  const addCurrentDirectoryTab = React.useCallback(() => {
+    const nextTab = createDirectoryTab(defaultRootId || rootId, "", roots);
+    setDirectoryTabs((prev) => {
+      const next = [...normalizeDirectoryTabs(prev), nextTab].slice(
+        -MAX_DIRECTORY_TABS,
+      );
+      storeDirectoryTabLocations(next);
+      return next;
+    });
+    setActiveDirectoryTabId(nextTab.id);
+    setRootId(nextTab.rootId);
+    setDirectoryPath(nextTab.directoryPath);
+    setSelectedPath(undefined);
+    setSelectedPaths(new Set());
+    setLastSelectedPath(undefined);
+  }, [defaultRootId, rootId, roots]);
+
+  const closeDirectoryTab = React.useCallback(
+    (tabId: string) => {
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        if (normalized.length <= 1) return normalized;
+        const closingIndex = normalized.findIndex((item) => item.id === tabId);
+        const next = normalized.filter((item) => item.id !== tabId);
+        storeDirectoryTabLocations(next);
+        if (tabId === activeDirectoryTabId) {
+          const fallback = next[Math.max(0, closingIndex - 1)] ?? next[0];
+          if (fallback) {
+            setActiveDirectoryTabId(fallback.id);
+            setRootId(fallback.rootId);
+            setDirectoryPath(fallback.directoryPath);
+          }
+        }
+        return next;
+      });
+    },
+    [activeDirectoryTabId],
+  );
+
   const clearRecentLocations = React.useCallback(() => {
     setRecentLocations([]);
     storeRecentFileManagerLocations([]);
     toast.success("最近路径已清空");
   }, []);
 
-  const navigateToDirectory = React.useCallback((nextPath: string) => {
-    setDirectoryPath(nextPath);
-    setSelectedPath(undefined);
-    setLastSelectedPath(undefined);
-  }, []);
+  const navigateToDirectory = React.useCallback(
+    (nextPath: string) => {
+      updateActiveDirectoryTab({ rootId, directoryPath: nextPath });
+    },
+    [rootId, updateActiveDirectoryTab],
+  );
 
   const jumpToPathInput = React.useCallback(() => {
     const resolved = resolvePathInput(pathInput, roots, rootId);
-    navigateToLocation({
+    updateActiveDirectoryTab({
       rootId: resolved.rootId,
       directoryPath: resolved.directoryPath,
-      label: pathInput.trim(),
     });
     setPathSuggestionsOpen(false);
     setActivePathSuggestionIndex(0);
-  }, [navigateToLocation, pathInput, rootId, roots]);
+  }, [pathInput, rootId, roots, updateActiveDirectoryTab]);
 
   const copyPathToClipboard = React.useCallback(
     (path: string, successTitle = "路径已复制") => {
@@ -1200,6 +1358,8 @@ export function FileManagerPage() {
             quickLocations={quickLocationViews}
             favoriteLocations={favoriteLocationViews}
             recentLocations={recentLocationViews}
+            directoryTabs={directoryTabViews}
+            activeDirectoryTabId={activeDirectoryTabId}
             filterText={filterText}
             showHidden={showHidden}
             currentLocationFavorited={currentLocationFavorited}
@@ -1209,6 +1369,9 @@ export function FileManagerPage() {
               setPathSuggestionsOpen(false);
               setActivePathSuggestionIndex(0);
             }}
+            onSelectDirectoryTab={selectDirectoryTab}
+            onAddDirectoryTab={addCurrentDirectoryTab}
+            onCloseDirectoryTab={closeDirectoryTab}
             onPathInputFocus={() => {
               setPathSuggestionsOpen(true);
               setActivePathSuggestionIndex(0);
@@ -1236,6 +1399,7 @@ export function FileManagerPage() {
             }}
             onToggleFavoriteCurrent={toggleFavoriteCurrentLocation}
             onRemoveFavoriteLocation={removeFavoriteLocation}
+            onRenameFavoriteLocation={renameFavoriteLocation}
             onClearRecentLocations={clearRecentLocations}
             filterInputRef={fileManagerFilterRef}
             onFilterTextChange={setFilterText}
@@ -1915,6 +2079,10 @@ function loadFileManagerSessionState(): FileManagerSessionState {
         typeof parsed.directoryPath === "string"
           ? parsed.directoryPath
           : undefined,
+      activeDirectoryTabId:
+        typeof parsed.activeDirectoryTabId === "string"
+          ? parsed.activeDirectoryTabId
+          : undefined,
       showHidden:
         typeof parsed.showHidden === "boolean" ? parsed.showHidden : undefined,
       viewMode:
@@ -2010,6 +2178,57 @@ function storeFavoriteFileManagerLocations(
     );
   } catch {
     // Favorites are convenience-only; storage failures must not block file access.
+  }
+}
+
+function loadDirectoryTabLocations(
+  fallback: FileManagerDirectoryTab,
+): FileManagerDirectoryTab[] {
+  if (typeof window === "undefined") return [fallback];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(DIRECTORY_TABS_STORAGE_KEY) || "[]",
+    ) as FileManagerLocation[];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter(
+            (item) =>
+              typeof item?.rootId === "string" &&
+              typeof item?.directoryPath === "string" &&
+              typeof item?.label === "string",
+          )
+          .map((item) => ({
+            id:
+              typeof (item as unknown as { id?: unknown }).id === "string"
+                ? (item as unknown as { id: string }).id
+                : createDirectoryTabId(),
+            rootId: item.rootId,
+            directoryPath: normalizeRelativePathForUi(item.directoryPath),
+            label: normalizeAbsolutePath(item.label),
+            displayName:
+              typeof (item as unknown as { displayName?: unknown })
+                .displayName === "string"
+                ? (item as unknown as { displayName: string }).displayName
+                : undefined,
+          }))
+          .slice(0, MAX_DIRECTORY_TABS)
+      : [fallback];
+  } catch {
+    return [fallback];
+  }
+}
+
+function storeDirectoryTabLocations(
+  locations: FileManagerDirectoryTab[],
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      DIRECTORY_TABS_STORAGE_KEY,
+      JSON.stringify(locations.slice(0, MAX_DIRECTORY_TABS)),
+    );
+  } catch {
+    // Directory tabs are convenience-only; storage failures must not block file access.
   }
 }
 
@@ -2163,6 +2382,71 @@ function rememberFavoriteFileManagerLocation(
   return next;
 }
 
+function createDirectoryTabId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `tab:${crypto.randomUUID()}`;
+  }
+  return `tab:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+function createInitialDirectoryTab(
+  session: FileManagerSessionState,
+  defaultRootId: string,
+): FileManagerDirectoryTab {
+  const rootId = session.rootId || defaultRootId || "openclaw-root";
+  const directoryPath = normalizeRelativePathForUi(session.directoryPath || "");
+  return {
+    id: session.activeDirectoryTabId || createDirectoryTabId(),
+    rootId,
+    directoryPath,
+    label: directoryPath || "根目录",
+  };
+}
+
+function createDirectoryTab(
+  rootId: string,
+  directoryPath: string,
+  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
+): FileManagerDirectoryTab {
+  const normalizedPath = normalizeRelativePathForUi(directoryPath);
+  return {
+    id: createDirectoryTabId(),
+    rootId,
+    directoryPath: normalizedPath,
+    label: labelForDirectoryTab(roots, rootId, normalizedPath),
+  };
+}
+
+function labelForDirectoryTab(
+  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
+  rootId: string,
+  directoryPath: string,
+): string {
+  const root = roots.find((item) => item.id === rootId);
+  if (directoryPath)
+    return directoryPath.split("/").filter(Boolean).at(-1) || directoryPath;
+  return root?.labelZh || "根目录";
+}
+
+function normalizeDirectoryTabs(
+  tabs: FileManagerDirectoryTab[],
+): FileManagerDirectoryTab[] {
+  const seen = new Set<string>();
+  const normalized: FileManagerDirectoryTab[] = [];
+  for (const tab of tabs) {
+    const next = {
+      ...tab,
+      id: tab.id || createDirectoryTabId(),
+      directoryPath: normalizeRelativePathForUi(tab.directoryPath),
+      label: tab.label || tab.directoryPath || "根目录",
+    };
+    if (seen.has(next.id)) continue;
+    seen.add(next.id);
+    normalized.push(next);
+  }
+  return normalized.slice(-MAX_DIRECTORY_TABS);
+}
+
 function rememberFileManagerLocation(
   prev: FileManagerLocation[],
   location: FileManagerLocation,
@@ -2186,24 +2470,12 @@ function rememberFileManagerLocation(
 }
 
 function buildQuickLocations(
-  roots: Array<{ id: string; labelZh?: string; absolutePath: string }>,
   favoriteLocations: FileManagerLocation[],
   recentLocations: FileManagerLocation[],
 ): FileManagerLocation[] {
-  const rootLocations = roots.map((root) => ({
-    rootId: root.id,
-    directoryPath: "",
-    label: root.labelZh
-      ? `${root.labelZh} · ${normalizeAbsolutePath(root.absolutePath)}`
-      : normalizeAbsolutePath(root.absolutePath),
-  }));
   const seen = new Set<string>();
   const merged: FileManagerLocation[] = [];
-  for (const location of [
-    ...rootLocations,
-    ...favoriteLocations,
-    ...recentLocations,
-  ]) {
+  for (const location of [...favoriteLocations, ...recentLocations]) {
     const normalized = {
       ...location,
       directoryPath: normalizeRelativePathForUi(location.directoryPath),
