@@ -3720,6 +3720,7 @@ export function WorkspaceIdeShell() {
           onShowMobilePanel={showMobilePanel}
           onCycleMobilePanel={cycleMobilePanel}
           onHidePane={hidePane}
+          onTogglePanePinned={togglePanePinned}
           onRestorePane={restorePane}
           onRestoreAllHiddenPanes={restoreAllHiddenPanes}
           onRestoreHiddenPanesForPlacement={restoreHiddenPanesForPlacement}
@@ -4782,6 +4783,7 @@ function DockLayoutManager({
   onShowMobilePanel,
   onCycleMobilePanel,
   onHidePane,
+  onTogglePanePinned,
   onRestorePane,
   onRestoreAllHiddenPanes,
   onRestoreHiddenPanesForPlacement,
@@ -4844,6 +4846,7 @@ function DockLayoutManager({
   onShowMobilePanel: (panel: MobilePanel) => void;
   onCycleMobilePanel: (direction: MobilePanelDirection) => void;
   onHidePane: (paneId: PaneId) => void;
+  onTogglePanePinned: (paneId: PaneId) => void;
   onRestorePane: (paneId: PaneId) => void;
   onRestoreAllHiddenPanes: () => void;
   onRestoreHiddenPanesForPlacement: (placement: PanePlacement) => void;
@@ -5244,6 +5247,17 @@ function DockLayoutManager({
                             onClick={() => onHidePane(paneId)}
                           >
                             隐藏
+                          </button>
+                          <button
+                            type="button"
+                            disabled={layoutLocked}
+                            data-ide-pane-layout-pin-pane={paneId}
+                            data-active={pinned ? "true" : "false"}
+                            aria-pressed={pinned}
+                            aria-label={`${pinned ? "取消固定" : "固定"} ${paneLabel(paneId)} Pane`}
+                            onClick={() => onTogglePanePinned(paneId)}
+                          >
+                            {pinned ? "取消固定" : "固定"}
                           </button>
                           <span className="workspace-ide-shell__dock-layout-role-switch" aria-label={`${paneLabel(paneId)} 主副组`}>
                             {(["primary", "secondary"] as const).map((targetRole) => (
