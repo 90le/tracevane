@@ -1699,6 +1699,21 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
 
 
 
+
+test("new Workspace IDE shell exposes per-pane dock destination controls in the pane layout manager", () => {
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-destinations/);
+  assert.match(shellSource, /DOCK_PLACEMENTS\.map\(\(targetPlacement\) => \(/);
+  assert.match(shellSource, /data-ide-pane-layout-destination=\{targetPlacement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-destination-pane=\{paneId\}/);
+  assert.match(shellSource, /data-active=\{placement === targetPlacement \? "true" : "false"\}/);
+  assert.match(shellSource, /aria-label=\{`移动 \$\{paneLabel\(paneId\)\} 到 \$\{placementLabel\(targetPlacement\)\} Dock`\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, targetPlacement, undefined, role\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned \|\| \(role === "secondary" && splitModes\[targetPlacement\] === "single"\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-destinations/);
+  assert.match(cssSource, /grid-column: 1 \/ -1/);
+  assert.match(cssSource, /data-active="true"/);
+});
+
 test("new Workspace IDE shell exposes a mobile dock rail inside the pane layout manager", () => {
   assert.match(shellSource, /mobilePanel=\{mobilePanel\}/);
   assert.match(shellSource, /mobilePanel: MobilePanel/);

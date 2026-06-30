@@ -4792,6 +4792,22 @@ function DockLayoutManager({
                               ↓
                             </button>
                           </span>
+                          <span className="workspace-ide-shell__dock-layout-destinations" aria-label={`${paneLabel(paneId)} Dock 目的地`}>
+                            {DOCK_PLACEMENTS.map((targetPlacement) => (
+                              <button
+                                key={targetPlacement}
+                                type="button"
+                                disabled={layoutLocked || pinned || (role === "secondary" && splitModes[targetPlacement] === "single")}
+                                data-ide-pane-layout-destination={targetPlacement}
+                                data-ide-pane-layout-destination-pane={paneId}
+                                data-active={placement === targetPlacement ? "true" : "false"}
+                                aria-label={`移动 ${paneLabel(paneId)} 到 ${placementLabel(targetPlacement)} Dock`}
+                                onClick={() => onMovePaneToGroup(paneId, targetPlacement, undefined, role)}
+                              >
+                                {placementLabel(targetPlacement)}
+                              </button>
+                            ))}
+                          </span>
                         </div>
                       );
                     })}
