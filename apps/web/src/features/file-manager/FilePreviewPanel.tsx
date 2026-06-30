@@ -30,7 +30,7 @@ import {
   DocumentWorkbench,
   buildFileDownloadUrl,
   type DocumentWorkbenchMode,
-} from "@/features/workspace/shared";
+} from "@/features/file-manager/preview-shared";
 import {
   useDeleteFileVersionMutation,
   useFileReadQuery,
@@ -38,7 +38,7 @@ import {
   useFileVersionsQuery,
   useWriteFileContentMutation,
 } from "@/lib/query/files";
-import type { FileEntrySummary } from "@/features/workspace/files";
+import type { FileEntrySummary } from "@/features/file-manager/file-tools";
 import type { FilesVersionItem } from "../../../../../types/files";
 
 interface FilePreviewTab {

@@ -23,7 +23,7 @@ import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 import type { useFilesBrowseQuery } from "@/lib/query/files";
-import type { FileEntrySummary } from "@/features/workspace/files";
+import type { FileEntrySummary } from "@/features/file-manager/file-tools";
 
 export type FileManagerSortKey =
   "name" | "size" | "modified" | "type" | "permissions" | "owner";

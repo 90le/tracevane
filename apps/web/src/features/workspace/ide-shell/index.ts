@@ -1,1 +1,0 @@
-export { WorkspaceIdeShell } from "./WorkspaceIdeShell";

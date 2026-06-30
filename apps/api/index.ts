@@ -30,7 +30,6 @@ import { createOpenClawRecoveryService } from "./modules/openclaw-recovery/servi
 import { createSkillsService } from "./modules/skills/service.js";
 import { createSystemService } from "./modules/system/service.js";
 import { createTerminalService } from "./modules/terminal/service.js";
-import { createWorkspaceIdeProviderService } from "./modules/workspace-ide/service.js";
 import type { LoggerLike, TracevaneServerConfig } from "../../types/api.js";
 import type { TracevaneApiContext, TracevaneServices } from "./core/context.js";
 
@@ -77,8 +76,6 @@ export function createTracevaneContext(
     options.modelGatewayOptions,
   );
   const openclawRecovery = createOpenClawRecoveryService(options.config);
-  const workspaceIde = createWorkspaceIdeProviderService();
-
   const services: TracevaneServices = {
     agents,
     channelConnectors,
@@ -93,7 +90,6 @@ export function createTracevaneContext(
     skills,
     system,
     terminal,
-    workspaceIde,
   };
 
   return {

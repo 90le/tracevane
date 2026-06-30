@@ -3,7 +3,7 @@ import iconExtensions from "../../../../../node_modules/pretty-file-icons/index.
 import { Folder } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
-import type { FileEntrySummary } from "@/features/workspace/files/types";
+import type { FileEntrySummary } from "@/features/file-manager/file-tools/types";
 
 const iconLoaders = import.meta.glob(
   "../../../../../node_modules/pretty-file-icons/svg/*.svg",

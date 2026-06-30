@@ -1,7 +1,6 @@
 import type { ComponentType } from "react";
 import {
   Bot,
-  Boxes,
   FolderCog,
   LayoutDashboard,
   Network,
@@ -9,7 +8,7 @@ import {
   Terminal,
 } from "lucide-react";
 
-export type NavGroup = "总览" | "工作" | "连接" | "平台";
+export type NavGroup = "首页" | "工作流" | "接入" | "底座";
 export type NavStatus = "ready" | "coming-soon";
 
 export interface NavItem {
@@ -32,74 +31,64 @@ export interface PageMeta {
   breadcrumbs: Array<{ label: string; path?: string }>;
 }
 
-export const NAV_GROUP_ORDER: NavGroup[] = ["总览", "工作", "连接", "平台"];
+export const NAV_GROUP_ORDER: NavGroup[] = ["首页", "工作流", "接入", "底座"];
 
 export const NAV_ITEMS: NavItem[] = [
   {
     path: "/dashboard",
-    label: "总览",
-    title: "总览",
-    subtitle: "全局状态、关键入口与下一步动作。",
-    group: "总览",
+    label: "首页",
+    title: "首页",
+    subtitle: "全局健康、关键入口与下一步动作。",
+    group: "首页",
     icon: LayoutDashboard,
     status: "ready",
   },
 
   {
-    path: "/workspace",
-    label: "工作区",
-    title: "工作区",
-    subtitle: "文件、编辑器、终端、Git、预览和 Agent handoff 的主工作面。",
-    group: "工作",
-    icon: Boxes,
-    status: "ready",
-  },
-  {
     path: "/file-manager",
-    label: "文件管理器",
-    title: "文件管理器",
-    subtitle: "系统级文件管理、上传、归档、内容索引库管理入口。",
-    group: "工作",
+    label: "文件库",
+    title: "文件库",
+    subtitle: "浏览、上传、归档、索引与批量文件操作。",
+    group: "工作流",
     icon: FolderCog,
     status: "ready",
   },
+
   {
     path: "/cli-agents",
-    label: "CLI 代理",
-    title: "CLI 代理",
-    subtitle:
-      "Codex、Claude Code、OpenCode 等本地 Agent runtime 的安装、检测与运行。",
-    group: "工作",
+    label: "Agent CLI",
+    title: "Agent CLI",
+    subtitle: "安装、配置、重装与修复 Codex、Claude Code、OpenCode。",
+    group: "工作流",
     icon: Terminal,
     status: "ready",
-    aliases: ["/long-tasks"],
   },
 
   {
     path: "/model-gateway",
-    label: "模型网关",
-    title: "模型网关",
-    subtitle: "Provider、模型、协议、路由和客户端接入。",
-    group: "连接",
+    label: "模型路由",
+    title: "模型路由",
+    subtitle: "Provider、模型、协议、路由与客户端接入。",
+    group: "接入",
     icon: Plug,
     status: "ready",
   },
   {
     path: "/im-channels",
-    label: "IM 渠道",
-    title: "IM 渠道",
-    subtitle: "连接飞书、企微、Telegram 等第三方 IM，让消息进入 Agent。",
-    group: "连接",
+    label: "消息接入",
+    title: "消息接入",
+    subtitle: "连接飞书、企微、Telegram 等消息平台，让会话进入 Agent。",
+    group: "接入",
     icon: Network,
     status: "ready",
   },
 
   {
     path: "/platforms",
-    label: "平台",
-    title: "平台",
-    subtitle: "第三方平台管理入口；当前平台为 OpenClaw。",
-    group: "平台",
+    label: "平台管理",
+    title: "平台管理",
+    subtitle: "第三方平台与 OpenClaw 底座能力。",
+    group: "底座",
     icon: Bot,
     status: "ready",
     aliases: ["/recovery", "/runtime-admin"],
@@ -173,14 +162,14 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
       section === "overview"
         ? item.subtitle
         : `OpenClaw 平台子页面：${sectionLabel}。模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。`;
-    breadcrumbs[0] = { label: "平台", path: "/platforms" };
+    breadcrumbs[0] = { label: "底座", path: "/platforms" };
     breadcrumbs.push({ label: "OpenClaw", path: "/platforms/openclaw" });
     if (section !== "overview") breadcrumbs.push({ label: sectionLabel });
   } else if (pathname === "/platforms") {
-    breadcrumbs[0] = { label: "平台" };
-    label = "平台目录";
-    title = "平台";
-  } else if (item.group !== "总览") {
+    breadcrumbs[0] = { label: "底座" };
+    label = "平台管理";
+    title = "平台管理";
+  } else if (item.group !== "首页") {
     breadcrumbs.push({ label: item.label });
   } else {
     breadcrumbs[0] = { label: item.label };

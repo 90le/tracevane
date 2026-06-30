@@ -24,7 +24,7 @@ import { Input } from "@/design/ui/input";
 import type {
   FileBreadcrumb,
   FileRootSummary,
-} from "@/features/workspace/files";
+} from "@/features/file-manager/file-tools";
 
 export type FileManagerViewMode = "files" | "index" | "trash";
 

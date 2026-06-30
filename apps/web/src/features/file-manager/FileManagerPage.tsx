@@ -23,26 +23,26 @@ import {
   createUploadBatch,
   type UploadBatchHandle,
   type UploadJob,
-} from "@/features/workspace/files/uploadManager";
+} from "@/features/file-manager/file-tools/uploadManager";
 import {
   collectUploadFilesFromDataTransfer,
   hasFileDrag,
   mergeUploadFiles,
   uploadFilesClipboardFingerprint,
-} from "@/features/workspace/files/uploadInputs";
+} from "@/features/file-manager/file-tools/uploadInputs";
 import {
   FILE_MANAGER_UPLOAD_TASK_SNAPSHOT_KEY,
   loadUploadTaskSnapshots,
   saveUploadTaskSnapshots,
   snapshotsFromUploadJobs,
-} from "@/features/workspace/files/uploadTaskSnapshots";
+} from "@/features/file-manager/file-tools/uploadTaskSnapshots";
 import {
   FileManagerHeader,
   FileManagerNavigationBar,
   type FileManagerLocation,
   type FileManagerViewMode,
 } from "./FileManagerChrome";
-import { FilePropertiesDialog } from "@/features/workspace/shared/FilePropertiesDialog";
+import { FilePropertiesDialog } from "@/features/file-manager/preview-shared/FilePropertiesDialog";
 import type { FileManagerDialog } from "./FileManagerActionDialog";
 import { FileManagerSearchPanel } from "./FileManagerSearchPanel";
 import type { FileSearchResult } from "../../../../../types/files";
@@ -61,7 +61,7 @@ const LazyFilePreviewDialog = React.lazy(() =>
   })),
 );
 const LazyUploadManagerDialog = React.lazy(() =>
-  import("@/features/workspace/files/UploadManagerDialog").then((module) => ({
+  import("@/features/file-manager/file-tools/UploadManagerDialog").then((module) => ({
     default: module.UploadManagerDialog,
   })),
 );
@@ -85,13 +85,13 @@ import {
 import {
   FileActionsMenu,
   type FileActionsMenuTarget,
-} from "@/features/workspace/files/FileActionsMenu";
-import { UploadTaskStrip } from "@/features/workspace/files/UploadTaskStrip";
-import { useFileOperations } from "@/features/workspace/files/fileOperations";
+} from "@/features/file-manager/file-tools/FileActionsMenu";
+import { UploadTaskStrip } from "@/features/file-manager/file-tools/UploadTaskStrip";
+import { useFileOperations } from "@/features/file-manager/file-tools/fileOperations";
 import type {
   FileEntrySummary,
   FilesUploadConflictPolicy,
-} from "@/features/workspace/files/types";
+} from "@/features/file-manager/file-tools/types";
 
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";

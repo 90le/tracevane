@@ -87,7 +87,6 @@
     "smoke:file-manager:media-preview": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-media-preview.smoke.mjs",
     "smoke:file-manager:mobile-layout": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-mobile-layout.smoke.mjs",
     "smoke:file-manager:text-editor": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-text-editor.smoke.mjs",
-    "smoke:workspace:text-editor": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/workspace-text-editor.smoke.mjs",
     "smoke:file-manager:selection": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-selection.smoke.mjs",
     "smoke:file-manager:content-index": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-content-index.smoke.mjs",
     "smoke:file-manager:quick-paste-upload": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-quick-paste-upload.smoke.mjs",
@@ -99,7 +98,6 @@
     "smoke:file-manager:markdown-visual-editor": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-markdown-visual-editor.smoke.mjs",
     "smoke:file-manager:html-editor": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-html-editor.smoke.mjs",
     "smoke:file-manager:fallback-preview": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-fallback-preview.smoke.mjs",
-    "smoke:workspace:document-modes": "npm run build:web && python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/preview-web-smoke.sh\" --port 5176 -- node tests/file-manager/workspace-document-modes.smoke.mjs",
     "test:web:api": "node --test tests/system/web-model-gateway.test.mjs tests/system/web-api-client.test.mjs"
   },
   "author": "binbin",

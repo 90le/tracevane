@@ -26,7 +26,7 @@ import {
 import {
   useFileOperations,
   type FileEntrySummary,
-} from "@/features/workspace/files";
+} from "@/features/file-manager/file-tools";
 import type {
   FilesArchiveDryRunResponse,
   FilesChmodDryRunResponse,

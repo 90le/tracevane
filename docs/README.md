@@ -7,10 +7,6 @@
 
 按顺序阅读：
 
-1. `Workspace全球顶级AI编程IDE工作区Goal蓝图.md` — 当前 Codex Goal 的最高执行宪章；当前主线是 IDE-first / AI 编程 IDE 工作区；先完成工作区本体、终端、前后端边界、桌面/手机 UI/UX，写作、渲染、预览增强均不进入当前阶段。
-2. `WorkspaceIDE重建设计执行Backlog.md` — 当前执行顺序：Shell Architecture、Terminal First、Files/Editor、Search、Git、Command/Status、Responsive Hardening、ADR；保留全局顶栏，不做说明页式 Workspace。
-3. `WorkspaceIDE工作区现状审计与下一步清理计划.md` — Phase 1 UI/UX 全面重设计审计：IDE 主体、终端、Git、搜索、文件/编辑器/命令/布局、电脑/手机端，以及当前 dirty 文件约束。
-4. `WorkspaceIDE-UIUX重设计验收.md` — IDE 主体、Terminal、Git、Search、Files/Editor、Command/Status、Desktop/Mobile 的 UI/UX 验收合同。
 5. `整体目标.md` — Tracevane 当前最高目标和领域边界。
 6. `产品需求.md` — 产品需求、核心域与近期优先级。
 7. `Workspace设计文档.md` — PC/Tablet/Mobile 的 IDE + 文件管理 + 终端体验设计。

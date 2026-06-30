@@ -3,7 +3,7 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
-import { CodeEditor } from "@/features/workspace/editor/CodeEditor";
+import { CodeEditor } from "@/features/file-manager/code-editor/CodeEditor";
 import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files";
 import { CodeBlock } from "@/shared/diff/DiffView";
 import { EmptyState } from "@/shared/states/EmptyState";

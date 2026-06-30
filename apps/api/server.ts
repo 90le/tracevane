@@ -27,8 +27,6 @@ import { registerOpenClawGatewayRoutes } from "./modules/platforms/openclaw-gate
 import { registerSkillsRoutes } from "./modules/skills/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 import { registerTerminalRoutes } from "./modules/terminal/routes.js";
-import { registerWorkspaceIdeProviderRoutes } from "./modules/workspace-ide/routes.js";
-import { handleWorkspaceIdeProviderUpgrade } from "./modules/workspace-ide/proxy.js";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -55,7 +53,6 @@ export function createTracevaneRouter(
   registerCronRoutes(router, ctx);
   registerSkillsRoutes(router, ctx);
   registerTerminalRoutes(router, ctx);
-  registerWorkspaceIdeProviderRoutes(router, ctx, ctx.services.workspaceIde);
   registerSystemRoutes(router, ctx);
   return router;
 }
@@ -202,13 +199,7 @@ export function createTracevaneUpgradeHandler(
 
     const handled =
       handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head) ||
-      ctx.services.terminal.handleUpgrade(req, socket, head) ||
-      handleWorkspaceIdeProviderUpgrade(
-        req,
-        socket,
-        head,
-        ctx.services.workspaceIde.controller.registry,
-      );
+      ctx.services.terminal.handleUpgrade(req, socket, head);
     if (!handled) {
       try {
         socket.destroy();

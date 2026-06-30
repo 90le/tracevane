@@ -4,11 +4,6 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/app/AppShell";
 import { ComingSoonPage } from "@/app/ComingSoonPage";
 import { NAV_ITEMS } from "@/app/navigation";
-const WorkspacePage = React.lazy(() =>
-  import("@/features/workspace/WorkspacePage").then((module) => ({
-    default: module.WorkspacePage,
-  })),
-);
 const FileManagerPage = React.lazy(() =>
   import("@/features/file-manager/FileManagerPage").then((module) => ({
     default: module.FileManagerPage,
@@ -47,21 +42,11 @@ const PlatformsPage = React.lazy(() =>
  * coming-soon placeholder.
  */
 export function AppRouter() {
-  useLegacyPathRedirect();
+  redirectLegacyPathBeforeHashRouter();
 
   return (
     <HashRouter>
       <Routes>
-        {/* Full-bleed Workspace shell — renders OUTSIDE AppShell so the local
-            project workbench can use the whole viewport. */}
-        <Route
-          path="/workspace"
-          element={
-            <LazyPage>
-              <WorkspacePage />
-            </LazyPage>
-          }
-        />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -107,10 +92,6 @@ export function AppRouter() {
                 <CliAgentsPage />
               </LazyPage>
             }
-          />
-          <Route
-            path="/long-tasks"
-            element={<Navigate to="/cli-agents" replace />}
           />
           <Route
             path="/recovery"
@@ -187,26 +168,41 @@ export function AppRouter() {
   );
 }
 
-function useLegacyPathRedirect() {
-  React.useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.location.hash) return;
+function redirectLegacyPathBeforeHashRouter() {
+  if (typeof window === "undefined") return;
+  if (window.location.hash) return;
 
-    const { pathname, search } = window.location;
-    const normalizedPath = pathname.replace(/\/+$/g, "") || "/";
-    let nextHash: string | null = null;
+  const { pathname, search } = window.location;
+  const normalizedPath = pathname.replace(/\/+$/g, "") || "/";
+  let nextHash: string | null = null;
 
+  if (
+    normalizedPath === "/chat" ||
+    normalizedPath === "/chat/workbench" ||
+    normalizedPath.startsWith("/chat/s/")
+  ) {
+    nextHash = `/im-channels${search || ""}`;
+  }
+
+  if (!nextHash) {
+    const directSpaPaths = [
+      "/dashboard",
+      "/file-manager",
+      "/model-gateway",
+      "/im-channels",
+      "/platforms",
+      "/cli-agents",
+    ];
     if (
-      normalizedPath === "/chat" ||
-      normalizedPath === "/chat/workbench" ||
-      normalizedPath.startsWith("/chat/s/")
+      directSpaPaths.includes(normalizedPath) ||
+      normalizedPath.startsWith("/platforms/")
     ) {
-      nextHash = `/im-channels${search || ""}`;
+      nextHash = `${normalizedPath}${search || ""}`;
     }
+  }
 
-    if (!nextHash) return;
-    window.history.replaceState(null, document.title, `/#${nextHash}`);
-  }, []);
+  if (!nextHash) return;
+  window.history.replaceState(null, document.title, `/#${nextHash}`);
 }
 
 function LazyPage({ children }: { children: React.ReactNode }) {

@@ -29,7 +29,7 @@ import type {
   FilesContentIndexRecordsPayload,
   FilesContentIndexStatsPayload,
 } from "../../../../../types/files";
-import type { FileEntrySummary } from "@/features/workspace/files";
+import type { FileEntrySummary } from "@/features/file-manager/file-tools";
 
 export type ContentIndexRecordStatusFilter = "all" | "valid" | "stale";
 type ContentIndexMaintenanceStatus = "success" | "error";

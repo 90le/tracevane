@@ -20,7 +20,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     "apps/web/src/features/file-manager/FilePreviewPanel.tsx",
   );
   const propertiesDialog = read(
-    "apps/web/src/features/workspace/shared/FilePropertiesDialog.tsx",
+    "apps/web/src/features/file-manager/preview-shared/FilePropertiesDialog.tsx",
   );
   const actionDialog = read(
     "apps/web/src/features/file-manager/FileManagerActionDialog.tsx",
@@ -42,34 +42,34 @@ test("system file manager is an independent app-shell domain with cloud-panel li
     "apps/web/src/features/file-manager/FileTypeIcon.tsx",
   );
   const workspaceExplorer = read(
-    "apps/web/src/features/workspace/files/WorkspaceExplorer.tsx",
+    "apps/web/src/features/file-manager/file-tools/WorkspaceExplorer.tsx",
   );
   const documentPreview = read(
-    "apps/web/src/features/workspace/shared/DocumentPreview.tsx",
+    "apps/web/src/features/file-manager/preview-shared/DocumentPreview.tsx",
   );
   const archivePreview = read(
-    "apps/web/src/features/workspace/shared/ArchivePreview.tsx",
+    "apps/web/src/features/file-manager/preview-shared/ArchivePreview.tsx",
   );
   const binaryFilePreview = read(
-    "apps/web/src/features/workspace/shared/BinaryFilePreview.tsx",
+    "apps/web/src/features/file-manager/preview-shared/BinaryFilePreview.tsx",
   );
   const textSlicePreview = read(
-    "apps/web/src/features/workspace/shared/TextSlicePreview.tsx",
+    "apps/web/src/features/file-manager/preview-shared/TextSlicePreview.tsx",
   );
   const documentViewRegistry = read(
-    "apps/web/src/features/workspace/shared/DocumentViewRegistry.ts",
+    "apps/web/src/features/file-manager/preview-shared/DocumentViewRegistry.ts",
   );
   const textSearchReplace = read(
-    "apps/web/src/features/workspace/shared/TextSearchReplaceStrip.tsx",
+    "apps/web/src/features/file-manager/preview-shared/TextSearchReplaceStrip.tsx",
   );
   const documentWorkbench = read(
-    "apps/web/src/features/workspace/shared/DocumentWorkbench.tsx",
+    "apps/web/src/features/file-manager/preview-shared/DocumentWorkbench.tsx",
   );
   const visualDocumentEditor = read(
-    "apps/web/src/features/workspace/shared/VisualDocumentEditor.tsx",
+    "apps/web/src/features/file-manager/preview-shared/VisualDocumentEditor.tsx",
   );
   const actionsMenu = read(
-    "apps/web/src/features/workspace/files/FileActionsMenu.tsx",
+    "apps/web/src/features/file-manager/file-tools/FileActionsMenu.tsx",
   );
   const router = read("apps/web/src/app/router.tsx");
   const navigation = read("apps/web/src/app/navigation.ts");
@@ -247,7 +247,7 @@ test("system file manager is an independent app-shell domain with cloud-panel li
   assert.match(page, /handleDrop/);
   assert.match(page, /handleDropUploadToDirectory/);
   const uploadInputs = read(
-    "apps/web/src/features/workspace/files/uploadInputs.ts",
+    "apps/web/src/features/file-manager/file-tools/uploadInputs.ts",
   );
   assert.match(page, /collectUploadFilesFromDataTransfer/);
   assert.match(page, /mergeUploadFiles/);
@@ -1671,26 +1671,26 @@ test("file manager owns content index management view instead of placing it in W
 
 test("upload manager UI is shared instead of embedded in WorkspaceExplorer", () => {
   const explorer = read(
-    "apps/web/src/features/workspace/files/WorkspaceExplorer.tsx",
+    "apps/web/src/features/file-manager/file-tools/WorkspaceExplorer.tsx",
   );
   const uploadUi = read(
-    "apps/web/src/features/workspace/files/UploadManagerDialog.tsx",
+    "apps/web/src/features/file-manager/file-tools/UploadManagerDialog.tsx",
   );
   const uploadStrip = read(
-    "apps/web/src/features/workspace/files/UploadTaskStrip.tsx",
+    "apps/web/src/features/file-manager/file-tools/UploadTaskStrip.tsx",
   );
   const uploadFormatting = read(
-    "apps/web/src/features/workspace/files/uploadFormatting.ts",
+    "apps/web/src/features/file-manager/file-tools/uploadFormatting.ts",
   );
   const uploadSnapshots = read(
-    "apps/web/src/features/workspace/files/uploadTaskSnapshots.ts",
+    "apps/web/src/features/file-manager/file-tools/uploadTaskSnapshots.ts",
   );
-  const barrel = read("apps/web/src/features/workspace/files/index.ts");
+  const barrel = read("apps/web/src/features/file-manager/file-tools/index.ts");
   const fileManager = read(
     "apps/web/src/features/file-manager/FileManagerPage.tsx",
   );
   const workspaceExplorer = read(
-    "apps/web/src/features/workspace/files/WorkspaceExplorer.tsx",
+    "apps/web/src/features/file-manager/file-tools/WorkspaceExplorer.tsx",
   );
   const packageJson = read("package.json");
   const quickPasteSmoke = read(
@@ -1757,7 +1757,7 @@ test("upload manager UI is shared instead of embedded in WorkspaceExplorer", () 
   assert.match(uploadFormatting, /export function formatBytes/);
   assert.match(uploadFormatting, /export function estimateRemaining/);
   const uploadManager = read(
-    "apps/web/src/features/workspace/files/uploadManager.ts",
+    "apps/web/src/features/file-manager/file-tools/uploadManager.ts",
   );
   assert.match(uploadStrip, /export interface UploadTaskSnapshot/);
   assert.match(uploadManager, /getUploadCheckpointStorageKey/);
