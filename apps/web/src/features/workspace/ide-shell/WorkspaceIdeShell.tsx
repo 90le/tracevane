@@ -3616,6 +3616,7 @@ export function WorkspaceIdeShell() {
           onApplyWorkbenchRecipe={applyWorkbenchRecipe}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
+          onToggleLayoutLock={() => setLayoutLocked((locked) => !locked)}
           onShowMobilePanel={showMobilePanel}
           onHidePane={hidePane}
           onRestorePane={restorePane}
@@ -4452,6 +4453,7 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe,
   onOpenAllDocks,
   onFocusEditorOnly,
+  onToggleLayoutLock,
   onShowMobilePanel,
   onHidePane,
   onRestorePane,
@@ -4496,6 +4498,7 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe: (recipeId: WorkbenchRecipeId) => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
+  onToggleLayoutLock: () => void;
   onShowMobilePanel: (panel: MobilePanel) => void;
   onHidePane: (paneId: PaneId) => void;
   onRestorePane: (paneId: PaneId) => void;
@@ -4555,8 +4558,12 @@ function DockLayoutManager({
           <span data-ide-pane-layout-summary-open>打开 {openDockCount}/4</span>
           <span data-ide-pane-layout-summary-max>{maximizedPane ? `最大化 ${maximizedPane === "center" ? "编辑器" : placementLabel(maximizedPane)}` : "未最大化"}</span>
           <span data-ide-pane-layout-summary-hidden>隐藏 {hiddenPanes.length}</span>
+          <span data-ide-pane-layout-summary-lock>{layoutLocked ? "布局已锁" : "布局可编辑"}</span>
           <span data-ide-pane-layout-summary-snapshots>快照 {layoutSnapshotCount}</span>
           <span data-ide-pane-layout-summary-history>历史 {layoutHistoryCounts.past}/{layoutHistoryCounts.future}</span>
+          <button type="button" onClick={onToggleLayoutLock} data-ide-pane-layout-lock-toggle data-active={layoutLocked ? "true" : "false"} aria-pressed={layoutLocked}>
+            {layoutLocked ? "解锁布局" : "锁定布局"}
+          </button>
           <button type="button" disabled={layoutLocked || hiddenPanes.length === 0} onClick={onRestoreAllHiddenPanes} data-ide-pane-layout-restore-all-hidden>
             恢复隐藏
           </button>

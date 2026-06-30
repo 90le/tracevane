@@ -1702,6 +1702,19 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
 
 
 
+
+test("new Workspace IDE shell exposes layout lock controls inside the pane layout manager", () => {
+  assert.match(shellSource, /onToggleLayoutLock=\{\(\) => setLayoutLocked\(\(locked\) => !locked\)\}/);
+  assert.match(shellSource, /onToggleLayoutLock: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-summary-lock/);
+  assert.match(shellSource, /layoutLocked \? "布局已锁" : "布局可编辑"/);
+  assert.match(shellSource, /data-ide-pane-layout-lock-toggle/);
+  assert.match(shellSource, /onClick=\{onToggleLayoutLock\}/);
+  assert.match(shellSource, /data-active=\{layoutLocked \? "true" : "false"\}/);
+  assert.match(shellSource, /aria-pressed=\{layoutLocked\}/);
+  assert.match(shellSource, /layoutLocked \? "解锁布局" : "锁定布局"/);
+});
+
 test("new Workspace IDE shell exposes per-pane primary secondary group controls in the pane layout manager", () => {
   assert.match(shellSource, /workspace-ide-shell__dock-layout-role-switch/);
   assert.match(shellSource, /\(\["primary", "secondary"\] as const\)\.map\(\(targetRole\) => \(/);
