@@ -3712,6 +3712,10 @@ export function WorkspaceIdeShell() {
           onApplyWorkbenchRecipe={applyWorkbenchRecipe}
           onOpenAllDocks={openAllDocks}
           onFocusEditorOnly={focusEditorOnlyLayout}
+          onResetLayout={resetLayout}
+          onResetPanePlacements={resetPanePlacements}
+          onCloseAllDockSplits={closeAllDockSplits}
+          onResetAllDockSplitRatios={resetAllDockSplitRatios}
           onToggleLayoutLock={() => setLayoutLocked((locked) => !locked)}
           onShowMobilePanel={showMobilePanel}
           onHidePane={hidePane}
@@ -4769,6 +4773,10 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe,
   onOpenAllDocks,
   onFocusEditorOnly,
+  onResetLayout,
+  onResetPanePlacements,
+  onCloseAllDockSplits,
+  onResetAllDockSplitRatios,
   onToggleLayoutLock,
   onShowMobilePanel,
   onHidePane,
@@ -4826,6 +4834,10 @@ function DockLayoutManager({
   onApplyWorkbenchRecipe: (recipeId: WorkbenchRecipeId) => void;
   onOpenAllDocks: () => void;
   onFocusEditorOnly: () => void;
+  onResetLayout: () => void;
+  onResetPanePlacements: () => void;
+  onCloseAllDockSplits: () => void;
+  onResetAllDockSplitRatios: () => void;
   onToggleLayoutLock: () => void;
   onShowMobilePanel: (panel: MobilePanel) => void;
   onHidePane: (paneId: PaneId) => void;
@@ -4976,6 +4988,13 @@ function DockLayoutManager({
         <button type="button" disabled={layoutLocked} onClick={onFocusEditorOnly} data-ide-pane-layout-editor-only>
           编辑器专注
         </button>
+      </div>
+      <div className="workspace-ide-shell__dock-layout-recovery" aria-label="IDE 布局恢复操作" data-ide-pane-layout-recovery>
+        <span>恢复</span>
+        <button type="button" disabled={layoutLocked} onClick={onResetLayout} data-ide-pane-layout-reset-all>重置工作台</button>
+        <button type="button" disabled={layoutLocked} onClick={onResetPanePlacements} data-ide-pane-layout-reset-placements>Pane 归位</button>
+        <button type="button" disabled={layoutLocked} onClick={onCloseAllDockSplits} data-ide-pane-layout-close-all-splits>关闭拆分</button>
+        <button type="button" disabled={layoutLocked} onClick={onResetAllDockSplitRatios} data-ide-pane-layout-reset-split-ratios>比例归中</button>
       </div>
       <div className="workspace-ide-shell__dock-layout-workbench-snapshots" aria-label="布局管理器内的 IDE 全局快照" data-ide-pane-layout-snapshots>
         <span>全局布局快照 · {layoutSnapshots.length}</span>

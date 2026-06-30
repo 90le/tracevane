@@ -1678,6 +1678,23 @@ test("new Workspace IDE shell exposes editor-only controls in the pane layout ma
   assert.match(shellSource, />\n          编辑器专注\n        <\/button>/);
 });
 
+test("new Workspace IDE shell exposes layout recovery controls in the pane layout manager", () => {
+  assert.match(shellSource, /onResetLayout=\{resetLayout\}/);
+  assert.match(shellSource, /onResetPanePlacements=\{resetPanePlacements\}/);
+  assert.match(shellSource, /onCloseAllDockSplits=\{closeAllDockSplits\}/);
+  assert.match(shellSource, /onResetAllDockSplitRatios=\{resetAllDockSplitRatios\}/);
+  assert.match(shellSource, /onResetLayout: \(\) => void/);
+  assert.match(shellSource, /onResetPanePlacements: \(\) => void/);
+  assert.match(shellSource, /onCloseAllDockSplits: \(\) => void/);
+  assert.match(shellSource, /onResetAllDockSplitRatios: \(\) => void/);
+  assert.match(shellSource, /data-ide-pane-layout-recovery/);
+  assert.match(shellSource, /data-ide-pane-layout-reset-all/);
+  assert.match(shellSource, /data-ide-pane-layout-reset-placements/);
+  assert.match(shellSource, /data-ide-pane-layout-close-all-splits/);
+  assert.match(shellSource, /data-ide-pane-layout-reset-split-ratios/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-recovery/);
+});
+
 test("new Workspace IDE shell exposes layout snapshot save in the pane layout manager", () => {
   assert.match(shellSource, /onSaveLayoutSnapshot=\{saveLayoutSnapshot\}/);
   assert.match(shellSource, /onSaveLayoutSnapshot: \(\) => void/);
