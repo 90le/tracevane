@@ -1247,6 +1247,7 @@ export function FileManagerPage() {
             onUpload={() => openUploadManager(directoryPath)}
             onChangeViewMode={setViewMode}
             onRefresh={refresh}
+            currentLocation={currentLocation}
           />
         </header>
 

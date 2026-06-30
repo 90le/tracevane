@@ -7,9 +7,11 @@ import {
   Eye,
   EyeOff,
   FilePlus,
+  Folder,
   FolderPlus,
   HardDrive,
   History,
+  Plus,
   Trash2,
   RefreshCw,
   Search,
@@ -301,6 +303,41 @@ export interface FileManagerNavigationBarProps {
   onUpload: () => void;
   onChangeViewMode: (mode: FileManagerViewMode) => void;
   onRefresh: () => void;
+  currentLocation?: FileManagerLocation;
+}
+
+function tabKey(location: Pick<FileManagerLocation, "rootId" | "directoryPath">): string {
+  return `${location.rootId}:${location.directoryPath}`;
+}
+
+function locationShortLabel(location: FileManagerLocation): string {
+  const label = location.label || location.directoryPath || location.rootId;
+  const parts = label.split("/").filter(Boolean);
+  return parts.at(-1) ?? label ?? "root";
+}
+
+function buildDirectoryTabs({
+  currentLocation,
+  favoriteLocations,
+  recentLocations,
+}: {
+  currentLocation?: FileManagerLocation;
+  favoriteLocations: FileManagerQuickLocation[];
+  recentLocations: FileManagerQuickLocation[];
+}): FileManagerQuickLocation[] {
+  const tabs: FileManagerQuickLocation[] = [];
+  const seen = new Set<string>();
+  const push = (location: FileManagerQuickLocation | undefined) => {
+    if (!location) return;
+    const key = tabKey(location);
+    if (seen.has(key)) return;
+    seen.add(key);
+    tabs.push(location);
+  };
+  push(currentLocation ? { ...currentLocation, favorited: false } : undefined);
+  favoriteLocations.forEach(push);
+  recentLocations.forEach(push);
+  return tabs.slice(0, 7);
 }
 
 export function FileManagerNavigationBar({
@@ -343,6 +380,7 @@ export function FileManagerNavigationBar({
   onUpload,
   onChangeViewMode,
   onRefresh,
+  currentLocation,
 }: FileManagerNavigationBarProps) {
   const suggestionListId = React.useId();
   const activeSuggestion = pathSuggestions[activePathSuggestionIndex];
@@ -372,13 +410,70 @@ export function FileManagerNavigationBar({
   }, [onPathInputBlur]);
 
   const visibleBreadcrumbs = compactBreadcrumbs(breadcrumbs);
+  const directoryTabs = React.useMemo(
+    () =>
+      buildDirectoryTabs({
+        currentLocation,
+        favoriteLocations,
+        recentLocations,
+      }),
+    [currentLocation, favoriteLocations, recentLocations],
+  );
 
   return (
     <div
-      className="grid gap-1.5 border-b border-line bg-panel-2/70 px-3 py-1.5 sm:px-4 xl:grid-cols-[minmax(0,1fr)_320px_auto] xl:items-center"
+      className="grid gap-1.5 border-b border-line bg-panel-2/70 px-3 py-1.5 sm:px-4"
       data-file-manager-mobile-navigation
     >
-      <div className="grid min-w-0 gap-2">
+      <div
+        className="hidden min-w-0 items-end gap-1 overflow-x-auto border-b border-line/70 pb-1 sm:flex"
+        role="tablist"
+        aria-label="文件管理器目录标签"
+        data-file-manager-directory-tabs
+      >
+        {directoryTabs.map((location) => {
+          const active =
+            currentLocation &&
+            location.rootId === currentLocation.rootId &&
+            location.directoryPath === currentLocation.directoryPath;
+          return (
+            <button
+              key={`directory-tab:${location.rootId}:${location.directoryPath}`}
+              type="button"
+              role="tab"
+              aria-selected={Boolean(active)}
+              onClick={() => onNavigateToLocation(location)}
+              title={location.label}
+              className={cn(
+                "inline-flex h-9 max-w-[240px] shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-3 text-xs transition-colors",
+                active
+                  ? "border-line bg-panel font-semibold text-primary shadow-sm"
+                  : "border-transparent bg-panel-3/60 text-muted hover:border-line hover:bg-panel hover:text-ink-strong",
+              )}
+              data-file-manager-directory-tab={active ? "active" : "inactive"}
+            >
+              <Folder className="size-3.5 shrink-0 text-primary" />
+              <span className="min-w-0 truncate">{locationShortLabel(location)}</span>
+              {location.favorited ? (
+                <Star className="size-3 shrink-0 fill-current text-primary" />
+              ) : null}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-t-md border border-b-0 border-line bg-panel px-2 text-xs text-muted hover:text-primary"
+          onClick={onToggleFavoriteCurrent}
+          aria-pressed={currentLocationFavorited}
+          title={currentLocationFavorited ? "取消收藏当前目录" : "收藏当前目录为标签"}
+          data-file-manager-directory-tab-pin
+        >
+          <Plus className="size-3.5" />
+          收藏标签
+        </button>
+      </div>
+
+      <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
         <div className="relative min-w-0">
           <div
             role="group"
@@ -694,6 +789,34 @@ export function FileManagerNavigationBar({
             </span>
           ) : null}
         </div>
+      </div>
+
+      <div
+        className="hidden min-w-0 items-center gap-1.5 overflow-x-auto xl:flex"
+        data-file-manager-desktop-quick-actions
+      >
+        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onUpload} disabled={!rootId}>
+          <Upload className="size-3.5" /> 上传
+        </Button>
+        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onNewDirectory} disabled={!rootId}>
+          <FolderPlus className="size-3.5" /> 新目录
+        </Button>
+        <Button variant="outline" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={onNewFile} disabled={!rootId}>
+          <FilePlus className="size-3.5" /> 新文件
+        </Button>
+        <Button variant="ghost" size="sm" className="h-9 shrink-0 px-2 text-xs" onClick={() => filterInputRef?.current?.focus()}>
+          <Search className="size-3.5" /> 内容筛选
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-9 shrink-0 px-2 text-xs", showHidden && "bg-primary-soft text-primary")}
+          onClick={onToggleShowHidden}
+          aria-pressed={showHidden}
+        >
+          {showHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+          隐藏文件
+        </Button>
       </div>
 
       <details
