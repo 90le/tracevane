@@ -3441,6 +3441,14 @@ export function WorkspaceIdeShell() {
     }
   }
 
+  function moveDockPanesToPlacement(sourcePlacement: PanePlacement, targetPlacement: PanePlacement) {
+    if (layoutLocked || sourcePlacement === targetPlacement) return;
+    const movablePaneIds = panesByPlacement[sourcePlacement].filter((paneId) => !isPanePinned(paneId));
+    for (const paneId of movablePaneIds) {
+      movePaneToPlacement(paneId, targetPlacement);
+    }
+  }
+
   function beginPaneDrag(paneId: PaneId, event: React.DragEvent) {
     if (layoutLocked || isPanePinned(paneId)) return;
     event.dataTransfer.effectAllowed = "move";
@@ -3744,6 +3752,7 @@ export function WorkspaceIdeShell() {
           onResizeDockSplitGroup={resizeDockSplitGroup}
           onResetDockSplitRatio={resetDockSplitRatio}
           onMovePaneToGroup={movePaneToPlacement}
+          onMoveDockPanesToPlacement={moveDockPanesToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
           onMergeDockGroups={mergeDockSplitGroups}
           onResetDockComposition={resetDockComposition}
@@ -4810,6 +4819,7 @@ function DockLayoutManager({
   onResizeDockSplitGroup,
   onResetDockSplitRatio,
   onMovePaneToGroup,
+  onMoveDockPanesToPlacement,
   onSwapDockGroups,
   onMergeDockGroups,
   onResetDockComposition,
@@ -4876,6 +4886,7 @@ function DockLayoutManager({
   onResizeDockSplitGroup: (placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") => void;
   onResetDockSplitRatio: (placement: PanePlacement) => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
+  onMoveDockPanesToPlacement: (sourcePlacement: PanePlacement, targetPlacement: PanePlacement) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
   onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
   onResetDockComposition: (placement: PanePlacement) => void;
@@ -5156,6 +5167,18 @@ function DockLayoutManager({
                 <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onMergeDockGroups(placement, "secondary")} data-ide-pane-layout-merge-secondary={placement}>
                   合到副组
                 </button>
+                {DOCK_PLACEMENTS.filter((targetPlacement) => targetPlacement !== placement).map((targetPlacement) => (
+                  <button
+                    key={targetPlacement}
+                    type="button"
+                    disabled={layoutLocked || paneIds.every((paneId) => pinnedPanes.includes(paneId))}
+                    onClick={() => onMoveDockPanesToPlacement(placement, targetPlacement)}
+                    data-ide-pane-layout-move-dock-panes={targetPlacement}
+                    data-ide-pane-layout-move-dock-source={placement}
+                  >
+                    全部到{placementLabel(targetPlacement)}
+                  </button>
+                ))}
               </div>
               <div className="workspace-ide-shell__dock-layout-orientation" data-ide-pane-layout-orientation={placement}>
                 <span>拆分方向</span>

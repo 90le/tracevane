@@ -1521,10 +1521,15 @@ test("new Workspace IDE shell exposes direct split orientation controls in the p
 });
 
 test("new Workspace IDE shell exposes pane group swap and merge in the layout manager", () => {
+  assert.match(shellSource, /function moveDockPanesToPlacement\(sourcePlacement: PanePlacement, targetPlacement: PanePlacement\)/);
+  assert.match(shellSource, /const movablePaneIds = panesByPlacement\[sourcePlacement\]\.filter\(\(paneId\) => !isPanePinned\(paneId\)\)/);
+  assert.match(shellSource, /for \(const paneId of movablePaneIds\) \{[\s\S]*?movePaneToPlacement\(paneId, targetPlacement\);[\s\S]*?\}/);
   assert.match(shellSource, /onSwapDockGroups=\{swapDockSplitPanes\}/);
   assert.match(shellSource, /onMergeDockGroups=\{mergeDockSplitGroups\}/);
+  assert.match(shellSource, /onMoveDockPanesToPlacement=\{moveDockPanesToPlacement\}/);
   assert.match(shellSource, /onSwapDockGroups: \(placement: PanePlacement\) => void/);
   assert.match(shellSource, /onMergeDockGroups: \(placement: PanePlacement, preferredRole\?: DockPaneRole\) => void/);
+  assert.match(shellSource, /onMoveDockPanesToPlacement: \(sourcePlacement: PanePlacement, targetPlacement: PanePlacement\) => void/);
   assert.match(shellSource, /data-ide-pane-layout-combine=\{placement\}/);
   assert.match(shellSource, /onClick=\{\(\) => onSwapDockGroups\(placement\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-swap-groups=\{placement\}/);
@@ -1533,6 +1538,11 @@ test("new Workspace IDE shell exposes pane group swap and merge in the layout ma
   assert.match(shellSource, /onClick=\{\(\) => onMergeDockGroups\(placement, "secondary"\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-merge-secondary=\{placement\}/);
   assert.match(shellSource, /disabled=\{layoutLocked \|\| splitModes\[placement\] === "single"\}/);
+  assert.match(shellSource, /DOCK_PLACEMENTS\.filter\(\(targetPlacement\) => targetPlacement !== placement\)\.map\(\(targetPlacement\) => \(/);
+  assert.match(shellSource, /data-ide-pane-layout-move-dock-panes=\{targetPlacement\}/);
+  assert.match(shellSource, /data-ide-pane-layout-move-dock-source=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMoveDockPanesToPlacement\(placement, targetPlacement\)\}/);
+  assert.match(shellSource, /disabled=\{layoutLocked \|\| paneIds\.every\(\(paneId\) => pinnedPanes\.includes\(paneId\)\)\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-combine/);
 });
 
