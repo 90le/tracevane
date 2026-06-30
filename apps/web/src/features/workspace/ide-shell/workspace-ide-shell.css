@@ -1361,8 +1361,45 @@
 
 .workspace-ide-shell__editor-layout-orientation,
 .workspace-ide-shell__editor-layout-ratio,
+.workspace-ide-shell__editor-layout-snapshots,
 .workspace-ide-shell__editor-layout-grid > .workspace-ide-shell__split-ratio-presets {
   grid-column: 1 / -1;
+}
+
+.workspace-ide-shell__editor-layout-snapshots {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.36);
+  padding: 10px;
+}
+
+.workspace-ide-shell__editor-layout-snapshots > span {
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.workspace-ide-shell__editor-layout-snapshots > small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.workspace-ide-shell__editor-layout-snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.workspace-ide-shell__editor-layout-snapshot-row button:first-child {
+  overflow: hidden;
+  justify-content: flex-start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-ide-shell__editor-layout-ratio {
@@ -1429,6 +1466,10 @@
 
   .workspace-ide-shell__editor-layout-tab-row > button[data-ide-editor-layout-tab-close] {
     grid-area: close;
+  }
+
+  .workspace-ide-shell__editor-layout-snapshot-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .workspace-ide-shell__editor-layout-ratio {

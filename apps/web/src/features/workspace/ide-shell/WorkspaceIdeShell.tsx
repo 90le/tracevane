@@ -3636,6 +3636,7 @@ export function WorkspaceIdeShell() {
           activeEditorGroup={activeEditorGroup}
           maximizedPane={maximizedPane}
           layoutLocked={layoutLocked}
+          editorGroupSnapshots={editorGroupSnapshots}
           editorGroupSnapshotCount={editorGroupSnapshots.length}
           onSplitEditor={splitEditor}
           onSetEditorSplitRatioPreset={setEditorSplitRatioPreset}
@@ -3651,6 +3652,9 @@ export function WorkspaceIdeShell() {
           onSwapEditorGroups={swapEditorGroups}
           onMergeEditorGroups={mergeEditorSplitToGroup}
           onSaveEditorGroupSnapshot={saveEditorGroupSnapshot}
+          onRestoreEditorGroupSnapshot={restoreEditorGroupSnapshot}
+          onUpdateEditorGroupSnapshot={updateEditorGroupSnapshot}
+          onDeleteEditorGroupSnapshot={deleteEditorGroupSnapshot}
           onFocusEditorOnly={focusEditorOnlyLayout}
           onToggleCenterMaximized={() => toggleMaximizedPane("center")}
         />
@@ -4498,6 +4502,7 @@ function EditorLayoutManager({
   activeEditorGroup,
   maximizedPane,
   layoutLocked,
+  editorGroupSnapshots,
   editorGroupSnapshotCount,
   onSplitEditor,
   onSetEditorSplitRatioPreset,
@@ -4513,6 +4518,9 @@ function EditorLayoutManager({
   onSwapEditorGroups,
   onMergeEditorGroups,
   onSaveEditorGroupSnapshot,
+  onRestoreEditorGroupSnapshot,
+  onUpdateEditorGroupSnapshot,
+  onDeleteEditorGroupSnapshot,
   onFocusEditorOnly,
   onToggleCenterMaximized,
 }: {
@@ -4522,6 +4530,7 @@ function EditorLayoutManager({
   activeEditorGroup: EditorGroupId;
   maximizedPane: MaximizedPane;
   layoutLocked: boolean;
+  editorGroupSnapshots: IdeEditorGroupSnapshot[];
   editorGroupSnapshotCount: number;
   onSplitEditor: (mode: Exclude<EditorSplitMode, "single">) => void;
   onSetEditorSplitRatioPreset: (ratio: SplitRatioPreset) => void;
@@ -4537,6 +4546,9 @@ function EditorLayoutManager({
   onSwapEditorGroups: () => void;
   onMergeEditorGroups: (preferredGroup: EditorGroupId) => void;
   onSaveEditorGroupSnapshot: () => void;
+  onRestoreEditorGroupSnapshot: (snapshot: IdeEditorGroupSnapshot) => void;
+  onUpdateEditorGroupSnapshot: (snapshotId: string) => void;
+  onDeleteEditorGroupSnapshot: (snapshotId: string) => void;
   onFocusEditorOnly: () => void;
   onToggleCenterMaximized: () => void;
 }) {
@@ -4669,6 +4681,23 @@ function EditorLayoutManager({
           onSelect={onSetEditorSplitRatioPreset}
           dataAttribute="manager-editor"
         />
+        <div className="workspace-ide-shell__editor-layout-snapshots" data-ide-editor-layout-snapshots>
+          <span>编辑器组快照 · {editorGroupSnapshotCount}</span>
+          {editorGroupSnapshots.length === 0 ? <small data-ide-editor-layout-empty-snapshots>暂无快照</small> : null}
+          {editorGroupSnapshots.slice(0, 4).map((snapshot) => (
+            <div key={snapshot.id} className="workspace-ide-shell__editor-layout-snapshot-row" data-ide-editor-layout-snapshot={snapshot.id}>
+              <button type="button" disabled={layoutLocked} onClick={() => onRestoreEditorGroupSnapshot(snapshot)} title={`恢复 ${snapshot.name}`} data-ide-editor-layout-snapshot-restore={snapshot.id}>
+                {snapshot.editorSplitMode} · {snapshot.name}
+              </button>
+              <button type="button" onClick={() => onUpdateEditorGroupSnapshot(snapshot.id)} aria-label={`用当前编辑器组覆盖 ${snapshot.name}`} data-ide-editor-layout-snapshot-update={snapshot.id}>
+                ↻
+              </button>
+              <button type="button" onClick={() => onDeleteEditorGroupSnapshot(snapshot.id)} aria-label={`删除编辑器组快照 ${snapshot.name}`} data-ide-editor-layout-snapshot-delete={snapshot.id}>
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

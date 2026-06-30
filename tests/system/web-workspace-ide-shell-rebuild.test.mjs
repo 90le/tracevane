@@ -1973,3 +1973,29 @@ test("new Workspace IDE shell exposes center editor maximize controls in the edi
   assert.match(shellSource, /aria-pressed=\{maximizedPane === "center"\}/);
   assert.match(shellSource, /maximizedPane === "center" \? "退出最大化" : "最大化编辑器"/);
 });
+
+test("new Workspace IDE shell exposes editor group snapshots inside the editor layout manager", () => {
+  assert.match(shellSource, /editorGroupSnapshots=\{editorGroupSnapshots\}/);
+  assert.match(shellSource, /onRestoreEditorGroupSnapshot=\{restoreEditorGroupSnapshot\}/);
+  assert.match(shellSource, /onUpdateEditorGroupSnapshot=\{updateEditorGroupSnapshot\}/);
+  assert.match(shellSource, /onDeleteEditorGroupSnapshot=\{deleteEditorGroupSnapshot\}/);
+  assert.match(shellSource, /editorGroupSnapshots: IdeEditorGroupSnapshot\[\]/);
+  assert.match(shellSource, /onRestoreEditorGroupSnapshot: \(snapshot: IdeEditorGroupSnapshot\) => void/);
+  assert.match(shellSource, /onUpdateEditorGroupSnapshot: \(snapshotId: string\) => void/);
+  assert.match(shellSource, /onDeleteEditorGroupSnapshot: \(snapshotId: string\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__editor-layout-snapshots/);
+  assert.match(shellSource, /data-ide-editor-layout-snapshots/);
+  assert.match(shellSource, /编辑器组快照 · \{editorGroupSnapshotCount\}/);
+  assert.match(shellSource, /data-ide-editor-layout-empty-snapshots/);
+  assert.match(shellSource, /editorGroupSnapshots\.slice\(0, 4\)\.map\(\(snapshot\) => \(/);
+  assert.match(shellSource, /data-ide-editor-layout-snapshot=\{snapshot\.id\}/);
+  assert.match(shellSource, /data-ide-editor-layout-snapshot-restore=\{snapshot\.id\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onRestoreEditorGroupSnapshot\(snapshot\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-snapshot-update=\{snapshot\.id\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onUpdateEditorGroupSnapshot\(snapshot\.id\)\}/);
+  assert.match(shellSource, /data-ide-editor-layout-snapshot-delete=\{snapshot\.id\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onDeleteEditorGroupSnapshot\(snapshot\.id\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-snapshots/);
+  assert.match(cssSource, /workspace-ide-shell__editor-layout-snapshot-row/);
+  assert.match(cssSource, /grid-template-columns: minmax\(0, 1fr\) auto auto/);
+});
