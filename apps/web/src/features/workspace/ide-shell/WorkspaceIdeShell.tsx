@@ -5256,6 +5256,15 @@ function DockLayoutManager({
                             <button
                               type="button"
                               disabled={layoutLocked || pinned || paneIndex === 0 || (role === "secondary" && splitModes[placement] === "single")}
+                              data-ide-pane-layout-order-first={paneId}
+                              aria-label={`置顶 ${paneLabel(paneId)}`}
+                              onClick={() => onMovePaneToGroup(paneId, placement, paneIds[0], role)}
+                            >
+                              ⇤
+                            </button>
+                            <button
+                              type="button"
+                              disabled={layoutLocked || pinned || paneIndex === 0 || (role === "secondary" && splitModes[placement] === "single")}
                               data-ide-pane-layout-order-up={paneId}
                               aria-label={`上移 ${paneLabel(paneId)}`}
                               onClick={() => onMovePaneToGroup(paneId, placement, paneIds[paneIndex - 1], role)}
@@ -5270,6 +5279,15 @@ function DockLayoutManager({
                               onClick={() => onMovePaneToGroup(paneId, placement, paneIds[paneIndex + 2], role)}
                             >
                               ↓
+                            </button>
+                            <button
+                              type="button"
+                              disabled={layoutLocked || pinned || paneIndex === paneIds.length - 1 || (role === "secondary" && splitModes[placement] === "single")}
+                              data-ide-pane-layout-order-last={paneId}
+                              aria-label={`置底 ${paneLabel(paneId)}`}
+                              onClick={() => onMovePaneToGroup(paneId, placement, undefined, role)}
+                            >
+                              ⇥
                             </button>
                           </span>
                           <button

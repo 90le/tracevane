@@ -1781,10 +1781,14 @@ test("new Workspace IDE shell exposes pane order controls in the pane layout man
   assert.match(shellSource, /paneIds\.map\(\(paneId, paneIndex\) =>/);
   assert.match(shellSource, /data-ide-pane-layout-pane-row=\{paneId\}/);
   assert.match(shellSource, /workspace-ide-shell__dock-layout-order/);
+  assert.match(shellSource, /data-ide-pane-layout-order-first=\{paneId\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, paneIds\[0\], role\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-order-up=\{paneId\}/);
   assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, paneIds\[paneIndex - 1\], role\)\}/);
   assert.match(shellSource, /data-ide-pane-layout-order-down=\{paneId\}/);
   assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, paneIds\[paneIndex \+ 2\], role\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-order-last=\{paneId\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onMovePaneToGroup\(paneId, placement, undefined, role\)\}/);
   assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned \|\| paneIndex === 0 \|\| \(role === "secondary" && splitModes\[placement\] === "single"\)\}/);
   assert.match(shellSource, /disabled=\{layoutLocked \|\| pinned \|\| paneIndex === paneIds\.length - 1 \|\| \(role === "secondary" && splitModes\[placement\] === "single"\)\}/);
   assert.match(cssSource, /workspace-ide-shell__dock-layout-pane-row/);
