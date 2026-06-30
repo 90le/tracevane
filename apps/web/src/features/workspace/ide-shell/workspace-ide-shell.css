@@ -1895,6 +1895,18 @@
   border-color: rgba(125, 211, 252, 0.22);
 }
 
+.workspace-ide-shell__dock-layout-split-nudge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.workspace-ide-shell__dock-layout-split-nudge span {
+  color: var(--ide-muted);
+  font-size: 10px;
+}
+
 .workspace-ide-shell__dock-layout-adjacent button {
   border-style: dashed;
 }

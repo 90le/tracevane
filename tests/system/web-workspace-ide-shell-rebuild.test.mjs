@@ -1578,6 +1578,23 @@ test("new Workspace IDE shell exposes editor group swap and directional merge co
   assert.match(shellSource, /aria-label="合并编辑器到副组"/);
 });
 
+test("new Workspace IDE shell exposes split group nudge controls in the pane layout manager", () => {
+  assert.match(shellSource, /onResizeDockSplitGroup=\{resizeDockSplitGroup\}/);
+  assert.match(shellSource, /onResizeDockSplitGroup: \(placement: PanePlacement, role: DockPaneRole, direction: "grow" \| "shrink"\) => void/);
+  assert.match(shellSource, /workspace-ide-shell__dock-layout-split-nudge/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge=\{placement\}/);
+  assert.match(shellSource, /主\/副组比例 · \{Math\.round\(splitRatios\[placement\]\)\}\/\{100 - Math\.round\(splitRatios\[placement\]\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge-primary-shrink=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "primary", "shrink"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge-primary-grow=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "primary", "grow"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge-secondary-shrink=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "secondary", "shrink"\)\}/);
+  assert.match(shellSource, /data-ide-pane-layout-split-nudge-secondary-grow=\{placement\}/);
+  assert.match(shellSource, /onClick=\{\(\) => onResizeDockSplitGroup\(placement, "secondary", "grow"\)\}/);
+  assert.match(cssSource, /workspace-ide-shell__dock-layout-split-nudge/);
+});
+
 test("new Workspace IDE shell exposes dock size controls in the pane layout manager", () => {
   assert.match(shellSource, /function resizeDockPlacement\(placement: PanePlacement, delta: number\)/);
   assert.match(shellSource, /if \(layoutLocked\) return;[\s\S]*?const \{ min, max \} = getPaneSizeLimits\(placement\)/);

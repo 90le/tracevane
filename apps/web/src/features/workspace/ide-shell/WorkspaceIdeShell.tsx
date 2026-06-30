@@ -3741,6 +3741,7 @@ export function WorkspaceIdeShell() {
           onSetDockSizePreset={setDockPlacementSizePreset}
           onSetAllDockSizePreset={setAllDockPlacementSizePreset}
           onSetSplitRatioPreset={setDockSplitRatioPreset}
+          onResizeDockSplitGroup={resizeDockSplitGroup}
           onMovePaneToGroup={movePaneToPlacement}
           onSwapDockGroups={swapDockSplitPanes}
           onMergeDockGroups={mergeDockSplitGroups}
@@ -4805,6 +4806,7 @@ function DockLayoutManager({
   onSetDockSizePreset,
   onSetAllDockSizePreset,
   onSetSplitRatioPreset,
+  onResizeDockSplitGroup,
   onMovePaneToGroup,
   onSwapDockGroups,
   onMergeDockGroups,
@@ -4869,6 +4871,7 @@ function DockLayoutManager({
   onSetDockSizePreset: (placement: PanePlacement, preset: DockSizePreset) => void;
   onSetAllDockSizePreset: (preset: DockSizePreset) => void;
   onSetSplitRatioPreset: (placement: PanePlacement, ratio: SplitRatioPreset) => void;
+  onResizeDockSplitGroup: (placement: PanePlacement, role: DockPaneRole, direction: "grow" | "shrink") => void;
   onMovePaneToGroup: (paneId: PaneId, placement: PanePlacement, beforePaneId?: PaneId, role?: DockPaneRole) => void;
   onSwapDockGroups: (placement: PanePlacement) => void;
   onMergeDockGroups: (placement: PanePlacement, preferredRole?: DockPaneRole) => void;
@@ -5122,6 +5125,21 @@ function DockLayoutManager({
                 onSelect={(ratio) => onSetSplitRatioPreset(placement, ratio)}
                 dataAttribute={`manager-${placement}`}
               />
+              <div className="workspace-ide-shell__dock-layout-split-nudge" data-ide-pane-layout-split-nudge={placement}>
+                <span>主/副组比例 · {Math.round(splitRatios[placement])}/{100 - Math.round(splitRatios[placement])}</span>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResizeDockSplitGroup(placement, "primary", "shrink")} data-ide-pane-layout-split-nudge-primary-shrink={placement}>
+                  主组 −
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResizeDockSplitGroup(placement, "primary", "grow")} data-ide-pane-layout-split-nudge-primary-grow={placement}>
+                  主组 ＋
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResizeDockSplitGroup(placement, "secondary", "shrink")} data-ide-pane-layout-split-nudge-secondary-shrink={placement}>
+                  副组 −
+                </button>
+                <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onResizeDockSplitGroup(placement, "secondary", "grow")} data-ide-pane-layout-split-nudge-secondary-grow={placement}>
+                  副组 ＋
+                </button>
+              </div>
               <div className="workspace-ide-shell__dock-layout-combine" data-ide-pane-layout-combine={placement}>
                 <button type="button" disabled={layoutLocked || splitModes[placement] === "single"} onClick={() => onSwapDockGroups(placement)} data-ide-pane-layout-swap-groups={placement}>
                   交换主副
