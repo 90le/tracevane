@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
-import "monaco-editor/esm/vs/editor/contrib/find/browser/findController.js";
+import "monaco-editor/esm/vs/editor/edcore.main.js";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -9,6 +9,7 @@ import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
 import { useTheme } from "@/app/providers";
 import { cn } from "@/design/lib/utils";
+import { MONACO_LANGUAGE_LOADERS } from "@/features/file-manager/code-editor/monacoLanguageLoaders";
 import { editorModelUriPath } from "@/shared/editor-core/identity";
 import { languageForPath } from "@/shared/editor-core/language";
 
@@ -19,102 +20,7 @@ const MONACO_KEYBOARD_MIN_OVERLAP = 8;
 const MONACO_KEYBOARD_MAX_INSET_RATIO = 0.38;
 const MONACO_KEYBOARD_MAX_SCROLL_DELTA = 96;
 
-type MonacoLanguageLoader = () => Promise<unknown>;
-
 const monacoLanguageLoadCache = new Map<string, Promise<unknown>>();
-
-const MONACO_RICH_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
-  css: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
-  scss: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
-  less: () => import("monaco-editor/esm/vs/language/css/monaco.contribution.js"),
-  html: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
-  handlebars: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
-  razor: () => import("monaco-editor/esm/vs/language/html/monaco.contribution.js"),
-  json: () => import("monaco-editor/esm/vs/language/json/monaco.contribution.js"),
-  javascript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
-  typescript: () => import("monaco-editor/esm/vs/language/typescript/monaco.contribution.js"),
-};
-
-const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
-  abap: () => import("monaco-editor/esm/vs/basic-languages/abap/abap.contribution.js"),
-  apex: () => import("monaco-editor/esm/vs/basic-languages/apex/apex.contribution.js"),
-  azcli: () => import("monaco-editor/esm/vs/basic-languages/azcli/azcli.contribution.js"),
-  bat: () => import("monaco-editor/esm/vs/basic-languages/bat/bat.contribution.js"),
-  bicep: () => import("monaco-editor/esm/vs/basic-languages/bicep/bicep.contribution.js"),
-  cameligo: () => import("monaco-editor/esm/vs/basic-languages/cameligo/cameligo.contribution.js"),
-  clojure: () => import("monaco-editor/esm/vs/basic-languages/clojure/clojure.contribution.js"),
-  coffee: () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.contribution.js"),
-  cpp: () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"),
-  csharp: () => import("monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution.js"),
-  csp: () => import("monaco-editor/esm/vs/basic-languages/csp/csp.contribution.js"),
-  cypher: () => import("monaco-editor/esm/vs/basic-languages/cypher/cypher.contribution.js"),
-  dart: () => import("monaco-editor/esm/vs/basic-languages/dart/dart.contribution.js"),
-  dockerfile: () => import("monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.contribution.js"),
-  ecl: () => import("monaco-editor/esm/vs/basic-languages/ecl/ecl.contribution.js"),
-  elixir: () => import("monaco-editor/esm/vs/basic-languages/elixir/elixir.contribution.js"),
-  flow9: () => import("monaco-editor/esm/vs/basic-languages/flow9/flow9.contribution.js"),
-  freemarker2: () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"),
-  fsharp: () => import("monaco-editor/esm/vs/basic-languages/fsharp/fsharp.contribution.js"),
-  go: () => import("monaco-editor/esm/vs/basic-languages/go/go.contribution.js"),
-  graphql: () => import("monaco-editor/esm/vs/basic-languages/graphql/graphql.contribution.js"),
-  hcl: () => import("monaco-editor/esm/vs/basic-languages/hcl/hcl.contribution.js"),
-  ini: () => import("monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js"),
-  java: () => import("monaco-editor/esm/vs/basic-languages/java/java.contribution.js"),
-  julia: () => import("monaco-editor/esm/vs/basic-languages/julia/julia.contribution.js"),
-  kotlin: () => import("monaco-editor/esm/vs/basic-languages/kotlin/kotlin.contribution.js"),
-  lexon: () => import("monaco-editor/esm/vs/basic-languages/lexon/lexon.contribution.js"),
-  liquid: () => import("monaco-editor/esm/vs/basic-languages/liquid/liquid.contribution.js"),
-  lua: () => import("monaco-editor/esm/vs/basic-languages/lua/lua.contribution.js"),
-  m3: () => import("monaco-editor/esm/vs/basic-languages/m3/m3.contribution.js"),
-  markdown: () => import("monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js"),
-  mdx: () => import("monaco-editor/esm/vs/basic-languages/mdx/mdx.contribution.js"),
-  mips: () => import("monaco-editor/esm/vs/basic-languages/mips/mips.contribution.js"),
-  msdax: () => import("monaco-editor/esm/vs/basic-languages/msdax/msdax.contribution.js"),
-  mysql: () => import("monaco-editor/esm/vs/basic-languages/mysql/mysql.contribution.js"),
-  "objective-c": () => import("monaco-editor/esm/vs/basic-languages/objective-c/objective-c.contribution.js"),
-  pascal: () => import("monaco-editor/esm/vs/basic-languages/pascal/pascal.contribution.js"),
-  "pascaligo": () => import("monaco-editor/esm/vs/basic-languages/pascaligo/pascaligo.contribution.js"),
-  perl: () => import("monaco-editor/esm/vs/basic-languages/perl/perl.contribution.js"),
-  pgsql: () => import("monaco-editor/esm/vs/basic-languages/pgsql/pgsql.contribution.js"),
-  php: () => import("monaco-editor/esm/vs/basic-languages/php/php.contribution.js"),
-  pla: () => import("monaco-editor/esm/vs/basic-languages/pla/pla.contribution.js"),
-  postiats: () => import("monaco-editor/esm/vs/basic-languages/postiats/postiats.contribution.js"),
-  "powerquery": () => import("monaco-editor/esm/vs/basic-languages/powerquery/powerquery.contribution.js"),
-  powershell: () => import("monaco-editor/esm/vs/basic-languages/powershell/powershell.contribution.js"),
-  protobuf: () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.contribution.js"),
-  pug: () => import("monaco-editor/esm/vs/basic-languages/pug/pug.contribution.js"),
-  python: () => import("monaco-editor/esm/vs/basic-languages/python/python.contribution.js"),
-  qsharp: () => import("monaco-editor/esm/vs/basic-languages/qsharp/qsharp.contribution.js"),
-  "r": () => import("monaco-editor/esm/vs/basic-languages/r/r.contribution.js"),
-  redis: () => import("monaco-editor/esm/vs/basic-languages/redis/redis.contribution.js"),
-  redshift: () => import("monaco-editor/esm/vs/basic-languages/redshift/redshift.contribution.js"),
-  "restructuredtext": () => import("monaco-editor/esm/vs/basic-languages/restructuredtext/restructuredtext.contribution.js"),
-  ruby: () => import("monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution.js"),
-  rust: () => import("monaco-editor/esm/vs/basic-languages/rust/rust.contribution.js"),
-  "sb": () => import("monaco-editor/esm/vs/basic-languages/sb/sb.contribution.js"),
-  scala: () => import("monaco-editor/esm/vs/basic-languages/scala/scala.contribution.js"),
-  scheme: () => import("monaco-editor/esm/vs/basic-languages/scheme/scheme.contribution.js"),
-  shell: () => import("monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js"),
-  solidity: () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.contribution.js"),
-  sophia: () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.contribution.js"),
-  sparql: () => import("monaco-editor/esm/vs/basic-languages/sparql/sparql.contribution.js"),
-  sql: () => import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js"),
-  "st": () => import("monaco-editor/esm/vs/basic-languages/st/st.contribution.js"),
-  swift: () => import("monaco-editor/esm/vs/basic-languages/swift/swift.contribution.js"),
-  "systemverilog": () => import("monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.contribution.js"),
-  tcl: () => import("monaco-editor/esm/vs/basic-languages/tcl/tcl.contribution.js"),
-  twig: () => import("monaco-editor/esm/vs/basic-languages/twig/twig.contribution.js"),
-  typespec: () => import("monaco-editor/esm/vs/basic-languages/typespec/typespec.contribution.js"),
-  vb: () => import("monaco-editor/esm/vs/basic-languages/vb/vb.contribution.js"),
-  wgsl: () => import("monaco-editor/esm/vs/basic-languages/wgsl/wgsl.contribution.js"),
-  xml: () => import("monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js"),
-  yaml: () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js"),
-};
-
-const MONACO_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
-  ...MONACO_BASIC_LANGUAGE_LOADERS,
-  ...MONACO_RICH_LANGUAGE_LOADERS,
-};
 
 export interface CodeEditorProps {
   path: string;
@@ -236,7 +142,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     restoreViewState: (viewState) => {
       const editor = editorRef.current;
       if (!editor || !viewState) return;
-      editor.restoreViewState(viewState);
+      try {
+        editor.restoreViewState(viewState);
+      } catch (error) {
+        if (!isMonacoCancellation(error)) throw error;
+      }
       requestAnimationFrame(() => editor.layout());
     },
     layout: () => editorRef.current?.layout(),
@@ -608,6 +518,11 @@ function editorRuntimeOptionsForProfile(
     stickyScroll: { enabled: effectiveOptions.stickyScrollEnabled },
     wordWrap: effectiveOptions.wordWrap,
   };
+}
+
+function isMonacoCancellation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "Canceled" || error.message === "Canceled";
 }
 
 function runMonacoEditorAction(

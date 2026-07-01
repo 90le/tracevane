@@ -71,7 +71,8 @@
     "test:web:api": "node --test tests/system/web-model-gateway.test.mjs tests/system/web-api-client.test.mjs",
     "smoke:file-manager:online-editor": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-online-editor.smoke.mjs",
     "smoke:file-manager:online-editor-responsive": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-online-editor-responsive.smoke.mjs",
-    "smoke:file-manager:favorites": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-favorites.smoke.mjs"
+    "smoke:file-manager:favorites": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-favorites.smoke.mjs",
+    "generate:monaco-languages": "node scripts/generate-monaco-language-loaders.mjs"
   },
   "author": "binbin",
   "license": "MIT",

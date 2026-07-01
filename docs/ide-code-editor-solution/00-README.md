@@ -52,6 +52,7 @@
 | [m1-progress.md](./m1-progress.md) | M1 实施进度、验证证据、风险和决策日志 |
 | [m1x-execution-plan.md](./m1x-execution-plan.md) | M1 之后继续增强文件管理器在线编辑器的 M1.x 路线图 |
 | [10-monaco-first-online-editor-strategy.md](./10-monaco-first-online-editor-strategy.md) | Monaco-first 方向：Monaco 负责编辑器原生能力，Tracevane 负责文件生命周期、多标签、保存安全和性能边界 |
+| [11-monaco-full-capability-plan.md](./11-monaco-full-capability-plan.md) | Monaco 全能力启用方案：全量 editor contributions、全语言懒加载、版本与验证策略 |
 | [monaco-first-cleanup-plan.md](./monaco-first-cleanup-plan.md) | Monaco-first cleanup 的执行计划：简化重复编辑器 UI/state、引入 Monaco option profiles、保持 M1.x 保存安全 |
 | [monaco-first-cleanup-progress.md](./monaco-first-cleanup-progress.md) | Monaco-first cleanup 的进度、验证证据、风险和下一步 |
 | [04-独立IDE工作台方案.md](./04-独立IDE工作台方案.md) | 详细定义独立 IDE 的布局、编辑区、面板、可拖拽能力 |

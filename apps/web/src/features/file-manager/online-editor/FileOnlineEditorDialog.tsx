@@ -612,7 +612,12 @@ function OnlineEditorTabPanel({
     if (!viewState) return;
     const frame = requestAnimationFrame(() => editorRef.current?.restoreViewState(viewState));
     return () => cancelAnimationFrame(frame);
-  }, [editorRef, tab.id, viewState]);
+    // Restore only when this tab is mounted/activated. Cursor, selection, and edit
+    // events keep saving fresher viewState objects; depending on those objects here
+    // would immediately restore after every editor event and can create a render loop
+    // with Monaco's full contribution set enabled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorRef, tab.id]);
 
   if (readQuery.isLoading) {
     return <div className="m-4 rounded border border-line bg-panel-2 p-3 text-sm text-muted">读取文件中…</div>;
