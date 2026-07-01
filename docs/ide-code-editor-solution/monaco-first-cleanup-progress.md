@@ -1,7 +1,7 @@
 # Monaco-first Cleanup Progress
 
-Status: Initialized  
-Branch: `feat/file-manager-online-editor-monaco-first-cleanup`  
+Status: MFC.1–MFC.2 complete
+Branch: `feat/file-manager-online-editor-monaco-first-cleanup`
 Created: 2026-07-01
 
 ## Objective
@@ -22,21 +22,32 @@ The cleanup goal is not to add more editor surface area. It is to simplify Trace
 | Date | Slice | Status | Notes |
 |---|---|---|---|
 | 2026-07-01 | Planning | Complete | Created cleanup plan/progress docs on `feat/file-manager-online-editor-monaco-first-cleanup`. |
+| 2026-07-01 | MFC.1 | Complete | Added explicit `CodeEditorProfile`, centralized Monaco construction options, enabled `largeFileOptimizations`, and added a generic `runAction` bridge while keeping Find/Replace shell conveniences. |
+| 2026-07-01 | MFC.2 | Complete | Removed duplicate previous/next/case/whole-word/regex toolbar controls, removed custom `searchHighlights` decoration path, and updated smoke coverage to assert Monaco-native Find/Replace widget visibility. |
+| 2026-07-01 | MFC.4 | Complete | Updated Monaco-first strategy, online editor solution, cleanup plan/progress, and final verification evidence. |
 
 ## Slice status
 
 | Slice | Status | Evidence |
 |---|---|---|
-| MFC.1 — Wrapper command bridge and option profiles | Not started | Pending implementation |
-| MFC.2 — Remove duplicate search UI/state | Not started | Pending implementation |
-| MFC.3 — Preferences and performance tuning | Not started | Pending implementation |
-| MFC.4 — Documentation and verification closure | Not started | Pending implementation |
+| MFC.1 — Wrapper command bridge and option profiles | Complete | `npm run typecheck:web` passed after implementation. |
+| MFC.2 — Remove duplicate search UI/state | Complete | `npm run typecheck:web` passed; online editor smoke passed on isolated port 5177. |
+| MFC.3 — Preferences and performance tuning | Deferred | Existing font size/theme preferences preserved; minimap/word-wrap/sticky-scroll user preferences remain future work. |
+| MFC.4 — Documentation and verification closure | Complete | Documentation updated and final verification set passed. |
 
 ## Verification log
 
-No implementation verification has been run on this branch yet after creating the cleanup plan docs.
+Current branch verification:
 
-Baseline evidence inherited from M1.x final verification is recorded in `m1-progress.md`, but must not be reused as proof for cleanup implementation changes.
+| Date | Command | Result | Notes |
+|---|---|---|---|
+| 2026-07-01 | `npm run typecheck:web` | Pass | Validated Monaco wrapper/profile/search UI TypeScript changes. |
+| 2026-07-01 | `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-online-editor.smoke.mjs` via isolated dev server | Pass | Validated tabs, minimize/restore/maximize, Monaco-native Find/Replace widget entry, save/reload/close/conflict/capacity flows. |
+| 2026-07-01 | `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-online-editor-responsive.smoke.mjs` via isolated dev server | Pass | Validated responsive online editor behavior after profile/search cleanup. |
+| 2026-07-01 | `npm run typecheck` | Pass | Validated repository TypeScript project. |
+| 2026-07-01 | `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-text-editor.smoke.mjs` via isolated dev server | Pass | Guarded existing File Manager text editor path. |
+| 2026-07-01 | `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-file-operations.smoke.mjs` via isolated dev server | Pass | Guarded File Manager file operations. |
+| 2026-07-01 | `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-mobile-layout.smoke.mjs` via isolated dev server | Pass | Guarded mobile File Manager layout. |
 
 ## Known constraints
 
@@ -48,9 +59,5 @@ Baseline evidence inherited from M1.x final verification is recorded in `m1-prog
 
 ## Next action
 
-Start MFC.1:
-
-1. Add `CodeEditorProfile`.
-2. Add centralized `buildMonacoEditorOptions`.
-3. Add generic `runAction` bridge.
-4. Keep existing behavior passing before removing duplicate search UI.
+1. Commit MFC.1–MFC.2 cleanup with Lore protocol.
+2. Use a later branch/slice for MFC.3 preferences only if product explicitly wants minimap / word-wrap / sticky-scroll controls.

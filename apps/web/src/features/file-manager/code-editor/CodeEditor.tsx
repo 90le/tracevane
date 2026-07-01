@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import "monaco-editor/esm/vs/editor/contrib/find/browser/findController.js";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -120,26 +121,23 @@ export interface CodeEditorProps {
   rootId?: string;
   initialContent: string;
   readOnly?: boolean;
+  profile?: CodeEditorProfile;
   fontSize?: number;
   themeMode?: CodeEditorThemeMode;
   onChange?: (value: string) => void;
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
-  searchHighlights?: CodeEditorSearchHighlights;
   className?: string;
 }
 
 export type CodeEditorThemeMode = "auto" | "light" | "dark";
+export type CodeEditorProfile = "normal" | "large-readonly" | "mobile-basic";
 
 export interface CodeEditorHandle {
   focus: () => void;
+  runAction: (actionId: string) => void;
   openFind: () => void;
   openReplace: () => void;
-  findNext: () => void;
-  findPrevious: () => void;
-  toggleFindCaseSensitive: () => void;
-  toggleFindWholeWord: () => void;
-  toggleFindRegex: () => void;
   gotoLine: (line: number, column?: number) => void;
   saveViewState: () => CodeEditorViewState | null;
   restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
@@ -161,38 +159,30 @@ export interface CodeEditorSelectionContext {
   endColumn: number;
 }
 
-export interface CodeEditorSearchHighlights {
-  query: string;
-  caseSensitive: boolean;
-  regex: boolean;
-  activeIndex: number;
-}
-
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
   {
     path,
     rootId,
     initialContent,
     readOnly = false,
+    profile,
     fontSize = 13,
     themeMode = "auto",
     onChange,
     onSelectionChange,
     onCursorPositionChange,
-    searchHighlights,
     className,
   },
   ref,
 ) {
   const { theme } = useTheme();
   const effectiveTheme = themeMode === "auto" ? theme : themeMode;
+  const editorProfile = profile ?? (readOnly ? "large-readonly" : "normal");
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(
     null,
   );
   const modelRef = React.useRef<monaco.editor.ITextModel | null>(null);
-  const decorationsRef =
-    React.useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const onChangeRef = React.useRef(onChange);
   const onSelectionChangeRef = React.useRef(onSelectionChange);
   const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
@@ -213,39 +203,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
 
   React.useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
-    openFind: () => {
-      editorRef.current?.focus();
-      void editorRef.current?.getAction("actions.find")?.run();
-    },
-    openReplace: () => {
-      editorRef.current?.focus();
-      void editorRef.current?.getAction("editor.action.startFindReplaceAction")?.run();
-    },
-    findNext: () => {
-      const editor = editorRef.current;
-      editor?.focus();
-      void editor?.getAction("editor.action.nextMatchFindAction")?.run();
-    },
-    findPrevious: () => {
-      const editor = editorRef.current;
-      editor?.focus();
-      void editor?.getAction("editor.action.previousMatchFindAction")?.run();
-    },
-    toggleFindCaseSensitive: () => {
-      const editor = editorRef.current;
-      editor?.focus();
-      void editor?.getAction("toggleFindCaseSensitive")?.run();
-    },
-    toggleFindWholeWord: () => {
-      const editor = editorRef.current;
-      editor?.focus();
-      void editor?.getAction("toggleFindWholeWord")?.run();
-    },
-    toggleFindRegex: () => {
-      const editor = editorRef.current;
-      editor?.focus();
-      void editor?.getAction("toggleFindRegex")?.run();
-    },
+    runAction: (actionId) => runMonacoEditorAction(editorRef.current, actionId),
+    openFind: () => runMonacoEditorAction(editorRef.current, "actions.find"),
+    openReplace: () =>
+      runMonacoEditorAction(
+        editorRef.current,
+        "editor.action.startFindReplaceAction",
+      ),
     gotoLine: (line: number, column = 1) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -334,25 +298,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       "plaintext",
       modelUriForPath(path, rootId),
     );
-    const editor = monaco.editor.create(container, {
+    const editor = monaco.editor.create(container, buildMonacoEditorOptions({
       model,
-      automaticLayout: true,
-      bracketPairColorization: { enabled: true },
-      cursorBlinking: "smooth",
-      fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
-      fontLigatures: true,
       fontSize,
-      lineNumbers: "on",
-      minimap: { enabled: false },
-      padding: { top: 16, bottom: 16 },
       readOnly,
-      renderLineHighlight: "all",
-      scrollBeyondLastLine: false,
-      smoothScrolling: true,
-      tabSize: 2,
+      profile: editorProfile,
       theme: effectiveTheme === "dark" ? "vs-dark" : "vs",
-      wordWrap: "on",
-    });
+    }));
     const cancelLanguageLoad = scheduleDeferredMonacoLanguageLoad(() => {
       const language = languageForPath(path);
       void ensureMonacoLanguage(language).then((loadedLanguage) => {
@@ -363,7 +315,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     });
     editorRef.current = editor;
     modelRef.current = model;
-    decorationsRef.current = editor.createDecorationsCollection([]);
     const subscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
     });
@@ -394,8 +345,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       onSelectionChangeRef.current?.(null);
       onCursorPositionChangeRef.current?.(null);
       scrollSubscription.dispose();
-      decorationsRef.current?.clear();
-      decorationsRef.current = null;
       editor.dispose();
       model.dispose();
       editorRef.current = null;
@@ -474,68 +423,19 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   }, [effectiveTheme]);
 
   React.useEffect(() => {
-    editorRef.current?.updateOptions({ readOnly });
-  }, [readOnly]);
+    editorRef.current?.updateOptions({
+      readOnly: readOnly || editorProfile === "large-readonly",
+    });
+  }, [readOnly, editorProfile]);
+
+  React.useEffect(() => {
+    editorRef.current?.updateOptions(editorRuntimeOptionsForProfile(editorProfile));
+  }, [editorProfile]);
 
   React.useEffect(() => {
     editorRef.current?.updateOptions({ fontSize });
     requestAnimationFrame(() => editorRef.current?.layout());
   }, [fontSize]);
-
-  React.useEffect(() => {
-    const editor = editorRef.current;
-    const decorations = decorationsRef.current;
-    const model = modelRef.current;
-    if (!editor || !decorations || !model || !searchHighlights?.query) {
-      decorations?.clear();
-      return;
-    }
-    let matches: monaco.editor.FindMatch[] = [];
-    try {
-      matches = model.findMatches(
-        searchHighlights.query,
-        false,
-        searchHighlights.regex,
-        searchHighlights.caseSensitive,
-        null,
-        false,
-        5_000,
-      );
-    } catch {
-      decorations.clear();
-      return;
-    }
-    const activeIndex =
-      matches.length > 0
-        ? Math.max(
-            0,
-            Math.min(searchHighlights.activeIndex, matches.length - 1),
-          )
-        : -1;
-    decorations.set(
-      matches.map((match, index) => ({
-        range: match.range,
-        options: {
-          className:
-            index === activeIndex
-              ? "tv-monaco-search-match-active"
-              : "tv-monaco-search-match",
-          inlineClassName:
-            index === activeIndex
-              ? "tv-monaco-search-inline-active"
-              : "tv-monaco-search-inline",
-          overviewRuler: {
-            color: index === activeIndex ? "#f59e0b" : "#3358ff",
-            position: monaco.editor.OverviewRulerLane.Center,
-          },
-        },
-      })),
-    );
-    if (activeIndex >= 0) {
-      editor.revealRangeInCenterIfOutsideViewport(matches[activeIndex].range);
-      editor.setSelection(matches[activeIndex].range);
-    }
-  }, [initialContent, searchHighlights]);
 
   return (
     <div
@@ -562,6 +462,96 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     </div>
   );
 });
+
+interface BuildMonacoEditorOptionsInput {
+  model: monaco.editor.ITextModel;
+  theme: "vs" | "vs-dark";
+  fontSize: number;
+  readOnly: boolean;
+  profile: CodeEditorProfile;
+}
+
+function buildMonacoEditorOptions({
+  model,
+  theme,
+  fontSize,
+  readOnly,
+  profile,
+}: BuildMonacoEditorOptionsInput): monaco.editor.IStandaloneEditorConstructionOptions {
+  return {
+    model,
+    ...editorRuntimeOptionsForProfile(profile),
+    automaticLayout: true,
+    bracketPairColorization: { enabled: true },
+    contextmenu: true,
+    cursorBlinking: "smooth",
+    detectIndentation: true,
+    find: {
+      addExtraSpaceOnTop: false,
+      autoFindInSelection: "never",
+      loop: true,
+      seedSearchStringFromSelection: "selection",
+    },
+    fontFamily: '"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+    fontLigatures: true,
+    fontSize,
+    largeFileOptimizations: true,
+    lineNumbers: "on",
+    padding: { top: 16, bottom: 16 },
+    readOnly: readOnly || profile === "large-readonly",
+    renderLineHighlight: "all",
+    scrollBeyondLastLine: false,
+    smoothScrolling: true,
+    tabSize: 2,
+    theme,
+    wordWrap: "on",
+  };
+}
+
+function editorRuntimeOptionsForProfile(
+  profile: CodeEditorProfile,
+): monaco.editor.IEditorOptions {
+  if (profile === "large-readonly") {
+    return {
+      codeLens: false,
+      folding: false,
+      glyphMargin: false,
+      links: false,
+      minimap: { enabled: false },
+      occurrencesHighlight: "off",
+      quickSuggestions: false,
+      renderValidationDecorations: "off",
+      selectionHighlight: false,
+      stickyScroll: { enabled: false },
+    };
+  }
+  if (profile === "mobile-basic") {
+    return {
+      folding: false,
+      glyphMargin: false,
+      links: true,
+      minimap: { enabled: false },
+      quickSuggestions: false,
+      stickyScroll: { enabled: false },
+    };
+  }
+  return {
+    folding: true,
+    links: true,
+    minimap: { enabled: false },
+    quickSuggestions: true,
+    stickyScroll: { enabled: true },
+  };
+}
+
+function runMonacoEditorAction(
+  editor: monaco.editor.IStandaloneCodeEditor | null,
+  actionId: string,
+): void {
+  if (!editor) return;
+  editor.focus();
+  void editor.getAction(actionId)?.run();
+}
 
 function readCodeEditorSelection(
   editor: monaco.editor.IStandaloneCodeEditor,

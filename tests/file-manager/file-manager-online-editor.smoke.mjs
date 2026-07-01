@@ -277,14 +277,9 @@ async function run() {
     if (!statusText?.includes(secondPath)) throw new Error(`Status bar did not switch to second file: ${statusText}`);
 
     await page.locator('[data-file-online-editor-find]').click();
+    await page.locator('.monaco-editor .find-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-file-online-editor-replace]').click();
-    await page.locator('[data-file-online-editor-find-next]').click();
-    await page.locator('[data-file-online-editor-find-previous]').click();
-    await page.locator('[data-file-online-editor-find-case-sensitive]').click();
-    await page.locator('[data-file-online-editor-find-whole-word]').click();
-    await page.locator('[data-file-online-editor-find-regex]').click();
-    const findCountHint = await page.locator('[data-file-online-editor-find-count-hint]').textContent();
-    if (!findCountHint?.includes('Monaco')) throw new Error(`Find count hint missing: ${findCountHint}`);
+    await page.locator('.monaco-editor .find-widget .replace-part').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-file-online-editor-goto-input]').fill('1:2');
     await page.locator('[data-file-online-editor-goto]').click();
     await page.waitForFunction(() => document.querySelector('[data-file-online-editor-cursor-position]')?.textContent?.includes('Ln 1'), null, { timeout: 30_000 });
@@ -351,6 +346,8 @@ async function run() {
     await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-close-confirm-discard]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 1, null, { timeout: 30_000 });
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), secondPath, { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second save all check\n');
     await page.locator('[data-file-online-editor-save-all]').click();

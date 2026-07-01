@@ -687,24 +687,6 @@ function OnlineEditorTabPanel({
         <Button variant="ghost" size="sm" onClick={() => editorRef.current?.openReplace()} disabled={!editable} data-file-online-editor-replace>
           替换
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.findPrevious()} data-file-online-editor-find-previous>
-          上一个
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.findNext()} data-file-online-editor-find-next>
-          下一个
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindCaseSensitive()} data-file-online-editor-find-case-sensitive>
-          Aa
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindWholeWord()} data-file-online-editor-find-whole-word>
-          全词
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindRegex()} data-file-online-editor-find-regex>
-          .*
-        </Button>
-        <span className="rounded border border-line bg-panel-2 px-2 py-1 text-muted" data-file-online-editor-find-count-hint>
-          计数见 Monaco 查找框
-        </span>
         <label className="flex items-center gap-1 text-muted">
           跳转
           <input
@@ -870,6 +852,7 @@ function OnlineEditorTabPanel({
           path={tab.entry.path}
           initialContent={editorContent}
           readOnly={!editable}
+          profile={editable ? "normal" : "large-readonly"}
           fontSize={preferences.fontSize}
           themeMode={preferences.themeMode}
           onCursorPositionChange={(position) => {

@@ -1,8 +1,8 @@
 # Monaco-first Cleanup Plan — File Manager Online Editor
 
-Status: Planned / ready to implement  
-Branch: `feat/file-manager-online-editor-monaco-first-cleanup`  
-Created: 2026-07-01  
+Status: MFC.1–MFC.2 complete; MFC.3 deferred
+Branch: `feat/file-manager-online-editor-monaco-first-cleanup`
+Created: 2026-07-01
 Source strategy: `10-monaco-first-online-editor-strategy.md`
 
 ## Objective
@@ -110,6 +110,8 @@ Future enhancement path:
 
 ### MFC.1 — Wrapper command bridge and option profiles
 
+Status: Implemented 2026-07-01.
+
 Goal: make `CodeEditor` an explicit Monaco host instead of a growing custom editor abstraction.
 
 Tasks:
@@ -132,6 +134,8 @@ Acceptance:
 
 ### MFC.2 — Remove duplicate search UI/state
 
+Status: Implemented 2026-07-01.
+
 Goal: rely on Monaco’s Find/Replace widget for single-file search.
 
 Tasks:
@@ -151,6 +155,8 @@ Acceptance:
 - Save/reload/close/conflict smoke still passes.
 
 ### MFC.3 — Preferences and performance tuning
+
+Status: Not started. Existing font size and theme preferences remain intact.
 
 Goal: expose only preferences that map directly to Monaco options and are worth product ownership.
 
@@ -173,6 +179,8 @@ Acceptance:
 - Light/dark/auto remains readable.
 
 ### MFC.4 — Documentation and verification closure
+
+Status: Complete for MFC.1–MFC.2.
 
 Goal: leave repo docs aligned with Monaco-first implementation.
 

@@ -1,7 +1,7 @@
 # Monaco-first Online Editor Strategy
 
-Status: Proposed direction after M1.x completion  
-Updated: 2026-07-01  
+Status: MFC.1–MFC.2 cleanup implemented; MFC.3+ remains future work
+Updated: 2026-07-01
 Scope: File Manager Online Editor, not standalone IDE Workbench
 
 ## 1. Decision summary
@@ -98,12 +98,19 @@ Current wrapper already does several Monaco-aligned things well:
 - Lazily loads many basic language contributions.
 - Enables bracket pair colorization.
 - Saves/restores Monaco view state for tabs.
-- Disposes editor, model, subscriptions, and decorations on unmount.
+- Disposes editor, model, and subscriptions on unmount.
+- Centralizes Monaco construction options behind explicit editor profiles.
+- Imports Monaco Find contribution and opens native Find/Replace from thin shell buttons.
 
-Current over-customization to simplify later:
+MFC.1–MFC.2 cleanup already simplified:
 
-- Toolbar-level previous/next/case/whole-word/regex buttons duplicate Monaco Find widget affordances.
-- `searchHighlights` and custom decoration handling are a second search-highlighting path and should be removed unless a non-Monaco search result feature requires it.
+- Toolbar-level previous/next/case/whole-word/regex buttons were removed because Monaco Find owns those affordances.
+- `searchHighlights` and custom decoration handling were removed from `CodeEditor`; a cross-file search result feature can reintroduce a product-level path only when it has a concrete caller.
+- `CodeEditorProfile = "normal" | "large-readonly" | "mobile-basic"` now makes performance intent explicit.
+- `runAction(actionId)` is available as the generic Monaco action bridge, with `openFind` / `openReplace` kept as shell conveniences.
+
+Remaining future work:
+
 - Theme selector is acceptable as product preference, but should only select Monaco’s theme/profile rather than become a separate styling system.
 - Conflict compare currently uses lightweight pre blocks. That is acceptable for M1.x safety; if richer compare is needed, use Monaco Diff Editor rather than a custom diff renderer.
 
@@ -126,7 +133,7 @@ Recommended Monaco options:
 - `links: true`
 - `find: { seedSearchStringFromSelection: "selection", loop: true }`
 - `quickSuggestions: true` or language-sensitive default
-- `wordBasedSuggestions: "matchingDocuments"` or `"currentDocument"` depending on performance
+- Keep suggestion options inside the installed Monaco public option surface; avoid stale/private option names.
 - `minimap` controlled by user preference, default can be off for File Manager density
 - `wordWrap` controlled by user preference, default can be `on` for text/doc files and `off` for code if product prefers
 - `stickyScroll` optional preference
@@ -169,6 +176,8 @@ Recommended behavior:
 
 ### Phase B — Wrapper API simplification
 
+Status: Implemented for MFC.1.
+
 Refactor `CodeEditor` toward a small Monaco command bridge:
 
 ```ts
@@ -186,6 +195,8 @@ Keep convenience helpers only for actions the shell truly needs (`openFind`, `op
 
 ### Phase C — Remove duplicated search state
 
+Status: Implemented for MFC.2.
+
 - Remove custom `searchHighlights` unless cross-file search result navigation explicitly requires it.
 - Remove toolbar buttons for case/whole-word/regex/previous/next if they only duplicate Monaco Find widget.
 - Keep one or two entry buttons:
@@ -194,6 +205,8 @@ Keep convenience helpers only for actions the shell truly needs (`openFind`, `op
 - Let Monaco widget expose count, toggles, previous/next, regex, whole-word, and case sensitivity.
 
 ### Phase D — Option profiles and preferences
+
+Status: Profiles implemented; additional user preferences deferred.
 
 Add explicit profile construction, for example:
 
