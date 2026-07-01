@@ -45,6 +45,7 @@
 
 | 文档 | 说明 |
 |---|---|
+| [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md) | 统一文件打开/编辑/预览表面，删除旧预览编辑器冲突，补齐 Monaco 快捷键、本地化、媒体预览与能力诊断计划 |
 | [01-产品边界与形态拆分.md](./01-产品边界与形态拆分.md) | 解释为什么要拆成“文件管理器编辑器”和“独立 IDE”两套入口 |
 | [02-共享内核与总体架构.md](./02-共享内核与总体架构.md) | 说明共享服务层、状态模型、命令体系、文件模型 |
 | [03-文件管理器在线编辑器方案.md](./03-文件管理器在线编辑器方案.md) | 详细定义文件管理器内的多标签代码编辑器能力 |
@@ -128,4 +129,3 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 6. 文件内容不要长期放 React state，应由 Monaco model 承载。
 7. 后端必须做 workspace 路径安全限制。
 8. 终端执行能力要优先考虑容器或受限环境，不建议直接暴露宿主机 shell。
-

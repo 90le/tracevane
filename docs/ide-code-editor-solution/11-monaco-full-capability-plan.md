@@ -175,7 +175,7 @@ rich language aliases: 5
 total language ids: 82
 ```
 
-Rich contributions override basic tokenizers where both exist, so CSS / HTML / JSON / TypeScript-family behavior can use Monaco's richer services and workers. This is intentional for `javascript -> typescript`, `scss/less -> css`, and `handlebars/razor -> html`: the editor still opens those language ids lazily, but it loads Monaco's richer contribution instead of downgrading to the basic tokenizer.
+Rich contributions must compose with basic tokenizers where both exist, so CSS / HTML / TypeScript-family files keep visible Monarch syntax highlighting while also loading Monaco's richer services and workers. This is intentional for `javascript -> typescript`, `scss/less -> css`, and `handlebars/razor -> html`: the editor still opens those language ids lazily, but it loads Monaco's richer contribution instead of downgrading to the basic tokenizer.
 
 ### 6.2 File extension mapping
 
@@ -255,3 +255,14 @@ Implemented with this plan:
 2. Consider upgrading conflict compare to Monaco Diff Editor, keeping lightweight fallback for mobile/basic mode.
 3. Consider a thin command palette entry that calls Monaco actions rather than reimplementing command discovery.
 4. If product wants LSP-grade features beyond Monaco's built-in providers, plan a separate provider/LSP track; do not present it as built-in Monaco support.
+
+## 11. 2026-07-01 gap update: File Surface unification
+
+Follow-up plan: [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md).
+
+Key corrections after runtime verification:
+
+- Rich language contributions alone do not guarantee visible tokenization for TypeScript/HTML; Tracevane now composes basic Monarch tokenizer modules with rich language contributions.
+- Monaco UI localization is not yet complete; load `monaco-editor/esm/nls.messages.zh-cn.js` before the main editor module in M2.
+- File Manager still has two file surfaces (`FileOnlineEditorDialog` and `FilePreviewPanel`); M2 should unify double-click/edit/inspect into one File Surface and migrate media preview panels before deleting the old preview shell.
+- File Manager global Ctrl/Cmd+C/X/V must ignore Monaco/editor descendants to avoid stealing editor clipboard shortcuts.
