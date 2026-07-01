@@ -1964,6 +1964,7 @@ function FileSourceEditorRegion({
       <React.Suspense fallback={<FileSourceEditorLoading content={effectiveContent} modal={modal} />}>
         <LazyCodeEditor
           key={fileKey}
+          rootId={read?.rootId}
           path={entry.path}
           initialContent={effectiveContent}
           readOnly={!editable}

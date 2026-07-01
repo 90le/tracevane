@@ -157,7 +157,13 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
+    entries: [
+      "index.html",
+      "src/features/file-manager/FilePreviewPanel.tsx",
+      "src/features/file-manager/code-editor/CodeEditor.tsx",
+    ],
     exclude: ["katex", "monaco-editor", "dockview-react"],
+    ignoreOutdatedRequests: true,
   },
   plugins: [
     createKatexOptimizedDepFallbackPlugin(),

@@ -8,6 +8,8 @@ import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
 import { useTheme } from "@/app/providers";
 import { cn } from "@/design/lib/utils";
+import { editorModelUriPath } from "@/shared/editor-core/identity";
+import { languageForPath } from "@/shared/editor-core/language";
 
 configureMonacoWorkers();
 
@@ -115,13 +117,28 @@ const MONACO_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
 
 export interface CodeEditorProps {
   path: string;
+  rootId?: string;
   initialContent: string;
   readOnly?: boolean;
   fontSize?: number;
   onChange?: (value: string) => void;
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
+  onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
   searchHighlights?: CodeEditorSearchHighlights;
   className?: string;
+}
+
+export interface CodeEditorHandle {
+  focus: () => void;
+  openFind: () => void;
+  openReplace: () => void;
+  gotoLine: (line: number, column?: number) => void;
+  layout: () => void;
+}
+
+export interface CodeEditorCursorPosition {
+  lineNumber: number;
+  column: number;
 }
 
 export interface CodeEditorSelectionContext {
@@ -139,16 +156,21 @@ export interface CodeEditorSearchHighlights {
   activeIndex: number;
 }
 
-export function CodeEditor({
-  path,
-  initialContent,
-  readOnly = false,
-  fontSize = 13,
-  onChange,
-  onSelectionChange,
-  searchHighlights,
-  className,
-}: CodeEditorProps) {
+export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
+  {
+    path,
+    rootId,
+    initialContent,
+    readOnly = false,
+    fontSize = 13,
+    onChange,
+    onSelectionChange,
+    onCursorPositionChange,
+    searchHighlights,
+    className,
+  },
+  ref,
+) {
   const { theme } = useTheme();
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(
@@ -159,6 +181,7 @@ export function CodeEditor({
     React.useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const onChangeRef = React.useRef(onChange);
   const onSelectionChangeRef = React.useRef(onSelectionChange);
+  const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
   const pendingKeyboardScrollDeltaRef = React.useRef(0);
   const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
 
@@ -169,6 +192,33 @@ export function CodeEditor({
   React.useEffect(() => {
     onSelectionChangeRef.current = onSelectionChange;
   }, [onSelectionChange]);
+
+  React.useEffect(() => {
+    onCursorPositionChangeRef.current = onCursorPositionChange;
+  }, [onCursorPositionChange]);
+
+  React.useImperativeHandle(ref, () => ({
+    focus: () => editorRef.current?.focus(),
+    openFind: () => {
+      editorRef.current?.focus();
+      void editorRef.current?.getAction("actions.find")?.run();
+    },
+    openReplace: () => {
+      editorRef.current?.focus();
+      void editorRef.current?.getAction("editor.action.startFindReplaceAction")?.run();
+    },
+    gotoLine: (line: number, column = 1) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const model = editor.getModel();
+      const safeLine = Math.max(1, Math.min(line, model?.getLineCount() ?? line));
+      const safeColumn = Math.max(1, column);
+      editor.setPosition({ lineNumber: safeLine, column: safeColumn });
+      editor.revealPositionInCenter({ lineNumber: safeLine, column: safeColumn });
+      editor.focus();
+    },
+    layout: () => editorRef.current?.layout(),
+  }), []);
 
   const updateEditorKeyboardInset = React.useCallback(() => {
     const editor = editorRef.current;
@@ -236,7 +286,7 @@ export function CodeEditor({
     const model = monaco.editor.createModel(
       initialContent,
       "plaintext",
-      modelUriForPath(path),
+      modelUriForPath(path, rootId),
     );
     const editor = monaco.editor.create(container, {
       model,
@@ -271,9 +321,14 @@ export function CodeEditor({
     const subscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
     });
-    const cursorSubscription = editor.onDidChangeCursorPosition(() => {
+    const cursorSubscription = editor.onDidChangeCursorPosition((event) => {
+      onCursorPositionChangeRef.current?.({
+        lineNumber: event.position.lineNumber,
+        column: event.position.column,
+      });
       window.requestAnimationFrame(updateEditorKeyboardInset);
     });
+    onCursorPositionChangeRef.current?.(editor.getPosition());
     const selectionSubscription = editor.onDidChangeCursorSelection(() => {
       onSelectionChangeRef.current?.(readCodeEditorSelection(editor));
     });
@@ -291,6 +346,7 @@ export function CodeEditor({
       cursorSubscription.dispose();
       selectionSubscription.dispose();
       onSelectionChangeRef.current?.(null);
+      onCursorPositionChangeRef.current?.(null);
       scrollSubscription.dispose();
       decorationsRef.current?.clear();
       decorationsRef.current = null;
@@ -301,7 +357,7 @@ export function CodeEditor({
     };
     // Recreate the Monaco model only when the backing file changes. Content updates from typing are owned by Monaco.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, updateEditorKeyboardInset]);
+  }, [path, rootId, updateEditorKeyboardInset]);
 
   React.useEffect(() => {
     const editor = editorRef.current;
@@ -459,7 +515,7 @@ export function CodeEditor({
       />
     </div>
   );
-}
+});
 
 function readCodeEditorSelection(
   editor: monaco.editor.IStandaloneCodeEditor,
@@ -478,10 +534,12 @@ function readCodeEditorSelection(
   };
 }
 
-function modelUriForPath(path: string): monaco.Uri {
+function modelUriForPath(path: string, rootId?: string): monaco.Uri {
   return monaco.Uri.from({
     scheme: "file",
-    path: `/${path.replace(/^\/+/, "")}`,
+    path: rootId
+      ? editorModelUriPath({ rootId, path })
+      : `/${path.replace(/^\/+/, "")}`,
   });
 }
 
@@ -517,25 +575,6 @@ function scheduleDeferredMonacoLanguageLoad(callback: () => void): () => void {
   };
 }
 
-export function languageForPath(path: string): string {
-  const normalized = path.replace(/\\/g, "/");
-  const fileName = normalized.split("/").pop()?.toLowerCase() ?? "";
-  const lowerPath = normalized.toLowerCase();
-
-  const override = languageOverrideForFile(fileName, lowerPath);
-  if (override) return override;
-
-  const exact = MONACO_EXACT_FILENAME_LANGUAGES[fileName];
-  if (exact) return exact;
-
-  for (const [extension, languageId] of MONACO_EXTENSION_LANGUAGES) {
-    if (fileName.endsWith(extension)) return languageId;
-  }
-
-  if (fileName.endsWith("rc") && !fileName.includes(".")) return "ini";
-  return "plaintext";
-}
-
 async function ensureMonacoLanguage(language: string): Promise<string> {
   if (language === "plaintext") return language;
   const loader = MONACO_LANGUAGE_LOADERS[language];
@@ -552,61 +591,8 @@ async function ensureMonacoLanguage(language: string): Promise<string> {
   }
 }
 
-const MONACO_EXACT_FILENAME_LANGUAGES: Record<string, string> = {
-  "dockerfile": "dockerfile",
-  "containerfile": "dockerfile",
-  "makefile": "shell",
-  "rakefile": "ruby",
-  "gemfile": "ruby",
-  "podfile": "ruby",
-  "cmakelists.txt": "plaintext",
-};
-
-const MONACO_EXTENSION_LANGUAGES = ([
-  [".abap", "abap"], [".cls", "apex"], [".azcli", "azcli"], [".bat", "bat"], [".cmd", "bat"],
-  [".bicep", "bicep"], [".mligo", "cameligo"], [".clj", "clojure"], [".cljs", "clojure"],
-  [".coffee", "coffee"], [".c", "cpp"], [".cc", "cpp"], [".cpp", "cpp"], [".cxx", "cpp"], [".h", "cpp"], [".hpp", "cpp"],
-  [".cs", "csharp"], [".csp", "csp"], [".css", "css"], [".cypher", "cypher"], [".dart", "dart"],
-  [".dockerfile", "dockerfile"], [".ecl", "ecl"], [".ex", "elixir"], [".exs", "elixir"], [".flow", "flow9"],
-  [".ftl", "freemarker2"], [".fsx", "fsharp"], [".fsi", "fsharp"], [".fs", "fsharp"], [".go", "go"],
-  [".graphql", "graphql"], [".gql", "graphql"], [".hcl", "hcl"], [".tf", "hcl"], [".tfvars", "hcl"],
-  [".handlebars", "handlebars"], [".hbs", "handlebars"], [".html", "html"], [".htm", "html"],
-  [".ini", "ini"], [".properties", "ini"], [".conf", "ini"], [".java", "java"],
-  [".js", "javascript"], [".jsx", "javascript"], [".mjs", "javascript"], [".cjs", "javascript"],
-  [".json", "json"], [".jsonc", "json"], [".ipynb", "json"], [".jl", "julia"], [".kt", "kotlin"], [".kts", "kotlin"],
-  [".less", "less"], [".lex", "lexon"], [".liquid", "liquid"], [".lua", "lua"], [".m3", "m3"],
-  [".mdx", "mdx"], [".markdown", "markdown"], [".md", "markdown"], [".s", "mips"], [".dax", "msdax"],
-  [".mysql", "mysql"], [".m", "objective-c"], [".mm", "objective-c"], [".pas", "pascal"], [".p", "pascal"],
-  [".ligo", "pascaligo"], [".pl", "perl"], [".pm", "perl"], [".pgsql", "pgsql"], [".php", "php"],
-  [".pla", "pla"], [".dats", "postiats"], [".sats", "postiats"], [".pq", "powerquery"], [".pqm", "powerquery"],
-  [".ps1", "powershell"], [".psm1", "powershell"], [".proto", "protobuf"], [".pug", "pug"], [".jade", "pug"],
-  [".py", "python"], [".pyw", "python"], [".qs", "qsharp"], [".r", "r"], [".rmd", "r"],
-  [".cshtml", "razor"], [".razor", "razor"], [".redis", "redis"], [".rsql", "redshift"], [".rst", "restructuredtext"],
-  [".rb", "ruby"], [".rs", "rust"], [".sb", "sb"], [".scala", "scala"], [".sc", "scala"], [".scm", "scheme"], [".ss", "scheme"],
-  [".scss", "scss"], [".sh", "shell"], [".bash", "shell"], [".zsh", "shell"], [".fish", "shell"], [".env", "shell"],
-  [".sol", "solidity"], [".aes", "sophia"], [".rq", "sparql"], [".sparql", "sparql"], [".sql", "sql"],
-  [".st", "st"], [".swift", "swift"], [".sv", "systemverilog"], [".svh", "systemverilog"], [".tcl", "tcl"],
-  [".twig", "twig"], [".ts", "typescript"], [".tsx", "typescript"], [".cts", "typescript"], [".mts", "typescript"],
-  [".tsp", "typespec"], [".vb", "vb"], [".wgsl", "wgsl"], [".xml", "xml"], [".xsd", "xml"], [".xsl", "xml"],
-  [".yaml", "yaml"], [".yml", "yaml"], [".svg", "xml"],
-] as Array<[string, string]>).sort((left, right) => right[0].length - left[0].length);
-
-function languageOverrideForFile(
-  fileName: string,
-  lowerPath: string,
-): string | null {
-  if (fileName === "containerfile") return "dockerfile";
-  if (fileName === "makefile") return "shell";
-  if (fileName.startsWith(".env")) return "shell";
-  if (fileName.endsWith(".vue")) return "html";
-  if (fileName.endsWith(".svelte")) return "html";
-  if (fileName.endsWith(".astro")) return "html";
-  if (fileName.endsWith(".toml")) return "ini";
-  if (lowerPath.includes("/dockerfile.")) return "dockerfile";
-  return null;
-}
-
 export const languageExtensionForPath = languageForPath;
+export { languageForPath };
 
 export default CodeEditor;
 

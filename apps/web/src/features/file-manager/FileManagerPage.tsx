@@ -62,6 +62,11 @@ const LazyFilePreviewDialog = React.lazy(() =>
     default: module.FilePreviewDialog,
   })),
 );
+const LazyFileOnlineEditorDialog = React.lazy(() =>
+  import("./online-editor/FileOnlineEditorDialog").then((module) => ({
+    default: module.FileOnlineEditorDialog,
+  })),
+);
 const LazyUploadManagerDialog = React.lazy(() =>
   import("@/features/file-manager/file-tools/UploadManagerDialog").then(
     (module) => ({
@@ -96,6 +101,8 @@ import type {
   FileEntrySummary,
   FilesUploadConflictPolicy,
 } from "@/features/file-manager/file-tools/types";
+import { createFileOnlineEditorTab } from "./online-editor/FileOnlineEditorDialog";
+import type { FileOnlineEditorTab } from "./online-editor/FileOnlineEditorDialog";
 
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
@@ -200,6 +207,35 @@ export function FileManagerPage() {
   const [activePreviewTabId, setActivePreviewTabId] = React.useState<
     string | undefined
   >();
+  const [onlineEditorTabs, setOnlineEditorTabs] = React.useState<FileOnlineEditorTab[]>([]);
+  const [activeOnlineEditorTabId, setActiveOnlineEditorTabId] = React.useState<
+    string | undefined
+  >();
+  const [onlineEditorOpen, setOnlineEditorOpen] = React.useState(false);
+  const [onlineEditorDrafts, setOnlineEditorDrafts] = React.useState<Record<string, string>>({});
+  React.useEffect(() => {
+    setOnlineEditorDrafts((current) => {
+      const liveIds = new Set(onlineEditorTabs.map((tab) => tab.id));
+      let changed = false;
+      const next: Record<string, string> = {};
+      for (const [id, content] of Object.entries(current)) {
+        if (liveIds.has(id)) next[id] = content;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [onlineEditorTabs]);
+
+  React.useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (Object.keys(onlineEditorDrafts).length === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [onlineEditorDrafts]);
+
   const [propertiesTarget, setPropertiesTarget] = React.useState<
     FileEntrySummary | undefined
   >();
@@ -744,6 +780,74 @@ export function FileManagerPage() {
     [rootId],
   );
 
+  const openFileOnlineEditor = React.useCallback(
+    (entry: FileEntrySummary, targetRootId?: string) => {
+      const nextRootId = targetRootId ?? rootId;
+      const tab = createFileOnlineEditorTab(nextRootId, entry);
+      let blockedByDirtyCapacity = false;
+      setOnlineEditorTabs((current) => {
+        const existing = current.find((item) => item.id === tab.id);
+        if (existing) {
+          return current.map((item) =>
+            item.id === tab.id ? { ...item, entry, rootId: nextRootId } : item,
+          );
+        }
+        if (current.length < 8) return [...current, tab];
+        const firstCleanIndex = current.findIndex((item) => onlineEditorDrafts[item.id] == null);
+        if (firstCleanIndex === -1) {
+          blockedByDirtyCapacity = true;
+          return current;
+        }
+        return [
+          ...current.slice(0, firstCleanIndex),
+          ...current.slice(firstCleanIndex + 1),
+          tab,
+        ];
+      });
+      if (blockedByDirtyCapacity) {
+        toast.error("在线编辑器标签已满", { description: "请先保存或关闭一个未保存标签后再打开新文件。" });
+        return;
+      }
+      setSelectedPath(entry.path);
+      setActiveOnlineEditorTabId(tab.id);
+      setOnlineEditorOpen(true);
+    },
+    [onlineEditorDrafts, rootId],
+  );
+
+  const selectOnlineEditorTab = React.useCallback(
+    (tabId: string) => {
+      const tab = onlineEditorTabs.find((item) => item.id === tabId);
+      setActiveOnlineEditorTabId(tabId);
+      if (tab) setSelectedPath(tab.entry.path);
+    },
+    [onlineEditorTabs],
+  );
+
+  const closeOnlineEditorTab = React.useCallback(
+    (tabId: string) => {
+      const closingIndex = onlineEditorTabs.findIndex((tab) => tab.id === tabId);
+      const nextTabs = onlineEditorTabs.filter((tab) => tab.id !== tabId);
+      setOnlineEditorDrafts((current) => {
+        const next = { ...current };
+        delete next[tabId];
+        return next;
+      });
+      setOnlineEditorTabs(nextTabs);
+      if (nextTabs.length === 0) setOnlineEditorOpen(false);
+      if (activeOnlineEditorTabId === tabId) {
+        const fallback = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
+        setActiveOnlineEditorTabId(fallback?.id);
+        if (fallback) setSelectedPath(fallback.entry.path);
+      }
+    },
+    [activeOnlineEditorTabId, onlineEditorTabs],
+  );
+
+  const closeOnlineEditorWindow = React.useCallback(() => {
+    setOnlineEditorOpen(false);
+  }, []);
+
   const selectPreviewTab = React.useCallback(
     (tabId: string) => {
       const tab = previewTabs.find((item) => item.id === tabId);
@@ -783,9 +887,13 @@ export function FileManagerPage() {
         navigateToDirectory(entry.path);
         return;
       }
+      if (entry.textLike) {
+        openFileOnlineEditor(entry);
+        return;
+      }
       openFilePreview(entry);
     },
-    [navigateToDirectory, openFilePreview],
+    [navigateToDirectory, openFileOnlineEditor, openFilePreview],
   );
 
   const selectEntry = React.useCallback(
@@ -1327,7 +1435,8 @@ export function FileManagerPage() {
         !isInteractiveShortcutTarget(event.target)
       ) {
         event.preventDefault();
-        openFilePreview(selectedEntry);
+        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
+        else openFilePreview(selectedEntry);
         return;
       }
       if (event.altKey && event.key === "Enter" && selectedEntry) {
@@ -1564,7 +1673,10 @@ export function FileManagerPage() {
               totalCount={pagination?.totalEntries ?? entries.length}
               onRevealPath={revealOperationPath}
               onOpenDirectory={navigateToDirectory}
-              onOpenFile={openFilePreview}
+              onOpenFile={(entry) => {
+                if (entry.textLike) openFileOnlineEditor(entry);
+                else openFilePreview(entry);
+              }}
             />
             <FileListPanel
               rootId={rootId}
@@ -1646,7 +1758,10 @@ export function FileManagerPage() {
               rootId={rootId}
               rootLabel={root?.labelZh ?? rootId}
               onRevealPath={revealOperationPath}
-              onOpenFile={openFilePreview}
+              onOpenFile={(entry) => {
+                if (entry.textLike) openFileOnlineEditor(entry);
+                else openFilePreview(entry);
+              }}
             />
           </React.Suspense>
         ) : (
@@ -1684,6 +1799,78 @@ export function FileManagerPage() {
             openFileProperties(entry ?? fileEntryFromMenuTarget(target));
           }}
         />
+      ) : null}
+
+      {!onlineEditorOpen && onlineEditorTabs.length > 0 ? (
+        <div
+          className="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel px-3 py-2 text-xs shadow-xl"
+          data-file-online-editor-minimized-dock
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              className="min-w-0 text-left"
+              onClick={() => setOnlineEditorOpen(true)}
+              aria-label="恢复在线编辑器"
+            >
+              <div className="font-medium text-ink-strong">在线编辑器驻留中</div>
+              <div className="max-w-72 truncate text-muted">
+                {onlineEditorTabs.length} 个标签 · {onlineEditorTabs.find((tab) => tab.id === activeOnlineEditorTabId)?.entry.path ?? onlineEditorTabs[0]?.entry.path}
+              </div>
+            </button>
+            <Button variant="outline" size="sm" onClick={() => setOnlineEditorOpen(true)}>
+              恢复
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const dirtyCount = Object.keys(onlineEditorDrafts).length;
+                if (dirtyCount > 0 && !window.confirm(`有 ${dirtyCount} 个文件存在未保存修改，确定关闭全部并放弃修改吗？`)) return;
+                setOnlineEditorTabs([]);
+                setOnlineEditorDrafts({});
+                setActiveOnlineEditorTabId(undefined);
+                setOnlineEditorOpen(false);
+              }}
+            >
+              关闭全部
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {onlineEditorOpen && onlineEditorTabs.length > 0 ? (
+        <FileManagerModalErrorBoundary
+          resetKey={activeOnlineEditorTabId ?? "online-editor"}
+          title="在线编辑器加载失败"
+          description="在线编辑器代码加载异常，已阻止前端进入空白页。请关闭后重试。"
+          onDismiss={closeOnlineEditorWindow}
+        >
+          <React.Suspense
+            fallback={<FileManagerModalLoading label="在线编辑器加载中…" />}
+          >
+            <LazyFileOnlineEditorDialog
+              tabs={onlineEditorTabs}
+              activeTabId={activeOnlineEditorTabId}
+              onSelectTab={selectOnlineEditorTab}
+              onCloseTab={closeOnlineEditorTab}
+              onOpenChange={(open) => {
+                if (!open) closeOnlineEditorWindow();
+              }}
+              drafts={onlineEditorDrafts}
+              onDraftChange={(tabId, content) =>
+                setOnlineEditorDrafts((current) => ({ ...current, [tabId]: content }))
+              }
+              onDraftClear={(tabId) =>
+                setOnlineEditorDrafts((current) => {
+                  const next = { ...current };
+                  delete next[tabId];
+                  return next;
+                })
+              }
+            />
+          </React.Suspense>
+        </FileManagerModalErrorBoundary>
       ) : null}
 
       {activePreviewPath ? (
