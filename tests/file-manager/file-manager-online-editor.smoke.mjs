@@ -277,14 +277,9 @@ async function run() {
     if (!statusText?.includes(secondPath)) throw new Error(`Status bar did not switch to second file: ${statusText}`);
 
     await page.locator('[data-file-online-editor-find]').click();
+    await page.locator('.monaco-editor .find-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-file-online-editor-replace]').click();
-    await page.locator('[data-file-online-editor-find-next]').click();
-    await page.locator('[data-file-online-editor-find-previous]').click();
-    await page.locator('[data-file-online-editor-find-case-sensitive]').click();
-    await page.locator('[data-file-online-editor-find-whole-word]').click();
-    await page.locator('[data-file-online-editor-find-regex]').click();
-    const findCountHint = await page.locator('[data-file-online-editor-find-count-hint]').textContent();
-    if (!findCountHint?.includes('Monaco')) throw new Error(`Find count hint missing: ${findCountHint}`);
+    await page.locator('.monaco-editor .find-widget .replace-part').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-file-online-editor-goto-input]').fill('1:2');
     await page.locator('[data-file-online-editor-goto]').click();
     await page.waitForFunction(() => document.querySelector('[data-file-online-editor-cursor-position]')?.textContent?.includes('Ln 1'), null, { timeout: 30_000 });
@@ -294,11 +289,26 @@ async function run() {
     await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('dark');
     const themeModeValue = await page.locator('[data-file-online-editor-theme-mode-select]').inputValue();
     if (themeModeValue !== 'dark') throw new Error(`Theme mode control did not update: ${themeModeValue}`);
+    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('off');
+    await page.locator('[data-file-online-editor-minimap-enabled]').check();
+    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').uncheck();
+    await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-minimap="enabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
     const editorPreferences = await page.evaluate(() => window.localStorage.getItem('tracevane:file-manager:online-editor-preferences:v1'));
-    if (!editorPreferences?.includes('"fontSize":15') || !editorPreferences.includes('"themeMode":"dark"')) {
+    if (
+      !editorPreferences?.includes('"fontSize":15') ||
+      !editorPreferences.includes('"themeMode":"dark"') ||
+      !editorPreferences.includes('"wordWrap":"off"') ||
+      !editorPreferences.includes('"minimapEnabled":true') ||
+      !editorPreferences.includes('"stickyScrollEnabled":false')
+    ) {
       throw new Error(`Editor preferences were not persisted: ${editorPreferences}`);
     }
     await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('auto');
+    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('on');
+    await page.locator('[data-file-online-editor-minimap-enabled]').uncheck();
+    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').check();
     const lineEndingText = await page.locator('[data-file-online-editor-status-line-ending]').textContent();
     if (lineEndingText !== 'LF') throw new Error(`Line ending metadata mismatch: ${lineEndingText}`);
     const indentationText = await page.locator('[data-file-online-editor-status-indentation]').textContent();
@@ -351,6 +361,8 @@ async function run() {
     await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-close-confirm-discard]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 1, null, { timeout: 30_000 });
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), secondPath, { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second save all check\n');
     await page.locator('[data-file-online-editor-save-all]').click();
@@ -402,6 +414,9 @@ async function run() {
     if (await page.locator('[data-file-online-editor-replace]').isEnabled()) {
       throw new Error('Replace should be disabled for readonly file');
     }
+    await page.waitForSelector('[data-code-editor-minimap="disabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();
@@ -491,6 +506,25 @@ async function run() {
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await jumpToPath(page, workspacePath);
+    await refreshFileList(page);
+    await openFile(page, firstPath);
+    if ((await page.locator('[data-file-online-editor-theme-mode-select]').inputValue()) !== 'auto') {
+      throw new Error('Theme preference did not survive page reload');
+    }
+    if ((await page.locator('[data-file-online-editor-word-wrap-select]').inputValue()) !== 'on') {
+      throw new Error('Word-wrap preference did not survive page reload');
+    }
+    if (await page.locator('[data-file-online-editor-minimap-enabled]').isChecked()) {
+      throw new Error('Minimap preference did not survive page reload');
+    }
+    if (!(await page.locator('[data-file-online-editor-sticky-scroll-enabled]').isChecked())) {
+      throw new Error('Sticky-scroll preference did not survive page reload');
+    }
+    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     if (logs.some((line) => line.includes('[pageerror]') || line.includes('Invalid hook call'))) {
       throw new Error(`Online editor smoke emitted fatal logs:\n${logs.join('\n')}`);

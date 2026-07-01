@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { CodeEditor } from "@/features/file-manager/code-editor/CodeEditor";
-import type { CodeEditorCursorPosition, CodeEditorHandle, CodeEditorThemeMode, CodeEditorViewState } from "@/features/file-manager/code-editor/CodeEditor";
+import type { CodeEditorCursorPosition, CodeEditorHandle, CodeEditorThemeMode, CodeEditorViewState, CodeEditorWordWrap } from "@/features/file-manager/code-editor/CodeEditor";
 import { isApiError } from "@/lib/api/errors";
 import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files";
 import { editorDocumentId, editorTitleForPath, languageForPath } from "@/shared/editor-core";
@@ -54,7 +54,10 @@ const FILE_ONLINE_EDITOR_PREFERENCES_KEY =
 
 interface FileOnlineEditorPreferences {
   fontSize: number;
+  minimapEnabled: boolean;
+  stickyScrollEnabled: boolean;
   themeMode: CodeEditorThemeMode;
+  wordWrap: CodeEditorWordWrap;
 }
 
 export function FileOnlineEditorDialog({
@@ -609,7 +612,12 @@ function OnlineEditorTabPanel({
     if (!viewState) return;
     const frame = requestAnimationFrame(() => editorRef.current?.restoreViewState(viewState));
     return () => cancelAnimationFrame(frame);
-  }, [editorRef, tab.id, viewState]);
+    // Restore only when this tab is mounted/activated. Cursor, selection, and edit
+    // events keep saving fresher viewState objects; depending on those objects here
+    // would immediately restore after every editor event and can create a render loop
+    // with Monaco's full contribution set enabled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorRef, tab.id]);
 
   if (readQuery.isLoading) {
     return <div className="m-4 rounded border border-line bg-panel-2 p-3 text-sm text-muted">读取文件中…</div>;
@@ -687,24 +695,6 @@ function OnlineEditorTabPanel({
         <Button variant="ghost" size="sm" onClick={() => editorRef.current?.openReplace()} disabled={!editable} data-file-online-editor-replace>
           替换
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.findPrevious()} data-file-online-editor-find-previous>
-          上一个
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.findNext()} data-file-online-editor-find-next>
-          下一个
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindCaseSensitive()} data-file-online-editor-find-case-sensitive>
-          Aa
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindWholeWord()} data-file-online-editor-find-whole-word>
-          全词
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.toggleFindRegex()} data-file-online-editor-find-regex>
-          .*
-        </Button>
-        <span className="rounded border border-line bg-panel-2 px-2 py-1 text-muted" data-file-online-editor-find-count-hint>
-          计数见 Monaco 查找框
-        </span>
         <label className="flex items-center gap-1 text-muted">
           跳转
           <input
@@ -749,6 +739,44 @@ function OnlineEditorTabPanel({
             <option value="light">浅色</option>
             <option value="dark">深色</option>
           </select>
+        </label>
+        <label className="flex items-center gap-1 text-muted">
+          换行
+          <select
+            value={preferences.wordWrap}
+            onChange={(event) =>
+              updatePreferences({ wordWrap: event.target.value as CodeEditorWordWrap })
+            }
+            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            data-file-online-editor-word-wrap-select
+          >
+            <option value="on">开</option>
+            <option value="off">关</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-muted">
+          <input
+            type="checkbox"
+            checked={preferences.minimapEnabled}
+            onChange={(event) =>
+              updatePreferences({ minimapEnabled: event.target.checked })
+            }
+            className="size-3 accent-primary"
+            data-file-online-editor-minimap-enabled
+          />
+          小地图
+        </label>
+        <label className="flex items-center gap-1 text-muted">
+          <input
+            type="checkbox"
+            checked={preferences.stickyScrollEnabled}
+            onChange={(event) =>
+              updatePreferences({ stickyScrollEnabled: event.target.checked })
+            }
+            className="size-3 accent-primary"
+            data-file-online-editor-sticky-scroll-enabled
+          />
+          粘性滚动
         </label>
       </div>
       {conflictError ? (
@@ -870,13 +898,19 @@ function OnlineEditorTabPanel({
           path={tab.entry.path}
           initialContent={editorContent}
           readOnly={!editable}
+          profile={editable ? "normal" : "large-readonly"}
           fontSize={preferences.fontSize}
+          minimapEnabled={preferences.minimapEnabled}
+          stickyScrollEnabled={preferences.stickyScrollEnabled}
           themeMode={preferences.themeMode}
+          wordWrap={preferences.wordWrap}
           onCursorPositionChange={(position) => {
-            setCursorPosition(position);
-            onViewStateChange(editorRef.current?.saveViewState() ?? null);
+            setCursorPosition((current) => (
+              current?.lineNumber === position?.lineNumber && current?.column === position?.column
+                ? current
+                : position
+            ));
           }}
-          onSelectionChange={() => onViewStateChange(editorRef.current?.saveViewState() ?? null)}
           onChange={(content) => {
             setSaveError(null);
             onViewStateChange(editorRef.current?.saveViewState() ?? null);
@@ -975,11 +1009,20 @@ function loadFileOnlineEditorPreferences(): FileOnlineEditorPreferences {
     if (!raw) return defaultFileOnlineEditorPreferences();
     const parsed = JSON.parse(raw) as Partial<FileOnlineEditorPreferences>;
     const fontSize = Math.max(11, Math.min(24, Number(parsed.fontSize) || 13));
+    const minimapEnabled = parsed.minimapEnabled === true;
+    const stickyScrollEnabled = parsed.stickyScrollEnabled !== false;
     const themeMode: CodeEditorThemeMode =
       parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "auto"
         ? parsed.themeMode
         : "auto";
-    return { fontSize, themeMode };
+    const wordWrap: CodeEditorWordWrap = parsed.wordWrap === "off" ? "off" : "on";
+    return {
+      fontSize,
+      minimapEnabled,
+      stickyScrollEnabled,
+      themeMode,
+      wordWrap,
+    };
   } catch {
     return defaultFileOnlineEditorPreferences();
   }
@@ -998,5 +1041,11 @@ function saveFileOnlineEditorPreferences(preferences: FileOnlineEditorPreference
 }
 
 function defaultFileOnlineEditorPreferences(): FileOnlineEditorPreferences {
-  return { fontSize: 13, themeMode: "auto" };
+  return {
+    fontSize: 13,
+    minimapEnabled: false,
+    stickyScrollEnabled: true,
+    themeMode: "auto",
+    wordWrap: "on",
+  };
 }

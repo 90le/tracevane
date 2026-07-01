@@ -45,6 +45,7 @@
 
 | 文档 | 说明 |
 |---|---|
+| [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md) | 统一文件打开/编辑/预览表面，删除旧预览编辑器冲突，补齐 Monaco 快捷键、本地化、媒体预览与能力诊断计划 |
 | [01-产品边界与形态拆分.md](./01-产品边界与形态拆分.md) | 解释为什么要拆成“文件管理器编辑器”和“独立 IDE”两套入口 |
 | [02-共享内核与总体架构.md](./02-共享内核与总体架构.md) | 说明共享服务层、状态模型、命令体系、文件模型 |
 | [03-文件管理器在线编辑器方案.md](./03-文件管理器在线编辑器方案.md) | 详细定义文件管理器内的多标签代码编辑器能力 |
@@ -52,6 +53,9 @@
 | [m1-progress.md](./m1-progress.md) | M1 实施进度、验证证据、风险和决策日志 |
 | [m1x-execution-plan.md](./m1x-execution-plan.md) | M1 之后继续增强文件管理器在线编辑器的 M1.x 路线图 |
 | [10-monaco-first-online-editor-strategy.md](./10-monaco-first-online-editor-strategy.md) | Monaco-first 方向：Monaco 负责编辑器原生能力，Tracevane 负责文件生命周期、多标签、保存安全和性能边界 |
+| [11-monaco-full-capability-plan.md](./11-monaco-full-capability-plan.md) | Monaco 全能力启用方案：全量 editor contributions、全语言懒加载、版本与验证策略 |
+| [monaco-first-cleanup-plan.md](./monaco-first-cleanup-plan.md) | Monaco-first cleanup 的执行计划：简化重复编辑器 UI/state、引入 Monaco option profiles、保持 M1.x 保存安全 |
+| [monaco-first-cleanup-progress.md](./monaco-first-cleanup-progress.md) | Monaco-first cleanup 的进度、验证证据、风险和下一步 |
 | [04-独立IDE工作台方案.md](./04-独立IDE工作台方案.md) | 详细定义独立 IDE 的布局、编辑区、面板、可拖拽能力 |
 | [05-前端实现方案.md](./05-前端实现方案.md) | 说明 React 前端需要的模块、组件、状态、Monaco 接入方式 |
 | [06-后端服务与接口方案.md](./06-后端服务与接口方案.md) | 说明文件 API、终端 API、权限、安全、watcher、冲突处理 |
@@ -125,4 +129,3 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 6. 文件内容不要长期放 React state，应由 Monaco model 承载。
 7. 后端必须做 workspace 路径安全限制。
 8. 终端执行能力要优先考虑容器或受限环境，不建议直接暴露宿主机 shell。
-
