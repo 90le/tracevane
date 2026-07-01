@@ -71,7 +71,7 @@ async function openFile(page, filePath) {
 }
 
 async function closeAll(page) {
-  await page.getByRole('button', { name: '关闭全部' }).click();
+  await page.getByRole('button', { name: '关闭在线编辑器' }).click();
   await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 }
 

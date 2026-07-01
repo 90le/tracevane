@@ -125,14 +125,14 @@ async function run() {
     if (await page.locator('[data-file-preview-dialog]').count()) {
       throw new Error('Text/code context-menu inspect should route to the Monaco online editor, not the legacy preview dialog');
     }
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.getByRole('button', { name: '关闭在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     const row = page.locator(`[data-file-manager-entry-path="${cssAttr(textPath)}"]`).first();
     await row.click({ force: true });
     await page.keyboard.press(`${MOD}+Enter`);
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.getByRole('button', { name: '关闭在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     await contextMenuAction(page, binaryPath, '检查文件');
