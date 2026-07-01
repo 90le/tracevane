@@ -266,7 +266,7 @@ export function FileOnlineEditorDialog({
         <header className="flex min-h-0 shrink-0 items-center gap-2 border-b border-line bg-panel-2 px-3 py-2">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-ink-strong">文件在线编辑器</div>
-            <div className="truncate text-xs text-muted">多 Tab 快速编辑 · M1.x 文件管理器在线编辑器</div>
+            <div className="truncate text-xs text-muted">在文件管理器中编辑、预览和切换文件</div>
           </div>
           <Button
             variant="ghost"
@@ -1160,7 +1160,6 @@ function EditorActionMenu({
     >
       <div className="px-2.5 pb-1.5 pt-2">
         <div className="text-xs font-semibold text-ink-strong">编辑器操作</div>
-        <div className="mt-0.5 truncate text-[11px] leading-4 text-muted">完整 Monaco 能力从命令面板进入</div>
       </div>
 
       <MenuButton onClick={() => run(onCommandPalette)} dataAttr="data-file-online-editor-command-palette" tone="primary" shortcut="F1">
@@ -1177,55 +1176,57 @@ function EditorActionMenu({
       <MenuButton onClick={() => run(onFind)} dataAttr="data-file-online-editor-find" shortcut="Ctrl+F">查找</MenuButton>
       <MenuButton disabled={!editable} onClick={() => run(onReplace)} dataAttr="data-file-online-editor-replace">替换</MenuButton>
 
-      <MenuSectionTitle>跳转</MenuSectionTitle>
-      <div className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted">
-        <input
-          value={gotoValue}
-          onChange={(event) => onGotoValueChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") run(onGoto);
-          }}
-          placeholder="12:8"
-          className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-          data-file-online-editor-goto-input
-        />
-        <Button variant="ghost" size="sm" onClick={() => run(onGoto)} data-file-online-editor-goto>定位</Button>
-      </div>
-
-      <MenuSectionTitle>显示</MenuSectionTitle>
-      <div className="grid gap-1.5 rounded-lg px-2 py-1 text-xs text-muted">
-        <label className="flex items-center gap-2">
-          <span className="w-10 shrink-0">字号</span>
+      <MenuDisclosure title="跳转" dataAttr="data-file-online-editor-jump-section">
+        <div className="flex items-center gap-2 rounded-lg px-2 pb-1 text-xs text-muted">
           <input
-            type="number"
-            min={11}
-            max={24}
-            value={preferences.fontSize}
-            onChange={(event) => onPreferencesChange({ fontSize: Math.max(11, Math.min(24, Number(event.target.value) || 13)) })}
-            className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            data-file-online-editor-font-size
+            value={gotoValue}
+            onChange={(event) => onGotoValueChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") run(onGoto);
+            }}
+            placeholder="12:8"
+            className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            data-file-online-editor-goto-input
           />
-        </label>
-        <label className="flex items-center gap-2">
-          <span className="w-10 shrink-0">主题</span>
-          <select value={preferences.themeMode} onChange={(event) => onPreferencesChange({ themeMode: event.target.value as CodeEditorThemeMode })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-theme-mode-select>
-            <option value="auto">跟随系统</option>
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-2">
-          <span className="w-10 shrink-0">换行</span>
-          <select value={preferences.wordWrap} onChange={(event) => onPreferencesChange({ wordWrap: event.target.value as CodeEditorWordWrap })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-word-wrap-select>
-            <option value="on">开</option>
-            <option value="off">关</option>
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-1.5">
-          <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.minimapEnabled} onChange={(event) => onPreferencesChange({ minimapEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-minimap-enabled />小地图</label>
-          <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.stickyScrollEnabled} onChange={(event) => onPreferencesChange({ stickyScrollEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-sticky-scroll-enabled />粘性滚动</label>
+          <Button variant="ghost" size="sm" onClick={() => run(onGoto)} data-file-online-editor-goto>定位</Button>
         </div>
-      </div>
+      </MenuDisclosure>
+
+      <MenuDisclosure title="显示设置" dataAttr="data-file-online-editor-display-section">
+        <div className="grid gap-1.5 rounded-lg px-2 pb-1 text-xs text-muted">
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">字号</span>
+            <input
+              type="number"
+              min={11}
+              max={24}
+              value={preferences.fontSize}
+              onChange={(event) => onPreferencesChange({ fontSize: Math.max(11, Math.min(24, Number(event.target.value) || 13)) })}
+              className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+              data-file-online-editor-font-size
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">主题</span>
+            <select value={preferences.themeMode} onChange={(event) => onPreferencesChange({ themeMode: event.target.value as CodeEditorThemeMode })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-theme-mode-select>
+              <option value="auto">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">换行</span>
+            <select value={preferences.wordWrap} onChange={(event) => onPreferencesChange({ wordWrap: event.target.value as CodeEditorWordWrap })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-word-wrap-select>
+              <option value="on">开</option>
+              <option value="off">关</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.minimapEnabled} onChange={(event) => onPreferencesChange({ minimapEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-minimap-enabled />小地图</label>
+            <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.stickyScrollEnabled} onChange={(event) => onPreferencesChange({ stickyScrollEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-sticky-scroll-enabled />粘性滚动</label>
+          </div>
+        </div>
+      </MenuDisclosure>
 
       <MenuSectionTitle>文件与标签</MenuSectionTitle>
       <MenuButton disabled={loading} onClick={() => run(onReload)} dataAttr="data-file-online-editor-reload-current">
@@ -1241,6 +1242,29 @@ function EditorActionMenu({
 
 function MenuSectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="mt-1.5 border-t border-line/70 px-2.5 pb-1 pt-2 text-[11px] font-medium tracking-wide text-muted first:mt-0 first:border-t-0 first:pt-1">{children}</div>;
+}
+
+function MenuDisclosure({
+  children,
+  dataAttr,
+  title,
+}: {
+  children: React.ReactNode;
+  dataAttr: string;
+  title: string;
+}) {
+  return (
+    <details className="group mt-1.5 border-t border-line/70 pt-1" onPointerDown={(event) => event.stopPropagation()}>
+      <summary
+        className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-lg px-2.5 text-sm text-muted transition hover:bg-panel-2 hover:text-ink [&::-webkit-details-marker]:hidden"
+        {...{ [dataAttr]: true }}
+      >
+        <span>{title}</span>
+        <span className="text-xs text-subtle transition group-open:rotate-90">›</span>
+      </summary>
+      {children}
+    </details>
+  );
 }
 
 function MenuButton({

@@ -205,6 +205,12 @@ async function clickEditorAction(page, selector) {
   await page.locator(`[data-file-online-editor-action-menu] ${selector}`).click();
 }
 
+async function openEditorMenuSection(page, selector) {
+  const section = page.locator(`[data-file-online-editor-action-menu] ${selector}`);
+  const isOpen = await section.evaluate((node) => node.closest('details')?.open ?? true);
+  if (!isOpen) await section.click();
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
@@ -306,10 +312,12 @@ async function run() {
     await page.locator('.quick-input-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.keyboard.press('Escape');
     await openEditorActionMenu(page);
+    await openEditorMenuSection(page, '[data-file-online-editor-jump-section]');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-goto-input]').fill('1:2');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-goto]').click();
     await page.waitForFunction(() => document.querySelector('[data-file-online-editor-cursor-position]')?.textContent?.includes('Ln 1'), null, { timeout: 30_000 });
     await openEditorActionMenu(page);
+    await openEditorMenuSection(page, '[data-file-online-editor-display-section]');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-font-size]').fill('15');
     const fontSizeValue = await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-font-size]').inputValue();
     if (fontSizeValue !== '15') throw new Error(`Font size control did not update: ${fontSizeValue}`);
@@ -335,6 +343,7 @@ async function run() {
       throw new Error(`Editor preferences were not persisted: ${editorPreferences}`);
     }
     await openEditorActionMenu(page);
+    await openEditorMenuSection(page, '[data-file-online-editor-display-section]');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]').selectOption('auto');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-word-wrap-select]').selectOption('on');
     await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-minimap-enabled]').uncheck();
