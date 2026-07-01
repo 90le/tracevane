@@ -46,6 +46,8 @@
 | 文档 | 说明 |
 |---|---|
 | [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md) | 统一文件打开/编辑/预览表面，删除旧预览编辑器冲突，补齐 Monaco 快捷键、本地化、媒体预览与能力诊断计划 |
+| [m2-execution-plan.md](./m2-execution-plan.md) | M2 统一 File Surface、Monaco 剪贴板/中文/能力诊断、媒体预览和旧预览删除执行计划 |
+| [m2-progress.md](./m2-progress.md) | M2 进度、验证证据、风险和决策日志 |
 | [01-产品边界与形态拆分.md](./01-产品边界与形态拆分.md) | 解释为什么要拆成“文件管理器编辑器”和“独立 IDE”两套入口 |
 | [02-共享内核与总体架构.md](./02-共享内核与总体架构.md) | 说明共享服务层、状态模型、命令体系、文件模型 |
 | [03-文件管理器在线编辑器方案.md](./03-文件管理器在线编辑器方案.md) | 详细定义文件管理器内的多标签代码编辑器能力 |
