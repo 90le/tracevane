@@ -3,54 +3,6 @@ import { chromium } from '@playwright/test';
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
 
-const LANGUAGE_SAMPLES = [
-  {
-    path: 'sample.ts',
-    language: 'typescript',
-    content: 'const answer: number = 42;\nexport function greet(name: string) {\n  return `hello ${name}`;\n}\n',
-  },
-  {
-    path: 'sample.html',
-    language: 'html',
-    content: '<!doctype html>\n<html><body><h1 class="title">Hello</h1></body></html>\n',
-  },
-  {
-    path: 'sample.css',
-    language: 'css',
-    content: ':root { --accent: #67e8f9; }\n.button:hover { color: var(--accent); }\n',
-  },
-  {
-    path: 'sample.json',
-    language: 'json',
-    content: '{\n  "name": "tracevane",\n  "enabled": true,\n  "count": 3\n}\n',
-  },
-  {
-    path: 'sample.md',
-    language: 'markdown',
-    content: '# Monaco smoke\n\n- lazy language loading\n- **markdown** tokens\n',
-  },
-  {
-    path: 'sample.py',
-    language: 'python',
-    content: 'def greet(name: str) -> str:\n    return f"hello {name}"\n',
-  },
-  {
-    path: 'sample.yaml',
-    language: 'yaml',
-    content: 'name: tracevane\nfeatures:\n  - editor\n  - preview\n',
-  },
-  {
-    path: 'sample.sh',
-    language: 'shell',
-    content: '#!/usr/bin/env bash\nset -euo pipefail\necho "tracevane"\n',
-  },
-  {
-    path: 'sample.sql',
-    language: 'sql',
-    content: 'SELECT id, name FROM files WHERE text_like = TRUE ORDER BY name;\n',
-  },
-];
-
 async function api(pathname, options = {}) {
   const response = await fetch(`${BASE_URL}${pathname}`, {
     ...options,
@@ -125,63 +77,16 @@ async function openFileInOnlineEditor(page, path) {
   await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 }
 
-async function minimizeEditor(page) {
-  await page.getByRole('button', { name: '最小化在线编辑器' }).click();
-  await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-}
-
-async function collectTokenClasses(page) {
-  await page.waitForTimeout(2_500);
-  return page.evaluate(() => {
-    const editor = document.querySelector('[data-code-editor="monaco-direct"]');
-    return {
-      dataLanguage: editor?.getAttribute('data-editor-language'),
-      actionCount: Number(editor?.getAttribute('data-code-editor-supported-action-count') || 0),
-      supportedActions: editor?.getAttribute('data-code-editor-supported-actions') || '',
-      classes: [...new Set([...document.querySelectorAll('.monaco-editor .view-line span[class]')].map((node) => node.className))],
-      lines: [...document.querySelectorAll('.monaco-editor .view-line')].slice(0, 6).map((node) => node.innerHTML),
-    };
-  });
-}
-
-function assertHighlighted(language, result) {
-  if (result.dataLanguage !== language) {
-    throw new Error(`Expected editor language ${language}, got ${result.dataLanguage}: ${JSON.stringify(result.lines)}`);
-  }
-  const syntaxClasses = result.classes.filter((className) => /\bmtk\d+\b/.test(className) && !/^mtk1(\s|$)/.test(className));
-  if (syntaxClasses.length === 0) {
-    throw new Error(`Expected ${language} to render non-plaintext Monaco token classes, got ${JSON.stringify(result.classes)} lines=${JSON.stringify(result.lines)}`);
-  }
-}
-
-function assertMonacoActions(result) {
-  const requiredActions = ['actions.find', 'editor.action.startFindReplaceAction', 'editor.action.quickCommand'];
-  if (result.actionCount < 20) {
-    throw new Error(`Expected Monaco to expose many built-in actions, got ${result.actionCount}`);
-  }
-  for (const actionId of requiredActions) {
-    if (!result.supportedActions.split(',').includes(actionId)) {
-      throw new Error(`Expected Monaco supported actions to include ${actionId}, got ${result.supportedActions}`);
-    }
-  }
-}
-
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file-manager root is available');
 
-  const workspacePath = `tmp/highlight-check-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const files = LANGUAGE_SAMPLES.map((sample) => ({
-    ...sample,
-    fullPath: `${workspacePath}/${sample.path}`,
-  }));
-
+  const workspacePath = `tmp/monaco-nls-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const samplePath = `${workspacePath}/sample.ts`;
   await cleanup(rootId, [workspacePath]);
   await createDirectory(rootId, workspacePath);
-  for (const file of files) {
-    await createTextFile(rootId, file.fullPath, file.content);
-  }
+  await createTextFile(rootId, samplePath, 'const localized = "monaco";\n');
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -192,19 +97,39 @@ async function run() {
   try {
     await page.goto(`${BASE_URL}/#/file-manager`, { waitUntil: 'domcontentloaded' });
     await jumpToPath(page, workspacePath);
+    await openFileInOnlineEditor(page, samplePath);
 
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      await openFileInOnlineEditor(page, file.fullPath);
-      const result = await collectTokenClasses(page);
-      assertHighlighted(file.language, result);
-      assertMonacoActions(result);
-      if (index < files.length - 1) await minimizeEditor(page);
+    await page.waitForSelector('[data-file-online-editor-panel]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { timeout: 10_000 });
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-find]').click();
+    await page.locator('.monaco-editor .find-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
+    const nls = await page.evaluate(() => {
+      const findWidget = document.querySelector('.monaco-editor .find-widget');
+      const labels = [...(findWidget?.querySelectorAll('[title], [aria-label]') ?? [])]
+        .map((node) => `${node.getAttribute('title') || ''} ${node.getAttribute('aria-label') || ''}`.trim())
+        .filter(Boolean);
+      return {
+        language: globalThis._VSCODE_NLS_LANGUAGE,
+        messages: globalThis._VSCODE_NLS_MESSAGES?.slice(0, 12) ?? [],
+        labels,
+      };
+    });
+
+    if (nls.language !== 'zh-cn') {
+      throw new Error(`Expected Monaco NLS language zh-cn, got ${JSON.stringify(nls)}`);
+    }
+    if (!nls.messages.includes('区分大小写') || !nls.messages.includes('全字匹配')) {
+      throw new Error(`Expected zh-CN Monaco messages to be loaded, got ${JSON.stringify(nls)}`);
+    }
+    const labelText = nls.labels.join('\n');
+    if (!/区分大小写|全字匹配|使用正则表达式|关闭/.test(labelText)) {
+      throw new Error(`Expected visible Monaco find widget labels to use zh-CN, got ${JSON.stringify(nls.labels)}`);
     }
 
-    const fatalLogs = logs.filter((line) => line.includes('[pageerror]') || line.includes('Maximum update depth'));
+    const fatalLogs = logs.filter((line) => line.includes('[pageerror]') || line.includes('Maximum update depth') || line.includes('Invalid hook call'));
     if (fatalLogs.length > 0) {
-      throw new Error(`Monaco highlighting smoke emitted fatal logs:\n${fatalLogs.join('\n')}`);
+      throw new Error(`Monaco NLS smoke emitted fatal logs:\n${fatalLogs.join('\n')}`);
     }
   } finally {
     await browser.close().catch(() => undefined);

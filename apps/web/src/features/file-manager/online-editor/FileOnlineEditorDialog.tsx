@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2, Minus, Search, X } from "lucide-react";
+import { Download, File, FileText, ImageIcon, Maximize2, Minimize2, Minus, MoreHorizontal, Music, RefreshCw, RotateCcw, Video, X, ZoomIn, ZoomOut } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -35,6 +35,7 @@ export interface FileOnlineEditorDialogProps {
   onCloseSavedTabs: () => void;
   onCloseAllTabs: () => void;
   onOpenChange: (open: boolean) => void;
+  rootAbsolutePaths?: Record<string, string>;
   drafts: Record<string, string>;
   viewStates: Record<string, CodeEditorViewState>;
   readMetadata: Record<string, FileOnlineEditorReadMetadata>;
@@ -71,6 +72,7 @@ export function FileOnlineEditorDialog({
   onCloseSavedTabs,
   onCloseAllTabs,
   onOpenChange,
+  rootAbsolutePaths,
   drafts,
   viewStates,
   readMetadata,
@@ -92,6 +94,12 @@ export function FileOnlineEditorDialog({
   const savedTabCount = tabs.length - dirtyTabs.length;
   const [closeConfirmAction, setCloseConfirmAction] =
     React.useState<CloseConfirmAction | null>(null);
+  const [tabMenu, setTabMenu] = React.useState<{
+    tabId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [editorActionMenuPosition, setEditorActionMenuPosition] = React.useState<Point | null>(null);
 
   const captureActiveViewState = React.useCallback(() => {
     if (!activeTab) return;
@@ -185,6 +193,38 @@ export function FileOnlineEditorDialog({
   }, [closeConfirmAction, onCloseAllTabs, onCloseOtherTabs, onCloseTab, onViewStateChange, saveDirtyTabs, tabs]);
 
   React.useEffect(() => {
+    if (!editorActionMenuPosition) return undefined;
+    const closeMenu = () => setEditorActionMenuPosition(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [editorActionMenuPosition]);
+
+  React.useEffect(() => {
+    if (!tabMenu) return undefined;
+    const closeMenu = () => setTabMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [tabMenu]);
+
+  React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
       if (mod && event.shiftKey && event.key.toLowerCase() === "s") {
@@ -226,17 +266,8 @@ export function FileOnlineEditorDialog({
         <header className="flex min-h-0 shrink-0 items-center gap-2 border-b border-line bg-panel-2 px-3 py-2">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-ink-strong">文件在线编辑器</div>
-            <div className="truncate text-xs text-muted">多 Tab 快速编辑 · M1.x 文件管理器在线编辑器</div>
+            <div className="truncate text-xs text-muted">在文件管理器中编辑、预览和切换文件</div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void saveAll()}
-            disabled={!dirtyTabs.length || writeMutation.isPending}
-            data-file-online-editor-save-all
-          >
-            {writeMutation.isPending ? "保存中…" : `保存全部${dirtyTabs.length ? ` (${dirtyTabs.length})` : ""}`}
-          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -273,7 +304,7 @@ export function FileOnlineEditorDialog({
           </Button>
         </header>
 
-        <div className="flex min-h-0 shrink-0 items-center gap-2 border-b border-line bg-panel px-2 pt-2">
+        <div className="flex min-h-0 shrink-0 items-center gap-2 border-b border-line bg-panel px-2 pt-2" data-file-online-editor-tab-row>
           <div
             className="flex min-w-0 flex-1 gap-1 overflow-x-auto overscroll-x-contain"
             data-file-online-editor-tabs
@@ -294,6 +325,23 @@ export function FileOnlineEditorDialog({
                   onClick={() => {
                     captureActiveViewState();
                     onSelectTab(tab.id);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    captureActiveViewState();
+                    onSelectTab(tab.id);
+                    setTabMenu({ tabId: tab.id, x: event.clientX, y: event.clientY });
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      captureActiveViewState();
+                      onSelectTab(tab.id);
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setTabMenu({ tabId: tab.id, x: rect.left + 12, y: rect.bottom + 4 });
+                    }
                   }}
                   data-file-online-editor-tab={tab.id}
                   data-file-online-editor-tab-dirty={dirty ? "true" : "false"}
@@ -324,35 +372,37 @@ export function FileOnlineEditorDialog({
               );
             })}
           </div>
-          <div className="flex shrink-0 items-center gap-1 pb-2" data-file-online-editor-tab-actions>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => requestCloseOthers(activeTab.id)}
-              disabled={tabs.length <= 1}
-              data-file-online-editor-close-others
-            >
-              关闭其他
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onCloseSavedTabs}
-              disabled={savedTabCount === 0}
-              data-file-online-editor-close-saved
-            >
-              关闭已保存
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={requestCloseAll}
-              disabled={tabs.length === 0}
-              data-file-online-editor-close-all
-            >
-              关闭全部
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mb-2 shrink-0"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setEditorActionMenuPosition((current) => current ? null : { x: rect.right - 320, y: rect.bottom + 6 });
+            }}
+            aria-label="打开编辑器操作菜单"
+            data-file-online-editor-action-menu-trigger
+          >
+            <MoreHorizontal className="size-4" />
+            <span className="hidden sm:inline">操作</span>
+          </Button>
+          {tabMenu ? (
+            <TabContextMenu
+              x={tabMenu.x}
+              y={tabMenu.y}
+              tab={tabs.find((tab) => tab.id === tabMenu.tabId) ?? activeTab}
+              tabCount={tabs.length}
+              savedTabCount={savedTabCount}
+              onClose={() => setTabMenu(null)}
+              onCloseTab={(tabId) => requestCloseTab(tabId)}
+              onCloseOthers={(tabId) => requestCloseOthers(tabId)}
+              onCloseSaved={onCloseSavedTabs}
+              onCloseAll={requestCloseAll}
+              onCopyPath={(targetTab) => copyEditorTabPath(targetTab, rootAbsolutePaths, "absolute")}
+              onCopyRelativePath={(targetTab) => copyEditorTabPath(targetTab, rootAbsolutePaths, "relative")}
+            />
+          ) : null}
         </div>
 
         <OnlineEditorTabPanel
@@ -363,6 +413,17 @@ export function FileOnlineEditorDialog({
           onDraftChange={(content) => onDraftChange(activeTab.id, content)}
           onDraftClear={() => onDraftClear(activeTab.id)}
           onViewStateChange={(viewState) => onViewStateChange(activeTab.id, viewState)}
+          tabCount={tabs.length}
+          savedTabCount={savedTabCount}
+          savingAll={writeMutation.isPending}
+          dirtyTabCount={dirtyTabs.length}
+          onSaveAll={() => void saveAll()}
+          onCloseCurrent={() => requestCloseTab(activeTab.id)}
+          onCloseOthers={() => requestCloseOthers(activeTab.id)}
+          onCloseSaved={onCloseSavedTabs}
+          onCloseAll={requestCloseAll}
+          actionMenuPosition={editorActionMenuPosition}
+          onActionMenuClose={() => setEditorActionMenuPosition(null)}
           onReadMetadataChange={(metadata) => onReadMetadataChange(activeTab.id, metadata)}
         />
         {closeConfirmAction ? (
@@ -382,6 +443,150 @@ export function FileOnlineEditorDialog({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+
+function copyEditorTabPath(
+  tab: FileOnlineEditorTab,
+  rootAbsolutePaths: Record<string, string> | undefined,
+  mode: "absolute" | "relative",
+): void {
+  const text = mode === "relative"
+    ? tab.entry.path
+    : joinAbsolutePath(rootAbsolutePaths?.[tab.rootId], tab.entry.path);
+  void copyTextToClipboard(text)
+    .then(() => toast.success(mode === "relative" ? "已复制相对路径" : "已复制路径", { description: text }))
+    .catch((error) => toast.error("复制路径失败", { description: error instanceof Error ? error.message : String(error) }));
+}
+
+function joinAbsolutePath(rootAbsolutePath: string | undefined, relativePath: string): string {
+  if (!rootAbsolutePath) return relativePath;
+  const root = rootAbsolutePath.replace(/[\\/]+$/, "");
+  const child = relativePath.replace(/^[\\/]+/, "");
+  return child ? `${root}/${child}` : root;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    const copied = document.execCommand("copy");
+    if (!copied) throw new Error("浏览器拒绝访问剪贴板");
+  } finally {
+    textarea.remove();
+  }
+}
+
+function TabContextMenu({
+  x,
+  y,
+  tab,
+  tabCount,
+  savedTabCount,
+  onClose,
+  onCloseTab,
+  onCloseOthers,
+  onCloseSaved,
+  onCloseAll,
+  onCopyPath,
+  onCopyRelativePath,
+}: {
+  x: number;
+  y: number;
+  tab: FileOnlineEditorTab;
+  tabCount: number;
+  savedTabCount: number;
+  onClose: () => void;
+  onCloseTab: (tabId: string) => void;
+  onCloseOthers: (tabId: string) => void;
+  onCloseSaved: () => void;
+  onCloseAll: () => void;
+  onCopyPath: (tab: FileOnlineEditorTab) => void;
+  onCopyRelativePath: (tab: FileOnlineEditorTab) => void;
+}) {
+  const run = (action: () => void) => {
+    action();
+    onClose();
+  };
+  return (
+    <div
+      className="fixed z-[70] min-w-48 overflow-hidden rounded-lg border border-line bg-panel py-1 text-sm text-ink shadow-2xl"
+      style={{ left: Math.min(x, window.innerWidth - 224), top: Math.min(y, window.innerHeight - 240) }}
+      role="menu"
+      aria-label="在线编辑器标签菜单"
+      data-file-online-editor-tab-menu
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2"
+        role="menuitem"
+        onClick={() => run(() => onCloseTab(tab.id))}
+        data-file-online-editor-close-current
+      >
+        关闭
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2 disabled:cursor-not-allowed disabled:text-subtle"
+        role="menuitem"
+        disabled={tabCount <= 1}
+        onClick={() => run(() => onCloseOthers(tab.id))}
+        data-file-online-editor-close-others
+      >
+        关闭其他
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2 disabled:cursor-not-allowed disabled:text-subtle"
+        role="menuitem"
+        disabled={savedTabCount === 0}
+        onClick={() => run(onCloseSaved)}
+        data-file-online-editor-close-saved
+      >
+        关闭已保存
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2 disabled:cursor-not-allowed disabled:text-subtle"
+        role="menuitem"
+        disabled={tabCount === 0}
+        onClick={() => run(onCloseAll)}
+        data-file-online-editor-close-all
+      >
+        关闭全部
+      </button>
+      <div className="my-1 h-px bg-line" />
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2"
+        role="menuitem"
+        onClick={() => run(() => onCopyPath(tab))}
+        data-file-online-editor-copy-path
+      >
+        复制路径
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center px-3 py-2 text-left hover:bg-panel-2"
+        role="menuitem"
+        onClick={() => run(() => onCopyRelativePath(tab))}
+        data-file-online-editor-copy-relative-path
+      >
+        复制相对路径
+      </button>
     </div>
   );
 }
@@ -462,6 +667,17 @@ function OnlineEditorTabPanel({
   onDraftChange,
   onDraftClear,
   onViewStateChange,
+  tabCount,
+  savedTabCount,
+  savingAll,
+  dirtyTabCount,
+  onSaveAll,
+  onCloseCurrent,
+  onCloseOthers,
+  onCloseSaved,
+  onCloseAll,
+  actionMenuPosition,
+  onActionMenuClose,
   onReadMetadataChange,
 }: {
   tab: FileOnlineEditorTab;
@@ -471,6 +687,17 @@ function OnlineEditorTabPanel({
   onDraftChange: (content: string) => void;
   onDraftClear: () => void;
   onViewStateChange: (viewState: CodeEditorViewState | null) => void;
+  tabCount: number;
+  savedTabCount: number;
+  savingAll: boolean;
+  dirtyTabCount: number;
+  onSaveAll: () => void;
+  onCloseCurrent: () => void;
+  onCloseOthers: () => void;
+  onCloseSaved: () => void;
+  onCloseAll: () => void;
+  actionMenuPosition: Point | null;
+  onActionMenuClose: () => void;
   onReadMetadataChange: (metadata: FileOnlineEditorReadMetadata | null) => void;
 }) {
   const readQuery = useFileReadQuery({ rootId: tab.rootId, path: tab.entry.path });
@@ -632,12 +859,13 @@ function OnlineEditorTabPanel({
   }
   if (!read?.textLike || read.content == null) {
     return (
-      <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-sm text-muted" data-file-online-editor-non-text-state>
-        <div className="max-w-md rounded border border-line bg-panel-2 p-4">
-          <div className="font-medium text-ink-strong">不可在线编辑</div>
-          <p className="mt-1 text-xs">该文件不是可编辑文本，或当前读取结果没有文本内容。</p>
-        </div>
-      </div>
+      <FileSurfacePreviewPanel
+        read={read}
+        tab={tab}
+        loading={readQuery.isFetching}
+        error={readQuery.error?.message}
+        onReload={() => void readQuery.refetch()}
+      />
     );
   }
   const noticeRowCount =
@@ -654,130 +882,16 @@ function OnlineEditorTabPanel({
       }}
       data-file-online-editor-panel
     >
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-line bg-panel px-3 py-2 text-xs">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void save()}
-          disabled={!editable || !dirty || writeMutation.isPending}
-          data-file-online-editor-save-current
-        >
-          {writeMutation.isPending ? "保存中…" : "保存"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={requestReload}
-          disabled={readQuery.isFetching || writeMutation.isPending}
-          data-file-online-editor-reload-current
-        >
-          {readQuery.isFetching ? "读取中…" : "重新读取"}
-        </Button>
-        <span data-file-online-editor-dirty-state={dirty ? "dirty" : "clean"} className={dirty ? "text-primary" : "text-muted"}>
-          {dirty ? "未保存" : saveError ? "保存失败" : "已保存"}
-        </span>
-        {saveError ? <span className="text-danger" data-file-online-editor-save-error>{saveError}</span> : null}
-        {conflictError ? (
-          <span className="text-danger" data-file-online-editor-conflict-state>
-            外部修改冲突
-          </span>
-        ) : null}
+      <div className="relative flex min-h-10 items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs" data-file-online-editor-compact-toolbar>
+        <span data-file-online-editor-dirty-state={dirty ? "dirty" : "clean"} className={cn("shrink-0", dirty ? "text-primary" : "text-muted")}>{dirty ? "未保存" : saveError ? "保存失败" : "已保存"}</span>
+        {saveError ? <span className="shrink-0 text-danger" data-file-online-editor-save-error>{saveError}</span> : null}
+        {conflictError ? <span className="shrink-0 text-danger" data-file-online-editor-conflict-state>外部修改冲突</span> : null}
         {!editable ? (
-          <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700" data-file-online-editor-readonly-state>
+          <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700" data-file-online-editor-readonly-state>
             {read.truncated ? "大文件/截断，只读" : "只读"}
           </span>
         ) : null}
-        <span className="mx-1 h-4 w-px bg-line" aria-hidden="true" />
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.openFind()} data-file-online-editor-find>
-          <Search className="size-3.5" />
-          查找
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => editorRef.current?.openReplace()} disabled={!editable} data-file-online-editor-replace>
-          替换
-        </Button>
-        <label className="flex items-center gap-1 text-muted">
-          跳转
-          <input
-            value={gotoValue}
-            onChange={(event) => setGotoValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") gotoLine();
-            }}
-            placeholder="12:8"
-            className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            data-file-online-editor-goto-input
-          />
-        </label>
-        <Button variant="ghost" size="sm" onClick={gotoLine} data-file-online-editor-goto>定位</Button>
-        <label className="ml-auto flex items-center gap-1 text-muted">
-          字号
-          <input
-            type="number"
-            min={11}
-            max={24}
-            value={preferences.fontSize}
-            onChange={(event) =>
-              updatePreferences({
-                fontSize: Math.max(11, Math.min(24, Number(event.target.value) || 13)),
-              })
-            }
-            className="h-8 w-16 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            data-file-online-editor-font-size
-          />
-        </label>
-        <label className="flex items-center gap-1 text-muted">
-          主题
-          <select
-            value={preferences.themeMode}
-            onChange={(event) =>
-              updatePreferences({ themeMode: event.target.value as CodeEditorThemeMode })
-            }
-            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            data-file-online-editor-theme-mode-select
-          >
-            <option value="auto">跟随系统</option>
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1 text-muted">
-          换行
-          <select
-            value={preferences.wordWrap}
-            onChange={(event) =>
-              updatePreferences({ wordWrap: event.target.value as CodeEditorWordWrap })
-            }
-            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            data-file-online-editor-word-wrap-select
-          >
-            <option value="on">开</option>
-            <option value="off">关</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1 text-muted">
-          <input
-            type="checkbox"
-            checked={preferences.minimapEnabled}
-            onChange={(event) =>
-              updatePreferences({ minimapEnabled: event.target.checked })
-            }
-            className="size-3 accent-primary"
-            data-file-online-editor-minimap-enabled
-          />
-          小地图
-        </label>
-        <label className="flex items-center gap-1 text-muted">
-          <input
-            type="checkbox"
-            checked={preferences.stickyScrollEnabled}
-            onChange={(event) =>
-              updatePreferences({ stickyScrollEnabled: event.target.checked })
-            }
-            className="size-3 accent-primary"
-            data-file-online-editor-sticky-scroll-enabled
-          />
-          粘性滚动
-        </label>
+        <span className="min-w-0 flex-1 truncate font-mono text-muted" title={tab.entry.path}>{tab.entry.path}</span>
       </div>
       {conflictError ? (
         <div
@@ -920,6 +1034,36 @@ function OnlineEditorTabPanel({
           className="h-full min-h-0 rounded border border-line"
         />
       </div>
+      {actionMenuPosition ? (
+        <EditorActionMenu
+          x={actionMenuPosition.x}
+          y={actionMenuPosition.y}
+          editable={editable}
+          dirty={dirty}
+          savingCurrent={writeMutation.isPending}
+          loading={readQuery.isFetching}
+          preferences={preferences}
+          gotoValue={gotoValue}
+          tabCount={tabCount}
+          savedTabCount={savedTabCount}
+          dirtyTabCount={dirtyTabCount}
+          savingAll={savingAll}
+          onClose={onActionMenuClose}
+          onSaveCurrent={() => void save()}
+          onSaveAll={onSaveAll}
+          onReload={requestReload}
+          onFind={() => editorRef.current?.openFind()}
+          onReplace={() => editorRef.current?.openReplace()}
+          onCommandPalette={() => editorRef.current?.openCommandPalette()}
+          onGotoValueChange={setGotoValue}
+          onGoto={gotoLine}
+          onPreferencesChange={updatePreferences}
+          onCloseCurrent={onCloseCurrent}
+          onCloseOthers={onCloseOthers}
+          onCloseSaved={onCloseSaved}
+          onCloseAll={onCloseAll}
+        />
+      ) : null}
       <footer className="flex min-h-9 shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-t border-line bg-panel-2 px-3 text-xs text-muted" data-file-online-editor-statusbar>
         <span className="min-w-0 flex-1 truncate font-mono" title={tab.entry.path}>{tab.entry.path}</span>
         <span data-file-online-editor-status-language>{language}</span>
@@ -935,6 +1079,538 @@ function OnlineEditorTabPanel({
       </footer>
     </div>
   );
+}
+
+
+
+function EditorActionMenu({
+  x,
+  y,
+  editable,
+  dirty,
+  savingCurrent,
+  loading,
+  preferences,
+  gotoValue,
+  tabCount,
+  savedTabCount,
+  dirtyTabCount,
+  savingAll,
+  onClose,
+  onSaveCurrent,
+  onSaveAll,
+  onReload,
+  onFind,
+  onReplace,
+  onCommandPalette,
+  onGotoValueChange,
+  onGoto,
+  onPreferencesChange,
+  onCloseCurrent,
+  onCloseOthers,
+  onCloseSaved,
+  onCloseAll,
+}: {
+  x: number;
+  y: number;
+  editable: boolean;
+  dirty: boolean;
+  savingCurrent: boolean;
+  loading: boolean;
+  preferences: FileOnlineEditorPreferences;
+  gotoValue: string;
+  tabCount: number;
+  savedTabCount: number;
+  dirtyTabCount: number;
+  savingAll: boolean;
+  onClose: () => void;
+  onSaveCurrent: () => void;
+  onSaveAll: () => void;
+  onReload: () => void;
+  onFind: () => void;
+  onReplace: () => void;
+  onCommandPalette: () => void;
+  onGotoValueChange: (value: string) => void;
+  onGoto: () => void;
+  onPreferencesChange: (next: Partial<FileOnlineEditorPreferences>) => void;
+  onCloseCurrent: () => void;
+  onCloseOthers: () => void;
+  onCloseSaved: () => void;
+  onCloseAll: () => void;
+}) {
+  const run = (action: () => void) => {
+    action();
+    onClose();
+  };
+  const menuWidth = Math.min(320, Math.max(280, window.innerWidth - 24));
+  const menuTop = Math.max(8, Math.min(y, window.innerHeight - 360));
+  return (
+    <div
+      className="fixed z-[70] overflow-y-auto overscroll-contain rounded-xl border border-line bg-panel p-1 text-sm text-ink shadow-2xl"
+      style={{
+        left: Math.max(12, Math.min(x, window.innerWidth - menuWidth - 12)),
+        top: menuTop,
+        width: menuWidth,
+        maxHeight: Math.max(280, window.innerHeight - menuTop - 12),
+      }}
+      role="menu"
+      aria-label="在线编辑器操作菜单"
+      data-file-online-editor-action-menu
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="px-2.5 pb-1.5 pt-2">
+        <div className="text-xs font-semibold text-ink-strong">编辑器操作</div>
+      </div>
+
+      <MenuButton onClick={() => run(onCommandPalette)} dataAttr="data-file-online-editor-command-palette" tone="primary" shortcut="F1">
+        命令面板
+      </MenuButton>
+
+      <MenuSectionTitle>常用</MenuSectionTitle>
+      <MenuButton disabled={!editable || !dirty || savingCurrent} onClick={() => run(onSaveCurrent)} dataAttr="data-file-online-editor-save-current" shortcut="Ctrl+S">
+        {savingCurrent ? "保存中…" : "保存当前"}
+      </MenuButton>
+      <MenuButton disabled={dirtyTabCount === 0 || savingAll} onClick={() => run(onSaveAll)} dataAttr="data-file-online-editor-save-all">
+        {savingAll ? "保存中…" : `保存全部${dirtyTabCount ? ` (${dirtyTabCount})` : ""}`}
+      </MenuButton>
+      <MenuButton onClick={() => run(onFind)} dataAttr="data-file-online-editor-find" shortcut="Ctrl+F">查找</MenuButton>
+      <MenuButton disabled={!editable} onClick={() => run(onReplace)} dataAttr="data-file-online-editor-replace">替换</MenuButton>
+
+      <MenuDisclosure title="跳转" dataAttr="data-file-online-editor-jump-section">
+        <div className="flex items-center gap-2 rounded-lg px-2 pb-1 text-xs text-muted">
+          <input
+            value={gotoValue}
+            onChange={(event) => onGotoValueChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") run(onGoto);
+            }}
+            placeholder="12:8"
+            className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            data-file-online-editor-goto-input
+          />
+          <Button variant="ghost" size="sm" onClick={() => run(onGoto)} data-file-online-editor-goto>定位</Button>
+        </div>
+      </MenuDisclosure>
+
+      <MenuDisclosure title="显示设置" dataAttr="data-file-online-editor-display-section">
+        <div className="grid gap-1.5 rounded-lg px-2 pb-1 text-xs text-muted">
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">字号</span>
+            <input
+              type="number"
+              min={11}
+              max={24}
+              value={preferences.fontSize}
+              onChange={(event) => onPreferencesChange({ fontSize: Math.max(11, Math.min(24, Number(event.target.value) || 13)) })}
+              className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+              data-file-online-editor-font-size
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">主题</span>
+            <select value={preferences.themeMode} onChange={(event) => onPreferencesChange({ themeMode: event.target.value as CodeEditorThemeMode })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-theme-mode-select>
+              <option value="auto">跟随系统</option>
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-10 shrink-0">换行</span>
+            <select value={preferences.wordWrap} onChange={(event) => onPreferencesChange({ wordWrap: event.target.value as CodeEditorWordWrap })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-word-wrap-select>
+              <option value="on">开</option>
+              <option value="off">关</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.minimapEnabled} onChange={(event) => onPreferencesChange({ minimapEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-minimap-enabled />小地图</label>
+            <label className="flex min-h-8 items-center gap-2 rounded-md bg-panel-2/60 px-2"><input type="checkbox" checked={preferences.stickyScrollEnabled} onChange={(event) => onPreferencesChange({ stickyScrollEnabled: event.target.checked })} className="size-3 accent-primary" data-file-online-editor-sticky-scroll-enabled />粘性滚动</label>
+          </div>
+        </div>
+      </MenuDisclosure>
+
+      <MenuSectionTitle>文件与标签</MenuSectionTitle>
+      <MenuButton disabled={loading} onClick={() => run(onReload)} dataAttr="data-file-online-editor-reload-current">
+        {loading ? "读取中…" : "重新读取当前文件"}
+      </MenuButton>
+      <MenuButton onClick={() => run(onCloseCurrent)} dataAttr="data-file-online-editor-close-current">关闭当前</MenuButton>
+      <MenuButton disabled={tabCount <= 1} onClick={() => run(onCloseOthers)} dataAttr="data-file-online-editor-close-others">关闭其他</MenuButton>
+      <MenuButton disabled={savedTabCount === 0} onClick={() => run(onCloseSaved)} dataAttr="data-file-online-editor-close-saved">关闭已保存</MenuButton>
+      <MenuButton disabled={tabCount === 0} onClick={() => run(onCloseAll)} dataAttr="data-file-online-editor-close-all">关闭全部</MenuButton>
+    </div>
+  );
+}
+
+function MenuSectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="mt-1.5 border-t border-line/70 px-2.5 pb-1 pt-2 text-[11px] font-medium tracking-wide text-muted first:mt-0 first:border-t-0 first:pt-1">{children}</div>;
+}
+
+function MenuDisclosure({
+  children,
+  dataAttr,
+  title,
+}: {
+  children: React.ReactNode;
+  dataAttr: string;
+  title: string;
+}) {
+  return (
+    <details className="group mt-1.5 border-t border-line/70 pt-1" onPointerDown={(event) => event.stopPropagation()}>
+      <summary
+        className="flex min-h-9 cursor-pointer list-none items-center justify-between rounded-lg px-2.5 text-sm text-muted transition hover:bg-panel-2 hover:text-ink [&::-webkit-details-marker]:hidden"
+        {...{ [dataAttr]: true }}
+      >
+        <span>{title}</span>
+        <span className="text-xs text-subtle transition group-open:rotate-90">›</span>
+      </summary>
+      {children}
+    </details>
+  );
+}
+
+function MenuButton({
+  children,
+  disabled,
+  onClick,
+  dataAttr,
+  shortcut,
+  tone = "normal",
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+  dataAttr: string;
+  shortcut?: string;
+  tone?: "normal" | "primary";
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex min-h-9 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:text-subtle",
+        tone === "primary" ? "bg-primary/10 font-medium text-primary hover:bg-primary/15" : null,
+      )}
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      {...{ [dataAttr]: true }}
+    >
+      <span className="min-w-0 truncate">{children}</span>
+      {shortcut ? <span className="shrink-0 rounded border border-line bg-panel px-1.5 py-0.5 text-[10px] text-muted">{shortcut}</span> : null}
+    </button>
+  );
+}
+
+function FileSurfacePreviewPanel({
+  read,
+  tab,
+  loading,
+  error,
+  onReload,
+}: {
+  read: ReturnType<typeof useFileReadQuery>["data"] | undefined;
+  tab: FileOnlineEditorTab;
+  loading: boolean;
+  error?: string;
+  onReload: () => void;
+}) {
+  const previewKind = classifyFileSurfacePreview(read, tab.entry);
+  const downloadUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, false);
+  const attachmentUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, true);
+  const size = formatFileSize(read?.size ?? tab.entry.size);
+  const modified = formatModifiedAt(read?.modifiedAt ?? tab.entry.modifiedAt);
+  const mimeType = read?.mimeType || "application/octet-stream";
+  const PreviewIcon = previewKind === "image"
+    ? ImageIcon
+    : previewKind === "video"
+      ? Video
+      : previewKind === "audio"
+        ? Music
+        : previewKind === "pdf"
+          ? FileText
+          : File;
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-panel" data-file-surface-panel data-file-surface-kind={previewKind}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <span className="inline-flex items-center gap-1 font-medium text-ink-strong">
+          <PreviewIcon className="size-3.5" />
+          {previewKindLabel(previewKind)}
+        </span>
+        <span className="text-muted">{tab.entry.path}</span>
+        {error ? <span className="text-danger" data-file-surface-read-error>{error}</span> : null}
+        <Button variant="ghost" size="sm" onClick={onReload} disabled={loading} data-file-surface-reload>
+          <RefreshCw className="size-3.5" />
+          {loading ? "读取中…" : "刷新"}
+        </Button>
+        <Button asChild variant="outline" size="sm" data-file-surface-open-inline>
+          <a href={downloadUrl} target="_blank" rel="noreferrer">打开</a>
+        </Button>
+        <Button asChild variant="primary" size="sm" data-file-surface-download>
+          <a href={attachmentUrl} download>
+            <Download className="size-3.5" />
+            下载
+          </a>
+        </Button>
+      </div>
+      <div className="min-h-0 overflow-auto p-4" data-file-surface-preview>
+        {previewKind === "image" ? (
+          <ImagePreviewCanvas src={downloadUrl} alt={tab.entry.name} />
+        ) : previewKind === "video" ? (
+          <VideoPreviewPlayer src={downloadUrl} name={tab.entry.name} />
+        ) : previewKind === "audio" ? (
+          <AudioPreviewPlayer src={downloadUrl} name={tab.entry.name} />
+        ) : previewKind === "pdf" ? (
+          <PdfPreviewFrame src={downloadUrl} title={tab.entry.name} />
+        ) : (
+          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6 text-center" data-file-surface-binary>
+            <div className="max-w-lg">
+              <File className="mx-auto mb-3 size-10 text-subtle" />
+              <div className="text-sm font-semibold text-ink-strong">此文件不能作为文本编辑</div>
+              <p className="mt-2 text-xs text-muted">
+                已在同一个文件窗口中提供安全检查信息。可下载或用系统应用打开，避免把未知二进制内容误当文本写回。
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <a href={downloadUrl} target="_blank" rel="noreferrer">浏览器打开</a>
+                </Button>
+                <Button asChild variant="primary" size="sm">
+                  <a href={attachmentUrl} download>下载文件</a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-line bg-panel px-3 py-2 text-xs text-muted" data-file-surface-statusbar>
+        <span>{mimeType}</span>
+        <span>{size}</span>
+        <span>{read?.permissions ?? tab.entry.permissions ?? "权限未知"}</span>
+        <span>{modified}</span>
+        <span className="ml-auto">同一 File Surface · 非文本只读预览</span>
+      </div>
+    </div>
+  );
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+const IMAGE_PREVIEW_MIN_ZOOM = 0.1;
+const IMAGE_PREVIEW_MAX_ZOOM = 12;
+const IMAGE_PREVIEW_ZOOM_STEP = 1.2;
+
+function ImagePreviewCanvas({ src, alt }: { src: string; alt: string }) {
+  const [zoom, setZoom] = React.useState(1);
+  const [pan, setPan] = React.useState<Point>({ x: 0, y: 0 });
+  const [rotation, setRotation] = React.useState(0);
+  const dragStartRef = React.useRef<{ pointerId: number; pointer: Point; pan: Point } | null>(null);
+
+  const zoomLabel = `${Math.round(zoom * 100)}%`;
+  const resetView = React.useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+  }, []);
+  const updateZoom = React.useCallback((nextZoom: number) => {
+    setZoom(clampNumber(nextZoom, IMAGE_PREVIEW_MIN_ZOOM, IMAGE_PREVIEW_MAX_ZOOM));
+  }, []);
+
+  return (
+    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-image-viewer>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom / IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-out>
+          <ZoomOut className="size-3.5" />
+          缩小
+        </Button>
+        <span className="min-w-14 text-center font-mono text-muted" data-file-surface-image-zoom-label>{zoomLabel}</span>
+        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom * IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-in>
+          <ZoomIn className="size-3.5" />
+          放大
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setRotation((value) => (value + 90) % 360)} data-file-surface-image-rotate>
+          <RotateCcw className="size-3.5" />
+          旋转
+        </Button>
+        <Button variant="outline" size="sm" onClick={resetView} data-file-surface-image-reset>
+          适应窗口
+        </Button>
+        <span className="ml-auto text-muted">滚轮缩放 · 拖动画布 · 双击复位</span>
+      </div>
+      <div
+        className="relative min-h-0 cursor-grab touch-none select-none overflow-hidden bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.18)_1px,transparent_1px)] [background-size:18px_18px] active:cursor-grabbing"
+        data-file-surface-image-canvas
+        onDoubleClick={resetView}
+        onWheel={(event) => {
+          event.preventDefault();
+          const direction = event.deltaY < 0 ? 1 : -1;
+          const factor = direction > 0 ? IMAGE_PREVIEW_ZOOM_STEP : 1 / IMAGE_PREVIEW_ZOOM_STEP;
+          updateZoom(zoom * factor);
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          dragStartRef.current = {
+            pointerId: event.pointerId,
+            pointer: { x: event.clientX, y: event.clientY },
+            pan,
+          };
+        }}
+        onPointerMove={(event) => {
+          const dragStart = dragStartRef.current;
+          if (!dragStart || dragStart.pointerId !== event.pointerId) return;
+          setPan({
+            x: dragStart.pan.x + event.clientX - dragStart.pointer.x,
+            y: dragStart.pan.y + event.clientY - dragStart.pointer.y,
+          });
+        }}
+        onPointerUp={(event) => {
+          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
+        }}
+      >
+        <div className="absolute inset-0 grid place-items-center p-6">
+          <img
+            src={src}
+            alt={alt}
+            draggable={false}
+            className="max-h-full max-w-full rounded border border-line bg-panel object-contain shadow-lg will-change-transform"
+            data-file-surface-image
+            style={{
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: "center center",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoPreviewPlayer({ src, name }: { src: string; name: string }) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  return (
+    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-video-viewer>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{name}</span>
+        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} data-file-surface-video-backward>后退 10s</Button>
+        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime += 10; }} data-file-surface-video-forward>前进 10s</Button>
+        <label className="flex items-center gap-1 text-muted">
+          速度
+          <select
+            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            defaultValue="1"
+            onChange={(event) => { if (videoRef.current) videoRef.current.playbackRate = Number(event.target.value); }}
+            data-file-surface-video-speed
+          >
+            <option value="0.5">0.5x</option>
+            <option value="1">1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
+        </label>
+      </div>
+      <div className="grid min-h-0 place-items-center bg-black p-3">
+        <video ref={videoRef} src={src} controls playsInline preload="metadata" className="h-full max-h-full w-full max-w-full rounded border border-line bg-black object-contain" data-file-surface-video>
+          当前浏览器无法播放该视频。
+        </video>
+      </div>
+    </div>
+  );
+}
+
+function AudioPreviewPlayer({ src, name }: { src: string; name: string }) {
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  return (
+    <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6" data-file-surface-audio-viewer>
+      <div className="w-full max-w-2xl rounded-md border border-line bg-panel p-4 text-center shadow-sm">
+        <Music className="mx-auto mb-3 size-10 text-primary" />
+        <div className="mb-3 text-sm font-medium text-ink-strong">{name}</div>
+        <audio ref={audioRef} src={src} controls preload="metadata" className="w-full" data-file-surface-audio>
+          当前浏览器无法播放该音频。
+        </audio>
+        <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} data-file-surface-audio-backward>后退 10s</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime += 10; }} data-file-surface-audio-forward>前进 10s</Button>
+          <label className="flex items-center gap-1 text-muted">
+            速度
+            <select
+              className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+              defaultValue="1"
+              onChange={(event) => { if (audioRef.current) audioRef.current.playbackRate = Number(event.target.value); }}
+              data-file-surface-audio-speed
+            >
+              <option value="0.5">0.5x</option>
+              <option value="1">1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PdfPreviewFrame({ src, title }: { src: string; title: string }) {
+  return (
+    <div className="grid h-full min-h-[520px] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-pdf-viewer>
+      <object data={src} type="application/pdf" className="h-full min-h-[520px] w-full" data-file-surface-pdf>
+        <iframe title={title} src={src} className="h-full min-h-[520px] w-full" />
+      </object>
+    </div>
+  );
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+
+type FileSurfacePreviewKind = "image" | "video" | "audio" | "pdf" | "binary";
+
+function classifyFileSurfacePreview(
+  read: ReturnType<typeof useFileReadQuery>["data"] | undefined,
+  entry: FileEntrySummary,
+): FileSurfacePreviewKind {
+  const mimeType = (read?.mimeType ?? "").toLowerCase();
+  const ext = (read?.ext ?? entry.ext ?? "").toLowerCase();
+  if (read?.imageLike || mimeType.startsWith("image/") || IMAGE_FILE_EXTENSIONS.has(ext)) return "image";
+  if (mimeType.startsWith("video/") || VIDEO_FILE_EXTENSIONS.has(ext)) return "video";
+  if (mimeType.startsWith("audio/") || AUDIO_FILE_EXTENSIONS.has(ext)) return "audio";
+  if (mimeType === "application/pdf" || ext === ".pdf") return "pdf";
+  return "binary";
+}
+
+const IMAGE_FILE_EXTENSIONS = new Set([".apng", ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
+const VIDEO_FILE_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogg", ".ogv", ".webm"]);
+const AUDIO_FILE_EXTENSIONS = new Set([".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav", ".weba"]);
+
+function previewKindLabel(kind: FileSurfacePreviewKind): string {
+  switch (kind) {
+    case "image":
+      return "图片预览";
+    case "video":
+      return "视频预览";
+    case "audio":
+      return "音频预览";
+    case "pdf":
+      return "PDF 预览";
+    case "binary":
+      return "二进制检查";
+  }
+}
+
+function buildFileDownloadUrl(rootId: string, path: string, attachment = false): string {
+  const search = new URLSearchParams({ rootId, path });
+  if (attachment) search.set("download", "1");
+  return `/api/files/download?${search.toString()}`;
 }
 
 export function createFileOnlineEditorTab(rootId: string, entry: FileEntrySummary): FileOnlineEditorTab {

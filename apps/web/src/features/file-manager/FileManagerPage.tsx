@@ -6,7 +6,6 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import {
   filesKeys,
-  useFileReadQuery,
   useFilesBrowseQuery,
   useFilesSummaryQuery,
 } from "@/lib/query/files";
@@ -56,11 +55,6 @@ const LazyContentIndexManager = React.lazy(() =>
 );
 const LazyTrashManager = React.lazy(() =>
   import("./TrashManager").then((module) => ({ default: module.TrashManager })),
-);
-const LazyFilePreviewDialog = React.lazy(() =>
-  import("./FilePreviewPanel").then((module) => ({
-    default: module.FilePreviewDialog,
-  })),
 );
 const LazyFileOnlineEditorDialog = React.lazy(() =>
   import("./online-editor/FileOnlineEditorDialog").then((module) => ({
@@ -150,16 +144,6 @@ interface FileClipboardState {
   paths: string[];
 }
 
-interface FilePreviewTab {
-  id: string;
-  rootId: string;
-  entry: FileEntrySummary;
-}
-
-function createFilePreviewTabId(rootId: string, path: string): string {
-  return `${rootId}:${path}`;
-}
-
 export function FileManagerPage() {
   const queryClient = useQueryClient();
   const ops = useFileOperations();
@@ -208,10 +192,6 @@ export function FileManagerPage() {
     y: number;
     target: FileActionsMenuTarget | null;
   } | null>(null);
-  const [previewTabs, setPreviewTabs] = React.useState<FilePreviewTab[]>([]);
-  const [activePreviewTabId, setActivePreviewTabId] = React.useState<
-    string | undefined
-  >();
   const [onlineEditorTabs, setOnlineEditorTabs] = React.useState<FileOnlineEditorTab[]>([]);
   const [activeOnlineEditorTabId, setActiveOnlineEditorTabId] = React.useState<
     string | undefined
@@ -821,25 +801,6 @@ export function FileManagerPage() {
     copyPathToClipboard(displayPath);
   }, [copyPathToClipboard, displayPath]);
 
-  const openFilePreview = React.useCallback(
-    (entry: FileEntrySummary, targetRootId?: string) => {
-      const nextRootId = targetRootId ?? rootId;
-      const tabId = createFilePreviewTabId(nextRootId, entry.path);
-      setSelectedPath(entry.path);
-      setPreviewTabs((current) => {
-        const existing = current.find((tab) => tab.id === tabId);
-        if (existing) {
-          return current.map((tab) =>
-            tab.id === tabId ? { ...tab, entry, rootId: nextRootId } : tab,
-          );
-        }
-        return [...current, { id: tabId, rootId: nextRootId, entry }].slice(-8);
-      });
-      setActivePreviewTabId(tabId);
-    },
-    [rootId],
-  );
-
   const openFileOnlineEditor = React.useCallback(
     (entry: FileEntrySummary, targetRootId?: string) => {
       const nextRootId = targetRootId ?? rootId;
@@ -858,6 +819,13 @@ export function FileManagerPage() {
       setOnlineEditorOpen(true);
     },
     [rootId],
+  );
+
+  const openFileSurface = React.useCallback(
+    (entry: FileEntrySummary, targetRootId?: string) => {
+      openFileOnlineEditor(entry, targetRootId);
+    },
+    [openFileOnlineEditor],
   );
 
   const selectOnlineEditorTab = React.useCallback(
@@ -1005,34 +973,6 @@ export function FileManagerPage() {
     [],
   );
 
-  const selectPreviewTab = React.useCallback(
-    (tabId: string) => {
-      const tab = previewTabs.find((item) => item.id === tabId);
-      setActivePreviewTabId(tabId);
-      if (tab) setSelectedPath(tab.entry.path);
-    },
-    [previewTabs],
-  );
-
-  const closePreviewTab = React.useCallback(
-    (tabId: string) => {
-      const closingIndex = previewTabs.findIndex((tab) => tab.id === tabId);
-      const nextTabs = previewTabs.filter((tab) => tab.id !== tabId);
-      setPreviewTabs(nextTabs);
-      if (activePreviewTabId === tabId) {
-        const fallback = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
-        setActivePreviewTabId(fallback?.id);
-        if (fallback) setSelectedPath(fallback.entry.path);
-      }
-    },
-    [activePreviewTabId, previewTabs],
-  );
-
-  const closePreviewWindow = React.useCallback(() => {
-    setPreviewTabs([]);
-    setActivePreviewTabId(undefined);
-  }, []);
-
   const openFileProperties = React.useCallback((entry: FileEntrySummary) => {
     setSelectedPath(entry.path);
     setPropertiesTarget(entry);
@@ -1044,13 +984,9 @@ export function FileManagerPage() {
         navigateToDirectory(entry.path);
         return;
       }
-      if (entry.textLike) {
-        openFileOnlineEditor(entry);
-        return;
-      }
-      openFilePreview(entry);
+      openFileSurface(entry);
     },
-    [navigateToDirectory, openFileOnlineEditor, openFilePreview],
+    [navigateToDirectory, openFileSurface],
   );
 
   const selectEntry = React.useCallback(
@@ -1240,6 +1176,9 @@ export function FileManagerPage() {
           toast.success("上传完成", {
             description: `${files.length - skipped} 个文件已上传${skipped ? `，${skipped} 个已跳过` : ""}`,
           });
+          setUploadJobs([]);
+          setUploadSnapshots([]);
+          saveUploadTaskSnapshots(FILE_MANAGER_UPLOAD_TASK_SNAPSHOT_KEY, []);
         }
       } catch (error) {
         toast.error("上传失败", {
@@ -1327,31 +1266,6 @@ export function FileManagerPage() {
     () => entries.find((entry) => entry.path === selectedPath),
     [entries, selectedPath],
   );
-  const activePreviewTab = React.useMemo(() => {
-    const active = previewTabs.find((tab) => tab.id === activePreviewTabId);
-    return active ?? previewTabs[previewTabs.length - 1];
-  }, [activePreviewTabId, previewTabs]);
-  const previewEntry = React.useMemo(() => {
-    if (!activePreviewTab) return undefined;
-    const loaded =
-      activePreviewTab.rootId === rootId
-        ? entries.find(
-            (entry) =>
-              entry.path === activePreviewTab.entry.path &&
-              entry.kind === "file",
-          )
-        : undefined;
-    return loaded ?? activePreviewTab.entry;
-  }, [activePreviewTab, entries, rootId]);
-  const activePreviewRootId = activePreviewTab?.rootId ?? rootId;
-  const activePreviewPath = activePreviewTab?.entry.path;
-  const previewFileRead = useFileReadQuery(
-    previewEntry?.kind === "file"
-      ? { rootId: activePreviewRootId, path: previewEntry.path }
-      : null,
-    { enabled: previewEntry?.kind === "file" },
-  );
-
   const afterFileMutation = React.useCallback(
     (record: FileOperationRecord) => {
       pushOperationRecord(record);
@@ -1536,7 +1450,7 @@ export function FileManagerPage() {
 
   const handleFileManagerKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (isEditableEventTarget(event.target)) return;
+      if (isEditorShortcutTarget(event.target)) return;
       const mod = event.metaKey || event.ctrlKey;
       if (event.altKey && event.key === "ArrowUp") {
         event.preventDefault();
@@ -1565,15 +1479,15 @@ export function FileManagerPage() {
         return;
       }
       if (mod && event.key.toLowerCase() === "c") {
-        if (copySelectionToFileClipboard("copy")) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && copySelectionToFileClipboard("copy")) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "x") {
-        if (copySelectionToFileClipboard("move")) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && copySelectionToFileClipboard("move")) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "v") {
-        if (pasteFileClipboardToCurrentDirectory()) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && pasteFileClipboardToCurrentDirectory()) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "u") {
@@ -1583,8 +1497,7 @@ export function FileManagerPage() {
       }
       if (mod && event.key === "Enter" && selectedEntry?.kind === "file") {
         event.preventDefault();
-        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
-        else openFilePreview(selectedEntry);
+        openFileSurface(selectedEntry);
         return;
       }
       if (event.key === "F5") {
@@ -1598,8 +1511,7 @@ export function FileManagerPage() {
         !isInteractiveShortcutTarget(event.target)
       ) {
         event.preventDefault();
-        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
-        else openFilePreview(selectedEntry);
+        openFileSurface(selectedEntry);
         return;
       }
       if (event.altKey && event.key === "Enter" && selectedEntry) {
@@ -1628,8 +1540,7 @@ export function FileManagerPage() {
       directoryPath,
       filteredEntries,
       navigateToDirectory,
-      openFilePreview,
-      openFileOnlineEditor,
+      openFileSurface,
       openFileProperties,
       openUploadManager,
       parentPath,
@@ -1813,7 +1724,9 @@ export function FileManagerPage() {
               selectedEntries={selectedList}
               onEdit={() => {
                 const entry = selectedList[0];
-                if (entry?.kind === "file" && entry.textLike) openFileOnlineEditor(entry);
+                if (entry?.kind === "file" && entry.textLike) {
+                  openFileSurface(entry);
+                }
               }}
               canEdit={
                 selectedList.length === 1 &&
@@ -1847,8 +1760,7 @@ export function FileManagerPage() {
               onRevealPath={revealOperationPath}
               onOpenDirectory={navigateToDirectory}
               onOpenFile={(entry) => {
-                if (entry.textLike) openFileOnlineEditor(entry);
-                else openFilePreview(entry);
+                openFileSurface(entry);
               }}
             />
             <FileListPanel
@@ -1935,8 +1847,7 @@ export function FileManagerPage() {
               rootLabel={root?.labelZh ?? rootId}
               onRevealPath={revealOperationPath}
               onOpenFile={(entry) => {
-                if (entry.textLike) openFileOnlineEditor(entry);
-                else openFilePreview(entry);
+                openFileSurface(entry);
               }}
             />
           </React.Suspense>
@@ -1968,13 +1879,15 @@ export function FileManagerPage() {
             const entry = entries.find(
               (item) => item.path === target.path && item.kind === "file",
             );
-            openFilePreview(entry ?? fileEntryFromMenuTarget(target));
+            openFileSurface(entry ?? fileEntryFromMenuTarget(target));
           }}
           onEditRequest={(target) => {
             const entry = entries.find(
               (item) => item.path === target.path && item.kind === "file",
             );
-            openFileOnlineEditor(entry ?? fileEntryFromMenuTarget({ ...target, textLike: true }));
+            openFileSurface(
+              entry ?? fileEntryFromMenuTarget({ ...target, textLike: true }),
+            );
           }}
           onPropertiesRequest={(target) => {
             const entry = entries.find((item) => item.path === target.path);
@@ -2041,6 +1954,7 @@ export function FileManagerPage() {
               onOpenChange={(open) => {
                 if (!open) closeOnlineEditorWindow();
               }}
+              rootAbsolutePaths={Object.fromEntries(roots.map((root) => [root.id, root.absolutePath]))}
               drafts={onlineEditorDrafts}
               viewStates={onlineEditorViewStates}
               readMetadata={onlineEditorReadMetadata}
@@ -2061,31 +1975,6 @@ export function FileManagerPage() {
         </FileManagerModalErrorBoundary>
       ) : null}
 
-      {activePreviewPath ? (
-        <FileManagerModalErrorBoundary
-          resetKey={`${activePreviewRootId}:${activePreviewPath}`}
-          title="文件预览加载失败"
-          description="预览弹窗代码或文件渲染组件加载异常，已阻止前端进入空白页。请关闭后重试，或直接下载文件。"
-          onDismiss={closePreviewWindow}
-        >
-          <React.Suspense
-            fallback={<FileManagerModalLoading label="文件预览加载中…" />}
-          >
-            <LazyFilePreviewDialog
-              rootId={activePreviewRootId}
-              entry={previewEntry}
-              readQuery={previewFileRead}
-              tabs={previewTabs}
-              activeTabId={activePreviewTab?.id}
-              onSelectTab={selectPreviewTab}
-              onCloseTab={closePreviewTab}
-              onOpenChange={(open) => {
-                if (!open) closePreviewWindow();
-              }}
-            />
-          </React.Suspense>
-        </FileManagerModalErrorBoundary>
-      ) : null}
       <FilePropertiesDialog
         entry={propertiesTarget}
         rootLabel={root?.labelZh ?? rootId}
@@ -2474,14 +2363,33 @@ async function copyTextToClipboard(text: string): Promise<void> {
   }
 }
 
-function isEditableEventTarget(target: EventTarget | null): boolean {
+function isFileClipboardShortcutTarget(target: EventTarget | null): boolean {
+  if (hasActiveDocumentTextSelection()) return false;
+  if (!(target instanceof HTMLElement)) return false;
+  if (isEditorShortcutTarget(target)) return false;
+  if (target.closest("[data-file-manager-entry-path]")) return true;
+  return Boolean(target.closest("[data-file-manager-list]"));
+}
+
+function hasActiveDocumentTextSelection(): boolean {
+  const selection = window.getSelection?.();
+  if (!selection || selection.isCollapsed) return false;
+  return Boolean(selection.toString().trim());
+}
+
+function isEditorShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
   return (
     tag === "input" ||
     tag === "textarea" ||
     tag === "select" ||
-    target.isContentEditable
+    target.isContentEditable ||
+    Boolean(
+      target.closest(
+        '[data-editor-shortcuts="ignore"],[data-code-editor="monaco-direct"],.monaco-editor,.find-widget,.suggest-widget,.context-view,.monaco-menu,.monaco-hover',
+      ),
+    )
   );
 }
 

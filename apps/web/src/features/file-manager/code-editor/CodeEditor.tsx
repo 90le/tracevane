@@ -1,3 +1,4 @@
+import "monaco-editor/esm/nls.messages.zh-cn.js";
 import * as React from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import "monaco-editor/esm/vs/editor/edcore.main.js";
@@ -48,6 +49,7 @@ export interface CodeEditorHandle {
   runAction: (actionId: string) => void;
   openFind: () => void;
   openReplace: () => void;
+  openCommandPalette: () => void;
   gotoLine: (line: number, column?: number) => void;
   saveViewState: () => CodeEditorViewState | null;
   restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
@@ -106,6 +108,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
   const pendingKeyboardScrollDeltaRef = React.useRef(0);
   const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
+  const [actionDiagnostics, setActionDiagnostics] = React.useState<MonacoActionDiagnostics>({
+    count: 0,
+    ids: [],
+  });
 
   React.useEffect(() => {
     onChangeRef.current = onChange;
@@ -128,6 +134,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
         editorRef.current,
         "editor.action.startFindReplaceAction",
       ),
+    openCommandPalette: () =>
+      runMonacoEditorAction(editorRef.current, "editor.action.quickCommand"),
     gotoLine: (line: number, column = 1) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -240,6 +248,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     });
     editorRef.current = editor;
     modelRef.current = model;
+    setActionDiagnostics(readMonacoActionDiagnostics(editor));
     const subscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
     });
@@ -274,6 +283,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       model.dispose();
       editorRef.current = null;
       modelRef.current = null;
+      setActionDiagnostics({ count: 0, ids: [] });
     };
     // Recreate the Monaco model only when the backing file changes. Content updates from typing are owned by Monaco.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,7 +382,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   return (
     <div
       className={cn(
-        "group/editor relative min-h-0 min-w-0 overflow-hidden",
+        "group/editor relative min-h-0 min-w-0 overflow-visible",
         theme === "dark" ? "bg-[#1e1e1e]" : "bg-white",
         className,
       )}
@@ -387,6 +397,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       data-code-editor-minimap={effectiveOptions.minimapEnabled ? "enabled" : "disabled"}
       data-code-editor-sticky-scroll={effectiveOptions.stickyScrollEnabled ? "enabled" : "disabled"}
       data-code-editor-word-wrap={effectiveOptions.wordWrap}
+      data-code-editor-supported-action-count={actionDiagnostics.count}
+      data-code-editor-supported-actions={actionDiagnostics.ids.join(",")}
     >
       <div
         ref={containerRef}
@@ -397,6 +409,22 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     </div>
   );
 });
+
+
+interface MonacoActionDiagnostics {
+  count: number;
+  ids: string[];
+}
+
+const MONACO_DIAGNOSTIC_ACTION_IDS = [
+  "actions.find",
+  "editor.action.startFindReplaceAction",
+  "editor.action.formatDocument",
+  "editor.action.commentLine",
+  "editor.action.quickCommand",
+  "editor.action.marker.next",
+  "editor.action.triggerSuggest",
+] as const;
 
 interface BuildMonacoEditorOptionsInput {
   model: monaco.editor.ITextModel;
@@ -517,6 +545,22 @@ function editorRuntimeOptionsForProfile(
     quickSuggestions: true,
     stickyScroll: { enabled: effectiveOptions.stickyScrollEnabled },
     wordWrap: effectiveOptions.wordWrap,
+  };
+}
+
+
+function readMonacoActionDiagnostics(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): MonacoActionDiagnostics {
+  const supportedIds = editor
+    .getSupportedActions()
+    .map((action) => action.id)
+    .filter((id): id is string => Boolean(id))
+    .sort();
+  const supportedIdSet = new Set(supportedIds);
+  return {
+    count: supportedIds.length,
+    ids: MONACO_DIAGNOSTIC_ACTION_IDS.filter((id) => supportedIdSet.has(id)),
   };
 }
 
