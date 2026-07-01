@@ -91,7 +91,14 @@ async function closeCopyDialogIfOpen(page) {
 async function assertNoCopyDialog(page, context) {
   await page.waitForTimeout(500);
   if (await page.getByRole('dialog', { name: '复制所选项目' }).count()) {
-    throw new Error(`File-manager copy dialog opened inside Monaco shortcut scope: ${context}`);
+    throw new Error(`File-manager copy dialog opened inside protected shortcut scope: ${context}`);
+  }
+}
+
+async function assertNoFileClipboardToast(page, context) {
+  await page.waitForTimeout(300);
+  if (await page.getByText('已复制到文件剪贴板').count()) {
+    throw new Error(`File-manager clipboard toast appeared while copying text: ${context}`);
   }
 }
 
@@ -121,6 +128,24 @@ async function run() {
 
     const sourceRow = page.locator(`[data-file-manager-entry-path="${cssAttr(clipboardSourcePath)}"]`).first();
     await waitForEntry(page, clipboardSourcePath);
+    await sourceRow.click({ force: true });
+    const selectedText = await page.evaluate(() => {
+      const node = document.querySelector('[data-file-manager-display-path]');
+      if (!node) throw new Error('Display path text not found');
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return selection?.toString() || '';
+    });
+    if (!selectedText.trim()) throw new Error('Unable to create display path text selection for clipboard regression');
+    await page.keyboard.press(`${MOD}+C`);
+    await assertNoFileClipboardToast(page, 'file row text selection');
+    await page.keyboard.press(`${MOD}+V`);
+    await assertNoCopyDialog(page, 'file row text selection');
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+
     await sourceRow.click({ force: true });
     await page.keyboard.press(`${MOD}+C`);
     await page.keyboard.press(`${MOD}+V`);

@@ -1476,15 +1476,15 @@ export function FileManagerPage() {
         return;
       }
       if (mod && event.key.toLowerCase() === "c") {
-        if (copySelectionToFileClipboard("copy")) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && copySelectionToFileClipboard("copy")) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "x") {
-        if (copySelectionToFileClipboard("move")) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && copySelectionToFileClipboard("move")) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "v") {
-        if (pasteFileClipboardToCurrentDirectory()) event.preventDefault();
+        if (isFileClipboardShortcutTarget(event.target) && pasteFileClipboardToCurrentDirectory()) event.preventDefault();
         return;
       }
       if (mod && event.key.toLowerCase() === "u") {
@@ -2357,6 +2357,20 @@ async function copyTextToClipboard(text: string): Promise<void> {
   } finally {
     textarea.remove();
   }
+}
+
+function isFileClipboardShortcutTarget(target: EventTarget | null): boolean {
+  if (hasActiveDocumentTextSelection()) return false;
+  if (!(target instanceof HTMLElement)) return false;
+  if (isEditorShortcutTarget(target)) return false;
+  if (target.closest("[data-file-manager-entry-path]")) return true;
+  return Boolean(target.closest("[data-file-manager-list]"));
+}
+
+function hasActiveDocumentTextSelection(): boolean {
+  const selection = window.getSelection?.();
+  if (!selection || selection.isCollapsed) return false;
+  return Boolean(selection.toString().trim());
 }
 
 function isEditorShortcutTarget(target: EventTarget | null): boolean {
