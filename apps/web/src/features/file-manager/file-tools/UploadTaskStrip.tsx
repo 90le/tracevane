@@ -60,7 +60,7 @@ export function UploadTaskStrip({
   const remaining = live ? estimateRemaining(total, loaded, speed) : "待恢复";
 
   return (
-    <div className="border-t border-line bg-panel-2 px-2 py-2 text-xs">
+    <div className="border-t border-line bg-panel-2 px-2 py-2 text-xs" data-upload-task-strip>
       <button
         type="button"
         className="mb-1 flex w-full items-center justify-between gap-2 text-left text-muted hover:text-ink"

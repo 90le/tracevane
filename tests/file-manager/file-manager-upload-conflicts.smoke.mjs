@@ -45,6 +45,7 @@ async function uploadOnce(page, targetDirectory, localFile, conflictPolicy, expe
   await page.getByRole('button', { name: /开始上传|重新开始全部/ }).click();
   await page.getByText(expectedStatusText, { exact: true }).waitFor({ timeout: 30_000 });
   await page.getByRole('button', { name: '关闭' }).last().click();
+  await page.waitForSelector('[data-upload-task-strip]', { state: 'detached', timeout: 10_000 });
 }
 
 async function run() {

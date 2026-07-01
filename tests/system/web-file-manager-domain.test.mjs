@@ -27,10 +27,12 @@ test("file manager routes files through unified online surface", () => {
   assert.doesNotMatch(page, /LazyFilePreviewDialog/);
   assert.doesNotMatch(page, /import\("\.\/FilePreviewPanel"\)/);
   assert.match(page, /openFileSurface/);
+  assert.match(page, /setUploadJobs\(\[\]\);[\s\S]*setUploadSnapshots\(\[\]\);[\s\S]*saveUploadTaskSnapshots\(\s*FILE_MANAGER_UPLOAD_TASK_SNAPSHOT_KEY,\s*\[\],\s*\)/);
   assert.match(page, /FilePropertiesDialog/);
   assert.match(page, /\.\/FilePropertiesDialog/);
   assert.match(page, /onPreviewRequest=\{\(target\)/);
   assert.match(actionsMenu, /label="检查文件"/);
+  assert.match(read("apps/web/src/features/file-manager/file-tools/UploadTaskStrip.tsx"), /data-upload-task-strip/);
 
   assert.match(chrome, /data-file-manager-command-bar/);
   assert.match(chrome, /data-file-manager-unified-path-bar/);

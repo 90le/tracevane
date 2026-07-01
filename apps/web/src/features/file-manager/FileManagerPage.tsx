@@ -1176,6 +1176,9 @@ export function FileManagerPage() {
           toast.success("上传完成", {
             description: `${files.length - skipped} 个文件已上传${skipped ? `，${skipped} 个已跳过` : ""}`,
           });
+          setUploadJobs([]);
+          setUploadSnapshots([]);
+          saveUploadTaskSnapshots(FILE_MANAGER_UPLOAD_TASK_SNAPSHOT_KEY, []);
         }
       } catch (error) {
         toast.error("上传失败", {
