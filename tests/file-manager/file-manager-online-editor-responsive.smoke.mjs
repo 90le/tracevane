@@ -29,6 +29,15 @@ async function cleanup(rootId, path) {
   }).catch(() => undefined);
 }
 
+async function createDirectory(rootId, path) {
+  const directoryPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+  await api('/api/files/directories', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, directoryPath, name }),
+  });
+}
+
 async function createTextFile(rootId, filePath, content) {
   const directoryPath = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : '';
   const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
@@ -38,30 +47,39 @@ async function createTextFile(rootId, filePath, content) {
   });
 }
 
-async function openEditor(page, filePath) {
-  await page.addInitScript(() => {
+async function openEditor(page, rootId, directoryPath, filePath) {
+  await page.addInitScript(({ initialRootId, initialDirectoryPath }) => {
     window.localStorage.setItem('tracevane:file-manager:session-state:v1', JSON.stringify({
-      rootId: 'openclaw-root',
-      directoryPath: 'tmp',
-      activeDirectoryTabId: 'openclaw-root:tmp',
+      rootId: initialRootId,
+      directoryPath: initialDirectoryPath,
+      activeDirectoryTabId: `${initialRootId}:${initialDirectoryPath}`,
       viewMode: 'files',
       showHidden: false,
     }));
     window.localStorage.setItem('tracevane:file-manager:directory-tabs:v2', JSON.stringify([{
-      id: 'openclaw-root:tmp',
-      rootId: 'openclaw-root',
-      directoryPath: 'tmp',
-      label: 'tmp',
+      id: `${initialRootId}:${initialDirectoryPath}`,
+      rootId: initialRootId,
+      directoryPath: initialDirectoryPath,
+      label: initialDirectoryPath.split('/').pop() || initialDirectoryPath,
     }]));
-  });
+  }, { initialRootId: rootId, initialDirectoryPath: directoryPath });
   await page.goto(`${BASE_URL}/#/file-manager`, { waitUntil: 'domcontentloaded' });
   const row = page.locator(`[data-file-manager-entry-path="${cssAttr(filePath)}"]`).first();
-  await row.waitFor({ timeout: 60_000 });
-  await row.scrollIntoViewIfNeeded();
-  await row.dblclick({ force: true });
+  await page.waitForFunction(
+    (targetPath) =>
+      [...document.querySelectorAll("[data-file-manager-entry-path]")].some(
+        (node) => node.getAttribute("data-file-manager-entry-path") === targetPath,
+      ),
+    filePath,
+    { timeout: 60_000 },
+  );
+  await row.evaluate((node) => {
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+    node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  });
   await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
   await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
-  await page.waitForSelector('[data-file-online-editor-theme-entry]', { timeout: 30_000 });
+  await page.waitForSelector('[data-file-online-editor-theme-mode-select]', { timeout: 30_000 });
   await page.waitForSelector('[data-file-online-editor-statusbar]', { timeout: 30_000 });
 }
 
@@ -70,7 +88,7 @@ async function verifyEditorSurface(page, filePath, expectedTheme) {
     const dialog = document.querySelector('[data-file-online-editor-dialog]')?.getBoundingClientRect();
     const editor = document.querySelector('[data-code-editor="monaco-direct"]')?.getBoundingClientRect();
     const statusbar = document.querySelector('[data-file-online-editor-statusbar]')?.textContent || '';
-    const themeEntry = document.querySelector('[data-file-online-editor-theme-entry]')?.textContent || '';
+    const themeEntry = document.querySelector('[data-file-online-editor-theme-mode-select]')?.textContent || '';
     const monaco = document.querySelector('.monaco-editor');
     return {
       dialog: dialog ? { width: dialog.width, height: dialog.height } : null,
@@ -88,15 +106,17 @@ async function verifyEditorSurface(page, filePath, expectedTheme) {
     throw new Error(`Online editor Monaco has invalid ${expectedTheme} dimensions: ${JSON.stringify(state)}`);
   }
   if (!state.statusbar.includes(filePath)) throw new Error(`Status bar missing file path in ${expectedTheme}: ${JSON.stringify(state)}`);
-  if (!state.themeEntry.includes('主题')) throw new Error(`Theme entry missing in ${expectedTheme}: ${JSON.stringify(state)}`);
+  if (!state.themeEntry.includes('跟随系统')) throw new Error(`Theme selector missing in ${expectedTheme}: ${JSON.stringify(state)}`);
 }
 
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file-manager root is available');
-  const filePath = `tmp/tracevane-online-editor-responsive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`;
-  await cleanup(rootId, filePath);
+  const workspacePath = `tmp/tracevane-online-editor-responsive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const filePath = `${workspacePath}/responsive.txt`;
+  await cleanup(rootId, workspacePath);
+  await createDirectory(rootId, workspacePath);
   await createTextFile(rootId, filePath, 'responsive online editor smoke\n');
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
@@ -105,14 +125,14 @@ async function run() {
     const light = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'light' });
     light.on('console', (msg) => logs.push(`[light:${msg.type()}] ${msg.text()}`));
     light.on('pageerror', (error) => logs.push(`[light:pageerror] ${error.stack || error.message}`));
-    await openEditor(light, filePath);
+    await openEditor(light, rootId, workspacePath, filePath);
     await verifyEditorSurface(light, filePath, 'light/mobile');
     await light.close();
 
     const dark = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
     dark.on('console', (msg) => logs.push(`[dark:${msg.type()}] ${msg.text()}`));
     dark.on('pageerror', (error) => logs.push(`[dark:pageerror] ${error.stack || error.message}`));
-    await openEditor(dark, filePath);
+    await openEditor(dark, rootId, workspacePath, filePath);
     await verifyEditorSurface(dark, filePath, 'dark/desktop');
     await dark.close();
 
@@ -121,7 +141,7 @@ async function run() {
     }
   } finally {
     await browser.close().catch(() => undefined);
-    await cleanup(rootId, filePath);
+    await cleanup(rootId, workspacePath);
   }
 }
 

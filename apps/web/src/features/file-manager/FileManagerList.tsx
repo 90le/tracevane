@@ -264,6 +264,8 @@ function textLikeExt(ext: string): boolean {
 
 export interface BulkActionBarProps {
   selectedEntries: FileEntrySummary[];
+  onEdit?: () => void;
+  canEdit?: boolean;
   onRename: () => void;
   canRename: boolean;
   onArchive: () => void;
@@ -279,6 +281,8 @@ export interface BulkActionBarProps {
 
 export function BulkActionBar({
   selectedEntries,
+  onEdit,
+  canEdit = false,
   onRename,
   canRename,
   onArchive,
@@ -334,6 +338,18 @@ export function BulkActionBar({
           >
             {selectionSummary}
           </span>
+          {canEdit && onEdit ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={onEdit}
+              data-file-manager-bulk-primary-action="edit"
+            >
+              <Code2 className="size-4" />
+              打开编辑器
+            </Button>
+          ) : null}
           <Button variant="ghost" size="sm" onClick={onClear}>
             取消选择
           </Button>
@@ -459,6 +475,59 @@ export function BulkActionBar({
               label="下载"
               onClick={onDownload}
             />
+            {canEdit && onEdit ? (
+              <MobileBulkAction
+                icon={<Code2 className="size-4" />}
+                label="编辑"
+                onClick={onEdit}
+              />
+            ) : (
+              <details
+                className="group col-span-1"
+                data-file-manager-mobile-bulk-more
+              >
+                <summary
+                  className="grid min-h-14 cursor-pointer list-none place-items-center gap-1 rounded-md border border-line bg-panel-2 px-1 py-2 text-center text-2xs text-muted shadow-sm marker:hidden hover:border-primary-line hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
+                  aria-label="更多批量操作"
+                >
+                  <MoreHorizontal className="size-3.5" />
+                  <span>更多</span>
+                </summary>
+                <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-10 grid grid-cols-2 gap-2 rounded-lg border border-line bg-panel p-2 shadow-xl">
+                  {canRename ? (
+                    <MobileBulkAction
+                      icon={<File className="size-4" />}
+                      label="重命名"
+                      onClick={onRename}
+                    />
+                  ) : null}
+                  <MobileBulkAction
+                    icon={<Package className="size-4" />}
+                    label="打包"
+                    onClick={onArchive}
+                  />
+                  {canUnarchive ? (
+                    <MobileBulkAction
+                      icon={<ArchiveRestore className="size-4" />}
+                      label="解压"
+                      onClick={onUnarchive}
+                    />
+                  ) : null}
+                  <MobileBulkAction
+                    icon={<File className="size-4" />}
+                    label="权限"
+                    onClick={onChmod}
+                  />
+                  <MobileBulkAction
+                    icon={<Trash2 className="size-4" />}
+                    label="删除"
+                    onClick={onDelete}
+                    danger
+                  />
+                </div>
+              </details>
+            )}
+            {canEdit && onEdit ? (
             <details
               className="group col-span-1"
               data-file-manager-mobile-bulk-more
@@ -503,6 +572,7 @@ export function BulkActionBar({
                 />
               </div>
             </details>
+            ) : null}
           </div>
         </div>
       </div>
@@ -636,6 +706,7 @@ export interface FileListPanelProps {
   onRefetch: () => void;
   onLoadMore: () => void;
   onOpen: (entry: FileEntrySummary) => void;
+  onEdit: (entry: FileEntrySummary) => void;
   onSelect: (
     entry: FileEntrySummary,
     options?: { range?: boolean; additive?: boolean },
@@ -683,6 +754,7 @@ export function FileListPanel({
   onRefetch,
   onLoadMore,
   onOpen,
+  onEdit,
   onSelect,
   onMarqueeSelect,
   onTogglePath,
@@ -1392,6 +1464,7 @@ export function FileListPanel({
                 checked={selectedPaths.has(entry.path)}
                 density={density}
                 onOpen={() => onOpen(entry)}
+                onEdit={() => onEdit(entry)}
                 onSelect={(event) =>
                   onSelect(entry, {
                     range: event.shiftKey,
@@ -1432,6 +1505,7 @@ export function FileListPanel({
                 gridTemplateColumns={gridTemplateColumns}
                 orderedColumns={columns}
                 onOpen={() => onOpen(entry)}
+                onEdit={() => onEdit(entry)}
                 onSelect={(event) =>
                   onSelect(entry, {
                     range: event.shiftKey,
@@ -2094,6 +2168,7 @@ function FileRow({
   gridTemplateColumns,
   orderedColumns,
   onOpen,
+  onEdit,
   onSelect,
   onToggleChecked,
   onContextMenu,
@@ -2111,6 +2186,7 @@ function FileRow({
   gridTemplateColumns: string;
   orderedColumns: FileManagerListColumn[];
   onOpen: () => void;
+  onEdit: () => void;
   onSelect: (event: React.MouseEvent) => void;
   onToggleChecked: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
@@ -2257,7 +2333,21 @@ function FileRow({
       {orderedColumns.map((column) => (
         <FileRowColumn key={column} column={column} entry={entry} />
       ))}
-      <span className="text-right text-subtle">
+      <span className="flex justify-end gap-1 text-right text-subtle">
+        {entry.kind === "file" && entry.textLike ? (
+          <button
+            type="button"
+            className="grid size-7 place-items-center rounded text-subtle hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
+            aria-label={`编辑 ${entry.name}`}
+            data-file-manager-row-edit
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+          >
+            <Code2 className="size-3.5" />
+          </button>
+        ) : null}
         <button
           type="button"
           className="ml-auto grid size-7 place-items-center rounded text-subtle hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
@@ -2339,6 +2429,7 @@ function FileGridCard({
   checked,
   density,
   onOpen,
+  onEdit,
   onSelect,
   onToggleChecked,
   onContextMenu,
@@ -2354,6 +2445,7 @@ function FileGridCard({
   checked: boolean;
   density: FileManagerListDensity;
   onOpen: () => void;
+  onEdit: () => void;
   onSelect: (event: React.MouseEvent) => void;
   onToggleChecked: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
@@ -2455,6 +2547,20 @@ function FileGridCard({
           <MoreHorizontal className="size-3.5" />
         </button>
       </div>
+      {entry.kind === "file" && entry.textLike ? (
+        <button
+          type="button"
+          className="absolute bottom-1 right-1 grid size-6 place-items-center rounded bg-panel text-subtle opacity-0 shadow-sm hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100"
+          aria-label={`编辑 ${entry.name}`}
+          data-file-manager-grid-edit
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+        >
+          <Code2 className="size-3.5" />
+        </button>
+      ) : null}
       <div className="grid w-full justify-items-center gap-1 pt-3">
         <div
           className={cn(

@@ -121,6 +121,7 @@ export interface CodeEditorProps {
   initialContent: string;
   readOnly?: boolean;
   fontSize?: number;
+  themeMode?: CodeEditorThemeMode;
   onChange?: (value: string) => void;
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
@@ -128,13 +129,24 @@ export interface CodeEditorProps {
   className?: string;
 }
 
+export type CodeEditorThemeMode = "auto" | "light" | "dark";
+
 export interface CodeEditorHandle {
   focus: () => void;
   openFind: () => void;
   openReplace: () => void;
+  findNext: () => void;
+  findPrevious: () => void;
+  toggleFindCaseSensitive: () => void;
+  toggleFindWholeWord: () => void;
+  toggleFindRegex: () => void;
   gotoLine: (line: number, column?: number) => void;
+  saveViewState: () => CodeEditorViewState | null;
+  restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
   layout: () => void;
 }
+
+export type CodeEditorViewState = monaco.editor.ICodeEditorViewState;
 
 export interface CodeEditorCursorPosition {
   lineNumber: number;
@@ -163,6 +175,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     initialContent,
     readOnly = false,
     fontSize = 13,
+    themeMode = "auto",
     onChange,
     onSelectionChange,
     onCursorPositionChange,
@@ -172,6 +185,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   ref,
 ) {
   const { theme } = useTheme();
+  const effectiveTheme = themeMode === "auto" ? theme : themeMode;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(
     null,
@@ -207,6 +221,31 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       editorRef.current?.focus();
       void editorRef.current?.getAction("editor.action.startFindReplaceAction")?.run();
     },
+    findNext: () => {
+      const editor = editorRef.current;
+      editor?.focus();
+      void editor?.getAction("editor.action.nextMatchFindAction")?.run();
+    },
+    findPrevious: () => {
+      const editor = editorRef.current;
+      editor?.focus();
+      void editor?.getAction("editor.action.previousMatchFindAction")?.run();
+    },
+    toggleFindCaseSensitive: () => {
+      const editor = editorRef.current;
+      editor?.focus();
+      void editor?.getAction("toggleFindCaseSensitive")?.run();
+    },
+    toggleFindWholeWord: () => {
+      const editor = editorRef.current;
+      editor?.focus();
+      void editor?.getAction("toggleFindWholeWord")?.run();
+    },
+    toggleFindRegex: () => {
+      const editor = editorRef.current;
+      editor?.focus();
+      void editor?.getAction("toggleFindRegex")?.run();
+    },
     gotoLine: (line: number, column = 1) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -216,6 +255,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       editor.setPosition({ lineNumber: safeLine, column: safeColumn });
       editor.revealPositionInCenter({ lineNumber: safeLine, column: safeColumn });
       editor.focus();
+    },
+    saveViewState: () => editorRef.current?.saveViewState() ?? null,
+    restoreViewState: (viewState) => {
+      const editor = editorRef.current;
+      if (!editor || !viewState) return;
+      editor.restoreViewState(viewState);
+      requestAnimationFrame(() => editor.layout());
     },
     layout: () => editorRef.current?.layout(),
   }), []);
@@ -304,7 +350,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       tabSize: 2,
-      theme: theme === "dark" ? "vs-dark" : "vs",
+      theme: effectiveTheme === "dark" ? "vs-dark" : "vs",
       wordWrap: "on",
     });
     const cancelLanguageLoad = scheduleDeferredMonacoLanguageLoad(() => {
@@ -422,10 +468,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   React.useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    monaco.editor.setTheme(theme === "dark" ? "vs-dark" : "vs");
-    editor.updateOptions({ theme: theme === "dark" ? "vs-dark" : "vs" });
+    monaco.editor.setTheme(effectiveTheme === "dark" ? "vs-dark" : "vs");
+    editor.updateOptions({ theme: effectiveTheme === "dark" ? "vs-dark" : "vs" });
     requestAnimationFrame(() => editor.layout());
-  }, [theme]);
+  }, [effectiveTheme]);
 
   React.useEffect(() => {
     editorRef.current?.updateOptions({ readOnly });

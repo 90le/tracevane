@@ -25,6 +25,15 @@ async function cleanup(rootId, path) {
   }).catch(() => undefined);
 }
 
+async function createDirectory(rootId, path) {
+  const directoryPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+  await api('/api/files/directories', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, directoryPath, name }),
+  });
+}
+
 function cssAttr(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -65,13 +74,22 @@ async function waitForCodeEditorModuleReady() {
   throw new Error(`Code editor module did not become ready: status=${lastStatus}; body=${lastText.slice(0, 300)}`);
 }
 
-async function openTextEditor(page, textPath) {
+async function openTextEditor(page, directoryPath, textPath) {
   await page.goto(`${BASE_URL}/#/file-manager`, { waitUntil: 'domcontentloaded' });
-  await jumpToPath(page, 'tmp');
-  await page.waitForSelector(`[data-file-manager-entry-path="${cssAttr(textPath)}"]`, { timeout: 60_000 });
+  await jumpToPath(page, directoryPath);
+  await page.waitForFunction(
+    (targetPath) =>
+      [...document.querySelectorAll("[data-file-manager-entry-path]")].some(
+        (node) => node.getAttribute("data-file-manager-entry-path") === targetPath,
+      ),
+    textPath,
+    { timeout: 60_000 },
+  );
   const textRow = page.locator(`[data-file-manager-entry-path="${cssAttr(textPath)}"]`).first();
-  await textRow.scrollIntoViewIfNeeded();
-  await textRow.dblclick({ force: true });
+  await textRow.evaluate((node) => {
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+    node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  });
   await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
   await page.waitForSelector('[data-file-online-editor-tabs]', { timeout: 30_000 });
 }
@@ -95,14 +113,14 @@ function hasFatalLog(logs) {
   );
 }
 
-async function verifyTextEditor(textPath) {
+async function verifyTextEditor(directoryPath, textPath) {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
   try {
-    await openTextEditor(page, textPath);
+    await openTextEditor(page, directoryPath, textPath);
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await page.waitForSelector('.monaco-editor', { timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-statusbar]', { timeout: 30_000 });
@@ -129,17 +147,19 @@ async function run() {
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file-manager root is available');
   await waitForCodeEditorModuleReady();
-  const textPath = `tmp/tracevane-text-editor-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`;
-  await cleanup(rootId, textPath);
+  const directoryPath = `tmp/tracevane-text-editor-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const textPath = `${directoryPath}/editor.txt`;
+  await cleanup(rootId, directoryPath);
+  await createDirectory(rootId, directoryPath);
   await api('/api/files/files', {
     method: 'POST',
-    body: JSON.stringify({ rootId, directoryPath: 'tmp', name: textPath.slice('tmp/'.length), content: 'Tracevane text editor smoke\n' }),
+    body: JSON.stringify({ rootId, directoryPath, name: 'editor.txt', content: 'Tracevane text editor smoke\n' }),
   });
 
   try {
-    await verifyTextEditor(textPath);
+    await verifyTextEditor(directoryPath, textPath);
   } finally {
-    await cleanup(rootId, textPath);
+    await cleanup(rootId, directoryPath);
   }
 }
 

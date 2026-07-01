@@ -1,6 +1,7 @@
 import type http from "node:http";
 import fs from "node:fs";
 import { buildContentDisposition, parseJsonBody, sendFileStream, sendJson } from "../../core/http.js";
+import { FilesWriteConflictError } from "./service.js";
 import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
@@ -237,7 +238,22 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
 
   router.put("/api/files/content", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<FilesWritePayload>(req);
-    sendJson(res, 200, routeCtx.services.files.writeFile(payload));
+    try {
+      sendJson(res, 200, routeCtx.services.files.writeFile(payload));
+    } catch (error) {
+      if (error instanceof FilesWriteConflictError) {
+        sendJson(res, error.statusCode, {
+          code: error.code,
+          message: error.message,
+          currentModifiedAt: error.currentModifiedAt,
+          currentSize: error.currentSize,
+          expectedModifiedAt: error.expectedModifiedAt,
+          expectedSize: error.expectedSize,
+        });
+        return;
+      }
+      throw error;
+    }
   });
 
   router.get("/api/files/versions", (req, res, routeCtx) => {
