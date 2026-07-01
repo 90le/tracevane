@@ -43,8 +43,12 @@ test("file manager routes files through unified online surface", () => {
   const onlineEditorDialog = read("apps/web/src/features/file-manager/online-editor/FileOnlineEditorDialog.tsx");
   assert.match(onlineEditorDialog, /data-file-surface-panel/);
   assert.match(onlineEditorDialog, /data-file-surface-image/);
+  assert.match(onlineEditorDialog, /data-file-surface-image-canvas/);
+  assert.match(onlineEditorDialog, /data-file-surface-image-zoom-in/);
   assert.match(onlineEditorDialog, /data-file-surface-video/);
+  assert.match(onlineEditorDialog, /data-file-surface-video-speed/);
   assert.match(onlineEditorDialog, /data-file-surface-audio/);
+  assert.match(onlineEditorDialog, /data-file-surface-audio-speed/);
   assert.match(onlineEditorDialog, /data-file-surface-pdf/);
   assert.match(onlineEditorDialog, /data-file-surface-binary/);
   assert.match(codeEditor, /monaco-editor/);

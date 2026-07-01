@@ -1,4 +1,4 @@
-import { Download, File, FileText, ImageIcon, Maximize2, Minimize2, Minus, Music, RefreshCw, Search, Video, X } from "lucide-react";
+import { Download, File, FileText, ImageIcon, Maximize2, Minimize2, Minus, Music, RefreshCw, RotateCcw, Search, Video, X, ZoomIn, ZoomOut } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -993,29 +993,13 @@ function FileSurfacePreviewPanel({
       </div>
       <div className="min-h-0 overflow-auto p-4" data-file-surface-preview>
         {previewKind === "image" ? (
-          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-3">
-            <img src={downloadUrl} alt={tab.entry.name} className="max-h-full max-w-full rounded border border-line object-contain" data-file-surface-image />
-          </div>
+          <ImagePreviewCanvas src={downloadUrl} alt={tab.entry.name} />
         ) : previewKind === "video" ? (
-          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-3">
-            <video src={downloadUrl} controls className="max-h-full max-w-full rounded border border-line bg-black" data-file-surface-video>
-              当前浏览器无法播放该视频。
-            </video>
-          </div>
+          <VideoPreviewPlayer src={downloadUrl} name={tab.entry.name} />
         ) : previewKind === "audio" ? (
-          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6">
-            <div className="w-full max-w-2xl rounded-md border border-line bg-panel p-4 text-center">
-              <Music className="mx-auto mb-3 size-10 text-primary" />
-              <div className="mb-3 text-sm font-medium text-ink-strong">{tab.entry.name}</div>
-              <audio src={downloadUrl} controls className="w-full" data-file-surface-audio>
-                当前浏览器无法播放该音频。
-              </audio>
-            </div>
-          </div>
+          <AudioPreviewPlayer src={downloadUrl} name={tab.entry.name} />
         ) : previewKind === "pdf" ? (
-          <object data={downloadUrl} type="application/pdf" className="h-full min-h-[520px] w-full rounded border border-line bg-panel-2" data-file-surface-pdf>
-            <iframe title={tab.entry.name} src={downloadUrl} className="h-full min-h-[520px] w-full rounded border border-line" />
-          </object>
+          <PdfPreviewFrame src={downloadUrl} title={tab.entry.name} />
         ) : (
           <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6 text-center" data-file-surface-binary>
             <div className="max-w-lg">
@@ -1046,6 +1030,187 @@ function FileSurfacePreviewPanel({
     </div>
   );
 }
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+const IMAGE_PREVIEW_MIN_ZOOM = 0.1;
+const IMAGE_PREVIEW_MAX_ZOOM = 12;
+const IMAGE_PREVIEW_ZOOM_STEP = 1.2;
+
+function ImagePreviewCanvas({ src, alt }: { src: string; alt: string }) {
+  const [zoom, setZoom] = React.useState(1);
+  const [pan, setPan] = React.useState<Point>({ x: 0, y: 0 });
+  const [rotation, setRotation] = React.useState(0);
+  const dragStartRef = React.useRef<{ pointerId: number; pointer: Point; pan: Point } | null>(null);
+
+  const zoomLabel = `${Math.round(zoom * 100)}%`;
+  const resetView = React.useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+  }, []);
+  const updateZoom = React.useCallback((nextZoom: number) => {
+    setZoom(clampNumber(nextZoom, IMAGE_PREVIEW_MIN_ZOOM, IMAGE_PREVIEW_MAX_ZOOM));
+  }, []);
+
+  return (
+    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-image-viewer>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom / IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-out>
+          <ZoomOut className="size-3.5" />
+          缩小
+        </Button>
+        <span className="min-w-14 text-center font-mono text-muted" data-file-surface-image-zoom-label>{zoomLabel}</span>
+        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom * IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-in>
+          <ZoomIn className="size-3.5" />
+          放大
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setRotation((value) => (value + 90) % 360)} data-file-surface-image-rotate>
+          <RotateCcw className="size-3.5" />
+          旋转
+        </Button>
+        <Button variant="outline" size="sm" onClick={resetView} data-file-surface-image-reset>
+          适应窗口
+        </Button>
+        <span className="ml-auto text-muted">滚轮缩放 · 拖动画布 · 双击复位</span>
+      </div>
+      <div
+        className="relative min-h-0 cursor-grab touch-none select-none overflow-hidden bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.18)_1px,transparent_1px)] [background-size:18px_18px] active:cursor-grabbing"
+        data-file-surface-image-canvas
+        onDoubleClick={resetView}
+        onWheel={(event) => {
+          event.preventDefault();
+          const direction = event.deltaY < 0 ? 1 : -1;
+          const factor = direction > 0 ? IMAGE_PREVIEW_ZOOM_STEP : 1 / IMAGE_PREVIEW_ZOOM_STEP;
+          updateZoom(zoom * factor);
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          dragStartRef.current = {
+            pointerId: event.pointerId,
+            pointer: { x: event.clientX, y: event.clientY },
+            pan,
+          };
+        }}
+        onPointerMove={(event) => {
+          const dragStart = dragStartRef.current;
+          if (!dragStart || dragStart.pointerId !== event.pointerId) return;
+          setPan({
+            x: dragStart.pan.x + event.clientX - dragStart.pointer.x,
+            y: dragStart.pan.y + event.clientY - dragStart.pointer.y,
+          });
+        }}
+        onPointerUp={(event) => {
+          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={(event) => {
+          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
+        }}
+      >
+        <div className="absolute inset-0 grid place-items-center p-6">
+          <img
+            src={src}
+            alt={alt}
+            draggable={false}
+            className="max-h-full max-w-full rounded border border-line bg-panel object-contain shadow-lg will-change-transform"
+            data-file-surface-image
+            style={{
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: "center center",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoPreviewPlayer({ src, name }: { src: string; name: string }) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  return (
+    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-video-viewer>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{name}</span>
+        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} data-file-surface-video-backward>后退 10s</Button>
+        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime += 10; }} data-file-surface-video-forward>前进 10s</Button>
+        <label className="flex items-center gap-1 text-muted">
+          速度
+          <select
+            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            defaultValue="1"
+            onChange={(event) => { if (videoRef.current) videoRef.current.playbackRate = Number(event.target.value); }}
+            data-file-surface-video-speed
+          >
+            <option value="0.5">0.5x</option>
+            <option value="1">1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
+        </label>
+      </div>
+      <div className="grid min-h-0 place-items-center bg-black p-3">
+        <video ref={videoRef} src={src} controls playsInline preload="metadata" className="h-full max-h-full w-full max-w-full rounded border border-line bg-black object-contain" data-file-surface-video>
+          当前浏览器无法播放该视频。
+        </video>
+      </div>
+    </div>
+  );
+}
+
+function AudioPreviewPlayer({ src, name }: { src: string; name: string }) {
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  return (
+    <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6" data-file-surface-audio-viewer>
+      <div className="w-full max-w-2xl rounded-md border border-line bg-panel p-4 text-center shadow-sm">
+        <Music className="mx-auto mb-3 size-10 text-primary" />
+        <div className="mb-3 text-sm font-medium text-ink-strong">{name}</div>
+        <audio ref={audioRef} src={src} controls preload="metadata" className="w-full" data-file-surface-audio>
+          当前浏览器无法播放该音频。
+        </audio>
+        <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
+          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} data-file-surface-audio-backward>后退 10s</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime += 10; }} data-file-surface-audio-forward>前进 10s</Button>
+          <label className="flex items-center gap-1 text-muted">
+            速度
+            <select
+              className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+              defaultValue="1"
+              onChange={(event) => { if (audioRef.current) audioRef.current.playbackRate = Number(event.target.value); }}
+              data-file-surface-audio-speed
+            >
+              <option value="0.5">0.5x</option>
+              <option value="1">1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PdfPreviewFrame({ src, title }: { src: string; title: string }) {
+  return (
+    <div className="grid h-full min-h-[520px] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-pdf-viewer>
+      <object data={src} type="application/pdf" className="h-full min-h-[520px] w-full" data-file-surface-pdf>
+        <iframe title={title} src={src} className="h-full min-h-[520px] w-full" />
+      </object>
+    </div>
+  );
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 
 type FileSurfacePreviewKind = "image" | "video" | "audio" | "pdf" | "binary";
 

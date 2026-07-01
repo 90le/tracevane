@@ -83,6 +83,53 @@ async function assertPreviewKind(page, expectedKind, selector) {
   }
 }
 
+async function assertImageCanvasInteractions(page) {
+  await page.waitForSelector('[data-file-surface-image-viewer]', { timeout: 30_000 });
+  await page.waitForSelector('[data-file-surface-image-canvas]', { timeout: 30_000 });
+  const image = page.locator('[data-file-surface-image]').first();
+  const before = await image.evaluate((node) => getComputedStyle(node).transform);
+  await page.locator('[data-file-surface-image-zoom-in]').click();
+  await page.waitForFunction(
+    (previous) => getComputedStyle(document.querySelector('[data-file-surface-image]')).transform !== previous,
+    before,
+    { timeout: 10_000 },
+  );
+  const afterButtonZoom = await image.evaluate((node) => getComputedStyle(node).transform);
+  const canvas = page.locator('[data-file-surface-image-canvas]').first();
+  await canvas.hover();
+  await page.mouse.wheel(0, -360);
+  await page.waitForFunction(
+    (previous) => getComputedStyle(document.querySelector('[data-file-surface-image]')).transform !== previous,
+    afterButtonZoom,
+    { timeout: 10_000 },
+  );
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Image canvas is not visible');
+  const afterWheelZoom = await image.evaluate((node) => getComputedStyle(node).transform);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 + 40);
+  await page.mouse.up();
+  await page.waitForFunction(
+    (previous) => getComputedStyle(document.querySelector('[data-file-surface-image]')).transform !== previous,
+    afterWheelZoom,
+    { timeout: 10_000 },
+  );
+  await page.locator('[data-file-surface-image-reset]').click();
+  await page.waitForFunction(
+    () => (document.querySelector('[data-file-surface-image-zoom-label]')?.textContent || '').includes('100%'),
+    null,
+    { timeout: 10_000 },
+  );
+}
+
+async function assertMediaControls(page, kind) {
+  await page.waitForSelector(`[data-file-surface-${kind}-viewer]`, { timeout: 30_000 });
+  await page.waitForSelector(`[data-file-surface-${kind}-backward]`, { timeout: 30_000 });
+  await page.waitForSelector(`[data-file-surface-${kind}-forward]`, { timeout: 30_000 });
+  await page.waitForSelector(`[data-file-surface-${kind}-speed]`, { timeout: 30_000 });
+}
+
 function fixtureBytes() {
   return {
     png: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'),
@@ -128,18 +175,22 @@ async function run() {
 
     await openFile(page, paths.image);
     await assertPreviewKind(page, 'image', '[data-file-surface-image]');
+    await assertImageCanvasInteractions(page);
     await closeAll(page);
 
     await openFile(page, paths.video);
     await assertPreviewKind(page, 'video', '[data-file-surface-video]');
+    await assertMediaControls(page, 'video');
     await closeAll(page);
 
     await openFile(page, paths.audio);
     await assertPreviewKind(page, 'audio', '[data-file-surface-audio]');
+    await assertMediaControls(page, 'audio');
     await closeAll(page);
 
     await openFile(page, paths.pdf);
     await assertPreviewKind(page, 'pdf', '[data-file-surface-pdf]');
+    await page.waitForSelector('[data-file-surface-pdf-viewer]', { timeout: 30_000 });
     await closeAll(page);
 
     await openFile(page, paths.binary);
