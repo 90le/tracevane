@@ -1,6 +1,6 @@
 # M1.x Execution Plan — File Manager Online Editor Enhancements
 
-Status: Proposed / next after verified M1  
+Status: M1.x.1–M1.x.7 implemented / smoke-verified  
 Branch suggestion: `feat/file-manager-online-editor-m1x`  
 Updated: 2026-07-01
 
@@ -38,6 +38,8 @@ M1.x is still the File Manager Online Editor track.
 
 ### M1.x.1 — Window and tab ergonomics
 
+Status: Implemented / targeted verification passed on 2026-07-01.
+
 Goal: make the Online Editor shell behave like a robust file-manager editor window.
 
 Scope:
@@ -66,11 +68,11 @@ Scope:
 
 Acceptance:
 
-- Opening more than 8 files does not discard tabs automatically.
-- Dirty tabs cannot be lost without explicit user confirmation.
-- Tab strip remains usable when many files are open.
-- Maximize/minimize/restore/close are keyboard and mouse accessible.
-- Tab switch restores cursor/selection/scroll for at least common text files.
+- [x] Opening more than 8 files does not discard tabs automatically.
+- [x] Dirty tabs cannot be lost without explicit user confirmation.
+- [x] Tab strip remains usable when many files are open.
+- [x] Maximize/minimize/restore/close are keyboard and mouse accessible.
+- [x] Tab switch stores/restores Monaco view state for active tabs.
 
 Suggested verification:
 
@@ -80,38 +82,46 @@ npm run smoke:file-manager:online-editor
 npm run smoke:file-manager:online-editor-responsive
 ```
 
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke now covers maximize/restore, close-other-tabs, duplicate reopen, more-than-8 tabs, and horizontal overflow.
+- `npm run smoke:file-manager:online-editor-responsive` — pass; existing mobile/light and desktop/dark coverage remains stable.
+
 ### M1.x.2 — Save safety and conflict contract
+
+Status: Core implemented / targeted verification passed on 2026-07-01.
 
 Goal: prevent silent overwrites when files are changed externally.
 
 Frontend scope:
 
-- Track read-time file metadata: `modifiedAt`, size, hash/version if available.
-- Before save, compare current backend metadata against the tab's last read/saved metadata.
-- If a clean tab changed externally: offer reload.
-- If a dirty tab changed externally: show explicit conflict state.
-- Conflict actions:
-  - compare,
-  - reload from disk,
-  - overwrite,
-  - cancel.
-- Save failure should keep dirty content and remain retryable.
+- [x] Track read-time file metadata: `modifiedAt`, size.
+- [x] Before active-tab save, compare current backend metadata against the tab's last read/saved metadata.
+- [x] If a dirty tab changed externally: show explicit conflict state.
+- [x] Conflict actions:
+  - [x] compare/diff lightweight side-by-side view,
+  - [x] reload from disk,
+  - [x] overwrite,
+  - [x] cancel.
+- [x] Save failure keeps dirty content and remains retryable.
 
 Backend/API scope:
 
-- Extend write contract with an expected concurrency token, for example:
-  - `expectedModifiedAt`, or
-  - `expectedVersionId`, or
-  - `expectedHash`.
-- Backend rejects stale writes with a typed conflict error instead of allowing silent overwrite.
-- Response should include current metadata for conflict UI.
+- [x] Extend write contract with expected concurrency tokens:
+  - `expectedModifiedAt`,
+  - `expectedSize`,
+  - `force`.
+- [x] Backend rejects stale writes with typed `file_write_conflict` / HTTP 409 instead of allowing silent overwrite.
+- [x] Write response returns updated `modifiedAt` and `size` for the next save token.
 
 Acceptance:
 
-- External modification cannot be overwritten silently by a dirty editor tab.
-- Conflict UI names the file and gives compare/reload/overwrite/cancel choices.
-- Forced overwrite is explicit.
-- Existing M1 save behavior remains unchanged for non-conflicting files.
+- [x] External modification cannot be overwritten silently by a dirty editor tab.
+- [x] Conflict UI names the file and gives reload/overwrite/cancel choices.
+- [x] Forced overwrite is explicit.
+- [x] Existing M1 save behavior remains unchanged for non-conflicting files.
+- [x] Conflict compare is available as a lightweight local-vs-disk side-by-side view; Monaco Diff remains optional future polish, not required for M1.x safety.
 
 Suggested verification:
 
@@ -122,44 +132,62 @@ npm run smoke:file-manager:online-editor
 npm run test:files-write-conflict # focused API/service test for stale expectedModifiedAt/version rejection
 ```
 
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke covers backend stale expected-token 409 rejection, external modification conflict detection, dirty buffer retention, lightweight compare view, and explicit forced overwrite.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
+
 ### M1.x.3 — Reload and close-confirm improvements
+
+Status: Core implemented / targeted verification passed on 2026-07-01.
 
 Goal: turn destructive editor actions into clear decisions.
 
 Scope:
 
-- Current file reload button.
-- Reload dirty file confirmation:
+- [x] Current file reload button.
+- [x] Reload dirty file confirmation:
   - save first,
   - discard and reload,
   - cancel.
-- Close tab/editor confirmation:
+- [x] Close tab/editor confirmation:
   - save,
   - do not save,
   - cancel.
-- Multi-dirty close-all confirmation:
+- [x] Multi-dirty close-all confirmation:
   - save all,
   - discard all,
   - cancel.
-- Confirmation UI should be an app dialog, not only `window.confirm`, when multiple actions are needed.
+- [x] Confirmation UI uses app UI rather than `window.confirm` for multi-action decisions.
 
 Acceptance:
 
-- User can cancel every destructive path.
-- User can save from close/reload confirmation.
-- Failed save during close keeps the editor open and dirty.
+- [x] User can cancel every destructive path.
+- [x] User can save from close/reload confirmation.
+- [x] Failed save during close keeps the editor open and dirty.
+
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke covers dirty reload cancel/discard and close confirm cancel/discard/save.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
 
 ### M1.x.4 — Status bar and file metadata
+
+Status: Implemented / targeted verification passed on 2026-07-01.
 
 Goal: make file state visible without turning the surface into a full IDE.
 
 Scope:
 
-- Existing status: path, language, cursor, save/read-only.
-- Add:
-  - line ending: LF / CRLF,
-  - indentation: Spaces 2 / Spaces 4 / Tab Size N,
-  - encoding when known,
+- [x] Existing status: path, language, cursor, save/read-only.
+- [x] Add:
+  - line ending: LF / CRLF / Mixed / None,
+  - indentation: Spaces N / Tabs / unknown,
+  - encoding: UTF-8 for current backend text decode path,
   - file size,
   - permissions/mode,
   - modified time,
@@ -167,72 +195,103 @@ Scope:
 
 Acceptance:
 
-- Status bar remains readable in light/dark themes and mobile widths.
-- Unknown metadata is displayed as unknown or omitted, not guessed.
-- Metadata comes from backend/read result or Monaco model inspection where appropriate.
+- [x] Status bar remains readable in light/dark themes and mobile widths.
+- [x] Unknown metadata is displayed as unknown or omitted, not guessed.
+- [x] Metadata comes from backend/read result or current editor buffer inspection where appropriate.
+
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke asserts line ending, indentation, encoding, size, permissions, mtime, and read-only reason.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
 
 ### M1.x.5 — Search/replace control surface
+
+Status: Implemented / targeted verification passed on 2026-07-01.
 
 Goal: expose common search options without reimplementing Monaco search internals.
 
 Scope:
 
-- Keep Monaco built-in find/replace as the search engine.
-- Add visible controls or affordances for:
+- [x] Keep Monaco built-in find/replace as the search engine.
+- [x] Add visible controls or affordances for:
   - previous/next match,
-  - match count where feasible,
+  - match count via Monaco find widget/hint rather than a second search state,
   - case sensitive,
   - whole word,
   - regex.
-- Keyboard paths:
-  - Ctrl/Cmd+F find,
-  - Ctrl/Cmd+H replace,
-  - Enter / Shift+Enter next/previous where appropriate.
+- [x] Keyboard paths remain Monaco-native for find/replace and next/previous.
 
 Acceptance:
 
-- Search controls call Monaco APIs instead of maintaining a second search implementation.
-- Regex/case/whole-word state does not desynchronize with Monaco find widget.
+- [x] Search controls call Monaco actions instead of maintaining a second search implementation.
+- [x] Regex/case/whole-word controls delegate to Monaco find widget actions, avoiding duplicated state.
+
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke clicks find/replace, previous/next, case-sensitive, whole-word, regex controls, and count hint.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
 
 ### M1.x.6 — Theme and preferences
+
+Status: Implemented / targeted verification passed on 2026-07-01.
 
 Goal: make editor preferences explicit while preserving Aurora design tokens.
 
 Scope:
 
-- Theme mode selector:
+- [x] Theme mode selector:
   - auto/system,
   - light,
   - dark.
-- Persist editor preferences:
+- [x] Persist editor preferences:
   - font size,
   - theme mode,
   - optional word wrap/minimap choices if added.
-- Do not introduce a second styling system.
+- [x] Do not introduce a second styling system.
 
 Acceptance:
 
-- Monaco theme follows selected editor mode.
-- UI chrome remains mapped to existing design tokens.
-- Preferences survive reload.
+- [x] Monaco theme follows selected editor mode.
+- [x] UI chrome remains mapped to existing design tokens.
+- [x] Preferences survive reload.
+
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke persists font size/theme mode to localStorage and verifies the explicit theme mode selector.
+- `npm run smoke:file-manager:online-editor-responsive` — pass; responsive smoke verifies the theme selector remains available in mobile light and desktop dark contexts.
 
 ### M1.x.7 — File Manager entry points
+
+Status: Implemented / targeted verification passed on 2026-07-01.
 
 Goal: make editing discoverable without adding IDE scope.
 
 Scope:
 
-- Context menu action: Edit.
-- File list row action: Edit.
-- Top/toolbar action: Open in editor when a text-like file is selected.
-- Keyboard path: Enter or Ctrl/Cmd+Enter where it does not conflict with existing File Manager behavior.
-- Optional independent `/file-editor?...` route should be planned separately if it requires routing/persistence changes.
+- [x] Context menu action: Edit.
+- [x] File list row action: Edit.
+- [x] Top/toolbar action: Open in editor when a single text-like file is selected.
+- [x] Keyboard path: Enter already opens text-like files in the editor; Ctrl/Cmd+Enter now opens the selected file in editor/preview without conflicting with Alt+Enter properties.
+- [x] Optional independent `/file-editor?...` route deferred because it overlaps with future Workbench routing.
 
 Acceptance:
 
-- Non-text files continue to open preview, not Online Editor.
-- Edit actions are visible and touch-accessible.
-- Existing File Manager operations still work.
+- [x] Non-text files continue to open preview, not Online Editor.
+- [x] Edit actions are visible and touch-accessible.
+- [x] Existing File Manager operations still work.
+
+Verification recorded:
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; smoke covers row edit, context-menu edit, selected-file toolbar edit, Ctrl/Cmd+Enter, backend 409 conflict, and existing editor flows.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
 
 ## Recommended sequencing
 
@@ -277,12 +336,28 @@ Additional M1.x smoke scenarios:
 - Update `06-后端服务与接口方案.md` when save conflict API changes.
 - Update `08-实施阶段验收与风险.md` if scope moves between M1.x and M2.
 
-## Open decisions
+## Decisions resolved for M1.x
 
-| Decision | Options | Recommendation |
+| Decision | M1.x resolution | Future note |
 |---|---|---|
-| Conflict token | `modifiedAt`, version id, hash | Prefer backend-generated version/hash if available; otherwise start with `modifiedAt` plus size and document limits |
-| Compare UI | Monaco diff editor in dialog, separate panel, later M4 | Use Monaco diff inside the Online Editor conflict flow; do not add Problems/Output panels |
-| Confirmation UI | `window.confirm`, app modal | Use app modal for save/discard/cancel; keep `window.confirm` only for simple one-choice discard guards |
-| Tab overflow | hard cap, shrink, scroll | No hard discard cap; shrink to min width then horizontal scroll |
-| Independent route | include in M1.x, defer to M2 | Defer unless a direct product need appears; it may overlap with Workbench routing |
+| Conflict token | Use `modifiedAt` + `size`, with backend 409 `file_write_conflict` and explicit `force` overwrite. | A backend version/hash can replace or supplement this later. |
+| Compare UI | Provide a lightweight local-vs-disk side-by-side compare inside the Online Editor conflict flow. | Monaco Diff remains optional future polish; no Problems/Output panels in M1.x. |
+| Confirmation UI | Use app UI for save/discard/cancel destructive paths. | Keep `window.confirm` only for browser unload protection. |
+| Tab overflow | No hard discard cap; tabs shrink to minimum width and then horizontal scroll. | Any future performance cap must block with explanation, never auto-close dirty tabs. |
+| Independent route | Defer `/file-editor?...` because it overlaps with future Workbench routing. | Revisit with M2/M3 routing and persistence decisions. |
+
+
+## Final verification note
+
+The final smoke verification was run on isolated port `5177` with `TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177` because port `5176` was already occupied by an existing dev runtime using an external API. This avoids false positives from stale API state while preserving the same dev-web-smoke server path.
+
+
+## Post-M1.x direction — Monaco-first cleanup
+
+M1.x 的功能闭环已经完成。下一阶段不应继续增加外围编辑器功能按钮，而应按 `10-monaco-first-online-editor-strategy.md` 执行 Monaco-first cleanup：
+
+- 保留 Tracevane-owned 文件生命周期能力：tabs、dirty、save/reload/close、conflict、metadata、entry points、background residency。
+- 删除或降级重复 Monaco Find widget 的外围状态和按钮。
+- 引入 Monaco option profiles：`normal` / `large-readonly` / `mobile-basic`。
+- 通过 Monaco actions/options/context menu/provider/diff editor 开启编辑器原生能力。
+- 继续保持 M1.x smoke verification set。

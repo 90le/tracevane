@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArchiveRestore,
   Copy,
+  Code2,
   Download,
   FileSymlink,
   Eye,
@@ -48,6 +49,7 @@ export interface FileActionsMenuTarget {
   path: string;
   name: string;
   kind: "file" | "directory";
+  textLike?: boolean;
 }
 
 export interface FileActionsMenuProps {
@@ -67,6 +69,8 @@ export interface FileActionsMenuProps {
   onUploadRequest?: (directoryPath: string) => void;
   /** Optional legacy preview hook exposed as an IDE file inspection action. */
   onPreviewRequest?: (target: FileActionsMenuTarget) => void;
+  /** Optional online editor entry point for text-like files. */
+  onEditRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional properties dialog entry point used by full file-manager surfaces. */
   onPropertiesRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional copy-name hook for Workspace/file-manager surfaces. */
@@ -155,6 +159,7 @@ export function FileActionsMenu({
   onAfterMutation,
   onUploadRequest,
   onPreviewRequest,
+  onEditRequest,
   onPropertiesRequest,
   onCopyNameRequest,
   onCopyPathRequest,
@@ -296,6 +301,16 @@ export function FileActionsMenu({
                 label="检查文件（弹窗）"
                 onClick={() => {
                   onPreviewRequest(target);
+                  closeAll();
+                }}
+              />
+            ) : null}
+            {target.kind === "file" && target.textLike && onEditRequest ? (
+              <MenuItem
+                icon={<Code2 />}
+                label="编辑"
+                onClick={() => {
+                  onEditRequest(target);
                   closeAll();
                 }}
               />

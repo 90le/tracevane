@@ -51,6 +51,7 @@
 | [m1-execution-plan.md](./m1-execution-plan.md) | 已验证的 M1 文件管理器在线编辑器执行记录与提交前说明 |
 | [m1-progress.md](./m1-progress.md) | M1 实施进度、验证证据、风险和决策日志 |
 | [m1x-execution-plan.md](./m1x-execution-plan.md) | M1 之后继续增强文件管理器在线编辑器的 M1.x 路线图 |
+| [10-monaco-first-online-editor-strategy.md](./10-monaco-first-online-editor-strategy.md) | Monaco-first 方向：Monaco 负责编辑器原生能力，Tracevane 负责文件生命周期、多标签、保存安全和性能边界 |
 | [04-独立IDE工作台方案.md](./04-独立IDE工作台方案.md) | 详细定义独立 IDE 的布局、编辑区、面板、可拖拽能力 |
 | [05-前端实现方案.md](./05-前端实现方案.md) | 说明 React 前端需要的模块、组件、状态、Monaco 接入方式 |
 | [06-后端服务与接口方案.md](./06-后端服务与接口方案.md) | 说明文件 API、终端 API、权限、安全、watcher、冲突处理 |
@@ -94,10 +95,10 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 ```txt
 第一阶段：
 做文件管理器在线编辑器。
-实现双击打开文件、Monaco 编辑、多 Tab、保存、全部保存、关闭未保存确认、搜索替换。
+实现双击打开文件、Monaco 编辑、多 Tab、保存、全部保存、关闭未保存确认；搜索/替换优先使用 Monaco 原生能力。
 
 第一阶段增强（M1.x）：
-继续补强文件管理器在线编辑器本身，包括窗口最大化/最小化/关闭、Tab 操作补全、Tab 自适应缩小与横向滚动、外部修改冲突检测、reload/compare/overwrite、状态栏元数据、搜索选项、主题偏好和更多编辑入口。
+继续补强文件管理器在线编辑器本身，包括窗口最大化/最小化/关闭、Tab 操作补全、Tab 自适应缩小与横向滚动、外部修改冲突检测、reload/compare/overwrite、状态栏元数据、主题偏好和更多编辑入口；M1.x 完成后进入 Monaco-first cleanup，删除重复的搜索/替换外围状态。
 
 第二阶段：
 创建独立 IDE 页面。
@@ -118,7 +119,7 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 
 1. 文件管理器编辑器和独立 IDE 不要合并成一个页面。
 2. 文件管理器负责文件操作，编辑器负责文本编辑，Workbench 负责布局和命令。
-3. Monaco 只解决代码编辑，不解决 IDE 布局。
+3. Monaco 负责代码编辑器原生能力；Tracevane 不重复实现搜索/替换、多光标、折叠、minimap、context menu 等 Monaco 已有能力。
 4. xterm.js 只解决终端 UI，不执行命令。
 5. 独立 IDE 的布局必须可拖动、可拆分、可持久化，不能写死。
 6. 文件内容不要长期放 React state，应由 Monaco model 承载。

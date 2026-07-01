@@ -141,6 +141,12 @@ export interface FilesWritePayload {
   rootId: string;
   path: string;
   content: string;
+  /** Reject the write if the current file modified time no longer matches this read-time value. */
+  expectedModifiedAt?: string | null;
+  /** Reject the write if the current file size no longer matches this read-time value. */
+  expectedSize?: number | null;
+  /** Explicitly bypass expectedModifiedAt/expectedSize conflict checks after user confirmation. */
+  force?: boolean;
 }
 
 export interface FilesRenamePayload {
@@ -547,4 +553,6 @@ export interface FilesMutationResponse {
     | "upload";
   message: string;
   affectedPaths: string[];
+  modifiedAt?: string | null;
+  size?: number | null;
 }

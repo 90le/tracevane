@@ -18,6 +18,24 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+async function apiRaw(pathname, options = {}) {
+  const response = await fetch(`${BASE_URL}${pathname}`, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers ?? {}),
+    },
+  });
+  const text = await response.text();
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: text ? JSON.parse(text) : null,
+    text,
+  };
+}
+
 function cssAttr(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -47,6 +65,45 @@ async function createTextFile(rootId, path, content) {
   });
 }
 
+async function createDirectory(rootId, path) {
+  const directoryPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+  await api('/api/files/directories', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, directoryPath, name }),
+  });
+}
+
+async function writeTextFile(rootId, path, content, extra = {}) {
+  return api('/api/files/content', {
+    method: 'PUT',
+    body: JSON.stringify({ rootId, path, content, ...extra }),
+  });
+}
+
+async function assertStaleWriteRejected(rootId, path) {
+  await createTextFile(rootId, path, 'api conflict original\n');
+  const initial = await readFile(rootId, path);
+  await writeTextFile(rootId, path, 'api conflict external update\n');
+  const staleWrite = await apiRaw('/api/files/content', {
+    method: 'PUT',
+    body: JSON.stringify({
+      rootId,
+      path,
+      content: 'api conflict stale local draft\n',
+      expectedModifiedAt: initial.modifiedAt,
+      expectedSize: initial.size,
+    }),
+  });
+  if (staleWrite.status !== 409 || staleWrite.data?.code !== 'file_write_conflict') {
+    throw new Error(`Expected stale write to return file_write_conflict 409, got ${staleWrite.status}: ${staleWrite.text}`);
+  }
+  const disk = await readFile(rootId, path);
+  if (disk.content !== 'api conflict external update\n') {
+    throw new Error(`Stale write changed disk content unexpectedly: ${JSON.stringify(disk.content)}`);
+  }
+}
+
 async function refreshFileList(page) {
   await page.getByRole('button', { name: '刷新文件列表' }).click();
 }
@@ -68,14 +125,46 @@ async function jumpToPath(page, directoryPath) {
 }
 
 async function openFile(page, path, { expectEditor = true } = {}) {
+  const filterInput = page.locator('input[placeholder="搜索当前目录"]:visible').first();
+  if (await filterInput.count()) {
+    await filterInput.fill(titleForPath(path));
+  }
   const row = page.locator(`[data-file-manager-entry-path="${cssAttr(path)}"]`).first();
-  await row.waitFor({ timeout: 60_000 });
-  await row.scrollIntoViewIfNeeded();
-  await row.dblclick({ force: true });
+  await page.waitForFunction(
+    (targetPath) =>
+      [...document.querySelectorAll("[data-file-manager-entry-path]")].some(
+        (node) => node.getAttribute("data-file-manager-entry-path") === targetPath,
+      ),
+    path,
+    { timeout: 60_000 },
+  );
+  await row.evaluate((node) => {
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+    node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  });
   await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
   if (expectEditor) {
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
   }
+}
+
+async function openFileFromContextMenu(page, path) {
+  const row = page.locator(`[data-file-manager-entry-path="${cssAttr(path)}"]`).first();
+  await page.waitForFunction(
+    (targetPath) =>
+      [...document.querySelectorAll("[data-file-manager-entry-path]")].some(
+        (node) => node.getAttribute("data-file-manager-entry-path") === targetPath,
+      ),
+    path,
+    { timeout: 60_000 },
+  );
+  await row.evaluate((node) => {
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+    node.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 320, clientY: 220 }));
+  });
+  await page.getByRole('menuitem', { name: '编辑' }).click();
+  await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
+  await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 }
 
 async function replaceActiveEditorContent(page, content) {
@@ -110,16 +199,21 @@ async function run() {
   if (!rootId) throw new Error('No file-manager root is available');
 
   const prefix = `tracevane-online-editor-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const firstPath = `tmp/${prefix}-a.txt`;
-  const secondPath = `tmp/${prefix}-b.txt`;
-  const largePath = `tmp/${prefix}-large.txt`;
-  const missingPath = `tmp/${prefix}-missing.txt`;
-  const saveFailPath = `tmp/${prefix}-save-fail.txt`;
-  const capacityPaths = Array.from({ length: 9 }, (_, index) => `tmp/${prefix}-capacity-${index + 1}.txt`);
-  const cleanupPaths = [firstPath, secondPath, largePath, missingPath, saveFailPath, ...capacityPaths];
+  const workspacePath = `tmp/${prefix}`;
+  const firstPath = `${workspacePath}/a.txt`;
+  const secondPath = `${workspacePath}/b.txt`;
+  const largePath = `${workspacePath}/large.txt`;
+  const missingPath = `${workspacePath}/missing.txt`;
+  const saveFailPath = `${workspacePath}/save-fail.txt`;
+  const conflictPath = `${workspacePath}/conflict.txt`;
+  const apiConflictPath = `${workspacePath}/api-conflict.txt`;
+  const capacityPaths = Array.from({ length: 16 }, (_, index) => `${workspacePath}/capacity-${index + 1}.txt`);
+  const cleanupPaths = [workspacePath];
   await cleanup(rootId, cleanupPaths);
+  await createDirectory(rootId, workspacePath);
   await createTextFile(rootId, firstPath, 'first online editor smoke\n');
   await createTextFile(rootId, secondPath, 'second online editor smoke\n');
+  await assertStaleWriteRejected(rootId, apiConflictPath);
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -129,20 +223,39 @@ async function run() {
 
   try {
     await page.goto(`${BASE_URL}/#/file-manager`, { waitUntil: 'domcontentloaded' });
-    await jumpToPath(page, 'tmp');
-    await openFile(page, firstPath);
+    await jumpToPath(page, workspacePath);
+    await refreshFileList(page);
+    await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] [data-file-manager-row-edit]`).click({ force: true });
+    await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await openFile(page, secondPath);
+    await openFileFromContextMenu(page, secondPath);
 
     const tabs = page.locator('[data-file-online-editor-tabs] [data-file-online-editor-tab]');
     await tabs.nth(1).waitFor({ timeout: 30_000 });
     const tabCount = await tabs.count();
     if (tabCount !== 2) throw new Error(`Expected two online editor tabs, found ${tabCount}`);
 
+    await page.locator('[data-file-online-editor-toggle-maximize]').click();
+    await page.waitForSelector('[data-file-online-editor-dialog][data-file-online-editor-window-mode="maximized"]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-toggle-maximize]').click();
+    await page.waitForSelector('[data-file-online-editor-dialog][data-file-online-editor-window-mode="normal"]', { timeout: 30_000 });
+
+    await page.locator('[data-file-online-editor-close-others]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 1, null, { timeout: 30_000 });
+
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
+    await openFile(page, firstPath);
+    const tabCountAfterReopen = await tabs.count();
+    if (tabCountAfterReopen !== 2) {
+      throw new Error(`Reopening a closed tab should add it back, found ${tabCountAfterReopen}`);
+    }
+
+    await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     await openFile(page, firstPath);
     const tabCountAfterDuplicateOpen = await tabs.count();
@@ -165,14 +278,41 @@ async function run() {
 
     await page.locator('[data-file-online-editor-find]').click();
     await page.locator('[data-file-online-editor-replace]').click();
+    await page.locator('[data-file-online-editor-find-next]').click();
+    await page.locator('[data-file-online-editor-find-previous]').click();
+    await page.locator('[data-file-online-editor-find-case-sensitive]').click();
+    await page.locator('[data-file-online-editor-find-whole-word]').click();
+    await page.locator('[data-file-online-editor-find-regex]').click();
+    const findCountHint = await page.locator('[data-file-online-editor-find-count-hint]').textContent();
+    if (!findCountHint?.includes('Monaco')) throw new Error(`Find count hint missing: ${findCountHint}`);
     await page.locator('[data-file-online-editor-goto-input]').fill('1:2');
     await page.locator('[data-file-online-editor-goto]').click();
     await page.waitForFunction(() => document.querySelector('[data-file-online-editor-cursor-position]')?.textContent?.includes('Ln 1'), null, { timeout: 30_000 });
     await page.locator('[data-file-online-editor-font-size]').fill('15');
     const fontSizeValue = await page.locator('[data-file-online-editor-font-size]').inputValue();
     if (fontSizeValue !== '15') throw new Error(`Font size control did not update: ${fontSizeValue}`);
-    const themeText = await page.locator('[data-file-online-editor-theme-entry]').textContent();
-    if (!themeText?.includes('主题')) throw new Error(`Theme entry missing: ${themeText}`);
+    await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('dark');
+    const themeModeValue = await page.locator('[data-file-online-editor-theme-mode-select]').inputValue();
+    if (themeModeValue !== 'dark') throw new Error(`Theme mode control did not update: ${themeModeValue}`);
+    const editorPreferences = await page.evaluate(() => window.localStorage.getItem('tracevane:file-manager:online-editor-preferences:v1'));
+    if (!editorPreferences?.includes('"fontSize":15') || !editorPreferences.includes('"themeMode":"dark"')) {
+      throw new Error(`Editor preferences were not persisted: ${editorPreferences}`);
+    }
+    await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('auto');
+    const lineEndingText = await page.locator('[data-file-online-editor-status-line-ending]').textContent();
+    if (lineEndingText !== 'LF') throw new Error(`Line ending metadata mismatch: ${lineEndingText}`);
+    const indentationText = await page.locator('[data-file-online-editor-status-indentation]').textContent();
+    if (!indentationText?.includes('Indent')) throw new Error(`Indentation metadata missing: ${indentationText}`);
+    const encodingText = await page.locator('[data-file-online-editor-status-encoding]').textContent();
+    if (encodingText !== 'UTF-8') throw new Error(`Encoding metadata mismatch: ${encodingText}`);
+    const sizeText = await page.locator('[data-file-online-editor-status-size]').textContent();
+    if (!sizeText?.includes('B')) throw new Error(`File size metadata missing: ${sizeText}`);
+    const permissionsText = await page.locator('[data-file-online-editor-status-permissions]').textContent();
+    if (!permissionsText?.includes('·')) throw new Error(`Permissions metadata missing: ${permissionsText}`);
+    const modifiedText = await page.locator('[data-file-online-editor-status-modified]').textContent();
+    if (!modifiedText || modifiedText.includes('—')) throw new Error(`Modified-time metadata missing: ${modifiedText}`);
+    const readOnlyReasonText = await page.locator('[data-file-online-editor-status-readonly-reason]').textContent();
+    if (readOnlyReasonText !== '可编辑') throw new Error(`Read-only reason mismatch: ${readOnlyReasonText}`);
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second online editor smoke saved\n');
 
@@ -190,17 +330,26 @@ async function run() {
 
     await page.locator(`[data-file-online-editor-tab="${cssAttr(`${rootId}:${firstPath}`)}"]`).click();
     await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), firstPath, { timeout: 30_000 });
+    await replaceActiveEditorContentAndWaitDirty(page, 'first dirty reload check\n');
+    await page.locator('[data-file-online-editor-reload-current]').click();
+    await page.waitForSelector('[data-file-online-editor-reload-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-reload-confirm-cancel]').click();
+    await page.waitForSelector('[data-file-online-editor-reload-confirm]', { state: 'detached', timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-reload-current]').click();
+    await page.waitForSelector('[data-file-online-editor-reload-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-reload-confirm-discard]').click();
+    await page.waitForSelector('[data-file-online-editor-dirty-state="clean"]', { timeout: 30_000 });
+
     await replaceActiveEditorContentAndWaitDirty(page, 'first dirty close check\n');
-    page.once('dialog', async (dialog) => {
-      if (!dialog.message().includes('未保存')) throw new Error(`Unexpected discard dialog: ${dialog.message()}`);
-      await dialog.dismiss();
-    });
     await page.getByLabel(`关闭 ${titleForPath(firstPath)}`).click();
-    if ((await tabs.count()) !== 2) throw new Error('Dirty tab close dismissal should keep both tabs');
-    page.once('dialog', async (dialog) => {
-      await dialog.accept();
-    });
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-confirm-cancel]').click();
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { state: 'detached', timeout: 30_000 });
+    if ((await tabs.count()) !== 2) throw new Error('Dirty tab close cancellation should keep both tabs');
     await page.getByLabel(`关闭 ${titleForPath(firstPath)}`).click();
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-confirm-discard]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 1, null, { timeout: 30_000 });
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second save all check\n');
@@ -212,19 +361,33 @@ async function run() {
     }
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second close all dirty check\n');
-    await page.getByRole('button', { name: '最小化在线编辑器' }).click();
-    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    page.once('dialog', async (dialog) => {
-      if (!dialog.message().includes('未保存')) throw new Error(`Unexpected close-all dialog: ${dialog.message()}`);
-      await dialog.dismiss();
-    });
+    await page.locator('[data-file-online-editor-close-all]').click();
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-confirm-cancel]').click();
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { state: 'detached', timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-all]').click();
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-confirm-save]').click();
+    await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
+    const closeAllSaveResult = await readFile(rootId, secondPath);
+    if (closeAllSaveResult.content !== 'second close all dirty check\n') {
+      throw new Error(`Close-all save content mismatch: ${JSON.stringify(closeAllSaveResult.content)}`);
+    }
+
+    await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] input[type="checkbox"]`).click({ force: true });
+    await page.locator('[data-file-manager-bulk-primary-action="edit"]').click();
+    await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();
-    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    page.once('dialog', async (dialog) => {
-      await dialog.accept();
-    });
+    await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
+
+    await page.locator(`[data-file-manager-entry-path="${cssAttr(secondPath)}"]`).click({ force: true });
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
+    await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();
-    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     await createTextFile(rootId, largePath, 'x'.repeat(1024 * 1024 + 32));
     await refreshFileList(page);
@@ -255,6 +418,33 @@ async function run() {
     await page.getByRole('button', { name: '关闭全部' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
+    await createTextFile(rootId, conflictPath, 'conflict original\n');
+    await refreshFileList(page);
+    await openFile(page, conflictPath);
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), conflictPath, { timeout: 30_000 });
+    await replaceActiveEditorContentAndWaitDirty(page, 'local conflict draft\n');
+    await writeTextFile(rootId, conflictPath, 'external conflict update\n');
+    await page.locator('[data-file-online-editor-save-current]').click();
+    await page.waitForSelector('[data-file-online-editor-conflict-panel]', { timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-conflict-compare]').click();
+    await page.waitForSelector('[data-file-online-editor-conflict-compare-panel]', { timeout: 30_000 });
+    const localConflictContent = await page.locator('[data-file-online-editor-conflict-local-content]').textContent();
+    const diskConflictContent = await page.locator('[data-file-online-editor-conflict-disk-content]').textContent();
+    if (!localConflictContent?.includes('local conflict draft') || !diskConflictContent?.includes('external conflict update')) {
+      throw new Error(`Conflict compare content mismatch: local=${JSON.stringify(localConflictContent)} disk=${JSON.stringify(diskConflictContent)}`);
+    }
+    await page.locator('[data-file-online-editor-conflict-overwrite]').click();
+    await page.waitForSelector('[data-file-online-editor-dirty-state="clean"]', { timeout: 30_000 });
+    const conflictOverwriteResult = await readFile(rootId, conflictPath);
+    if (conflictOverwriteResult.content !== 'local conflict draft\n') {
+      throw new Error(`Conflict overwrite content mismatch: ${JSON.stringify(conflictOverwriteResult.content)}`);
+    }
+    await page.getByRole('button', { name: '最小化在线编辑器' }).click();
+    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
+    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
+
     await createTextFile(rootId, saveFailPath, 'save failure original\n');
     await refreshFileList(page);
     await openFile(page, saveFailPath);
@@ -275,32 +465,28 @@ async function run() {
     for (let index = 0; index < capacityPaths.length; index += 1) {
       await createTextFile(rootId, capacityPaths[index], `capacity file ${index + 1}\n`);
     }
+    await jumpToPath(page, workspacePath);
     await refreshFileList(page);
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < capacityPaths.length; index += 1) {
       await openFile(page, capacityPaths[index]);
-      await replaceActiveEditorContentAndWaitDirty(page, `capacity dirty ${index + 1}\n`);
       await page.getByRole('button', { name: '最小化在线编辑器' }).click();
       await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     }
-    const blockedRow = page.locator(`[data-file-manager-entry-path="${cssAttr(capacityPaths[8])}"]`).first();
-    await blockedRow.waitFor({ timeout: 60_000 });
-    await blockedRow.scrollIntoViewIfNeeded();
-    await blockedRow.dblclick({ force: true });
-    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    const blockedDialogCount = await page.locator('[data-file-online-editor-dialog]').count();
-    if (blockedDialogCount !== 0) throw new Error('Dirty capacity guard should not open a ninth editor dialog');
     const capacityDockText = await page.locator('[data-file-online-editor-minimized-dock]').textContent();
-    if (!capacityDockText?.includes('8 个标签')) {
-      throw new Error(`Dirty capacity guard should keep the existing 8 tabs: ${capacityDockText}`);
+    if (!capacityDockText?.includes(`${capacityPaths.length} 个标签`)) {
+      throw new Error(`Online editor should keep all opened tabs in the minimized dock: ${capacityDockText}`);
     }
     await page.getByRole('button', { name: '恢复', exact: true }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     const capacityTabCount = await page.locator('[data-file-online-editor-tabs] [data-file-online-editor-tab]').count();
-    if (capacityTabCount !== 8) throw new Error(`Expected 8 guarded dirty tabs, found ${capacityTabCount}`);
-    page.once('dialog', async (dialog) => {
-      if (!dialog.message().includes('未保存')) throw new Error(`Unexpected capacity close-all dialog: ${dialog.message()}`);
-      await dialog.accept();
-    });
+    if (capacityTabCount !== capacityPaths.length) throw new Error(`Expected ${capacityPaths.length} scrollable tabs, found ${capacityTabCount}`);
+    const tabStripMetrics = await page.locator('[data-file-online-editor-tabs]').evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    }));
+    if (tabStripMetrics.scrollWidth <= tabStripMetrics.clientWidth) {
+      throw new Error(`Tab strip should overflow horizontally after many tabs: ${JSON.stringify(tabStripMetrics)}`);
+    }
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();

@@ -1,8 +1,8 @@
 # IDE / Code Editor Progress
 
-Status: M1 implementation verified; ready for final PR review  
-Current milestone: M1 — File Manager Online Editor  
-Branch: `feat/file-manager-online-editor-m1`  
+Status: M1 verified; M1.x enhancement branch in progress  
+Current milestone: M1.x.1 — Window and tab ergonomics  
+Branch: `feat/file-manager-online-editor-m1x`  
 Updated: 2026-07-01
 
 ## Purpose
@@ -49,9 +49,14 @@ M1 uses a single implementation owner model:
 | Lane | Owner | Status | Write scope | Output |
 |---|---|---|---|---|
 | M1 implementation | Primary Codex agent | Verified | `apps/web/src/shared/editor-core/`, `apps/web/src/features/file-manager/online-editor/`, integration files | M1.6 final verification passed; final review fixes applied |
+| M1.x.1 window/tab ergonomics | Primary Codex agent | Implemented / targeted verified | `FileManagerPage`, `FileOnlineEditorDialog`, `CodeEditor`, online-editor smoke | Maximize/restore, close other/saved/all, no hard 8-tab cap, horizontal tab overflow, Monaco viewState capture/restore |
+| M1.x.2 save safety/conflict core | Primary Codex agent | Implemented / targeted verified | Files API write contract, Online Editor save path, online-editor smoke | `expectedModifiedAt`/`expectedSize` tokens, 409 `file_write_conflict`, active-tab preflight, conflict reload/overwrite/cancel |
+| M1.x.3 reload/close confirmations | Primary Codex agent | Implemented / targeted verified | Online Editor dialog and smoke | Current-file reload, dirty reload save/discard/cancel, close tab/all save/discard/cancel app confirmation |
+| M1.x.4 status metadata | Primary Codex agent | Implemented / targeted verified | Online Editor status bar and smoke | Line ending, indentation, UTF-8, size, permissions/mode, mtime, read-only reason |
+| M1.x.5 search controls | Primary Codex agent | Implemented / targeted verified | CodeEditor command handle, Online Editor toolbar and smoke | Monaco-native previous/next, case-sensitive, whole-word, regex controls, count hint |
 | M1 smoke tests | Primary agent | Verified | `tests/file-manager/`, Vite dev smoke config | Online Editor, responsive/theme, text editor, file operations, mobile layout, and typecheck verification passed |
 | Design review | Design/product agent | Covered by smoke/design guardrails | Read-only by default | Responsive/theme smoke and Aurora token usage checked for M1 scope |
-| API/security contract review | Backend/security agent | Covered for M1 | Read-only unless explicitly assigned | Path escape write guard spot-check passed; strict conflict API remains follow-up |
+| API/security contract review | Backend/security agent | Covered for M1 | Read-only unless explicitly assigned | Path escape write guard spot-check passed; stale expected-token write rejection now covered by online-editor smoke |
 | Code review | Reviewer agent | Completed for blockers | Read-only | Fixed dirty-tab capacity guard and Save All shortcut overlap |
 
 ## Completion state model
@@ -175,6 +180,21 @@ Do not treat `Implemented` as complete.
 | 2026-07-01 | M1.6 path-root smoke stabilization | Updated File Manager editor smokes to create temporary files under `/tmp` for filesystem-root mode | Pass | Avoids root `/` EACCES when default root is the unified filesystem root |
 | 2026-07-01 | M1.6 final verification set | `npm run typecheck:web && npm run smoke:file-manager:online-editor && npm run smoke:file-manager:online-editor-responsive && npm run smoke:file-manager:text-editor && npm run smoke:file-manager:file-operations && npm run smoke:file-manager:mobile-layout && npm run typecheck` | Pass | Full M1 verification set exited 0 after online editor dirty-input stabilization |
 | 2026-07-01 | Final M1 review fix | Code review + `npm run typecheck:web && npm run smoke:file-manager:online-editor` | Pass | Fixed dirty-tab capacity guard so opening a ninth tab cannot silently discard unsaved drafts; fixed Ctrl/Cmd+Shift+S so it only invokes Save All, not current-tab save too |
+| 2026-07-01 | M1.x.1 window/tab ergonomics typecheck | `npm run typecheck:web` | Pass | Added Online Editor window mode, tab management handlers, and Monaco viewState imperative APIs |
+| 2026-07-01 | M1.x.1 Online Editor smoke | `npm run smoke:file-manager:online-editor` | Pass | Covers maximize/restore, close other tabs, duplicate reopen, resident minimize/restore, more-than-8 tabs, and horizontal tab overflow |
+| 2026-07-01 | M1.x.1 responsive regression smoke | `npm run smoke:file-manager:online-editor-responsive` | Pass | Existing mobile/light and desktop/dark Online Editor responsive coverage remains stable after window/tab changes |
+| 2026-07-01 | M1.x.2 save conflict typecheck | `npm run typecheck:web && npm run typecheck` | Pass | Files write payload now accepts expected metadata/force; backend returns typed 409 conflict; web save path typechecked |
+| 2026-07-01 | M1.x.2 external modification smoke | `npm run smoke:file-manager:online-editor` | Pass | Smoke edits a dirty tab, writes the same file externally, verifies conflict panel, then explicitly force-overwrites and confirms final content |
+| 2026-07-01 | M1.x.2 responsive regression smoke | `npm run smoke:file-manager:online-editor-responsive` | Pass | Existing responsive/theme coverage remains stable after conflict panel/save preflight changes |
+| 2026-07-01 | M1.x.3 reload/close confirm typecheck | `npm run typecheck:web && npm run typecheck` | Pass | Online Editor reload and close-confirm app UI typechecked with existing Files API contract |
+| 2026-07-01 | M1.x.3 reload/close confirm smoke | `npm run smoke:file-manager:online-editor` | Pass | Covers dirty reload cancel/discard, dirty tab close cancel/discard, and dirty close-all cancel/save with persisted content check |
+| 2026-07-01 | M1.x.3 responsive regression smoke | `npm run smoke:file-manager:online-editor-responsive` | Pass | Responsive/theme Online Editor coverage remains stable after reload/close-confirm UI additions |
+| 2026-07-01 | M1.x.4 status metadata typecheck | `npm run typecheck:web && npm run typecheck` | Pass | Status bar metadata helpers and selectors typechecked |
+| 2026-07-01 | M1.x.4 status metadata smoke | `npm run smoke:file-manager:online-editor` | Pass | Asserts line ending, indentation, encoding, file size, permissions/mode, modified time, and read-only reason in active editor status bar |
+| 2026-07-01 | M1.x.4 responsive regression smoke | `npm run smoke:file-manager:online-editor-responsive` | Pass | Status bar remains stable under existing mobile/light and desktop/dark responsive coverage |
+| 2026-07-01 | M1.x.5 search controls typecheck | `npm run typecheck:web && npm run typecheck` | Pass | CodeEditor Monaco action handle and Online Editor toolbar controls typechecked |
+| 2026-07-01 | M1.x.5 search controls smoke | `npm run smoke:file-manager:online-editor` | Pass | Clicks find/replace, previous/next match, case-sensitive, whole-word, regex controls, and count hint before continuing editor workflow |
+| 2026-07-01 | M1.x.5 responsive regression smoke | `npm run smoke:file-manager:online-editor-responsive` | Pass | Existing responsive/theme Online Editor coverage remains stable after additional search toolbar controls |
 
 ## Current behavior inventory
 
@@ -193,7 +213,7 @@ Do not treat `Implemented` as complete.
 - `apps/web/src/features/file-manager/code-editor/CodeEditor.tsx:438-459` — actual editor DOM exposes `data-code-editor="monaco-direct"` and `data-code-editor-container`.
 - `apps/web/src/shared/file-editor/FileEditor.tsx:35-90` — separate single-file editor proof point reads and writes via query hooks, with dirty content stored in React state.
 - `apps/api/modules/files/service.ts:3224-3263` — backend read path returns text/editability/truncation and metadata.
-- `apps/api/modules/files/service.ts:3464-3481` — backend write path snapshots a version and writes content, but does not yet enforce an explicit expected mtime/version conflict guard.
+- `apps/api/modules/files/service.ts` — backend write path snapshots a version and now enforces optional `expectedModifiedAt` / `expectedSize` conflict guards unless `force` is explicit.
 
 ### Baseline implications for M1
 
@@ -239,7 +259,7 @@ Do not treat `Implemented` as complete.
 - Save failure records the backend error inline, leaves the dirty draft intact, and keeps the Save button available for retry once the underlying file/path issue is resolved.
 - Missing/deleted files render an explicit “文件不可读取或已不存在” state instead of silently showing an empty editor.
 - Non-text files continue to route through existing File Preview from File Manager; the Online Editor also has a defensive non-text state if a tab receives a non-text read result.
-- External modification conflict is intentionally documented as a staged contract for M1: current Files API `writeFile` snapshots before write but does not accept an expected `modifiedAt` / version token, so strict conflict prevention requires a backend payload extension before it can be honestly presented as implemented.
+- External modification conflict moved from staged M1 contract to M1.x.2 core implementation: active-tab save preflights current metadata and backend `writeFile` accepts `expectedModifiedAt` / `expectedSize` with typed conflict rejection.
 - No terminal, Git, LSP, diagnostics, debug, task runner, or standalone IDE workbench capability is presented in the M1 UI.
 
 ### M1.6 verification notes
@@ -266,8 +286,8 @@ Do not treat `Implemented` as complete.
 | Competing editor state systems | Dirty/save behavior diverges across File Manager and future IDE | Single primary implementation owner; shared editor core first | Open |
 | `FilePreviewPanel` grows into a mega-editor | Hard to maintain and hard to reuse for IDE | Introduce separate Online Editor shell; keep preview responsibilities bounded | Open |
 | Monaco model lifecycle leaks | Memory/performance issues during multi-tab editing | Centralize model creation/disposal and view state handling | Open |
-| Save conflict is currently weak | External modifications may be overwritten | M1 documents staged contract; future backend write payload should accept expected mtime/version before UI claims strict conflict prevention | Staged |
-| Mobile editor UX regresses | Operational edits fail on phone/tablet | Fullscreen-friendly shell, visible actions, VisualViewport handling | Open |
+| Save conflict compare is lightweight | Users can inspect local-vs-disk text, but not a Monaco Diff editor | Lightweight compare is sufficient for M1.x save safety; Monaco Diff remains optional future polish | Accepted |
+| Mobile editor UX regresses | Operational edits fail on phone/tablet | Responsive online-editor smoke plus mobile-layout smoke cover current shell; keep adding touch coverage for future entry points | Mitigated |
 | Scope creep into IDE/terminal/Git | M1 becomes too broad to verify | Keep M1 out-of-scope list enforced in review | Open |
 
 ## Decision log
@@ -296,3 +316,50 @@ Resolved. The two pre-existing smoke blockers were repaired before editor-core p
 3. Implement scalable tabs: shrink to minimum width, then horizontal scroll; do not silently discard dirty tabs.
 4. Add maximize/restore/close controls and richer dirty close confirmation.
 5. Plan strict external-modification conflict detection as the first backend-aware M1.x slice.
+
+### M1.x.6 implementation notes
+
+- `CodeEditor` now accepts an explicit `themeMode` (`auto` / `light` / `dark`) while still mapping Monaco to the existing Aurora-driven light/dark theme boundary.
+- Online Editor preferences are stored in `tracevane:file-manager:online-editor-preferences:v1`; current persisted fields are font size and theme mode.
+- The Online Editor toolbar now exposes a theme mode selector next to the font-size control. `auto` preserves system-following behavior; `light` and `dark` override only the editor preference path without adding a second styling system.
+- Online Editor smokes now create isolated temporary directories under `/tmp` to avoid virtualized-list flakiness from crowded shared temp directories.
+
+### M1.x.6 verification notes
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; covers persisted font size/theme mode and the explicit selector.
+- `npm run smoke:file-manager:online-editor-responsive` — pass; covers theme selector availability in mobile light and desktop dark surfaces.
+
+### M1.x.7 implementation notes
+
+- Text-like files now expose explicit File Manager edit entry points: row/card edit affordance, context-menu “编辑”, single-selection bulk/toolbar “打开编辑器”, and Ctrl/Cmd+Enter for the selected file.
+- Enter/double-click behavior remains unchanged: text-like files open the Online Editor; non-text files continue to open the preview path.
+- Conflict handling now includes a lightweight local-vs-disk compare panel before reload/overwrite/cancel. This protects the M1.x safety workflow without introducing IDE panels or standalone Workbench scope.
+- The independent `/file-editor?...` route remains deferred to avoid overlapping future Workbench routing and persistence decisions.
+
+### M1.x.7 verification notes
+
+- `npm run typecheck:web` — pass.
+- `npm run typecheck` — pass.
+- `npm run smoke:file-manager:online-editor` — pass; covers row edit, context-menu edit, selected-file toolbar edit, Ctrl/Cmd+Enter, conflict compare, and existing M1.x editor flows.
+- `npm run smoke:file-manager:online-editor-responsive` — pass.
+
+### M1.x baseline regression verification addendum
+
+- `npm run smoke:file-manager:text-editor` — pass after moving the smoke artifact into an isolated `/tmp/<run>/editor.txt` directory to avoid crowded temp-directory virtualization hiding the target row.
+- `npm run smoke:file-manager:file-operations` — pass.
+- `npm run smoke:file-manager:mobile-layout` — pass.
+
+
+### M1.x final verification notes
+
+Final verification used isolated port `5177` because `5176` was occupied by an existing long-running dev runtime. Commands run successfully:
+
+- `npm run typecheck:web` — pass.
+- `TRACEVANE_WEB_PORT=5177 ... file-manager-online-editor.smoke.mjs` — pass; includes backend stale expected-token 409 `file_write_conflict`, entry points, conflict compare, tab/window, reload/close, metadata, search, preferences, and many-tab coverage.
+- `TRACEVANE_WEB_PORT=5177 ... file-manager-online-editor-responsive.smoke.mjs` — pass.
+- `TRACEVANE_WEB_PORT=5177 ... file-manager-text-editor.smoke.mjs` — pass.
+- `TRACEVANE_WEB_PORT=5177 ... file-manager-file-operations.smoke.mjs` — pass.
+- `TRACEVANE_WEB_PORT=5177 ... file-manager-mobile-layout.smoke.mjs` — pass.
+- `npm run typecheck` — pass.

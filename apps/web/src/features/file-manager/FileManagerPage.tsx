@@ -102,7 +102,12 @@ import type {
   FilesUploadConflictPolicy,
 } from "@/features/file-manager/file-tools/types";
 import { createFileOnlineEditorTab } from "./online-editor/FileOnlineEditorDialog";
-import type { FileOnlineEditorTab } from "./online-editor/FileOnlineEditorDialog";
+import type {
+  FileOnlineEditorReadMetadata,
+  FileOnlineEditorTab,
+  FileOnlineEditorWindowMode,
+} from "./online-editor/FileOnlineEditorDialog";
+import type { CodeEditorViewState } from "./code-editor/CodeEditor";
 
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
@@ -212,7 +217,15 @@ export function FileManagerPage() {
     string | undefined
   >();
   const [onlineEditorOpen, setOnlineEditorOpen] = React.useState(false);
+  const [onlineEditorWindowMode, setOnlineEditorWindowMode] =
+    React.useState<FileOnlineEditorWindowMode>("normal");
   const [onlineEditorDrafts, setOnlineEditorDrafts] = React.useState<Record<string, string>>({});
+  const [onlineEditorViewStates, setOnlineEditorViewStates] = React.useState<
+    Record<string, CodeEditorViewState>
+  >({});
+  const [onlineEditorReadMetadata, setOnlineEditorReadMetadata] = React.useState<
+    Record<string, FileOnlineEditorReadMetadata>
+  >({});
   React.useEffect(() => {
     setOnlineEditorDrafts((current) => {
       const liveIds = new Set(onlineEditorTabs.map((tab) => tab.id));
@@ -220,6 +233,26 @@ export function FileManagerPage() {
       const next: Record<string, string> = {};
       for (const [id, content] of Object.entries(current)) {
         if (liveIds.has(id)) next[id] = content;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+    setOnlineEditorViewStates((current) => {
+      const liveIds = new Set(onlineEditorTabs.map((tab) => tab.id));
+      let changed = false;
+      const next: Record<string, CodeEditorViewState> = {};
+      for (const [id, viewState] of Object.entries(current)) {
+        if (liveIds.has(id)) next[id] = viewState;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+    setOnlineEditorReadMetadata((current) => {
+      const liveIds = new Set(onlineEditorTabs.map((tab) => tab.id));
+      let changed = false;
+      const next: Record<string, FileOnlineEditorReadMetadata> = {};
+      for (const [id, metadata] of Object.entries(current)) {
+        if (liveIds.has(id)) next[id] = metadata;
         else changed = true;
       }
       return changed ? next : current;
@@ -559,6 +592,33 @@ export function FileManagerPage() {
     [updateActiveDirectoryTab],
   );
 
+  const openLocationInDirectoryTab = React.useCallback(
+    (location: FileManagerLocation) => {
+      const normalizedPath = normalizeRelativePathForUi(location.directoryPath);
+      const existingTab = normalizeDirectoryTabs(directoryTabs).find(
+        (tab) => tab.rootId === location.rootId && tab.directoryPath === normalizedPath,
+      );
+      const targetTab =
+        existingTab ??
+        createDirectoryTab(location.rootId, normalizedPath, roots);
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        const next = existingTab
+          ? normalized
+          : [...normalized, targetTab].slice(-MAX_DIRECTORY_TABS);
+        storeDirectoryTabLocations(next);
+        return next;
+      });
+      setActiveDirectoryTabId(targetTab.id);
+      setRootId(targetTab.rootId);
+      setDirectoryPath(targetTab.directoryPath);
+      setSelectedPath(undefined);
+      setSelectedPaths(new Set());
+      setLastSelectedPath(undefined);
+    },
+    [directoryTabs, roots],
+  );
+
   const addCurrentFavoriteToFolder = React.useCallback(
     (parentId: string | undefined, title?: string) => {
       const bookmarkTitle =
@@ -598,11 +658,11 @@ export function FileManagerPage() {
     (itemId: string) => {
       const item = findFavoriteBookmarkItem(favoriteTree, itemId);
       if (item?.type !== "bookmark" || !item.location) return;
-      navigateToLocation(item.location);
+      openLocationInDirectoryTab(item.location);
       setPathSuggestionsOpen(false);
       setActivePathSuggestionIndex(0);
     },
-    [favoriteTree, navigateToLocation],
+    [favoriteTree, openLocationInDirectoryTab],
   );
 
   const addFavoriteFolder = React.useCallback(
@@ -784,7 +844,6 @@ export function FileManagerPage() {
     (entry: FileEntrySummary, targetRootId?: string) => {
       const nextRootId = targetRootId ?? rootId;
       const tab = createFileOnlineEditorTab(nextRootId, entry);
-      let blockedByDirtyCapacity = false;
       setOnlineEditorTabs((current) => {
         const existing = current.find((item) => item.id === tab.id);
         if (existing) {
@@ -792,27 +851,13 @@ export function FileManagerPage() {
             item.id === tab.id ? { ...item, entry, rootId: nextRootId } : item,
           );
         }
-        if (current.length < 8) return [...current, tab];
-        const firstCleanIndex = current.findIndex((item) => onlineEditorDrafts[item.id] == null);
-        if (firstCleanIndex === -1) {
-          blockedByDirtyCapacity = true;
-          return current;
-        }
-        return [
-          ...current.slice(0, firstCleanIndex),
-          ...current.slice(firstCleanIndex + 1),
-          tab,
-        ];
+        return [...current, tab];
       });
-      if (blockedByDirtyCapacity) {
-        toast.error("在线编辑器标签已满", { description: "请先保存或关闭一个未保存标签后再打开新文件。" });
-        return;
-      }
       setSelectedPath(entry.path);
       setActiveOnlineEditorTabId(tab.id);
       setOnlineEditorOpen(true);
     },
-    [onlineEditorDrafts, rootId],
+    [rootId],
   );
 
   const selectOnlineEditorTab = React.useCallback(
@@ -833,8 +878,23 @@ export function FileManagerPage() {
         delete next[tabId];
         return next;
       });
+      setOnlineEditorViewStates((current) => {
+        if (current[tabId] == null) return current;
+        const next = { ...current };
+        delete next[tabId];
+        return next;
+      });
+      setOnlineEditorReadMetadata((current) => {
+        if (current[tabId] == null) return current;
+        const next = { ...current };
+        delete next[tabId];
+        return next;
+      });
       setOnlineEditorTabs(nextTabs);
-      if (nextTabs.length === 0) setOnlineEditorOpen(false);
+      if (nextTabs.length === 0) {
+        setOnlineEditorOpen(false);
+        setOnlineEditorWindowMode("normal");
+      }
       if (activeOnlineEditorTabId === tabId) {
         const fallback = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
         setActiveOnlineEditorTabId(fallback?.id);
@@ -847,6 +907,99 @@ export function FileManagerPage() {
   const closeOnlineEditorWindow = React.useCallback(() => {
     setOnlineEditorOpen(false);
   }, []);
+
+  const closeOtherOnlineEditorTabs = React.useCallback((tabId: string) => {
+    const tab = onlineEditorTabs.find((item) => item.id === tabId);
+    if (!tab) return;
+    setOnlineEditorTabs((current) => current.filter((tab) => tab.id === tabId));
+    setOnlineEditorDrafts((current) => {
+      if (Object.keys(current).every((id) => id === tabId)) return current;
+      const next: Record<string, string> = {};
+      if (current[tabId] != null) next[tabId] = current[tabId];
+      return next;
+    });
+    setOnlineEditorViewStates((current) => {
+      const viewState = current[tabId];
+      return viewState ? { [tabId]: viewState } : {};
+    });
+    setOnlineEditorReadMetadata((current) => {
+      const metadata = current[tabId];
+      return metadata ? { [tabId]: metadata } : {};
+    });
+    setActiveOnlineEditorTabId(tabId);
+    setSelectedPath(tab.entry.path);
+  }, [onlineEditorTabs]);
+
+  const closeSavedOnlineEditorTabs = React.useCallback(() => {
+    const nextTabs = onlineEditorTabs.filter((tab) => onlineEditorDrafts[tab.id] != null);
+    const nextIds = new Set(nextTabs.map((tab) => tab.id));
+    setOnlineEditorTabs(nextTabs);
+    setOnlineEditorViewStates((current) => {
+      const next: Record<string, CodeEditorViewState> = {};
+      for (const [id, viewState] of Object.entries(current)) {
+        if (nextIds.has(id)) next[id] = viewState;
+      }
+      return next;
+    });
+    setOnlineEditorReadMetadata((current) => {
+      const next: Record<string, FileOnlineEditorReadMetadata> = {};
+      for (const [id, metadata] of Object.entries(current)) {
+        if (nextIds.has(id)) next[id] = metadata;
+      }
+      return next;
+    });
+    if (nextTabs.length === 0) {
+      setActiveOnlineEditorTabId(undefined);
+      setOnlineEditorOpen(false);
+      setOnlineEditorWindowMode("normal");
+      return;
+    }
+    if (!activeOnlineEditorTabId || !nextIds.has(activeOnlineEditorTabId)) {
+      const fallback = nextTabs[0];
+      setActiveOnlineEditorTabId(fallback?.id);
+      if (fallback) setSelectedPath(fallback.entry.path);
+    }
+  }, [activeOnlineEditorTabId, onlineEditorDrafts, onlineEditorTabs]);
+
+  const closeAllOnlineEditorTabs = React.useCallback(() => {
+    setOnlineEditorTabs([]);
+    setOnlineEditorDrafts({});
+    setOnlineEditorViewStates({});
+    setOnlineEditorReadMetadata({});
+    setActiveOnlineEditorTabId(undefined);
+    setOnlineEditorOpen(false);
+    setOnlineEditorWindowMode("normal");
+  }, []);
+
+  const updateOnlineEditorViewState = React.useCallback(
+    (tabId: string, viewState: CodeEditorViewState | null) => {
+      setOnlineEditorViewStates((current) => {
+        if (!viewState) {
+          if (current[tabId] == null) return current;
+          const next = { ...current };
+          delete next[tabId];
+          return next;
+        }
+        return { ...current, [tabId]: viewState };
+      });
+    },
+    [],
+  );
+
+  const updateOnlineEditorReadMetadata = React.useCallback(
+    (tabId: string, metadata: FileOnlineEditorReadMetadata | null) => {
+      setOnlineEditorReadMetadata((current) => {
+        if (!metadata) {
+          if (current[tabId] == null) return current;
+          const next = { ...current };
+          delete next[tabId];
+          return next;
+        }
+        return { ...current, [tabId]: metadata };
+      });
+    },
+    [],
+  );
 
   const selectPreviewTab = React.useCallback(
     (tabId: string) => {
@@ -1424,6 +1577,12 @@ export function FileManagerPage() {
         openUploadManager(directoryPath);
         return;
       }
+      if (mod && event.key === "Enter" && selectedEntry?.kind === "file") {
+        event.preventDefault();
+        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
+        else openFilePreview(selectedEntry);
+        return;
+      }
       if (event.key === "F5") {
         event.preventDefault();
         refresh();
@@ -1466,6 +1625,7 @@ export function FileManagerPage() {
       filteredEntries,
       navigateToDirectory,
       openFilePreview,
+      openFileOnlineEditor,
       openFileProperties,
       openUploadManager,
       parentPath,
@@ -1647,6 +1807,15 @@ export function FileManagerPage() {
             ) : null}
             <BulkActionBar
               selectedEntries={selectedList}
+              onEdit={() => {
+                const entry = selectedList[0];
+                if (entry?.kind === "file" && entry.textLike) openFileOnlineEditor(entry);
+              }}
+              canEdit={
+                selectedList.length === 1 &&
+                selectedList[0]?.kind === "file" &&
+                Boolean(selectedList[0]?.textLike)
+              }
               onRename={() => setDialog({ kind: "rename" })}
               canRename={selectedList.length === 1}
               onArchive={() => setDialog({ kind: "archive" })}
@@ -1697,6 +1866,7 @@ export function FileManagerPage() {
               onRefetch={() => void browse.refetch()}
               onLoadMore={() => setPage((value) => value + 1)}
               onOpen={openEntry}
+              onEdit={openFileOnlineEditor}
               onSelect={selectEntry}
               onMarqueeSelect={selectMarqueePaths}
               onTogglePath={togglePath}
@@ -1722,6 +1892,7 @@ export function FileManagerPage() {
                     path: entry.path,
                     name: entry.name,
                     kind: entry.kind,
+                    textLike: entry.textLike,
                   },
                 });
               }}
@@ -1733,6 +1904,7 @@ export function FileManagerPage() {
                     path: entry.path,
                     name: entry.name,
                     kind: entry.kind,
+                    textLike: entry.textLike,
                   },
                 });
               }}
@@ -1794,6 +1966,12 @@ export function FileManagerPage() {
             );
             openFilePreview(entry ?? fileEntryFromMenuTarget(target));
           }}
+          onEditRequest={(target) => {
+            const entry = entries.find(
+              (item) => item.path === target.path && item.kind === "file",
+            );
+            openFileOnlineEditor(entry ?? fileEntryFromMenuTarget({ ...target, textLike: true }));
+          }}
           onPropertiesRequest={(target) => {
             const entry = entries.find((item) => item.path === target.path);
             openFileProperties(entry ?? fileEntryFromMenuTarget(target));
@@ -1827,10 +2005,7 @@ export function FileManagerPage() {
               onClick={() => {
                 const dirtyCount = Object.keys(onlineEditorDrafts).length;
                 if (dirtyCount > 0 && !window.confirm(`有 ${dirtyCount} 个文件存在未保存修改，确定关闭全部并放弃修改吗？`)) return;
-                setOnlineEditorTabs([]);
-                setOnlineEditorDrafts({});
-                setActiveOnlineEditorTabId(undefined);
-                setOnlineEditorOpen(false);
+                closeAllOnlineEditorTabs();
               }}
             >
               关闭全部
@@ -1852,12 +2027,19 @@ export function FileManagerPage() {
             <LazyFileOnlineEditorDialog
               tabs={onlineEditorTabs}
               activeTabId={activeOnlineEditorTabId}
+              windowMode={onlineEditorWindowMode}
+              onWindowModeChange={setOnlineEditorWindowMode}
               onSelectTab={selectOnlineEditorTab}
               onCloseTab={closeOnlineEditorTab}
+              onCloseOtherTabs={closeOtherOnlineEditorTabs}
+              onCloseSavedTabs={closeSavedOnlineEditorTabs}
+              onCloseAllTabs={closeAllOnlineEditorTabs}
               onOpenChange={(open) => {
                 if (!open) closeOnlineEditorWindow();
               }}
               drafts={onlineEditorDrafts}
+              viewStates={onlineEditorViewStates}
+              readMetadata={onlineEditorReadMetadata}
               onDraftChange={(tabId, content) =>
                 setOnlineEditorDrafts((current) => ({ ...current, [tabId]: content }))
               }
@@ -1868,6 +2050,8 @@ export function FileManagerPage() {
                   return next;
                 })
               }
+              onViewStateChange={updateOnlineEditorViewState}
+              onReadMetadataChange={updateOnlineEditorReadMetadata}
             />
           </React.Suspense>
         </FileManagerModalErrorBoundary>
@@ -2028,7 +2212,7 @@ function fileEntryFromMenuTarget(
     size: null,
     modifiedAt: null,
     hidden: target.name.startsWith("."),
-    textLike: false,
+    textLike: Boolean(target.textLike),
     imageLike: false,
     mode: "",
     permissions: "",
@@ -2690,11 +2874,15 @@ function moveFavoriteBookmarkItem(
   ) {
     return tree;
   }
+  const adjustedTargetIndex =
+    extracted.parentId === targetParentId && extracted.index < targetIndex
+      ? targetIndex - 1
+      : targetIndex;
   const next = insertFavoriteBookmarkItem(
     extracted.tree,
     targetParentId,
     extracted.item,
-    targetIndex,
+    adjustedTargetIndex,
   );
   return trimFavoriteBookmarkTree(next);
 }
@@ -2702,25 +2890,44 @@ function moveFavoriteBookmarkItem(
 function extractFavoriteBookmarkItem(
   tree: FileManagerBookmarkItem[],
   itemId: string,
-): { item?: FileManagerBookmarkItem; tree: FileManagerBookmarkItem[] } {
+  parentId?: string,
+): {
+  item?: FileManagerBookmarkItem;
+  tree: FileManagerBookmarkItem[];
+  parentId?: string;
+  index: number;
+} {
   let found: FileManagerBookmarkItem | undefined;
-  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
-    items.flatMap((item) => {
+  let foundParentId: string | undefined;
+  let foundIndex = -1;
+  const visit = (
+    items: FileManagerBookmarkItem[],
+    currentParentId?: string,
+  ): FileManagerBookmarkItem[] =>
+    items.flatMap((item, index) => {
       if (item.id === itemId) {
         found = item;
+        foundParentId = currentParentId;
+        foundIndex = index;
         return [];
       }
       if (item.type === "folder") {
         return [
           {
             ...item,
-            children: visit(item.children ?? []),
+            children: visit(item.children ?? [], item.id),
           },
         ];
       }
       return [item];
     });
-  return { item: found, tree: visit(tree) };
+  const nextTree = visit(tree, parentId);
+  return {
+    item: found,
+    tree: nextTree,
+    parentId: foundParentId,
+    index: foundIndex,
+  };
 }
 
 function insertFavoriteBookmarkItem(

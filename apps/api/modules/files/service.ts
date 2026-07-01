@@ -73,6 +73,31 @@ const CONTENT_INDEX_REBUILD_SKIP_DIRS = new Set([".git", "node_modules", ".trace
 const DEFAULT_SEARCH_LIMIT = 250;
 const MAX_SEARCH_LIMIT = 500;
 const MAX_CHMOD_DRY_RUN_ENTRIES = 5000;
+
+export class FilesWriteConflictError extends Error {
+  readonly code = "file_write_conflict";
+  readonly statusCode = 409;
+  readonly currentModifiedAt: string | null;
+  readonly currentSize: number;
+  readonly expectedModifiedAt: string | null | undefined;
+  readonly expectedSize: number | null | undefined;
+
+  constructor(details: {
+    path: string;
+    currentModifiedAt: string | null;
+    currentSize: number;
+    expectedModifiedAt?: string | null;
+    expectedSize?: number | null;
+  }) {
+    super(`File changed on disk before save: ${details.path}`);
+    this.name = "FilesWriteConflictError";
+    this.currentModifiedAt = details.currentModifiedAt;
+    this.currentSize = details.currentSize;
+    this.expectedModifiedAt = details.expectedModifiedAt;
+    this.expectedSize = details.expectedSize;
+  }
+}
+
 const FILE_VERSION_DIR_NAME = "file-versions";
 const MAX_FILE_VERSION_BYTES = 1024 * 1024;
 const MAX_FILE_VERSIONS_PER_FILE = 20;
@@ -3466,17 +3491,38 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         allowRoot: false,
         kind: "file",
       });
+      const beforeStat = fs.statSync(target.absolutePath);
+      const currentModifiedAt = toIsoTime(beforeStat);
+      const hasExpectedModifiedAt = Object.prototype.hasOwnProperty.call(payload, "expectedModifiedAt");
+      const hasExpectedSize = Object.prototype.hasOwnProperty.call(payload, "expectedSize");
+      if (!payload.force && (hasExpectedModifiedAt || hasExpectedSize)) {
+        const modifiedAtMatches =
+          !hasExpectedModifiedAt || payload.expectedModifiedAt === currentModifiedAt;
+        const sizeMatches = !hasExpectedSize || payload.expectedSize === beforeStat.size;
+        if (!modifiedAtMatches || !sizeMatches) {
+          throw new FilesWriteConflictError({
+            path: target.relativePath,
+            currentModifiedAt,
+            currentSize: beforeStat.size,
+            expectedModifiedAt: payload.expectedModifiedAt,
+            expectedSize: payload.expectedSize,
+          });
+        }
+      }
       try {
         createFileVersion(config, target);
       } catch {
         // Version history must never block the primary save path.
       }
       fs.writeFileSync(target.absolutePath, payload.content || "", "utf8");
+      const afterStat = fs.statSync(target.absolutePath);
       return {
         success: true,
         action: "write",
         message: `Saved ${path.basename(target.absolutePath)}`,
         affectedPaths: [target.relativePath],
+        modifiedAt: toIsoTime(afterStat),
+        size: afterStat.size,
       };
     },
 
