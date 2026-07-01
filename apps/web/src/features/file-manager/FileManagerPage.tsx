@@ -559,6 +559,33 @@ export function FileManagerPage() {
     [updateActiveDirectoryTab],
   );
 
+  const openLocationInDirectoryTab = React.useCallback(
+    (location: FileManagerLocation) => {
+      const normalizedPath = normalizeRelativePathForUi(location.directoryPath);
+      const existingTab = normalizeDirectoryTabs(directoryTabs).find(
+        (tab) => tab.rootId === location.rootId && tab.directoryPath === normalizedPath,
+      );
+      const targetTab =
+        existingTab ??
+        createDirectoryTab(location.rootId, normalizedPath, roots);
+      setDirectoryTabs((prev) => {
+        const normalized = normalizeDirectoryTabs(prev);
+        const next = existingTab
+          ? normalized
+          : [...normalized, targetTab].slice(-MAX_DIRECTORY_TABS);
+        storeDirectoryTabLocations(next);
+        return next;
+      });
+      setActiveDirectoryTabId(targetTab.id);
+      setRootId(targetTab.rootId);
+      setDirectoryPath(targetTab.directoryPath);
+      setSelectedPath(undefined);
+      setSelectedPaths(new Set());
+      setLastSelectedPath(undefined);
+    },
+    [directoryTabs, roots],
+  );
+
   const addCurrentFavoriteToFolder = React.useCallback(
     (parentId: string | undefined, title?: string) => {
       const bookmarkTitle =
@@ -598,11 +625,11 @@ export function FileManagerPage() {
     (itemId: string) => {
       const item = findFavoriteBookmarkItem(favoriteTree, itemId);
       if (item?.type !== "bookmark" || !item.location) return;
-      navigateToLocation(item.location);
+      openLocationInDirectoryTab(item.location);
       setPathSuggestionsOpen(false);
       setActivePathSuggestionIndex(0);
     },
-    [favoriteTree, navigateToLocation],
+    [favoriteTree, openLocationInDirectoryTab],
   );
 
   const addFavoriteFolder = React.useCallback(
@@ -2690,11 +2717,15 @@ function moveFavoriteBookmarkItem(
   ) {
     return tree;
   }
+  const adjustedTargetIndex =
+    extracted.parentId === targetParentId && extracted.index < targetIndex
+      ? targetIndex - 1
+      : targetIndex;
   const next = insertFavoriteBookmarkItem(
     extracted.tree,
     targetParentId,
     extracted.item,
-    targetIndex,
+    adjustedTargetIndex,
   );
   return trimFavoriteBookmarkTree(next);
 }
@@ -2702,25 +2733,44 @@ function moveFavoriteBookmarkItem(
 function extractFavoriteBookmarkItem(
   tree: FileManagerBookmarkItem[],
   itemId: string,
-): { item?: FileManagerBookmarkItem; tree: FileManagerBookmarkItem[] } {
+  parentId?: string,
+): {
+  item?: FileManagerBookmarkItem;
+  tree: FileManagerBookmarkItem[];
+  parentId?: string;
+  index: number;
+} {
   let found: FileManagerBookmarkItem | undefined;
-  const visit = (items: FileManagerBookmarkItem[]): FileManagerBookmarkItem[] =>
-    items.flatMap((item) => {
+  let foundParentId: string | undefined;
+  let foundIndex = -1;
+  const visit = (
+    items: FileManagerBookmarkItem[],
+    currentParentId?: string,
+  ): FileManagerBookmarkItem[] =>
+    items.flatMap((item, index) => {
       if (item.id === itemId) {
         found = item;
+        foundParentId = currentParentId;
+        foundIndex = index;
         return [];
       }
       if (item.type === "folder") {
         return [
           {
             ...item,
-            children: visit(item.children ?? []),
+            children: visit(item.children ?? [], item.id),
           },
         ];
       }
       return [item];
     });
-  return { item: found, tree: visit(tree) };
+  const nextTree = visit(tree, parentId);
+  return {
+    item: found,
+    tree: nextTree,
+    parentId: foundParentId,
+    index: foundIndex,
+  };
 }
 
 function insertFavoriteBookmarkItem(

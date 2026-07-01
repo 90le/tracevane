@@ -1,16 +1,20 @@
 import * as React from "react";
 import {
+  ArrowDown,
   ArrowUp,
   ChevronRight,
+  CornerUpLeft,
   Copy,
   Database,
   Eye,
   EyeOff,
   FilePlus,
   Folder,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   GripVertical,
+  Pencil,
   HardDrive,
   History,
   Plus,
@@ -25,6 +29,15 @@ import {
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
 import type {
   FileBreadcrumb,
@@ -355,9 +368,32 @@ type FavoriteEditState =
   | { mode: "addBookmark"; parentId?: string }
   | { mode: "rename"; itemId: string; currentTitle: string };
 
-interface FavoriteDropTarget {
+interface FavoriteDeleteState {
+  itemId: string;
+  title: string;
+  type: "folder" | "bookmark";
+  childCount: number;
+}
+
+interface FavoriteMoveState {
+  itemId: string;
+}
+
+interface FavoriteManagerRow {
+  item: FileManagerBookmarkItem;
+  depth: number;
   parentId?: string;
   index: number;
+  siblingCount: number;
+}
+
+interface FavoritePointerDragState {
+  itemId: string;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  active: boolean;
 }
 
 function flattenFavoriteItemsForManager(
@@ -365,20 +401,10 @@ function flattenFavoriteItemsForManager(
   expandedIds: Set<string>,
   depth = 0,
   parentId?: string,
-): Array<{
-  item: FileManagerBookmarkItem;
-  depth: number;
-  parentId?: string;
-  index: number;
-}> {
-  const rows: Array<{
-    item: FileManagerBookmarkItem;
-    depth: number;
-    parentId?: string;
-    index: number;
-  }> = [];
+): FavoriteManagerRow[] {
+  const rows: FavoriteManagerRow[] = [];
   items.forEach((item, index) => {
-    rows.push({ item, depth, parentId, index });
+    rows.push({ item, depth, parentId, index, siblingCount: items.length });
     if (item.type === "folder" && expandedIds.has(item.id)) {
       rows.push(
         ...flattenFavoriteItemsForManager(
@@ -396,6 +422,55 @@ function flattenFavoriteItemsForManager(
 function countBookmarkChildren(item: FileManagerBookmarkItem): number {
   if (item.type !== "folder") return 0;
   return item.children?.length ?? 0;
+}
+
+function countBookmarkDescendants(item: FileManagerBookmarkItem): number {
+  if (item.type !== "folder") return 0;
+  return (item.children ?? []).reduce(
+    (total, child) => total + 1 + countBookmarkDescendants(child),
+    0,
+  );
+}
+
+function favoriteItemTypeLabel(item: FileManagerBookmarkItem): string {
+  return item.type === "folder" ? "文件夹" : "书签";
+}
+
+function favoriteItemContainsId(
+  item: FileManagerBookmarkItem,
+  targetId: string,
+): boolean {
+  if (item.id === targetId) return true;
+  if (item.type !== "folder") return false;
+  return (item.children ?? []).some((child) =>
+    favoriteItemContainsId(child, targetId),
+  );
+}
+
+function favoriteDropPositionFromPoint(
+  item: FileManagerBookmarkItem,
+  rect: DOMRect,
+  clientY: number,
+): "before" | "after" | "inside" {
+  const y = clientY - rect.top;
+  if (item.type === "folder") {
+    if (y < rect.height * 0.25) return "before";
+    if (y > rect.height * 0.75) return "after";
+    return "inside";
+  }
+  return y < rect.height / 2 ? "before" : "after";
+}
+
+function favoriteFolderPathForRow(row: FavoriteManagerRow, rows: FavoriteManagerRow[]): string {
+  const names = [row.item.title];
+  let parentId = row.parentId;
+  while (parentId) {
+    const parent = rows.find((candidate) => candidate.item.id === parentId);
+    if (!parent) break;
+    names.unshift(parent.item.title);
+    parentId = parent.parentId;
+  }
+  return names.join(" / ");
 }
 
 function BookmarkEditorDialog({
@@ -429,50 +504,443 @@ function BookmarkEditorDialog({
         : "重命名收藏项";
 
   return (
-    <div
-      className="fixed inset-0 z-[80] grid place-items-center bg-[rgba(8,12,22,.35)] p-4 backdrop-blur-sm"
-      role="presentation"
-      data-file-manager-bookmark-editor-dialog
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
-    >
-      <form
-        className="grid w-[min(420px,94vw)] gap-4 rounded-2xl border border-line bg-panel p-4 shadow-2xl"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const nextTitle = value.trim();
-          if (!nextTitle) return;
-          onSubmit(nextTitle);
-        }}
-      >
-        <div className="grid gap-1">
-          <h3 className="text-sm font-semibold text-ink-strong">{title}</h3>
-          <p className="text-xs text-subtle">
-            使用内部弹层管理名称，避免浏览器原生弹窗阻塞文件操作。
-          </p>
-        </div>
-        <label className="grid gap-1 text-xs font-medium text-muted">
-          名称
-          <Input
-            autoFocus
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="输入名称"
-            data-file-manager-bookmark-title-input
-          />
-        </label>
-        <div className="flex justify-end gap-2">
+    <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <DialogContent data-file-manager-bookmark-editor-dialog>
+        <form
+          className="contents"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const nextTitle = value.trim();
+            if (!nextTitle) return;
+            onSubmit(nextTitle);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
+          <DialogBody className="grid gap-3">
+            <DialogDescription>
+              使用统一弹层管理名称，避免浏览器原生弹窗阻塞文件操作。
+            </DialogDescription>
+            <label className="grid gap-1 text-xs font-medium text-muted">
+              名称
+              <Input
+                autoFocus
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                placeholder="输入名称"
+                data-file-manager-bookmark-title-input
+              />
+            </label>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+              取消
+            </Button>
+            <Button type="submit" variant="primary" size="sm">
+              保存
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BookmarkDeleteDialog({
+  state,
+  onCancel,
+  onConfirm,
+}: {
+  state: FavoriteDeleteState | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!state) return null;
+
+  const isFolder = state.type === "folder";
+
+  return (
+    <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <DialogContent data-file-manager-bookmark-delete-dialog>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-danger">
+            <Trash2 className="size-5" />
+            删除{isFolder ? "收藏夹" : "收藏"}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogBody className="grid gap-3">
+          <DialogDescription>
+            将从收藏夹中移除“{state.title}”。这不会删除真实文件或目录。
+          </DialogDescription>
+          {isFolder && state.childCount > 0 ? (
+            <p className="rounded border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+              其中 {state.childCount} 个子项也会从收藏夹中移除。
+            </p>
+          ) : null}
+        </DialogBody>
+        <DialogFooter>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
             取消
           </Button>
-          <Button type="submit" variant="primary" size="sm">
-            保存
+          <Button type="button" variant="danger" size="sm" onClick={onConfirm}>
+            删除
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FavoriteMoveDialog({
+  state,
+  rows,
+  onCancel,
+  onMoveFavoriteItem,
+}: {
+  state: FavoriteMoveState | null;
+  rows: FavoriteManagerRow[];
+  onCancel: () => void;
+  onMoveFavoriteItem: (
+    itemId: string,
+    targetParentId: string | undefined,
+    targetIndex: number,
+  ) => void;
+}) {
+  const [query, setQuery] = React.useState("");
+  const row = React.useMemo(
+    () => rows.find((candidate) => candidate.item.id === state?.itemId),
+    [rows, state?.itemId],
+  );
+
+  React.useEffect(() => {
+    setQuery("");
+  }, [state?.itemId]);
+
+  if (!state || !row) return null;
+
+  const source = row.item;
+  const normalizedQuery = query.trim().toLowerCase();
+  const folderTargets = rows
+    .filter((candidate) => {
+      if (candidate.item.type !== "folder") return false;
+      if (candidate.item.id === source.id) return false;
+      if (source.type === "folder" && favoriteItemContainsId(source, candidate.item.id)) {
+        return false;
+      }
+      return true;
+    })
+    .map((candidate) => ({
+      row: candidate,
+      path: favoriteFolderPathForRow(candidate, rows),
+    }))
+    .filter((target) =>
+      normalizedQuery
+        ? target.path.toLowerCase().includes(normalizedQuery)
+        : true,
+    );
+
+  function moveToRoot() {
+    onMoveFavoriteItem(source.id, undefined, rows.length);
+    onCancel();
+  }
+
+  function moveToFolder(target: FavoriteManagerRow) {
+    onMoveFavoriteItem(source.id, target.item.id, target.item.children?.length ?? 0);
+    onCancel();
+  }
+
+  return (
+    <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <DialogContent
+        className="w-[min(560px,94vw)] max-w-none"
+        data-file-manager-bookmark-move-dialog
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderInput className="size-5 text-primary" />
+            移动到
+          </DialogTitle>
+        </DialogHeader>
+        <DialogBody className="grid gap-3">
+          <DialogDescription>
+            为“{source.title}”选择目标收藏夹路径。
+          </DialogDescription>
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索收藏夹路径"
+            data-file-manager-bookmark-move-search
+          />
+          <div className="max-h-[min(52dvh,380px)] overflow-y-auto rounded-lg border border-line bg-panel-2 p-1">
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-panel",
+                !row.parentId && "cursor-not-allowed opacity-45",
+              )}
+              disabled={!row.parentId}
+              onClick={moveToRoot}
+              data-file-manager-bookmark-move-target="root"
+            >
+              <CornerUpLeft className="size-4 text-primary" />
+              <span className="min-w-0 flex-1 truncate">根层级</span>
+              {!row.parentId ? (
+                <span className="text-2xs text-subtle">当前位置</span>
+              ) : null}
+            </button>
+            {folderTargets.length ? (
+              folderTargets.map(({ row: target, path }) => (
+                <button
+                  key={target.item.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-panel",
+                    target.item.id === row.parentId && "cursor-not-allowed opacity-45",
+                  )}
+                  disabled={target.item.id === row.parentId}
+                  onClick={() => moveToFolder(target)}
+                  data-file-manager-bookmark-move-target={target.item.id}
+                >
+                  <Folder className="size-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate">{path}</span>
+                  {target.item.id === row.parentId ? (
+                    <span className="text-2xs text-subtle">当前位置</span>
+                  ) : null}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-6 text-center text-sm text-subtle">
+                没有匹配的收藏夹。
+              </div>
+            )}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            取消
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FavoriteContextMenu({
+  menu,
+  rows,
+  onClose,
+  onOpenFavoriteItem,
+  onToggleExpanded,
+  onStartEdit,
+  onStartMove,
+  onRemoveFavoriteItem,
+  onMoveFavoriteItem,
+}: {
+  menu: { x: number; y: number; itemId: string } | null;
+  rows: FavoriteManagerRow[];
+  onClose: () => void;
+  onOpenFavoriteItem: (itemId: string) => void;
+  onToggleExpanded: (itemId: string) => void;
+  onStartEdit: (state: FavoriteEditState) => void;
+  onStartMove: (state: FavoriteMoveState) => void;
+  onRemoveFavoriteItem: (itemId: string) => void;
+  onMoveFavoriteItem: (
+    itemId: string,
+    targetParentId: string | undefined,
+    targetIndex: number,
+  ) => void;
+}) {
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const row = React.useMemo(
+    () => rows.find((item) => item.item.id === menu?.itemId),
+    [menu?.itemId, rows],
+  );
+  React.useEffect(() => {
+    if (!menu) return;
+    function onDocMouseDown(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menu, onClose]);
+
+  if (!menu || !row) return null;
+
+  const currentItem = row.item;
+  const isFolder = currentItem.type === "folder";
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 244));
+  const top = Math.max(8, Math.min(menu.y, window.innerHeight - 368));
+
+  function closeAfter(action: () => void) {
+    action();
+    onClose();
+  }
+
+  function removeItem() {
+    onRemoveFavoriteItem(currentItem.id);
+  }
+
+  return (
+    <div
+      ref={menuRef}
+      role="menu"
+      className="fixed z-[90] max-h-[min(72dvh,360px)] min-w-[236px] overflow-y-auto rounded-md border border-line-2 bg-panel py-1 text-sm shadow-lg"
+      style={{ left, top }}
+      data-file-manager-bookmark-context-menu
+    >
+      <div className="border-b border-line px-3 py-2">
+        <div className="truncate text-xs font-semibold text-ink-strong">
+          {currentItem.title}
         </div>
-      </form>
+        <div className="truncate text-2xs text-subtle">
+          {favoriteItemTypeLabel(currentItem)}
+          {currentItem.location ? ` · ${currentItem.location.label}` : ""}
+        </div>
+      </div>
+      {currentItem.type === "bookmark" ? (
+        <FavoriteMenuItem
+          icon={<Star />}
+          label="打开"
+          onClick={() => closeAfter(() => onOpenFavoriteItem(currentItem.id))}
+        />
+      ) : (
+        <FavoriteMenuItem
+          icon={<FolderOpen />}
+          label={isFolder ? "展开 / 收起" : "打开"}
+          onClick={() => closeAfter(() => onToggleExpanded(currentItem.id))}
+        />
+      )}
+      {isFolder ? (
+        <>
+          <FavoriteMenuItem
+            icon={<FolderPlus />}
+            label="新建子文件夹"
+            onClick={() =>
+              closeAfter(() =>
+                onStartEdit({ mode: "createFolder", parentId: currentItem.id }),
+              )
+            }
+          />
+          <FavoriteMenuItem
+            icon={<Star />}
+            label="收藏当前到这里"
+            onClick={() =>
+              closeAfter(() =>
+                onStartEdit({ mode: "addBookmark", parentId: currentItem.id }),
+              )
+            }
+          />
+        </>
+      ) : null}
+      {currentItem.location ? (
+        <FavoriteMenuItem
+          icon={<Copy />}
+          label="复制路径"
+          onClick={() =>
+            closeAfter(() => {
+              void navigator.clipboard?.writeText(currentItem.location?.label ?? "");
+            })
+          }
+        />
+      ) : null}
+      <FavoriteMenuDivider />
+      <FavoriteMenuItem
+        icon={<Pencil />}
+        label="重命名"
+        onClick={() =>
+          closeAfter(() =>
+            onStartEdit({
+              mode: "rename",
+              itemId: currentItem.id,
+              currentTitle: currentItem.title,
+            }),
+          )
+        }
+      />
+      <FavoriteMenuItem
+        icon={<ArrowUp />}
+        label="上移"
+        disabled={row.index <= 0}
+        onClick={() =>
+          closeAfter(() => onMoveFavoriteItem(currentItem.id, row.parentId, row.index - 1))
+        }
+      />
+      <FavoriteMenuItem
+        icon={<ArrowDown />}
+        label="下移"
+        disabled={row.index >= row.siblingCount - 1}
+        onClick={() =>
+          closeAfter(() => onMoveFavoriteItem(currentItem.id, row.parentId, row.index + 2))
+        }
+      />
+      <FavoriteMenuItem
+        icon={<FolderInput />}
+        label="移动到…"
+        onClick={() =>
+          closeAfter(() => onStartMove({ itemId: currentItem.id }))
+        }
+      />
+      <FavoriteMenuDivider />
+      <FavoriteMenuItem
+        icon={<Trash2 />}
+        label="删除"
+        tone="danger"
+        onClick={() => closeAfter(removeItem)}
+      />
     </div>
   );
+}
+
+function FavoriteMenuItem({
+  icon,
+  label,
+  onClick,
+  disabled = false,
+  tone = "default",
+  inset = 0,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+  inset?: number;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2.5 py-1.5 pr-3 text-left transition-colors outline-none",
+        "focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40",
+        tone === "danger"
+          ? "text-danger hover:bg-danger/10"
+          : "text-ink hover:bg-panel-2",
+      )}
+      style={{ paddingLeft: `${12 + inset * 14}px` }}
+    >
+      <span className="grid size-4 place-items-center [&_svg]:size-4">
+        {icon}
+      </span>
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function FavoriteMenuDivider() {
+  return <div className="my-1 h-px bg-line" />;
 }
 
 function FavoriteManagerTreeRow({
@@ -483,12 +951,8 @@ function FavoriteManagerTreeRow({
   dragOver,
   onToggleExpanded,
   onOpenFavoriteItem,
-  onStartEdit,
-  onRemoveFavoriteItem,
-  onDragStart,
-  onDragEnd,
-  onDragOverRow,
-  onDropOnRow,
+  onPointerDragStart,
+  onOpenContextMenu,
 }: {
   item: FileManagerBookmarkItem;
   depth: number;
@@ -497,71 +961,65 @@ function FavoriteManagerTreeRow({
   dragOver: "before" | "after" | "inside" | null;
   onToggleExpanded: (itemId: string) => void;
   onOpenFavoriteItem: (itemId: string) => void;
-  onStartEdit: (state: FavoriteEditState) => void;
-  onRemoveFavoriteItem: (itemId: string) => void;
-  onDragStart: (itemId: string) => void;
-  onDragEnd: () => void;
-  onDragOverRow: (
+  onPointerDragStart: (
     itemId: string,
-    position: "before" | "after" | "inside",
+    event: React.PointerEvent<HTMLElement>,
   ) => void;
-  onDropOnRow: (
-    itemId: string,
-    position: "before" | "after" | "inside",
-  ) => void;
+  onOpenContextMenu: (x: number, y: number, itemId: string) => void;
 }) {
   const isFolder = item.type === "folder";
+  const openKeyboardMenu = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      onOpenContextMenu(
+        rect.left + Math.min(rect.width - 24, 320),
+        rect.top + 32,
+        item.id,
+      );
+    },
+    [item.id, onOpenContextMenu],
+  );
   return (
     <div
       className={cn(
-        "relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2 py-1.5 text-xs transition-colors",
+        "group/bookmark-row relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2 py-1.5 text-xs transition-colors focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
         isDragging
           ? "border-primary-line bg-primary-soft/70 opacity-70"
           : "border-transparent hover:border-line hover:bg-panel-2",
         dragOver === "inside" && "border-primary-line bg-primary-soft",
       )}
       style={{ paddingLeft: `${8 + depth * 18}px` }}
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", item.id);
-        onDragStart(item.id);
-      }}
-      onDragEnd={onDragEnd}
-      onDragOver={(event) => {
+      tabIndex={0}
+      onContextMenu={(event) => {
         event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect = "move";
-        const rect = event.currentTarget.getBoundingClientRect();
-        const y = event.clientY - rect.top;
-        const position = isFolder
-          ? y < rect.height * 0.25
-            ? "before"
-            : y > rect.height * 0.75
-              ? "after"
-              : "inside"
-          : y < rect.height / 2
-            ? "before"
-            : "after";
-        onDragOverRow(item.id, position);
+        onOpenContextMenu(event.clientX, event.clientY, item.id);
       }}
-      onDrop={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const rect = event.currentTarget.getBoundingClientRect();
-        const y = event.clientY - rect.top;
-        const position = isFolder
-          ? y < rect.height * 0.25
-            ? "before"
-            : y > rect.height * 0.75
-              ? "after"
-              : "inside"
-          : y < rect.height / 2
-            ? "before"
-            : "after";
-        onDropOnRow(item.id, position);
+      onClick={(event) => {
+        if (event.defaultPrevented) return;
+        if (isFolder) onToggleExpanded(item.id);
+        else onOpenFavoriteItem(item.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !isFolder) {
+          event.preventDefault();
+          onOpenFavoriteItem(item.id);
+          return;
+        }
+        if (event.key === "Enter" && isFolder) {
+          event.preventDefault();
+          onToggleExpanded(item.id);
+          return;
+        }
+        if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        ) {
+          openKeyboardMenu(event);
+        }
       }}
       data-file-manager-bookmark-manager-row={item.type}
+      data-file-manager-bookmark-id={item.id}
+      data-file-manager-bookmark-dragging={isDragging ? "true" : "false"}
     >
       {dragOver === "before" ? (
         <span className="absolute left-2 right-2 top-0 h-0.5 rounded-full bg-primary" />
@@ -570,12 +1028,27 @@ function FavoriteManagerTreeRow({
         <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-primary" />
       ) : null}
       <div className="flex min-w-0 items-center gap-1.5">
-        <GripVertical className="size-3.5 shrink-0 cursor-grab text-subtle" />
+        <span
+          className="grid size-4 shrink-0 cursor-grab place-items-center text-subtle active:cursor-grabbing"
+          title="拖拽排序或移动到文件夹"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onPointerDown={(event) => onPointerDragStart(item.id, event)}
+          data-file-manager-bookmark-drag-handle
+        >
+          <GripVertical className="size-3.5" />
+        </span>
         {isFolder ? (
           <button
             type="button"
             className="grid size-5 shrink-0 place-items-center rounded hover:bg-panel-3"
-            onClick={() => onToggleExpanded(item.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleExpanded(item.id);
+            }}
             aria-label={isExpanded ? "收起文件夹" : "展开文件夹"}
           >
             <ChevronRight
@@ -600,9 +1073,12 @@ function FavoriteManagerTreeRow({
         <button
           type="button"
           className="min-w-0 truncate text-left font-medium text-ink-strong hover:text-primary"
-          onClick={() =>
-            isFolder ? onToggleExpanded(item.id) : onOpenFavoriteItem(item.id)
-          }
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (isFolder) onToggleExpanded(item.id);
+            else onOpenFavoriteItem(item.id);
+          }}
           title={item.location?.label || item.title}
         >
           {item.title}
@@ -617,48 +1093,20 @@ function FavoriteManagerTreeRow({
           </span>
         ) : null}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-        {isFolder ? (
-          <>
-            <button
-              type="button"
-              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
-              onClick={() =>
-                onStartEdit({ mode: "createFolder", parentId: item.id })
-              }
-            >
-              子文件夹
-            </button>
-            <button
-              type="button"
-              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-primary"
-              onClick={() =>
-                onStartEdit({ mode: "addBookmark", parentId: item.id })
-              }
-            >
-              收藏当前
-            </button>
-          </>
-        ) : null}
+      <div className="flex shrink-0 items-center justify-end gap-1">
         <button
           type="button"
-          className="rounded px-1.5 py-0.5 text-muted hover:bg-panel-3 hover:text-ink-strong"
-          onClick={() =>
-            onStartEdit({
-              mode: "rename",
-              itemId: item.id,
-              currentTitle: item.title,
-            })
-          }
+          className="grid size-7 place-items-center rounded-md text-subtle opacity-80 hover:bg-panel-3 hover:text-ink-strong group-hover/bookmark-row:opacity-100"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            onOpenContextMenu(rect.left, rect.bottom + 4, item.id);
+          }}
+          aria-label={`打开${item.title}的管理菜单`}
+          data-file-manager-bookmark-more
         >
-          重命名
-        </button>
-        <button
-          type="button"
-          className="rounded px-1.5 py-0.5 text-danger hover:bg-danger/10"
-          onClick={() => onRemoveFavoriteItem(item.id)}
-        >
-          删除
+          <MoreHorizontal className="size-4" />
         </button>
       </div>
     </div>
@@ -694,7 +1142,11 @@ function FavoriteBookmarkManager({
   ) => void;
 }) {
   const rootDropZoneRef = React.useRef<HTMLDivElement | null>(null);
+  const draggingIdRef = React.useRef<string | null>(null);
+  const summaryRef = React.useRef<HTMLElement | null>(null);
   const [open, setOpen] = React.useState(false);
+  const [favoritePanelStyle, setFavoritePanelStyle] =
+    React.useState<React.CSSProperties | null>(null);
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(
     () => new Set(),
   );
@@ -704,9 +1156,21 @@ function FavoriteBookmarkManager({
     root?: boolean;
     position: "before" | "after" | "inside";
   } | null>(null);
+  const [pointerDrag, setPointerDrag] =
+    React.useState<FavoritePointerDragState | null>(null);
+  const [contextMenu, setContextMenu] = React.useState<{
+    x: number;
+    y: number;
+    itemId: string;
+  } | null>(null);
   const [editState, setEditState] = React.useState<FavoriteEditState | null>(
     null,
   );
+  const [moveState, setMoveState] = React.useState<FavoriteMoveState | null>(
+    null,
+  );
+  const [deleteState, setDeleteState] =
+    React.useState<FavoriteDeleteState | null>(null);
 
   React.useEffect(() => {
     setExpandedIds((prev) => {
@@ -727,6 +1191,66 @@ function FavoriteBookmarkManager({
     () => flattenFavoriteItemsForManager(favoriteTree, expandedIds),
     [expandedIds, favoriteTree],
   );
+
+  const updateFavoritePanelPosition = React.useCallback(() => {
+    if (window.innerWidth < 768) {
+      setFavoritePanelStyle(null);
+      return;
+    }
+    const rect = summaryRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewportGap = 8;
+    const panelWidth = Math.min(
+      window.innerWidth >= 1180 ? 620 : 560,
+      window.innerWidth - viewportGap * 2,
+    );
+    const panelMaxHeight = Math.min(
+      640,
+      Math.max(220, window.innerHeight - viewportGap * 2),
+      Math.max(260, window.innerHeight * 0.78),
+    );
+    const gapFromTrigger = 6;
+    const availableBelow =
+      window.innerHeight - rect.bottom - gapFromTrigger - viewportGap;
+    const availableAbove = rect.top - gapFromTrigger - viewportGap;
+    const openBelow =
+      availableBelow >= Math.min(360, panelMaxHeight) ||
+      availableBelow >= availableAbove;
+    const availableHeight = openBelow ? availableBelow : availableAbove;
+    const panelHeight = Math.max(
+      180,
+      Math.min(panelMaxHeight, Math.max(availableHeight, 0)),
+    );
+    const left = Math.max(
+      viewportGap,
+      Math.min(rect.right - panelWidth, window.innerWidth - panelWidth - viewportGap),
+    );
+    const preferredTop = openBelow
+      ? rect.bottom + gapFromTrigger
+      : rect.top - gapFromTrigger - panelHeight;
+    const top = Math.max(
+      viewportGap,
+      Math.min(preferredTop, window.innerHeight - panelHeight - viewportGap),
+    );
+    setFavoritePanelStyle({
+      left,
+      top,
+      width: panelWidth,
+      height: panelHeight,
+      maxHeight: panelHeight,
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    updateFavoritePanelPosition();
+    window.addEventListener("resize", updateFavoritePanelPosition);
+    window.addEventListener("scroll", updateFavoritePanelPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateFavoritePanelPosition);
+      window.removeEventListener("scroll", updateFavoritePanelPosition, true);
+    };
+  }, [open, updateFavoritePanelPosition]);
 
   const toggleExpanded = React.useCallback((itemId: string) => {
     setExpandedIds((prev) => {
@@ -757,30 +1281,166 @@ function FavoriteBookmarkManager({
     ],
   );
 
+  const clearFavoriteDrag = React.useCallback(() => {
+    draggingIdRef.current = null;
+    setDraggingId(null);
+    setDragOver(null);
+    setPointerDrag(null);
+  }, []);
+
   const handleDropOnRow = React.useCallback(
     (targetId: string, position: "before" | "after" | "inside") => {
-      if (!draggingId || draggingId === targetId) return;
+      const activeDraggingId = draggingIdRef.current ?? draggingId;
+      if (!activeDraggingId || activeDraggingId === targetId) {
+        clearFavoriteDrag();
+        return;
+      }
       const targetRow = flatRows.find((row) => row.item.id === targetId);
-      if (!targetRow) return;
+      if (!targetRow) {
+        clearFavoriteDrag();
+        return;
+      }
       if (position === "inside" && targetRow.item.type === "folder") {
         onMoveFavoriteItem(
-          draggingId,
+          activeDraggingId,
           targetRow.item.id,
           targetRow.item.children?.length ?? 0,
         );
         setExpandedIds((prev) => new Set(prev).add(targetRow.item.id));
       } else {
         onMoveFavoriteItem(
-          draggingId,
+          activeDraggingId,
           targetRow.parentId,
           targetRow.index + (position === "after" ? 1 : 0),
         );
       }
-      setDragOver(null);
-      setDraggingId(null);
+      clearFavoriteDrag();
     },
-    [draggingId, flatRows, onMoveFavoriteItem],
+    [clearFavoriteDrag, draggingId, flatRows, onMoveFavoriteItem],
   );
+
+  const removeFavoriteItemWithConfirm = React.useCallback(
+    (itemId: string) => {
+      const item = flatRows.find((row) => row.item.id === itemId)?.item;
+      if (!item) return;
+      setDeleteState({
+        itemId,
+        title: item.title,
+        type: item.type,
+        childCount: countBookmarkDescendants(item),
+      });
+    },
+    [flatRows],
+  );
+
+  const updatePointerDragTarget = React.useCallback(
+    (clientX: number, clientY: number, commit: boolean) => {
+      const activeDraggingId = draggingIdRef.current ?? draggingId;
+      if (!activeDraggingId) return;
+      const element = document.elementFromPoint(clientX, clientY);
+      const rowElement = element?.closest<HTMLElement>(
+        "[data-file-manager-bookmark-id]",
+      );
+      if (rowElement) {
+        const targetId = rowElement.dataset.fileManagerBookmarkId;
+        const targetRow = flatRows.find((row) => row.item.id === targetId);
+        if (!targetId || !targetRow || targetId === activeDraggingId) {
+          if (commit) clearFavoriteDrag();
+          else setDragOver(null);
+          return;
+        }
+        const position = favoriteDropPositionFromPoint(
+          targetRow.item,
+          rowElement.getBoundingClientRect(),
+          clientY,
+        );
+        if (commit) {
+          handleDropOnRow(targetId, position);
+        } else {
+          setDragOver({ itemId: targetId, position });
+        }
+        return;
+      }
+      if (rootDropZoneRef.current?.contains(element)) {
+        if (commit) {
+          onMoveFavoriteItem(activeDraggingId, undefined, favoriteTree.length);
+          clearFavoriteDrag();
+        } else {
+          setDragOver({ root: true, position: "after" });
+        }
+        return;
+      }
+      if (commit) clearFavoriteDrag();
+      else setDragOver(null);
+    },
+    [
+      clearFavoriteDrag,
+      draggingId,
+      favoriteTree.length,
+      flatRows,
+      handleDropOnRow,
+      onMoveFavoriteItem,
+    ],
+  );
+
+  const beginPointerFavoriteDrag = React.useCallback(
+    (itemId: string, event: React.PointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      setContextMenu(null);
+      draggingIdRef.current = itemId;
+      setDraggingId(itemId);
+      setPointerDrag({
+        itemId,
+        startX: event.clientX,
+        startY: event.clientY,
+        x: event.clientX,
+        y: event.clientY,
+        active: false,
+      });
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!pointerDrag) return;
+    const drag = pointerDrag;
+    function onPointerMove(event: PointerEvent) {
+      event.preventDefault();
+      setPointerDrag((current) => {
+        if (!current) return current;
+        const active =
+          current.active ||
+          Math.hypot(event.clientX - current.startX, event.clientY - current.startY) > 4;
+        return { ...current, x: event.clientX, y: event.clientY, active };
+      });
+      const active =
+        drag.active ||
+        Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4;
+      if (active) updatePointerDragTarget(event.clientX, event.clientY, false);
+    }
+    function onPointerUp(event: PointerEvent) {
+      event.preventDefault();
+      const active =
+        drag.active ||
+        Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4;
+      if (active) {
+        updatePointerDragTarget(event.clientX, event.clientY, true);
+      } else {
+        clearFavoriteDrag();
+      }
+    }
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp, { passive: false });
+    window.addEventListener("pointercancel", clearFavoriteDrag);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", clearFavoriteDrag);
+    };
+  }, [clearFavoriteDrag, pointerDrag, updatePointerDragTarget]);
 
   return (
     <>
@@ -790,18 +1450,22 @@ function FavoriteBookmarkManager({
         open={open}
         onToggle={(event) => setOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
+        <summary
+          ref={summaryRef}
+          className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary"
+          onClick={() => requestAnimationFrame(updateFavoritePanelPosition)}
+        >
           收藏夹{favoriteCount ? ` · ${favoriteCount}` : ""}
         </summary>
-        <div className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] top-auto z-50 grid max-h-[min(82dvh,720px)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-[calc(100%+6px)] sm:h-[min(72dvh,680px)] sm:w-[min(780px,calc(100vw-2rem))]">
-          <div className="grid gap-3 border-b border-line bg-panel-2/80 p-3">
+        <div
+          className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] top-auto z-50 grid max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl md:fixed md:inset-auto md:h-[min(78dvh,640px)] md:max-h-[min(78dvh,640px)] md:w-[min(620px,calc(100vw-2rem))] md:rounded-2xl"
+          style={favoritePanelStyle ?? undefined}
+        >
+          <div className="grid gap-2 border-b border-line bg-panel-2/80 p-2 sm:gap-3 sm:p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-ink-strong">
                   收藏夹管理
-                </div>
-                <div className="mt-0.5 text-2xs text-subtle">
-                  像浏览器书签一样管理：展开/收起文件夹，拖拽排序或移动到文件夹。
                 </div>
               </div>
               <button
@@ -813,17 +1477,18 @@ function FavoriteBookmarkManager({
                 <X className="size-4" />
               </button>
             </div>
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <div className="min-w-0 rounded-lg border border-line bg-panel px-3 py-2 text-2xs text-subtle">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0 rounded-lg border border-line bg-panel px-2 py-2 text-2xs text-subtle sm:px-3">
                 当前路径：
-                <span className="font-mono text-ink-strong">
+                <span className="break-all font-mono text-ink-strong">
                   {currentLocation.label}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="w-full sm:w-auto"
                   onClick={() => setEditState({ mode: "createFolder" })}
                 >
                   <FolderPlus className="size-3.5" />
@@ -832,6 +1497,7 @@ function FavoriteBookmarkManager({
                 <Button
                   size="sm"
                   variant="primary"
+                  className="w-full sm:w-auto"
                   onClick={() => setEditState({ mode: "addBookmark" })}
                 >
                   <Star className="size-3.5" />
@@ -846,19 +1512,6 @@ function FavoriteBookmarkManager({
               "grid content-start gap-1 overflow-y-auto p-2",
               dragOver?.root && "bg-primary-soft/40",
             )}
-            onDragOver={(event) => {
-              event.preventDefault();
-              if (event.target === rootDropZoneRef.current) {
-                setDragOver({ root: true, position: "after" });
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (!draggingId) return;
-              onMoveFavoriteItem(draggingId, undefined, favoriteTree.length);
-              setDragOver(null);
-              setDraggingId(null);
-            }}
             data-file-manager-bookmark-manager-tree
           >
             {flatRows.length ? (
@@ -877,17 +1530,10 @@ function FavoriteBookmarkManager({
                     onOpenFavoriteItem(itemId);
                     setOpen(false);
                   }}
-                  onStartEdit={setEditState}
-                  onRemoveFavoriteItem={onRemoveFavoriteItem}
-                  onDragStart={setDraggingId}
-                  onDragEnd={() => {
-                    setDraggingId(null);
-                    setDragOver(null);
-                  }}
-                  onDragOverRow={(itemId, position) =>
-                    setDragOver({ itemId, position })
+                  onPointerDragStart={beginPointerFavoriteDrag}
+                  onOpenContextMenu={(x, y, itemId) =>
+                    setContextMenu({ x, y, itemId })
                   }
-                  onDropOnRow={handleDropOnRow}
                 />
               ))
             ) : (
@@ -897,13 +1543,54 @@ function FavoriteBookmarkManager({
                 <div className="mt-1">点击“收藏当前”创建第一个书签。</div>
               </div>
             )}
+            {pointerDrag?.active ? (
+              <div
+                className="pointer-events-none fixed z-[100] rounded-full border border-primary-line bg-panel px-3 py-1.5 text-xs font-medium text-primary shadow-xl"
+                style={{
+                  left: pointerDrag.x + 12,
+                  top: pointerDrag.y + 12,
+                }}
+                data-file-manager-bookmark-drag-preview
+              >
+                移动收藏
+              </div>
+            ) : null}
           </div>
         </div>
       </details>
+      <FavoriteContextMenu
+        menu={contextMenu}
+        rows={flatRows}
+        onClose={() => setContextMenu(null)}
+        onOpenFavoriteItem={(itemId) => {
+          onOpenFavoriteItem(itemId);
+          setOpen(false);
+        }}
+        onToggleExpanded={toggleExpanded}
+        onStartEdit={setEditState}
+        onStartMove={setMoveState}
+        onRemoveFavoriteItem={removeFavoriteItemWithConfirm}
+        onMoveFavoriteItem={onMoveFavoriteItem}
+      />
       <BookmarkEditorDialog
         state={editState}
         onCancel={() => setEditState(null)}
         onSubmit={submitEdit}
+      />
+      <FavoriteMoveDialog
+        state={moveState}
+        rows={flatRows}
+        onCancel={() => setMoveState(null)}
+        onMoveFavoriteItem={onMoveFavoriteItem}
+      />
+      <BookmarkDeleteDialog
+        state={deleteState}
+        onCancel={() => setDeleteState(null)}
+        onConfirm={() => {
+          if (!deleteState) return;
+          onRemoveFavoriteItem(deleteState.itemId);
+          setDeleteState(null);
+        }}
       />
     </>
   );
