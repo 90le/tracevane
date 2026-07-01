@@ -99,7 +99,10 @@ async function run() {
     await jumpToPath(page, workspacePath);
     await openFileInOnlineEditor(page, samplePath);
 
-    await page.locator('[data-file-online-editor-find]').click();
+    await page.waitForSelector('[data-file-online-editor-panel]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { timeout: 10_000 });
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-find]').click();
     await page.locator('.monaco-editor .find-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
     const nls = await page.evaluate(() => {
       const findWidget = document.querySelector('.monaco-editor .find-widget');

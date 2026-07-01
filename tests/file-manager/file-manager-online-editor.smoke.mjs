@@ -193,6 +193,18 @@ async function replaceActiveEditorContentAndWaitDirty(page, content) {
   throw lastError ?? new Error('Editor content replacement did not mark the tab dirty');
 }
 
+async function openEditorActionMenu(page) {
+  if (await page.locator('[data-file-online-editor-action-menu]').isVisible().catch(() => false)) return;
+  await page.waitForSelector('[data-file-online-editor-panel], [data-file-surface-panel]', { timeout: 30_000 });
+  await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+  await page.waitForSelector('[data-file-online-editor-action-menu]', { timeout: 10_000 });
+}
+
+async function clickEditorAction(page, selector) {
+  await openEditorActionMenu(page);
+  await page.locator(`[data-file-online-editor-action-menu] ${selector}`).click();
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
@@ -237,13 +249,23 @@ async function run() {
     await tabs.nth(1).waitFor({ timeout: 30_000 });
     const tabCount = await tabs.count();
     if (tabCount !== 2) throw new Error(`Expected two online editor tabs, found ${tabCount}`);
+    await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { timeout: 10_000 });
+    await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
+    await tabs.nth(1).click({ button: 'right' });
+    await page.waitForSelector('[data-file-online-editor-tab-menu]', { timeout: 10_000 });
+    await page.waitForSelector('[data-file-online-editor-tab-menu] [data-file-online-editor-copy-path]', { timeout: 10_000 });
+    await page.waitForSelector('[data-file-online-editor-tab-menu] [data-file-online-editor-copy-relative-path]', { timeout: 10_000 });
+    await page.mouse.click(8, 8);
+    await page.waitForSelector('[data-file-online-editor-tab-menu]', { state: 'detached', timeout: 10_000 });
 
     await page.locator('[data-file-online-editor-toggle-maximize]').click();
     await page.waitForSelector('[data-file-online-editor-dialog][data-file-online-editor-window-mode="maximized"]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-toggle-maximize]').click();
     await page.waitForSelector('[data-file-online-editor-dialog][data-file-online-editor-window-mode="normal"]', { timeout: 30_000 });
 
-    await page.locator('[data-file-online-editor-close-others]').click();
+    await clickEditorAction(page, '[data-file-online-editor-close-others]');
     await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 1, null, { timeout: 30_000 });
 
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
@@ -276,22 +298,29 @@ async function run() {
     const statusText = await page.locator('[data-file-online-editor-statusbar]').textContent();
     if (!statusText?.includes(secondPath)) throw new Error(`Status bar did not switch to second file: ${statusText}`);
 
-    await page.locator('[data-file-online-editor-find]').click();
+    await clickEditorAction(page, '[data-file-online-editor-find]');
     await page.locator('.monaco-editor .find-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-file-online-editor-replace]').click();
+    await clickEditorAction(page, '[data-file-online-editor-replace]');
     await page.locator('.monaco-editor .find-widget .replace-part').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-file-online-editor-goto-input]').fill('1:2');
-    await page.locator('[data-file-online-editor-goto]').click();
+    await clickEditorAction(page, '[data-file-online-editor-command-palette]');
+    await page.locator('.quick-input-widget').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.keyboard.press('Escape');
+    await openEditorActionMenu(page);
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-goto-input]').fill('1:2');
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-goto]').click();
     await page.waitForFunction(() => document.querySelector('[data-file-online-editor-cursor-position]')?.textContent?.includes('Ln 1'), null, { timeout: 30_000 });
-    await page.locator('[data-file-online-editor-font-size]').fill('15');
-    const fontSizeValue = await page.locator('[data-file-online-editor-font-size]').inputValue();
+    await openEditorActionMenu(page);
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-font-size]').fill('15');
+    const fontSizeValue = await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-font-size]').inputValue();
     if (fontSizeValue !== '15') throw new Error(`Font size control did not update: ${fontSizeValue}`);
-    await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('dark');
-    const themeModeValue = await page.locator('[data-file-online-editor-theme-mode-select]').inputValue();
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]').selectOption('dark');
+    const themeModeValue = await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]').inputValue();
     if (themeModeValue !== 'dark') throw new Error(`Theme mode control did not update: ${themeModeValue}`);
-    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('off');
-    await page.locator('[data-file-online-editor-minimap-enabled]').check();
-    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').uncheck();
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-word-wrap-select]').selectOption('off');
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-minimap-enabled]').check();
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-sticky-scroll-enabled]').uncheck();
+    await page.mouse.click(8, 8);
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
     await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor-minimap="enabled"]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
@@ -305,10 +334,13 @@ async function run() {
     ) {
       throw new Error(`Editor preferences were not persisted: ${editorPreferences}`);
     }
-    await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('auto');
-    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('on');
-    await page.locator('[data-file-online-editor-minimap-enabled]').uncheck();
-    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').check();
+    await openEditorActionMenu(page);
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]').selectOption('auto');
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-word-wrap-select]').selectOption('on');
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-minimap-enabled]').uncheck();
+    await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-sticky-scroll-enabled]').check();
+    await page.mouse.click(8, 8);
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
     const lineEndingText = await page.locator('[data-file-online-editor-status-line-ending]').textContent();
     if (lineEndingText !== 'LF') throw new Error(`Line ending metadata mismatch: ${lineEndingText}`);
     const indentationText = await page.locator('[data-file-online-editor-status-indentation]').textContent();
@@ -331,7 +363,7 @@ async function run() {
     await page.getByRole('button', { name: '恢复', exact: true }).click();
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
 
-    await page.locator('[data-file-online-editor-save-current]').click();
+    await clickEditorAction(page, '[data-file-online-editor-save-current]');
     await page.waitForSelector('[data-file-online-editor-dirty-state="clean"]', { timeout: 30_000 });
     const saved = await readFile(rootId, secondPath);
     if (saved.content !== 'second online editor smoke saved\n') {
@@ -341,12 +373,12 @@ async function run() {
     await page.locator(`[data-file-online-editor-tab="${cssAttr(`${rootId}:${firstPath}`)}"]`).click();
     await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), firstPath, { timeout: 30_000 });
     await replaceActiveEditorContentAndWaitDirty(page, 'first dirty reload check\n');
-    await page.locator('[data-file-online-editor-reload-current]').click();
+    await clickEditorAction(page, '[data-file-online-editor-reload-current]');
     await page.waitForSelector('[data-file-online-editor-reload-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-reload-confirm-cancel]').click();
     await page.waitForSelector('[data-file-online-editor-reload-confirm]', { state: 'detached', timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
-    await page.locator('[data-file-online-editor-reload-current]').click();
+    await clickEditorAction(page, '[data-file-online-editor-reload-current]');
     await page.waitForSelector('[data-file-online-editor-reload-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-reload-confirm-discard]').click();
     await page.waitForSelector('[data-file-online-editor-dirty-state="clean"]', { timeout: 30_000 });
@@ -365,7 +397,7 @@ async function run() {
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second save all check\n');
-    await page.locator('[data-file-online-editor-save-all]').click();
+    await clickEditorAction(page, '[data-file-online-editor-save-all]');
     await page.waitForSelector('[data-file-online-editor-dirty-state="clean"]', { timeout: 30_000 });
     const saveAllResult = await readFile(rootId, secondPath);
     if (saveAllResult.content !== 'second save all check\n') {
@@ -373,12 +405,12 @@ async function run() {
     }
 
     await replaceActiveEditorContentAndWaitDirty(page, 'second close all dirty check\n');
-    await page.locator('[data-file-online-editor-close-all]').click();
+    await clickEditorAction(page, '[data-file-online-editor-close-all]');
     await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-close-confirm-cancel]').click();
     await page.waitForSelector('[data-file-online-editor-close-confirm]', { state: 'detached', timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
-    await page.locator('[data-file-online-editor-close-all]').click();
+    await clickEditorAction(page, '[data-file-online-editor-close-all]');
     await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-close-confirm-save]').click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
@@ -391,14 +423,14 @@ async function run() {
     await page.locator('[data-file-manager-bulk-primary-action="edit"]').click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickEditorAction(page, '[data-file-online-editor-close-all]');
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     await page.locator(`[data-file-manager-entry-path="${cssAttr(secondPath)}"]`).click({ force: true });
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickEditorAction(page, '[data-file-online-editor-close-all]');
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     await createTextFile(rootId, largePath, 'x'.repeat(1024 * 1024 + 32));
@@ -408,12 +440,15 @@ async function run() {
     const readOnlyText = await page.locator('[data-file-online-editor-readonly-state]').textContent();
     if (!readOnlyText?.includes('截断')) throw new Error(`Large file did not show truncated readonly state: ${readOnlyText}`);
     await page.waitForSelector('[data-file-online-editor-truncated-state]', { timeout: 30_000 });
-    if (await page.locator('[data-file-online-editor-save-current]').isEnabled()) {
+    await openEditorActionMenu(page);
+    if (await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-save-current]').isEnabled()) {
       throw new Error('Save should be disabled for large/truncated readonly file');
     }
-    if (await page.locator('[data-file-online-editor-replace]').isEnabled()) {
+    if (await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-replace]').isEnabled()) {
       throw new Error('Replace should be disabled for readonly file');
     }
+    await page.mouse.click(8, 8);
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
     await page.waitForSelector('[data-code-editor-minimap="disabled"]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
@@ -439,7 +474,7 @@ async function run() {
     await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), conflictPath, { timeout: 30_000 });
     await replaceActiveEditorContentAndWaitDirty(page, 'local conflict draft\n');
     await writeTextFile(rootId, conflictPath, 'external conflict update\n');
-    await page.locator('[data-file-online-editor-save-current]').click();
+    await clickEditorAction(page, '[data-file-online-editor-save-current]');
     await page.waitForSelector('[data-file-online-editor-conflict-panel]', { timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
     await page.locator('[data-file-online-editor-conflict-compare]').click();
@@ -466,7 +501,7 @@ async function run() {
     await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), saveFailPath, { timeout: 30_000 });
     await replaceActiveEditorContentAndWaitDirty(page, 'save failure dirty buffer\n');
     await cleanup(rootId, [saveFailPath]);
-    await page.locator('[data-file-online-editor-save-current]').click();
+    await clickEditorAction(page, '[data-file-online-editor-save-current]');
     await page.waitForSelector('[data-file-online-editor-save-error]', { timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
     page.once('dialog', async (dialog) => {
@@ -511,19 +546,22 @@ async function run() {
     await jumpToPath(page, workspacePath);
     await refreshFileList(page);
     await openFile(page, firstPath);
-    if ((await page.locator('[data-file-online-editor-theme-mode-select]').inputValue()) !== 'auto') {
+    await openEditorActionMenu(page);
+    if ((await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]').inputValue()) !== 'auto') {
       throw new Error('Theme preference did not survive page reload');
     }
-    if ((await page.locator('[data-file-online-editor-word-wrap-select]').inputValue()) !== 'on') {
+    if ((await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-word-wrap-select]').inputValue()) !== 'on') {
       throw new Error('Word-wrap preference did not survive page reload');
     }
-    if (await page.locator('[data-file-online-editor-minimap-enabled]').isChecked()) {
+    if (await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-minimap-enabled]').isChecked()) {
       throw new Error('Minimap preference did not survive page reload');
     }
-    if (!(await page.locator('[data-file-online-editor-sticky-scroll-enabled]').isChecked())) {
+    if (!(await page.locator('[data-file-online-editor-action-menu] [data-file-online-editor-sticky-scroll-enabled]').isChecked())) {
       throw new Error('Sticky-scroll preference did not survive page reload');
     }
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.mouse.click(8, 8);
+    await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
+    await clickEditorAction(page, '[data-file-online-editor-close-all]');
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
     if (logs.some((line) => line.includes('[pageerror]') || line.includes('Invalid hook call'))) {

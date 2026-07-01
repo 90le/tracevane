@@ -1951,6 +1951,7 @@ export function FileManagerPage() {
               onOpenChange={(open) => {
                 if (!open) closeOnlineEditorWindow();
               }}
+              rootAbsolutePaths={Object.fromEntries(roots.map((root) => [root.id, root.absolutePath]))}
               drafts={onlineEditorDrafts}
               viewStates={onlineEditorViewStates}
               readMetadata={onlineEditorReadMetadata}

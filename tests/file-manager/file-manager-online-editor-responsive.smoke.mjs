@@ -79,16 +79,18 @@ async function openEditor(page, rootId, directoryPath, filePath) {
   });
   await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
   await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
-  await page.waitForSelector('[data-file-online-editor-theme-mode-select]', { timeout: 30_000 });
+  await page.waitForSelector('[data-file-online-editor-action-menu-trigger]', { timeout: 30_000 });
   await page.waitForSelector('[data-file-online-editor-statusbar]', { timeout: 30_000 });
 }
 
 async function verifyEditorSurface(page, filePath, expectedTheme) {
+  await page.locator('[data-file-online-editor-action-menu-trigger]').click();
+  await page.waitForSelector('[data-file-online-editor-action-menu]', { timeout: 30_000 });
   const state = await page.evaluate(() => {
     const dialog = document.querySelector('[data-file-online-editor-dialog]')?.getBoundingClientRect();
     const editor = document.querySelector('[data-code-editor="monaco-direct"]')?.getBoundingClientRect();
     const statusbar = document.querySelector('[data-file-online-editor-statusbar]')?.textContent || '';
-    const themeEntry = document.querySelector('[data-file-online-editor-theme-mode-select]')?.textContent || '';
+    const themeEntry = document.querySelector('[data-file-online-editor-action-menu] [data-file-online-editor-theme-mode-select]')?.textContent || '';
     const monaco = document.querySelector('.monaco-editor');
     return {
       dialog: dialog ? { width: dialog.width, height: dialog.height } : null,
@@ -107,6 +109,8 @@ async function verifyEditorSurface(page, filePath, expectedTheme) {
   }
   if (!state.statusbar.includes(filePath)) throw new Error(`Status bar missing file path in ${expectedTheme}: ${JSON.stringify(state)}`);
   if (!state.themeEntry.includes('跟随系统')) throw new Error(`Theme selector missing in ${expectedTheme}: ${JSON.stringify(state)}`);
+  await page.mouse.click(8, 8);
+  await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
 }
 
 async function run() {

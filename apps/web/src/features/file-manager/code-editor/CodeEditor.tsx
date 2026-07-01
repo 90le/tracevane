@@ -49,6 +49,7 @@ export interface CodeEditorHandle {
   runAction: (actionId: string) => void;
   openFind: () => void;
   openReplace: () => void;
+  openCommandPalette: () => void;
   gotoLine: (line: number, column?: number) => void;
   saveViewState: () => CodeEditorViewState | null;
   restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
@@ -133,6 +134,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
         editorRef.current,
         "editor.action.startFindReplaceAction",
       ),
+    openCommandPalette: () =>
+      runMonacoEditorAction(editorRef.current, "editor.action.quickCommand"),
     gotoLine: (line: number, column = 1) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -379,7 +382,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   return (
     <div
       className={cn(
-        "group/editor relative min-h-0 min-w-0 overflow-hidden",
+        "group/editor relative min-h-0 min-w-0 overflow-visible",
         theme === "dark" ? "bg-[#1e1e1e]" : "bg-white",
         className,
       )}

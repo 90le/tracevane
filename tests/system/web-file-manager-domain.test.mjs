@@ -41,6 +41,13 @@ test("file manager routes files through unified online surface", () => {
   assert.match(propertiesDialog, /复制相对路径/);
 
   const onlineEditorDialog = read("apps/web/src/features/file-manager/online-editor/FileOnlineEditorDialog.tsx");
+  assert.match(onlineEditorDialog, /data-file-online-editor-action-menu-trigger/);
+  assert.match(onlineEditorDialog, /data-file-online-editor-action-menu/);
+  assert.match(onlineEditorDialog, /data-file-online-editor-command-palette/);
+  assert.match(onlineEditorDialog, /data-file-online-editor-tab-menu/);
+  assert.match(onlineEditorDialog, /data-file-online-editor-copy-path/);
+  assert.match(onlineEditorDialog, /data-file-online-editor-copy-relative-path/);
+  assert.doesNotMatch(onlineEditorDialog, /data-file-online-editor-tab-actions/);
   assert.match(onlineEditorDialog, /data-file-surface-panel/);
   assert.match(onlineEditorDialog, /data-file-surface-image/);
   assert.match(onlineEditorDialog, /data-file-surface-image-canvas/);
