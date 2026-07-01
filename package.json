@@ -76,7 +76,8 @@
     "smoke:file-manager:monaco-highlighting": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-monaco-highlighting.smoke.mjs",
     "smoke:file-manager:monaco-clipboard": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-monaco-clipboard.smoke.mjs",
     "smoke:file-manager:monaco-nls": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-monaco-nls.smoke.mjs",
-    "smoke:file-manager:file-surface-routing": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-file-surface-routing.smoke.mjs"
+    "smoke:file-manager:file-surface-routing": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-file-surface-routing.smoke.mjs",
+    "smoke:file-manager:media-preview": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-media-preview.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

@@ -1,4 +1,6 @@
 import { chromium } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -20,6 +22,13 @@ async function api(pathname, options = {}) {
 
 function cssAttr(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+
+function writeBinaryFixture(rootAbsolutePath, relativePath, bytes) {
+  const target = path.join(rootAbsolutePath, relativePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, Buffer.from(bytes));
 }
 
 async function cleanup(rootId, paths) {
@@ -88,7 +97,8 @@ async function contextMenuAction(page, path, name) {
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file-manager root is available');
+  const root = summary.roots?.find((item) => item.id === rootId) ?? summary.roots?.[0];
+  if (!rootId || !root?.absolutePath) throw new Error('No file-manager root is available');
 
   const workspacePath = `tmp/file-surface-routing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const textPath = `${workspacePath}/route-check.ts`;
@@ -96,7 +106,7 @@ async function run() {
   await cleanup(rootId, [workspacePath]);
   await createDirectory(rootId, workspacePath);
   await createTextFile(rootId, textPath, 'export const routeCheck = true;\n');
-  await createTextFile(rootId, binaryPath, 'not-textlike-by-extension\n');
+  writeBinaryFixture(root.absolutePath, binaryPath, [0, 159, 146, 150, 0, 1, 2, 3, 4, 5]);
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -109,7 +119,7 @@ async function run() {
     await jumpToPath(page, workspacePath);
     await refreshFileList(page);
 
-    await contextMenuAction(page, textPath, '检查文件（弹窗）');
+    await contextMenuAction(page, textPath, '检查文件');
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     if (await page.locator('[data-file-preview-dialog]').count()) {
@@ -125,10 +135,11 @@ async function run() {
     await page.getByRole('button', { name: '关闭全部' }).click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
 
-    await contextMenuAction(page, binaryPath, '检查文件（弹窗）');
-    await page.waitForSelector('[data-file-preview-dialog]', { timeout: 30_000 });
-    if (await page.locator('[data-code-editor="monaco-direct"]').count()) {
-      throw new Error('Non-text fallback should not mount Monaco before media/binary File Surface panels are implemented');
+    await contextMenuAction(page, binaryPath, '检查文件');
+    await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
+    await page.waitForSelector('[data-file-surface-panel][data-file-surface-kind="binary"]', { timeout: 30_000 });
+    if (await page.locator('[data-file-preview-dialog]').count()) {
+      throw new Error('Non-text files should stay inside the unified File Surface, not the legacy preview dialog');
     }
 
     const fatalLogs = logs.filter((line) => line.includes('[pageerror]') || line.includes('Maximum update depth') || line.includes('Invalid hook call'));

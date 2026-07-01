@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2, Minus, Search, X } from "lucide-react";
+import { Download, File, FileText, ImageIcon, Maximize2, Minimize2, Minus, Music, RefreshCw, Search, Video, X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -632,12 +632,13 @@ function OnlineEditorTabPanel({
   }
   if (!read?.textLike || read.content == null) {
     return (
-      <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-sm text-muted" data-file-online-editor-non-text-state>
-        <div className="max-w-md rounded border border-line bg-panel-2 p-4">
-          <div className="font-medium text-ink-strong">不可在线编辑</div>
-          <p className="mt-1 text-xs">该文件不是可编辑文本，或当前读取结果没有文本内容。</p>
-        </div>
-      </div>
+      <FileSurfacePreviewPanel
+        read={read}
+        tab={tab}
+        loading={readQuery.isFetching}
+        error={readQuery.error?.message}
+        onReload={() => void readQuery.refetch()}
+      />
     );
   }
   const noticeRowCount =
@@ -935,6 +936,155 @@ function OnlineEditorTabPanel({
       </footer>
     </div>
   );
+}
+
+
+function FileSurfacePreviewPanel({
+  read,
+  tab,
+  loading,
+  error,
+  onReload,
+}: {
+  read: ReturnType<typeof useFileReadQuery>["data"] | undefined;
+  tab: FileOnlineEditorTab;
+  loading: boolean;
+  error?: string;
+  onReload: () => void;
+}) {
+  const previewKind = classifyFileSurfacePreview(read, tab.entry);
+  const downloadUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, false);
+  const attachmentUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, true);
+  const size = formatFileSize(read?.size ?? tab.entry.size);
+  const modified = formatModifiedAt(read?.modifiedAt ?? tab.entry.modifiedAt);
+  const mimeType = read?.mimeType || "application/octet-stream";
+  const PreviewIcon = previewKind === "image"
+    ? ImageIcon
+    : previewKind === "video"
+      ? Video
+      : previewKind === "audio"
+        ? Music
+        : previewKind === "pdf"
+          ? FileText
+          : File;
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-panel" data-file-surface-panel data-file-surface-kind={previewKind}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
+        <span className="inline-flex items-center gap-1 font-medium text-ink-strong">
+          <PreviewIcon className="size-3.5" />
+          {previewKindLabel(previewKind)}
+        </span>
+        <span className="text-muted">{tab.entry.path}</span>
+        {error ? <span className="text-danger" data-file-surface-read-error>{error}</span> : null}
+        <Button variant="ghost" size="sm" onClick={onReload} disabled={loading} data-file-surface-reload>
+          <RefreshCw className="size-3.5" />
+          {loading ? "读取中…" : "刷新"}
+        </Button>
+        <Button asChild variant="outline" size="sm" data-file-surface-open-inline>
+          <a href={downloadUrl} target="_blank" rel="noreferrer">打开</a>
+        </Button>
+        <Button asChild variant="primary" size="sm" data-file-surface-download>
+          <a href={attachmentUrl} download>
+            <Download className="size-3.5" />
+            下载
+          </a>
+        </Button>
+      </div>
+      <div className="min-h-0 overflow-auto p-4" data-file-surface-preview>
+        {previewKind === "image" ? (
+          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-3">
+            <img src={downloadUrl} alt={tab.entry.name} className="max-h-full max-w-full rounded border border-line object-contain" data-file-surface-image />
+          </div>
+        ) : previewKind === "video" ? (
+          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-3">
+            <video src={downloadUrl} controls className="max-h-full max-w-full rounded border border-line bg-black" data-file-surface-video>
+              当前浏览器无法播放该视频。
+            </video>
+          </div>
+        ) : previewKind === "audio" ? (
+          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6">
+            <div className="w-full max-w-2xl rounded-md border border-line bg-panel p-4 text-center">
+              <Music className="mx-auto mb-3 size-10 text-primary" />
+              <div className="mb-3 text-sm font-medium text-ink-strong">{tab.entry.name}</div>
+              <audio src={downloadUrl} controls className="w-full" data-file-surface-audio>
+                当前浏览器无法播放该音频。
+              </audio>
+            </div>
+          </div>
+        ) : previewKind === "pdf" ? (
+          <object data={downloadUrl} type="application/pdf" className="h-full min-h-[520px] w-full rounded border border-line bg-panel-2" data-file-surface-pdf>
+            <iframe title={tab.entry.name} src={downloadUrl} className="h-full min-h-[520px] w-full rounded border border-line" />
+          </object>
+        ) : (
+          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6 text-center" data-file-surface-binary>
+            <div className="max-w-lg">
+              <File className="mx-auto mb-3 size-10 text-subtle" />
+              <div className="text-sm font-semibold text-ink-strong">此文件不能作为文本编辑</div>
+              <p className="mt-2 text-xs text-muted">
+                已在同一个文件窗口中提供安全检查信息。可下载或用系统应用打开，避免把未知二进制内容误当文本写回。
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <a href={downloadUrl} target="_blank" rel="noreferrer">浏览器打开</a>
+                </Button>
+                <Button asChild variant="primary" size="sm">
+                  <a href={attachmentUrl} download>下载文件</a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-line bg-panel px-3 py-2 text-xs text-muted" data-file-surface-statusbar>
+        <span>{mimeType}</span>
+        <span>{size}</span>
+        <span>{read?.permissions ?? tab.entry.permissions ?? "权限未知"}</span>
+        <span>{modified}</span>
+        <span className="ml-auto">同一 File Surface · 非文本只读预览</span>
+      </div>
+    </div>
+  );
+}
+
+type FileSurfacePreviewKind = "image" | "video" | "audio" | "pdf" | "binary";
+
+function classifyFileSurfacePreview(
+  read: ReturnType<typeof useFileReadQuery>["data"] | undefined,
+  entry: FileEntrySummary,
+): FileSurfacePreviewKind {
+  const mimeType = (read?.mimeType ?? "").toLowerCase();
+  const ext = (read?.ext ?? entry.ext ?? "").toLowerCase();
+  if (read?.imageLike || mimeType.startsWith("image/") || IMAGE_FILE_EXTENSIONS.has(ext)) return "image";
+  if (mimeType.startsWith("video/") || VIDEO_FILE_EXTENSIONS.has(ext)) return "video";
+  if (mimeType.startsWith("audio/") || AUDIO_FILE_EXTENSIONS.has(ext)) return "audio";
+  if (mimeType === "application/pdf" || ext === ".pdf") return "pdf";
+  return "binary";
+}
+
+const IMAGE_FILE_EXTENSIONS = new Set([".apng", ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
+const VIDEO_FILE_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogg", ".ogv", ".webm"]);
+const AUDIO_FILE_EXTENSIONS = new Set([".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav", ".weba"]);
+
+function previewKindLabel(kind: FileSurfacePreviewKind): string {
+  switch (kind) {
+    case "image":
+      return "图片预览";
+    case "video":
+      return "视频预览";
+    case "audio":
+      return "音频预览";
+    case "pdf":
+      return "PDF 预览";
+    case "binary":
+      return "二进制检查";
+  }
+}
+
+function buildFileDownloadUrl(rootId: string, path: string, attachment = false): string {
+  const search = new URLSearchParams({ rootId, path });
+  if (attachment) search.set("download", "1");
+  return `/api/files/download?${search.toString()}`;
 }
 
 export function createFileOnlineEditorTab(rootId: string, entry: FileEntrySummary): FileOnlineEditorTab {

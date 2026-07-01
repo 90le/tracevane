@@ -298,7 +298,7 @@ export function FileActionsMenu({
             {target.kind === "file" && onPreviewRequest ? (
               <MenuItem
                 icon={<Eye />}
-                label="检查文件（弹窗）"
+                label="检查文件"
                 onClick={() => {
                   onPreviewRequest(target);
                   closeAll();

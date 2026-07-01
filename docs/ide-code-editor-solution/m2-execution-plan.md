@@ -45,7 +45,7 @@ M2 also closes the highest-priority Monaco gaps discovered after M1:
 - Split editor groups / Dockview integration.
 - Full LSP server integration.
 - VS Code extension compatibility.
-- Heavy media dependencies unless native preview is demonstrably insufficient.
+- Heavy media/document dependencies unless native preview is demonstrably insufficient.
 - Promise that every Monaco action works in every language; provider availability remains language-specific.
 
 ## 3. Delivery slices
@@ -128,6 +128,7 @@ Tasks:
   - PDF: `<object>` / `<iframe>` fallback;
   - binary: metadata/download/copy path/unsupported-safe message.
 - Add `smoke:file-manager:media-preview`.
+- Record preview dependency evaluation: native image/video/audio/PDF first; evaluate focused viewers later for proven gaps such as Office formats or advanced PDF controls.
 
 Acceptance:
 
@@ -207,7 +208,8 @@ node --test tests/system/monaco-language-loaders.test.mjs
 | Monaco NLS import order is wrong | UI remains English | isolate Monaco bootstrap and test rendered labels |
 | Clipboard shortcut fix blocks file-list copy/paste | File operations regression | smoke both editor focus and file-list focus |
 | Media preview requires authenticated/blob URL | media cannot render | reuse/download endpoint first; add safe blob endpoint only if needed |
-| PDF native preview inconsistent across browsers | partial support | document fallback; evaluate `pdfjs-dist` only after native gap is proven |
+| PDF native preview inconsistent across browsers | partial support | document fallback; evaluate `pdfjs-dist` or `@react-pdf-viewer/core` only after native gap is proven |
+| Office/document preview dependency becomes broad/heavy | bundle/performance regression | keep M2 native-first; evaluate `@cyntler/react-doc-viewer` or focused converters in a separate M2.x/M3 slice with license, size, and lazy-loading checks |
 
 ## 6. Definition of done
 

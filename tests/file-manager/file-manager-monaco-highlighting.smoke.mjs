@@ -3,6 +3,54 @@ import { chromium } from '@playwright/test';
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
 
+const LANGUAGE_SAMPLES = [
+  {
+    path: 'sample.ts',
+    language: 'typescript',
+    content: 'const answer: number = 42;\nexport function greet(name: string) {\n  return `hello ${name}`;\n}\n',
+  },
+  {
+    path: 'sample.html',
+    language: 'html',
+    content: '<!doctype html>\n<html><body><h1 class="title">Hello</h1></body></html>\n',
+  },
+  {
+    path: 'sample.css',
+    language: 'css',
+    content: ':root { --accent: #67e8f9; }\n.button:hover { color: var(--accent); }\n',
+  },
+  {
+    path: 'sample.json',
+    language: 'json',
+    content: '{\n  "name": "tracevane",\n  "enabled": true,\n  "count": 3\n}\n',
+  },
+  {
+    path: 'sample.md',
+    language: 'markdown',
+    content: '# Monaco smoke\n\n- lazy language loading\n- **markdown** tokens\n',
+  },
+  {
+    path: 'sample.py',
+    language: 'python',
+    content: 'def greet(name: str) -> str:\n    return f"hello {name}"\n',
+  },
+  {
+    path: 'sample.yaml',
+    language: 'yaml',
+    content: 'name: tracevane\nfeatures:\n  - editor\n  - preview\n',
+  },
+  {
+    path: 'sample.sh',
+    language: 'shell',
+    content: '#!/usr/bin/env bash\nset -euo pipefail\necho "tracevane"\n',
+  },
+  {
+    path: 'sample.sql',
+    language: 'sql',
+    content: 'SELECT id, name FROM files WHERE text_like = TRUE ORDER BY name;\n',
+  },
+];
+
 async function api(pathname, options = {}) {
   const response = await fetch(`${BASE_URL}${pathname}`, {
     ...options,
@@ -77,12 +125,19 @@ async function openFileInOnlineEditor(page, path) {
   await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 }
 
+async function minimizeEditor(page) {
+  await page.getByRole('button', { name: '最小化在线编辑器' }).click();
+  await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
+}
+
 async function collectTokenClasses(page) {
   await page.waitForTimeout(2_500);
   return page.evaluate(() => {
     const editor = document.querySelector('[data-code-editor="monaco-direct"]');
     return {
       dataLanguage: editor?.getAttribute('data-editor-language'),
+      actionCount: Number(editor?.getAttribute('data-code-editor-supported-action-count') || 0),
+      supportedActions: editor?.getAttribute('data-code-editor-supported-actions') || '',
       classes: [...new Set([...document.querySelectorAll('.monaco-editor .view-line span[class]')].map((node) => node.className))],
       lines: [...document.querySelectorAll('.monaco-editor .view-line')].slice(0, 6).map((node) => node.innerHTML),
     };
@@ -99,18 +154,34 @@ function assertHighlighted(language, result) {
   }
 }
 
+function assertMonacoActions(result) {
+  const requiredActions = ['actions.find', 'editor.action.startFindReplaceAction', 'editor.action.quickCommand'];
+  if (result.actionCount < 20) {
+    throw new Error(`Expected Monaco to expose many built-in actions, got ${result.actionCount}`);
+  }
+  for (const actionId of requiredActions) {
+    if (!result.supportedActions.split(',').includes(actionId)) {
+      throw new Error(`Expected Monaco supported actions to include ${actionId}, got ${result.supportedActions}`);
+    }
+  }
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file-manager root is available');
 
   const workspacePath = `tmp/highlight-check-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const tsPath = `${workspacePath}/sample.ts`;
-  const htmlPath = `${workspacePath}/sample.html`;
+  const files = LANGUAGE_SAMPLES.map((sample) => ({
+    ...sample,
+    fullPath: `${workspacePath}/${sample.path}`,
+  }));
+
   await cleanup(rootId, [workspacePath]);
   await createDirectory(rootId, workspacePath);
-  await createTextFile(rootId, tsPath, 'const answer: number = 42;\nexport function greet(name: string) {\n  return `hello ${name}`;\n}\n');
-  await createTextFile(rootId, htmlPath, '<!doctype html>\n<html><body><h1 class="title">Hello</h1></body></html>\n');
+  for (const file of files) {
+    await createTextFile(rootId, file.fullPath, file.content);
+  }
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -122,13 +193,14 @@ async function run() {
     await page.goto(`${BASE_URL}/#/file-manager`, { waitUntil: 'domcontentloaded' });
     await jumpToPath(page, workspacePath);
 
-    await openFileInOnlineEditor(page, tsPath);
-    assertHighlighted('typescript', await collectTokenClasses(page));
-
-    await page.getByRole('button', { name: '最小化在线编辑器' }).click();
-    await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await openFileInOnlineEditor(page, htmlPath);
-    assertHighlighted('html', await collectTokenClasses(page));
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      await openFileInOnlineEditor(page, file.fullPath);
+      const result = await collectTokenClasses(page);
+      assertHighlighted(file.language, result);
+      assertMonacoActions(result);
+      if (index < files.length - 1) await minimizeEditor(page);
+    }
 
     const fatalLogs = logs.filter((line) => line.includes('[pageerror]') || line.includes('Maximum update depth'));
     if (fatalLogs.length > 0) {
