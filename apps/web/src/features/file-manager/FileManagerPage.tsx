@@ -1536,7 +1536,7 @@ export function FileManagerPage() {
 
   const handleFileManagerKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (isEditableEventTarget(event.target)) return;
+      if (isEditorShortcutTarget(event.target)) return;
       const mod = event.metaKey || event.ctrlKey;
       if (event.altKey && event.key === "ArrowUp") {
         event.preventDefault();
@@ -2474,14 +2474,19 @@ async function copyTextToClipboard(text: string): Promise<void> {
   }
 }
 
-function isEditableEventTarget(target: EventTarget | null): boolean {
+function isEditorShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
   return (
     tag === "input" ||
     tag === "textarea" ||
     tag === "select" ||
-    target.isContentEditable
+    target.isContentEditable ||
+    Boolean(
+      target.closest(
+        '[data-editor-shortcuts="ignore"],[data-code-editor="monaco-direct"],.monaco-editor,.find-widget,.suggest-widget,.context-view,.monaco-menu,.monaco-hover',
+      ),
+    )
   );
 }
 
