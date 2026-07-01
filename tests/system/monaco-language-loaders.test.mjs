@@ -43,24 +43,28 @@ test('generated Monaco language loaders cover every installed Monaco language co
     .sort(([left], [right]) => left.localeCompare(right));
 
   for (const language of basicLanguages) {
-    assert.match(
-      generated,
-      new RegExp(`"${language}": \\(\\) => import\\("monaco-editor/esm/vs/basic-languages/${language}/${language}\\.contribution\\.js"\\)`),
-      `missing basic Monaco loader for ${language}`,
+    assert.ok(
+      generated.includes(`installMonacoBasicLanguage("${language}", () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.js"))`),
+      `missing basic Monaco tokenizer installer for ${language}`,
     );
   }
   for (const language of richLanguages) {
-    assert.match(
-      generated,
-      new RegExp(`"${language}": \\(\\) => import\\("monaco-editor/esm/vs/language/${language}/monaco\\.contribution\\.js"\\)`),
+    assert.ok(
+      generated.includes(`import("monaco-editor/esm/vs/language/${language}/monaco.contribution.js")`),
       `missing rich Monaco loader for ${language}`,
     );
+    if (basicLanguages.includes(language)) {
+      assert.ok(
+        generated.includes(`"${language}": () => Promise.all([installMonacoBasicLanguage("${language}", () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.js")), import("monaco-editor/esm/vs/language/${language}/monaco.contribution.js")])`),
+        `rich Monaco loader for ${language} must also install its basic tokenizer contribution`,
+      );
+    }
   }
   assert.match(generated, new RegExp(`basic: ${basicLanguages.length},`));
   for (const [alias, sourceLanguage] of richAliasEntries) {
     assert.ok(
-      generated.includes(`"${alias}": MONACO_RICH_LANGUAGE_LOADERS["${sourceLanguage}"]`),
-      `missing rich Monaco alias loader for ${alias} -> ${sourceLanguage}`,
+      generated.includes(`"${alias}": () => Promise.all([installMonacoBasicLanguage("${alias}", () => import("monaco-editor/esm/vs/basic-languages/${alias}/${alias}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${alias}/${alias}.js")), import("monaco-editor/esm/vs/language/${sourceLanguage}/monaco.contribution.js")])`),
+      `missing combined rich Monaco alias loader for ${alias} -> ${sourceLanguage}`,
     );
   }
   assert.match(generated, new RegExp(`rich: ${richLanguages.length},`));

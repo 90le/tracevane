@@ -995,6 +995,10 @@ export function FileManagerPage() {
           delete next[tabId];
           return next;
         }
+        const previous = current[tabId];
+        if (previous?.modifiedAt === metadata.modifiedAt && previous?.size === metadata.size) {
+          return current;
+        }
         return { ...current, [tabId]: metadata };
       });
     },

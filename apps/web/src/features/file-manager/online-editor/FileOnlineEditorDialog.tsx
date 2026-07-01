@@ -905,10 +905,12 @@ function OnlineEditorTabPanel({
           themeMode={preferences.themeMode}
           wordWrap={preferences.wordWrap}
           onCursorPositionChange={(position) => {
-            setCursorPosition(position);
-            onViewStateChange(editorRef.current?.saveViewState() ?? null);
+            setCursorPosition((current) => (
+              current?.lineNumber === position?.lineNumber && current?.column === position?.column
+                ? current
+                : position
+            ));
           }}
-          onSelectionChange={() => onViewStateChange(editorRef.current?.saveViewState() ?? null)}
           onChange={(content) => {
             setSaveError(null);
             onViewStateChange(editorRef.current?.saveViewState() ?? null);
