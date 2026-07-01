@@ -1,3 +1,4 @@
+import "monaco-editor/esm/nls.messages.zh-cn.js";
 import * as React from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import "monaco-editor/esm/vs/editor/edcore.main.js";

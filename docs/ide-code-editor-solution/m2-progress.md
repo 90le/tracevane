@@ -27,7 +27,7 @@ feat/file-manager-file-surface-m2
 |---|---|---|---|
 | 2026-07-01 | M2.0 planning | Complete | Created M2 execution/progress docs from File Surface analysis. |
 | 2026-07-01 | M2.1 clipboard shortcut isolation | Complete | File Manager shortcuts now ignore Monaco/editor-owned descendants; added clipboard smoke covering file-list copy/paste and editor Ctrl/Cmd+C/V isolation. |
-| 2026-07-01 | M2.2 Monaco zh-CN localization | Pending | Needs Monaco bootstrap/import-order care. |
+| 2026-07-01 | M2.2 Monaco zh-CN localization | Complete | Loads Monaco zh-CN NLS bundle before editor API/contributions; added smoke asserting global zh-cn messages and visible Find widget labels. |
 | 2026-07-01 | M2.3 unified File Surface routing | Pending | Replace textLike split routes. |
 | 2026-07-01 | M2.4 media/binary panels | Pending | Native preview primitives first. |
 | 2026-07-01 | M2.5 legacy preview removal | Pending | Delete after route/panel migration. |
@@ -39,6 +39,8 @@ feat/file-manager-file-surface-m2
 |---|---|---|---|
 | 2026-07-01 | `npm run smoke:file-manager:monaco-clipboard` | Passed | Verifies file-list Ctrl/Cmd+C/V still opens copy flow, while real and bubbled Monaco Ctrl/Cmd+C/V do not open File Manager dialogs or unmount editor. |
 | 2026-07-01 | `npm run smoke:file-manager:online-editor` | Passed | Existing M1/M1.x online editor regression remains green. |
+| 2026-07-01 | `npm run smoke:file-manager:monaco-nls` | Passed | Verifies Monaco zh-CN NLS globals and Find widget labels are Chinese. |
+| 2026-07-01 | `npm run smoke:file-manager:monaco-highlighting` | Passed | Confirms NLS import does not regress lazy language highlighting. |
 | 2026-07-01 | `npm run typecheck:web` | Passed | Web TypeScript check. |
 | 2026-07-01 | `git diff --check` | Passed | No whitespace errors. |
 
@@ -46,13 +48,13 @@ feat/file-manager-file-surface-m2
 
 - Do not touch local `.claude/` workspace files if they appear; M2 commits should stay inside product/docs/test scope.
 - Old `FilePreviewPanel` should not be deleted before media/binary useful behavior is migrated.
-- Monaco zh-CN NLS must load before editor contribution modules.
+- Monaco zh-CN NLS is loaded before editor contribution modules in `CodeEditor.tsx`; keep that import first if Monaco bootstrap is split later.
 - Clipboard isolation has targeted smoke coverage now; keep future Monaco widgets inside `[data-editor-shortcuts="ignore"]` or equivalent editor-owned descendants.
 
 ## 5. Next action
 
-Start M2.2 Monaco zh-CN localization:
+Start M2.3 unified File Surface routing:
 
-1. identify Monaco NLS bootstrap/import order;
-2. load zh-CN messages before editor/contribution modules;
-3. add localization smoke without regressing lazy language loading.
+1. map all current open/edit/preview routes and active legacy `FilePreviewPanel` state;
+2. introduce one File Surface tab/mode contract without deleting legacy panels yet;
+3. migrate primary text/code routes first while preserving Monaco save/reload/conflict behavior.
