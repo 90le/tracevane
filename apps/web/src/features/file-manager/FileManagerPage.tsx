@@ -860,6 +860,17 @@ export function FileManagerPage() {
     [rootId],
   );
 
+  const openFileSurface = React.useCallback(
+    (entry: FileEntrySummary, targetRootId?: string) => {
+      if (entry.textLike) {
+        openFileOnlineEditor(entry, targetRootId);
+        return;
+      }
+      openFilePreview(entry, targetRootId);
+    },
+    [openFileOnlineEditor, openFilePreview],
+  );
+
   const selectOnlineEditorTab = React.useCallback(
     (tabId: string) => {
       const tab = onlineEditorTabs.find((item) => item.id === tabId);
@@ -1044,13 +1055,9 @@ export function FileManagerPage() {
         navigateToDirectory(entry.path);
         return;
       }
-      if (entry.textLike) {
-        openFileOnlineEditor(entry);
-        return;
-      }
-      openFilePreview(entry);
+      openFileSurface(entry);
     },
-    [navigateToDirectory, openFileOnlineEditor, openFilePreview],
+    [navigateToDirectory, openFileSurface],
   );
 
   const selectEntry = React.useCallback(
@@ -1583,8 +1590,7 @@ export function FileManagerPage() {
       }
       if (mod && event.key === "Enter" && selectedEntry?.kind === "file") {
         event.preventDefault();
-        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
-        else openFilePreview(selectedEntry);
+        openFileSurface(selectedEntry);
         return;
       }
       if (event.key === "F5") {
@@ -1598,8 +1604,7 @@ export function FileManagerPage() {
         !isInteractiveShortcutTarget(event.target)
       ) {
         event.preventDefault();
-        if (selectedEntry.textLike) openFileOnlineEditor(selectedEntry);
-        else openFilePreview(selectedEntry);
+        openFileSurface(selectedEntry);
         return;
       }
       if (event.altKey && event.key === "Enter" && selectedEntry) {
@@ -1628,8 +1633,7 @@ export function FileManagerPage() {
       directoryPath,
       filteredEntries,
       navigateToDirectory,
-      openFilePreview,
-      openFileOnlineEditor,
+      openFileSurface,
       openFileProperties,
       openUploadManager,
       parentPath,
@@ -1813,7 +1817,9 @@ export function FileManagerPage() {
               selectedEntries={selectedList}
               onEdit={() => {
                 const entry = selectedList[0];
-                if (entry?.kind === "file" && entry.textLike) openFileOnlineEditor(entry);
+                if (entry?.kind === "file" && entry.textLike) {
+                  openFileSurface(entry);
+                }
               }}
               canEdit={
                 selectedList.length === 1 &&
@@ -1847,8 +1853,7 @@ export function FileManagerPage() {
               onRevealPath={revealOperationPath}
               onOpenDirectory={navigateToDirectory}
               onOpenFile={(entry) => {
-                if (entry.textLike) openFileOnlineEditor(entry);
-                else openFilePreview(entry);
+                openFileSurface(entry);
               }}
             />
             <FileListPanel
@@ -1935,8 +1940,7 @@ export function FileManagerPage() {
               rootLabel={root?.labelZh ?? rootId}
               onRevealPath={revealOperationPath}
               onOpenFile={(entry) => {
-                if (entry.textLike) openFileOnlineEditor(entry);
-                else openFilePreview(entry);
+                openFileSurface(entry);
               }}
             />
           </React.Suspense>
@@ -1968,13 +1972,15 @@ export function FileManagerPage() {
             const entry = entries.find(
               (item) => item.path === target.path && item.kind === "file",
             );
-            openFilePreview(entry ?? fileEntryFromMenuTarget(target));
+            openFileSurface(entry ?? fileEntryFromMenuTarget(target));
           }}
           onEditRequest={(target) => {
             const entry = entries.find(
               (item) => item.path === target.path && item.kind === "file",
             );
-            openFileOnlineEditor(entry ?? fileEntryFromMenuTarget({ ...target, textLike: true }));
+            openFileSurface(
+              entry ?? fileEntryFromMenuTarget({ ...target, textLike: true }),
+            );
           }}
           onPropertiesRequest={(target) => {
             const entry = entries.find((item) => item.path === target.path);
