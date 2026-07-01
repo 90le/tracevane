@@ -289,11 +289,26 @@ async function run() {
     await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('dark');
     const themeModeValue = await page.locator('[data-file-online-editor-theme-mode-select]').inputValue();
     if (themeModeValue !== 'dark') throw new Error(`Theme mode control did not update: ${themeModeValue}`);
+    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('off');
+    await page.locator('[data-file-online-editor-minimap-enabled]').check();
+    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').uncheck();
+    await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-minimap="enabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
     const editorPreferences = await page.evaluate(() => window.localStorage.getItem('tracevane:file-manager:online-editor-preferences:v1'));
-    if (!editorPreferences?.includes('"fontSize":15') || !editorPreferences.includes('"themeMode":"dark"')) {
+    if (
+      !editorPreferences?.includes('"fontSize":15') ||
+      !editorPreferences.includes('"themeMode":"dark"') ||
+      !editorPreferences.includes('"wordWrap":"off"') ||
+      !editorPreferences.includes('"minimapEnabled":true') ||
+      !editorPreferences.includes('"stickyScrollEnabled":false')
+    ) {
       throw new Error(`Editor preferences were not persisted: ${editorPreferences}`);
     }
     await page.locator('[data-file-online-editor-theme-mode-select]').selectOption('auto');
+    await page.locator('[data-file-online-editor-word-wrap-select]').selectOption('on');
+    await page.locator('[data-file-online-editor-minimap-enabled]').uncheck();
+    await page.locator('[data-file-online-editor-sticky-scroll-enabled]').check();
     const lineEndingText = await page.locator('[data-file-online-editor-status-line-ending]').textContent();
     if (lineEndingText !== 'LF') throw new Error(`Line ending metadata mismatch: ${lineEndingText}`);
     const indentationText = await page.locator('[data-file-online-editor-status-indentation]').textContent();
@@ -399,6 +414,9 @@ async function run() {
     if (await page.locator('[data-file-online-editor-replace]').isEnabled()) {
       throw new Error('Replace should be disabled for readonly file');
     }
+    await page.waitForSelector('[data-code-editor-minimap="disabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-sticky-scroll="disabled"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
     await page.getByRole('button', { name: '关闭全部' }).click();

@@ -320,7 +320,7 @@ Resolved. The two pre-existing smoke blockers were repaired before editor-core p
 ### M1.x.6 implementation notes
 
 - `CodeEditor` now accepts an explicit `themeMode` (`auto` / `light` / `dark`) while still mapping Monaco to the existing Aurora-driven light/dark theme boundary.
-- Online Editor preferences are stored in `tracevane:file-manager:online-editor-preferences:v1`; current persisted fields are font size and theme mode.
+- Online Editor preferences are stored in `tracevane:file-manager:online-editor-preferences:v1`; current persisted fields are font size, theme mode, minimap, word wrap, and sticky scroll.
 - The Online Editor toolbar now exposes a theme mode selector next to the font-size control. `auto` preserves system-following behavior; `light` and `dark` override only the editor preference path without adding a second styling system.
 - Online Editor smokes now create isolated temporary directories under `/tmp` to avoid virtualized-list flakiness from crowded shared temp directories.
 

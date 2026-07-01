@@ -1,6 +1,6 @@
 # Monaco-first Cleanup Plan — File Manager Online Editor
 
-Status: MFC.1–MFC.2 complete; MFC.3 deferred
+Status: MFC.1–MFC.4 complete
 Branch: `feat/file-manager-online-editor-monaco-first-cleanup`
 Created: 2026-07-01
 Source strategy: `10-monaco-first-online-editor-strategy.md`
@@ -156,14 +156,14 @@ Acceptance:
 
 ### MFC.3 — Preferences and performance tuning
 
-Status: Not started. Existing font size and theme preferences remain intact.
+Status: Implemented 2026-07-01.
 
 Goal: expose only preferences that map directly to Monaco options and are worth product ownership.
 
 Tasks:
 
 - Keep existing font size and theme mode preferences.
-- Evaluate adding preferences for:
+- Add persisted Monaco option preferences for:
   - minimap
   - word wrap
   - sticky scroll
@@ -180,7 +180,7 @@ Acceptance:
 
 ### MFC.4 — Documentation and verification closure
 
-Status: Complete for MFC.1–MFC.2.
+Status: Complete.
 
 Goal: leave repo docs aligned with Monaco-first implementation.
 

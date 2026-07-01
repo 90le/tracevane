@@ -123,7 +123,10 @@ export interface CodeEditorProps {
   readOnly?: boolean;
   profile?: CodeEditorProfile;
   fontSize?: number;
+  minimapEnabled?: boolean;
+  stickyScrollEnabled?: boolean;
   themeMode?: CodeEditorThemeMode;
+  wordWrap?: CodeEditorWordWrap;
   onChange?: (value: string) => void;
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
@@ -132,6 +135,7 @@ export interface CodeEditorProps {
 
 export type CodeEditorThemeMode = "auto" | "light" | "dark";
 export type CodeEditorProfile = "normal" | "large-readonly" | "mobile-basic";
+export type CodeEditorWordWrap = "on" | "off";
 
 export interface CodeEditorHandle {
   focus: () => void;
@@ -167,7 +171,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     readOnly = false,
     profile,
     fontSize = 13,
+    minimapEnabled = false,
+    stickyScrollEnabled = true,
     themeMode = "auto",
+    wordWrap = "on",
     onChange,
     onSelectionChange,
     onCursorPositionChange,
@@ -178,6 +185,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   const { theme } = useTheme();
   const effectiveTheme = themeMode === "auto" ? theme : themeMode;
   const editorProfile = profile ?? (readOnly ? "large-readonly" : "normal");
+  const effectiveOptions = effectiveEditorOptions(editorProfile, {
+    minimapEnabled,
+    stickyScrollEnabled,
+    wordWrap,
+  });
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const editorRef = React.useRef<monaco.editor.IStandaloneCodeEditor | null>(
     null,
@@ -301,9 +313,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     const editor = monaco.editor.create(container, buildMonacoEditorOptions({
       model,
       fontSize,
+      minimapEnabled,
       readOnly,
       profile: editorProfile,
+      stickyScrollEnabled,
       theme: effectiveTheme === "dark" ? "vs-dark" : "vs",
+      wordWrap,
     }));
     const cancelLanguageLoad = scheduleDeferredMonacoLanguageLoad(() => {
       const language = languageForPath(path);
@@ -429,8 +444,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   }, [readOnly, editorProfile]);
 
   React.useEffect(() => {
-    editorRef.current?.updateOptions(editorRuntimeOptionsForProfile(editorProfile));
-  }, [editorProfile]);
+    editorRef.current?.updateOptions(
+      editorRuntimeOptionsForProfile(editorProfile, {
+        minimapEnabled,
+        stickyScrollEnabled,
+        wordWrap,
+      }),
+    );
+    requestAnimationFrame(() => editorRef.current?.layout());
+  }, [editorProfile, minimapEnabled, stickyScrollEnabled, wordWrap]);
 
   React.useEffect(() => {
     editorRef.current?.updateOptions({ fontSize });
@@ -452,6 +474,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       data-code-editor-keyboard-inset={
         editorKeyboardInset > 0 ? "true" : "false"
       }
+      data-code-editor-minimap={effectiveOptions.minimapEnabled ? "enabled" : "disabled"}
+      data-code-editor-sticky-scroll={effectiveOptions.stickyScrollEnabled ? "enabled" : "disabled"}
+      data-code-editor-word-wrap={effectiveOptions.wordWrap}
     >
       <div
         ref={containerRef}
@@ -467,20 +492,30 @@ interface BuildMonacoEditorOptionsInput {
   model: monaco.editor.ITextModel;
   theme: "vs" | "vs-dark";
   fontSize: number;
+  minimapEnabled: boolean;
   readOnly: boolean;
   profile: CodeEditorProfile;
+  stickyScrollEnabled: boolean;
+  wordWrap: CodeEditorWordWrap;
 }
 
 function buildMonacoEditorOptions({
   model,
   theme,
   fontSize,
+  minimapEnabled,
   readOnly,
   profile,
+  stickyScrollEnabled,
+  wordWrap,
 }: BuildMonacoEditorOptionsInput): monaco.editor.IStandaloneEditorConstructionOptions {
   return {
     model,
-    ...editorRuntimeOptionsForProfile(profile),
+    ...editorRuntimeOptionsForProfile(profile, {
+      minimapEnabled,
+      stickyScrollEnabled,
+      wordWrap,
+    }),
     automaticLayout: true,
     bracketPairColorization: { enabled: true },
     contextmenu: true,
@@ -504,25 +539,54 @@ function buildMonacoEditorOptions({
     smoothScrolling: true,
     tabSize: 2,
     theme,
-    wordWrap: "on",
   };
+}
+
+interface CodeEditorOptionPreferences {
+  minimapEnabled: boolean;
+  stickyScrollEnabled: boolean;
+  wordWrap: CodeEditorWordWrap;
+}
+
+function effectiveEditorOptions(
+  profile: CodeEditorProfile,
+  preferences: CodeEditorOptionPreferences,
+): CodeEditorOptionPreferences {
+  if (profile === "large-readonly") {
+    return {
+      minimapEnabled: false,
+      stickyScrollEnabled: false,
+      wordWrap: "off",
+    };
+  }
+  if (profile === "mobile-basic") {
+    return {
+      minimapEnabled: false,
+      stickyScrollEnabled: false,
+      wordWrap: preferences.wordWrap,
+    };
+  }
+  return preferences;
 }
 
 function editorRuntimeOptionsForProfile(
   profile: CodeEditorProfile,
+  preferences: CodeEditorOptionPreferences,
 ): monaco.editor.IEditorOptions {
+  const effectiveOptions = effectiveEditorOptions(profile, preferences);
   if (profile === "large-readonly") {
     return {
       codeLens: false,
       folding: false,
       glyphMargin: false,
       links: false,
-      minimap: { enabled: false },
+      minimap: { enabled: effectiveOptions.minimapEnabled },
       occurrencesHighlight: "off",
       quickSuggestions: false,
       renderValidationDecorations: "off",
       selectionHighlight: false,
-      stickyScroll: { enabled: false },
+      stickyScroll: { enabled: effectiveOptions.stickyScrollEnabled },
+      wordWrap: effectiveOptions.wordWrap,
     };
   }
   if (profile === "mobile-basic") {
@@ -530,17 +594,19 @@ function editorRuntimeOptionsForProfile(
       folding: false,
       glyphMargin: false,
       links: true,
-      minimap: { enabled: false },
+      minimap: { enabled: effectiveOptions.minimapEnabled },
       quickSuggestions: false,
-      stickyScroll: { enabled: false },
+      stickyScroll: { enabled: effectiveOptions.stickyScrollEnabled },
+      wordWrap: effectiveOptions.wordWrap,
     };
   }
   return {
     folding: true,
     links: true,
-    minimap: { enabled: false },
+    minimap: { enabled: effectiveOptions.minimapEnabled },
     quickSuggestions: true,
-    stickyScroll: { enabled: true },
+    stickyScroll: { enabled: effectiveOptions.stickyScrollEnabled },
+    wordWrap: effectiveOptions.wordWrap,
   };
 }
 

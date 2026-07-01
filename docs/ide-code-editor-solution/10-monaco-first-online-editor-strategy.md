@@ -1,6 +1,6 @@
 # Monaco-first Online Editor Strategy
 
-Status: MFC.1–MFC.2 cleanup implemented; MFC.3+ remains future work
+Status: MFC.1–MFC.4 cleanup implemented
 Updated: 2026-07-01
 Scope: File Manager Online Editor, not standalone IDE Workbench
 
@@ -108,6 +108,8 @@ MFC.1–MFC.2 cleanup already simplified:
 - `searchHighlights` and custom decoration handling were removed from `CodeEditor`; a cross-file search result feature can reintroduce a product-level path only when it has a concrete caller.
 - `CodeEditorProfile = "normal" | "large-readonly" | "mobile-basic"` now makes performance intent explicit.
 - `runAction(actionId)` is available as the generic Monaco action bridge, with `openFind` / `openReplace` kept as shell conveniences.
+- File Manager editor preferences now persist Monaco-direct options for minimap, word wrap, and sticky scroll alongside font size and theme mode.
+- The large-readonly profile overrides minimap, sticky scroll, and word wrap off even if user preferences enable them.
 
 Remaining future work:
 
@@ -206,7 +208,7 @@ Status: Implemented for MFC.2.
 
 ### Phase D — Option profiles and preferences
 
-Status: Profiles implemented; additional user preferences deferred.
+Status: Implemented for MFC.3.
 
 Add explicit profile construction, for example:
 
