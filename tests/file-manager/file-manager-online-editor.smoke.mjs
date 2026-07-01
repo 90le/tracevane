@@ -507,6 +507,25 @@ async function run() {
     await page.getByRole('button', { name: '关闭全部' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await jumpToPath(page, workspacePath);
+    await refreshFileList(page);
+    await openFile(page, firstPath);
+    if ((await page.locator('[data-file-online-editor-theme-mode-select]').inputValue()) !== 'auto') {
+      throw new Error('Theme preference did not survive page reload');
+    }
+    if ((await page.locator('[data-file-online-editor-word-wrap-select]').inputValue()) !== 'on') {
+      throw new Error('Word-wrap preference did not survive page reload');
+    }
+    if (await page.locator('[data-file-online-editor-minimap-enabled]').isChecked()) {
+      throw new Error('Minimap preference did not survive page reload');
+    }
+    if (!(await page.locator('[data-file-online-editor-sticky-scroll-enabled]').isChecked())) {
+      throw new Error('Sticky-scroll preference did not survive page reload');
+    }
+    await page.getByRole('button', { name: '关闭全部' }).click();
+    await page.waitForSelector('[data-file-online-editor-dialog]', { state: 'detached', timeout: 30_000 });
+
     if (logs.some((line) => line.includes('[pageerror]') || line.includes('Invalid hook call'))) {
       throw new Error(`Online editor smoke emitted fatal logs:\n${logs.join('\n')}`);
     }

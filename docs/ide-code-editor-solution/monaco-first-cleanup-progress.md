@@ -60,5 +60,4 @@ Current branch verification:
 
 ## Next action
 
-1. Commit MFC.3 completion with Lore protocol.
-2. Open a PR for `feat/file-manager-online-editor-monaco-first-cleanup` when ready.
+Open a PR for `feat/file-manager-online-editor-monaco-first-cleanup` when ready.

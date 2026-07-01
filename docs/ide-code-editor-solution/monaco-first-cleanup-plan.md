@@ -71,7 +71,7 @@ Candidates:
 
 ### Online Editor toolbar
 
-Current toolbar has transitional controls for Monaco Find widget toggles.
+The toolbar previously had transitional controls for Monaco Find widget toggles.
 
 Cleanup target:
 
@@ -85,7 +85,7 @@ Keep:
 - Goto
 - Font size
 - Theme mode
-- Optional Preferences later
+- Monaco option preferences: minimap, word wrap, sticky scroll
 
 Remove / delegate to Monaco widget:
 
@@ -242,7 +242,7 @@ python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py \
 
 ## Initial implementation order
 
-1. MFC.1 option profile helper + `runAction` bridge.
-2. MFC.2 remove duplicate search controls/state.
-3. MFC.3 preference/performance profile tuning.
-4. MFC.4 docs + full verification.
+1. [x] MFC.1 option profile helper + `runAction` bridge.
+2. [x] MFC.2 remove duplicate search controls/state.
+3. [x] MFC.3 preference/performance profile tuning.
+4. [x] MFC.4 docs + full verification.
