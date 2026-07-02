@@ -12,7 +12,7 @@ import { useTheme } from "@/app/providers";
 import { cn } from "@/design/lib/utils";
 import { MONACO_LANGUAGE_LOADERS } from "@/features/file-manager/code-editor/monacoLanguageLoaders";
 import { editorModelUriPath } from "@/shared/editor-core/identity";
-import { languageForPath } from "@/shared/editor-core/language";
+import { detectLanguageForFile, languageForPath } from "@/shared/editor-core/language";
 
 configureMonacoWorkers();
 
@@ -37,6 +37,7 @@ export interface CodeEditorProps {
   onChange?: (value: string) => void;
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
+  onLanguageChange?: (language: string) => void;
   className?: string;
 }
 
@@ -86,6 +87,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     onChange,
     onSelectionChange,
     onCursorPositionChange,
+    onLanguageChange,
     className,
   },
   ref,
@@ -106,7 +108,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   const onChangeRef = React.useRef(onChange);
   const onSelectionChangeRef = React.useRef(onSelectionChange);
   const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
+  const onLanguageChangeRef = React.useRef(onLanguageChange);
   const pendingKeyboardScrollDeltaRef = React.useRef(0);
+  const [detectedLanguage, setDetectedLanguage] = React.useState(() => languageForPath(path));
   const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
   const [actionDiagnostics, setActionDiagnostics] = React.useState<MonacoActionDiagnostics>({
     count: 0,
@@ -124,6 +128,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   React.useEffect(() => {
     onCursorPositionChangeRef.current = onCursorPositionChange;
   }, [onCursorPositionChange]);
+
+  React.useEffect(() => {
+    onLanguageChangeRef.current = onLanguageChange;
+  }, [onLanguageChange]);
 
   React.useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -238,11 +246,18 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       theme: effectiveTheme === "dark" ? "vs-dark" : "vs",
       wordWrap,
     }));
+    setDetectedLanguage(languageForPath(path));
     const cancelLanguageLoad = scheduleDeferredMonacoLanguageLoad(() => {
-      const language = languageForPath(path);
+      const language = detectLanguageForFile({
+        path,
+        content: model.getValue(),
+        registeredLanguages: monaco.languages.getLanguages(),
+      });
       void ensureMonacoLanguage(language).then((loadedLanguage) => {
         if (disposed || model.isDisposed()) return;
         monaco.editor.setModelLanguage(model, loadedLanguage);
+        setDetectedLanguage(loadedLanguage);
+        onLanguageChangeRef.current?.(loadedLanguage);
         requestAnimationFrame(() => editor.layout());
       });
     });
@@ -387,7 +402,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
         className,
       )}
       data-path={path}
-      data-editor-language={languageForPath(path)}
+      data-editor-language={detectedLanguage}
       data-editor-theme={theme === "dark" ? "vs-dark" : "vs"}
       data-code-editor="monaco-direct"
       data-editor-shortcuts="ignore"

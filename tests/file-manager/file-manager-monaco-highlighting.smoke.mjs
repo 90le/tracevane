@@ -25,6 +25,65 @@ const LANGUAGE_SAMPLES = [
     content: '{\n  "name": "tracevane",\n  "enabled": true,\n  "count": 3\n}\n',
   },
   {
+    path: 'unknown-json.payload',
+    language: 'json',
+    content: '{\n  "autoDetected": true,\n  "reason": "content heuristic"\n}\n',
+  },
+  {
+    path: 'openclaw.json.last-good',
+    language: 'json',
+    content: '{\n  "schema": "openclaw",\n  "lastGood": true\n}\n',
+  },
+  {
+    path: 'openclaw.json.bak.2',
+    language: 'json',
+    content: '{\n  "schema": "openclaw",\n  "backup": 2\n}\n',
+  },
+  {
+    path: 'openclaw.json.pre-update',
+    language: 'json',
+    content: '{\n  "schema": "openclaw",\n  "preUpdate": true\n}\n',
+  },
+  {
+    path: 'openclaw.json.clobbered.2026-05-07T04-40-40-752Z',
+    language: 'json',
+    content: '{\n  "schema": "openclaw",\n  "clobbered": true\n}\n',
+  },
+  {
+    path: '123',
+    language: 'json',
+    content: JSON.stringify({
+      schema: 'extensionless',
+      json: true,
+      items: Array.from({ length: 900 }, (_, index) => ({ index, value: `entry-${index}`, enabled: index % 2 === 0 })),
+    }, null, 2) + '\n',
+  },
+  {
+    path: 'component.snapshot',
+    language: 'javascript',
+    content: 'const answer = 42;\nfunction greet(name) { return `hello ${name}`; }\n',
+  },
+  {
+    path: 'native-source.unknown',
+    language: 'c',
+    content: '#include <stdio.h>\nint main(void) { printf("tracevane\\n"); return 0; }\n',
+  },
+  {
+    path: 'script-without-known-extension.runme',
+    language: 'python',
+    content: '#!/usr/bin/env python3\nprint("auto language detection")\n',
+  },
+  {
+    path: 'query-without-known-extension.data',
+    language: 'sql',
+    content: 'SELECT id, name FROM files WHERE enabled = TRUE ORDER BY name;\n',
+  },
+  {
+    path: 'project.csproj',
+    language: 'xml',
+    content: '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup></PropertyGroup>\n</Project>\n',
+  },
+  {
     path: 'sample.md',
     language: 'markdown',
     content: '# Monaco smoke\n\n- lazy language loading\n- **markdown** tokens\n',
@@ -121,7 +180,11 @@ async function openFileInOnlineEditor(page, path) {
     path,
     { timeout: 60_000 },
   );
-  await page.locator(`[data-file-manager-entry-path="${cssAttr(path)}"] [data-file-manager-row-edit]`).first().click({ force: true });
+  const row = page.locator(`[data-file-manager-entry-path="${cssAttr(path)}"]`).first();
+  await row.evaluate((node) => {
+    node.scrollIntoView({ block: 'center', inline: 'nearest' });
+    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  });
   await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
 }
 

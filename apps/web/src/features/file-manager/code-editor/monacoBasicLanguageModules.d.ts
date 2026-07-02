@@ -3,406 +3,406 @@
 
 declare module "monaco-editor/esm/vs/basic-languages/abap/abap.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/apex/apex.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/azcli/azcli.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/bat/bat.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/bicep/bicep.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/cameligo/cameligo.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/clojure/clojure.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/coffee/coffee.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/csharp/csharp.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/csp/csp.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/css/css.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/cypher/cypher.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/dart/dart.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/ecl/ecl.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/elixir/elixir.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/flow9/flow9.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/fsharp/fsharp.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/go/go.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/graphql/graphql.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/handlebars/handlebars.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/hcl/hcl.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/html/html.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/ini/ini.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/java/java.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/javascript/javascript.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/julia/julia.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/kotlin/kotlin.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/less/less.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/lexon/lexon.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/liquid/liquid.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/lua/lua.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/m3/m3.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/markdown/markdown.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/mdx/mdx.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/mips/mips.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/msdax/msdax.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/mysql/mysql.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/objective-c/objective-c.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/pascal/pascal.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/pascaligo/pascaligo.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/perl/perl.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/pgsql/pgsql.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/php/php.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/pla/pla.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/postiats/postiats.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/powerquery/powerquery.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/powershell/powershell.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/protobuf/protobuf.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/pug/pug.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/python/python.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/qsharp/qsharp.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/r/r.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/razor/razor.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/redis/redis.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/redshift/redshift.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/restructuredtext/restructuredtext.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/ruby/ruby.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/rust/rust.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/sb/sb.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/scala/scala.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/scheme/scheme.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/scss/scss.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/shell/shell.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/solidity/solidity.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/sophia/sophia.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/sparql/sparql.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/sql/sql.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/st/st.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/swift/swift.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/tcl/tcl.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/twig/twig.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/typescript/typescript.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/typespec/typespec.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/vb/vb.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/wgsl/wgsl.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/xml/xml.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 
 declare module "monaco-editor/esm/vs/basic-languages/yaml/yaml.js" {
   export const conf: import("monaco-editor/esm/vs/editor/editor.api.js").languages.LanguageConfiguration | undefined;
-  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage;
+  export const language: import("monaco-editor/esm/vs/editor/editor.api.js").languages.IMonarchLanguage | undefined;
 }
 

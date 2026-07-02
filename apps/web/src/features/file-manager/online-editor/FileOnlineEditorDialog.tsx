@@ -703,7 +703,11 @@ function OnlineEditorTabPanel({
   const readQuery = useFileReadQuery({ rootId: tab.rootId, path: tab.entry.path });
   const writeMutation = useWriteFileContentMutation();
   const read = readQuery.data;
-  const language = languageForPath(tab.entry.path);
+  const [detectedLanguage, setDetectedLanguage] = React.useState(() => languageForPath(tab.entry.path));
+  React.useEffect(() => {
+    setDetectedLanguage(languageForPath(tab.entry.path));
+  }, [tab.entry.path]);
+  const language = detectedLanguage;
   const editorContent = draftContent ?? read?.content ?? "";
   const dirty = draftContent != null && draftContent !== (read?.content ?? "");
   const editable = Boolean(read?.editable && !read?.truncated);
@@ -872,7 +876,7 @@ function OnlineEditorTabPanel({
     (conflictError ? 1 : 0) +
     (conflictError && conflictCompareOpen ? 1 : 0) +
     (reloadConfirmOpen ? 1 : 0);
-  const panelGridRows = `auto ${"auto ".repeat(noticeRowCount)}minmax(0, 1fr) auto`;
+  const panelGridRows = `${"auto ".repeat(noticeRowCount)}minmax(0, 1fr) auto`;
 
   return (
     <div
@@ -882,17 +886,6 @@ function OnlineEditorTabPanel({
       }}
       data-file-online-editor-panel
     >
-      <div className="relative flex min-h-10 items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs" data-file-online-editor-compact-toolbar>
-        <span data-file-online-editor-dirty-state={dirty ? "dirty" : "clean"} className={cn("shrink-0", dirty ? "text-primary" : "text-muted")}>{dirty ? "未保存" : saveError ? "保存失败" : "已保存"}</span>
-        {saveError ? <span className="shrink-0 text-danger" data-file-online-editor-save-error>{saveError}</span> : null}
-        {conflictError ? <span className="shrink-0 text-danger" data-file-online-editor-conflict-state>外部修改冲突</span> : null}
-        {!editable ? (
-          <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700" data-file-online-editor-readonly-state>
-            {read.truncated ? "大文件/截断，只读" : "只读"}
-          </span>
-        ) : null}
-        <span className="min-w-0 flex-1 truncate font-mono text-muted" title={tab.entry.path}>{tab.entry.path}</span>
-      </div>
       {conflictError ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
@@ -1025,6 +1018,7 @@ function OnlineEditorTabPanel({
                 : position
             ));
           }}
+          onLanguageChange={setDetectedLanguage}
           onChange={(content) => {
             setSaveError(null);
             onViewStateChange(editorRef.current?.saveViewState() ?? null);
@@ -1352,7 +1346,13 @@ function FileSurfacePreviewPanel({
           </a>
         </Button>
       </div>
-      <div className="min-h-0 overflow-auto p-4" data-file-surface-preview>
+      <div
+        className={cn(
+          "min-h-0 p-4",
+          previewKind === "image" || previewKind === "video" || previewKind === "pdf" ? "overflow-hidden" : "overflow-auto",
+        )}
+        data-file-surface-preview
+      >
         {previewKind === "image" ? (
           <ImagePreviewCanvas src={downloadUrl} alt={tab.entry.name} />
         ) : previewKind === "video" ? (
@@ -1494,7 +1494,7 @@ function ImagePreviewCanvas({ src, alt }: { src: string; alt: string }) {
 function VideoPreviewPlayer({ src, name }: { src: string; name: string }) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   return (
-    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-video-viewer>
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-video-viewer>
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
         <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{name}</span>
         <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} data-file-surface-video-backward>后退 10s</Button>
@@ -1515,8 +1515,8 @@ function VideoPreviewPlayer({ src, name }: { src: string; name: string }) {
           </select>
         </label>
       </div>
-      <div className="grid min-h-0 place-items-center bg-black p-3">
-        <video ref={videoRef} src={src} controls playsInline preload="metadata" className="h-full max-h-full w-full max-w-full rounded border border-line bg-black object-contain" data-file-surface-video>
+      <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-black p-3">
+        <video ref={videoRef} src={src} controls playsInline preload="metadata" className="h-full min-h-0 max-h-full w-full max-w-full rounded border border-line bg-black object-contain" data-file-surface-video>
           当前浏览器无法播放该视频。
         </video>
       </div>

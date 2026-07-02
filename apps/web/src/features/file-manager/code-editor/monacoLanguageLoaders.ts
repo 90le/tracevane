@@ -7,7 +7,7 @@ export type MonacoLanguageLoader = () => Promise<unknown>;
 
 type MonacoBasicLanguageModule = {
   conf?: monaco.languages.LanguageConfiguration;
-  language: monaco.languages.IMonarchLanguage;
+  language?: monaco.languages.IMonarchLanguage;
 };
 
 async function installMonacoBasicLanguage(
@@ -17,19 +17,21 @@ async function installMonacoBasicLanguage(
 ): Promise<unknown> {
   const [contribution, languageModule] = await Promise.all([loadContribution(), loadLanguage()]);
   if (languageModule.conf) monaco.languages.setLanguageConfiguration(languageId, languageModule.conf);
-  monaco.languages.setMonarchTokensProvider(languageId, languageModule.language);
+  if (languageModule.language) monaco.languages.setMonarchTokensProvider(languageId, languageModule.language);
   return { contribution, languageModule };
 }
 
 export const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
   "abap": () => installMonacoBasicLanguage("abap", () => import("monaco-editor/esm/vs/basic-languages/abap/abap.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/abap/abap.js")),
+  "aes": () => installMonacoBasicLanguage("aes", () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.js")),
   "apex": () => installMonacoBasicLanguage("apex", () => import("monaco-editor/esm/vs/basic-languages/apex/apex.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/apex/apex.js")),
   "azcli": () => installMonacoBasicLanguage("azcli", () => import("monaco-editor/esm/vs/basic-languages/azcli/azcli.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/azcli/azcli.js")),
   "bat": () => installMonacoBasicLanguage("bat", () => import("monaco-editor/esm/vs/basic-languages/bat/bat.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/bat/bat.js")),
   "bicep": () => installMonacoBasicLanguage("bicep", () => import("monaco-editor/esm/vs/basic-languages/bicep/bicep.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/bicep/bicep.js")),
+  "c": () => installMonacoBasicLanguage("c", () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.js")),
   "cameligo": () => installMonacoBasicLanguage("cameligo", () => import("monaco-editor/esm/vs/basic-languages/cameligo/cameligo.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/cameligo/cameligo.js")),
   "clojure": () => installMonacoBasicLanguage("clojure", () => import("monaco-editor/esm/vs/basic-languages/clojure/clojure.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/clojure/clojure.js")),
-  "coffee": () => installMonacoBasicLanguage("coffee", () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.js")),
+  "coffeescript": () => installMonacoBasicLanguage("coffeescript", () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/coffee/coffee.js")),
   "cpp": () => installMonacoBasicLanguage("cpp", () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/cpp/cpp.js")),
   "csharp": () => installMonacoBasicLanguage("csharp", () => import("monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/csharp/csharp.js")),
   "csp": () => installMonacoBasicLanguage("csp", () => import("monaco-editor/esm/vs/basic-languages/csp/csp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/csp/csp.js")),
@@ -41,6 +43,12 @@ export const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader>
   "elixir": () => installMonacoBasicLanguage("elixir", () => import("monaco-editor/esm/vs/basic-languages/elixir/elixir.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/elixir/elixir.js")),
   "flow9": () => installMonacoBasicLanguage("flow9", () => import("monaco-editor/esm/vs/basic-languages/flow9/flow9.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/flow9/flow9.js")),
   "freemarker2": () => installMonacoBasicLanguage("freemarker2", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-angle.interpolation-bracket": () => installMonacoBasicLanguage("freemarker2.tag-angle.interpolation-bracket", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-angle.interpolation-dollar": () => installMonacoBasicLanguage("freemarker2.tag-angle.interpolation-dollar", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-auto.interpolation-bracket": () => installMonacoBasicLanguage("freemarker2.tag-auto.interpolation-bracket", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-auto.interpolation-dollar": () => installMonacoBasicLanguage("freemarker2.tag-auto.interpolation-dollar", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-bracket.interpolation-bracket": () => installMonacoBasicLanguage("freemarker2.tag-bracket.interpolation-bracket", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
+  "freemarker2.tag-bracket.interpolation-dollar": () => installMonacoBasicLanguage("freemarker2.tag-bracket.interpolation-dollar", () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js")),
   "fsharp": () => installMonacoBasicLanguage("fsharp", () => import("monaco-editor/esm/vs/basic-languages/fsharp/fsharp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/fsharp/fsharp.js")),
   "go": () => installMonacoBasicLanguage("go", () => import("monaco-editor/esm/vs/basic-languages/go/go.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/go/go.js")),
   "graphql": () => installMonacoBasicLanguage("graphql", () => import("monaco-editor/esm/vs/basic-languages/graphql/graphql.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/graphql/graphql.js")),
@@ -72,7 +80,7 @@ export const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader>
   "postiats": () => installMonacoBasicLanguage("postiats", () => import("monaco-editor/esm/vs/basic-languages/postiats/postiats.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/postiats/postiats.js")),
   "powerquery": () => installMonacoBasicLanguage("powerquery", () => import("monaco-editor/esm/vs/basic-languages/powerquery/powerquery.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/powerquery/powerquery.js")),
   "powershell": () => installMonacoBasicLanguage("powershell", () => import("monaco-editor/esm/vs/basic-languages/powershell/powershell.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/powershell/powershell.js")),
-  "protobuf": () => installMonacoBasicLanguage("protobuf", () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.js")),
+  "proto": () => installMonacoBasicLanguage("proto", () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/protobuf/protobuf.js")),
   "pug": () => installMonacoBasicLanguage("pug", () => import("monaco-editor/esm/vs/basic-languages/pug/pug.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/pug/pug.js")),
   "python": () => installMonacoBasicLanguage("python", () => import("monaco-editor/esm/vs/basic-languages/python/python.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/python/python.js")),
   "qsharp": () => installMonacoBasicLanguage("qsharp", () => import("monaco-editor/esm/vs/basic-languages/qsharp/qsharp.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/qsharp/qsharp.js")),
@@ -88,8 +96,7 @@ export const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader>
   "scheme": () => installMonacoBasicLanguage("scheme", () => import("monaco-editor/esm/vs/basic-languages/scheme/scheme.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/scheme/scheme.js")),
   "scss": () => installMonacoBasicLanguage("scss", () => import("monaco-editor/esm/vs/basic-languages/scss/scss.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/scss/scss.js")),
   "shell": () => installMonacoBasicLanguage("shell", () => import("monaco-editor/esm/vs/basic-languages/shell/shell.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/shell/shell.js")),
-  "solidity": () => installMonacoBasicLanguage("solidity", () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.js")),
-  "sophia": () => installMonacoBasicLanguage("sophia", () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/sophia/sophia.js")),
+  "sol": () => installMonacoBasicLanguage("sol", () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/solidity/solidity.js")),
   "sparql": () => installMonacoBasicLanguage("sparql", () => import("monaco-editor/esm/vs/basic-languages/sparql/sparql.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/sparql/sparql.js")),
   "sql": () => installMonacoBasicLanguage("sql", () => import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/sql/sql.js")),
   "st": () => installMonacoBasicLanguage("st", () => import("monaco-editor/esm/vs/basic-languages/st/st.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/st/st.js")),
@@ -100,6 +107,7 @@ export const MONACO_BASIC_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader>
   "typescript": () => installMonacoBasicLanguage("typescript", () => import("monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/typescript/typescript.js")),
   "typespec": () => installMonacoBasicLanguage("typespec", () => import("monaco-editor/esm/vs/basic-languages/typespec/typespec.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/typespec/typespec.js")),
   "vb": () => installMonacoBasicLanguage("vb", () => import("monaco-editor/esm/vs/basic-languages/vb/vb.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/vb/vb.js")),
+  "verilog": () => installMonacoBasicLanguage("verilog", () => import("monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.js")),
   "wgsl": () => installMonacoBasicLanguage("wgsl", () => import("monaco-editor/esm/vs/basic-languages/wgsl/wgsl.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/wgsl/wgsl.js")),
   "xml": () => installMonacoBasicLanguage("xml", () => import("monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/xml/xml.js")),
   "yaml": () => installMonacoBasicLanguage("yaml", () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/yaml/yaml.js")),
@@ -127,9 +135,9 @@ export const MONACO_LANGUAGE_LOADERS: Record<string, MonacoLanguageLoader> = {
 };
 
 export const MONACO_LANGUAGE_LOADER_COUNTS = {
-  basic: 81,
+  basic: 89,
   rich: 4,
   richAliases: 5,
-  total: 82,
+  total: 90,
 } as const;
 

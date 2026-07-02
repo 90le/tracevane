@@ -16,12 +16,26 @@ function contributionDirectories(root, contributionFileFor) {
     .sort();
 }
 
+function contributionLanguageIds(root, language, contributionFileFor) {
+  const source = readFileSync(join(root, language, contributionFileFor(language)), 'utf8');
+  return [...source.matchAll(/\bid:\s*["']([^"']+)["']/g)].map((match) => match[1]);
+}
+
+function basicLanguageEntries() {
+  const root = join(MONACO_VS_ROOT, 'basic-languages');
+  return contributionDirectories(root, (language) => `${language}.contribution.js`)
+    .flatMap((directory) =>
+      contributionLanguageIds(root, directory, (language) => `${language}.contribution.js`)
+        .map((id) => ({ directory, id })),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 test('generated Monaco language loaders cover every installed Monaco language contribution', () => {
   const generated = readFileSync(GENERATED_LOADER_PATH, 'utf8');
-  const basicLanguages = contributionDirectories(
-    join(MONACO_VS_ROOT, 'basic-languages'),
-    (language) => `${language}.contribution.js`,
-  );
+  const basicEntries = basicLanguageEntries();
+  const basicIds = new Set(basicEntries.map((entry) => entry.id));
+  const basicDirectoryById = new Map(basicEntries.map((entry) => [entry.id, entry.directory]));
   const richLanguages = contributionDirectories(
     join(MONACO_VS_ROOT, 'language'),
     () => 'monaco.contribution.js',
@@ -36,16 +50,16 @@ test('generated Monaco language loaders cover every installed Monaco language co
     .filter(([sourceLanguage]) => richLanguages.includes(sourceLanguage))
     .flatMap(([sourceLanguage, aliases]) =>
       aliases
-        .filter((alias) => basicLanguages.includes(alias))
+        .filter((alias) => basicIds.has(alias))
         .sort()
         .map((alias) => [alias, sourceLanguage]),
     )
     .sort(([left], [right]) => left.localeCompare(right));
 
-  for (const language of basicLanguages) {
+  for (const { directory, id } of basicEntries) {
     assert.ok(
-      generated.includes(`installMonacoBasicLanguage("${language}", () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.js"))`),
-      `missing basic Monaco tokenizer installer for ${language}`,
+      generated.includes(`installMonacoBasicLanguage("${id}", () => import("monaco-editor/esm/vs/basic-languages/${directory}/${directory}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${directory}/${directory}.js"))`),
+      `missing basic Monaco tokenizer installer for ${id} from ${directory}`,
     );
   }
   for (const language of richLanguages) {
@@ -53,17 +67,19 @@ test('generated Monaco language loaders cover every installed Monaco language co
       generated.includes(`import("monaco-editor/esm/vs/language/${language}/monaco.contribution.js")`),
       `missing rich Monaco loader for ${language}`,
     );
-    if (basicLanguages.includes(language)) {
+    const basicDirectory = basicDirectoryById.get(language);
+    if (basicDirectory) {
       assert.ok(
-        generated.includes(`"${language}": () => Promise.all([installMonacoBasicLanguage("${language}", () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${language}/${language}.js")), import("monaco-editor/esm/vs/language/${language}/monaco.contribution.js")])`),
+        generated.includes(`"${language}": () => Promise.all([installMonacoBasicLanguage("${language}", () => import("monaco-editor/esm/vs/basic-languages/${basicDirectory}/${basicDirectory}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${basicDirectory}/${basicDirectory}.js")), import("monaco-editor/esm/vs/language/${language}/monaco.contribution.js")])`),
         `rich Monaco loader for ${language} must also install its basic tokenizer contribution`,
       );
     }
   }
-  assert.match(generated, new RegExp(`basic: ${basicLanguages.length},`));
+  assert.match(generated, new RegExp(`basic: ${basicEntries.length},`));
   for (const [alias, sourceLanguage] of richAliasEntries) {
+    const basicDirectory = basicDirectoryById.get(alias);
     assert.ok(
-      generated.includes(`"${alias}": () => Promise.all([installMonacoBasicLanguage("${alias}", () => import("monaco-editor/esm/vs/basic-languages/${alias}/${alias}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${alias}/${alias}.js")), import("monaco-editor/esm/vs/language/${sourceLanguage}/monaco.contribution.js")])`),
+      generated.includes(`"${alias}": () => Promise.all([installMonacoBasicLanguage("${alias}", () => import("monaco-editor/esm/vs/basic-languages/${basicDirectory}/${basicDirectory}.contribution.js"), () => import("monaco-editor/esm/vs/basic-languages/${basicDirectory}/${basicDirectory}.js")), import("monaco-editor/esm/vs/language/${sourceLanguage}/monaco.contribution.js")])`),
       `missing combined rich Monaco alias loader for ${alias} -> ${sourceLanguage}`,
     );
   }
@@ -71,22 +87,21 @@ test('generated Monaco language loaders cover every installed Monaco language co
   assert.match(generated, new RegExp(`richAliases: ${richAliasEntries.length},`));
   assert.match(
     generated,
-    new RegExp(`total: ${new Set([...basicLanguages, ...richLanguages, ...richAliasEntries.map(([alias]) => alias)]).size},`),
+    new RegExp(`total: ${new Set([...basicEntries.map((entry) => entry.id), ...richLanguages, ...richAliasEntries.map(([alias]) => alias)]).size},`),
   );
 });
 
-test('file language detector can produce every installed Monaco basic language id', () => {
+test('generated Monaco language metadata exposes every installed Monaco language id', () => {
+  const metadata = readFileSync('apps/web/src/shared/editor-core/monacoLanguageMetadata.ts', 'utf8');
   const languageDetector = readFileSync(LANGUAGE_DETECTOR_PATH, 'utf8');
-  const basicLanguages = contributionDirectories(
-    join(MONACO_VS_ROOT, 'basic-languages'),
-    (language) => `${language}.contribution.js`,
-  );
+  const basicEntries = basicLanguageEntries();
 
-  for (const language of basicLanguages) {
+  assert.match(languageDetector, /MONACO_LANGUAGE_METADATA/);
+  for (const { id } of basicEntries) {
     assert.match(
-      languageDetector,
-      new RegExp(`"${language.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`),
-      `languageForPath cannot emit Monaco language id ${language}`,
+      metadata,
+      new RegExp(`"id": "${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`),
+      `generated metadata cannot emit Monaco language id ${id}`,
     );
   }
 });
