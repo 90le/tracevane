@@ -247,17 +247,30 @@ export function FileActionsMenu({
 
   // --- the floating menu ----------------------------------------------------
   if (flow === "menu") {
-    // Clamp the menu inside the viewport.
-    const left = Math.min(x, window.innerWidth - 236);
-    const top = Math.min(y, window.innerHeight - 380);
+    // Keep the menu inside the viewport. File-manager actions can be taller
+    // than the old fixed 380px estimate, so constrain the rendered panel and
+    // let it scroll instead of allowing the browser bottom edge to clip items.
+    const viewportPadding = 8;
+    const menuMinWidth = 220;
+    const preferredMenuHeight = 380;
+    const left = Math.max(
+      viewportPadding,
+      Math.min(x, window.innerWidth - menuMinWidth - viewportPadding),
+    );
+    const top = Math.max(
+      viewportPadding,
+      Math.min(y, window.innerHeight - preferredMenuHeight - viewportPadding),
+    );
+    const maxHeight = Math.max(160, window.innerHeight - top - viewportPadding);
     return (
       <div
         ref={menuRef}
         role="menu"
+        data-file-manager-actions-context-menu
         className={cn(
-          "fixed z-[70] min-w-[220px] overflow-hidden rounded-md border border-line-2 bg-panel py-1 shadow-lg",
+          "fixed z-[70] min-w-[220px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-md border border-line-2 bg-panel py-1 shadow-lg",
         )}
-        style={{ left, top }}
+        style={{ left, top, maxHeight }}
       >
         {/* New actions: always available (background right-click = root dir). */}
         <MenuItem

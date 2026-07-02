@@ -119,6 +119,64 @@ async function jumpToPath(page, directoryPath) {
   });
 }
 
+async function assertContextMenuStaysInViewport(page, path) {
+  await waitForEntry(page, path);
+  await page.locator(entrySelector(path)).first().evaluate((node) => {
+    node.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 120,
+        clientY: window.innerHeight - 4,
+      }),
+    );
+  });
+  const menu = page.locator('[data-file-manager-actions-context-menu]').first();
+  await menu.waitFor({ state: 'visible', timeout: 10_000 });
+  const metrics = await menu.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const style = window.getComputedStyle(node);
+    node.scrollTop = node.scrollHeight;
+    const deleteItem = [...node.querySelectorAll('[role="menuitem"]')].find((item) =>
+      (item.textContent || '').includes('删除'),
+    );
+    const deleteRect = deleteItem?.getBoundingClientRect();
+    return {
+      rect: {
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        height: rect.height,
+      },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      maxHeight: style.maxHeight,
+      overflowY: style.overflowY,
+      scrollHeight: node.scrollHeight,
+      deleteBottom: deleteRect?.bottom ?? null,
+    };
+  });
+  if (
+    metrics.rect.bottom > metrics.viewport.height + 1 ||
+    metrics.rect.top < -1 ||
+    metrics.rect.left < -1 ||
+    metrics.rect.right > metrics.viewport.width + 1
+  ) {
+    throw new Error(`Context menu escaped viewport near bottom edge: ${JSON.stringify(metrics)}`);
+  }
+  if (
+    metrics.scrollHeight > metrics.rect.height + 1 &&
+    !['auto', 'scroll'].includes(metrics.overflowY)
+  ) {
+    throw new Error(`Overflowing context menu is not scrollable: ${JSON.stringify(metrics)}`);
+  }
+  if (metrics.deleteBottom !== null && metrics.deleteBottom > metrics.viewport.height + 1) {
+    throw new Error(`Context menu delete action remains clipped after scrolling: ${JSON.stringify(metrics)}`);
+  }
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'detached', timeout: 10_000 });
+}
+
 async function clickFileManagerAction(page, label) {
   await page.locator('[data-file-manager-actions-menu]').first().evaluate((node) => {
     node.open = true;
@@ -227,6 +285,7 @@ async function run() {
 
     await createFileViaUi(page, sourceName);
     await waitForEntry(page, sourcePath);
+    await assertContextMenuStaysInViewport(page, sourcePath);
 
     await createDirectoryViaUi(page, copyTargetName);
     await waitForEntry(page, `${smokeDir}/${copyTargetName}`);
