@@ -1,4 +1,4 @@
-import { ChevronUp, PanelLeftClose, RefreshCw } from "lucide-react";
+import { ChevronUp, FilePlus2, FolderPlus, PanelLeftClose, RefreshCw } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -9,6 +9,8 @@ export interface MiniExplorerToolbarProps {
   loading?: boolean;
   onGoParent: () => void;
   onRefresh: () => void;
+  onCreateFile: () => void;
+  onCreateDirectory: () => void;
   onClose: () => void;
 }
 
@@ -18,6 +20,8 @@ export function MiniExplorerToolbar({
   loading = false,
   onGoParent,
   onRefresh,
+  onCreateFile,
+  onCreateDirectory,
   onClose,
 }: MiniExplorerToolbarProps) {
   return (
@@ -41,6 +45,12 @@ export function MiniExplorerToolbar({
             onClick={onRefresh}
           >
             <RefreshCw className={cn("size-4", loading && "motion-safe:animate-spin")} />
+          </MiniExplorerToolbarButton>
+          <MiniExplorerToolbarButton label="新建文件" onClick={onCreateFile}>
+            <FilePlus2 className="size-4" />
+          </MiniExplorerToolbarButton>
+          <MiniExplorerToolbarButton label="新建目录" onClick={onCreateDirectory}>
+            <FolderPlus className="size-4" />
           </MiniExplorerToolbarButton>
           <MiniExplorerToolbarButton label="收起" onClick={onClose}>
             <PanelLeftClose className="size-4" />

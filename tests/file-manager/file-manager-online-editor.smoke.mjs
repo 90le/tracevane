@@ -314,6 +314,38 @@ async function run() {
     if (miniExplorerTabCount !== 2) {
       throw new Error(`Mini Explorer open should reuse existing tab set, found ${miniExplorerTabCount}`);
     }
+
+    const miniOpsName = 'mini-ops.txt';
+    const miniOpsPath = `${workspacePath}/${miniOpsName}`;
+    const miniOpsRenamedName = 'mini-ops-renamed.txt';
+    const miniOpsRenamedPath = `${workspacePath}/${miniOpsRenamedName}`;
+    await page.locator('[data-online-editor-mini-explorer-toolbar]').getByRole('button', { name: '新建文件' }).click();
+    await page.locator('[data-online-editor-mini-explorer-name-input]').fill(miniOpsName);
+    await page.getByRole('button', { name: '创建' }).click();
+    await page.waitForSelector(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${miniOpsPath}`)}"]`, { timeout: 30_000 });
+    await page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${miniOpsPath}`)}"]`).click();
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), miniOpsPath, { timeout: 30_000 });
+    await replaceActiveEditorContentAndWaitDirty(page, 'mini explorer dirty draft\n');
+    await page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${miniOpsPath}`)}"] [data-online-editor-mini-explorer-node-menu]`).click({ force: true });
+    await page.getByRole('menuitem', { name: '重命名' }).click();
+    await page.locator('[data-online-editor-mini-explorer-name-input]').fill(miniOpsRenamedName);
+    await page.getByRole('button', { name: '重命名' }).click();
+    await page.waitForSelector(`[data-file-online-editor-tab="${cssAttr(`${rootId}:${miniOpsRenamedPath}`)}"]`, { timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), miniOpsRenamedPath, { timeout: 30_000 });
+    await page.waitForSelector(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${miniOpsRenamedPath}`)}"]`, { timeout: 30_000 });
+    await page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${miniOpsRenamedPath}`)}"] [data-online-editor-mini-explorer-node-menu]`).click({ force: true });
+    await page.getByRole('menuitem', { name: '删除…' }).click();
+    await page.locator('[data-online-editor-mini-explorer-delete-confirm-input]').fill('DELETE');
+    await page.locator('[data-online-editor-mini-explorer-delete-permanent]').check();
+    await page.getByRole('button', { name: '永久删除' }).click();
+    await page.waitForSelector('[data-file-online-editor-deleted-banner]', { timeout: 30_000 });
+    await page.waitForSelector('[data-file-online-editor-status-deleted]', { timeout: 30_000 });
+    await clickEditorAction(page, '[data-file-online-editor-close-current]');
+    await page.waitForSelector('[data-file-online-editor-close-confirm]', { timeout: 30_000 });
+    await page.locator('[data-file-online-editor-close-confirm-discard]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-file-online-editor-tabs] [data-file-online-editor-tab]').length === 2, null, { timeout: 30_000 });
+
     await page.locator('[data-file-online-editor-mini-explorer-toggle]').click();
     await page.waitForSelector('[data-online-editor-mini-explorer]', { state: 'detached', timeout: 30_000 });
 
@@ -445,7 +477,12 @@ async function run() {
       throw new Error(`Close-all save content mismatch: ${JSON.stringify(closeAllSaveResult.content)}`);
     }
 
+    const visibleFilterAfterEditor = page.locator('input[placeholder="搜索当前目录"]:visible').first();
+    if (await visibleFilterAfterEditor.count()) await visibleFilterAfterEditor.fill('');
+    await refreshFileList(page);
+    await page.waitForSelector(`[data-file-manager-entry-path="${cssAttr(firstPath)}"]`, { timeout: 30_000 });
     await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] input[type="checkbox"]`).click({ force: true });
+    await page.waitForSelector('[data-file-manager-bulk-primary-action="edit"]', { timeout: 30_000 });
     await page.locator('[data-file-manager-bulk-primary-action="edit"]').click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });

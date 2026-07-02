@@ -101,7 +101,9 @@ import type {
   FileOnlineEditorTab,
   FileOnlineEditorWindowMode,
 } from "./online-editor/FileOnlineEditorDialog";
+import type { OnlineEditorMiniExplorerPathEvent } from "./online-editor/mini-explorer";
 import type { CodeEditorViewState } from "./code-editor/CodeEditor";
+import { editorDocumentId } from "@/shared/editor-core";
 
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
@@ -969,6 +971,63 @@ export function FileManagerPage() {
         }
         return { ...current, [tabId]: metadata };
       });
+    },
+    [],
+  );
+
+  const handleOnlineEditorMiniExplorerPathEvent = React.useCallback(
+    (event: OnlineEditorMiniExplorerPathEvent) => {
+      const remappedIds = new Map<string, string>();
+      const deletedIds = new Set<string>();
+      setOnlineEditorTabs((current) =>
+        current.map((tab) => {
+          if (tab.rootId !== event.rootId) return tab;
+          if (event.type === "deleted") {
+            if (!onlineEditorPathTouchesTarget(event.path, event.targetKind, tab.entry.path)) return tab;
+            deletedIds.add(tab.id);
+            return { ...tab, deleted: true };
+          }
+          if (!onlineEditorPathTouchesTarget(event.oldPath, event.targetKind, tab.entry.path)) return tab;
+          const nextPath = remapOnlineEditorPath(tab.entry.path, event.oldPath, event.newPath, event.targetKind);
+          const nextEntry = retitleFileEntryForPath(tab.entry, nextPath);
+          const nextId = editorDocumentId({ rootId: event.rootId, path: nextPath });
+          remappedIds.set(tab.id, nextId);
+          return {
+            ...tab,
+            id: nextId,
+            entry: nextEntry,
+            deleted: false,
+          };
+        }),
+      );
+      if (remappedIds.size > 0 && event.type !== "deleted") {
+        setOnlineEditorDrafts((current) => remapOnlineEditorRecordKeys(current, remappedIds));
+        setOnlineEditorViewStates((current) => remapOnlineEditorRecordKeys(current, remappedIds));
+        setOnlineEditorReadMetadata((current) => remapOnlineEditorRecordKeys(current, remappedIds));
+        setActiveOnlineEditorTabId((current) => current ? remappedIds.get(current) ?? current : current);
+        setSelectedPath((current) => current && onlineEditorPathTouchesTarget(event.oldPath, event.targetKind, current)
+          ? remapOnlineEditorPath(current, event.oldPath, event.newPath, event.targetKind)
+          : current);
+        toast.info(event.type === "renamed" ? "已同步打开标签路径" : "已同步移动后的标签路径", {
+          description: `${event.oldPath} → ${event.newPath}`,
+        });
+      }
+      if (deletedIds.size > 0) {
+        setOnlineEditorReadMetadata((current) => {
+          let changed = false;
+          const next = { ...current };
+          for (const id of deletedIds) {
+            if (next[id] != null) {
+              delete next[id];
+              changed = true;
+            }
+          }
+          return changed ? next : current;
+        });
+        toast.warning("已标记打开标签为已删除", {
+          description: "clean 标签保留解释状态，dirty 标签保留未保存内容，不会静默关闭。",
+        });
+      }
     },
     [],
   );
@@ -1955,6 +2014,7 @@ export function FileManagerPage() {
                 if (!open) closeOnlineEditorWindow();
               }}
               onOpenFile={openFileOnlineEditor}
+              onMiniExplorerPathEvent={handleOnlineEditorMiniExplorerPathEvent}
               rootAbsolutePaths={Object.fromEntries(roots.map((root) => [root.id, root.absolutePath]))}
               drafts={onlineEditorDrafts}
               viewStates={onlineEditorViewStates}
@@ -3278,6 +3338,54 @@ function sameLocation(
     normalizeRelativePathForUi(left.directoryPath) ===
       normalizeRelativePathForUi(right.directoryPath)
   );
+}
+
+function onlineEditorPathTouchesTarget(
+  targetPath: string,
+  targetKind: FileEntrySummary["kind"],
+  candidatePath: string,
+): boolean {
+  const target = normalizeRelativePathForUi(targetPath);
+  const candidate = normalizeRelativePathForUi(candidatePath);
+  if (targetKind === "directory") return candidate === target || candidate.startsWith(`${target}/`);
+  return candidate === target;
+}
+
+function remapOnlineEditorPath(
+  currentPath: string,
+  oldPath: string,
+  newPath: string,
+  targetKind: FileEntrySummary["kind"],
+): string {
+  const current = normalizeRelativePathForUi(currentPath);
+  const oldNormalized = normalizeRelativePathForUi(oldPath);
+  const newNormalized = normalizeRelativePathForUi(newPath);
+  if (targetKind === "file" || current === oldNormalized) return newNormalized;
+  return normalizeRelativePathForUi(`${newNormalized}/${current.slice(oldNormalized.length).replace(/^\/+/, "")}`);
+}
+
+function retitleFileEntryForPath(entry: FileEntrySummary, nextPath: string): FileEntrySummary {
+  const name = nextPath.split("/").filter(Boolean).pop() ?? nextPath;
+  return {
+    ...entry,
+    path: nextPath,
+    name: name || entry.name,
+    ext: entry.kind === "file" ? extensionOf(name) : null,
+  };
+}
+
+function remapOnlineEditorRecordKeys<T>(
+  record: Record<string, T>,
+  remappedIds: ReadonlyMap<string, string>,
+): Record<string, T> {
+  let changed = false;
+  const next: Record<string, T> = {};
+  for (const [id, value] of Object.entries(record)) {
+    const nextId = remappedIds.get(id) ?? id;
+    if (nextId !== id) changed = true;
+    next[nextId] = value;
+  }
+  return changed ? next : record;
 }
 
 function normalizeRelativePathForUi(value: string): string {

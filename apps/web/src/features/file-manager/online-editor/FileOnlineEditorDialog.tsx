@@ -11,11 +11,13 @@ import { editorDocumentId, editorTitleForPath, languageForPath } from "@/shared/
 import { toast } from "@/design/ui/sonner";
 import type { FileEntrySummary } from "@/features/file-manager/file-tools/types";
 import { OnlineEditorMiniExplorer } from "./mini-explorer";
+import type { OnlineEditorMiniExplorerPathEvent } from "./mini-explorer";
 
 export interface FileOnlineEditorTab {
   id: string;
   rootId: string;
   entry: FileEntrySummary;
+  deleted?: boolean;
 }
 
 export type FileOnlineEditorWindowMode = "normal" | "maximized";
@@ -37,6 +39,7 @@ export interface FileOnlineEditorDialogProps {
   onCloseAllTabs: () => void;
   onOpenChange: (open: boolean) => void;
   onOpenFile: (entry: FileEntrySummary, rootId: string) => void;
+  onMiniExplorerPathEvent?: (event: OnlineEditorMiniExplorerPathEvent) => void;
   rootAbsolutePaths?: Record<string, string>;
   drafts: Record<string, string>;
   viewStates: Record<string, CodeEditorViewState>;
@@ -75,6 +78,7 @@ export function FileOnlineEditorDialog({
   onCloseAllTabs,
   onOpenChange,
   onOpenFile,
+  onMiniExplorerPathEvent,
   rootAbsolutePaths,
   drafts,
   viewStates,
@@ -446,6 +450,14 @@ export function FileOnlineEditorDialog({
                 initialDirectoryPath={miniExplorerInitialLocation.directoryPath}
                 activeRootId={activeTab.rootId}
                 activePath={activeTab.entry.path}
+                rootAbsolutePath={rootAbsolutePaths?.[miniExplorerInitialLocation.rootId || activeTab.rootId]}
+                openTabs={tabs.map((tab) => ({
+                  rootId: tab.rootId,
+                  path: tab.entry.path,
+                  dirty: drafts[tab.id] != null,
+                  deleted: tab.deleted,
+                }))}
+                onPathEvent={onMiniExplorerPathEvent}
                 onOpenFile={(entry, rootId) => {
                   captureActiveViewState();
                   onOpenFile(entry, rootId);
@@ -761,7 +773,7 @@ function OnlineEditorTabPanel({
   onActionMenuClose: () => void;
   onReadMetadataChange: (metadata: FileOnlineEditorReadMetadata | null) => void;
 }) {
-  const readQuery = useFileReadQuery({ rootId: tab.rootId, path: tab.entry.path });
+  const readQuery = useFileReadQuery({ rootId: tab.rootId, path: tab.entry.path }, { enabled: !tab.deleted });
   const writeMutation = useWriteFileContentMutation();
   const read = readQuery.data;
   const [detectedLanguage, setDetectedLanguage] = React.useState(() => languageForPath(tab.entry.path));
@@ -769,20 +781,23 @@ function OnlineEditorTabPanel({
     setDetectedLanguage(languageForPath(tab.entry.path));
   }, [tab.entry.path]);
   const language = detectedLanguage;
+  const deletedWithDraft = Boolean(tab.deleted && draftContent != null);
   const editorContent = draftContent ?? read?.content ?? "";
-  const dirty = draftContent != null && draftContent !== (read?.content ?? "");
-  const editable = Boolean(read?.editable && !read?.truncated);
+  const dirty = tab.deleted ? draftContent != null : draftContent != null && draftContent !== (read?.content ?? "");
+  const editable = Boolean(!tab.deleted && read?.editable && !read?.truncated);
   const lineEnding = React.useMemo(() => describeLineEnding(editorContent), [editorContent]);
   const indentation = React.useMemo(() => describeIndentation(editorContent), [editorContent]);
   const fileSize = React.useMemo(() => formatFileSize(read?.size), [read?.size]);
   const modifiedAt = React.useMemo(() => formatModifiedAt(read?.modifiedAt), [read?.modifiedAt]);
-  const readOnlyReason = read?.truncated
-    ? "已截断"
-    : read && !read.editable
-      ? "只读"
-      : editable
-        ? "可编辑"
-        : "不可编辑";
+  const readOnlyReason = tab.deleted
+    ? "已删除"
+    : read?.truncated
+      ? "已截断"
+      : read && !read.editable
+        ? "只读"
+        : editable
+          ? "可编辑"
+          : "不可编辑";
   const [gotoValue, setGotoValue] = React.useState("");
   const [cursorPosition, setCursorPosition] = React.useState<CodeEditorCursorPosition | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -911,18 +926,26 @@ function OnlineEditorTabPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorRef, tab.id]);
 
-  if (readQuery.isLoading) {
+  if (readQuery.isLoading && !tab.deleted) {
     return <div className="m-4 rounded border border-line bg-panel-2 p-3 text-sm text-muted">读取文件中…</div>;
   }
-  if (readQuery.error && draftContent == null) {
+  if ((tab.deleted || readQuery.error) && draftContent == null) {
     return (
-      <div className="m-4 rounded border border-danger/30 bg-danger/5 p-3 text-sm text-danger" data-file-online-editor-missing-state>
-        <div className="font-medium">文件不可读取或已不存在</div>
-        <div className="mt-1 text-xs">{readQuery.error.message}</div>
+      <div
+        className="m-4 rounded border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+        data-file-online-editor-missing-state
+        data-file-online-editor-deleted-state={tab.deleted ? "true" : "false"}
+      >
+        <div className="font-medium">{tab.deleted ? "文件已删除" : "文件不可读取或已不存在"}</div>
+        <div className="mt-1 text-xs">
+          {tab.deleted
+            ? "Mini Explorer 已删除此路径；clean 标签保留在这里用于解释状态，可关闭标签或从文件列表重新创建。"
+            : readQuery.error?.message}
+        </div>
       </div>
     );
   }
-  if (!read?.textLike || read.content == null) {
+  if (!deletedWithDraft && (!read?.textLike || read.content == null)) {
     return (
       <FileSurfacePreviewPanel
         read={read}
@@ -934,6 +957,7 @@ function OnlineEditorTabPanel({
     );
   }
   const noticeRowCount =
+    (tab.deleted ? 1 : 0) +
     (conflictError ? 1 : 0) +
     (conflictError && conflictCompareOpen ? 1 : 0) +
     (reloadConfirmOpen ? 1 : 0) +
@@ -950,6 +974,12 @@ function OnlineEditorTabPanel({
       data-file-online-editor-dirty-state={dirty ? "dirty" : "clean"}
       data-file-online-editor-readonly-state={editable ? "editable" : "readonly"}
     >
+      {tab.deleted ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-amber/30 bg-amber-soft px-3 py-2 text-xs text-amber" data-file-online-editor-deleted-banner>
+          <span className="font-medium">文件已删除。</span>
+          <span className="text-muted">已保留当前未保存内容；为避免误覆盖，当前标签只读，请复制内容或关闭标签后重新创建文件。</span>
+        </div>
+      ) : null}
       {saveError && !conflictError ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-red/30 bg-red-soft px-3 py-2 text-xs text-red"
@@ -1077,7 +1107,7 @@ function OnlineEditorTabPanel({
           rootId={tab.rootId}
           path={tab.entry.path}
           initialContent={editorContent}
-          readOnly={!editable}
+          readOnly={!editable || tab.deleted}
           profile={editable ? "normal" : "large-readonly"}
           fontSize={preferences.fontSize}
           minimapEnabled={preferences.minimapEnabled}
@@ -1095,7 +1125,7 @@ function OnlineEditorTabPanel({
           onChange={(content) => {
             setSaveError(null);
             onViewStateChange(editorRef.current?.saveViewState() ?? null);
-            if (content === read.content) onDraftClear();
+            if (read && content === read.content) onDraftClear();
             else onDraftChange(content);
           }}
           className="h-full min-h-0 rounded border border-line"
@@ -1138,11 +1168,12 @@ function OnlineEditorTabPanel({
         <span data-file-online-editor-status-indentation>{indentation}</span>
         <span data-file-online-editor-status-encoding>UTF-8</span>
         <span data-file-online-editor-status-size>{fileSize}</span>
-        <span data-file-online-editor-status-permissions>{read.mode} · {read.permissions}</span>
-        <span data-file-online-editor-status-modified title={read.modifiedAt ?? undefined}>{modifiedAt}</span>
+        <span data-file-online-editor-status-permissions>{read ? `${read.mode} · ${read.permissions}` : "权限未知"}</span>
+        <span data-file-online-editor-status-modified title={read?.modifiedAt ?? undefined}>{modifiedAt}</span>
         <span data-file-online-editor-cursor-position>{cursorPosition ? `Ln ${cursorPosition.lineNumber}, Col ${cursorPosition.column}` : "Ln —, Col —"}</span>
         <span data-file-online-editor-status-readonly-reason>{readOnlyReason}</span>
-        {read.truncated ? <span className="text-amber" data-file-online-editor-truncated-state>已截断</span> : null}
+        {read?.truncated ? <span className="text-amber" data-file-online-editor-truncated-state>已截断</span> : null}
+        {tab.deleted ? <span className="text-amber" data-file-online-editor-status-deleted>已删除</span> : null}
       </footer>
     </div>
   );
