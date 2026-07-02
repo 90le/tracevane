@@ -11,6 +11,7 @@ import {
   ChevronUp,
   Package,
   PanelBottomOpen,
+  PanelRightOpen,
   Play,
   RotateCcw,
   Search,
@@ -33,6 +34,7 @@ import type {
   IdeWorkbenchEditorTab,
   WorkbenchActivityId,
   WorkbenchPanelId,
+  WorkbenchPanelPlacement,
 } from "./types";
 import { IDE_ACTIVITY_LABELS, IDE_PANEL_LABELS } from "./types";
 
@@ -237,9 +239,12 @@ export function IdeWorkbenchPage() {
               "grid min-h-0 min-w-0",
               layout.panel.maximized
                 ? "grid-rows-[minmax(0,1fr)]"
-                : "grid-rows-[minmax(0,1fr)_auto]",
+                : layout.panel.placement === "right"
+                  ? "grid-cols-[minmax(0,1fr)_auto]"
+                  : "grid-rows-[minmax(0,1fr)_auto]",
             )}
             data-ide-editor-panel-stack
+            data-ide-panel-stack-placement={layout.panel.placement}
           >
             {!layout.panel.maximized && (
               <EditorDock
@@ -259,6 +264,7 @@ export function IdeWorkbenchPage() {
               onToggleMaximized={layoutApi.togglePanelMaximized}
               onActivePanelChange={layoutApi.setActivePanelId}
               onResizePanel={layoutApi.setPanelSize}
+              onPanelPlacementChange={layoutApi.setPanelPlacement}
             />
           </div>
         </div>
@@ -389,10 +395,14 @@ function PanelArea({
   onToggleMaximized,
   onActivePanelChange,
   onResizePanel,
+  onPanelPlacementChange,
 }: {
   panel: {
+    placement: WorkbenchPanelPlacement;
     collapsed: boolean;
     size: number;
+    bottomSize: number;
+    rightWidth: number;
     maximized: boolean;
     activePanelId: WorkbenchPanelId;
   };
@@ -403,12 +413,28 @@ function PanelArea({
   onToggleMaximized: () => void;
   onActivePanelChange: (id: WorkbenchPanelId) => void;
   onResizePanel: (size: number) => void;
+  onPanelPlacementChange: (placement: WorkbenchPanelPlacement) => void;
 }) {
+  const isRight = panel.placement === "right";
+  const panelStyle = panel.maximized
+    ? undefined
+    : isRight
+      ? { width: panel.rightWidth }
+      : { height: panel.bottomSize };
+
   if (panel.collapsed) {
     return (
-      <div className={cn("border-t border-line bg-panel px-2 py-1", className)} data-ide-panel-collapsed>
+      <div
+        className={cn(
+          "bg-panel px-2 py-1",
+          isRight ? "border-l border-line" : "border-t border-line",
+          className,
+        )}
+        data-ide-panel-collapsed
+        data-ide-panel-placement={panel.placement}
+      >
         <Button variant="ghost" size="sm" onClick={onTogglePanel}>
-          <PanelBottomOpen />
+          {isRight ? <PanelRightOpen /> : <PanelBottomOpen />}
           展开 Panel
         </Button>
       </div>
@@ -418,28 +444,58 @@ function PanelArea({
   return (
     <section
       data-ide-panel
+      data-ide-panel-placement={panel.placement}
       data-ide-panel-maximized={panel.maximized ? "true" : "false"}
-      className={cn("relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-t border-line bg-panel", className)}
-      style={{ height: panel.maximized ? undefined : panel.size }}
+      className={cn(
+        "relative grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-panel",
+        isRight ? "border-l border-line" : "border-t border-line",
+        className,
+      )}
+      style={panelStyle}
     >
-      {!panel.maximized ? <PanelResizeHandle height={panel.size} onResize={onResizePanel} /> : null}
-      <div className="flex min-h-9 items-center gap-1 border-b border-line bg-panel-2 px-2">
-        {(Object.keys(IDE_PANEL_LABELS) as WorkbenchPanelId[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onActivePanelChange(id)}
-            className={cn(
-              "inline-flex min-h-7 items-center gap-1.5 rounded-sm border border-transparent px-2 text-sm text-muted outline-none focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
-              panel.activePanelId === id &&
-                "border-primary-line bg-primary-soft text-ink-strong",
-            )}
-          >
-            {PANEL_ICONS[id]}
-            {IDE_PANEL_LABELS[id]}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-1">
+      {!panel.maximized ? (
+        <PanelResizeHandle placement={panel.placement} size={panel.size} onResize={onResizePanel} />
+      ) : null}
+      <div className="flex min-h-9 min-w-0 items-center gap-1 border-b border-line bg-panel-2 px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {(Object.keys(IDE_PANEL_LABELS) as WorkbenchPanelId[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onActivePanelChange(id)}
+              className={cn(
+                "inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-sm border border-transparent px-2 text-sm text-muted outline-none focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
+                panel.activePanelId === id &&
+                  "border-primary-line bg-primary-soft text-ink-strong",
+              )}
+            >
+              {PANEL_ICONS[id]}
+              {IDE_PANEL_LABELS[id]}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {isRight ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onPanelPlacementChange("bottom")}
+              aria-label="Move Panel Bottom"
+              title="Move Panel Bottom"
+            >
+              <PanelBottomOpen />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onPanelPlacementChange("right")}
+              aria-label="Move Panel Right"
+              title="Move Panel Right"
+            >
+              <PanelRightOpen />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -455,13 +511,13 @@ function PanelArea({
         </div>
       </div>
       {panel.activePanelId === "terminal" ? (
-        <TerminalPanel rootId={rootId} cwd={directoryPath} active />
+        <TerminalPanel rootId={rootId} cwd={directoryPath} active placement={panel.placement} />
       ) : (
         <div className="grid min-h-0 place-items-center p-4 text-sm text-muted">
           <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
             <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
             <div className="mt-1 max-w-lg">
-              M5-B 只接入 Terminal 真实 xterm/PTY；Problems diagnostics、Output channel、Debug runtime 后置。
+              M5.x-B 只增加 Panel bottom/right placement；Problems diagnostics、Output channel、Debug runtime 后置。
             </div>
           </div>
         </div>
@@ -471,20 +527,28 @@ function PanelArea({
 }
 
 function PanelResizeHandle({
-  height,
+  placement,
+  size,
   onResize,
 }: {
-  height: number;
-  onResize: (height: number) => void;
+  placement: WorkbenchPanelPlacement;
+  size: number;
+  onResize: (size: number) => void;
 }) {
   const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    const startX = event.clientX;
     const startY = event.clientY;
-    const startHeight = height;
+    const startSize = size;
     const stack = event.currentTarget.closest<HTMLElement>("[data-ide-editor-panel-stack]");
-    const maxHeight = stack?.clientHeight ?? 2400;
+    const maxSize = placement === "right"
+      ? Math.max(280, Math.floor((stack?.clientWidth ?? 2400) * 0.75))
+      : stack?.clientHeight ?? 2400;
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      onResize(clampNumber(startHeight + startY - moveEvent.clientY, 140, maxHeight));
+      const nextSize = placement === "right"
+        ? startSize + startX - moveEvent.clientX
+        : startSize + startY - moveEvent.clientY;
+      onResize(clampNumber(nextSize, placement === "right" ? 280 : 140, maxSize));
     };
     const handlePointerUp = () => {
       window.removeEventListener("pointermove", handlePointerMove);
@@ -492,7 +556,21 @@ function PanelResizeHandle({
     };
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp, { once: true });
-  }, [height, onResize]);
+  }, [onResize, placement, size]);
+
+  if (placement === "right") {
+    return (
+      <div
+        role="separator"
+        aria-label="调整右侧面板宽度"
+        aria-orientation="vertical"
+        className="absolute bottom-0 left-0 top-0 z-20 w-2 -translate-x-1 cursor-col-resize touch-none bg-transparent outline-none transition-colors hover:bg-primary-soft/70 focus-visible:bg-primary-soft focus-visible:shadow-[var(--ring)]"
+        tabIndex={0}
+        onPointerDown={handlePointerDown}
+        data-ide-panel-resize-handle
+      />
+    );
+  }
 
   return (
     <div

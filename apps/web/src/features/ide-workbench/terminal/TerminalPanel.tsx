@@ -9,10 +9,12 @@ export function TerminalPanel({
   rootId,
   cwd,
   active,
+  placement = "bottom",
 }: {
   rootId: string;
   cwd: string;
   active: boolean;
+  placement?: "bottom" | "right";
 }) {
   const layoutApi = useTerminalLayoutState(`${rootId || "pending-root"}:${cwd || "root"}`);
   const { layout } = layoutApi;
@@ -22,7 +24,7 @@ export function TerminalPanel({
   );
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-panel text-ink" data-ide-terminal-panel>
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] bg-panel text-ink" data-ide-terminal-panel data-ide-terminal-placement={placement}>
       <TerminalTabs
         panes={paneList}
         activePaneId={layout.activePaneId}
@@ -46,6 +48,7 @@ export function TerminalPanel({
             rootId={rootId}
             cwd={cwd}
             activePaneId={layout.activePaneId}
+            compact={placement === "right"}
             onFocusPane={layoutApi.setActivePane}
             onSplitRight={(paneId) => layoutApi.splitPaneById(paneId, "horizontal")}
             onSplitDown={(paneId) => layoutApi.splitPaneById(paneId, "vertical")}

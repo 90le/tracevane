@@ -34,11 +34,16 @@ export interface WorkbenchSideBarState {
   width: number;
 }
 
+export type WorkbenchPanelPlacement = "bottom" | "right";
+
 export interface WorkbenchPanelState {
-  placement: "bottom" | "right";
+  placement: WorkbenchPanelPlacement;
   visible: boolean;
   collapsed: boolean;
+  /** Current primary size for the active placement. Kept for backward-compatible layout persistence. */
   size: number;
+  bottomSize: number;
+  rightWidth: number;
   maximized: boolean;
   activePanelId: WorkbenchPanelId;
 }

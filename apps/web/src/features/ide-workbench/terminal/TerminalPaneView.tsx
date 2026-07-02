@@ -20,6 +20,7 @@ export function TerminalPaneView({
   terminalId,
   title,
   active,
+  compact = false,
   onFocus,
   onSplitRight,
   onSplitDown,
@@ -31,6 +32,7 @@ export function TerminalPaneView({
   terminalId: string;
   title: string;
   active: boolean;
+  compact?: boolean;
   onFocus: (paneId: string) => void;
   onSplitRight: (paneId: string) => void;
   onSplitDown: (paneId: string) => void;
@@ -168,7 +170,8 @@ export function TerminalPaneView({
   return (
     <section
       className={cn(
-        "group/pane grid min-h-[150px] min-w-[220px] grid-rows-[auto_minmax(0,1fr)] overflow-hidden border bg-panel text-ink",
+        "group/pane grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden border bg-panel text-ink",
+        compact ? "min-h-[130px] min-w-[160px]" : "min-h-[150px] min-w-[220px]",
         active ? "border-primary-line shadow-[inset_0_0_0_1px_var(--primary-line)]" : "border-line",
       )}
       data-ide-terminal-pane

@@ -5,6 +5,7 @@ import type {
   IdeWorkbenchLayoutState,
   WorkbenchActivityId,
   WorkbenchPanelId,
+  WorkbenchPanelPlacement,
 } from "./types";
 import {
   IDE_DEFAULT_EDITOR_GROUP_ID,
@@ -34,6 +35,8 @@ export function createDefaultIdeWorkbenchLayoutState(): IdeWorkbenchLayoutState 
       visible: true,
       collapsed: false,
       size: 220,
+      bottomSize: 220,
+      rightWidth: 420,
       maximized: false,
       activePanelId: "terminal",
     },
@@ -98,13 +101,35 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
   }, []);
 
   const setPanelSize = React.useCallback((size: number) => {
-    setLayout((current) => ({
-      ...current,
-      panel: {
-        ...current.panel,
-        size: clamp(size, 140, 2400),
-      },
-    }));
+    setLayout((current) => {
+      const nextSize = clamp(size, current.panel.placement === "right" ? 280 : 140, 2400);
+      return {
+        ...current,
+        panel: {
+          ...current.panel,
+          size: nextSize,
+          bottomSize: current.panel.placement === "bottom" ? nextSize : current.panel.bottomSize,
+          rightWidth: current.panel.placement === "right" ? nextSize : current.panel.rightWidth,
+        },
+      };
+    });
+  }, []);
+
+  const setPanelPlacement = React.useCallback((placement: WorkbenchPanelPlacement) => {
+    setLayout((current) => {
+      const nextSize = placement === "right" ? current.panel.rightWidth : current.panel.bottomSize;
+      return {
+        ...current,
+        panel: {
+          ...current.panel,
+          placement,
+          size: nextSize,
+          collapsed: false,
+          visible: true,
+          maximized: false,
+        },
+      };
+    });
   }, []);
 
   const togglePanelMaximized = React.useCallback(() => {
@@ -151,6 +176,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
     setSidebarWidth,
     togglePanel,
     setPanelSize,
+    setPanelPlacement,
     togglePanelMaximized,
     setActiveActivityId,
     setActivePanelId,
@@ -198,7 +224,7 @@ function normalizeLayout(value: unknown): IdeWorkbenchLayoutState {
       ...fallback.secondarySideBar,
       ...candidate.secondarySideBar,
     },
-    panel: { ...fallback.panel, ...candidate.panel },
+    panel: normalizePanelState(fallback.panel, candidate.panel),
     viewPlacements: Array.isArray(candidate.viewPlacements)
       ? candidate.viewPlacements
       : fallback.viewPlacements,
@@ -213,4 +239,30 @@ function normalizeLayout(value: unknown): IdeWorkbenchLayoutState {
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function normalizePanelState(
+  fallback: IdeWorkbenchLayoutState["panel"],
+  candidate: Partial<IdeWorkbenchLayoutState>["panel"],
+): IdeWorkbenchLayoutState["panel"] {
+  const placement = candidate?.placement === "right" ? "right" : "bottom";
+  const legacySize = typeof candidate?.size === "number" ? candidate.size : undefined;
+  const bottomSize = clamp(
+    typeof candidate?.bottomSize === "number" ? candidate.bottomSize : legacySize ?? fallback.bottomSize,
+    140,
+    2400,
+  );
+  const rightWidth = clamp(
+    typeof candidate?.rightWidth === "number" ? candidate.rightWidth : legacySize ?? fallback.rightWidth,
+    280,
+    2400,
+  );
+  return {
+    ...fallback,
+    ...candidate,
+    placement,
+    bottomSize,
+    rightWidth,
+    size: placement === "right" ? rightWidth : bottomSize,
+  };
 }

@@ -9,6 +9,7 @@ export function TerminalGroupView({
   rootId,
   cwd,
   activePaneId,
+  compact = false,
   onFocusPane,
   onSplitRight,
   onSplitDown,
@@ -19,6 +20,7 @@ export function TerminalGroupView({
   rootId: string;
   cwd: string;
   activePaneId: string;
+  compact?: boolean;
   onFocusPane: (paneId: string) => void;
   onSplitRight: (paneId: string) => void;
   onSplitDown: (paneId: string) => void;
@@ -35,6 +37,7 @@ export function TerminalGroupView({
         terminalId={pane.terminalId}
         title={pane.title}
         active={activePaneId === pane.paneId}
+        compact={compact}
         onFocus={onFocusPane}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
@@ -48,10 +51,10 @@ export function TerminalGroupView({
       className="grid min-h-0 min-w-0 gap-1 bg-panel-3 p-1"
       style={{
         gridTemplateColumns: node.orientation === "horizontal"
-          ? node.children.map(() => "minmax(220px, 1fr)").join(" ")
+          ? node.children.map(() => `minmax(${compact ? 160 : 220}px, 1fr)`).join(" ")
           : undefined,
         gridTemplateRows: node.orientation === "vertical"
-          ? node.children.map(() => "minmax(150px, 1fr)").join(" ")
+          ? node.children.map(() => `minmax(${compact ? 130 : 150}px, 1fr)`).join(" ")
           : undefined,
       }}
       data-ide-terminal-group
@@ -66,6 +69,7 @@ export function TerminalGroupView({
           rootId={rootId}
           cwd={cwd}
           activePaneId={activePaneId}
+          compact={compact}
           onFocusPane={onFocusPane}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
