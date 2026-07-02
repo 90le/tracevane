@@ -147,8 +147,8 @@ Done: M1 Online Editor base
 Done: M1.x Online Editor enhancements
 Done: Monaco-first cleanup
 Done: M2/M2.x unified File Surface and media preview
-Next: M3 Online Editor Mini Explorer + Shared Explorer Core
-Later: M4 IDE Workbench Layout Foundation
+Done: M3 Online Editor Mini Explorer + Shared Explorer Core
+Next: M4 IDE Workbench Layout Foundation
 Later: M5 Real Terminal Foundation
 Later: M5.x Terminal Split / Group / Panel Placement
 Later: M6 Watcher / Search / Problems / Output

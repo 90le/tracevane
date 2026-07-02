@@ -70,4 +70,4 @@ feat/file-manager-file-surface-m2
 
 ## 5. Next action
 
-M2/M2.x implementation and verification are complete and merged. Next implementation candidate is M3 Online Editor Mini Explorer + Shared Explorer Core; see `13-mini-explorer-shared-explorer-plan.md`.
+M2/M2.x implementation and verification are complete and merged. At M2 close, the next candidate was M3 Online Editor Mini Explorer + Shared Explorer Core; M3 is now completed and recorded in `13-mini-explorer-shared-explorer-plan.md` and `archive/m3-execution-summary.md`.

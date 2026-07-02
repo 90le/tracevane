@@ -1,16 +1,16 @@
 # M3 Online Editor Mini Explorer + Shared Explorer Core 方案
 
-Status: Draft / next implementation candidate
+Status: Completed / M3 acceptance closed
 Created: 2026-07-01
-Scope: 文件管理器在线编辑器的轻量文件侧边栏，以及未来独立 IDE Explorer 的共享层
+Scope: 文件管理器在线编辑器的轻量文件侧边栏、轻量文件操作，以及未来独立 IDE Explorer 的共享层
 
-阶段命名统一口径：本文件只覆盖 **M3：Online Editor Mini Explorer + Shared Explorer Core**。M3 不做独立 IDE Workbench、不做 Dockview、不做终端、不做 LSP/Git/Debug；它只交付在线编辑器轻量导航和未来 IDE Explorer 可复用的 Explorer Core。
+阶段命名统一口径：本文件只覆盖 **M3：Online Editor Mini Explorer + Shared Explorer Core**。M3 已完成；下一阶段是 **M4：IDE Workbench Layout Foundation**。M3 不做独立 IDE Workbench、不做 Dockview、不做 ActivityBar、不做 Terminal、不做 Git/LSP/Debug、不做 Problems/Output、不做 watcher 外部变更监听、不做完整 VS Code Explorer；它只交付在线编辑器轻量导航/轻量文件操作和未来 IDE Explorer 可复用的 Explorer Core / Explorer UI primitives。
 
 ## 1. 结论
 
-在线编辑器可以做一个可选的 **Mini Explorer**，但不应直接把完整 IDE 资源管理器塞进在线编辑器。
+在线编辑器已完成一个可选的 **Mini Explorer**，但它不是完整 IDE 资源管理器，也不应继续膨胀成 IDE SideBar。
 
-推荐架构是三层复用，而不是强行共用一个巨大的 Explorer React 组件：
+最终采用的架构是三层复用，而不是强行共用一个巨大的 Explorer React 组件：
 
 ```txt
 Level 1：共享 Explorer Core（必须唯一）
@@ -33,7 +33,7 @@ Level 3：产品容器 Shell（分别实现）
 └─ File Manager：文件管理主页面 list/grid、批量操作、上传下载等
 ```
 
-这样既满足截图里“在线编辑器左侧有文件树”的轻量体验，也避免未来做独立 IDE 时重复实现树、文件操作和状态管理。
+这样既满足“在线编辑器左侧有文件树”的轻量体验，也避免未来做独立 IDE 时重复实现树、文件操作和状态管理。
 
 核心原则：
 
@@ -72,25 +72,28 @@ Level 3：产品容器 Shell（分别实现）
 
 ## 3. 产品边界
 
-### 3.1 Mini Explorer 应该做
+### 3.1 Mini Explorer 已做
 
-- 展示当前编辑文件所在目录，支持向上返回父目录。
-- 支持树型展开/折叠目录，也允许第一版只加载当前目录 + 懒加载子目录。
-- 点击文件：打开到同一个 `FileOnlineEditorDialog` / File Surface tab。
-- 点击目录：展开/折叠，或进入目录，具体交互可按屏幕尺寸选择。
-- 支持刷新当前目录。
+- 首次打开时固定 Mini Explorer 当前目录；打开文件或切换 tab 不会自动跳目录。
+- 支持向上返回父目录、刷新当前目录、树型展开/折叠目录。
+- 点击文件打开到同一个 `FileOnlineEditorDialog` / File Surface tab；文本、代码、媒体、PDF、二进制都进入统一 File Surface。
+- 支持桌面悬浮侧边展开/收起按钮；小屏默认收起并以抽屉覆盖编辑区。
 - 支持新建文件、新建目录、重命名、删除、复制、移动。
 - 支持复制路径、复制相对路径。
-- 支持当前 active tab 自动定位/高亮。
-- 支持折叠侧边栏；小屏下默认收起，可作为抽屉覆盖编辑区。
+- active tab 只在当前树范围内高亮或 reveal；找不到时不自动切换 Mini Explorer 目录。
+- rename/move/delete 已打开 tab 时同步 path/title/document id/draft/viewState/read metadata；dirty 内容保留，delete 标记 deleted 而不是静默关闭。
 
 ### 3.2 Mini Explorer 不应该做
 
 - 不做 ActivityBar。
 - 不做 Dockview。
 - 不做多编辑组拆分。
-- 不做终端、Git、全局搜索、Run、Extensions 面板。
-- 不做 VS Code 级工作区管理。
+- 不做 Terminal。
+- 不做 Git / LSP / Debug。
+- 不做 Problems / Output。
+- 不做 watcher 外部变更监听。
+- 不做全局搜索、Run、Extensions 面板。
+- 不做完整 VS Code Explorer 行为或 VS Code 级工作区管理。
 - 不让文件树状态污染 Monaco model 或 dirty/save 状态。
 
 ### 3.3 独立 IDE Explorer 后续增强
@@ -129,9 +132,8 @@ apps/web/src/shared/explorer-ui
 
 apps/web/src/features/file-manager/online-editor/mini-explorer
 ├─ OnlineEditorMiniExplorer.tsx
-├─ MiniExplorerTree.tsx
 ├─ MiniExplorerToolbar.tsx
-└─ MiniExplorerContextMenu.tsx
+└─ index.ts
 
 apps/web/src/features/ide-workbench/explorer
 ├─ IdeExplorerView.tsx
@@ -139,7 +141,7 @@ apps/web/src/features/ide-workbench/explorer
 └─ IdeExplorerContextMenu.tsx
 ```
 
-第一版可以先把核心共享层放在 `shared/explorer-core`，把最稳定的树节点/空状态/加载状态沉淀到 `shared/explorer-ui`；现有文件管理器继续保持原实现，不强行一次性重构 FileManagerList。Mini Explorer 优先复用 API hooks、`fileOperations`、核心状态模型和基础树 UI primitives。
+M3 已把核心共享层放在 `shared/explorer-core`，把稳定的树、节点、基础工具栏、上下文菜单、空/加载/错误状态沉淀到 `shared/explorer-ui`；现有文件管理器继续保持原实现，不强行一次性重构 FileManagerList。Mini Explorer 已复用 API hooks、`fileOperations`、核心状态模型和基础树 UI primitives。
 
 ## 5. UI/响应式建议
 
@@ -222,9 +224,9 @@ type FilePathChangedEvent =
 - rename / move：未 dirty 的已打开 Tab 自动更新 path/title；dirty Tab 也同步 path/title，并保留未保存内容。
 - rename / move：Monaco model key 和 dirty/save/conflict 状态迁移到 newPath；同一 rootId + path 的多个 IDE group Tab 一起更新。
 - delete：未 dirty 的已打开 Tab 可关闭或标记 deleted，但同一产品壳层内要一致。
-- delete：dirty Tab 必须保留内容并标记 deleted，提示另存为、重新创建或放弃修改，不能静默丢失。
+- delete：dirty Tab 必须保留内容并标记 deleted，明确提示文件已删除，不能静默丢失；另存为/重新创建可作为后续增强。
 - directory delete / move：对所有命中子路径的打开 Tab 批量应用同一规则。
-- 外部 watcher 后续接入；M3/M4 先保证本应用内 FileManager / Mini Explorer / IDE Explorer 发起的操作同步正确。
+- 外部 watcher 后续接入；M3 已保证 Mini Explorer 发起的本应用内操作同步正确，M4 IDE Explorer 继续复用同一规则。
 ```
 
 外部变化接入原则：
@@ -247,13 +249,14 @@ type FilePathChangedEvent =
 - 图片/视频/音频/PDF 基础预览增强。
 - 旧 FilePreviewPanel 路由删除。
 
-### Mini Explorer 新增
+### M3 Mini Explorer 已新增
 
 - 在线编辑器内部快速浏览相邻文件。
 - 在线编辑器内执行常见文件操作。
-- 与当前 active tab 联动定位。
+- active tab 在当前树范围内高亮/定位，但不驱动 Mini Explorer 自动跳目录。
 - 小屏文件列表抽屉。
 - 复用 `shared/explorer-core` 与 `shared/explorer-ui` primitives，不复制文件树和文件操作逻辑。
+- rename/move/delete 打开中 tab 时同步路径状态并保留 dirty 内容。
 
 ### 未来 IDE 复用
 
@@ -262,16 +265,16 @@ type FilePathChangedEvent =
 - 不复用在线编辑器的弹窗/抽屉布局。
 - IDE 自己实现 Workbench SideBar 与 Dockview 集成。
 
-## 8. 推荐实施切片
+## 8. 实施切片完成记录
 
-### M3.1 — Explorer Core 基础
+### M3-A — Explorer Core 基础（已完成）
 
 - 抽 `ExplorerLocation` / `ExplorerNode` / path utils / sort utils。
 - 封装 `useExplorerDirectory`，内部复用 `useFilesBrowseQuery`。
 - 封装 `useExplorerCommands`，内部复用 `fileOperations`。
 - 增加系统测试或静态测试，保证核心不依赖在线编辑器 UI。
 
-### M3.2 — Online Editor Mini Explorer UI
+### M3-B / M3-C — Explorer UI primitives 与 Online Editor Mini Explorer 壳层（已完成）
 
 - `FileOnlineEditorDialog` body 改为 `MiniExplorer + EditorArea` 可选布局。
 - 增加侧栏展开/收起状态。
@@ -280,29 +283,45 @@ type FilePathChangedEvent =
 - active tab 在 Mini Explorer 中高亮。
 - 使用 `shared/explorer-ui` primitives 组装，不新增一套独立树组件体系。
 
-### M3.3 — 文件操作与同步
+### M3-D — 文件操作与打开中 Tab 同步（已完成）
 
 - 新建文件/目录、重命名、删除、复制、移动入口。
 - 操作成功后刷新相关目录。
-- 重命名/移动已打开文件时，同步所有命中的 Tab path/title 和 Monaco model key。
+- 重命名/移动已打开文件时，同步所有命中的 Tab path/title/document id/draft/viewState/read metadata。
 - 删除已打开 dirty 文件前必须二次确认，并保留内容为 deleted Tab，不静默关闭。
 
-### M3.4 — 验证与文档收敛
+### M3-E — 文档与验收收尾（本次）
 
 - smoke：展开/折叠、刷新、上级、新建、重命名、删除、打开文件、移动端抽屉。
 - typecheck + file-manager domain tests。
 - 更新 03/05/08/13 进度。
 
-## 9. 验收标准
+## 9. 验收状态
+
+M3 已完成并进入收尾状态，验收口径如下：
 
 - 在线编辑器可以显示/隐藏 Mini Explorer。
 - Mini Explorer 能加载当前目录并返回上级、刷新、新建文件/目录。
 - 点击文本/代码文件会进入当前在线编辑器 tab；点击媒体/二进制文件进入同一 File Surface 预览 tab。
 - 重命名/删除/复制/移动复用现有文件操作服务，不新建第二套 API。
 - 小屏下侧栏不会挤压导致 Monaco 不可用；抽屉选择文件后可自动收起。
-- 未来 IDE Explorer 可复用共享类型、目录 query、文件操作命令和排序/图标逻辑。
+- 未来 IDE Explorer 可复用共享类型、目录 query、文件操作命令、树状态、基础树 UI primitives 和排序/图标逻辑。
+- Mini Explorer 与 IDE Explorer 不共享完整产品 shell，不采用 `<Explorer mode="mini|ide" />` 大组件路线。
+- M3 未交付且后置：IDE Workbench、Dockview、ActivityBar、Terminal、Git/LSP/Debug、Problems/Output、watcher 外部变更监听、完整 VS Code Explorer 行为。
 
-## 10. 风险
+## 10. M4 下一步入口
+
+M4 从 **IDE Workbench Layout Foundation** 开始，而不是继续扩展 Online Editor Mini Explorer。M4 应读取：
+
+- `04-独立IDE工作台方案.md`
+- `05-前端实现方案.md`
+- `08-实施阶段验收与风险.md` 的 M4 章节
+- `09-IDE参考行为与术语对照.md`
+- `14-视觉主题与设计系统适配.md`
+
+M4 可以复用 `shared/explorer-core` 与 `shared/explorer-ui` primitives，但必须创建独立 Workbench shell：ActivityBar、SideBar Explorer、Editor Area、Panel Area、Dockview 和布局持久化属于 M4+，不能回塞到在线编辑器 Mini Explorer。
+
+## 11. 风险
 
 | 风险 | 影响 | 控制 |
 |---|---|---|

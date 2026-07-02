@@ -25,8 +25,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M1.x Online Editor window/tab/save safety/status/entry enhancements.
 - Done: Monaco-first cleanup.
 - Done: M2/M2.x unified File Surface and media previews.
-- Next: M3 Online Editor Mini Explorer + Shared Explorer Core.
-- Later: M4 IDE Workbench Layout Foundation.
+- Done: M3 Online Editor Mini Explorer + Shared Explorer Core.
+- Next: M4 IDE Workbench Layout Foundation.
 - Later: M5 Real Terminal Foundation.
 - Later: M5.x Terminal Split / Group / Panel Placement.
 - Later: M6 Watcher / Search / Problems / Output.
@@ -38,7 +38,7 @@ Always read these before changing matching scope:
 
 - Overall editor/IDE direction: `docs/ide-code-editor-solution/00-README.md`, `08-实施阶段验收与风险.md`.
 - File Manager Online Editor / File Surface: `03-文件管理器在线编辑器方案.md`, `10-monaco-first-online-editor-strategy.md`, `12-file-surface-unification-and-monaco-gap-plan.md`.
-- Mini Explorer / Shared Explorer Core: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
+- Completed Mini Explorer / Shared Explorer Core record: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
 - IDE Workbench layout: `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, `09-IDE参考行为与术语对照.md`.
 - Terminal / LSP / Git / Debug: `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, `08`.
 - Visual/theme work: `14-视觉主题与设计系统适配.md`, `DESIGN.md`, `docs/界面设计守则.md`, `apps/web/src/design/theme.css`.

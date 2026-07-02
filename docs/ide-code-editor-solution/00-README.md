@@ -49,7 +49,7 @@
 |---|---|
 | [01-产品边界与形态拆分.md](./01-产品边界与形态拆分.md) | 定义“文件管理器在线编辑器”“可选 Mini Explorer”“独立 IDE 工作台”的边界 |
 | [02-共享内核与总体架构.md](./02-共享内核与总体架构.md) | 定义共享 File / Editor / Explorer / Monaco / Dirty / Save 内核，避免在线编辑器和独立 IDE 重复开发 |
-| [03-文件管理器在线编辑器方案.md](./03-文件管理器在线编辑器方案.md) | 当前已落地的文件管理器在线编辑器/File Surface，以及下一步 Mini Explorer 边界 |
+| [03-文件管理器在线编辑器方案.md](./03-文件管理器在线编辑器方案.md) | 当前已落地的文件管理器在线编辑器/File Surface 与 Mini Explorer 边界 |
 | [04-独立IDE工作台方案.md](./04-独立IDE工作台方案.md) | M4 IDE Workbench Layout Foundation，以及最终 IDE 自由布局目标 |
 | [05-前端实现方案.md](./05-前端实现方案.md) | React 前端模块、共享层目录、Monaco 接入、Explorer 复用、CommandService 和布局接入建议 |
 | [06-后端服务与接口方案.md](./06-后端服务与接口方案.md) | 文件 API、目录树、读写、权限、安全、watcher、终端接口 |
@@ -65,7 +65,7 @@
 | [10-monaco-first-online-editor-strategy.md](./10-monaco-first-online-editor-strategy.md) | Monaco-first 当前口径：Monaco 负责编辑器原生能力，Tracevane 负责文件生命周期和壳层 |
 | [11-monaco-full-capability-plan.md](./11-monaco-full-capability-plan.md) | Monaco 全能力启用、全语言懒加载、版本与验证策略 |
 | [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md) | 已完成的统一 File Surface、Monaco 本地化/快捷键/媒体预览和旧预览删除记录 |
-| [13-mini-explorer-shared-explorer-plan.md](./13-mini-explorer-shared-explorer-plan.md) | M3：Online Editor Mini Explorer + Shared Explorer Core 的共享层设计和落地计划 |
+| [13-mini-explorer-shared-explorer-plan.md](./13-mini-explorer-shared-explorer-plan.md) | M3：Online Editor Mini Explorer + Shared Explorer Core 的已完成设计、实现边界和验收记录 |
 
 ### 历史执行记录归档
 
@@ -78,6 +78,7 @@
 | [archive/m1x-execution-plan.md](./archive/m1x-execution-plan.md) | M1.x 编辑器窗口、Tab、安全保存、状态栏、入口增强记录 |
 | [archive/m2-execution-plan.md](./archive/m2-execution-plan.md) | M2 统一 File Surface 与 Monaco 能力补齐执行计划 |
 | [archive/m2-progress.md](./archive/m2-progress.md) | M2/M2.x 进度、验证证据、风险和决策日志 |
+| [archive/m3-execution-summary.md](./archive/m3-execution-summary.md) | M3 Mini Explorer / Shared Explorer Core 完成总结、边界和验证记录 |
 
 ## 推荐技术选型
 
@@ -127,12 +128,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - Monaco 语言覆盖采用“官方元数据 + 懒加载 + 有界内容样本识别”，可处理无扩展名/备份后缀 JSON 与常见代码文件，未知内容安全回退 plaintext。
 - 旧 FilePreviewPanel 预览/编辑壳已删除。
 
-下一阶段 M3：Online Editor Mini Explorer + Shared Explorer Core
-- 在在线编辑器中增加可选、可折叠、响应式的小型文件导航。
-- 只做当前目录/邻近目录浏览、打开到当前 File Surface、新建/重命名/删除/复制/移动等文件操作入口。
-- 抽出共享 Explorer Core，未来独立 IDE SideBar Explorer 复用数据模型、文件操作、树状态和图标/排序逻辑。
+已完成 M3：Online Editor Mini Explorer + Shared Explorer Core
+- 在线编辑器已具备可选、可折叠、响应式的小型文件导航，桌面侧栏与小屏抽屉分离。
+- 已支持当前目录/邻近目录浏览、上级、刷新、树展开/折叠、打开到当前 File Surface，以及新建/重命名/删除/复制/移动/复制路径等轻量文件操作。
+- 已抽出 `shared/explorer-core` 与 `shared/explorer-ui` primitives，未来独立 IDE SideBar Explorer 复用数据模型、文件操作、树状态和基础树 UI，但不复用在线编辑器容器 shell。
+- 已打开 tab 在 rename/move/delete 时同步 path/title/document id/draft/viewState/read metadata；dirty 内容不会因文件操作静默丢失。Mini Explorer 目录不会随 tab 切换或打开文件自动跳转。
 
-后续 M4：IDE Workbench Layout Foundation
+下一阶段 M4：IDE Workbench Layout Foundation
 - 独立路由、ActivityBar、SideBar Explorer、Dockview、多编辑组、底部 Panel 框架、布局持久化；验收口径是工作台布局基础，不是完整 IDE。
 - 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标是完整 IDE 级自由布局：Explorer/SideBar、Editor、Terminal、Panel 等主区域可移动、折叠、调整尺寸、拆分并恢复。阶段性交付不能把这些未来能力写死。
 - M4 必做默认布局、Explorer 折叠/调宽、Editor split、Panel 折叠/调高/最大化和布局保存/恢复；右侧 Explorer、右侧 Panel、真实终端、终端 split、全 View docking 后置。
