@@ -149,8 +149,8 @@ Done: Monaco-first cleanup
 Done: M2/M2.x unified File Surface and media preview
 Done: M3 Online Editor Mini Explorer + Shared Explorer Core
 Done: M4 IDE Workbench Layout Foundation
-Next: M5 Real Terminal Foundation
-Later: M5.x Terminal Split / Group / Panel Placement
+Done: M5 Real Terminal Foundation
+Next: M5.x Terminal Split / Group / Panel Placement
 Later: M6 Watcher / Search / Problems / Output
 Later: M7 LSP / Git / Debug
 ```
@@ -159,7 +159,7 @@ Do not pull future-stage functionality forward unless the user explicitly change
 
 - M3 must not introduce ActivityBar, Dockview, terminal, Git, LSP, Debug, Problems, Output, or a full IDE SideBar shell.
 - M4 must not pretend to have real terminal, LSP, Git, Debug, Problems diagnostics, Output channels, or full View Movement; it is the Workbench Layout Foundation.
-- M5 must prove real terminal lifecycle and safety before terminal split/group or global docking.
+- M5 is complete: real terminal lifecycle and safety are proven at foundation level; M5.x may add terminal split/group or Panel placement without weakening M5 root/cwd and shell/profile guardrails.
 - M6 must close watcher/search/problems/output foundations before M7 LSP/Git/Debug.
 
 Shared architecture rules:

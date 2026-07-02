@@ -21,14 +21,14 @@
 终端最终目标接近 VS Code，但分阶段交付：
 
 ```txt
-M5：Real Terminal Foundation
-- xterm.js + WebSocket + node-pty。
-- 多终端 Tab、create/input/output/resize/close/kill。
-- cwd guard、shell 白名单、权限 canOpenTerminal、session cleanup。
-- disconnected/exited/error 状态明确显示。
-- 不做 split terminal pane，不做 terminal group，不做 Panel right placement，不做 LSP/Git/Debug。
+M5：Real Terminal Foundation（已完成）
+- 已接入 Workbench bottom Panel Terminal tab 的真实 xterm + WebSocket + node-pty/PTY 基础。
+- 已完成单终端 session 基础、create/input/output/resize/close/kill。
+- 已完成 cwd/root guard、shell/profile allowlist、session cleanup 与基础状态呈现。
+- 已补 `smoke:ide:terminal-foundation`。
+- 未做 split terminal pane、terminal group、Panel right placement、Terminal 全局 docking、LSP/Git/Debug。
 
-M5.x：Terminal Split / Group / Panel Placement
+M5.x：Terminal Split / Group / Panel Placement（下一步）
 - TerminalGroup / TerminalPane 模型。
 - Split Terminal Right / Split Terminal Down。
 - pane resize、focus、close/kill、move between groups。
@@ -204,6 +204,39 @@ Verification
 ```
 
 M5-A 明确不做：真实终端实现、前端 xterm 接入、terminal split/group、Panel right placement、Terminal View 全局 docking、LSP、Git、Debug、Problems/Output 数据、watcher、插件市场、完整 VS Code terminal behavior。
+
+## 2.2 M5-C 验收收口
+
+M5 已完成 Real Terminal Foundation，汇总见 [`archive/m5-execution-summary.md`](./archive/m5-execution-summary.md)。
+
+当前 Terminal 能力边界：
+
+```txt
+- bottom Panel Terminal tab。
+- 单终端 session 基础。
+- create / input / output。
+- resize。
+- close / kill。
+- cwd/root guard。
+- shell/profile allowlist。
+- smoke:ide:terminal-foundation。
+```
+
+M5 明确未做，并后置到 M5.x / M6 / M7：
+
+```txt
+- terminal split/group。
+- Panel right placement。
+- Terminal View 全局 docking / View Movement。
+- Terminal 作为 editor-like tab。
+- Problems / Output 数据接入。
+- watcher。
+- LSP。
+- Git。
+- Debug。
+- 插件市场。
+- 完整 VS Code terminal behavior。
+```
 
 ## 3. 任务运行方案
 
