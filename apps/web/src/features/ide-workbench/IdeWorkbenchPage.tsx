@@ -26,6 +26,7 @@ import { isExplorerPathInside, joinExplorerPath, normalizeExplorerPath } from "@
 import type { ExplorerEntry } from "@/shared/explorer-core";
 import { EditorDock } from "./editor";
 import { IdeExplorerView } from "./explorer";
+import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import type {
@@ -252,6 +253,8 @@ export function IdeWorkbenchPage() {
             )}
             <PanelArea
               panel={layout.panel}
+              rootId={rootId}
+              directoryPath={directoryPath}
               onTogglePanel={layoutApi.togglePanel}
               onToggleMaximized={layoutApi.togglePanelMaximized}
               onActivePanelChange={layoutApi.setActivePanelId}
@@ -379,6 +382,8 @@ function ActivityBar({
 
 function PanelArea({
   panel,
+  rootId,
+  directoryPath,
   className,
   onTogglePanel,
   onToggleMaximized,
@@ -391,6 +396,8 @@ function PanelArea({
     maximized: boolean;
     activePanelId: WorkbenchPanelId;
   };
+  rootId: string;
+  directoryPath: string;
   className?: string;
   onTogglePanel: () => void;
   onToggleMaximized: () => void;
@@ -447,14 +454,18 @@ function PanelArea({
           </Button>
         </div>
       </div>
-      <div className="grid min-h-0 place-items-center p-4 text-sm text-muted">
-        <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
-          <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
-          <div className="mt-1 max-w-lg">
-            M4 只提供 Panel Area、固定 Tab、折叠/高度/最大化状态；真实 Terminal、Problems diagnostics、Output channel、Debug runtime 后置。
+      {panel.activePanelId === "terminal" ? (
+        <TerminalPanel rootId={rootId} cwd={directoryPath} active />
+      ) : (
+        <div className="grid min-h-0 place-items-center p-4 text-sm text-muted">
+          <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
+            <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
+            <div className="mt-1 max-w-lg">
+              M5-B 只接入 Terminal 真实 xterm/PTY；Problems diagnostics、Output channel、Debug runtime 后置。
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }

@@ -569,6 +569,14 @@ export function resolveFilesServiceExistingFilePath(
   return resolveExistingPath(config, rootId, targetPath, { allowRoot: false, kind: "file" });
 }
 
+export function resolveFilesServiceDirectoryPath(
+  config: TracevaneServerConfig,
+  rootId: string | undefined,
+  targetPath: string | undefined,
+): FilesResolvedPath {
+  return resolveExistingPath(config, rootId, targetPath, { allowRoot: true, kind: "directory" });
+}
+
 function resolveTargetPath(
   config: TracevaneServerConfig,
   rootId: string | undefined,

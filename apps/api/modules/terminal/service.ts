@@ -8,6 +8,7 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
+import { resolveFilesServiceDirectoryPath } from "../files/service.js";
 import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
@@ -111,12 +112,16 @@ interface TerminalSession {
   lastAttachedAt: string | null;
 }
 
-type TerminalSessionLaunchMetadata = Partial<
-  Pick<
-    TerminalGatewayAttachPayload,
-    "profileId" | "targetKind" | "cwd" | "pinned"
-  >
->;
+type TerminalSessionLaunchMetadata = Partial<TerminalGatewayAttachPayload>;
+
+type TerminalLaunchMetadata = Required<
+  Pick<TerminalSession, "cwd" | "targetKind" | "pinned">
+> & {
+  profileId: string | null;
+  shell: string;
+  cols: number;
+  rows: number;
+};
 
 interface TerminalCliSpec {
   id: TerminalBinaryId;
@@ -168,6 +173,26 @@ const TERMINAL_CONTROL_BATCH_MAX_LENGTH = 4096;
 const WS_PING_INTERVAL = 20_000;
 const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
+const DEFAULT_TERMINAL_COLS = 120;
+const DEFAULT_TERMINAL_ROWS = 30;
+const ALLOWED_TERMINAL_SHELLS = new Set([
+  "bash",
+  "sh",
+  "zsh",
+  "fish",
+  "pwsh",
+  "powershell",
+  "cmd",
+]);
+const KNOWN_TERMINAL_PROFILE_IDS = new Set([
+  "local-shell",
+  "agent-codex",
+  "agent-claude",
+  "agent-opencode",
+  "marketplace-clawhub",
+  "marketplace-skillhub",
+  "remote-ssh",
+]);
 
 const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
   claude: {
@@ -1412,41 +1437,73 @@ export function createTerminalService(
     return true;
   }
 
-  function resolveLaunchCwd(rawCwd: unknown): string {
-    const fallback = options.config.openclawRoot || process.cwd();
-    const requested = String(rawCwd || "").trim();
-    if (!requested) return fallback;
+  function normalizeTerminalShell(value: unknown): string | null {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const shellName = path.basename(raw).toLowerCase();
+    if (!ALLOWED_TERMINAL_SHELLS.has(shellName)) {
+      throw new Error(`terminal_shell_not_allowed: ${shellName || raw}`);
+    }
+    return raw;
+  }
 
-    const candidate = path.isAbsolute(requested)
-      ? requested
-      : path.resolve(fallback, requested);
+  function resolveShellForProfile(
+    profileId: unknown,
+    requestedShell: unknown,
+  ): string {
+    const normalizedProfileId = String(profileId || "").trim();
+    if (normalizedProfileId && !KNOWN_TERMINAL_PROFILE_IDS.has(normalizedProfileId)) {
+      throw new Error(`terminal_profile_not_allowed: ${normalizedProfileId}`);
+    }
+
+    const explicitShell = normalizeTerminalShell(requestedShell);
+    if (explicitShell) return explicitShell;
+
+    return normalizeTerminalShell(process.env.SHELL) || "bash";
+  }
+
+  function resolveLaunchCwd(metadata: TerminalSessionLaunchMetadata = {}): string {
+    const rawRootId = String(metadata.rootId || metadata.workspaceId || "").trim();
+    const rawCwd = String(metadata.cwd || "").trim();
+
+    if (rawRootId) {
+      if (path.isAbsolute(rawCwd)) {
+        throw new Error("Terminal cwd must be relative to the selected workspace root");
+      }
+      return resolveFilesServiceDirectoryPath(
+        options.config,
+        rawRootId,
+        rawCwd || undefined,
+      ).absolutePath;
+    }
+
+    const fallback = options.config.openclawRoot || process.cwd();
+    if (!rawCwd) return fallback;
+    if (path.isAbsolute(rawCwd)) {
+      throw new Error("Terminal cwd must not be an arbitrary absolute path");
+    }
+
     try {
+      const candidate = path.resolve(fallback, rawCwd);
       const candidateStat = fs.statSync(candidate);
-      if (candidateStat.isDirectory()) {
-        return candidate;
-      }
-      if (candidateStat.isFile()) {
-        const parentDirectory = path.dirname(candidate);
-        if (fs.statSync(parentDirectory).isDirectory()) {
-          return parentDirectory;
-        }
-      }
+      if (candidateStat.isDirectory()) return candidate;
     } catch {
-      // Invalid launch directories fall back to the configured workspace root.
+      // Invalid launch directories fall through to the configured workspace root.
     }
     return fallback;
   }
 
   function buildLaunchMetadata(
     metadata: TerminalSessionLaunchMetadata = {},
-  ): Required<Pick<TerminalSession, "cwd" | "targetKind" | "pinned">> & {
-    profileId: string | null;
-  } {
+  ): TerminalLaunchMetadata {
     return {
-      cwd: resolveLaunchCwd(metadata.cwd),
-      profileId: String(metadata.profileId || "").trim() || null,
+      cwd: resolveLaunchCwd(metadata),
+      profileId: String(metadata.profileId || "").trim() || "local-shell",
+      shell: resolveShellForProfile(metadata.profileId, metadata.shell),
       targetKind: normalizeTerminalTargetKind(metadata.targetKind) || "local",
       pinned: typeof metadata.pinned === "boolean" ? metadata.pinned : false,
+      cols: normalizeTerminalDimension(metadata.cols) || DEFAULT_TERMINAL_COLS,
+      rows: normalizeTerminalDimension(metadata.rows) || DEFAULT_TERMINAL_ROWS,
     };
   }
 
@@ -1460,14 +1517,14 @@ export function createTerminalService(
       );
     }
 
-    const shell = process.env.SHELL || "/bin/bash";
     const launchMetadata = buildLaunchMetadata(metadata);
+    const shell = launchMetadata.shell;
     const cwd = launchMetadata.cwd;
     const lastActivityAt = new Date().toISOString();
     const term = pty.spawn(shell, [], {
       name: "xterm-256color",
-      cols: 120,
-      rows: 30,
+      cols: launchMetadata.cols,
+      rows: launchMetadata.rows,
       cwd,
       env: buildTerminalEnv(options.config),
     });
@@ -1488,8 +1545,8 @@ export function createTerminalService(
       cleanupTimer: null,
       descriptorPersistTimer: null,
       closed: false,
-      lastCols: 120,
-      lastRows: 30,
+      lastCols: launchMetadata.cols,
+      lastRows: launchMetadata.rows,
       shell,
       cwd,
       profileId: launchMetadata.profileId,
@@ -1628,7 +1685,12 @@ export function createTerminalService(
           return createSession(sessionId, {
             profileId: options.metadata?.profileId ?? persisted.profileId,
             targetKind: options.metadata?.targetKind ?? persisted.targetKind,
+            rootId: options.metadata?.rootId,
+            workspaceId: options.metadata?.workspaceId,
             cwd: options.metadata?.cwd ?? persisted.cwd,
+            shell: options.metadata?.shell,
+            cols: options.metadata?.cols,
+            rows: options.metadata?.rows,
             pinned: options.metadata?.pinned ?? persisted.pinned,
           });
         }
@@ -2354,7 +2416,12 @@ export function createTerminalService(
         targetKind: url.searchParams.get(
           "targetKind",
         ) as TerminalTargetKind | null,
+        rootId: url.searchParams.get("rootId"),
+        workspaceId: url.searchParams.get("workspaceId"),
         cwd: url.searchParams.get("cwd"),
+        shell: url.searchParams.get("shell"),
+        cols: Number(url.searchParams.get("cols") || 0) || null,
+        rows: Number(url.searchParams.get("rows") || 0) || null,
         pinned:
           pinnedParam === null
             ? undefined

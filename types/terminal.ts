@@ -233,9 +233,14 @@ export interface TerminalInstallStreamEvent {
 
 export interface TerminalGatewayAttachPayload {
   sid?: string | null;
+  rootId?: string | null;
+  workspaceId?: string | null;
   profileId?: string | null;
   targetKind?: TerminalTargetKind | null;
   cwd?: string | null;
+  shell?: string | null;
+  cols?: number | null;
+  rows?: number | null;
   pinned?: boolean | null;
   lastSeq?: number | null;
   instanceId?: string | null;
