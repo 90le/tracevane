@@ -7,10 +7,9 @@ import {
   FolderOpen,
   GitBranch,
   ListChecks,
-  Maximize2,
-  Minimize2,
+  ChevronDown,
+  ChevronUp,
   Package,
-  PanelBottomClose,
   PanelBottomOpen,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,6 +18,7 @@ import {
   RotateCcw,
   Search,
   Terminal,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
@@ -34,6 +34,7 @@ import {
   ExplorerToolbarBase,
   ExplorerTree,
 } from "@/shared/explorer-ui";
+import { EditorDock } from "./editor";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import type {
   IdeWorkbenchEditorTab,
@@ -93,23 +94,64 @@ export function IdeWorkbenchPage() {
         editorGroups: current.editorGroups.map((group) => {
           if (group.id !== current.activeEditorGroupId) return group;
           const existing = group.tabs.find((item) => item.id === tab.id);
+          if (existing) return { ...group, activeTabId: existing.id };
+
+          const previewIndex = group.tabs.findIndex(
+            (item) => item.preview && !item.pinned && !item.dirty,
+          );
+          const tabs = previewIndex >= 0
+            ? group.tabs.map((item, index) => (index === previewIndex ? tab : item))
+            : [...group.tabs, tab];
           return {
             ...group,
             activeTabId: tab.id,
-            tabs: existing ? group.tabs : [...group.tabs, tab],
+            tabs,
           };
         }),
       }));
     },
-    [layoutApi, rootId],
+    [layoutApi],
   );
 
   const activeGroup = layout.editorGroups.find(
     (group) => group.id === layout.activeEditorGroupId,
   ) ?? layout.editorGroups[0];
-  const activeTab = activeGroup?.tabs.find(
-    (tab) => tab.id === activeGroup.activeTabId,
-  ) ?? null;
+
+  const setDockviewLayout = React.useCallback(
+    (dockviewLayout: typeof layout.dockviewLayout) => {
+      layoutApi.setLayout((current) => ({ ...current, dockviewLayout }));
+    },
+    [layoutApi],
+  );
+
+  const setActiveEditorTab = React.useCallback(
+    (tabId: string | null) => {
+      layoutApi.setLayout((current) => ({
+        ...current,
+        editorGroups: current.editorGroups.map((group) =>
+          group.id === current.activeEditorGroupId
+            ? { ...group, activeTabId: tabId }
+            : group,
+        ),
+      }));
+    },
+    [layoutApi],
+  );
+
+  const pinEditorTab = React.useCallback(
+    (tabId: string) => {
+      layoutApi.setLayout((current) => ({
+        ...current,
+        editorGroups: current.editorGroups.map((group) => ({
+          ...group,
+          tabs: group.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, preview: false, pinned: true } : tab,
+          ),
+        })),
+      }));
+    },
+    [layoutApi],
+  );
 
   return (
     <div className="grid h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink">
@@ -124,35 +166,42 @@ export function IdeWorkbenchPage() {
           onSelect={layoutApi.setActiveActivityId}
         />
         <div
-          className={cn(
-            "grid min-h-0 min-w-0",
-            layout.panel.maximized
-              ? "grid-rows-[minmax(0,1fr)]"
-              : "grid-rows-[minmax(0,1fr)_auto]",
-          )}
+          className="grid min-h-0 min-w-0"
+          style={{
+            gridTemplateColumns: layout.sideBar.collapsed
+              ? "0px minmax(0,1fr)"
+              : `${layout.sideBar.width}px minmax(0,1fr)`,
+          }}
         >
+          <IdeSideBar
+            hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+            rootId={rootId}
+            rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+            sideBarWidth={layout.sideBar.width}
+            directoryPath={directoryPath}
+            onDirectoryPathChange={setDirectoryPath}
+            onToggleSidebar={layoutApi.toggleSidebar}
+            onResizeSidebar={layoutApi.setSidebarWidth}
+            onOpenEntry={openEntry}
+          />
           <div
-            className="grid min-h-0 min-w-0"
-            style={{
-              gridTemplateColumns: layout.sideBar.collapsed
-                ? "0px minmax(0,1fr)"
-                : `${layout.sideBar.width}px minmax(0,1fr)`,
-            }}
+            className={cn(
+              "grid min-h-0 min-w-0",
+              layout.panel.maximized
+                ? "grid-rows-[minmax(0,1fr)]"
+                : "grid-rows-[minmax(0,1fr)_auto]",
+            )}
           >
-            <IdeSideBar
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              rootId={rootId}
-              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-              sideBarWidth={layout.sideBar.width}
-              directoryPath={directoryPath}
-              onDirectoryPathChange={setDirectoryPath}
-              onToggleSidebar={layoutApi.toggleSidebar}
-              onResizeSidebar={layoutApi.setSidebarWidth}
-              onOpenEntry={openEntry}
-            />
-            <EditorArea activeGroup={activeGroup} activeTab={activeTab} />
-          </div>
-          {!layout.panel.maximized && (
+            {!layout.panel.maximized && (
+              <EditorDock
+                tabs={activeGroup?.tabs ?? []}
+                activeTabId={activeGroup?.activeTabId ?? null}
+                dockviewLayout={layout.dockviewLayout}
+                onDockviewLayoutChange={setDockviewLayout}
+                onActiveTabChange={setActiveEditorTab}
+                onPinTab={pinEditorTab}
+              />
+            )}
             <PanelArea
               panel={layout.panel}
               onTogglePanel={layoutApi.togglePanel}
@@ -160,7 +209,7 @@ export function IdeWorkbenchPage() {
               onActivePanelChange={layoutApi.setActivePanelId}
               onResizePanel={layoutApi.setPanelSize}
             />
-          )}
+          </div>
         </div>
       </div>
       <WorkbenchStatusBar
@@ -183,16 +232,6 @@ export function IdeWorkbenchPage() {
           <PanelLeftOpen />
           Explorer
         </Button>
-      )}
-      {layout.panel.maximized && (
-        <PanelArea
-          className="fixed inset-x-[44px] bottom-[24px] top-[50px] z-20 shadow-xl"
-          panel={layout.panel}
-          onTogglePanel={layoutApi.togglePanel}
-          onToggleMaximized={layoutApi.togglePanelMaximized}
-          onActivePanelChange={layoutApi.setActivePanelId}
-          onResizePanel={layoutApi.setPanelSize}
-        />
       )}
     </div>
   );
@@ -369,59 +408,9 @@ function IdeSideBar({
         )}
       </div>
       <div className="border-t border-line p-2 text-xs text-subtle">
-        M4-A：复用 explorer-core / explorer-ui；文件操作、完整右键菜单、reveal active file 进入 M4-B/M4-C。
+        M4：复用 explorer-core / explorer-ui；文件操作、完整右键菜单、reveal active file 后续迭代。
       </div>
     </aside>
-  );
-}
-
-function EditorArea({
-  activeGroup,
-  activeTab,
-}: {
-  activeGroup: { id: string; activeTabId: string | null; tabs: IdeWorkbenchEditorTab[] } | undefined;
-  activeTab: IdeWorkbenchEditorTab | null;
-}) {
-  return (
-    <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-canvas">
-      <div className="flex min-h-10 min-w-0 items-center border-b border-line bg-panel px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-          {(activeGroup?.tabs ?? []).length === 0 ? (
-            <span className="px-2 text-sm text-subtle">Editor Group: main</span>
-          ) : (
-            activeGroup?.tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={cn(
-                  "min-w-0 max-w-[220px] truncate rounded-sm border border-line bg-panel-2 px-3 py-1.5 text-sm text-muted",
-                  tab.id === activeGroup.activeTabId &&
-                    "border-primary-line bg-primary-soft text-ink-strong",
-                )}
-                title={tab.ref.path}
-              >
-                {tab.title}
-              </button>
-            ))
-          )}
-        </div>
-        <span className="rounded-full border border-line bg-panel-2 px-2 py-1 text-2xs text-subtle">
-          Dockview mount point · M4-B
-        </span>
-      </div>
-      <div className="grid min-h-0 place-items-center p-6">
-        <div className="max-w-xl rounded-lg border border-line bg-panel p-5 text-center shadow-sm">
-          <div className="text-sm font-semibold text-ink-strong">
-            {activeTab ? activeTab.title : "IDE Editor Area 骨架"}
-          </div>
-          <div className="mt-2 text-sm text-muted">
-            {activeTab
-              ? `${activeTab.ref.rootId}:${activeTab.ref.path}`
-              : "M4-A 只建立 EditorGroup / Tab 状态与 Dockview 接入点；真实 Monaco model、保存、split right/down 和跨组拖拽进入 M4-B/M4-C。"}
-          </div>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -478,17 +467,27 @@ function PanelArea({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size + 40)}>
-            调高
+          {!panel.maximized && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size + 40)}>
+                调高
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size - 40)}>
+                调低
+              </Button>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleMaximized}
+            aria-label={panel.maximized ? "恢复 Panel 大小" : "最大化 Panel"}
+            title={panel.maximized ? "向下恢复面板大小" : "向上最大化面板"}
+          >
+            {panel.maximized ? <ChevronDown /> : <ChevronUp />}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size - 40)}>
-            调低
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onToggleMaximized} aria-label="最大化或恢复 Panel">
-            {panel.maximized ? <Minimize2 /> : <Maximize2 />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onTogglePanel} aria-label="折叠 Panel">
-            <PanelBottomClose />
+          <Button variant="ghost" size="icon" onClick={onTogglePanel} aria-label="关闭 Panel" title="关闭面板">
+            <X />
           </Button>
         </div>
       </div>
@@ -496,7 +495,7 @@ function PanelArea({
         <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
           <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
           <div className="mt-1 max-w-lg">
-            M4-A 只提供 Panel Area、固定 Tab、折叠/高度/最大化状态；真实 Terminal、Problems diagnostics、Output channel、Debug runtime 后置。
+            M4 只提供 Panel Area、固定 Tab、折叠/高度/最大化状态；真实 Terminal、Problems diagnostics、Output channel、Debug runtime 后置。
           </div>
         </div>
       </div>
@@ -523,7 +522,7 @@ function WorkbenchStatusBar({
       <span className="truncate">path: /{directoryPath}</span>
       <span>sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
       <span>panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
-      <span className="ml-auto">M4-A layout foundation</span>
+      <span className="ml-auto">M4 Workbench foundation</span>
     </footer>
   );
 }

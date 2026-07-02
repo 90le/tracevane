@@ -91,6 +91,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
       panel: {
         ...current.panel,
         collapsed: !current.panel.collapsed,
+        maximized: current.panel.collapsed ? current.panel.maximized : false,
         visible: current.panel.collapsed ? true : current.panel.visible,
       },
     }));

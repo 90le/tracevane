@@ -1,3 +1,4 @@
+import type { SerializedDockview } from "dockview-react";
 import type { EditorDocumentId, EditorFileRef } from "@/shared/editor-core";
 
 export type WorkbenchActivityId =
@@ -67,7 +68,7 @@ export interface IdeWorkbenchLayoutState {
   viewPlacements: WorkbenchViewPlacement[];
   editorGroups: IdeWorkbenchEditorGroup[];
   activeEditorGroupId: string;
-  dockviewLayout: unknown | null;
+  dockviewLayout: SerializedDockview | null;
 }
 
 export const IDE_WORKBENCH_LAYOUT_VERSION = 1;

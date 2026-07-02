@@ -80,6 +80,7 @@
 | [archive/m2-progress.md](./archive/m2-progress.md) | M2/M2.x 进度、验证证据、风险和决策日志 |
 | [archive/m3-execution-summary.md](./archive/m3-execution-summary.md) | M3 Mini Explorer / Shared Explorer Core 完成总结、边界和验证记录 |
 | [archive/m4-a-workbench-foundation-plan.md](./archive/m4-a-workbench-foundation-plan.md) | M4-A IDE Workbench Layout Foundation 探查、最小骨架与下一步建议 |
+| [archive/m4-b-dockview-editor-summary.md](./archive/m4-b-dockview-editor-summary.md) | M4-B Editor Dock + Dockview 最小接入、layout 保存恢复和边界记录 |
 
 ## 推荐技术选型
 
@@ -135,9 +136,10 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已抽出 `shared/explorer-core` 与 `shared/explorer-ui` primitives，未来独立 IDE SideBar Explorer 复用数据模型、文件操作、树状态和基础树 UI，但不复用在线编辑器容器 shell。
 - 已打开 tab 在 rename/move/delete 时同步 path/title/document id/draft/viewState/read metadata；dirty 内容不会因文件操作静默丢失。Mini Explorer 目录不会随 tab 切换或打开文件自动跳转。
 
-当前 M4-A：IDE Workbench Layout Foundation 探查与最小骨架
-- 已新增独立 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 目录、ActivityBar / SideBar Explorer / EditorArea / PanelArea / StatusBar 最小骨架，以及 layoutVersion + sidebar/panel/editorGroups/viewPlacements 状态模型。
-- M4-A 只完成实现前探查和低风险骨架；M4-B 建议进入 Dockview Editor Area 最小接入，M4-C 再补 IDE Explorer 文件操作和打开 tab 路径同步。
+当前 M4-A/M4-B：IDE Workbench Layout Foundation 骨架与 Editor Dock
+- M4-A 已新增独立 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 目录、ActivityBar / SideBar Explorer / EditorArea / PanelArea / StatusBar 最小骨架，以及 layoutVersion + sidebar/panel/editorGroups/viewPlacements 状态模型。
+- M4-B 已将 Editor Area 替换为 Dockview-backed Editor Dock：支持从 SideBar Explorer 打开文件到 placeholder tab、preview/pinned 基础状态、Split Right / Split Down 占位、Dockview layout serialize / restore。
+- M4-C 建议补 IDE Explorer 文件操作和打开 tab 路径同步。
 - M4 总体验收仍是独立路由、ActivityBar、SideBar Explorer、Dockview、多编辑组、底部 Panel 框架、布局持久化；验收口径是工作台布局基础，不是完整 IDE。
 - 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标是完整 IDE 级自由布局：Explorer/SideBar、Editor、Terminal、Panel 等主区域可移动、折叠、调整尺寸、拆分并恢复。阶段性交付不能把这些未来能力写死。
 - M4 必做默认布局、Explorer 折叠/调宽、Editor split、Panel 折叠/调高/最大化和布局保存/恢复；右侧 Explorer、右侧 Panel、真实终端、终端 split、全 View docking 后置。
