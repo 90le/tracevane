@@ -300,6 +300,23 @@ async function run() {
       throw new Error(`Minimized editor should restore existing tabs, found ${tabCountAfterRestore}`);
     }
 
+    await page.locator('[data-file-online-editor-mini-explorer-toggle]').click();
+    await page.waitForSelector('[data-online-editor-mini-explorer]', { timeout: 30_000 });
+    const miniExplorerPath = await page.locator('[data-online-editor-mini-explorer-path]').textContent();
+    if (miniExplorerPath !== workspacePath) {
+      throw new Error(`Mini Explorer should stay on initial directory ${workspacePath}, found ${miniExplorerPath}`);
+    }
+    await page.waitForSelector(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${firstPath}`)}"]`, { timeout: 30_000 });
+    await page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${firstPath}`)}"]`).click();
+    await page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${firstPath}`)}"]`).dblclick();
+    await page.waitForFunction((path) => document.querySelector('[data-file-online-editor-statusbar]')?.textContent?.includes(path), firstPath, { timeout: 30_000 });
+    const miniExplorerTabCount = await tabs.count();
+    if (miniExplorerTabCount !== 2) {
+      throw new Error(`Mini Explorer open should reuse existing tab set, found ${miniExplorerTabCount}`);
+    }
+    await page.locator('[data-file-online-editor-mini-explorer-toggle]').click();
+    await page.waitForSelector('[data-online-editor-mini-explorer]', { state: 'detached', timeout: 30_000 });
+
     await page.locator(`[data-file-online-editor-tab="${cssAttr(`${rootId}:${secondPath}`)}"]`).click();
     const statusText = await page.locator('[data-file-online-editor-statusbar]').textContent();
     if (!statusText?.includes(secondPath)) throw new Error(`Status bar did not switch to second file: ${statusText}`);

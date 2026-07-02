@@ -1,4 +1,4 @@
-import { Download, File, FileText, ImageIcon, Maximize2, Minimize2, Minus, MoreHorizontal, Music, RefreshCw, RotateCcw, Video, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, File, FileText, FolderTree, ImageIcon, Maximize2, Minimize2, Minus, MoreHorizontal, Music, PanelLeftClose, RefreshCw, RotateCcw, Video, X, ZoomIn, ZoomOut } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -10,6 +10,7 @@ import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files
 import { editorDocumentId, editorTitleForPath, languageForPath } from "@/shared/editor-core";
 import { toast } from "@/design/ui/sonner";
 import type { FileEntrySummary } from "@/features/file-manager/file-tools/types";
+import { OnlineEditorMiniExplorer } from "./mini-explorer";
 
 export interface FileOnlineEditorTab {
   id: string;
@@ -35,6 +36,7 @@ export interface FileOnlineEditorDialogProps {
   onCloseSavedTabs: () => void;
   onCloseAllTabs: () => void;
   onOpenChange: (open: boolean) => void;
+  onOpenFile: (entry: FileEntrySummary, rootId: string) => void;
   rootAbsolutePaths?: Record<string, string>;
   drafts: Record<string, string>;
   viewStates: Record<string, CodeEditorViewState>;
@@ -72,6 +74,7 @@ export function FileOnlineEditorDialog({
   onCloseSavedTabs,
   onCloseAllTabs,
   onOpenChange,
+  onOpenFile,
   rootAbsolutePaths,
   drafts,
   viewStates,
@@ -100,6 +103,11 @@ export function FileOnlineEditorDialog({
     y: number;
   } | null>(null);
   const [editorActionMenuPosition, setEditorActionMenuPosition] = React.useState<Point | null>(null);
+  const [miniExplorerOpen, setMiniExplorerOpen] = React.useState(false);
+  const [miniExplorerInitialLocation] = React.useState(() => ({
+    rootId: activeTab?.rootId ?? "",
+    directoryPath: activeTab ? editorDirnameForMiniExplorer(activeTab.entry.path) : "",
+  }));
 
   const captureActiveViewState = React.useCallback(() => {
     if (!activeTab) return;
@@ -405,27 +413,73 @@ export function FileOnlineEditorDialog({
           ) : null}
         </div>
 
-        <OnlineEditorTabPanel
-          tab={activeTab}
-          draftContent={drafts[activeTab.id]}
-          viewState={viewStates[activeTab.id]}
-          editorRef={activeEditorRef}
-          onDraftChange={(content) => onDraftChange(activeTab.id, content)}
-          onDraftClear={() => onDraftClear(activeTab.id)}
-          onViewStateChange={(viewState) => onViewStateChange(activeTab.id, viewState)}
-          tabCount={tabs.length}
-          savedTabCount={savedTabCount}
-          savingAll={writeMutation.isPending}
-          dirtyTabCount={dirtyTabs.length}
-          onSaveAll={() => void saveAll()}
-          onCloseCurrent={() => requestCloseTab(activeTab.id)}
-          onCloseOthers={() => requestCloseOthers(activeTab.id)}
-          onCloseSaved={onCloseSavedTabs}
-          onCloseAll={requestCloseAll}
-          actionMenuPosition={editorActionMenuPosition}
-          onActionMenuClose={() => setEditorActionMenuPosition(null)}
-          onReadMetadataChange={(metadata) => onReadMetadataChange(activeTab.id, metadata)}
-        />
+        <div className="relative flex min-h-0 flex-1 overflow-hidden bg-panel" data-file-online-editor-body>
+          <button
+            type="button"
+            className={cn(
+              "absolute top-1/2 z-30 grid min-h-14 w-9 -translate-y-1/2 place-items-center border border-primary-line bg-panel text-primary shadow-lg outline-none transition-all hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)]",
+              "before:absolute before:inset-1 before:rounded-full before:bg-primary-soft before:content-[''] [&_svg]:relative [&_svg]:z-10 [&_svg]:size-4",
+              miniExplorerOpen
+                ? "left-[min(320px,86vw)] -translate-x-1/2 rounded-full lg:left-72"
+                : "left-0 rounded-r-full border-l-0",
+            )}
+            onClick={() => setMiniExplorerOpen((open) => !open)}
+            aria-label={miniExplorerOpen ? "收起文件列表" : "展开文件列表"}
+            aria-expanded={miniExplorerOpen}
+            aria-controls="online-editor-mini-explorer"
+            data-file-online-editor-mini-explorer-toggle
+          >
+            {miniExplorerOpen ? <PanelLeftClose className="size-4" /> : <FolderTree className="size-4" />}
+          </button>
+          {miniExplorerOpen ? (
+            <>
+              <button
+                type="button"
+                className="absolute inset-0 z-10 bg-ink/30 lg:hidden"
+                aria-label="关闭文件列表遮罩"
+                onClick={() => setMiniExplorerOpen(false)}
+                data-file-online-editor-mini-explorer-backdrop
+              />
+              <OnlineEditorMiniExplorer
+                id="online-editor-mini-explorer"
+                rootId={miniExplorerInitialLocation.rootId || activeTab.rootId}
+                initialDirectoryPath={miniExplorerInitialLocation.directoryPath}
+                activeRootId={activeTab.rootId}
+                activePath={activeTab.entry.path}
+                onOpenFile={(entry, rootId) => {
+                  captureActiveViewState();
+                  onOpenFile(entry, rootId);
+                  if (window.matchMedia("(max-width: 1023px)").matches) setMiniExplorerOpen(false);
+                }}
+                onClose={() => setMiniExplorerOpen(false)}
+                className="absolute inset-y-0 left-0 z-20 w-[min(320px,86vw)] lg:static lg:z-auto lg:w-72 lg:shrink-0"
+              />
+            </>
+          ) : null}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <OnlineEditorTabPanel
+              tab={activeTab}
+              draftContent={drafts[activeTab.id]}
+              viewState={viewStates[activeTab.id]}
+              editorRef={activeEditorRef}
+              onDraftChange={(content) => onDraftChange(activeTab.id, content)}
+              onDraftClear={() => onDraftClear(activeTab.id)}
+              onViewStateChange={(viewState) => onViewStateChange(activeTab.id, viewState)}
+              tabCount={tabs.length}
+              savedTabCount={savedTabCount}
+              savingAll={writeMutation.isPending}
+              dirtyTabCount={dirtyTabs.length}
+              onSaveAll={() => void saveAll()}
+              onCloseCurrent={() => requestCloseTab(activeTab.id)}
+              onCloseOthers={() => requestCloseOthers(activeTab.id)}
+              onCloseSaved={onCloseSavedTabs}
+              onCloseAll={requestCloseAll}
+              actionMenuPosition={editorActionMenuPosition}
+              onActionMenuClose={() => setEditorActionMenuPosition(null)}
+              onReadMetadataChange={(metadata) => onReadMetadataChange(activeTab.id, metadata)}
+            />
+          </div>
+        </div>
         {closeConfirmAction ? (
           <CloseConfirmDialog
             action={closeConfirmAction}
@@ -447,6 +501,13 @@ export function FileOnlineEditorDialog({
   );
 }
 
+
+function editorDirnameForMiniExplorer(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
 
 function copyEditorTabPath(
   tab: FileOnlineEditorTab,
@@ -875,7 +936,8 @@ function OnlineEditorTabPanel({
   const noticeRowCount =
     (conflictError ? 1 : 0) +
     (conflictError && conflictCompareOpen ? 1 : 0) +
-    (reloadConfirmOpen ? 1 : 0);
+    (reloadConfirmOpen ? 1 : 0) +
+    (saveError && !conflictError ? 1 : 0);
   const panelGridRows = `${"auto ".repeat(noticeRowCount)}minmax(0, 1fr) auto`;
 
   return (
@@ -885,7 +947,18 @@ function OnlineEditorTabPanel({
         gridTemplateRows: panelGridRows,
       }}
       data-file-online-editor-panel
+      data-file-online-editor-dirty-state={dirty ? "dirty" : "clean"}
+      data-file-online-editor-readonly-state={editable ? "editable" : "readonly"}
     >
+      {saveError && !conflictError ? (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-red/30 bg-red-soft px-3 py-2 text-xs text-red"
+          data-file-online-editor-save-error
+        >
+          <span className="font-medium">保存失败。</span>
+          <span className="text-muted">{saveError}</span>
+        </div>
+      ) : null}
       {conflictError ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
@@ -1069,7 +1142,7 @@ function OnlineEditorTabPanel({
         <span data-file-online-editor-status-modified title={read.modifiedAt ?? undefined}>{modifiedAt}</span>
         <span data-file-online-editor-cursor-position>{cursorPosition ? `Ln ${cursorPosition.lineNumber}, Col ${cursorPosition.column}` : "Ln —, Col —"}</span>
         <span data-file-online-editor-status-readonly-reason>{readOnlyReason}</span>
-        {read.truncated ? <span className="text-amber-600" data-file-online-editor-truncated-state>已截断</span> : null}
+        {read.truncated ? <span className="text-amber" data-file-online-editor-truncated-state>已截断</span> : null}
       </footer>
     </div>
   );

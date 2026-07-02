@@ -113,6 +113,23 @@ async function verifyEditorSurface(page, filePath, expectedTheme) {
   await page.waitForSelector('[data-file-online-editor-action-menu]', { state: 'detached', timeout: 10_000 });
 }
 
+async function verifyMiniExplorerMobile(page, workspacePath, filePath, rootId) {
+  await page.locator('[data-file-online-editor-mini-explorer-toggle]').click();
+  await page.waitForSelector('[data-online-editor-mini-explorer]', { timeout: 30_000 });
+  const miniExplorerPath = await page.locator('[data-online-editor-mini-explorer-path]').textContent();
+  if (miniExplorerPath !== workspacePath) {
+    throw new Error(`Mobile Mini Explorer should show ${workspacePath}, found ${miniExplorerPath}`);
+  }
+  const node = page.locator(`[data-online-editor-mini-explorer-node="${cssAttr(`${rootId}:${filePath}`)}"]`).first();
+  await node.waitFor({ timeout: 30_000 });
+  await node.click();
+  await page.waitForSelector('[data-online-editor-mini-explorer]', { state: 'detached', timeout: 30_000 });
+  const statusbar = await page.locator('[data-file-online-editor-statusbar]').textContent();
+  if (!statusbar?.includes(filePath)) {
+    throw new Error(`Mobile Mini Explorer click did not open/activate ${filePath}: ${statusbar}`);
+  }
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
@@ -131,6 +148,7 @@ async function run() {
     light.on('pageerror', (error) => logs.push(`[light:pageerror] ${error.stack || error.message}`));
     await openEditor(light, rootId, workspacePath, filePath);
     await verifyEditorSurface(light, filePath, 'light/mobile');
+    await verifyMiniExplorerMobile(light, workspacePath, filePath, rootId);
     await light.close();
 
     const dark = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
