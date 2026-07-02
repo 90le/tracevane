@@ -6,6 +6,7 @@ import {
   Network,
   Plug,
   Terminal,
+  PanelLeft,
 } from "lucide-react";
 
 export type NavGroup = "首页" | "工作流" | "接入" | "底座";
@@ -51,6 +52,16 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle: "浏览、上传、归档、索引与批量文件操作。",
     group: "工作流",
     icon: FolderCog,
+    status: "ready",
+  },
+
+  {
+    path: "/ide",
+    label: "IDE 工作台",
+    title: "IDE 工作台",
+    subtitle: "M4 Workbench Layout Foundation：项目级开发工作台骨架。",
+    group: "工作流",
+    icon: PanelLeft,
     status: "ready",
   },
 
@@ -153,7 +164,13 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
   let label = item.label;
   let subtitle = item.subtitle;
 
-  if (pathname.startsWith("/platforms/openclaw")) {
+  if (pathname.startsWith("/ide")) {
+    breadcrumbs[0] = { label: "工作流" };
+    breadcrumbs.push({ label: "IDE 工作台" });
+    label = "IDE 工作台";
+    title = "IDE 工作台";
+    subtitle = "M4 Workbench Layout Foundation：独立项目级开发工作台骨架。";
+  } else if (pathname.startsWith("/platforms/openclaw")) {
     const section = pathname.split("/")[3] || "overview";
     const sectionLabel = OPENCLAW_SECTION_LABELS[section] ?? "总览";
     label = section === "overview" ? "OpenClaw" : sectionLabel;

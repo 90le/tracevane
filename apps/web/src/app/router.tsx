@@ -34,6 +34,11 @@ const PlatformsPage = React.lazy(() =>
     default: module.PlatformsPage,
   })),
 );
+const IdeWorkbenchPage = React.lazy(() =>
+  import("@/features/ide-workbench/IdeWorkbenchPage").then((module) => ({
+    default: module.IdeWorkbenchPage,
+  })),
+);
 
 /**
  * App routing. HashRouter is required because the backend serves the SPA
@@ -47,6 +52,22 @@ export function AppRouter() {
   return (
     <HashRouter>
       <Routes>
+        <Route
+          path="/ide"
+          element={
+            <LazyPage>
+              <IdeWorkbenchPage />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/ide/:workspaceId"
+          element={
+            <LazyPage>
+              <IdeWorkbenchPage />
+            </LazyPage>
+          }
+        />
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -192,9 +213,11 @@ function redirectLegacyPathBeforeHashRouter() {
       "/im-channels",
       "/platforms",
       "/cli-agents",
+      "/ide",
     ];
     if (
       directSpaPaths.includes(normalizedPath) ||
+      normalizedPath.startsWith("/ide/") ||
       normalizedPath.startsWith("/platforms/")
     ) {
       nextHash = `${normalizedPath}${search || ""}`;
