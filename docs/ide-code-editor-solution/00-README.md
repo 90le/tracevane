@@ -81,6 +81,7 @@
 | [archive/m3-execution-summary.md](./archive/m3-execution-summary.md) | M3 Mini Explorer / Shared Explorer Core 完成总结、边界和验证记录 |
 | [archive/m4-a-workbench-foundation-plan.md](./archive/m4-a-workbench-foundation-plan.md) | M4-A IDE Workbench Layout Foundation 探查、最小骨架与下一步建议 |
 | [archive/m4-b-dockview-editor-summary.md](./archive/m4-b-dockview-editor-summary.md) | M4-B Editor Dock + Dockview 最小接入、layout 保存恢复和边界记录 |
+| [archive/m4-c-ide-explorer-operations-sync-summary.md](./archive/m4-c-ide-explorer-operations-sync-summary.md) | M4-C IDE Workbench 最小 smoke、Explorer 文件操作和已打开 tab 路径同步记录 |
 
 ## 推荐技术选型
 
@@ -136,10 +137,10 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已抽出 `shared/explorer-core` 与 `shared/explorer-ui` primitives，未来独立 IDE SideBar Explorer 复用数据模型、文件操作、树状态和基础树 UI，但不复用在线编辑器容器 shell。
 - 已打开 tab 在 rename/move/delete 时同步 path/title/document id/draft/viewState/read metadata；dirty 内容不会因文件操作静默丢失。Mini Explorer 目录不会随 tab 切换或打开文件自动跳转。
 
-当前 M4-A/M4-B：IDE Workbench Layout Foundation 骨架与 Editor Dock
+当前 M4-A/M4-B/M4-C：IDE Workbench Layout Foundation 骨架、Editor Dock 与 Explorer 操作同步
 - M4-A 已新增独立 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 目录、ActivityBar / SideBar Explorer / EditorArea / PanelArea / StatusBar 最小骨架，以及 layoutVersion + sidebar/panel/editorGroups/viewPlacements 状态模型。
 - M4-B 已将 Editor Area 替换为 Dockview-backed Editor Dock：支持从 SideBar Explorer 打开文件到 placeholder tab、preview/pinned 基础状态、Split Right / Split Down 占位、Dockview layout serialize / restore。
-- M4-C 建议补 IDE Explorer 文件操作和打开 tab 路径同步。
+- M4-C 已补最小 `/ide` smoke：验证 ActivityBar / SideBar / EditorDock / Panel / StatusBar、Explorer 打开文件、Split Right / Split Down 和 reset layout 不白屏；并已接入 IDE Explorer 新建/重命名/删除/复制/移动/复制路径及已打开 Dockview placeholder tab 的 path/title/document id/deleted 同步。
 - M4 总体验收仍是独立路由、ActivityBar、SideBar Explorer、Dockview、多编辑组、底部 Panel 框架、布局持久化；验收口径是工作台布局基础，不是完整 IDE。
 - 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标是完整 IDE 级自由布局：Explorer/SideBar、Editor、Terminal、Panel 等主区域可移动、折叠、调整尺寸、拆分并恢复。阶段性交付不能把这些未来能力写死。
 - M4 必做默认布局、Explorer 折叠/调宽、Editor split、Panel 折叠/调高/最大化和布局保存/恢复；右侧 Explorer、右侧 Panel、真实终端、终端 split、全 View docking 后置。

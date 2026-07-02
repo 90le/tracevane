@@ -80,7 +80,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
       ...current,
       sideBar: {
         ...current.sideBar,
-        width: clamp(width, 220, 420),
+        width: clamp(width, 220, 1600),
       },
     }));
   }, []);
@@ -102,7 +102,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
       ...current,
       panel: {
         ...current.panel,
-        size: clamp(size, 140, 520),
+        size: clamp(size, 140, 2400),
       },
     }));
   }, []);

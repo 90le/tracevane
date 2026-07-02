@@ -16,7 +16,7 @@ export function EditorPlaceholderPanel({
 }: IDockviewPanelProps<EditorPlaceholderParams>) {
   const isFile = params.kind === "file";
   return (
-    <div className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink">
+    <div className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink" data-ide-editor-panel data-ide-editor-panel-kind={params.kind}>
       <div className="max-w-xl rounded-lg border border-line bg-panel p-5 text-center shadow-sm">
         <div className="mx-auto mb-3 grid size-11 place-items-center rounded-md bg-primary-soft text-primary">
           {isFile ? (
@@ -27,14 +27,14 @@ export function EditorPlaceholderPanel({
             <SplitSquareHorizontal className="size-5" />
           )}
         </div>
-        <div className="text-sm font-semibold text-ink-strong">
+        <div className="text-sm font-semibold text-ink-strong" data-ide-editor-panel-title>
           {params.title}
         </div>
         <div className="mt-2 text-sm text-muted">{params.description}</div>
         {params.tab ? (
           <div className="mt-3 rounded-md border border-line bg-canvas px-3 py-2 text-left font-mono text-2xs text-subtle">
             <div className="truncate">root: {params.tab.ref.rootId}</div>
-            <div className="truncate">path: {params.tab.ref.path}</div>
+            <div className="truncate" data-ide-editor-panel-path>path: {params.tab.ref.path}</div>
             <div className="truncate">
               mode: {params.tab.preview ? "preview" : "pinned"}
               {params.tab.dirty ? " · dirty" : ""}

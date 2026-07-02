@@ -1,20 +1,17 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
+import type { SerializedDockview } from "dockview-react";
 import {
   AlertCircle,
   Bug,
   Files,
-  FolderOpen,
   GitBranch,
   ListChecks,
   ChevronDown,
   ChevronUp,
   Package,
   PanelBottomOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
   Play,
-  RefreshCcw,
   RotateCcw,
   Search,
   Terminal,
@@ -25,16 +22,11 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { useFilesSummaryQuery } from "@/lib/query/files";
 import { editorDocumentId, editorTitleForPath } from "@/shared/editor-core";
-import { useExplorerDirectory, useExplorerTreeState } from "@/shared/explorer-core";
+import { isExplorerPathInside, joinExplorerPath, normalizeExplorerPath } from "@/shared/explorer-core";
 import type { ExplorerEntry } from "@/shared/explorer-core";
-import {
-  ExplorerEmptyState,
-  ExplorerErrorState,
-  ExplorerLoadingState,
-  ExplorerToolbarBase,
-  ExplorerTree,
-} from "@/shared/explorer-ui";
 import { EditorDock } from "./editor";
+import { IdeExplorerView } from "./explorer";
+import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import type {
   IdeWorkbenchEditorTab,
@@ -153,37 +145,92 @@ export function IdeWorkbenchPage() {
     [layoutApi],
   );
 
+  const activeTab = activeGroup?.tabs.find(
+    (tab) => tab.id === activeGroup.activeTabId,
+  ) ?? null;
+
+  const openTabs = React.useMemo(
+    () =>
+      layout.editorGroups.flatMap((group) =>
+        group.tabs.map((tab) => ({
+          rootId: tab.ref.rootId,
+          path: tab.ref.path,
+          dirty: tab.dirty,
+          deleted: tab.deleted,
+        })),
+      ),
+    [layout.editorGroups],
+  );
+
+  const handleExplorerPathEvent = React.useCallback((event: IdeExplorerPathEvent) => {
+    layoutApi.setLayout((current) => {
+      let replacements: Array<{ oldId: string; nextTab: IdeWorkbenchEditorTab }> = [];
+      const editorGroups = current.editorGroups.map((group) => {
+        let activeTabId = group.activeTabId;
+        const tabs = group.tabs.map((tab) => {
+          const nextTab = syncTabForPathEvent(tab, event);
+          if (nextTab.id !== tab.id) {
+            replacements.push({ oldId: tab.id, nextTab });
+            if (activeTabId === tab.id) activeTabId = nextTab.id;
+          }
+          return nextTab;
+        });
+        return { ...group, activeTabId, tabs };
+      });
+      return {
+        ...current,
+        editorGroups,
+        dockviewLayout: syncDockviewLayoutForTabReplacements(current.dockviewLayout, replacements),
+      };
+    });
+  }, [layoutApi]);
+
   return (
-    <div className="grid h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink">
+    <div className="grid h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
       <WorkbenchHeader
         rootLabel={(root?.labelZh ?? root?.labelEn ?? rootId) || "未选择工作区"}
         rootPath={root?.absolutePath ?? "等待文件根目录加载"}
         onResetLayout={layoutApi.resetLayout}
       />
-      <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] border-b border-line">
+      <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] border-b border-line" data-ide-main-area>
         <ActivityBar
           activeActivityId={layout.activeActivityId}
-          onSelect={layoutApi.setActiveActivityId}
+          onSelect={(activityId) => {
+            if (activityId === "explorer" && layout.activeActivityId === "explorer") {
+              layoutApi.toggleSidebar();
+              return;
+            }
+            layoutApi.setActiveActivityId(activityId);
+          }}
         />
         <div
-          className="grid min-h-0 min-w-0"
+          className="relative grid min-h-0 min-w-0"
           style={{
             gridTemplateColumns: layout.sideBar.collapsed
               ? "0px minmax(0,1fr)"
               : `${layout.sideBar.width}px minmax(0,1fr)`,
           }}
         >
-          <IdeSideBar
+          <IdeExplorerView
             hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
             rootId={rootId}
             rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-            sideBarWidth={layout.sideBar.width}
+            rootAbsolutePath={root?.absolutePath}
             directoryPath={directoryPath}
+            activeRootId={activeTab?.ref.rootId}
+            activePath={activeTab?.ref.path}
+            openTabs={openTabs}
             onDirectoryPathChange={setDirectoryPath}
-            onToggleSidebar={layoutApi.toggleSidebar}
-            onResizeSidebar={layoutApi.setSidebarWidth}
             onOpenEntry={openEntry}
+            onPathEvent={handleExplorerPathEvent}
           />
+          {!layout.sideBar.collapsed && layout.sideBar.visible ? (
+            <SidebarResizeHandle
+              left={layout.sideBar.width}
+              width={layout.sideBar.width}
+              onResize={layoutApi.setSidebarWidth}
+            />
+          ) : null}
           <div
             className={cn(
               "grid min-h-0 min-w-0",
@@ -191,6 +238,7 @@ export function IdeWorkbenchPage() {
                 ? "grid-rows-[minmax(0,1fr)]"
                 : "grid-rows-[minmax(0,1fr)_auto]",
             )}
+            data-ide-editor-panel-stack
           >
             {!layout.panel.maximized && (
               <EditorDock
@@ -219,20 +267,6 @@ export function IdeWorkbenchPage() {
         panelCollapsed={layout.panel.collapsed}
         activePanelId={layout.panel.activePanelId}
       />
-      {layout.sideBar.collapsed && (
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          className="fixed left-[52px] top-[72px] z-10 rounded-full shadow-md"
-          onClick={layoutApi.toggleSidebar}
-          aria-label="展开 IDE 资源管理器"
-          title="展开 IDE 资源管理器"
-        >
-          <PanelLeftOpen />
-          Explorer
-        </Button>
-      )}
     </div>
   );
 }
@@ -247,7 +281,7 @@ function WorkbenchHeader({
   onResetLayout: () => void;
 }) {
   return (
-    <header className="flex min-h-[50px] min-w-0 items-center gap-3 border-b border-line bg-panel px-3">
+    <header className="flex min-h-[50px] min-w-0 items-center gap-3 border-b border-line bg-panel px-3" data-ide-header>
       <div className="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-ink">
         IDE
       </div>
@@ -267,6 +301,46 @@ function WorkbenchHeader({
   );
 }
 
+function SidebarResizeHandle({
+  left,
+  width,
+  onResize,
+}: {
+  left: number;
+  width: number;
+  onResize: (width: number) => void;
+}) {
+  const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+    const containerWidth = event.currentTarget.parentElement?.clientWidth ?? 0;
+    const maxWidth = containerWidth > 0 ? Math.floor(containerWidth * 0.75) : 1600;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      onResize(clampNumber(startWidth + moveEvent.clientX - startX, 220, maxWidth));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  }, [onResize, width]);
+
+  return (
+    <div
+      role="separator"
+      aria-label="调整资源管理器宽度"
+      aria-orientation="vertical"
+      className="absolute bottom-0 top-0 z-20 w-2 -translate-x-1 cursor-col-resize touch-none bg-transparent outline-none transition-colors hover:bg-primary-soft/70 focus-visible:bg-primary-soft focus-visible:shadow-[var(--ring)]"
+      style={{ left }}
+      tabIndex={0}
+      onPointerDown={handlePointerDown}
+      data-ide-sidebar-resize-handle
+    />
+  );
+}
+
 function ActivityBar({
   activeActivityId,
   onSelect,
@@ -275,7 +349,7 @@ function ActivityBar({
   onSelect: (id: WorkbenchActivityId) => void;
 }) {
   return (
-    <aside className="flex min-h-0 flex-col items-center gap-1 border-r border-line bg-panel-2 py-2">
+    <aside className="flex min-h-0 flex-col items-center gap-1 border-r border-line bg-panel-2 py-2" data-ide-activity-bar>
       {ACTIVITY_ITEMS.map((item) => (
         <button
           key={item.id}
@@ -303,117 +377,6 @@ function ActivityBar({
   );
 }
 
-function IdeSideBar({
-  hidden,
-  rootId,
-  rootLabel,
-  sideBarWidth,
-  directoryPath,
-  onDirectoryPathChange,
-  onToggleSidebar,
-  onResizeSidebar,
-  onOpenEntry,
-}: {
-  hidden: boolean;
-  rootId: string;
-  rootLabel: string;
-  sideBarWidth: number;
-  directoryPath: string;
-  onDirectoryPathChange: (path: string) => void;
-  onToggleSidebar: () => void;
-  onResizeSidebar: (width: number) => void;
-  onOpenEntry: (entry: ExplorerEntry) => void;
-}) {
-  const directory = useExplorerDirectory({
-    rootId,
-    directoryPath,
-    enabled: Boolean(rootId) && !hidden,
-  });
-  const treeState = useExplorerTreeState();
-
-  if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" />;
-
-  return (
-    <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border-r border-line bg-panel">
-      <ExplorerToolbarBase
-        title="资源管理器"
-        description={rootLabel || "Workspace Explorer"}
-        actions={[
-          {
-            id: "refresh",
-            label: "刷新",
-            icon: <RefreshCcw />,
-            onSelect: () => void directory.refresh(),
-          },
-          {
-            id: "narrow",
-            label: "窄",
-            onSelect: () => onResizeSidebar(sideBarWidth - 32),
-          },
-          {
-            id: "wide",
-            label: "宽",
-            onSelect: () => onResizeSidebar(sideBarWidth + 32),
-          },
-          {
-            id: "collapse",
-            label: "收起",
-            icon: <PanelLeftClose />,
-            onSelect: onToggleSidebar,
-          },
-        ]}
-      />
-      <div className="min-h-0 overflow-hidden p-2">
-        <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-muted">
-          <FolderOpen className="size-3.5 shrink-0 text-primary" />
-          <span className="min-w-0 flex-1 truncate" title={directory.absolutePath}>
-            {directory.location.directoryPath || "/"}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={!directory.parentPath}
-            onClick={() => onDirectoryPathChange(directory.parentPath ?? "")}
-          >
-            上级
-          </Button>
-        </div>
-        {directory.isLoading ? (
-          <ExplorerLoadingState title="正在加载工作区文件…" />
-        ) : directory.isError ? (
-          <ExplorerErrorState
-            title="资源管理器加载失败"
-            description={directory.error?.message ?? "请稍后重试。"}
-            action={
-              <Button type="button" variant="outline" size="sm" onClick={() => void directory.refresh()}>
-                重试
-              </Button>
-            }
-          />
-        ) : (
-          <ExplorerTree
-            entries={directory.entries}
-            expandedKeys={treeState.expandedKeys}
-            selectedKeys={treeState.selectedKeys}
-            activeKey={treeState.activeKey}
-            treeLabel="IDE 资源管理器"
-            emptyState={<ExplorerEmptyState title="目录为空" description="当前工作区目录没有文件。" />}
-            onToggle={(item) => {
-              if (item.kind === "directory") onDirectoryPathChange(item.path);
-            }}
-            onSelect={(item) => treeState.select(item.id)}
-            onOpen={(item) => onOpenEntry(item)}
-          />
-        )}
-      </div>
-      <div className="border-t border-line p-2 text-xs text-subtle">
-        M4：复用 explorer-core / explorer-ui；文件操作、完整右键菜单、reveal active file 后续迭代。
-      </div>
-    </aside>
-  );
-}
-
 function PanelArea({
   panel,
   className,
@@ -436,7 +399,7 @@ function PanelArea({
 }) {
   if (panel.collapsed) {
     return (
-      <div className={cn("border-t border-line bg-panel px-2 py-1", className)}>
+      <div className={cn("border-t border-line bg-panel px-2 py-1", className)} data-ide-panel-collapsed>
         <Button variant="ghost" size="sm" onClick={onTogglePanel}>
           <PanelBottomOpen />
           展开 Panel
@@ -447,9 +410,12 @@ function PanelArea({
 
   return (
     <section
-      className={cn("grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-t border-line bg-panel", className)}
+      data-ide-panel
+      data-ide-panel-maximized={panel.maximized ? "true" : "false"}
+      className={cn("relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-t border-line bg-panel", className)}
       style={{ height: panel.maximized ? undefined : panel.size }}
     >
+      {!panel.maximized ? <PanelResizeHandle height={panel.size} onResize={onResizePanel} /> : null}
       <div className="flex min-h-9 items-center gap-1 border-b border-line bg-panel-2 px-2">
         {(Object.keys(IDE_PANEL_LABELS) as WorkbenchPanelId[]).map((id) => (
           <button
@@ -467,16 +433,6 @@ function PanelArea({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-1">
-          {!panel.maximized && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size + 40)}>
-                调高
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onResizePanel(panel.size - 40)}>
-                调低
-              </Button>
-            </>
-          )}
           <Button
             variant="ghost"
             size="icon"
@@ -503,6 +459,133 @@ function PanelArea({
   );
 }
 
+function PanelResizeHandle({
+  height,
+  onResize,
+}: {
+  height: number;
+  onResize: (height: number) => void;
+}) {
+  const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = height;
+    const stack = event.currentTarget.closest<HTMLElement>("[data-ide-editor-panel-stack]");
+    const maxHeight = stack?.clientHeight ?? 2400;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      onResize(clampNumber(startHeight + startY - moveEvent.clientY, 140, maxHeight));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  }, [height, onResize]);
+
+  return (
+    <div
+      role="separator"
+      aria-label="调整底部面板高度"
+      aria-orientation="horizontal"
+      className="absolute left-0 right-0 top-0 z-20 h-2 -translate-y-1 cursor-row-resize touch-none bg-transparent outline-none transition-colors hover:bg-primary-soft/70 focus-visible:bg-primary-soft focus-visible:shadow-[var(--ring)]"
+      tabIndex={0}
+      onPointerDown={handlePointerDown}
+      data-ide-panel-resize-handle
+    />
+  );
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(Math.max(min, Math.round(value)), Math.max(min, max));
+}
+
+function syncTabForPathEvent(
+  tab: IdeWorkbenchEditorTab,
+  event: IdeExplorerPathEvent,
+): IdeWorkbenchEditorTab {
+  if (tab.ref.rootId !== event.rootId) return tab;
+  if (event.type === "deleted") {
+    if (!pathTouchesTarget(event.path, event.targetKind, tab.ref.path)) return tab;
+    return { ...tab, deleted: true };
+  }
+  const nextPath = rebasePathForMove(event.oldPath, event.newPath, event.targetKind, tab.ref.path);
+  if (!nextPath) return tab;
+  const nextRef = { rootId: tab.ref.rootId, path: nextPath };
+  return {
+    ...tab,
+    id: editorDocumentId(nextRef),
+    ref: nextRef,
+    title: editorTitleForPath(nextPath),
+    deleted: false,
+  };
+}
+
+function pathTouchesTarget(
+  targetPath: string,
+  targetKind: IdeExplorerPathEvent["targetKind"],
+  candidatePath: string,
+): boolean {
+  const target = normalizeExplorerPath(targetPath);
+  const candidate = normalizeExplorerPath(candidatePath);
+  if (targetKind === "directory") return isExplorerPathInside(target, candidate);
+  return candidate === target;
+}
+
+function rebasePathForMove(
+  oldPath: string,
+  newPath: string,
+  targetKind: IdeExplorerPathEvent["targetKind"],
+  candidatePath: string,
+): string | null {
+  const oldNormalized = normalizeExplorerPath(oldPath);
+  const newNormalized = normalizeExplorerPath(newPath);
+  const candidate = normalizeExplorerPath(candidatePath);
+  if (targetKind !== "directory") return candidate === oldNormalized ? newNormalized : null;
+  if (candidate === oldNormalized) return newNormalized;
+  if (!candidate.startsWith(`${oldNormalized}/`)) return null;
+  return joinExplorerPath(newNormalized, candidate.slice(oldNormalized.length + 1));
+}
+
+function syncDockviewLayoutForTabReplacements(
+  layout: SerializedDockview | null,
+  replacements: Array<{ oldId: string; nextTab: IdeWorkbenchEditorTab }>,
+): SerializedDockview | null {
+  if (!layout || replacements.length === 0) return layout;
+  const byOldId = new Map(replacements.map((item) => [item.oldId, item.nextTab]));
+  const cloned = structuredClone(layout) as NonNullable<typeof layout>;
+  for (const [oldId, nextTab] of byOldId) {
+    const panel = cloned.panels[oldId];
+    if (panel) {
+      delete cloned.panels[oldId];
+      cloned.panels[nextTab.id] = {
+        ...panel,
+        id: nextTab.id,
+        title: `${nextTab.dirty ? "● " : ""}${nextTab.title}${nextTab.deleted ? " (deleted)" : ""}`,
+        params: {
+          ...panel.params,
+          kind: "file",
+          tab: nextTab,
+          title: nextTab.title,
+        },
+      };
+    }
+  }
+  return replaceDockviewPanelIds(cloned, byOldId);
+}
+
+function replaceDockviewPanelIds<T>(value: T, replacements: Map<string, IdeWorkbenchEditorTab>): T {
+  if (typeof value === "string") return (replacements.get(value)?.id ?? value) as T;
+  if (Array.isArray(value)) return value.map((item) => replaceDockviewPanelIds(item, replacements)) as T;
+  if (!value || typeof value !== "object") return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    output[key] = replaceDockviewPanelIds(child, replacements);
+  }
+  return output as T;
+}
+
 function WorkbenchStatusBar({
   rootId,
   directoryPath,
@@ -517,7 +600,7 @@ function WorkbenchStatusBar({
   activePanelId: WorkbenchPanelId;
 }) {
   return (
-    <footer className="flex min-h-6 items-center gap-3 border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted">
+    <footer className="flex min-h-6 items-center gap-3 border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
       <span className="truncate">root: {rootId || "pending"}</span>
       <span className="truncate">path: /{directoryPath}</span>
       <span>sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
