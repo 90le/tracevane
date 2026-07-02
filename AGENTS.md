@@ -103,6 +103,84 @@ In these cases, proceed directly, keep the diff small, and verify locally.
 4. Deep and light themes must both remain readable. Dense surfaces such as code editors, terminals, logs, tables, and diffs use solid panels, clear borders, and restrained shadows.
 5. Mobile/touch alternatives are required for right-click, hover, and drag-only actions.
 
+## Codex Surfaces Policy
+
+Use the smallest Codex customization surface that solves the project problem:
+
+| Surface | Use in Tracevane | Do not use for |
+| --- | --- | --- |
+| `AGENTS.md` | Durable repo rules, phase boundaries, required docs, verification commands, review expectations | Long implementation plans or historical progress logs |
+| Nested `AGENTS.md` | Narrow rules for docs, File Manager, editor-core, Files API, Terminal runtime | Rules that should apply repo-wide |
+| `.codex/config.toml` | Stable Codex settings for this trusted repo: instruction budget, bounded subagent fan-out, low-risk MCP docs lookup | Secrets, personal model/provider choices, approval/sandbox policy, broad hooks, or experimental behavior |
+| `.codex/agents/*.toml` | Narrow project subagents that are explicitly spawned for read-only scope/theme audits | Replacing normal implementation, generic installed roles, or automatic delegation |
+| `.agents/skills` | Reusable repo workflows such as Tracevane IDE stage classification and verification | One-off task notes or large docs that belong under `docs/` |
+| MCP | Current external documentation or authorized external systems | Reading local repo files that shell/search can inspect faster |
+| Hooks | Mechanical guardrails only after they are worth trust-review friction | Long tests, automatic source edits, telemetry, or duplicate global OMX hooks |
+| Plugins | Distributable bundles when a workflow should be shared across repos/users | Single-repo instructions already handled by AGENTS/skills |
+
+Current project decisions:
+
+- Root and nested `AGENTS.md` are the main control surface.
+- `.codex/config.toml` intentionally stays conservative: increased project-doc budget, bounded subagent limits, and public OpenAI Docs MCP only.
+- Project custom agents are read-only auditors (`tracevane-ide-scope`, `tracevane-theme-auditor`) and should be spawned only when explicitly useful.
+- Project skills live under `.agents/skills`; use `$tracevane-ide-workflow` for IDE/editor implementation tasks.
+- No project-local hooks are enabled yet; `.codex/hooks/README.md` defines the future hook policy.
+- No project plugin is needed yet. Create a plugin only if Tracevane workflows need distribution outside this repo.
+
+## Codex Project Context for IDE / Editor Work
+
+When a task touches File Manager, Online Editor, File Surface, Mini Explorer, IDE Workbench, Monaco, Dockview, xterm, terminal runtime, watcher/search, Problems/Output, LSP, Git, Debug, or visual theme integration, use the repo skill `$tracevane-ide-workflow` when available and treat the IDE documentation package as the implementation contract, not as optional background.
+
+Before planning or editing that scope, read `.codex/project-context.md` and then read the relevant files under `docs/ide-code-editor-solution/`:
+
+- Start with `00-README.md` and `08-实施阶段验收与风险.md` to identify the current phase and acceptance boundary.
+- For Online Editor / File Surface work, read `03-文件管理器在线编辑器方案.md`, `10-monaco-first-online-editor-strategy.md`, and `12-file-surface-unification-and-monaco-gap-plan.md`.
+- For M3 Mini Explorer / Shared Explorer Core, read `13-mini-explorer-shared-explorer-plan.md` plus the shared-core/backend/frontend docs that it references.
+- For standalone IDE layout, read `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, and `09-IDE参考行为与术语对照.md`.
+- For terminal, Problems/Output, LSP, Git, or Debug, read `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, and the matching stage in `08`.
+- For any visual, theme, Monaco/xterm/Dockview/diff/Problems/Output styling work, read `14-视觉主题与设计系统适配.md`, `DESIGN.md`, `docs/界面设计守则.md`, and inspect `apps/web/src/design/theme.css`.
+
+Stage boundaries are mandatory:
+
+```txt
+Done: M1 Online Editor base
+Done: M1.x Online Editor enhancements
+Done: Monaco-first cleanup
+Done: M2/M2.x unified File Surface and media preview
+Next: M3 Online Editor Mini Explorer + Shared Explorer Core
+Later: M4 IDE Workbench Layout Foundation
+Later: M5 Real Terminal Foundation
+Later: M5.x Terminal Split / Group / Panel Placement
+Later: M6 Watcher / Search / Problems / Output
+Later: M7 LSP / Git / Debug
+```
+
+Do not pull future-stage functionality forward unless the user explicitly changes the stage target. In particular:
+
+- M3 must not introduce ActivityBar, Dockview, terminal, Git, LSP, Debug, Problems, Output, or a full IDE SideBar shell.
+- M4 must not pretend to have real terminal, LSP, Git, Debug, Problems diagnostics, Output channels, or full View Movement; it is the Workbench Layout Foundation.
+- M5 must prove real terminal lifecycle and safety before terminal split/group or global docking.
+- M6 must close watcher/search/problems/output foundations before M7 LSP/Git/Debug.
+
+Shared architecture rules:
+
+- Share lower-level core: file identity, FileService adapters, EditorService, Monaco model lifecycle, dirty/save/conflict logic, explorer-core data/path/sort/operation primitives, and CommandService semantics.
+- Do not share bloated product shells. Avoid one huge component controlled by `mode=mini|ide|file-manager` and many feature flags.
+- Monaco owns text editing behavior; React owns shell, lifecycle, metadata and commands. Do not store full file contents in long-lived React state.
+- Dockview owns workbench layout; it must not own file IO, save semantics, or Monaco model lifecycle.
+- xterm.js owns terminal rendering only; backend PTY/WebSocket owns process execution with workspace/root/runtime guards.
+- Theme implementation must map Aurora CSS variables from `theme.css` through centralized adapters for Monaco, xterm, Dockview, diff, Problems and Output. Do not copy VS Code themes or terminal default colors into business components.
+
+Verification expectations by scope:
+
+- Docs-only changes: run markdown link checks for touched docs and `git diff --check`.
+- Frontend TypeScript changes: run `npm run typecheck:web` or a narrower equivalent if documented.
+- Shared/root TypeScript changes: run `npm run typecheck`.
+- Online Editor/File Surface changes: run `npm run smoke:file-manager:online-editor` and, when layout/theme/responsive behavior changes, `npm run smoke:file-manager:online-editor-responsive`.
+- File operation changes: run relevant file-manager smokes and targeted backend/system checks.
+- Theme changes: verify both light and dark for every touched dense surface.
+- Terminal/runtime changes: prove create/input/output/resize/kill/disconnect/error behavior and cwd/root guard.
+
 ## Completion Standard
 
 Before claiming completion:

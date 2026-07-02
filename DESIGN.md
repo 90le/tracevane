@@ -3,14 +3,14 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-06-30
+- Last refreshed: 2026-07-02
 - Primary product surfaces:
   - File Manager (`/files`): workspace/root scoped directory and file operations.
   - File Manager Online Editor: lightweight Monaco multi-tab text editing launched from File Manager.
   - Standalone IDE Workbench: project-level IDE surface with explorer, editor groups, panels, terminal, problems/output, layout persistence and future LSP/Git/tasks/debug.
   - CLI Agents, Model Gateway, Channel Connectors, Platforms, Recovery and Dashboard remain separate product domains.
 - Evidence reviewed:
-  - `docs/ide-code-editor-solution/00-README.md` through `08-实施阶段验收与风险.md`
+  - `docs/ide-code-editor-solution/00-README.md` through `14-视觉主题与设计系统适配.md`
   - `docs/界面设计守则.md`
   - `apps/web/src/design/theme.css`
   - `apps/web/src/features/file-manager/*`
@@ -118,6 +118,7 @@
   - `theme.css` owns base visual tokens.
   - `docs/界面设计守则.md` owns cross-product UI rules.
   - `docs/ide-code-editor-solution/` owns editor/IDE capability boundaries and stage acceptance.
+  - `docs/ide-code-editor-solution/14-视觉主题与设计系统适配.md` owns IDE/editor/terminal/diff/problem/output token mapping details.
 
 ## Accessibility
 
@@ -180,9 +181,11 @@
   - Terminal execution is backend PTY/WebSocket with cwd/runtime guardrails; xterm.js is rendering only.
   - Git/LSP/debug are staged capabilities, not M1 requirements.
 - Test/screenshot expectations:
-  - M1: file-manager online editor smoke for open/edit/save/save-all/dirty/close/search/goto/read-only/large-file.
-  - M2: IDE layout smoke for split, drag/open-to-side, persist, restore, reset and mobile mode navigation.
-  - M3+: terminal PTY smoke, resize/kill cleanup, task runner, watcher/diff/problems/Git/LSP as each stage lands.
+  - M1/M1.x/M2: File Manager Online Editor / File Surface smoke for open/edit/save/save-all/dirty/close/search/goto/read-only/large-file/media preview and light/dark responsive coverage.
+  - M3: Mini Explorer + Shared Explorer Core smoke for tree navigation, file operations, File Surface open behavior, responsive drawer and light/dark readability.
+  - M4: IDE Workbench Layout Foundation smoke for Explorer, editor split, Dockview drag/open-to-side, Panel collapse/maximize, persist/restore/reset, mobile mode navigation and token-mapped light/dark surfaces.
+  - M5/M5.x: terminal PTY smoke, resize/kill cleanup, xterm light/dark theme, terminal split/group and bottom/right panel placement as those stages land.
+  - M6/M7: watcher/search/diff/problems/output/Git/LSP/debug checks as each stage lands, including semantic token readability in both themes.
 
 ## Open questions
 
