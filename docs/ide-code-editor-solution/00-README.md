@@ -82,6 +82,7 @@
 | [archive/m4-a-workbench-foundation-plan.md](./archive/m4-a-workbench-foundation-plan.md) | M4-A IDE Workbench Layout Foundation 探查、最小骨架与下一步建议 |
 | [archive/m4-b-dockview-editor-summary.md](./archive/m4-b-dockview-editor-summary.md) | M4-B Editor Dock + Dockview 最小接入、layout 保存恢复和边界记录 |
 | [archive/m4-c-ide-explorer-operations-sync-summary.md](./archive/m4-c-ide-explorer-operations-sync-summary.md) | M4-C IDE Workbench 最小 smoke、Explorer 文件操作和已打开 tab 路径同步记录 |
+| [archive/m4-execution-summary.md](./archive/m4-execution-summary.md) | M4 IDE Workbench Layout Foundation 总体验收、完成边界和 M5 入口 |
 
 ## 推荐技术选型
 
@@ -137,17 +138,17 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已抽出 `shared/explorer-core` 与 `shared/explorer-ui` primitives，未来独立 IDE SideBar Explorer 复用数据模型、文件操作、树状态和基础树 UI，但不复用在线编辑器容器 shell。
 - 已打开 tab 在 rename/move/delete 时同步 path/title/document id/draft/viewState/read metadata；dirty 内容不会因文件操作静默丢失。Mini Explorer 目录不会随 tab 切换或打开文件自动跳转。
 
-当前 M4-A/M4-B/M4-C：IDE Workbench Layout Foundation 骨架、Editor Dock 与 Explorer 操作同步
-- M4-A 已新增独立 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 目录、ActivityBar / SideBar Explorer / EditorArea / PanelArea / StatusBar 最小骨架，以及 layoutVersion + sidebar/panel/editorGroups/viewPlacements 状态模型。
-- M4-B 已将 Editor Area 替换为 Dockview-backed Editor Dock：支持从 SideBar Explorer 打开文件到 placeholder tab、preview/pinned 基础状态、Split Right / Split Down 占位、Dockview layout serialize / restore。
-- M4-C 已补最小 `/ide` smoke：验证 ActivityBar / SideBar / EditorDock / Panel / StatusBar、Explorer 打开文件、Split Right / Split Down 和 reset layout 不白屏；并已接入 IDE Explorer 新建/重命名/删除/复制/移动/复制路径及已打开 Dockview placeholder tab 的 path/title/document id/deleted 同步。
-- M4 总体验收仍是独立路由、ActivityBar、SideBar Explorer、Dockview、多编辑组、底部 Panel 框架、布局持久化；验收口径是工作台布局基础，不是完整 IDE。
-- 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标是完整 IDE 级自由布局：Explorer/SideBar、Editor、Terminal、Panel 等主区域可移动、折叠、调整尺寸、拆分并恢复。阶段性交付不能把这些未来能力写死。
-- M4 必做默认布局、Explorer 折叠/调宽、Editor split、Panel 折叠/调高/最大化和布局保存/恢复；右侧 Explorer、右侧 Panel、真实终端、终端 split、全 View docking 后置。
-- M4 的 PanelArea 只做底部面板框架和固定 Tab 占位：Terminal / Problems / Output / Debug Console；`placement: "right"`、真实终端、Problems/Output 数据接入和 View Movement 均后置。
-- Explorer/Search/Git/Run/Extensions/Outline/Terminal/Problems/Output/DebugConsole 统一作为 Workbench View；M4 只实现 PrimarySideBar + ExplorerView 和固定 Panel tabs，但预留 viewPlacements。
+已完成 M4：IDE Workbench Layout Foundation
+- 已新增独立 `/ide` / `/ide/:workspaceId` 路由和 `features/ide-workbench` 独立 Workbench shell，不依赖文件管理器弹窗。
+- 已完成 ActivityBar、SideBar Explorer、Editor Dock / Dockview placeholder tabs、Panel Area 固定底部 placeholder tabs、StatusBar。
+- 已支持从 IDE Explorer 打开文件到 Dockview placeholder tab，支持 preview/pinned 基础状态、Split Right / Split Down placeholder、多编辑组布局占位。
+- 已支持 sidebar/panel resize、collapse、panel maximize/restore、`layoutVersion`、localStorage persistence、fallback/reset。
+- 已接入 IDE Explorer 新建/重命名/删除/复制/移动/复制路径；rename/move/delete 会同步已打开 Dockview placeholder tab 的 path/title/document id/deleted 状态和 Dockview layout metadata。
+- 已补 `smoke:ide:workbench-layout`，覆盖 `/ide` 路由不白屏、ActivityBar/SideBar/EditorDock/Panel/StatusBar、Explorer 打开文件、Split Right / Split Down、Reset layout。
+- M4 验收口径是工作台布局基础，不是完整 IDE：真实 Monaco 编辑内容与保存/dirty 冲突、Terminal/xterm/PTY、Terminal split/group、LSP、Git、Debug、Problems/Output 数据、watcher、Panel right placement、Secondary SideBar、插件市场均后置。
+- 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标仍是完整 IDE 级自由布局；M4 只预留 placement/viewPlacements，不把未来右侧 Panel、Secondary SideBar 或 View Movement 写死。
 
-后续 M5：Real Terminal Foundation
+下一步 M5：Real Terminal Foundation
 - 做真实 xterm/WebSocket/node-pty 基础能力和多终端 Tab；不做 terminal split/group 和全局 docking。
 
 后续 M5.x：Terminal Split / Group / Panel Placement

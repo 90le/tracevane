@@ -26,8 +26,8 @@ Both products share lower-level core services, not full product shells.
 - Done: Monaco-first cleanup.
 - Done: M2/M2.x unified File Surface and media previews.
 - Done: M3 Online Editor Mini Explorer + Shared Explorer Core.
-- Next: M4 IDE Workbench Layout Foundation.
-- Later: M5 Real Terminal Foundation.
+- Done: M4 IDE Workbench Layout Foundation.
+- Next: M5 Real Terminal Foundation.
 - Later: M5.x Terminal Split / Group / Panel Placement.
 - Later: M6 Watcher / Search / Problems / Output.
 - Later: M7 LSP / Git / Debug.
