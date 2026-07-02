@@ -83,6 +83,7 @@
 | [archive/m4-b-dockview-editor-summary.md](./archive/m4-b-dockview-editor-summary.md) | M4-B Editor Dock + Dockview 最小接入、layout 保存恢复和边界记录 |
 | [archive/m4-c-ide-explorer-operations-sync-summary.md](./archive/m4-c-ide-explorer-operations-sync-summary.md) | M4-C IDE Workbench 最小 smoke、Explorer 文件操作和已打开 tab 路径同步记录 |
 | [archive/m4-execution-summary.md](./archive/m4-execution-summary.md) | M4 IDE Workbench Layout Foundation 总体验收、完成边界和 M5 入口 |
+| [archive/m5-a-terminal-foundation-plan.md](./archive/m5-a-terminal-foundation-plan.md) | M5-A Real Terminal Foundation 本地探查、边界和 M5-B 最小实现计划 |
 
 ## 推荐技术选型
 
@@ -149,7 +150,9 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 默认布局是左 Explorer、中 Editor、底 Panel，但最终目标仍是完整 IDE 级自由布局；M4 只预留 placement/viewPlacements，不把未来右侧 Panel、Secondary SideBar 或 View Movement 写死。
 
 下一步 M5：Real Terminal Foundation
-- 做真实 xterm/WebSocket/node-pty 基础能力和多终端 Tab；不做 terminal split/group 和全局 docking。
+- M5-A 已完成本地探查、边界收口和最小实现计划，记录见 `archive/m5-a-terminal-foundation-plan.md`。
+- M5-B 推荐在现有 `apps/api/modules/terminal` 基础上接入 IDE Workbench Terminal Panel：真实 xterm/WebSocket/node-pty、session lifecycle、cwd/root guard、shell allowlist 和状态 UI。
+- M5 只做真实终端基础与可选多终端 Tab；不做 terminal split/group、Panel right placement 或全局 docking。
 
 后续 M5.x：Terminal Split / Group / Panel Placement
 - 做 terminal split pane、terminal group、Panel bottom/right placement 和终端布局恢复；不做 LSP/Git/Debug。

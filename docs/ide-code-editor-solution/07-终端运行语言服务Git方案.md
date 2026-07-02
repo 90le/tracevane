@@ -161,6 +161,50 @@ M5 可以先只实现 `sessions + activeSessionId` 的多 Tab 终端，但模型
 - 断线后明确显示 disconnected/exited/error，不伪造仍在运行。
 ```
 
+## 2.1 M5-A 本地探查结论与实现边界
+
+M5-A 只做研究、边界和最小实现计划，不直接实现真实终端。当前代码库已经有一套可复用的后端终端基础，M5-B 应优先加固和接入，而不是新建第二套 Terminal API。
+
+本地探查结论：
+
+```txt
+- apps/api/modules/terminal 已存在，包含 service/routes/session descriptor/ledger/action catalog。
+- API server 已注册 terminal routes，并在 HTTP upgrade 中把 /ws/terminal 交给 terminal service。
+- terminal service 已使用 ws 的 noServer WebSocketServer，并具备 raw WebSocket attach、HTTP input/resize、Gateway input/resize、session descriptor 和 ledger。
+- terminal service 已通过 @homebridge/node-pty-prebuilt-multiarch 可选加载 PTY，并使用 pty.spawn 创建 xterm-256color session。
+- 当前 terminal launch cwd 主要以 openclawRoot / process.cwd() 兜底；M5-B 必须补齐 IDE workspace rootId + relative cwd guard，不能允许终端逃逸 workspace。
+- 当前 shell 主要来自 process.env.SHELL || /bin/bash；M5-B 必须补显式 shell allowlist/profile 选择。
+- root package.json 已有 @homebridge/node-pty-prebuilt-multiarch、ws、@types/ws；apps/web 已有 @xterm/xterm、@xterm/addon-fit、@xterm/addon-web-links、@xterm/addon-webgl。
+- M4 Workbench PanelArea 已有 Terminal / Problems / Output / Debug Console 固定底部 tabs；M5-B 只替换 Terminal tab 内容，不接入 Problems/Output/Debug 数据。
+```
+
+外部契约校验：xterm addon 应通过 xterm API 加载，例如 FitAddon；`ws` 支持 `WebSocketServer({ noServer: true })` + `handleUpgrade(...)` 嵌入现有 HTTP server；node-pty 的核心模型是 `spawn`、`write`、`resize` 和进程退出回调。M5-B 可以沿用当前项目依赖，不需要新增依赖。
+
+M5-B 最小实现切片：
+
+```txt
+Backend
+- 复用 apps/api/modules/terminal/service.ts，不新建第二套终端服务。
+- 增加或收紧 create session 输入：rootId/workspaceId、relative cwd、profile/shell、cols/rows。
+- 复用或抽出 Files service 的 root guard：resolveRoot / resolveTargetPath / isWithinRoot 语义。
+- 增加 shell allowlist/profile 校验，拒绝未知 shell。
+- 明确 create/input/output/resize/close/kill/disconnect/exited/error 状态流。
+- 保留现有 descriptor/ledger，但不要默认长期保存完整敏感输出。
+
+Frontend
+- 在 features/ide-workbench/terminal 下新增 TerminalPanel / TerminalTabs / XtermHost / terminalClient。
+- 只嵌入 Workbench PanelArea 的 Terminal tab；Problems/Output/Debug Console 仍保持 M4 placeholder。
+- xterm 主题通过 Aurora token 适配，不使用第三方默认纯黑/VS Code 配色。
+- FitAddon + ResizeObserver 负责 panel resize 后 fit，并把 cols/rows 发给后端。
+- 多终端 Tab 可以作为 M5 基础，但不实现 split/group。
+
+Verification
+- 最小 API/system smoke：创建 session、读取输出、发送 input、resize、close/kill、非法 cwd 被拒、非白名单 shell 被拒。
+- 最小前端 smoke/manual：进入 /ide，Terminal tab 显示真实 xterm，输入命令有输出，拖动底部 Panel 后 fit 正常，关闭终端后状态明确，Problems/Output/Debug Console 不受影响。
+```
+
+M5-A 明确不做：真实终端实现、前端 xterm 接入、terminal split/group、Panel right placement、Terminal View 全局 docking、LSP、Git、Debug、Problems/Output 数据、watcher、插件市场、完整 VS Code terminal behavior。
+
 ## 3. 任务运行方案
 
 终端适合自由输入命令，但 IDE 还需要结构化任务。
