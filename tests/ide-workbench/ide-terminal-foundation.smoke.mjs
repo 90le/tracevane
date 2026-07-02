@@ -157,6 +157,11 @@ async function runBackendTerminalRoundtrip(rootId) {
 async function runUiSmoke(rootId) {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.addInitScript(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('tracevane.ide-workbench.terminal-layout.')) localStorage.removeItem(key);
+    }
+  });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
@@ -168,11 +173,11 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-terminal-tabs]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-xterm]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => {
-      const status = document.querySelector('[data-ide-terminal-status]')?.textContent || '';
-      return status.includes('终端运行中') || status.includes('终端不可用');
+      const terminal = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
+      return terminal.includes('running') || terminal.includes('error') || terminal.includes('终端不可用');
     }, { timeout: 30_000 });
-    const statusText = await page.locator('[data-ide-terminal-status]').innerText();
-    if (statusText.includes('终端不可用')) throw new Error(statusText);
+    const terminalText = await page.locator('[data-ide-terminal-pane]').first().innerText();
+    if (terminalText.includes('终端不可用') || terminalText.includes('error')) throw new Error(terminalText);
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
     const box = await page.locator('[data-ide-panel-resize-handle]').boundingBox();
     if (box) {
@@ -181,8 +186,8 @@ async function runUiSmoke(rootId) {
       await page.mouse.move(box.x + box.width / 2, Math.max(80, box.y - 60));
       await page.mouse.up();
     }
-    await page.getByRole('button', { name: '关闭终端' }).click();
-    await page.waitForFunction(() => (document.querySelector('[data-ide-terminal-status]')?.textContent || '').includes('终端已关闭'), { timeout: 30_000 });
+    await page.getByRole('button', { name: '关闭终端 Pane' }).first().click();
+    await page.waitForFunction(() => (document.querySelector('[data-ide-terminal-pane]')?.textContent || '').includes('closed'), { timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

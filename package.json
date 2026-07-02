@@ -79,7 +79,8 @@
     "smoke:file-manager:file-surface-routing": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-file-surface-routing.smoke.mjs",
     "smoke:file-manager:media-preview": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5176 -- node tests/file-manager/file-manager-media-preview.smoke.mjs",
     "smoke:ide:workbench-layout": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-workbench-layout.smoke.mjs",
-    "smoke:ide:terminal-foundation": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-foundation.smoke.mjs"
+    "smoke:ide:terminal-foundation": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-foundation.smoke.mjs",
+    "smoke:ide:terminal-split-layout": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-split-layout.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",
