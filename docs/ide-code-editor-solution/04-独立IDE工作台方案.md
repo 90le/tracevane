@@ -22,6 +22,19 @@
 - 命令、快捷键、布局持久化
 ```
 
+长期目标不是固定三栏，而是完整 IDE 级自由布局。默认形态可以是“左侧 Explorer + 中间 Editor + 底部 Panel/Terminal”，但最终产品必须支持主要区域移动、折叠、调整尺寸、拆分和恢复：
+
+```txt
+最终布局目标：
+- Explorer / SideBar：默认左侧，可折叠、调宽、移动到右侧，恢复位置与宽度。
+- Editor Area：多编辑组、左右/上下拆分、Tab 跨组拖拽、编辑组调尺寸、最大化/恢复。
+- Terminal：默认底部 Panel，可折叠、调高、最大化/恢复、移动到底部或右侧，支持多终端 Tab 和终端 split/group。
+- Problems / Output / Debug Console：可与 Terminal 在 Panel 内切换，长期支持 dock 到底部/右侧并恢复布局。
+- Primary SideBar / Secondary SideBar：长期支持 View 在侧栏、副侧栏、Panel 之间移动。
+```
+
+阶段性推进不是降低最终目标。早期 M4 可以只做默认布局和必要折叠/尺寸调整，但布局模型不能把 Explorer、Panel 或 Terminal 写死为不可移动的固定 DOM 区域。
+
 ## 2. 为什么不能做固定布局
 
 如果用固定结构：
@@ -85,6 +98,8 @@ GoldenLayout
 - 只用普通 resizable panels 做完整 IDE。
 - 先固定布局后面再改成 docking。
 ```
+
+即使 M4 只把 Dockview 主要用于 Editor Area，也要在状态模型中预留 Workbench 区域 placement/visibility/size/collapsed/version，避免后续实现 Secondary SideBar、Terminal 右侧停靠、Panel docking 时大规模重构。
 
 ## 4. 工作台结构
 
@@ -155,6 +170,8 @@ type ActivityId =
   | "settings";
 ```
 
+ActivityBar 后续不应只是硬编码按钮列表，而应映射到 Workbench View。M4 可以只实现 `explorer`，但状态模型要能扩展到 Search、Source Control、Run、Extensions 等 View。
+
 ## 6. Side Bar
 
 Side Bar 根据 active activity 展示不同内容。
@@ -163,7 +180,7 @@ Side Bar 根据 active activity 展示不同内容。
 
 ```txt
 - workspace root
-- 文件树
+- 文件树（复用 Explorer Core）
 - 新建文件
 - 新建目录
 - 刷新
@@ -193,6 +210,80 @@ Side Bar 根据 active activity 展示不同内容。
 - commit
 - branch
 ```
+
+
+### 与 Mini Explorer 的共享关系
+
+独立 IDE 的 Explorer 不是直接复用在线编辑器 Mini Explorer 容器组件，而是复用 `shared/explorer-core` 和可组合 `shared/explorer-ui` primitives：
+
+```txt
+复用：
+- ExplorerNode / ExplorerLocation 类型
+- 目录 query 与 refresh
+- 展开/选中/reveal 状态模型
+- 新建、重命名、删除、复制、移动命令
+- 文件图标、排序、权限判断、路径工具
+- 基础树节点、加载/空/错误状态、基础菜单项
+
+不复用：
+- 在线编辑器弹窗布局
+- Mini Explorer 抽屉行为
+- Mini Explorer 操作菜单排序
+```
+
+IDE Explorer 自己负责 ActivityBar、SideBar、Dockview、多编辑组和 Workbench 命令集成。这样在线编辑器先做轻量导航时，不会阻碍后续完整 IDE，也不会形成一个靠大量 `mode` 参数支撑所有场景的大 Explorer 组件。
+
+### Workbench View 容器模型
+
+Explorer、Search、Source Control、Run、Extensions、Outline、Terminal、Problems、Output、Debug Console 都应视为 Workbench View，而不是写死在某个 DOM 区域里的特殊组件。
+
+```ts
+type WorkbenchViewId =
+  | "explorer"
+  | "search"
+  | "source-control"
+  | "run"
+  | "extensions"
+  | "outline"
+  | "terminal"
+  | "problems"
+  | "output"
+  | "debug-console";
+
+type WorkbenchViewContainerId =
+  | "primary-sidebar"
+  | "secondary-sidebar"
+  | "panel";
+
+type WorkbenchViewPlacement = {
+  viewId: WorkbenchViewId;
+  containerId: WorkbenchViewContainerId;
+  order: number;
+  visible: boolean;
+  collapsed?: boolean;
+};
+```
+
+M4 只实现：
+
+```txt
+- PrimarySideBar + ExplorerView。
+- activeActivity = "explorer"。
+- Panel 中固定 Terminal / Problems / Output / Debug Console tab。
+- viewPlacements 状态可以存在，但只包含 explorer 和固定 panel tabs。
+```
+
+M4 不做：
+
+```txt
+- View 拖拽到 SecondarySideBar。
+- View 从 SideBar 移到 Panel。
+- Search/Git/Run/Extensions/Outline 真实实现。
+- ActivityBar 动态注册 View。
+- 自定义 View 排序 UI。
+```
+
+后续 M6/M7+ 基于同一 `viewPlacements` 模型实现 SecondarySideBar、View 移动、排序、显示/隐藏和 Reset View Locations。
 
 ## 7. Editor Area
 
@@ -232,14 +323,40 @@ type IdeEditorGroup = {
 type IdeEditorTab = {
   id: string;
   groupId: string;
+  rootId: string;
   path: string;
   title: string;
+  kind: "text" | "image" | "video" | "audio" | "pdf" | "binary" | "unsupported";
   dirty: boolean;
   pinned: boolean;
   preview: boolean;
+  deleted?: boolean;
   readonly: boolean;
   viewState?: unknown;
 };
+```
+
+同一个 EditorGroup 内，同一 `rootId + path` 不应重复打开；重复打开只激活已有 Tab。不同 EditorGroup 可以打开同一文件，但必须共享底层 Monaco model / FileService / dirty-save 状态。
+
+### 打开目标
+
+```ts
+type IdeOpenTarget =
+  | "current-group"
+  | "side-group"
+  | "below-group"
+  | "preview-current-group";
+```
+
+行为规则：
+
+```txt
+- Explorer 单击文件：open target = preview-current-group，复用当前 group 的 preview tab。
+- Explorer 双击文件：open target = current-group，打开为 pinned tab；已打开则激活。
+- Open to Side：open target = side-group，没有右侧 group 就创建。
+- Split Down：open target = below-group，没有下方 group 就创建。
+- 编辑 preview tab、手动保存、拖动 tab、右键 pin 后，preview tab 变 pinned。
+- dirty tab 必须自动 pinned，关闭 dirty tab 必须确认。
 ```
 
 ### 预览 Tab
@@ -249,15 +366,47 @@ type IdeEditorTab = {
 ```txt
 - 单击文件打开 preview tab。
 - 再单击另一个文件，复用 preview tab。
-- 双击文件或编辑内容后，preview tab 变为 pinned。
+- 双击文件、编辑内容、手动保存、拖动 tab 或右键 pin 后，preview tab 变为 pinned。
 - pinned tab 不会被后续单击替换。
+- dirty tab 必须自动 pinned。
 ```
 
 这个能力能避免用户单击浏览文件时打开大量 Tab。
 
+### 与 File Surface 的关系
+
+IDE EditorArea 和文件管理器在线编辑器 File Surface 共享底层能力，但不共享窗口和 Tab 生命周期：
+
+```txt
+共享：
+- FileService / 文件 API hooks
+- Monaco model / language resolver / file type resolver
+- Dirty/save/conflict 逻辑
+- 媒体预览 panel 的底层组件
+
+不共享：
+- FileOnlineEditorDialog 窗口壳
+- 在线编辑器 TabBar 状态
+- Mini Explorer 抽屉状态
+- IDE EditorGroup / Dockview layout 状态
+```
+
+即：`File Surface tab lifecycle != IDE EditorGroup tab lifecycle`，但底层文件、model、保存服务必须一致。
+
+文件操作同步同样走共享 EditorService：
+
+```txt
+- IDE Explorer rename / move 已打开文件：所有命中的 EditorGroup Tab 更新 path/title，dirty 内容保留。
+- IDE Explorer delete 已打开 clean 文件：可以关闭 Tab 或标记 deleted。
+- IDE Explorer delete 已打开 dirty 文件：必须保留内容并标记 deleted，提示另存为/重新创建/放弃修改。
+- 同一 rootId + path 在多个 EditorGroup 打开时，所有 Tab 同步同一次 path 迁移或 deleted 状态。
+```
+
 ## 8. Panel Area
 
-底部 Panel 第一版预留：
+PanelArea 是 IDE Workbench 的底部面板框架。M4 只做布局容器和固定 Tab，占位必须清楚表达“尚未接入真实能力”，避免把空壳误认为已完成终端、诊断或日志系统。
+
+M4 固定 Panel Tab：
 
 ```txt
 - Terminal
@@ -266,17 +415,48 @@ type IdeEditorTab = {
 - Debug Console
 ```
 
-第一版可以只实现 Terminal UI 和 Output 占位。
-
-Panel 能力：
+M4 Panel 能力：
 
 ```txt
+- 默认固定在底部
 - 显示/隐藏
-- 调整高度
-- 切换 active panel
+- 折叠/展开
+- 拖拽调整高度
+- 切换 active panel tab
 - 最大化/恢复
-- 关闭 panel
+- 关闭 panel 等价于隐藏或折叠，不销毁未来真实会话
 - 布局持久化
+```
+
+M4 Panel 内容边界：
+
+```txt
+- Terminal 只做占位或空状态，不接真实 PTY
+- Problems 只做占位或空状态，不接 LSP diagnostics
+- Output 只做占位或空状态，不接日志 channel
+- Debug Console 只做占位或空状态，不接调试运行时
+```
+
+M4 不做：
+
+```txt
+- Panel 移到右侧
+- Terminal / Problems / Output / Debug Console 拖到 SideBar
+- Terminal split / terminal group
+- Terminal 真实 xterm + WebSocket + node-pty
+- Problems / Output / Debug Console 真实数据接入
+```
+
+长期目标：
+
+```txt
+- Panel 可在 bottom / right placement 间切换
+- Terminal / Problems / Output / Debug Console 作为 Workbench View 参与 View Movement
+- Terminal 在 M5 接真实 xterm + PTY
+- Terminal split / group 在 M5.x 做
+- Problems 后续接 LSP diagnostics
+- Output 后续接任务日志、语言服务日志、Git/Agent 运行日志
+- Debug Console 后续接调试协议
 ```
 
 ## 9. Terminal View
@@ -361,21 +541,67 @@ Workbench: Reset Layout
 
 第一版可以不做完整 UI，但命令注册机制要有。
 
-## 12. 布局持久化
+### 11.1 CommandService / 菜单 / 快捷键
 
-必须保存：
+独立 IDE 的 Explorer、EditorArea、PanelArea、TerminalView 不应彼此直接调用。所有用户入口统一转换成 CommandService 命令：
 
 ```txt
-- SideBar 是否显示
-- SideBar 宽度
-- Panel 是否显示
-- Panel 高度
+- ActivityBar / SideBar 按钮
+- Explorer 右键菜单
+- Editor Tab 菜单
+- Toolbar 按钮
+- 快捷键
+- 后续 Command Palette
+```
+
+M4 命令范围：
+
+```txt
+- file.open / file.save / file.saveAll / file.close
+- explorer.rename / explorer.delete / explorer.copy / explorer.move / explorer.refresh
+- editor.splitRight / editor.splitDown
+- workbench.toggleSidebar / workbench.togglePanel / workbench.resetLayout
+```
+
+M5 起再启用真实终端命令：
+
+```txt
+- terminal.new
+- terminal.kill
+- terminal.splitRight / terminal.splitDown（M5.x）
+```
+
+命令 handler 负责权限、dirty 确认、保存冲突、路径同步和布局状态更新；组件只负责展示和收集必要参数。
+
+## 12. 布局持久化
+
+布局状态必须带 `layoutVersion`。任何 schema 变化都要提供 migration；版本不兼容、布局恢复失败或保存数据损坏时，必须 fallback 到默认布局，不能让 IDE 白屏，并提供 `workbench.resetLayout`。
+
+M4 必须保存：
+
+```txt
+- layoutVersion
+- SideBar placement：left | right（M4 只实际使用 left）
+- SideBar visible / collapsed / width
+- SecondarySideBar visible / collapsed / width（预留）
+- Panel placement：bottom | right（M4 只实际使用 bottom）
+- Panel visible / collapsed / size / maximized / activePanelId
+- viewPlacements：WorkbenchViewPlacement[] 默认状态
 - active activity
-- active panel
 - dockview layout
 - 打开的 Tab
 - active group
 - active tab
+- Explorer 展开节点和选中节点
+```
+
+M4 不保存：
+
+```txt
+- 真实 terminal session
+- terminal scrollback
+- LSP / Git / Debug runtime 状态
+- hover、临时 selection、拖拽中的中间态
 ```
 
 保存级别：
@@ -390,59 +616,148 @@ Workbench: Reset Layout
 workspace 级：
 - 打开的文件
 - 编辑组拆分
-- 当前 active tab
-- 终端 cwd
-- Explorer 展开节点
+- 当前 active tab / active group
+- Explorer 展开节点和选中节点
+- SideBar / Panel / viewPlacements
+
+session 级：
+- 当前 focus
+- hover
+- 临时 selection
+- 拖拽中的中间态
 ```
 
-布局恢复失败时：
+恢复流程：
 
 ```txt
-- fallback 到默认布局。
-- 提供重置布局命令。
+load layout state
+→ 检查 layoutVersion
+→ 逐版本 migrate 到当前 schema
+→ 校验必要字段和 Dockview layout
+→ 成功则恢复
+→ 失败则 fallback 默认布局，并保留损坏数据用于调试日志
+```
+
+Reset Layout：
+
+```txt
+workbench.resetLayout
+→ 清除 workspace 布局状态
+→ 恢复默认：左 Explorer + 中 Editor + 底 Panel
+→ 不删除用户级主题/字体/快捷键
+→ 不删除 dirty 编辑内容
 ```
 
 ## 13. 独立 IDE 第一版范围
 
-建议第一版交付：
+M4 是 **IDE Workbench Layout Foundation**，不是完整自由布局终局，也不是 M5 真实终端或 M7 LSP/Git/Debug。第一版必须交付一个可用、可恢复、可继续扩展的默认 Workbench。
+
+默认布局：
+
+```txt
+┌────────────────────────────────────────────┐
+│ ActivityBar │ Explorer │ EditorArea        │
+│             │          │                   │
+├─────────────┴──────────┴───────────────────┤
+│ PanelArea: Terminal / Problems / Output    │
+├────────────────────────────────────────────┤
+│ StatusBar                                  │
+└────────────────────────────────────────────┘
+```
+
+M4 必做：
 
 ```txt
 - /ide/:workspaceId 独立入口
-- 左侧文件资源管理器
+- ActivityBar 在最左侧
+- PrimarySideBar / Explorer 在左侧
+- Explorer 可显示/隐藏、折叠/展开、调整宽度
+- ExplorerView 加载文件树并打开文件到当前编辑组
+- ExplorerView 基于 shared/explorer-core + shared/explorer-ui primitives
 - Monaco 多 Tab 编辑
 - Dockview 编辑区布局
-- 编辑组左右拆分
-- Tab 拖拽
+- 多 EditorGroup
+- Split Right
+- Split Down
+- Tab 拖拽到另一个编辑组
+- 编辑组尺寸调整
+- active group / active tab 状态
 - 底部 Panel 框架
+- Panel 可显示/隐藏、折叠/展开、调整高度、最大化/恢复
+- Terminal / Problems / Output / Debug Console tab 切换
+- Terminal UI 占位或空状态；Output/Problems 占位
 - Status Bar
 - 布局保存/恢复
+- 布局状态预留 SideBar/Panel placement、visible、collapsed、size、version
 ```
 
-不建议第一版交付：
+M4 可选：
 
 ```txt
+- 当前编辑组最大化/恢复
+```
+
+M4 只预留、不做：
+
+```txt
+- Explorer 移到右侧
+- SecondarySideBar
+- View 在 SideBar / Panel 间拖动
+- Panel 移到右侧
+- Panel / View 任意 docking
+- 真实 xterm + PTY 终端
+- Terminal split/group
 - 完整 Git
 - 完整 LSP
 - Debug
 - 插件市场
 - 完整 VS Code 兼容扩展
 - 复杂多窗口 popout
+- 多窗口跨浏览器窗口拖拽
 ```
 
-## 14. 验收标准
+## 14. M4 验收标准
+
+M4 验收名称应收敛为 **IDE Workbench Layout Foundation 验收**，不是“完整 IDE 验收”。验收重点是默认工作台、编辑组、面板框架、命令入口、布局恢复和文件状态安全。
+
+必须通过：
 
 ```txt
-- IDE 是独立入口，不依赖文件管理器弹窗。
-- 左侧 Explorer 可以打开文件。
-- 中间可以多 Tab 编辑。
-- 同一文件不会重复打开多个 Tab。
-- Tab 可以拖动排序。
-- Tab 可以拆到另一个编辑组。
-- 关闭 dirty Tab 时有确认。
-- Ctrl+S 保存当前文件。
-- Ctrl+Shift+S 保存全部。
-- 刷新页面后恢复布局和打开的 Tab。
-- 布局异常时可以重置默认布局。
-- 底部 Panel 可以展开、收起、调整高度。
+- /ide/:workspaceId 独立入口能加载默认布局，不依赖文件管理器弹窗。
+- 默认布局是左 ActivityBar + 左 Explorer + 中 EditorArea + 底 PanelArea + StatusBar。
+- Explorer 可以折叠/展开、调整宽度，并打开文件。
+- Explorer 单击文件打开 preview tab，继续单击复用 preview tab。
+- Explorer 双击文件打开 pinned tab。
+- 同一 EditorGroup 内同一 rootId + path 不重复打开，只激活已有 Tab。
+- Editor 支持多 Tab、preview/pinned、dirty 标记和 dirty 关闭确认。
+- Editor 支持 Split Right / Split Down，并能把文件打开到目标编辑组。
+- Tab 能跨编辑组拖拽，EditorGroup 能调整尺寸。
+- Panel 能切换 Terminal / Problems / Output / Debug Console 固定 Tab。
+- Panel 能显示/隐藏、折叠/展开、调整高度、最大化/恢复。
+- CommandService 命令入口有效：file.open/save/saveAll/close、explorer.rename/delete、editor.splitRight/splitDown、workbench.toggleSidebar/togglePanel/resetLayout。
+- 布局刷新后可恢复：SideBar、Panel、Editor dockview layout、active group/tab、viewPlacements。
+- 布局损坏或版本不兼容时 fallback 默认布局，不能白屏。
+- workbench.resetLayout 可恢复默认布局，且不丢 dirty 编辑内容。
+- Explorer rename / move 已打开文件时，同步 path/title/model key。
+- Explorer delete 已打开 dirty 文件时保留内容并标记 deleted，不静默关闭。
+- 保存冲突或外部修改不会静默覆盖 dirty 内容。
 ```
 
+M4 验收不要求：
+
+```txt
+- 真实 xterm + PTY 终端。
+- Terminal split / terminal group。
+- Problems 真实 diagnostics。
+- Output 真实日志 channel。
+- Debug Console 真实调试运行时。
+- LSP。
+- Git。
+- Debug。
+- 右侧 Panel。
+- Explorer 移到右侧。
+- SecondarySideBar。
+- 全 View docking / View Movement。
+- 插件市场或 VS Code 扩展兼容。
+- 多浏览器窗口 popout。
+```

@@ -1,20 +1,19 @@
 # File Surface Unification & Monaco Gap Plan
 
-Status: Draft / analysis-ready for implementation
+Status: Implemented / verified
 Created: 2026-07-01
 Scope: 文件管理器中的文件打开、编辑、检查、媒体预览、Monaco 能力补齐
-Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
+Branch context: implemented through M2 and M2.x, merged to `main`
 
 ## 1. 本轮问题结论
 
 用户反馈的问题可以合并为一个产品架构问题：
 
 ```txt
-文件管理器现在同时存在“新 Monaco 在线编辑器”和“旧 FilePreviewPanel 预览/编辑器”。
-打开入口按 textLike 分流，导致不同文件进入不同窗口、不同编辑器能力、不同快捷键处理链路。
+文件管理器曾经同时存在“新 Monaco 在线编辑器”和“旧 FilePreviewPanel 预览/编辑器”。M2 已把这些入口统一到一个 File Surface。
 ```
 
-目标不是再做第三套窗口，而是统一成一个文件表面（File Surface）：
+已完成目标：不再做第三套窗口，而是统一成一个文件表面（File Surface）：
 
 ```txt
 双击 / 右键编辑 / 检查文件 / 操作列编辑 / 快捷键打开
@@ -29,7 +28,7 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 
 ### 2.1 Monaco 其它文件支持高亮了吗？
 
-**现状：大部分 Monaco 内置 basic languages 已支持懒加载高亮，但仍需要区分“Monaco 有语言包”和“文件扩展名能映射到语言”。**
+**现状：大部分 Monaco 内置 basic languages 已支持懒加载高亮；语言识别已从“只看扩展名”升级为“Monaco 元数据 + 文件名/扩展名 + firstLine/MIME + 有界内容样本”。**
 
 当前代码状态：
 
@@ -43,8 +42,10 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 
 还不等于“所有文件名都一定高亮”：
 
-- 文件必须由 `apps/web/src/shared/editor-core/language.ts` 映射到 Monaco language id。
-- 没有映射的扩展名会进入 `plaintext`，这是安全 fallback。
+- 文件由 `apps/web/src/shared/editor-core/language.ts` 映射到 Monaco language id；该 resolver 复用 Monaco 官方 metadata，并对未知扩展名、无扩展名和备份后缀文件做有界内容样本识别。
+- 典型已覆盖：`openclaw.json.last-good`、`openclaw.json.bak.2`、`openclaw.json.backup`、`openclaw.json.pre-update`、`openclaw.json.clobbered.<timestamp>`、无扩展名 JSON（如 `123`）。
+- 大 JSON 不会为了识别语言做完整 `JSON.parse`；只用有界前部样本判断 JSON 结构，小 JSON 才严格 parse 以降低误判。
+- 没有映射且内容无法可靠识别的文件会进入 `plaintext`，这是安全 fallback。
 - Monaco 不提供某语言 tokenizer 的文件无法凭空高亮，除非后续加依赖或自定义 Monarch grammar。
 
 ### 2.2 Monaco 所有快捷键和功能都支持了吗？
@@ -64,7 +65,7 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 
 ### 2.3 Monaco 所有功能都能利用上了吗？
 
-**现状：没有。已经从“残缺版”推进到“Monaco-first”，但仍有缺口。**
+**现状：核心编辑能力已按 Monaco-first 打开；仍不承诺所有语言都有 LSP 级能力。**
 
 已利用：
 
@@ -76,54 +77,40 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 未充分利用：
 
 - Monaco DiffEditor 尚未用于冲突 compare。
-- Monaco command palette / quick access 没有文件管理器入口。
-- `getSupportedActions()` 没有用于能力诊断/测试。
-- 本地化没有加载 zh-cn NLS。
-- 快捷键隔离没有系统化测试。
+- LSP 级 rename/format/code action 仍需要后续 provider/LSP 轨道。
+- 后续重点转向 Mini Explorer / Explorer Core，而不是重复实现 Monaco 内部 UI。
+- Monaco zh-CN NLS 已在 editor API/contributions 前加载。
+- 快捷键隔离已有系统化 smoke 测试。
 - 语言 worker/provider 只覆盖 Monaco 官方 rich languages，不是所有语言都有智能服务。
 
 ### 2.4 Monaco 跟随系统语言了吗？默认中文了吗？
 
-**现状：没有证据表明已加载中文 NLS，所以 Monaco 自身 UI 不是默认中文。**
+**现状：Monaco UI 已默认中文；主题仍跟随应用主题偏好。**
 
-当前项目只做了主题跟随系统/偏好：
+当前项目已同时处理主题和语言本地化：
 
 - `themeMode = auto | light | dark`
 - `effectiveTheme = themeMode === "auto" ? theme : themeMode`
+- `CodeEditor.tsx` 在 Monaco editor API/contribution 模块前加载 `monaco-editor/esm/nls.messages.zh-cn.js`。
+- `tests/file-manager/file-manager-monaco-nls.smoke.mjs` 覆盖 Find widget 中文文案。
 
-但语言本地化不同于主题：
-
-- Monaco 官方 README 说明：要加载特定语言，需要在主 Monaco editor script 前加载对应 NLS script。
-- 已安装包中存在 `node_modules/monaco-editor/esm/nls.messages.zh-cn.js`。
-- 当前 `CodeEditor.tsx` 没有导入或动态注入 `nls.messages.zh-cn.js`。
-
-目标：
-
-- 默认中文：优先 `zh-cn`。
-- 后续可跟随系统/应用语言：`zh-CN` -> `zh-cn`，英文 fallback。
-- 必须保证 NLS 在 `edcore.main.js` 前初始化；否则已经加载的字符串不会完全切换。
+后续如果需要跟随应用语言，应保持 NLS 初始化顺序约束：语言包必须早于 Monaco 主 editor/contribution 模块。
 
 ### 2.5 为什么 Ctrl+C 然后 Ctrl+V 后编辑器会闪退？
 
-**最可能原因：外层文件管理器快捷键捕获与 Monaco 内部剪贴板快捷键冲突。**
+**已修复：根因是外层文件管理器快捷键捕获与 Monaco 内部剪贴板快捷键冲突。**
 
-直接证据：
+历史根因：
 
 - `FileManagerPage.tsx` 的 `handleFileManagerKeyDown` 在文件管理器容器上处理：
   - Ctrl/Cmd+C -> 文件剪贴板 copy
   - Ctrl/Cmd+X -> 文件剪贴板 move
   - Ctrl/Cmd+V -> 打开复制/移动 dialog
-- 它只通过 `isEditableEventTarget` 排除 input/textarea/select/contentEditable。
+- 旧判断只排除 input/textarea/select/contentEditable。
 - Monaco 的真实焦点节点、view lines、overlay widget、find widget 并不总是普通 textarea target。
-- `CodeEditor` 根节点有 `data-editor-shortcuts="ignore"`，但 `isEditableEventTarget` 没有使用这个标记。
+- 因此 Monaco 内 Ctrl+C / Ctrl+V 可能被文件管理器当成“复制/粘贴文件”处理，触发外层 dialog 或重挂载，表现成编辑器闪退。
 
-推断：
-
-- 当用户在 Monaco 内 Ctrl+C / Ctrl+V 时，事件可能冒泡到 FileManagerPage。
-- 如果文件管理器里已有 selected file 或 fileClipboard，Ctrl+V 会触发外层 copy/move dialog 或状态变化。
-- 这可能关闭/重挂载当前 editor，表现成“闪退”。
-
-修复原则：
+当前修复原则：
 
 ```txt
 只要事件 target 位于 [data-editor-shortcuts="ignore"], [data-code-editor="monaco-direct"], .monaco-editor, .find-widget 内，文件管理器不得处理 Ctrl/Cmd+C/X/V/A 等编辑器快捷键。
@@ -131,24 +118,24 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 
 ### 2.6 是否存在多个编辑器窗口？旧版本是否应该删除？
 
-**现状：是。新旧两套入口并存。**
+**当前状态：旧版本已经删除，文件管理器只保留统一 File Surface。**
 
 当前文件：
 
-- 新：`apps/web/src/features/file-manager/online-editor/FileOnlineEditorDialog.tsx`
-- 新：`apps/web/src/features/file-manager/code-editor/CodeEditor.tsx`
-- 旧：`apps/web/src/features/file-manager/FilePreviewPanel.tsx`
+- 统一 File Surface：`apps/web/src/features/file-manager/online-editor/FileOnlineEditorDialog.tsx`
+- Monaco host：`apps/web/src/features/file-manager/code-editor/CodeEditor.tsx`
+- 旧 `apps/web/src/features/file-manager/FilePreviewPanel.tsx` 已删除。
 
-当前分流：
+当前路由：
 
-- `openEntry`: `entry.textLike ? openFileOnlineEditor(entry) : openFilePreview(entry)`
-- Ctrl/Cmd+Enter、Space、二级 Dock、ContentIndex、右键“检查文件”仍会进入旧 `FilePreviewPanel`。
-- 行操作列“编辑”只在 `entry.textLike` 时显示。
+- `openFileSurface` 进入在线编辑器 tab 生命周期。
+- 文本/代码由 Monaco 渲染。
+- 图片/视频/音频/PDF/二进制由 File Surface 内部 preview panel 渲染。
 
-建议：
+结论：
 
-- 删除“旧文本编辑器/旧二进制编辑器/旧文件预览壳”的编辑职责。
-- 不建议立即删除所有媒体预览能力；应先把有用的媒体预览迁移进统一 File Surface，再删除旧壳。
+- 不再保留旧文本编辑器、旧二进制编辑器、旧文件预览壳。
+- 后续不要新增平行预览窗口；媒体/文档能力继续作为 File Surface panel 扩展。
 
 ### 2.7 双击打开文件、右键编辑/检查文件是否应变成同一个编辑器？
 
@@ -190,21 +177,22 @@ Branch context: `feat/file-manager-online-editor-monaco-first-cleanup`
 
 | 证据 | 含义 |
 |---|---|
-| `FileManagerPage.tsx` lazy import `FilePreviewPanel` 和 `FileOnlineEditorDialog` | 两套窗口并存 |
-| `FileManagerPage.tsx` `previewTabs` / `onlineEditorTabs` 两套状态 | 预览和编辑生命周期分裂 |
-| `openEntry` 使用 `entry.textLike ? openFileOnlineEditor : openFilePreview` | 双击按 textLike 分流 |
-| `FileActionsMenu.tsx` 有“检查文件（弹窗）”和 textLike 才出现的“编辑” | 右键入口不统一 |
-| `FileManagerList.tsx` 行编辑按钮只在 textLike 展示 | 非 textLike 文件不能通过同一编辑入口打开 |
+| `FileManagerPage.tsx` lazy import `FileOnlineEditorDialog` | 当前只保留统一在线 File Surface 入口 |
+| `FileManagerPage.tsx` `openFileSurface` 直接进入 `openFileOnlineEditor` | 双击、编辑、检查等文件打开路径共用在线编辑器 tab 生命周期 |
+| `tests/system/web-file-manager-domain.test.mjs` 断言无 `LazyFilePreviewDialog` / `FilePreviewPanel` import | 旧预览壳已从运行时路径删除 |
+| `FileOnlineEditorDialog.tsx` `FileSurfacePreviewPanel` | 非文本文件在同一窗口内按 image/video/audio/pdf/binary 渲染 |
 | `CodeEditor.tsx` 导入 `edcore.main.js` | Monaco editor contribution 已批量启用 |
 | `monacoLanguageLoaders.ts` 由 generator 生成 | Monaco language coverage 懒加载 |
-| `FileManagerPage.tsx` `handleFileManagerKeyDown` 捕获 Ctrl/C/V | 存在抢 Monaco 剪贴板快捷键风险 |
-| `CodeEditor.tsx` 根节点已有 `data-editor-shortcuts="ignore"` | 已有隔离标记，但外层尚未使用 |
+| `monacoLanguageMetadata.ts` 由 generator 生成 | language resolver 可复用 Monaco 官方 extensions / filenames / filenamePatterns / firstLine / mimetypes 元数据 |
+| `language.ts` `detectLanguageForFile` | 未知扩展、无扩展和备份后缀文件通过有界内容样本识别语言，安全回退 plaintext |
+| `FileManagerPage.tsx` 快捷键处理已过滤 editor-owned descendants | 文件管理器不再抢 Monaco 剪贴板快捷键 |
+| `CodeEditor.tsx` 根节点有 `data-editor-shortcuts="ignore"` | 编辑器区域是快捷键隔离边界 |
 
-## 4. 升级目标架构
+## 4. 已落地目标架构
 
 ### 4.1 统一 File Surface
 
-新目标组件边界：
+当前组件边界：
 
 ```txt
 FileSurfaceDialog
@@ -218,7 +206,7 @@ FileSurfaceDialog
   FileSurfaceStatusBar
 ```
 
-状态从两套合并为一套：
+状态已从旧 preview tabs 与 online editor tabs 两套合并为一套 online editor tabs。目标类型可表达为：
 
 ```ts
 type FileSurfaceMode = "text" | "image" | "video" | "audio" | "pdf" | "binary" | "unsupported";
@@ -299,16 +287,17 @@ openFileSurface(entry, { intent: "open" | "edit" | "inspect" })
 ### M2.5 Language mapping audit
 
 - 保持 `node --test tests/system/monaco-language-loaders.test.mjs`。
-- 增加抽样 smoke：ts/html/css/json/md/python/yaml/shell/sql。
+- 增加抽样 smoke：ts/html/css/json/md/python/yaml/shell/sql，以及未知扩展、无扩展、备份后缀 JSON。
+- language resolver 不解析完整大 JSON；使用有界样本识别，避免为了高亮判断放大大文件成本。
 - 对无法高亮的扩展，明确进入 plaintext。
 
 ## 6. 旧 FilePreviewPanel 迁移/删除策略
 
-不要直接一刀删，否则会丢媒体预览/二进制安全提示。建议三步：
+已按“三步走”完成：先迁移有价值的预览能力，再切入口，最后删除旧状态和旧组件。
 
-### M2.6 抽取旧预览中仍有价值的能力
+### M2.6 抽取旧预览中仍有价值的能力（已完成）
 
-从 `FilePreviewPanel.tsx` 迁移：
+已迁移/保留的能力：
 
 - metadata grid
 - image preview 如已有
@@ -317,9 +306,9 @@ openFileSurface(entry, { intent: "open" | "edit" | "inspect" })
 
 迁移目标：统一 `FileSurfaceDialog` 内的 `MediaPreviewPanel` / `BinaryInspectorPanel`。
 
-### M2.7 切入口
+### M2.7 切入口（已完成）
 
-把以下路径全部改为 `openFileSurface`：
+以下路径已统一改为 `openFileSurface` 或等效在线 File Surface 打开路径：
 
 - `openEntry`
 - `Ctrl/Cmd+Enter`
@@ -332,9 +321,9 @@ openFileSurface(entry, { intent: "open" | "edit" | "inspect" })
 - FileActionsMenu `onEditRequest`
 - BulkActionBar edit/open
 
-### M2.8 删除旧状态和旧组件
+### M2.8 删除旧状态和旧组件（已完成）
 
-删除：
+已删除：
 
 - `previewTabs`
 - `activePreviewTabId`
@@ -343,16 +332,16 @@ openFileSurface(entry, { intent: "open" | "edit" | "inspect" })
 - `closePreviewWindow`
 - `FilePreviewPanel.tsx` 中已迁移且无调用的旧编辑器/预览壳
 
-保留/重命名：
+当前保留：
 
-- 只保留新的 `FileSurfaceDialog`。
-- `FileOnlineEditorDialog` 可以重命名为 `FileSurfaceDialog`，避免“在线编辑器只适合文本”的命名误导。
+- 运行时只保留 `FileOnlineEditorDialog` 作为统一 File Surface 壳。
+- 后续如重命名为 `FileSurfaceDialog`，应作为独立小重构处理，避免和 Mini Explorer 混在一个提交。
 
 ## 7. 实施计划
 
 ### M2.0 — 评估与计划
 
-Status: 本文档完成后进入实现。
+Status: Complete.
 
 产物：
 
@@ -362,7 +351,7 @@ Status: 本文档完成后进入实现。
 
 ### M2.1 — 快捷键隔离与 Ctrl+C/V 闪退修复
 
-优先级：最高。
+Status: Complete.
 
 任务：
 
@@ -377,6 +366,8 @@ Status: 本文档完成后进入实现。
 
 ### M2.2 — Monaco zh-CN 本地化
 
+Status: Complete.
+
 任务：
 
 - 在 Monaco 主模块加载前加载 zh-cn NLS。
@@ -388,6 +379,8 @@ Status: 本文档完成后进入实现。
 - 不破坏动态 import 和 build。
 
 ### M2.3 — 统一 File Surface 路由
+
+Status: Complete.
 
 任务：
 
@@ -402,6 +395,8 @@ Status: 本文档完成后进入实现。
 - 非文本文件不再打开旧 `FilePreviewPanel`。
 
 ### M2.4 — 媒体预览面板
+
+Status: Complete.
 
 任务：
 
@@ -418,6 +413,8 @@ Status: 本文档完成后进入实现。
 
 ### M2.5 — 删除旧 FilePreviewPanel
 
+Status: Complete.
+
 任务：
 
 - 迁移后删除旧 lazy import、旧 state、旧组件。
@@ -430,15 +427,19 @@ Status: 本文档完成后进入实现。
 
 ### M2.6 — Monaco 能力诊断与语言抽样验证
 
+Status: Complete.
+
 任务：
 
 - 增加 action coverage diagnostic。
 - 增加语言抽样 smoke。
+- 增加 language detector 系统测试，覆盖备份后缀、无扩展名和大 JSON 样本。
 - 更新 `11-monaco-full-capability-plan.md`，把“rich override basic”修正为“rich + basic tokenizer compose”。
 
 验收：
 
 - 常见代码文件高亮稳定。
+- 无扩展名/备份后缀 JSON 识别稳定，且不依赖完整文件 parse。
 - Monaco action 清单可诊断。
 
 ## 8. 风险与约束
@@ -481,10 +482,28 @@ npm run test:system
 ## 10. 决策
 
 1. Monaco 是文本/代码编辑唯一内核。
-2. 旧 FilePreviewPanel 不再承担文件打开主路径。
+2. 旧 FilePreviewPanel 已删除，不再承担文件打开主路径。
 3. 文件管理器只保留一个文件窗口：File Surface。
 4. 媒体/二进制是 File Surface 的不同 panel，不是另一个编辑器。
 5. 不用 `editor.all.js`；继续 lazy language support。
 6. 不承诺所有语言都有智能服务；承诺 installed Monaco language tokenizer 能懒加载，rich provider 可用时启用。
-7. 默认 Monaco UI 中文化是 M2 必做。
-8. Ctrl+C/V 闪退先作为 M2.1 修复，不等旧预览删除。
+7. 默认 Monaco UI 中文化已完成。
+8. Ctrl+C/V 快捷键隔离已完成，并有 smoke 覆盖。
+
+
+## 11. 完成状态
+
+M2/M2.x 已完成并合并到主线：
+
+```txt
+- Monaco 快捷键隔离与剪贴板 smoke 覆盖。
+- Monaco zh-CN NLS。
+- 统一 File Surface 路由。
+- 文本/代码 Monaco；图片/视频/音频/PDF/二进制同窗预览。
+- 删除旧 FilePreviewPanel / LazyFilePreviewDialog / previewTabs。
+- Monaco language lazy loader 和高亮抽样验证。
+- Monaco language metadata + bounded content detector 覆盖未知扩展、无扩展和备份后缀文件。
+- 图片预览 pan/zoom/rotate/reset；视频/音频播放控制增强。
+```
+
+后续文件导航需求不应在本文继续扩张；进入 `13-mini-explorer-shared-explorer-plan.md`。

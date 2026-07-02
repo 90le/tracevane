@@ -1,6 +1,6 @@
 # Monaco Full Capability Plan — File Manager Online Editor
 
-Status: Implemented on `feat/file-manager-online-editor-monaco-first-cleanup`
+Status: Implemented / current baseline
 Updated: 2026-07-01
 Scope: File Manager Online Editor Monaco integration, not standalone IDE Workbench
 
@@ -231,7 +231,7 @@ npm run smoke:file-manager:online-editor
 npm run smoke:file-manager:online-editor-responsive
 ```
 
-When port `5176` is occupied, use the existing isolated `5177` pattern from `monaco-first-cleanup-plan.md`.
+When port `5176` is occupied, use the existing isolated `5177` smoke-test pattern documented in the M1/M2 progress logs.
 
 Add targeted smoke checks when changing:
 
@@ -248,21 +248,26 @@ Implemented with this plan:
 
 - `tests/system/monaco-language-loaders.test.mjs` verifies generated lazy language loaders cover every installed Monaco language contribution and the rich-language aliases that should not fall back to basic tokenizers.
 - The same test verifies `languageForPath` can emit every installed Monaco basic language id.
+- `tests/system/monaco-language-detector.test.mjs` verifies compound backup filenames and extensionless/unknown-extension content detection, including large JSON without parsing the whole file.
+- `tests/file-manager/file-manager-monaco-highlighting.smoke.mjs` now opens representative rich/basic/unknown/extensionless files through the real File Surface and asserts Monaco language id plus visible syntax tokens.
 
 ## 11. Next implementation backlog
 
-1. Add smoke coverage for at least one rich language and one non-rich basic language opening in the online editor.
-2. Consider upgrading conflict compare to Monaco Diff Editor, keeping lightweight fallback for mobile/basic mode.
-3. Consider a thin command palette entry that calls Monaco actions rather than reimplementing command discovery.
-4. If product wants LSP-grade features beyond Monaco's built-in providers, plan a separate provider/LSP track; do not present it as built-in Monaco support.
+1. Consider upgrading conflict compare to Monaco Diff Editor, keeping lightweight fallback for mobile/basic mode.
+2. If product wants VS Code-like automatic language detection across arbitrary files, evaluate `@vscode/vscode-languagedetection` separately for license, bundle size, lazy-loading, browser runtime cost, and false-positive behavior; do not replace the current bounded detector with full-document parsing.
+3. If product wants LSP-grade features beyond Monaco's built-in providers, plan a separate provider/LSP track; do not present it as built-in Monaco support.
 
-## 11. 2026-07-01 gap update: File Surface unification
+## 12. 2026-07-01 File Surface update
 
 Follow-up plan: [12-file-surface-unification-and-monaco-gap-plan.md](./12-file-surface-unification-and-monaco-gap-plan.md).
 
-Key corrections after runtime verification:
+Current status after M2/M2.x:
 
-- Rich language contributions alone do not guarantee visible tokenization for TypeScript/HTML; Tracevane now composes basic Monarch tokenizer modules with rich language contributions.
-- Monaco UI localization is not yet complete; load `monaco-editor/esm/nls.messages.zh-cn.js` before the main editor module in M2.
-- File Manager still has two file surfaces (`FileOnlineEditorDialog` and `FilePreviewPanel`); M2 should unify double-click/edit/inspect into one File Surface and migrate media preview panels before deleting the old preview shell.
-- File Manager global Ctrl/Cmd+C/X/V must ignore Monaco/editor descendants to avoid stealing editor clipboard shortcuts.
+- Basic Monarch tokenizer modules and rich language contributions are composed through generated lazy loaders.
+- Monaco zh-CN NLS is loaded before the main editor contribution modules.
+- Language resolution combines Monaco contribution metadata, filename/extension rules, first-line/MIME hints, compound backup suffix handling, and bounded content samples. This covers files such as `openclaw.json.pre-update`, `openclaw.json.clobbered.<timestamp>`, and extensionless JSON like `123` without parsing full large files.
+- File Manager no longer has two file surfaces; `FilePreviewPanel` and legacy preview tab state were removed.
+- File Manager global Ctrl/Cmd+C/X/V ignores Monaco/editor descendants so editor clipboard shortcuts remain editor-owned.
+- Media and binary files now open in the unified File Surface rather than a separate preview shell.
+
+Next capability gap is not “more Monaco UI”; it is shared file navigation: M3 Online Editor Mini Explorer + Shared Explorer Core. See `13-mini-explorer-shared-explorer-plan.md`.

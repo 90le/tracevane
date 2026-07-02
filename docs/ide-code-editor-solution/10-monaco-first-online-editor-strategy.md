@@ -1,6 +1,6 @@
 # Monaco-first Online Editor Strategy
 
-Status: MFC.1–MFC.4 cleanup implemented
+Status: Implemented / folded into current File Surface baseline
 Updated: 2026-07-01
 Scope: File Manager Online Editor, not standalone IDE Workbench
 
@@ -336,20 +336,11 @@ TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manag
 
 ## 12. Recommended next implementation ticket
 
-Create a focused follow-up branch:
+Monaco-first cleanup is complete and no longer needs a separate execution document. The next editor-adjacent implementation should be M3 Online Editor Mini Explorer + Shared Explorer Core:
 
-```txt
-feat/file-manager-online-editor-monaco-first-cleanup
-```
+- keep Monaco-owned features inside Monaco;
+- keep File Surface as the single file open/edit/preview shell;
+- add only a lightweight file navigation sidecar;
+- extract Explorer Core so future standalone IDE Explorer can reuse it.
 
-Ticket goal:
-
-> Simplify File Manager Online Editor to rely on Monaco-native editing features, remove duplicate search UI/state, and introduce explicit Monaco option profiles for normal, large-readonly, and mobile-basic surfaces.
-
-Suggested first code changes:
-
-1. Add `CodeEditorProfile` and centralized `buildMonacoEditorOptions`.
-2. Replace per-toggle find methods with a generic `runAction` bridge plus `openFind/openReplace` conveniences.
-3. Remove `searchHighlights` from `CodeEditor` unless another active feature still needs it.
-4. Reduce Online Editor search toolbar to Find / Replace / Goto.
-5. Update smoke tests to assert Monaco Find/Replace opens, not custom toggle buttons.
+See `13-mini-explorer-shared-explorer-plan.md`.

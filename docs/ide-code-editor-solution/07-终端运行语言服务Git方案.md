@@ -18,6 +18,30 @@
 
 ## 2. 终端方案
 
+终端最终目标接近 VS Code，但分阶段交付：
+
+```txt
+M5：Real Terminal Foundation
+- xterm.js + WebSocket + node-pty。
+- 多终端 Tab、create/input/output/resize/close/kill。
+- cwd guard、shell 白名单、权限 canOpenTerminal、session cleanup。
+- disconnected/exited/error 状态明确显示。
+- 不做 split terminal pane，不做 terminal group，不做 Panel right placement，不做 LSP/Git/Debug。
+
+M5.x：Terminal Split / Group / Panel Placement
+- TerminalGroup / TerminalPane 模型。
+- Split Terminal Right / Split Terminal Down。
+- pane resize、focus、close/kill、move between groups。
+- terminal tabs/groups layout persistence。
+- Terminal Panel bottom/right placement。
+- 不做 LSP/Git/Debug，不做 Terminal 作为 editor-like tab。
+
+M6+：终端参与更完整 Workbench 全局布局
+- Terminal View 在 Panel / SecondarySideBar / dockable region 间移动。
+- 可评估 Terminal 最大化为主区域，或作为 editor-like tab 打开。
+- Terminal / Problems / Output / Debug Console 与 Workbench layout 一起保存/恢复。
+```
+
 ### 前端
 
 使用：
@@ -71,17 +95,45 @@ Shell / Container / Remote Workspace
 ### 多终端模型
 
 ```ts
+type TerminalSessionStatus =
+  | "connecting"
+  | "running"
+  | "exited"
+  | "error"
+  | "disconnected";
+
 type TerminalSession = {
   id: string;
   workspaceId: string;
   name: string;
   cwd: string;
   shell: string;
-  status: "connecting" | "running" | "exited" | "error";
+  status: TerminalSessionStatus;
   exitCode?: number | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+type TerminalPane = {
+  id: string;
+  sessionId: string;
+};
+
+type TerminalGroup = {
+  id: string;
+  orientation: "horizontal" | "vertical";
+  panes: TerminalPane[];
+  activePaneId?: string;
+  sizes?: number[];
+};
+
+type TerminalLayoutState = {
+  activeGroupId?: string;
+  groups: TerminalGroup[];
 };
 ```
+
+M5 可以先只实现 `sessions + activeSessionId` 的多 Tab 终端，但模型和 store 边界必须能演进到 `TerminalLayoutState`，不要把终端状态写死成简单 `sessionId[]`。
 
 ### 安全建议
 
@@ -104,6 +156,9 @@ type TerminalSession = {
 - shell 白名单。
 - 权限控制 canOpenTerminal。
 - 终端 session 超时清理。
+- close/kill 必须真实杀掉 PTY 进程。
+- 不默认记录完整终端输出，避免隐私和安全问题。
+- 断线后明确显示 disconnected/exited/error，不伪造仍在运行。
 ```
 
 ## 3. 任务运行方案
@@ -159,6 +214,21 @@ TaskRunner
 先做终端。
 再做 package.json scripts 识别。
 最后做 tasks.json 或项目自定义任务。
+```
+
+## 3.1 M6 / M7 边界
+
+```txt
+M6：Watcher / Search / Problems / Output
+- 做文件 watcher、全局搜索、DiffEditor、Problems 数据模型、Output channel/log 基础。
+- Problems 可以展示结构化问题数据，但不要求来自 LSP diagnostics。
+- Output 可以展示任务、终端辅助、语言服务预备日志等 channel。
+- 不做 LSP Gateway，不做 Git，不做 Debug。
+
+M7：LSP / Git / Debug
+- 先接单语言 LSP，让 diagnostics 进入 Problems。
+- Git 先做 status/diff，再做 stage/commit。
+- Debug 后置到 M7.x，不和 LSP/Git 同时追完整。
 ```
 
 ## 4. LSP 语言服务方案
@@ -256,9 +326,7 @@ type ProblemItem = {
 
 ## 6. Git 方案
 
-Git 不建议第一版做。
-
-后续可分阶段：
+Git 不属于 M6，也不属于 M7.1 的必要阻塞项。建议在 M7 内继续分阶段：
 
 ### Git 阶段一：只读状态
 
@@ -313,7 +381,7 @@ POST /api/workspaces/:id/git/push
 
 ## 7. Debug 方案
 
-Debug 是复杂能力，建议后置。
+Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/diff 同时追完整。
 
 如果要做，需要考虑：
 
@@ -344,11 +412,11 @@ Debug 是复杂能力，建议后置。
 2. 独立 IDE 布局
 3. xterm 终端
 4. 任务运行
-5. Diff / Search / Problems 空面板
-6. 单语言 LSP
-7. Git 只读状态
-8. Git 基础操作
-9. Debug
+5. M6：Diff / Search / Watcher / Problems 数据基础 / Output channel
+6. M7.1：单语言 LSP + diagnostics + Problems 跳转
+7. M7.2：Git 只读状态 + diff
+8. M7.3：Git 基础操作
+9. M7.x：Debug
 ```
 
 ## 9. 验收标准
@@ -387,4 +455,3 @@ Git：
 - 文件树显示变更状态。
 - 可以查看单文件 diff。
 ```
-

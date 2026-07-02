@@ -1,8 +1,8 @@
 # IDE / Code Editor Progress
 
-Status: M1 verified; M1.x enhancement branch in progress  
-Current milestone: M1.x.1 — Window and tab ergonomics  
-Branch: `feat/file-manager-online-editor-m1x`  
+Status: M1/M1.x verified; superseded by M2 unified File Surface
+Current milestone: M1.x.1 — Window and tab ergonomics
+Branch: `feat/file-manager-online-editor-m1x` → merged
 Updated: 2026-07-01
 
 ## Purpose
@@ -284,7 +284,7 @@ Do not treat `Implemented` as complete.
 | Vite dev optimizer can invalidate lazy editor modules | Text-editor smoke and dev route can fail before Monaco renders | Added explicit optimize scan entries for FilePreviewPanel and CodeEditor plus Vite `ignoreOutdatedRequests`; keep Monaco excluded as before | Mitigated |
 | File operations smoke can drift from responsive controls | Regression suite may click hidden mobile or stale view controls | Test now targets non-mobile path input, action menu, desktop bulk bar, and explicit file/trash view switcher | Mitigated |
 | Competing editor state systems | Dirty/save behavior diverges across File Manager and future IDE | Single primary implementation owner; shared editor core first | Open |
-| `FilePreviewPanel` grows into a mega-editor | Hard to maintain and hard to reuse for IDE | Introduce separate Online Editor shell; keep preview responsibilities bounded | Open |
+| `FilePreviewPanel` grows into a mega-editor | Hard to maintain and hard to reuse for IDE | M1 introduced separate Online Editor shell; M2 migrated preview behavior into File Surface and deleted `FilePreviewPanel` | Closed in M2 |
 | Monaco model lifecycle leaks | Memory/performance issues during multi-tab editing | Centralize model creation/disposal and view state handling | Open |
 | Save conflict compare is lightweight | Users can inspect local-vs-disk text, but not a Monaco Diff editor | Lightweight compare is sufficient for M1.x save safety; Monaco Diff remains optional future polish | Accepted |
 | Mobile editor UX regresses | Operational edits fail on phone/tablet | Responsive online-editor smoke plus mobile-layout smoke cover current shell; keep adding touch coverage for future entry points | Mitigated |

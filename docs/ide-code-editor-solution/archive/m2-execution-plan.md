@@ -1,7 +1,7 @@
 # M2 Execution Plan — Unified File Surface & Monaco Completion
 
-Status: Ready to implement
-Branch: `feat/file-manager-file-surface-m2`
+Status: Complete / implemented and merged
+Branch: `feat/file-manager-file-surface-m2` → merged; M2.x media preview follow-up also merged
 Created: 2026-07-01
 Base: `main` after merging M1, M1.x, and Monaco-first cleanup
 Source: `12-file-surface-unification-and-monaco-gap-plan.md`
