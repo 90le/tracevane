@@ -143,6 +143,10 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     });
   }, [hasStoredLayout, remoteReady]);
 
+  const attachSessionDescriptor = React.useCallback((session: TerminalSessionDescriptor) => {
+    setLayout((current) => attachSessionDescriptorToLayout(current, session));
+  }, []);
+
   const resizeSplit = React.useCallback((groupId: string, childIndex: number, deltaPx: number, totalPx: number) => {
     setLayout((current) => updateActiveTab(current, (tab) => ({
       ...tab,
@@ -166,6 +170,7 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     moveTab,
     resizeSplit,
     hydrateRecoverableSessions,
+    attachSessionDescriptor,
   };
 }
 
@@ -492,6 +497,18 @@ function hasTerminalLayout(storageKey: string): boolean {
   } catch {
     return false;
   }
+}
+
+function attachSessionDescriptorToLayout(
+  layout: TerminalLayoutState,
+  session: TerminalSessionDescriptor,
+): TerminalLayoutState {
+  const terminalId = normalizeHydratedId(session.sessionId);
+  if (!terminalId) return layout;
+  const existing = layout.tabs.find((tab) => Object.values(tab.panes).some((pane) => pane.terminalId === terminalId));
+  if (existing) return stateFromTabs(layout.tabs, existing.tabId);
+  const tab = createTerminalTabFromDescriptor(session, layout.tabs.length + 1);
+  return stateFromTabs([...layout.tabs, tab], tab.tabId);
 }
 
 function createLayoutFromSessionDescriptors(

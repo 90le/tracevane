@@ -152,6 +152,8 @@ export interface TerminalSessionDescriptor {
   profileId?: string | null;
   shell?: string | null;
   targetKind?: TerminalTargetKind | null;
+  rootId?: string | null;
+  workspaceId?: string | null;
   cwd?: string | null;
   pinned?: boolean;
   source: TerminalSessionSource;

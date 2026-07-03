@@ -98,6 +98,8 @@ interface TerminalSession {
   lastRows: number;
   shell: string;
   cwd: string;
+  rootId: string | null;
+  workspaceId: string | null;
   profileId: string | null;
   targetKind: TerminalTargetKind;
   pinned: boolean;
@@ -117,7 +119,7 @@ interface TerminalSession {
 type TerminalSessionLaunchMetadata = Partial<TerminalGatewayAttachPayload>;
 
 type TerminalLaunchMetadata = Required<
-  Pick<TerminalSession, "cwd" | "targetKind" | "pinned">
+  Pick<TerminalSession, "cwd" | "targetKind" | "pinned" | "rootId" | "workspaceId">
 > & {
   profileId: string | null;
   shell: string;
@@ -781,6 +783,8 @@ export function createTerminalService(
       profileId: session.profileId,
       shell: session.shell,
       targetKind: session.targetKind,
+      rootId: session.rootId,
+      workspaceId: session.workspaceId,
       cwd: session.cwd,
       pinned: session.pinned,
       source: session.source,
@@ -1646,6 +1650,8 @@ export function createTerminalService(
     metadata: TerminalSessionLaunchMetadata = {},
   ): TerminalLaunchMetadata {
     const cwd = resolveLaunchCwd(metadata);
+    const rootId = String(metadata.rootId || metadata.workspaceId || "").trim() || null;
+    const workspaceId = String(metadata.workspaceId || metadata.rootId || "").trim() || rootId;
     const shell = resolveShellForProfile(metadata.profileId, metadata.shell);
     const pinned = typeof metadata.pinned === "boolean" ? metadata.pinned : false;
     const tmuxSessionName = pinned && shouldUseDurableTmux({ ...metadata, pinned })
@@ -1654,6 +1660,8 @@ export function createTerminalService(
     const useTmux = Boolean(tmuxSessionName);
     return {
       cwd,
+      rootId,
+      workspaceId,
       profileId: String(metadata.profileId || "").trim() || "local-shell",
       shell,
       targetKind: normalizeTerminalTargetKind(metadata.targetKind) || "local",
@@ -1739,6 +1747,8 @@ export function createTerminalService(
       lastRows: launchMetadata.rows,
       shell,
       cwd,
+      rootId: launchMetadata.rootId,
+      workspaceId: launchMetadata.workspaceId,
       profileId: launchMetadata.profileId,
       targetKind: launchMetadata.targetKind,
       pinned: launchMetadata.pinned,
@@ -1803,6 +1813,8 @@ export function createTerminalService(
       source: session.source,
       shell: session.shell,
       cwd: session.cwd,
+      rootId: session.rootId,
+      workspaceId: session.workspaceId,
       profileId: session.profileId,
       targetKind: session.targetKind,
     });

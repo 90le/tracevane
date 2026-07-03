@@ -5,6 +5,7 @@ import { toast } from "@/design/ui/sonner";
 import { endWorkbenchTerminalSession, schedulePendingTerminalKillFlush } from "./terminalClient";
 import { useTerminalLayoutState } from "./terminalLayoutState";
 import { TerminalGroupView } from "./TerminalGroupView";
+import { TerminalManagerDialog } from "./TerminalManagerDialog";
 import { TerminalTabs } from "./TerminalTabs";
 
 export function TerminalPanel({
@@ -28,6 +29,7 @@ export function TerminalPanel({
   );
   const activePaneCount = activeTab ? Object.keys(activeTab.panes).length : 0;
   const [profiles, setProfiles] = React.useState<TerminalProfileDescriptor[]>([]);
+  const [managerOpen, setManagerOpen] = React.useState(false);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -37,6 +39,9 @@ export function TerminalPanel({
     return () => controller.abort();
   }, []);
   const cwdAbsolutePath = React.useMemo(() => joinAbsolutePath(rootAbsolutePath, cwd), [cwd, rootAbsolutePath]);
+  const activeTerminalIds = React.useMemo(() =>
+    layout.tabs.flatMap((tab) => Object.values(tab.panes).map((pane) => pane.terminalId)),
+  [layout.tabs]);
 
   React.useEffect(() => {
     schedulePendingTerminalKillFlush(500);
@@ -96,6 +101,7 @@ export function TerminalPanel({
         onCloseTabsToRight={(tab) => void closeTabsToRight(tab)}
         onMoveTab={layoutApi.moveTab}
         onReorderTab={layoutApi.reorderTab}
+        onOpenManager={() => setManagerOpen(true)}
         cwdLabel={placement === "right" ? undefined : cwdAbsolutePath}
         metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}
       />
@@ -117,6 +123,17 @@ export function TerminalPanel({
           />
         ) : null}
       </div>
+      <TerminalManagerDialog
+        open={managerOpen}
+        onOpenChange={setManagerOpen}
+        currentRootId={rootId}
+        currentRootLabel={rootId}
+        activeTerminalIds={activeTerminalIds}
+        onAttachSession={(session) => {
+          layoutApi.attachSessionDescriptor(session);
+          setManagerOpen(false);
+        }}
+      />
     </div>
   );
 }

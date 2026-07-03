@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ChevronDown,
   MoreHorizontal,
+  MonitorCog,
   PanelTopOpen,
   Plus,
   Split,
@@ -37,6 +38,7 @@ export function TerminalTabs({
   onReorderTab,
   cwdLabel,
   metaLabel,
+  onOpenManager,
 }: {
   tabs: TerminalTabRecord[];
   activeTabId: string;
@@ -51,6 +53,7 @@ export function TerminalTabs({
   onReorderTab: (tabId: string, targetTabId: string, placement?: "before" | "after") => void;
   cwdLabel?: string;
   metaLabel?: string;
+  onOpenManager?: () => void;
 }) {
   const [menu, setMenu] = React.useState<TerminalTabMenuState | null>(null);
   const [newMenu, setNewMenu] = React.useState<{ x: number; y: number } | null>(null);
@@ -239,6 +242,12 @@ export function TerminalTabs({
             {metaLabel}
             {cwdLabel ? ` · ${cwdLabel}` : ""}
           </span>
+        ) : null}
+        {onOpenManager ? (
+          <Button variant="ghost" size="sm" onClick={onOpenManager} data-ide-terminal-manager-open aria-label="终端管理器" title="终端管理器" className="shrink-0 px-2">
+            <MonitorCog />
+            <span className="hidden lg:inline">终端管理</span>
+          </Button>
         ) : null}
         <div className="flex shrink-0 items-center overflow-hidden rounded-md border border-line bg-panel">
           <Button variant="ghost" size="sm" onClick={() => onNewTerminal(defaultTerminalProfile(profiles))} data-ide-terminal-new aria-label="New Terminal" title="New Terminal" className="shrink-0 rounded-none border-0 px-2">

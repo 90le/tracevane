@@ -85,7 +85,8 @@
     "smoke:ide:terminal-panel-placement": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-panel-placement.smoke.mjs",
     "smoke:ide:terminal-persistence": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-persistence.smoke.mjs",
     "smoke:ide:terminal-durable-backend": "node tests/ide-workbench/ide-terminal-durable-backend.smoke.mjs",
-    "smoke:ide:editor-save-dirty": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-save-dirty.smoke.mjs"
+    "smoke:ide:editor-save-dirty": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-save-dirty.smoke.mjs",
+    "smoke:ide:terminal-manager": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-terminal-manager.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",
