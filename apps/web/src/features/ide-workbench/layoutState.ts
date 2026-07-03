@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { getIdeWorkbenchLayout, putIdeWorkbenchLayout } from "@/lib/api/ideWorkbench";
 import type {
   IdeWorkbenchEditorGroup,
   IdeWorkbenchLayoutState,
@@ -30,6 +31,9 @@ export function createDefaultIdeWorkbenchLayoutState(): IdeWorkbenchLayoutState 
       collapsed: true,
       width: 280,
     },
+    explorer: {
+      directoryPath: "",
+    },
     panel: {
       placement: "bottom",
       visible: true,
@@ -54,14 +58,48 @@ export function createDefaultIdeWorkbenchLayoutState(): IdeWorkbenchLayoutState 
 }
 
 export function useIdeWorkbenchLayoutState(workspaceKey: string) {
-  const storageKey = `${STORAGE_PREFIX}${workspaceKey || "default"}`;
+  const normalizedWorkspaceKey = workspaceKey || "default";
+  const storageKey = `${STORAGE_PREFIX}${normalizedWorkspaceKey}`;
+  const hasStoredLayout = React.useMemo(() => hasIdeWorkbenchLayout(storageKey), [storageKey]);
+  const [remoteReady, setRemoteReady] = React.useState(hasStoredLayout);
   const [layout, setLayout] = React.useState<IdeWorkbenchLayoutState>(() =>
     loadIdeWorkbenchLayout(storageKey),
   );
 
   React.useEffect(() => {
+    setLayout(loadIdeWorkbenchLayout(storageKey));
+    setRemoteReady(hasStoredLayout);
+  }, [hasStoredLayout, storageKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (hasStoredLayout) {
+      setRemoteReady(true);
+      return () => { cancelled = true; };
+    }
+    const controller = new AbortController();
+    getIdeWorkbenchLayout(normalizedWorkspaceKey, controller.signal)
+      .then((record) => {
+        if (cancelled || !record?.layout) return;
+        setLayout(normalizeLayout(record.layout));
+      })
+      .finally(() => {
+        if (!cancelled) setRemoteReady(true);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [hasStoredLayout, normalizedWorkspaceKey]);
+
+  React.useEffect(() => {
     saveIdeWorkbenchLayout(storageKey, layout);
-  }, [layout, storageKey]);
+    if (!remoteReady) return;
+    const timer = window.setTimeout(() => {
+      void putIdeWorkbenchLayout(normalizedWorkspaceKey, { layout });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [layout, normalizedWorkspaceKey, remoteReady, storageKey]);
 
   const resetLayout = React.useCallback(() => {
     setLayout(createDefaultIdeWorkbenchLayoutState());
@@ -102,7 +140,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
 
   const setPanelSize = React.useCallback((size: number) => {
     setLayout((current) => {
-      const nextSize = clamp(size, current.panel.placement === "right" ? 280 : 140, 2400);
+      const nextSize = clamp(size, current.panel.placement === "right" ? 240 : 140, 10_000);
       return {
         ...current,
         panel: {
@@ -144,6 +182,21 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
     }));
   }, []);
 
+  const setExplorerDirectoryPath = React.useCallback((directoryPath: string) => {
+    setLayout((current) => {
+      const next = {
+        ...current,
+        explorer: {
+          ...current.explorer,
+          directoryPath: normalizeLayoutPath(directoryPath),
+        },
+      };
+      saveIdeWorkbenchLayout(storageKey, next);
+      void putIdeWorkbenchLayout(normalizedWorkspaceKey, { layout: next });
+      return next;
+    });
+  }, [normalizedWorkspaceKey, storageKey]);
+
   const setActiveActivityId = React.useCallback((activeActivityId: WorkbenchActivityId) => {
     setLayout((current) => ({
       ...current,
@@ -178,6 +231,7 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
     setPanelSize,
     setPanelPlacement,
     togglePanelMaximized,
+    setExplorerDirectoryPath,
     setActiveActivityId,
     setActivePanelId,
   };
@@ -189,6 +243,15 @@ function createEmptyEditorGroup(id: string): IdeWorkbenchEditorGroup {
     activeTabId: null,
     tabs: [],
   };
+}
+
+function hasIdeWorkbenchLayout(storageKey: string): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    return Boolean(localStorage.getItem(storageKey));
+  } catch {
+    return false;
+  }
 }
 
 function loadIdeWorkbenchLayout(storageKey: string): IdeWorkbenchLayoutState {
@@ -224,6 +287,7 @@ function normalizeLayout(value: unknown): IdeWorkbenchLayoutState {
       ...fallback.secondarySideBar,
       ...candidate.secondarySideBar,
     },
+    explorer: normalizeExplorerState(fallback.explorer, candidate.explorer),
     panel: normalizePanelState(fallback.panel, candidate.panel),
     viewPlacements: Array.isArray(candidate.viewPlacements)
       ? candidate.viewPlacements
@@ -254,8 +318,8 @@ function normalizePanelState(
   );
   const rightWidth = clamp(
     typeof candidate?.rightWidth === "number" ? candidate.rightWidth : legacySize ?? fallback.rightWidth,
-    280,
-    2400,
+    240,
+    10_000,
   );
   return {
     ...fallback,
@@ -265,4 +329,18 @@ function normalizePanelState(
     rightWidth,
     size: placement === "right" ? rightWidth : bottomSize,
   };
+}
+
+function normalizeExplorerState(
+  fallback: IdeWorkbenchLayoutState["explorer"],
+  candidate: Partial<IdeWorkbenchLayoutState>["explorer"],
+): IdeWorkbenchLayoutState["explorer"] {
+  return {
+    ...fallback,
+    directoryPath: normalizeLayoutPath(candidate?.directoryPath),
+  };
+}
+
+function normalizeLayoutPath(value: unknown): string {
+  return String(value || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }

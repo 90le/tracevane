@@ -14,26 +14,60 @@ export interface XtermHostHandle {
   write: (data: string) => void;
   clear: () => void;
   focus: () => void;
+  blur: () => void;
+  getSelection: () => string;
+  clearSelection: () => void;
+  selectAll: () => void;
 }
 
 export const XtermHost = React.forwardRef<XtermHostHandle, {
+  acceptInput?: boolean;
   onInput: (data: string) => void;
   onResize: (dimensions: XtermDimensions) => void;
-}>(function XtermHost({ onInput, onResize }, ref) {
+  onSelectionChange?: (selection: string) => void;
+  onCopyShortcut?: () => void;
+  onPasteShortcut?: () => void;
+}>(function XtermHost({ acceptInput = false, onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut }, ref) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const terminalRef = React.useRef<Terminal | null>(null);
   const fitAddonRef = React.useRef<FitAddon | null>(null);
   const onInputRef = React.useRef(onInput);
   const onResizeRef = React.useRef(onResize);
+  const onSelectionChangeRef = React.useRef(onSelectionChange);
+  const onCopyShortcutRef = React.useRef(onCopyShortcut);
+  const onPasteShortcutRef = React.useRef(onPasteShortcut);
+  const suppressProgrammaticInputRef = React.useRef(0);
+  const suppressProgrammaticInputTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     onInputRef.current = onInput;
     onResizeRef.current = onResize;
-  }, [onInput, onResize]);
+    onSelectionChangeRef.current = onSelectionChange;
+    onCopyShortcutRef.current = onCopyShortcut;
+    onPasteShortcutRef.current = onPasteShortcut;
+  }, [onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut]);
 
   React.useImperativeHandle(ref, () => ({
     write(data) {
-      terminalRef.current?.write(data);
+      const terminal = terminalRef.current;
+      if (!terminal) return;
+      // Writing replayed/backlog output into xterm can make xterm answer
+      // terminal capability queries (for example DA/DSR) through onData.
+      // Those bytes are not user input and must never be sent back to the PTY,
+      // otherwise shells receive fragments like `1;2c0;276;0c` after
+      // refresh/reattach. Suppress onData only around programmatic writes;
+      // normal focused keyboard input remains unaffected.
+      suppressProgrammaticInputRef.current += 1;
+      if (suppressProgrammaticInputTimerRef.current !== null) {
+        window.clearTimeout(suppressProgrammaticInputTimerRef.current);
+        suppressProgrammaticInputTimerRef.current = null;
+      }
+      terminal.write(data, () => {
+        suppressProgrammaticInputTimerRef.current = window.setTimeout(() => {
+          suppressProgrammaticInputRef.current = Math.max(0, suppressProgrammaticInputRef.current - 1);
+          suppressProgrammaticInputTimerRef.current = null;
+        }, 0);
+      });
     },
     clear() {
       terminalRef.current?.clear();
@@ -41,24 +75,86 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     focus() {
       terminalRef.current?.focus();
     },
+    blur() {
+      terminalRef.current?.blur();
+    },
+    getSelection() {
+      return terminalRef.current?.getSelection() ?? "";
+    },
+    clearSelection() {
+      terminalRef.current?.clearSelection();
+    },
+    selectAll() {
+      terminalRef.current?.selectAll();
+    },
   }), []);
 
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const style = getComputedStyle(container);
+    const monoFont = style.getPropertyValue("--mono").trim()
+      || "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
     const terminal = new Terminal({
       convertEol: true,
       cursorBlink: true,
-      fontFamily: "var(--mono)",
-      fontSize: 12,
+      disableStdin: !acceptInput,
+      fontFamily: monoFont,
+      fontSize: 13,
+      fontWeight: "400",
+      fontWeightBold: "700",
+      letterSpacing: 0,
+      lineHeight: 1.2,
       scrollback: 2000,
       theme: createXtermAuroraTheme(container),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
-    terminal.onData((data) => onInputRef.current(data));
+    const dataDisposable = terminal.onData((data) => {
+      if (suppressProgrammaticInputRef.current > 0) return;
+      onInputRef.current(data);
+    });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      onSelectionChangeRef.current?.(terminal.getSelection());
+    });
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && event.shiftKey && key === "c") {
+        event.preventDefault();
+        onCopyShortcutRef.current?.();
+        return false;
+      }
+      if (mod && !event.shiftKey && key === "c" && terminal.getSelection()) {
+        event.preventDefault();
+        onCopyShortcutRef.current?.();
+        return false;
+      }
+      // Intercept Ctrl/Cmd+V before it reaches the PTY. Browser xterm cannot
+      // transfer the user's desktop image clipboard into the backend process
+      // clipboard that CLIs like Codex read from, so the workbench bridges it:
+      // file/image clipboard items are uploaded and their workspace paths are
+      // inserted; text falls back to normal terminal paste.
+      if (mod && !event.shiftKey && key === "v") {
+        event.preventDefault();
+        onPasteShortcutRef.current?.();
+        return false;
+      }
+      if (mod && event.shiftKey && key === "v") {
+        event.preventDefault();
+        onPasteShortcutRef.current?.();
+        return false;
+      }
+      if (event.shiftKey && event.key === "Insert") {
+        event.preventDefault();
+        onPasteShortcutRef.current?.();
+        return false;
+      }
+      return true;
+    });
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
@@ -76,16 +172,30 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
 
     return () => {
       resizeObserver.disconnect();
+      if (suppressProgrammaticInputTimerRef.current !== null) {
+        window.clearTimeout(suppressProgrammaticInputTimerRef.current);
+        suppressProgrammaticInputTimerRef.current = null;
+      }
+      suppressProgrammaticInputRef.current = 0;
+      dataDisposable.dispose();
+      selectionDisposable.dispose();
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
   }, []);
 
+  React.useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.disableStdin = !acceptInput;
+    if (!acceptInput) terminal.blur();
+  }, [acceptInput]);
+
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-0 w-full overflow-hidden bg-panel text-ink"
+      className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-panel text-ink"
       data-ide-terminal-xterm
     />
   );

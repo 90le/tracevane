@@ -1,8 +1,11 @@
+import * as React from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { FileText, SplitSquareHorizontal, SplitSquareVertical } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import type { IdeWorkbenchEditorTab } from "../types";
+import type { EditorSaveState } from "@/shared/editor-core";
+import { IdeEditorFilePanel } from "./IdeEditorFilePanel";
 
 export interface EditorPlaceholderParams {
   kind: "file" | "split-placeholder";
@@ -11,10 +14,22 @@ export interface EditorPlaceholderParams {
   description: string;
 }
 
+export const EditorDockCallbacksContext = React.createContext<{
+  onDirtyChange: (tabId: string, dirty: boolean) => void;
+  onSaveStateChange: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
+}>({
+  onDirtyChange: () => undefined,
+  onSaveStateChange: () => undefined,
+});
+
 export function EditorPlaceholderPanel({
   params,
 }: IDockviewPanelProps<EditorPlaceholderParams>) {
   const isFile = params.kind === "file";
+  const callbacks = React.useContext(EditorDockCallbacksContext);
+  if (isFile && params.tab) {
+    return <IdeEditorFilePanel tab={params.tab} onDirtyChange={callbacks.onDirtyChange} onSaveStateChange={callbacks.onSaveStateChange} />;
+  }
   return (
     <div className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink" data-ide-editor-panel data-ide-editor-panel-kind={params.kind}>
       <div className="max-w-xl rounded-lg border border-line bg-panel p-5 text-center shadow-sm">

@@ -1,5 +1,5 @@
 export type TerminalBinaryId =
-  "claude" | "codex" | "opencode" | "gemini" | "clawhub" | "skillhub" | "bash";
+  "claude" | "codex" | "opencode" | "gemini" | "clawhub" | "skillhub" | "bash" | "sh" | "zsh" | "fish" | "pwsh" | "powershell" | "cmd";
 export type TerminalInstallRequestId = TerminalBinaryId | "all" | "all-missing";
 export type TerminalAgentCliId = "claude" | "codex" | "opencode";
 export type TerminalProfileKind =
@@ -133,6 +133,8 @@ export interface TerminalRecentOutputSummary {
   lastCommandHint: string | null;
   exitSummary: string | null;
   updatedAt: string;
+  durableBackend?: "pty" | "tmux" | null;
+  tmuxSessionName?: string | null;
 }
 
 export interface TerminalSessionLedgerEvent {
@@ -148,6 +150,7 @@ export interface TerminalSessionDescriptor {
   sessionId: string;
   title: string;
   profileId?: string | null;
+  shell?: string | null;
   targetKind?: TerminalTargetKind | null;
   cwd?: string | null;
   pinned?: boolean;
@@ -168,6 +171,8 @@ export interface TerminalSessionDescriptor {
   controlState: TerminalSessionControlState;
   observerCount: number;
   updatedAt: string;
+  durableBackend?: "pty" | "tmux" | null;
+  tmuxSessionName?: string | null;
 }
 
 export function isRecoverableTerminalStatus(
@@ -236,9 +241,9 @@ export interface TerminalGatewayAttachPayload {
   rootId?: string | null;
   workspaceId?: string | null;
   profileId?: string | null;
+  shell?: string | null;
   targetKind?: TerminalTargetKind | null;
   cwd?: string | null;
-  shell?: string | null;
   cols?: number | null;
   rows?: number | null;
   pinned?: boolean | null;

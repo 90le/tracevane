@@ -22,6 +22,7 @@ import { createCronService } from "./modules/cron/service.js";
 import { createDashboardService } from "./modules/dashboard/service.js";
 import { createFilesService } from "./modules/files/service.js";
 import { createGitService } from "./modules/git/service.js";
+import { createIdeWorkbenchService } from "./modules/ide-workbench/service.js";
 import {
   createModelGatewayService,
   type ModelGatewayServiceOptions,
@@ -71,6 +72,7 @@ export function createTracevaneContext(
   });
   const files = createFilesService(options.config);
   const git = createGitService(options.config);
+  const ideWorkbench = createIdeWorkbenchService(options.config);
   const modelGateway = createModelGatewayService(
     options.config,
     options.modelGatewayOptions,
@@ -85,6 +87,7 @@ export function createTracevaneContext(
     dashboard,
     files,
     git,
+    ideWorkbench,
     modelGateway,
     openclawRecovery,
     skills,

@@ -18,9 +18,63 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+async function resetTerminalSessions() {
+  let sessions = [];
+  try {
+    const data = await api('/api/terminal/sessions');
+    sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+  } catch {
+    return;
+  }
+  await Promise.allSettled(sessions.map((session) => api('/api/terminal/end', {
+    method: 'POST',
+    body: JSON.stringify({ sid: session.sessionId }),
+  })));
+}
+
+
+function createDefaultWorkbenchLayout() {
+  return {
+    layoutVersion: 1,
+    activeActivityId: 'explorer',
+    sideBar: { placement: 'left', visible: true, collapsed: false, width: 288 },
+    secondarySideBar: { placement: 'right', visible: false, collapsed: true, width: 280 },
+    explorer: { directoryPath: '' },
+    panel: {
+      placement: 'bottom',
+      visible: true,
+      collapsed: false,
+      size: 220,
+      bottomSize: 220,
+      rightWidth: 420,
+      maximized: false,
+      activePanelId: 'terminal',
+    },
+    viewPlacements: [
+      { viewId: 'explorer', placement: 'primary-sidebar', order: 0, visible: true },
+      { viewId: 'terminal', placement: 'panel', order: 0, visible: true },
+      { viewId: 'problems', placement: 'panel', order: 1, visible: true },
+      { viewId: 'output', placement: 'panel', order: 2, visible: true },
+      { viewId: 'debugConsole', placement: 'panel', order: 3, visible: true },
+    ],
+    editorGroups: [{ id: 'main', activeTabId: null, tabs: [] }],
+    activeEditorGroupId: 'main',
+    dockviewLayout: null,
+  };
+}
+
 async function waitForPlacement(page, placement) {
   await page.locator(`[data-ide-panel][data-ide-panel-placement="${placement}"]`).waitFor({ state: 'visible', timeout: 45_000 });
   await page.locator(`[data-ide-editor-panel-stack][data-ide-panel-stack-placement="${placement}"]`).waitFor({ state: 'visible', timeout: 45_000 });
+}
+
+
+async function waitForTabCount(page, minCount) {
+  await page.waitForFunction(
+    (expected) => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= expected,
+    minCount,
+    { timeout: 45_000 },
+  );
 }
 
 async function waitForRunnablePane(page, index = 0) {
@@ -48,7 +102,9 @@ async function waitForPaneCount(page, minCount) {
 
 async function echoInActivePane(page, token) {
   await page.locator('[data-active-terminal-pane="true"] [data-ide-terminal-xterm]').click({ timeout: 30_000 });
-  await page.keyboard.type(`printf '${token}\\n'`);
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Control+U');
+  await page.keyboard.type(`echo ${token}`);
   await page.keyboard.press('Enter');
   await page.waitForFunction(
     (expectedToken) => (document.querySelector('[data-active-terminal-pane="true"]')?.textContent || '').includes(expectedToken),
@@ -57,10 +113,34 @@ async function echoInActivePane(page, token) {
   );
 }
 
+async function splitActiveTerminalTab(page, direction) {
+  const tabId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-tab-id');
+  if (!tabId) throw new Error('No active terminal tab id');
+  const menu = page.locator(`[data-ide-terminal-tab-menu][data-terminal-tab-id="${tabId}"]`);
+  await menu.waitFor({ state: 'visible', timeout: 30_000 });
+  await menu.click();
+  await page.locator('[data-ide-terminal-tab-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+  const item = direction === 'right'
+    ? page.locator('[data-ide-terminal-tab-menu-item="split-right"]')
+    : page.locator('[data-ide-terminal-tab-menu-item="split-down"]');
+  await item.waitFor({ state: 'visible', timeout: 30_000 });
+  await item.click({ force: true });
+}
+
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file root is available for IDE terminal panel placement smoke');
+  await resetTerminalSessions();
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ layout: null, terminalLayouts: {} }),
+  });
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ layout: createDefaultWorkbenchLayout() }),
+  });
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -90,15 +170,16 @@ async function run() {
     await echoInActivePane(page, `TRACEVANE_M5XB_RIGHT_${Date.now()}`);
 
     await page.locator('[data-ide-terminal-new]').click();
+    await waitForTabCount(page, 2);
+    await waitForPaneCount(page, 1);
+    await waitForRunnablePane(page, 0);
+    await splitActiveTerminalTab(page, 'right');
     await waitForPaneCount(page, 2);
-    await waitForRunnablePane(page, 1);
-    await page.locator('[data-ide-terminal-split-right]').click();
-    await waitForPaneCount(page, 3);
     await page.locator('[data-terminal-orientation="horizontal"]').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-terminal-split-down]').click();
-    await waitForPaneCount(page, 4);
+    await splitActiveTerminalTab(page, 'down');
+    await waitForPaneCount(page, 3);
     await page.locator('[data-terminal-orientation="vertical"]').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await waitForRunnablePane(page, 3);
+    await waitForRunnablePane(page, 2);
     await echoInActivePane(page, `TRACEVANE_M5XB_SPLIT_${Date.now()}`);
 
     await page.getByRole('button', { name: 'Output' }).click();

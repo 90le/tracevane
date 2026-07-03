@@ -48,6 +48,37 @@ async function createDirectory(rootId, path) {
   });
 }
 
+
+function createDefaultWorkbenchLayout() {
+  return {
+    layoutVersion: 1,
+    activeActivityId: 'explorer',
+    sideBar: { placement: 'left', visible: true, collapsed: false, width: 288 },
+    secondarySideBar: { placement: 'right', visible: false, collapsed: true, width: 280 },
+    explorer: { directoryPath: '' },
+    panel: {
+      placement: 'bottom',
+      visible: true,
+      collapsed: false,
+      size: 220,
+      bottomSize: 220,
+      rightWidth: 420,
+      maximized: false,
+      activePanelId: 'terminal',
+    },
+    viewPlacements: [
+      { viewId: 'explorer', placement: 'primary-sidebar', order: 0, visible: true },
+      { viewId: 'terminal', placement: 'panel', order: 0, visible: true },
+      { viewId: 'problems', placement: 'panel', order: 1, visible: true },
+      { viewId: 'output', placement: 'panel', order: 2, visible: true },
+      { viewId: 'debugConsole', placement: 'panel', order: 3, visible: true },
+    ],
+    editorGroups: [{ id: 'main', activeTabId: null, tabs: [] }],
+    activeEditorGroupId: 'main',
+    dockviewLayout: null,
+  };
+}
+
 async function cleanup(rootId, paths) {
   await api('/api/files', {
     method: 'DELETE',
@@ -90,6 +121,18 @@ async function revealPath(page, path) {
   await waitForNode(page, path);
 }
 
+async function assertNoHorizontalOverflow(page, label) {
+  const metrics = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+  }));
+  const overflow = Math.max(metrics.documentWidth, metrics.bodyWidth) - metrics.viewport;
+  if (overflow > 24) {
+    throw new Error(`${label} has horizontal overflow ${overflow}px: ${JSON.stringify(metrics)}`);
+  }
+}
+
 async function openFileFromExplorer(page, path) {
   await revealPath(page, path);
   await page.locator(nodeSelector(path)).first().click();
@@ -122,14 +165,11 @@ async function renameViaExplorer(page, path, nextName, nextPath) {
   await waitForNode(page, nextPath);
 }
 
-async function moveViaExplorer(page, path, destinationDirectoryPath, nextName, nextPath) {
+async function moveViaExplorer(page, path, destinationDirectoryPath, nextPath) {
   await openContextMenu(page, path);
-  await page.getByRole('menuitem', { name: '移动到…' }).click();
-  const dialog = page.getByRole('dialog', { name: '移动到…' });
-  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-  await dialog.locator('[data-ide-explorer-transfer-destination]').fill(destinationDirectoryPath);
-  await dialog.locator('[data-ide-explorer-transfer-name]').fill(nextName);
-  await dialog.getByRole('button', { name: '移动' }).click();
+  await page.getByRole('menuitem', { name: '剪切' }).click();
+  await openContextMenu(page, destinationDirectoryPath);
+  await page.getByRole('menuitem', { name: '粘贴到此处' }).click();
   await page.locator(tabSelector(nextPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
 }
 
@@ -156,14 +196,20 @@ async function run() {
   if (!rootId) throw new Error('No file root is available for IDE smoke');
 
   const prefix = `tracevane-ide-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const firstPath = `tmp/${prefix}-a.txt`;
-  const renamedPath = `tmp/${prefix}-a-renamed.txt`;
-  const secondPath = `tmp/${prefix}-b.txt`;
-  const moveDir = `tmp/${prefix}-target`;
-  const movedPath = `${moveDir}/${prefix}-b-moved.txt`;
-  const cleanupPaths = [firstPath, renamedPath, secondPath, moveDir];
+  const smokeDir = `tmp/.${prefix}`;
+  const firstPath = `${smokeDir}/${prefix}-a.txt`;
+  const renamedPath = `${smokeDir}/${prefix}-a-renamed.txt`;
+  const secondPath = `${smokeDir}/${prefix}-b.txt`;
+  const moveDir = `${smokeDir}/${prefix}-target`;
+  const movedPath = `${moveDir}/${prefix}-b.txt`;
+  const cleanupPaths = [smokeDir];
 
   await cleanup(rootId, cleanupPaths);
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
+  });
+  await createDirectory(rootId, smokeDir);
   await createFile(rootId, firstPath, 'ide smoke first\n');
   await createFile(rootId, secondPath, 'ide smoke second\n');
   await createDirectory(rootId, moveDir);
@@ -195,18 +241,29 @@ async function run() {
     await renameViaExplorer(page, firstPath, `${prefix}-a-renamed.txt`, renamedPath);
 
     await openFileFromExplorer(page, secondPath);
-    await moveViaExplorer(page, secondPath, moveDir, `${prefix}-b-moved.txt`, movedPath);
+    await moveViaExplorer(page, secondPath, moveDir, movedPath);
     await deleteViaExplorer(page, movedPath);
 
-    await page.locator('[data-ide-editor-split-right]').click();
+    const editorTab = page.locator('[data-ide-editor-tab]').first();
+    await editorTab.click();
+    await editorTab.click({ button: 'right' });
+    await page.locator('[data-ide-editor-tab-menu-item="split-right"]').click();
     await page.locator('[data-ide-editor-panel-title]', { hasText: 'Split Right' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-editor-split-down]').click();
+    await editorTab.click({ button: 'right' });
+    await page.locator('[data-ide-editor-tab-menu-item="split-down"]').click();
     await page.locator('[data-ide-editor-panel-title]', { hasText: 'Split Down' }).waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.getByRole('button', { name: '重置布局' }).click();
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-editor-dock]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-editor-watermark]').waitFor({ state: 'visible', timeout: 30_000 });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
+    await assertNoHorizontalOverflow(page, 'mobile IDE workbench');
+    await page.getByRole('button', { name: 'Move Panel Right' }).click();
+    await page.locator('[data-ide-panel][data-ide-panel-placement="right"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await assertNoHorizontalOverflow(page, 'mobile IDE workbench with right panel');
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

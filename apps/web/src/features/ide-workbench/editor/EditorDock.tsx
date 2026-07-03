@@ -10,11 +10,13 @@ import type {
   SerializedDockview,
 } from "dockview-react";
 import { DockviewReact } from "dockview-react";
-import { SplitSquareHorizontal, SplitSquareVertical } from "lucide-react";
+import { CheckCheck, Copy, Pin, Save, SplitSquareHorizontal, SplitSquareVertical, X } from "lucide-react";
 
-import { Button } from "@/design/ui/button";
+import { toast } from "@/design/ui/sonner";
+import type { EditorSaveState } from "@/shared/editor-core";
 import type { IdeWorkbenchEditorTab } from "../types";
-import { EditorPlaceholderPanel, type EditorPlaceholderParams } from "./EditorPlaceholderPanel";
+import { saveIdeEditorTab } from "./ideEditorRuntime";
+import { EditorDockCallbacksContext, EditorPlaceholderPanel, type EditorPlaceholderParams } from "./EditorPlaceholderPanel";
 
 export interface EditorDockProps {
   tabs: readonly IdeWorkbenchEditorTab[];
@@ -23,6 +25,9 @@ export interface EditorDockProps {
   onDockviewLayoutChange: (layout: SerializedDockview | null) => void;
   onActiveTabChange: (tabId: string | null) => void;
   onPinTab: (tabId: string) => void;
+  onDirtyChange: (tabId: string, dirty: boolean) => void;
+  onSaveStateChange: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
+  onRequestCloseTabs: (tabIds: string[]) => void;
 }
 
 const EDITOR_COMPONENT = "tracevane.editor.placeholder";
@@ -34,6 +39,9 @@ export function EditorDock({
   onDockviewLayoutChange,
   onActiveTabChange,
   onPinTab,
+  onDirtyChange,
+  onSaveStateChange,
+  onRequestCloseTabs,
 }: EditorDockProps) {
   const apiRef = React.useRef<DockviewApi | null>(null);
   const disposablesRef = React.useRef<Array<{ dispose: () => void }>>([]);
@@ -134,10 +142,11 @@ export function EditorDock({
     [activeTabId, dockviewLayout, onActiveTabChange, saveCurrentLayout, syncTabsToDockview],
   );
 
-  const splitEditor = React.useCallback((direction: "right" | "below") => {
+  const splitEditor = React.useCallback((direction: "right" | "below", referencePanelId?: string) => {
     const api = apiRef.current;
     if (!api) return;
-    const activePanel = api.activePanel;
+    const referencePanel = referencePanelId ? api.getPanel(referencePanelId) : api.activePanel;
+    referencePanel?.api.setActive();
     const id = `split-${direction}-${Date.now()}`;
     api.addPanel<EditorPlaceholderParams>({
       id,
@@ -147,40 +156,29 @@ export function EditorDock({
         kind: "split-placeholder",
         title: direction === "right" ? "Split Right 占位" : "Split Down 占位",
         description:
-          "M4-B 仅验证 Dockview editor group 分裂与布局持久化；真实 Monaco 编辑组、保存和模型共享进入后续阶段。",
+          "M5.y-C 继续保留 Dockview 分裂占位；真实多编辑组内容共享与完整拖拽进入 M5.y-D。",
       },
-      position: activePanel
-        ? { referencePanel: activePanel, direction }
+      position: referencePanel
+        ? { referencePanel, direction }
         : { direction },
     });
     saveCurrentLayout();
   }, [saveCurrentLayout]);
 
   return (
-    <section className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-canvas" data-ide-editor-dock>
-      <div className="flex min-h-10 min-w-0 items-center gap-2 border-b border-line bg-panel px-2">
-        <div className="min-w-0 flex-1 truncate text-sm text-subtle">
-          Editor Dock · Dockview-backed placeholder
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => splitEditor("right")} data-ide-editor-split-right>
-          <SplitSquareHorizontal />
-          Split Right
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => splitEditor("below")} data-ide-editor-split-down>
-          <SplitSquareVertical />
-          Split Down
-        </Button>
-      </div>
+    <section className="grid min-h-0 min-w-0 bg-canvas" data-ide-editor-dock>
       <div className="tracevane-dockview min-h-0 min-w-0 bg-canvas" data-ide-dockview-host>
+        <EditorDockCallbacksContext.Provider value={{ onDirtyChange, onSaveStateChange }}>
         <DockviewReact
           className="dockview-theme-light tracevane-dockview-instance h-full w-full"
           components={{ [EDITOR_COMPONENT]: EditorPlaceholderPanel }}
           watermarkComponent={EditorDockWatermark}
           defaultTabComponent={(props) => (
-            <EditorDockTab {...props} onPinTab={onPinTab} />
+            <EditorDockTab {...props} tabs={tabs} onPinTab={onPinTab} onRequestCloseTabs={onRequestCloseTabs} onSplitEditor={splitEditor} />
           )}
           onReady={handleReady}
         />
+        </EditorDockCallbacksContext.Provider>
       </div>
     </section>
   );
@@ -192,8 +190,7 @@ function EditorDockWatermark(_props: IWatermarkPanelProps) {
       <div className="max-w-md rounded-lg border border-dashed border-line bg-panel px-5 py-4">
         <div className="font-semibold text-ink-strong">IDE Editor Dock</div>
         <div className="mt-2">
-          从左侧 Explorer 打开文件，或使用 Split Right / Split Down 创建占位编辑组。
-          M4-B 不接真实 Monaco 内容。
+          从左侧 Explorer 打开文件。编辑器组拆分入口位于标签页右键菜单；M5.y-C 支持 Monaco dirty/save 与关闭保护。
         </div>
       </div>
     </div>
@@ -203,41 +200,218 @@ function EditorDockWatermark(_props: IWatermarkPanelProps) {
 function EditorDockTab({
   api,
   params,
+  tabs,
   onPinTab,
+  onRequestCloseTabs,
+  onSplitEditor,
 }: IDockviewPanelHeaderProps<EditorPlaceholderParams> & {
+  tabs: readonly IdeWorkbenchEditorTab[];
   onPinTab: (tabId: string) => void;
+  onRequestCloseTabs: (tabIds: string[]) => void;
+  onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
 }) {
   const tab = params.tab;
   const title = tabTitle(tab) || params.title || "Editor";
   const modeLabel = tab?.pinned ? "pinned" : tab?.preview ? "preview" : "placeholder";
+  const tabIndex = tab ? tabs.findIndex((item) => item.id === tab.id) : -1;
+  const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menu]);
+
+  const runMenuAction = React.useCallback((action: () => void) => {
+    action();
+    setMenu(null);
+  }, []);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="flex h-full min-w-0 items-center gap-1.5 px-2 text-sm text-ink outline-none focus-visible:shadow-[var(--ring)]"
+        title={tab?.ref.path ?? title}
+        onClick={() => api.setActive()}
+        onDoubleClick={() => tab && onPinTab(tab.id)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          api.setActive();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
+        data-ide-editor-tab
+        data-ide-editor-tab-id={tab?.id ?? api.id}
+        data-ide-editor-tab-path={tab?.ref.path ?? ""}
+        data-ide-editor-tab-dirty={tab?.dirty ? "true" : "false"}
+        data-ide-editor-tab-save-state={tab?.saveState ?? (tab?.dirty ? "dirty" : "clean")}
+      >
+        <span className="min-w-0 truncate">{title}</span>
+        <span className="rounded border border-line bg-panel-2 px-1 font-mono text-2xs text-subtle">
+          {modeLabel}
+        </span>
+        {tab?.dirty ? <span className="text-amber">●</span> : null}
+        <span className="sr-only">{api.title ?? title}</span>
+      </button>
+      {menu ? (
+        <div
+          role="menu"
+          className="fixed z-50 min-w-56 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+          data-ide-editor-tab-context-menu
+          data-ide-editor-tab-id={tab?.id ?? api.id}
+        >
+          {tab ? (
+            <>
+              <EditorTabMenuButton
+                icon={<Save />}
+                label="保存"
+                shortcut="Ctrl S"
+                onClick={() => runMenuAction(() => { void saveIdeEditorTab(tab.id); })}
+                dataAttr="save"
+                disabled={tab.deleted || tab.saveState === "saving" || !tab.dirty}
+              />
+              <EditorTabMenuButton
+                icon={<X />}
+                label="关闭"
+                shortcut="Ctrl F4"
+                onClick={() => runMenuAction(() => onRequestCloseTabs([tab.id]))}
+                dataAttr="close"
+              />
+              <EditorTabMenuButton
+                icon={<X />}
+                label="关闭其他"
+                onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.filter((item) => item.id !== tab.id).map((item) => item.id)))}
+                dataAttr="close-others"
+                disabled={tabs.length <= 1}
+              />
+              <EditorTabMenuButton
+                icon={<X />}
+                label="关闭右侧标签页"
+                onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.slice(tabIndex + 1).map((item) => item.id)))}
+                dataAttr="close-right"
+                disabled={tabIndex < 0 || tabIndex >= tabs.length - 1}
+              />
+              <EditorTabMenuButton
+                icon={<CheckCheck />}
+                label="关闭已保存"
+                onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.filter((item) => !item.dirty && item.saveState !== "saving").map((item) => item.id)))}
+                dataAttr="close-saved"
+                disabled={!tabs.some((item) => !item.dirty && item.saveState !== "saving")}
+              />
+              <EditorTabMenuButton
+                icon={<X />}
+                label="全部关闭"
+                onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.map((item) => item.id)))}
+                dataAttr="close-all"
+              />
+              <div className="my-1 border-t border-line" />
+              <EditorTabMenuButton
+                icon={<Copy />}
+                label="复制路径"
+                onClick={() => runMenuAction(() => { void copyText(tab.ref.path, "已复制路径"); })}
+                dataAttr="copy-path"
+              />
+              <EditorTabMenuButton
+                icon={<Copy />}
+                label="复制相对路径"
+                onClick={() => runMenuAction(() => { void copyText(tab.ref.path, "已复制相对路径"); })}
+                dataAttr="copy-relative-path"
+              />
+              <div className="my-1 border-t border-line" />
+              <EditorTabMenuButton
+                icon={<Pin />}
+                label="固定标签"
+                onClick={() => runMenuAction(() => onPinTab(tab.id))}
+                dataAttr="pin"
+                disabled={tab.pinned}
+              />
+            </>
+          ) : null}
+          <div className="my-1 border-t border-line" />
+          <EditorTabMenuButton
+            icon={<SplitSquareHorizontal />}
+            label="向右拆分"
+            onClick={() => runMenuAction(() => onSplitEditor("right", api.id))}
+            dataAttr="split-right"
+          />
+          <EditorTabMenuButton
+            icon={<SplitSquareVertical />}
+            label="向下拆分"
+            onClick={() => runMenuAction(() => onSplitEditor("below", api.id))}
+            dataAttr="split-down"
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function EditorTabMenuButton({
+  icon,
+  label,
+  onClick,
+  dataAttr,
+  disabled = false,
+  shortcut,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  dataAttr: string;
+  disabled?: boolean;
+  shortcut?: string;
+}) {
   return (
     <button
       type="button"
-      className="flex h-full min-w-0 items-center gap-1.5 px-2 text-sm text-ink outline-none focus-visible:shadow-[var(--ring)]"
-      title={tab?.ref.path ?? title}
-      onDoubleClick={() => tab && onPinTab(tab.id)}
-      data-ide-editor-tab
-      data-ide-editor-tab-id={tab?.id ?? api.id}
-      data-ide-editor-tab-path={tab?.ref.path ?? ""}
+      role="menuitem"
+      disabled={disabled}
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled [&_svg]:size-3.5"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!disabled) onClick();
+      }}
+      data-ide-editor-tab-menu-item={dataAttr}
+      data-ide-editor-split-right={dataAttr === "split-right" ? "true" : undefined}
+      data-ide-editor-split-down={dataAttr === "split-down" ? "true" : undefined}
     >
-      <span className="min-w-0 truncate">{title}</span>
-      <span className="rounded border border-line bg-panel-2 px-1 font-mono text-2xs text-subtle">
-        {modeLabel}
-      </span>
-      {tab?.dirty ? <span className="text-amber">●</span> : null}
-      <span className="sr-only">{api.title ?? title}</span>
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {shortcut ? <span className="rounded border border-line bg-panel-2 px-1 font-mono text-2xs text-subtle">{shortcut}</span> : null}
     </button>
   );
 }
 
-function filePanelParams(tab: IdeWorkbenchEditorTab): EditorPlaceholderParams {
+function filePanelParams(
+  tab: IdeWorkbenchEditorTab,
+): EditorPlaceholderParams {
   return {
     kind: "file",
     tab,
     title: tab.title,
     description:
-      "M4-B 已将该文件打开到 Dockview editor panel；真实 Monaco model、读写保存、dirty/冲突处理后续接入 shared/editor-core 服务。",
+      "M5.y-C 已将该文件打开到 Dockview editor panel；Monaco 内容由 editor-core/Files API 负责读写，Dockview 只保存布局 metadata。",
   };
+}
+
+async function copyText(text: string, successTitle: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(text);
+    toast.success(successTitle, { description: text });
+  } catch (error) {
+    toast.error("复制失败", { description: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 function tabTitle(tab?: IdeWorkbenchEditorTab): string {

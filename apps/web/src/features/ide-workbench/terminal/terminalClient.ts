@@ -25,6 +25,9 @@ export interface CreateWorkbenchTerminalOptions {
   cwd?: string;
   cols?: number;
   rows?: number;
+  sessionId?: string;
+  profileId?: string | null;
+  shell?: string | null;
 }
 
 declare global {
@@ -41,23 +44,122 @@ export function createWorkbenchTerminalSession(
   options: CreateWorkbenchTerminalOptions,
 ): Promise<TerminalSessionDescriptor> {
   const payload: TerminalGatewayAttachPayload = {
-    sid: `ide-terminal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    sid: normalizeTerminalSessionId(options.sessionId) || `ide-terminal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     rootId: options.rootId,
     workspaceId: options.rootId,
     cwd: normalizeRelativeCwd(options.cwd),
-    profileId: "local-shell",
-    shell: "bash",
+    profileId: normalizeProfileId(options.profileId),
+    shell: normalizeShellName(options.shell),
     targetKind: "local",
     cols: options.cols ?? 80,
     rows: options.rows ?? 24,
     pinned: true,
-    skipReplay: true,
+    resume: true,
   };
   return createTerminalSession(payload);
 }
 
-export function endWorkbenchTerminalSession(sessionId: string): Promise<TerminalEndResponse> {
-  return endTerminalSession({ sid: sessionId });
+export interface EndWorkbenchTerminalSessionOptions {
+  attempts?: number;
+  retryDelayMs?: number;
+  queueOnFailure?: boolean;
+}
+
+const PENDING_TERMINAL_KILL_KEY = "tracevane.ide.pending-terminal-kills.v1";
+let pendingKillFlushTimer: number | null = null;
+
+export async function endWorkbenchTerminalSession(
+  sessionId: string,
+  options: EndWorkbenchTerminalSessionOptions = {},
+): Promise<TerminalEndResponse> {
+  const sid = normalizeTerminalSessionId(sessionId);
+  if (!sid) throw new Error("terminal session id is required");
+  try {
+    return await endTerminalSessionWithRetries(sid, options);
+  } catch (error) {
+    if (options.queueOnFailure !== false) {
+      enqueuePendingTerminalKill(sid);
+      schedulePendingTerminalKillFlush(options.retryDelayMs ?? 1_500);
+    }
+    throw error;
+  }
+}
+
+export function schedulePendingTerminalKillFlush(delayMs = 1_500): void {
+  if (typeof window === "undefined") return;
+  if (pendingKillFlushTimer !== null) return;
+  pendingKillFlushTimer = window.setTimeout(() => {
+    pendingKillFlushTimer = null;
+    void flushPendingTerminalKillRetries();
+  }, Math.max(250, delayMs));
+}
+
+export async function flushPendingTerminalKillRetries(): Promise<void> {
+  const pending = readPendingTerminalKills();
+  if (!pending.length) return;
+  const remaining: string[] = [];
+  for (const sid of pending) {
+    try {
+      await endTerminalSessionWithRetries(sid, { attempts: 2, retryDelayMs: 750, queueOnFailure: false });
+    } catch {
+      remaining.push(sid);
+    }
+  }
+  writePendingTerminalKills(remaining);
+  if (remaining.length) schedulePendingTerminalKillFlush(5_000);
+}
+
+async function endTerminalSessionWithRetries(
+  sid: string,
+  options: EndWorkbenchTerminalSessionOptions,
+): Promise<TerminalEndResponse> {
+  const attempts = Math.max(1, options.attempts ?? 3);
+  const retryDelayMs = Math.max(100, options.retryDelayMs ?? 500);
+  let lastError: unknown = null;
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      return await endTerminalSession({ sid });
+    } catch (error) {
+      lastError = error;
+      if (index < attempts - 1) {
+        await delay(retryDelayMs * (index + 1));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("terminal session kill failed");
+}
+
+function enqueuePendingTerminalKill(sessionId: string): void {
+  if (typeof window === "undefined") return;
+  const sid = normalizeTerminalSessionId(sessionId);
+  if (!sid) return;
+  writePendingTerminalKills([...new Set([...readPendingTerminalKills(), sid])]);
+}
+
+function readPendingTerminalKills(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PENDING_TERMINAL_KILL_KEY) || "[]") as unknown;
+    return Array.isArray(parsed)
+      ? parsed.map((item) => normalizeTerminalSessionId(String(item || ""))).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingTerminalKills(sessionIds: string[]): void {
+  if (typeof window === "undefined") return;
+  const normalized = [...new Set(sessionIds.map((sid) => normalizeTerminalSessionId(sid)).filter(Boolean))];
+  if (!normalized.length) {
+    window.localStorage.removeItem(PENDING_TERMINAL_KILL_KEY);
+    return;
+  }
+  window.localStorage.setItem(PENDING_TERMINAL_KILL_KEY, JSON.stringify(normalized));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function createTerminalWebSocketUrl(
@@ -72,11 +174,11 @@ export function createTerminalWebSocketUrl(
     rootId: options.rootId,
     workspaceId: options.rootId,
     cwd: normalizeRelativeCwd(options.cwd),
-    profileId: "local-shell",
-    shell: "bash",
+    profileId: normalizeProfileId(options.profileId),
+    shell: normalizeShellName(options.shell),
     targetKind: "local",
     resume: "1",
-    skipReplay: "1",
+    pinned: "1",
   });
   return `${protocol}//${window.location.host}${basePath}/ws/terminal?${params.toString()}`;
 }
@@ -99,8 +201,22 @@ export function normalizeRelativeCwd(value: string | null | undefined): string {
   return raw;
 }
 
+function normalizeProfileId(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  return raw || "local-shell";
+}
+
+function normalizeShellName(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  return raw || "bash";
+}
+
 function normalizeBasePath(value: string): string {
   const raw = String(value || "").trim();
   if (!raw || raw === "/") return "";
   return `/${raw.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function normalizeTerminalSessionId(value: string | null | undefined): string {
+  return String(value || "").trim().replace(/[^a-zA-Z0-9_.:-]/g, "-").slice(0, 120);
 }

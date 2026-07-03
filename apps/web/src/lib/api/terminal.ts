@@ -5,6 +5,7 @@ import type {
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
+  TerminalProfileCatalogResponse,
   TerminalSessionDescriptor,
   TerminalSessionSummaryResponse,
 } from "../../features/cli-agents/types";
@@ -14,6 +15,7 @@ import type {
  * (`apps/api/modules/terminal/routes.ts`) the CLI Agent management page uses.
  *
  * Bound here:
+ *  - GET  /api/terminal/profiles               → terminal profile/shell catalog
  *  - GET  /api/terminal/sessions               → persisted session roster
  *  - POST /api/terminal/sessions               → create a PTY session descriptor
  *  - GET  /api/terminal/sessions/:id           → single session descriptor
@@ -34,6 +36,16 @@ const BASE = "/api/terminal";
 
 function jsonBody(value: unknown): string {
   return JSON.stringify(value ?? {});
+}
+
+
+/** GET /api/terminal/profiles — available terminal profiles and shell launchers. */
+export function getTerminalProfiles(
+  signal?: AbortSignal,
+): Promise<TerminalProfileCatalogResponse> {
+  return apiRequest<TerminalProfileCatalogResponse>(`${BASE}/profiles`, {
+    signal,
+  });
 }
 
 /** GET /api/terminal/sessions — persisted terminal session roster. */

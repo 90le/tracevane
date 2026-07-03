@@ -24,6 +24,45 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+
+
+async function cleanupPath(rootId, path) {
+  await api('/api/files', {
+    method: 'DELETE',
+    body: JSON.stringify({ rootId, paths: [path], permanent: true }),
+  }).catch(() => undefined);
+}
+
+function createDefaultWorkbenchLayout() {
+  return {
+    layoutVersion: 1,
+    activeActivityId: 'explorer',
+    sideBar: { placement: 'left', visible: true, collapsed: false, width: 288 },
+    secondarySideBar: { placement: 'right', visible: false, collapsed: true, width: 280 },
+    explorer: { directoryPath: '' },
+    panel: {
+      placement: 'bottom',
+      visible: true,
+      collapsed: false,
+      size: 220,
+      bottomSize: 220,
+      rightWidth: 420,
+      maximized: false,
+      activePanelId: 'terminal',
+    },
+    viewPlacements: [
+      { viewId: 'explorer', placement: 'primary-sidebar', order: 0, visible: true },
+      { viewId: 'terminal', placement: 'panel', order: 0, visible: true },
+      { viewId: 'problems', placement: 'panel', order: 1, visible: true },
+      { viewId: 'output', placement: 'panel', order: 2, visible: true },
+      { viewId: 'debugConsole', placement: 'panel', order: 3, visible: true },
+    ],
+    editorGroups: [{ id: 'main', activeTabId: null, tabs: [] }],
+    activeEditorGroupId: 'main',
+    dockviewLayout: null,
+  };
+}
+
 function toWsUrl(pathname) {
   const url = new URL(pathname, BASE_URL);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -52,6 +91,18 @@ async function runBackendTerminalRoundtrip(rootId) {
   const token = `TRACEVANE_M5B_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const sid = `ide-terminal-smoke-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const cwd = repoRelativeCwd();
+
+  const catalog = await api('/api/terminal/profiles');
+  const profiles = Array.isArray(catalog.profiles) ? catalog.profiles : [];
+  const localShell = profiles.find((profile) => profile.id === 'local-shell');
+  const bashProfile = profiles.find((profile) => profile.id === 'shell-bash');
+  if (!localShell?.launchable) throw new Error(`local-shell profile is not launchable: ${JSON.stringify(localShell)}`);
+  if (!bashProfile?.launchable || bashProfile.command !== 'bash') {
+    throw new Error(`shell-bash profile is not launchable: ${JSON.stringify(bashProfile)}`);
+  }
+  if (profiles.some((profile) => /tmux/i.test(`${profile.id} ${profile.command || ''}`) && profile.kind === 'shell')) {
+    throw new Error('tmux must not be exposed as a shell profile');
+  }
 
   await expectApiFailure('/api/terminal/sessions', {
     sid: `${sid}-bad-cwd`,
@@ -95,6 +146,7 @@ async function runBackendTerminalRoundtrip(rootId) {
     }),
   });
   if (descriptor.sessionId !== sid) throw new Error(`Unexpected session id ${descriptor.sessionId}`);
+  if (descriptor.shell !== 'bash') throw new Error(`Expected descriptor.shell=bash, got ${descriptor.shell}`);
   if (!String(descriptor.cwd || '').endsWith(process.cwd())) {
     throw new Error(`Terminal cwd was not resolved to repo root: ${descriptor.cwd}`);
   }
@@ -155,11 +207,16 @@ async function runBackendTerminalRoundtrip(rootId) {
 }
 
 async function runUiSmoke(rootId) {
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
+  });
+
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.addInitScript(() => {
     for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('tracevane.ide-workbench.terminal-layout.')) localStorage.removeItem(key);
+      if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal-layout.')) localStorage.removeItem(key);
     }
   });
   const logs = [];
@@ -171,7 +228,7 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-tabs]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-terminal-xterm]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => {
       const terminal = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
       return terminal.includes('running') || terminal.includes('error') || terminal.includes('终端不可用');
@@ -179,6 +236,47 @@ async function runUiSmoke(rootId) {
     const terminalText = await page.locator('[data-ide-terminal-pane]').first().innerText();
     if (terminalText.includes('终端不可用') || terminalText.includes('error')) throw new Error(terminalText);
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-new-menu]').click();
+    await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    const bashMenuItem = page.locator('[data-ide-terminal-new-profile="shell-bash"][data-terminal-shell="bash"]');
+    await bashMenuItem.waitFor({ state: 'visible', timeout: 30_000 });
+    await bashMenuItem.click();
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 2, { timeout: 45_000 });
+    await page.locator('[data-ide-terminal-tab][data-terminal-shell="bash"]').last().waitFor({ state: 'visible', timeout: 30_000 });
+
+    await page.locator('[data-ide-terminal-pane]').first().evaluate((node) => {
+      const file = new File(['terminal clipboard paste smoke\n'], 'terminal-clipboard-paste.txt', { type: 'text/plain' });
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      node.dispatchEvent(new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer,
+      }));
+    });
+    await page.waitForFunction(() => {
+      const text = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
+      return text.includes('terminal-paste') && text.includes('terminal-clipboard-paste');
+    }, { timeout: 30_000 });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          readText: async () => '',
+          writeText: async () => undefined,
+          read: async () => [new ClipboardItem({
+            'image/png': new Blob(['terminal clipboard image smoke'], { type: 'image/png' }),
+          })],
+        },
+      });
+    });
+    await page.locator('[data-ide-terminal-pane]').first().click({ button: 'right' });
+    await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.getByRole('menuitem', { name: '粘贴文件/图片为路径' }).click();
+    await page.waitForFunction(() => {
+      const text = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
+      return text.includes('terminal-paste') && text.includes('clipboard-image') && text.includes('.png');
+    }, { timeout: 30_000 });
     const box = await page.locator('[data-ide-panel-resize-handle]').boundingBox();
     if (box) {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -186,8 +284,15 @@ async function runUiSmoke(rootId) {
       await page.mouse.move(box.x + box.width / 2, Math.max(80, box.y - 60));
       await page.mouse.up();
     }
-    await page.getByRole('button', { name: '关闭终端 Pane' }).first().click();
-    await page.waitForFunction(() => (document.querySelector('[data-ide-terminal-pane]')?.textContent || '').includes('closed'), { timeout: 30_000 });
+    const tabMenu = page.locator('[data-ide-terminal-tab-menu]').first();
+    await tabMenu.click();
+    await page.locator('[data-ide-terminal-tab-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-tab-menu-item=close-tab]').click();
+    await page.waitForFunction(() => {
+      const layout = document.querySelector('[data-ide-terminal-layout]');
+      const count = Number(layout?.getAttribute('data-terminal-pane-count') || '0');
+      return count >= 1;
+    }, { timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,
@@ -205,8 +310,15 @@ async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file root is available for IDE terminal smoke');
-  await runBackendTerminalRoundtrip(rootId);
-  await runUiSmoke(rootId);
+  await cleanupPath(rootId, '.tracevane/tmp/terminal-paste');
+  await cleanupPath(rootId, 'tmp/tracevane-terminal-paste');
+  try {
+    await runBackendTerminalRoundtrip(rootId);
+    await runUiSmoke(rootId);
+  } finally {
+    await cleanupPath(rootId, '.tracevane/tmp/terminal-paste');
+    await cleanupPath(rootId, 'tmp/tracevane-terminal-paste');
+  }
 }
 
 run().catch((error) => {

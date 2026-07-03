@@ -1,3 +1,4 @@
+export * from "./fileTransfer";
 export * from "./fileType";
 export * from "./path";
 export * from "./sort";

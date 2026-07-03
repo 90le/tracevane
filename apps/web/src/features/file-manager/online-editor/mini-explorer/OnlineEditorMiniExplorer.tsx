@@ -1,11 +1,12 @@
 import {
+  ClipboardPaste,
   Copy,
   ExternalLink,
   FilePlus2,
-  FolderInput,
   FolderPlus,
   MoreHorizontal,
   Pencil,
+  Scissors,
   Trash2,
 } from "lucide-react";
 import * as React from "react";
@@ -27,9 +28,14 @@ import type { FileEntrySummary } from "@/features/file-manager/file-tools/types"
 import {
   explorerDirname,
   explorerNodeKey,
+  assertExplorerTransferAllowed,
+  createExplorerClipboardFromEntries,
+  explorerPasteDestinationForEntry,
   explorerParentPath,
   joinExplorerPath,
   normalizeExplorerPath,
+  runExplorerTransferCommand,
+  type ExplorerClipboardState as SharedExplorerClipboardState,
   useExplorerCommands,
   useExplorerDirectory,
   useExplorerTreeState,
@@ -85,8 +91,6 @@ type MiniExplorerFlow =
   | { kind: "new-file"; directoryPath: string }
   | { kind: "new-directory"; directoryPath: string }
   | { kind: "rename"; entry: ExplorerEntry }
-  | { kind: "copy"; entry: ExplorerEntry }
-  | { kind: "move"; entry: ExplorerEntry }
   | { kind: "delete"; entry: ExplorerEntry }
   | null;
 
@@ -95,6 +99,8 @@ interface ContextMenuState {
   x: number;
   y: number;
 }
+
+type MiniExplorerClipboardState = SharedExplorerClipboardState & { entry: ExplorerEntry };
 
 export function OnlineEditorMiniExplorer({
   id,
@@ -114,6 +120,8 @@ export function OnlineEditorMiniExplorer({
   );
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
   const [flow, setFlow] = React.useState<MiniExplorerFlow>(null);
+  const [selectedEntry, setSelectedEntry] = React.useState<ExplorerEntry | null>(null);
+  const [fileClipboard, setFileClipboard] = React.useState<MiniExplorerClipboardState | null>(null);
   const treeState = useExplorerTreeState();
   const { revealPath, select, toggleExpanded } = treeState;
   const directory = useExplorerDirectory({ rootId, directoryPath });
@@ -153,77 +161,22 @@ export function OnlineEditorMiniExplorer({
     setContextMenu({ entry, x: point.x, y: point.y });
   }, []);
 
-  const contextItems = React.useMemo<ExplorerContextMenuItem[]>(() => {
-    const entry = contextMenu?.entry ?? null;
-    const items: ExplorerContextMenuItem[] = [
-      {
-        id: "new-file",
-        label: entry?.kind === "directory" ? "在此目录新建文件" : "新建文件",
-        icon: <FilePlus2 />,
-        onSelect: () => setFlow({ kind: "new-file", directoryPath: entry?.kind === "directory" ? entry.path : directory.location.directoryPath }),
-      },
-      {
-        id: "new-directory",
-        label: entry?.kind === "directory" ? "在此目录新建目录" : "新建目录",
-        icon: <FolderPlus />,
-        onSelect: () => setFlow({ kind: "new-directory", directoryPath: entry?.kind === "directory" ? entry.path : directory.location.directoryPath }),
-      },
-    ];
-    if (entry?.kind === "directory") {
-      items.push({
-        id: "enter-directory",
-        label: "进入目录",
-        icon: <ExternalLink />,
-        separatorBefore: true,
-        onSelect: () => setDirectoryPath(entry.path),
-      });
+  const selectEntry = React.useCallback((entry: ExplorerEntry) => {
+    setSelectedEntry(entry);
+    select(entry.id);
+  }, [select]);
+
+  const copySelectionToClipboard = React.useCallback((operation: "copy" | "move", entry = selectedEntry) => {
+    if (!entry) {
+      toast.info("先选择一个文件或目录");
+      return;
     }
-    if (entry) {
-      items.push(
-        {
-          id: "rename",
-          label: "重命名",
-          icon: <Pencil />,
-          separatorBefore: entry.kind !== "directory",
-          onSelect: () => setFlow({ kind: "rename", entry }),
-        },
-        {
-          id: "copy",
-          label: "复制到…",
-          icon: <Copy />,
-          onSelect: () => setFlow({ kind: "copy", entry }),
-        },
-        {
-          id: "move",
-          label: "移动到…",
-          icon: <FolderInput />,
-          onSelect: () => setFlow({ kind: "move", entry }),
-        },
-        {
-          id: "copy-relative-path",
-          label: "复制相对路径",
-          icon: <Copy />,
-          separatorBefore: true,
-          onSelect: () => void copyExplorerPath(entry.path, "relative"),
-        },
-        {
-          id: "copy-absolute-path",
-          label: "复制绝对路径",
-          icon: <Copy />,
-          onSelect: () => void copyExplorerPath(joinAbsolutePath(rootAbsolutePath, entry.path), "absolute"),
-        },
-        {
-          id: "delete",
-          label: "删除…",
-          icon: <Trash2 />,
-          danger: true,
-          separatorBefore: true,
-          onSelect: () => setFlow({ kind: "delete", entry }),
-        },
-      );
-    }
-    return items;
-  }, [contextMenu?.entry, directory.location.directoryPath, rootAbsolutePath]);
+    setFileClipboard({
+      ...createExplorerClipboardFromEntries(operation, [entry]),
+      entry,
+    });
+    toast.success(operation === "copy" ? "已复制到文件剪贴板" : "已剪切到文件剪贴板", { description: entry.path || entry.name });
+  }, [selectedEntry]);
 
   const flowTargetDirectory = React.useMemo(() => {
     if (flow?.kind === "new-file" || flow?.kind === "new-directory") return flow.directoryPath;
@@ -266,25 +219,136 @@ export function OnlineEditorMiniExplorer({
 
   const runTransfer = React.useCallback(
     async (entry: ExplorerEntry, operation: "copy" | "move", destinationDirectoryPath: string, nextName?: string) => {
-      const target = {
-        destinationRootId: rootId,
-        destinationDirectoryPath: normalizeExplorerPath(destinationDirectoryPath),
-        nextName: nextName?.trim() || undefined,
-        overwrite: false,
-      };
-      const result = operation === "copy"
-        ? await commands.copy({ rootId, path: entry.path }, target)
-        : await commands.move({ rootId, path: entry.path }, target);
-      if (operation === "move") {
-        const fallback = joinExplorerPath(target.destinationDirectoryPath, target.nextName ?? entry.name);
-        const newPath = normalizeExplorerPath(result.affectedPaths[1] ?? fallback);
-        onPathEvent?.({ type: "moved", rootId, oldPath: entry.path, newPath, targetKind: entry.kind });
-      }
+      const transfer = await runExplorerTransferCommand({
+        commands,
+        rootId,
+        entry,
+        operation,
+        destinationDirectoryPath,
+        nextName,
+      });
+      if (transfer.pathEvent) onPathEvent?.({ ...transfer.pathEvent, targetKind: entry.kind });
       await refreshDirectory();
       setFlow(null);
     },
     [commands, onPathEvent, refreshDirectory, rootId],
   );
+
+  const pasteClipboard = React.useCallback(async (targetDirectoryPath = directory.location.directoryPath) => {
+    if (!fileClipboard) {
+      toast.info("文件剪贴板为空");
+      return;
+    }
+    const allowed = assertExplorerTransferAllowed([fileClipboard.entry], targetDirectoryPath);
+    if (!allowed.ok) {
+      toast.error("不能把目录移动或复制到自身内部", { description: allowed.blocked.path });
+      return;
+    }
+    await runTransfer(fileClipboard.entry, fileClipboard.operation, allowed.destination);
+    if (fileClipboard.operation === "move") setFileClipboard(null);
+  }, [directory.location.directoryPath, fileClipboard, runTransfer]);
+
+  const handleMiniExplorerKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
+    const cmd = event.metaKey || event.ctrlKey;
+    if (cmd && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      copySelectionToClipboard("copy");
+      return;
+    }
+    if (cmd && event.key.toLowerCase() === "x") {
+      event.preventDefault();
+      copySelectionToClipboard("move");
+      return;
+    }
+    if (cmd && event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      void pasteClipboard(explorerPasteDestinationForEntry(selectedEntry, directory.location.directoryPath));
+    }
+  }, [copySelectionToClipboard, directory.location.directoryPath, pasteClipboard, selectedEntry]);
+
+  const contextItems = React.useMemo<ExplorerContextMenuItem[]>(() => {
+    const entry = contextMenu?.entry ?? null;
+    const items: ExplorerContextMenuItem[] = [
+      {
+        id: "new-file",
+        label: entry?.kind === "directory" ? "在此目录新建文件" : "新建文件",
+        icon: <FilePlus2 />,
+        onSelect: () => setFlow({ kind: "new-file", directoryPath: entry?.kind === "directory" ? entry.path : directory.location.directoryPath }),
+      },
+      {
+        id: "new-directory",
+        label: entry?.kind === "directory" ? "在此目录新建目录" : "新建目录",
+        icon: <FolderPlus />,
+        onSelect: () => setFlow({ kind: "new-directory", directoryPath: entry?.kind === "directory" ? entry.path : directory.location.directoryPath }),
+      },
+    ];
+    if (entry?.kind === "directory") {
+      items.push({
+        id: "enter-directory",
+        label: "进入目录",
+        icon: <ExternalLink />,
+        separatorBefore: true,
+        onSelect: () => setDirectoryPath(entry.path),
+      });
+    }
+    if (entry) {
+      items.push(
+        {
+          id: "rename",
+          label: "重命名",
+          icon: <Pencil />,
+          separatorBefore: entry.kind !== "directory",
+          onSelect: () => setFlow({ kind: "rename", entry }),
+        },
+        {
+          id: "copy-clipboard",
+          label: "复制",
+          icon: <Copy />,
+          shortcut: "Ctrl C",
+          onSelect: () => copySelectionToClipboard("copy", entry),
+        },
+        {
+          id: "cut-clipboard",
+          label: "剪切",
+          icon: <Scissors />,
+          shortcut: "Ctrl X",
+          onSelect: () => copySelectionToClipboard("move", entry),
+        },
+        ...(fileClipboard
+          ? [{
+              id: "paste-here",
+              label: entry.kind === "directory" ? "粘贴到此处" : "粘贴到所在目录",
+              icon: <ClipboardPaste />,
+              shortcut: "Ctrl V",
+              onSelect: () => void pasteClipboard(explorerPasteDestinationForEntry(entry, directory.location.directoryPath)),
+            } satisfies ExplorerContextMenuItem]
+          : []),
+        {
+          id: "copy-relative-path",
+          label: "复制相对路径",
+          icon: <Copy />,
+          separatorBefore: true,
+          onSelect: () => void copyExplorerPath(entry.path, "relative"),
+        },
+        {
+          id: "copy-absolute-path",
+          label: "复制绝对路径",
+          icon: <Copy />,
+          onSelect: () => void copyExplorerPath(joinAbsolutePath(rootAbsolutePath, entry.path), "absolute"),
+        },
+        {
+          id: "delete",
+          label: "删除…",
+          icon: <Trash2 />,
+          danger: true,
+          separatorBefore: true,
+          onSelect: () => setFlow({ kind: "delete", entry }),
+        },
+      );
+    }
+    return items;
+  }, [contextMenu?.entry, copySelectionToClipboard, directory.location.directoryPath, fileClipboard, pasteClipboard, rootAbsolutePath]);
 
   const runDelete = React.useCallback(
     async (entry: ExplorerEntry, permanent: boolean) => {
@@ -305,6 +369,8 @@ export function OnlineEditorMiniExplorer({
       )}
       aria-label="在线编辑器文件列表"
       data-online-editor-mini-explorer
+      onKeyDown={handleMiniExplorerKeyDown}
+      tabIndex={0}
       onContextMenu={(event) => {
         if (event.target instanceof Element && event.target.closest("[data-explorer-node-key]")) return;
         event.preventDefault();
@@ -362,7 +428,7 @@ export function OnlineEditorMiniExplorer({
                 selectedKeys={treeState.selectedKeys}
                 onToggleDirectory={toggleDirectory}
                 onOpenFile={openFile}
-                onSelect={(item) => select(item.id)}
+                onSelect={selectEntry}
                 onContextMenu={openContextMenu}
               />
             ))}
@@ -404,15 +470,6 @@ export function OnlineEditorMiniExplorer({
           initialName={flow.entry.name}
           onCancel={() => setFlow(null)}
           onConfirm={(name) => runRename(flow.entry, name)}
-        />
-      ) : null}
-      {flow?.kind === "copy" || flow?.kind === "move" ? (
-        <TransferDialog
-          operation={flow.kind}
-          entry={flow.entry}
-          currentDirectoryPath={directory.location.directoryPath}
-          onCancel={() => setFlow(null)}
-          onConfirm={(payload) => runTransfer(flow.entry, flow.kind, payload.destinationDirectoryPath, payload.nextName)}
         />
       ) : null}
       {flow?.kind === "delete" ? (
@@ -585,6 +642,7 @@ function NameDialog({
             value={value}
             placeholder={placeholder}
             onChange={(event) => setValue(event.target.value)}
+            onInput={(event) => setValue(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -598,77 +656,6 @@ function NameDialog({
           <Button variant="ghost" onClick={onCancel} disabled={busy}>取消</Button>
           <Button variant="primary" onClick={() => void submit()} disabled={busy || !value.trim()}>
             {busy ? "处理中…" : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TransferDialog({
-  operation,
-  entry,
-  currentDirectoryPath,
-  onCancel,
-  onConfirm,
-}: {
-  operation: "copy" | "move";
-  entry: ExplorerEntry;
-  currentDirectoryPath: string;
-  onCancel: () => void;
-  onConfirm: (payload: { destinationDirectoryPath: string; nextName?: string }) => Promise<void> | void;
-}) {
-  const [destinationDirectoryPath, setDestinationDirectoryPath] = React.useState(currentDirectoryPath);
-  const [nextName, setNextName] = React.useState(entry.name);
-  const [busy, setBusy] = React.useState(false);
-  async function submit() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await onConfirm({
-        destinationDirectoryPath: normalizeExplorerPath(destinationDirectoryPath),
-        nextName: nextName.trim() && nextName.trim() !== entry.name ? nextName.trim() : undefined,
-      });
-    } catch {
-      // fileOperations/useExplorerCommands already surface toasts.
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent data-online-editor-mini-explorer-transfer-dialog>
-        <DialogHeader>
-          <DialogTitle>{operation === "copy" ? "复制到…" : "移动到…"}</DialogTitle>
-          <DialogDescription>{entry.path}</DialogDescription>
-        </DialogHeader>
-        <DialogBody className="grid gap-3">
-          <label className="grid gap-1 text-xs text-muted">
-            目标目录（相对当前 root，留空为根目录）
-            <Input
-              value={destinationDirectoryPath}
-              onChange={(event) => setDestinationDirectoryPath(event.target.value)}
-              placeholder="例如 src/components"
-              data-online-editor-mini-explorer-transfer-destination
-            />
-          </label>
-          <label className="grid gap-1 text-xs text-muted">
-            新名称（可选）
-            <Input
-              value={nextName}
-              onChange={(event) => setNextName(event.target.value)}
-              placeholder={entry.name}
-              data-online-editor-mini-explorer-transfer-name
-            />
-          </label>
-          <p className="rounded border border-line bg-panel-2 px-2 py-1.5 text-xs text-subtle">
-            同名冲突不会静默覆盖；如目标已存在，本次操作会失败并保留原文件。
-          </p>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>取消</Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={busy || !nextName.trim()}>
-            {busy ? "处理中…" : operation === "copy" ? "复制" : "移动"}
           </Button>
         </DialogFooter>
       </DialogContent>

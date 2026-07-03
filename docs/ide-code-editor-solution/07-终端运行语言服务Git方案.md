@@ -28,18 +28,29 @@ M5：Real Terminal Foundation（已完成）
 - 已补 `smoke:ide:terminal-foundation`。
 - 未做 split terminal pane、terminal group、Panel right placement、Terminal 全局 docking、LSP/Git/Debug。
 
-M5.x：Terminal Split / Group / Panel Placement（下一步）
+M5.x：Terminal Split / Group / Panel Placement（已完成）
 - TerminalGroup / TerminalPane 模型。
 - Split Terminal Right / Split Terminal Down。
 - pane resize、focus、close/kill、move between groups。
-- terminal tabs/groups layout persistence。
+- terminal tabs/groups layout persistence（服务端 layout API 是跨刷新/跨浏览器上下文恢复来源；localStorage 只是快速缓存）。
+- Terminal Session Manager 基础持久化：即使没有 tmux，浏览器刷新、WebSocket 断开、路由切换、Panel bottom/right 切换也不 kill node-pty session；close/kill 才结束 session。
+- Terminal Profiles / Shell Selection：前端 New Terminal 保留默认创建入口，并通过下拉菜单展示后端 `/api/terminal/profiles` 确认可用且在 allowlist 内的本地 shell（bash/sh/zsh/fish/pwsh/powershell/cmd）；split 继承当前 pane 的 profile/shell。
+- pinned terminal session durability：tmux 是可选增强后端，不是 shell，也不是硬依赖；可用时用于后端 dev/API 进程重启后 attach，同一 shell 进程尽量恢复；不可用时降级为 PTY 并清晰显示能力边界。
 - Terminal Panel bottom/right placement。
+- 浏览器剪贴板文件/图片上传到 workspace-scoped terminal temp 目录并插入路径；这条链路不依赖终端内 CLI 读取系统剪贴板。
 - 不做 LSP/Git/Debug，不做 Terminal 作为 editor-like tab。
+- 收口记录见 [`archive/m5x-execution-summary.md`](./archive/m5x-execution-summary.md)。
+
+M5.y / M5.5：IDE Editor Foundation（下一步，终端保持 M5.x 边界）
+- 将 IDE EditorDock 从 placeholder 升级为真实 Monaco 文件编辑器基础。
+- 复用 shared/editor-core / Files API / Monaco-first 底层能力，不复用 File Manager Online Editor 产品壳。
+- 不改变 M5.x 终端 API，不做 LSP/Git/Debug，不做 Problems/Output 数据接入。
 
 M6+：终端参与更完整 Workbench 全局布局
 - Terminal View 在 Panel / SecondarySideBar / dockable region 间移动。
 - 可评估 Terminal 最大化为主区域，或作为 editor-like tab 打开。
 - Terminal / Problems / Output / Debug Console 与 Workbench layout 一起保存/恢复。
+- 持久化验收必须覆盖：刷新页面、重新进入 `/ide`、清空 localStorage、以及后端重启后 pinned terminal 尽量恢复同一 shell 进程。
 ```
 
 ### 前端
@@ -56,6 +67,8 @@ npm i @xterm/xterm @xterm/addon-fit
 - 显示终端内容。
 - 接收用户输入。
 - 复制/粘贴。
+- 文件/图片粘贴分两类：文本粘贴交给 xterm/shell；文件或图片粘贴由 Tracevane 前端读取浏览器 Clipboard/Paste/DataTransfer，复用 Files upload API 上传到 workspace-scoped 临时目录，再把路径写入 PTY。
+- 终端内运行的 CLI（例如 Codex CLI）读取的是后端/系统剪贴板，不能直接等同浏览器剪贴板；因此 UI 必须提供“粘贴文件/图片为路径”的显式入口。
 - 搜索输出。
 - resize。
 - 多终端 Tab。
@@ -532,3 +545,12 @@ Git：
 - 文件树显示变更状态。
 - 可以查看单文件 diff。
 ```
+
+
+### M5.x-C Terminal Profiles / Shell Selection 补充
+
+- `profileId` 与 `shell` 由前端从现有 `/api/terminal/profiles` 读取并传给现有 Terminal Gateway / sessions API；后端继续执行 `KNOWN_TERMINAL_PROFILE_IDS` 与 `ALLOWED_TERMINAL_SHELLS` 校验。
+- bash、sh、zsh、fish、pwsh、powershell、cmd 是 shell/profile 候选；只有后端探测为 launchable 的项才应在 Workbench New Terminal 菜单中展示。
+- tmux 不是 shell/profile 候选。tmux 只作为 pinned terminal 的可选 durable backend；不可用时仍使用 PTY，并在 pane 状态中显示 backend 边界。
+- New Terminal 可以选择新的 shell/profile；Split Right / Split Down 继承被拆分 pane 的 shell/profile，避免同一个 tab 内的分屏意外切换 shell。
+- layout persistence 只保存 terminalId、profileId、shell、title、split metadata 等 UI/session metadata，不保存完整终端输出。

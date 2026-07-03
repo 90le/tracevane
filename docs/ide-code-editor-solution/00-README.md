@@ -86,6 +86,8 @@
 | [archive/m5-a-terminal-foundation-plan.md](./archive/m5-a-terminal-foundation-plan.md) | M5-A Real Terminal Foundation 本地探查、边界和 M5-B 最小实现计划 |
 | [archive/m5-b-terminal-foundation-summary.md](./archive/m5-b-terminal-foundation-summary.md) | M5-B Workbench Terminal Panel 最小真实终端实现、后端 root/cwd guard 与 xterm 接入总结 |
 | [archive/m5-execution-summary.md](./archive/m5-execution-summary.md) | M5 Real Terminal Foundation 总体验收、完成边界和 M5.x 入口 |
+| [archive/m5x-execution-summary.md](./archive/m5x-execution-summary.md) | M5.x Terminal Split / Group / Panel Placement 总体验收、完成边界和 M5.y 入口 |
+| [archive/m5y-a-ide-editor-foundation-plan.md](./archive/m5y-a-ide-editor-foundation-plan.md) | M5.y-A IDE Editor Foundation 技术探查、复用边界和后续切片计划 |
 
 ## 推荐技术选型
 
@@ -157,11 +159,17 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - M5 已完成 bottom Panel Terminal tab、单终端 session 基础、resize、close/kill、cwd/root guard、shell/profile allowlist 和 `smoke:ide:terminal-foundation`。
 - M5 不做 terminal split/group、Panel right placement、Terminal View 全局 docking、Terminal 作为 editor-like tab、Problems/Output 数据、watcher、LSP、Git、Debug、插件市场或完整 VS Code terminal behavior。
 
-下一步 M5.x：Terminal Split / Group / Panel Placement
-- 做 terminal split pane、terminal group、Panel bottom/right placement 和终端布局恢复；不做 LSP/Git/Debug。
+已完成 M5.x：Terminal Split / Group / Panel Placement
+- 已完成 terminal tabs/groups/panes、split right/down、pane focus/close/kill、bottom/right panel placement、layout/session metadata persistence、profile/shell selection、tmux optional durable backend、剪贴板文件/图片上传为路径、终端 tab 拖拽与右键菜单等终端布局基础能力。
+- M5.x 不做 Terminal 作为 editor-like tab、完整 View Movement、Secondary SideBar、Problems/Output 数据、watcher、LSP、Git、Debug 或完整 VS Code terminal behavior。
+
+下一步 M5.y / M5.5：IDE Editor Foundation
+- 把 IDE 中间 EditorDock 从 Dockview placeholder 升级为真实 Monaco 文件编辑器基础。
+- 只复用底层 shared/editor-core、Files API、Monaco model/语言/dirty/save/conflict 规则；不复用 File Manager Online Editor 产品壳，不创建第二套文件 API，不让 Dockview 拥有文件 IO。
+- 先做 M5.y-A 技术探查与接入计划，再分步实现真实 Monaco panel、保存/dirty/close confirm、preview/pinned/split 行为和验收 smoke。
 
 后续 M6：Watcher / Search / Problems / Output
-- 做文件 watcher、全局搜索、Problems 数据模型和 Output channel/log 基础；Problems 可先展示结构化问题数据，但真实 LSP diagnostics 到 M7。
+- 在真实 IDE Editor 基础可承载后，再做文件 watcher、全局搜索、Problems 数据模型和 Output channel/log 基础；Problems 可先展示结构化问题数据，但真实 LSP diagnostics 到 M7。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。

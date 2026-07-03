@@ -23,6 +23,12 @@ export function hasFileDrag(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types ?? []).includes("Files");
 }
 
+export function hasUploadFilesInDataTransfer(dataTransfer: Pick<DataTransfer, "files" | "items"> | null | undefined): boolean {
+  if (!dataTransfer) return false;
+  if (dataTransfer.files?.length) return true;
+  return Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file");
+}
+
 export async function collectUploadFilesFromDataTransfer(
   dataTransfer: Pick<DataTransfer, "files" | "items">,
   options: CollectUploadFilesOptions = {},

@@ -21,11 +21,14 @@ import {
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/design/ui/dialog";
 import { useFilesSummaryQuery } from "@/lib/query/files";
 import { editorDocumentId, editorTitleForPath } from "@/shared/editor-core";
+import type { EditorSaveState } from "@/shared/editor-core";
 import { isExplorerPathInside, joinExplorerPath, normalizeExplorerPath } from "@/shared/explorer-core";
 import type { ExplorerEntry } from "@/shared/explorer-core";
 import { EditorDock } from "./editor";
+import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
@@ -57,6 +60,11 @@ const PANEL_ICONS: Record<WorkbenchPanelId, React.ReactNode> = {
   debugConsole: <Bug />,
 };
 
+interface IdeEditorCloseRequest {
+  tabIds: string[];
+  dirtyTabs: IdeWorkbenchEditorTab[];
+}
+
 export function IdeWorkbenchPage() {
   const { workspaceId } = useParams();
   const summary = useFilesSummaryQuery();
@@ -68,20 +76,23 @@ export function IdeWorkbenchPage() {
   const root = roots.find((entry) => entry.id === rootId) ?? null;
   const layoutApi = useIdeWorkbenchLayoutState(rootId || "pending-root");
   const { layout } = layoutApi;
-  const [directoryPath, setDirectoryPath] = React.useState("");
+  const directoryPath = layout.explorer.directoryPath;
+  const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
+  const [closeSaving, setCloseSaving] = React.useState(false);
 
   const openEntry = React.useCallback(
-    (entry: ExplorerEntry) => {
+    (entry: ExplorerEntry, options: { pinned?: boolean } = {}) => {
       if (entry.kind === "directory") {
-        setDirectoryPath(entry.path);
+        layoutApi.setExplorerDirectoryPath(entry.path);
         return;
       }
+      const pinned = Boolean(options.pinned);
       const tab: IdeWorkbenchEditorTab = {
         id: editorDocumentId({ rootId: entry.rootId, path: entry.path }),
         ref: { rootId: entry.rootId, path: entry.path },
         title: editorTitleForPath(entry.path),
-        preview: true,
-        pinned: false,
+        preview: !pinned,
+        pinned,
         dirty: false,
       };
       layoutApi.setLayout((current) => ({
@@ -89,7 +100,23 @@ export function IdeWorkbenchPage() {
         editorGroups: current.editorGroups.map((group) => {
           if (group.id !== current.activeEditorGroupId) return group;
           const existing = group.tabs.find((item) => item.id === tab.id);
-          if (existing) return { ...group, activeTabId: existing.id };
+          if (existing) {
+            return {
+              ...group,
+              activeTabId: existing.id,
+              tabs: pinned
+                ? group.tabs.map((item) => item.id === existing.id ? { ...item, preview: false, pinned: true } : item)
+                : group.tabs,
+            };
+          }
+
+          if (pinned) {
+            return {
+              ...group,
+              activeTabId: tab.id,
+              tabs: [...group.tabs, tab],
+            };
+          }
 
           const previewIndex = group.tabs.findIndex(
             (item) => item.preview && !item.pinned && !item.dirty,
@@ -107,6 +134,11 @@ export function IdeWorkbenchPage() {
     },
     [layoutApi],
   );
+
+  const editorGroupsRef = React.useRef(layout.editorGroups);
+  React.useEffect(() => {
+    editorGroupsRef.current = layout.editorGroups;
+  }, [layout.editorGroups]);
 
   const activeGroup = layout.editorGroups.find(
     (group) => group.id === layout.activeEditorGroupId,
@@ -147,6 +179,99 @@ export function IdeWorkbenchPage() {
     },
     [layoutApi],
   );
+  const updateEditorTabDirty = React.useCallback(
+    (tabId: string, dirty: boolean) => {
+      layoutApi.setLayout((current) => ({
+        ...current,
+        editorGroups: current.editorGroups.map((group) => ({
+          ...group,
+          tabs: group.tabs.map((tab) =>
+            tab.id === tabId
+              ? { ...tab, dirty, saveState: dirty ? "dirty" : "clean", saveError: dirty ? null : tab.saveError ?? null }
+              : tab,
+          ),
+        })),
+      }));
+    },
+    [layoutApi],
+  );
+
+  const updateEditorTabSaveState = React.useCallback(
+    (tabId: string, saveState: EditorSaveState, message: string | null = null) => {
+      layoutApi.setLayout((current) => ({
+        ...current,
+        editorGroups: current.editorGroups.map((group) => ({
+          ...group,
+          tabs: group.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  saveState,
+                  dirty: saveState === "dirty" || saveState === "saving" || saveState === "error" ? tab.dirty || saveState === "error" : false,
+                  saveError: message,
+                }
+              : tab,
+          ),
+        })),
+      }));
+    },
+    [layoutApi],
+  );
+
+  const closeEditorTabsNow = React.useCallback((tabIds: string[]) => {
+    const targets = new Set(tabIds);
+    if (!targets.size) return;
+    layoutApi.setLayout((current) => ({
+      ...current,
+      dockviewLayout: removeDockviewPanels(current.dockviewLayout, targets),
+      editorGroups: current.editorGroups.map((group) => {
+        const tabs = group.tabs.filter((tab) => !targets.has(tab.id));
+        const activeTabId = group.activeTabId && !targets.has(group.activeTabId)
+          ? group.activeTabId
+          : tabs.at(-1)?.id ?? null;
+        return { ...group, tabs, activeTabId };
+      }),
+    }));
+  }, [layoutApi]);
+
+  const requestCloseEditorTabs = React.useCallback((tabIds: string[]) => {
+    const ids = [...new Set(tabIds)].filter(Boolean);
+    if (!ids.length) return;
+    const tabsById = new Map(editorGroupsRef.current.flatMap((group) => group.tabs.map((tab) => [tab.id, tab] as const)));
+    const targetTabs = ids.map((id) => tabsById.get(id)).filter((tab): tab is IdeWorkbenchEditorTab => Boolean(tab));
+    const dirtyTabs = targetTabs.filter((tab) => tab.dirty && !tab.deleted);
+    if (!dirtyTabs.length) {
+      closeEditorTabsNow(ids);
+      return;
+    }
+    setCloseRequest({ tabIds: ids, dirtyTabs });
+  }, [closeEditorTabsNow]);
+
+  const resolveCloseRequest = React.useCallback(async (mode: "save" | "discard" | "cancel") => {
+    const request = closeRequest;
+    if (!request) return;
+    if (mode === "cancel") {
+      setCloseRequest(null);
+      return;
+    }
+    if (mode === "discard") {
+      closeEditorTabsNow(request.tabIds);
+      setCloseRequest(null);
+      return;
+    }
+    setCloseSaving(true);
+    try {
+      for (const tab of request.dirtyTabs) {
+        const ok = await saveIdeEditorTab(tab.id);
+        if (!ok) return;
+      }
+      closeEditorTabsNow(request.tabIds);
+      setCloseRequest(null);
+    } finally {
+      setCloseSaving(false);
+    }
+  }, [closeEditorTabsNow, closeRequest]);
+
 
   const activeTab = activeGroup?.tabs.find(
     (tab) => tab.id === activeGroup.activeTabId,
@@ -189,7 +314,7 @@ export function IdeWorkbenchPage() {
   }, [layoutApi]);
 
   return (
-    <div className="grid h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
+    <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
       <WorkbenchHeader
         rootLabel={(root?.labelZh ?? root?.labelEn ?? rootId) || "未选择工作区"}
         rootPath={root?.absolutePath ?? "等待文件根目录加载"}
@@ -211,7 +336,7 @@ export function IdeWorkbenchPage() {
           style={{
             gridTemplateColumns: layout.sideBar.collapsed
               ? "0px minmax(0,1fr)"
-              : `${layout.sideBar.width}px minmax(0,1fr)`,
+              : `clamp(220px, ${layout.sideBar.width}px, calc(100vw - 44px)) minmax(0,1fr)`,
           }}
         >
           <IdeExplorerView
@@ -223,7 +348,7 @@ export function IdeWorkbenchPage() {
             activeRootId={activeTab?.ref.rootId}
             activePath={activeTab?.ref.path}
             openTabs={openTabs}
-            onDirectoryPathChange={setDirectoryPath}
+            onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
             onOpenEntry={openEntry}
             onPathEvent={handleExplorerPathEvent}
           />
@@ -240,9 +365,12 @@ export function IdeWorkbenchPage() {
               layout.panel.maximized
                 ? "grid-rows-[minmax(0,1fr)]"
                 : layout.panel.placement === "right"
-                  ? "grid-cols-[minmax(0,1fr)_auto]"
+                  ? "grid-cols-[minmax(0,1fr)_minmax(0,var(--ide-panel-right-width))]"
                   : "grid-rows-[minmax(0,1fr)_auto]",
             )}
+            style={{
+              "--ide-panel-right-width": `${Math.max(240, layout.panel.rightWidth)}px`,
+            } as React.CSSProperties}
             data-ide-editor-panel-stack
             data-ide-panel-stack-placement={layout.panel.placement}
           >
@@ -254,11 +382,15 @@ export function IdeWorkbenchPage() {
                 onDockviewLayoutChange={setDockviewLayout}
                 onActiveTabChange={setActiveEditorTab}
                 onPinTab={pinEditorTab}
+                onDirtyChange={updateEditorTabDirty}
+                onSaveStateChange={updateEditorTabSaveState}
+                onRequestCloseTabs={requestCloseEditorTabs}
               />
             )}
             <PanelArea
               panel={layout.panel}
               rootId={rootId}
+              rootAbsolutePath={root?.absolutePath}
               directoryPath={directoryPath}
               onTogglePanel={layoutApi.togglePanel}
               onToggleMaximized={layoutApi.togglePanelMaximized}
@@ -269,6 +401,11 @@ export function IdeWorkbenchPage() {
           </div>
         </div>
       </div>
+      <IdeEditorCloseConfirmDialog
+        request={closeRequest}
+        saving={closeSaving}
+        onResolve={resolveCloseRequest}
+      />
       <WorkbenchStatusBar
         rootId={rootId}
         directoryPath={directoryPath}
@@ -277,6 +414,52 @@ export function IdeWorkbenchPage() {
         activePanelId={layout.panel.activePanelId}
       />
     </div>
+  );
+}
+
+function IdeEditorCloseConfirmDialog({
+  request,
+  saving,
+  onResolve,
+}: {
+  request: IdeEditorCloseRequest | null;
+  saving: boolean;
+  onResolve: (mode: "save" | "discard" | "cancel") => void;
+}) {
+  const dirtyCount = request?.dirtyTabs.length ?? 0;
+  return (
+    <Dialog open={Boolean(request)} onOpenChange={(open) => { if (!open && !saving) onResolve("cancel"); }}>
+      <DialogContent showClose={false} data-ide-editor-close-confirm>
+        <DialogHeader>
+          <DialogTitle>保存对文件的更改？</DialogTitle>
+          <DialogDescription>
+            {dirtyCount > 1
+              ? `有 ${dirtyCount} 个文件包含未保存更改。`
+              : `文件 ${request?.dirtyTabs[0]?.title ?? ""} 包含未保存更改。`}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <div className="max-h-40 overflow-auto rounded-md border border-line bg-canvas p-2 text-xs text-muted">
+            {(request?.dirtyTabs ?? []).map((tab) => (
+              <div key={tab.id} className="truncate font-mono" data-ide-editor-close-confirm-path>
+                {tab.ref.path}
+              </div>
+            ))}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onResolve("cancel")} disabled={saving} data-ide-editor-close-cancel>
+            取消
+          </Button>
+          <Button variant="outline" onClick={() => onResolve("discard")} disabled={saving} data-ide-editor-close-discard>
+            不保存
+          </Button>
+          <Button onClick={() => onResolve("save")} disabled={saving} data-ide-editor-close-save>
+            {saving ? "保存中…" : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -304,7 +487,7 @@ function WorkbenchHeader({
       </div>
       <Button variant="ghost" size="sm" onClick={onResetLayout}>
         <RotateCcw />
-        重置布局
+        <span className="hidden sm:inline">重置布局</span>
       </Button>
     </header>
   );
@@ -389,6 +572,7 @@ function ActivityBar({
 function PanelArea({
   panel,
   rootId,
+  rootAbsolutePath,
   directoryPath,
   className,
   onTogglePanel,
@@ -407,6 +591,7 @@ function PanelArea({
     activePanelId: WorkbenchPanelId;
   };
   rootId: string;
+  rootAbsolutePath?: string;
   directoryPath: string;
   className?: string;
   onTogglePanel: () => void;
@@ -417,10 +602,10 @@ function PanelArea({
 }) {
   const isRight = panel.placement === "right";
   const panelStyle = panel.maximized
-    ? undefined
+    ? { width: "100%", height: "100%" }
     : isRight
-      ? { width: panel.rightWidth }
-      : { height: panel.bottomSize };
+      ? { width: "100%", maxWidth: "100%" }
+      : { height: panel.bottomSize, maxHeight: "100%" };
 
   if (panel.collapsed) {
     return (
@@ -447,7 +632,7 @@ function PanelArea({
       data-ide-panel-placement={panel.placement}
       data-ide-panel-maximized={panel.maximized ? "true" : "false"}
       className={cn(
-        "relative grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-panel",
+        "relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-panel",
         isRight ? "border-l border-line" : "border-t border-line",
         className,
       )}
@@ -511,7 +696,7 @@ function PanelArea({
         </div>
       </div>
       {panel.activePanelId === "terminal" ? (
-        <TerminalPanel rootId={rootId} cwd={directoryPath} active placement={panel.placement} />
+        <TerminalPanel rootId={rootId} rootAbsolutePath={rootAbsolutePath} cwd={directoryPath} active placement={panel.placement} />
       ) : (
         <div className="grid min-h-0 place-items-center p-4 text-sm text-muted">
           <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
@@ -541,14 +726,15 @@ function PanelResizeHandle({
     const startY = event.clientY;
     const startSize = size;
     const stack = event.currentTarget.closest<HTMLElement>("[data-ide-editor-panel-stack]");
-    const maxSize = placement === "right"
-      ? Math.max(280, Math.floor((stack?.clientWidth ?? 2400) * 0.75))
-      : stack?.clientHeight ?? 2400;
+    const stackSize = placement === "right"
+      ? stack?.clientWidth ?? window.innerWidth
+      : stack?.clientHeight ?? window.innerHeight;
+    const maxSize = Math.max(placement === "right" ? 320 : 140, Math.floor(stackSize));
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextSize = placement === "right"
         ? startSize + startX - moveEvent.clientX
         : startSize + startY - moveEvent.clientY;
-      onResize(clampNumber(nextSize, placement === "right" ? 280 : 140, maxSize));
+      onResize(clampNumber(nextSize, placement === "right" ? 240 : 140, maxSize));
     };
     const handlePointerUp = () => {
       window.removeEventListener("pointermove", handlePointerMove);
@@ -637,6 +823,33 @@ function rebasePathForMove(
   return joinExplorerPath(newNormalized, candidate.slice(oldNormalized.length + 1));
 }
 
+function removeDockviewPanels(
+  layout: SerializedDockview | null,
+  panelIds: Set<string>,
+): SerializedDockview | null {
+  if (!layout || panelIds.size === 0) return layout;
+  const cloned = structuredClone(layout) as NonNullable<typeof layout>;
+  for (const id of panelIds) delete cloned.panels[id];
+  return removeDockviewPanelIds(cloned, panelIds);
+}
+
+function removeDockviewPanelIds<T>(value: T, panelIds: Set<string>): T {
+  if (typeof value === "string") return (panelIds.has(value) ? "" : value) as T;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => removeDockviewPanelIds(item, panelIds))
+      .filter((item) => item !== "") as T;
+  }
+  if (!value || typeof value !== "object") return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (panelIds.has(key)) continue;
+    const next = removeDockviewPanelIds(child, panelIds);
+    if (next !== "") output[key] = next;
+  }
+  return output as T;
+}
+
 function syncDockviewLayoutForTabReplacements(
   layout: SerializedDockview | null,
   replacements: Array<{ oldId: string; nextTab: IdeWorkbenchEditorTab }>,
@@ -683,6 +896,7 @@ function WorkbenchStatusBar({
   activePanelId,
 }: {
   rootId: string;
+  rootAbsolutePath?: string;
   directoryPath: string;
   sideBarCollapsed: boolean;
   panelCollapsed: boolean;

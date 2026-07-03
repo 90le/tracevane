@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { exec, execFile } from "node:child_process";
+import { exec, execFile, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -110,6 +110,8 @@ interface TerminalSession {
   createdAt: string;
   lastActivityAt: string;
   lastAttachedAt: string | null;
+  durableBackend: "pty" | "tmux";
+  tmuxSessionName: string | null;
 }
 
 type TerminalSessionLaunchMetadata = Partial<TerminalGatewayAttachPayload>;
@@ -121,6 +123,10 @@ type TerminalLaunchMetadata = Required<
   shell: string;
   cols: number;
   rows: number;
+  durableBackend: "pty" | "tmux";
+  tmuxSessionName: string | null;
+  command: string;
+  args: string[];
 };
 
 interface TerminalCliSpec {
@@ -175,6 +181,52 @@ const WS_IDLE_TIMEOUT = 90_000;
 const DEFAULT_TERMINAL_NATIVE_WORKER_BUDGET = "1";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
+const TMUX_SESSION_PREFIX = "tracevane-";
+let cachedTmuxAvailability: boolean | null = null;
+
+function normalizeTmuxSessionName(sessionId: string): string {
+  const normalized = String(sessionId || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9:_-]/g, "-")
+    .slice(0, 80);
+  return `${TMUX_SESSION_PREFIX}${normalized || crypto.randomUUID()}`.slice(0, 120);
+}
+
+function isTmuxAvailable(): boolean {
+  if (cachedTmuxAvailability !== null) return cachedTmuxAvailability;
+  if (process.platform === "win32") {
+    cachedTmuxAvailability = false;
+    return cachedTmuxAvailability;
+  }
+  const result = spawnSync("tmux", ["-V"], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  cachedTmuxAvailability = result.status === 0;
+  return cachedTmuxAvailability;
+}
+
+function hasTmuxSession(sessionName: string | null | undefined): boolean {
+  if (!sessionName || !isTmuxAvailable()) return false;
+  const result = spawnSync("tmux", ["has-session", "-t", sessionName], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  return result.status === 0;
+}
+
+function killTmuxSession(sessionName: string | null | undefined): boolean {
+  if (!sessionName || !isTmuxAvailable()) return true;
+  const result = spawnSync("tmux", ["kill-session", "-t", sessionName], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  return result.status === 0 || !hasTmuxSession(sessionName);
+}
+
+function shouldUseDurableTmux(metadata: TerminalSessionLaunchMetadata): boolean {
+  return metadata.pinned === true && isTmuxAvailable();
+}
 const ALLOWED_TERMINAL_SHELLS = new Set([
   "bash",
   "sh",
@@ -186,6 +238,13 @@ const ALLOWED_TERMINAL_SHELLS = new Set([
 ]);
 const KNOWN_TERMINAL_PROFILE_IDS = new Set([
   "local-shell",
+  "shell-bash",
+  "shell-sh",
+  "shell-zsh",
+  "shell-fish",
+  "shell-pwsh",
+  "shell-powershell",
+  "shell-cmd",
   "agent-codex",
   "agent-claude",
   "agent-opencode",
@@ -255,6 +314,60 @@ const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
     category: "shell",
     installMode: "none",
     verifyArgs: ["--version"],
+  },
+  sh: {
+    id: "sh",
+    label: "Sh",
+    binary: "sh",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["-c", "echo sh"],
+  },
+  zsh: {
+    id: "zsh",
+    label: "Zsh",
+    binary: "zsh",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["--version"],
+  },
+  fish: {
+    id: "fish",
+    label: "Fish",
+    binary: "fish",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["--version"],
+  },
+  pwsh: {
+    id: "pwsh",
+    label: "PowerShell",
+    binary: "pwsh",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["--version"],
+  },
+  powershell: {
+    id: "powershell",
+    label: "Windows PowerShell",
+    binary: "powershell",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["-Version"],
+  },
+  cmd: {
+    id: "cmd",
+    label: "Command Prompt",
+    binary: "cmd",
+    packageName: null,
+    category: "shell",
+    installMode: "none",
+    verifyArgs: ["/c", "ver"],
   },
 };
 
@@ -666,6 +779,7 @@ export function createTerminalService(
       sessionId: session.id,
       title: `Terminal ${session.id}`,
       profileId: session.profileId,
+      shell: session.shell,
       targetKind: session.targetKind,
       cwd: session.cwd,
       pinned: session.pinned,
@@ -686,6 +800,8 @@ export function createTerminalService(
       controlState: controllerClientId ? "controller" : "observer",
       observerCount: observerClientIds.length,
       updatedAt: session.lastActivityAt,
+      durableBackend: session.durableBackend,
+      tmuxSessionName: session.tmuxSessionName,
     };
   }
 
@@ -1315,13 +1431,33 @@ export function createTerminalService(
     session.clients.clear();
     session.gatewaySubscribers.clear();
     session.streamSubscribers.clear();
+    forceKillTerminalProcess(session);
+  }
+
+  function forceKillTerminalProcess(session: TerminalSession, attempt = 0): void {
+    let needsRetry = false;
+    if (session.durableBackend === "tmux") {
+      needsRetry = !killTmuxSession(session.tmuxSessionName) || hasTmuxSession(session.tmuxSessionName);
+    }
     try {
       session.term.kill();
-    } catch {}
+    } catch {
+      needsRetry = true;
+    }
+    if (!needsRetry || attempt >= 4) return;
+    const retryTimer = setTimeout(() => {
+      forceKillTerminalProcess(session, attempt + 1);
+    }, 500 * (attempt + 1));
+    retryTimer.unref?.();
   }
 
   function scheduleCleanup(session: TerminalSession): void {
     if (getActiveClientCount(session) > 0) return;
+    if (session.pinned) {
+      clearCleanupTimer(session);
+      persistSessionDescriptor(session);
+      return;
+    }
     clearCleanupTimer(session);
     session.cleanupTimer = setTimeout(() => {
       const current = sessions.get(session.id);
@@ -1459,6 +1595,18 @@ export function createTerminalService(
     const explicitShell = normalizeTerminalShell(requestedShell);
     if (explicitShell) return explicitShell;
 
+    const shellByProfileId: Record<string, string> = {
+      "shell-bash": "bash",
+      "shell-sh": "sh",
+      "shell-zsh": "zsh",
+      "shell-fish": "fish",
+      "shell-pwsh": "pwsh",
+      "shell-powershell": "powershell",
+      "shell-cmd": "cmd",
+    };
+    const profileShell = shellByProfileId[normalizedProfileId];
+    if (profileShell) return profileShell;
+
     return normalizeTerminalShell(process.env.SHELL) || "bash";
   }
 
@@ -1494,16 +1642,58 @@ export function createTerminalService(
   }
 
   function buildLaunchMetadata(
+    sessionId: string,
     metadata: TerminalSessionLaunchMetadata = {},
   ): TerminalLaunchMetadata {
+    const cwd = resolveLaunchCwd(metadata);
+    const shell = resolveShellForProfile(metadata.profileId, metadata.shell);
+    const pinned = typeof metadata.pinned === "boolean" ? metadata.pinned : false;
+    const tmuxSessionName = pinned && shouldUseDurableTmux({ ...metadata, pinned })
+      ? normalizeTmuxSessionName(sessionId)
+      : null;
+    const useTmux = Boolean(tmuxSessionName);
     return {
-      cwd: resolveLaunchCwd(metadata),
+      cwd,
       profileId: String(metadata.profileId || "").trim() || "local-shell",
-      shell: resolveShellForProfile(metadata.profileId, metadata.shell),
+      shell,
       targetKind: normalizeTerminalTargetKind(metadata.targetKind) || "local",
-      pinned: typeof metadata.pinned === "boolean" ? metadata.pinned : false,
+      pinned,
       cols: normalizeTerminalDimension(metadata.cols) || DEFAULT_TERMINAL_COLS,
       rows: normalizeTerminalDimension(metadata.rows) || DEFAULT_TERMINAL_ROWS,
+      durableBackend: useTmux ? "tmux" : "pty",
+      tmuxSessionName,
+      command: useTmux ? "tmux" : shell,
+      args: useTmux && tmuxSessionName
+        ? [
+            "-f",
+            "/dev/null",
+            "new-session",
+            "-A",
+            "-s",
+            tmuxSessionName,
+            "-c",
+            cwd,
+            shell,
+            ";",
+            "set-option",
+            "-t",
+            tmuxSessionName,
+            "mouse",
+            "off",
+            ";",
+            "set-option",
+            "-t",
+            tmuxSessionName,
+            "status",
+            "off",
+            ";",
+            "set-option",
+            "-t",
+            tmuxSessionName,
+            "set-clipboard",
+            "off",
+          ]
+        : [],
     };
   }
 
@@ -1517,11 +1707,11 @@ export function createTerminalService(
       );
     }
 
-    const launchMetadata = buildLaunchMetadata(metadata);
+    const launchMetadata = buildLaunchMetadata(sessionId, metadata);
     const shell = launchMetadata.shell;
     const cwd = launchMetadata.cwd;
     const lastActivityAt = new Date().toISOString();
-    const term = pty.spawn(shell, [], {
+    const term = pty.spawn(launchMetadata.command, launchMetadata.args, {
       name: "xterm-256color",
       cols: launchMetadata.cols,
       rows: launchMetadata.rows,
@@ -1561,6 +1751,8 @@ export function createTerminalService(
       createdAt: lastActivityAt,
       lastActivityAt,
       lastAttachedAt: null,
+      durableBackend: launchMetadata.durableBackend,
+      tmuxSessionName: launchMetadata.tmuxSessionName,
     };
 
     term.onData((data) => {
@@ -1661,6 +1853,17 @@ export function createTerminalService(
     const runtimeSession = sessions.get(descriptor.sessionId);
     if (runtimeSession && !runtimeSession.closed) {
       return descriptor;
+    }
+    if (
+      descriptor.durableBackend === "tmux" &&
+      hasTmuxSession(descriptor.tmuxSessionName || normalizeTmuxSessionName(descriptor.sessionId))
+    ) {
+      return {
+        ...descriptor,
+        status: "detached",
+        canResume: true,
+        resumeKey: descriptor.sessionId,
+      };
     }
     return markPersistedSessionLost(descriptor.sessionId) || descriptor;
   }
@@ -2262,16 +2465,107 @@ export function createTerminalService(
     }> = [
       {
         id: "local-shell",
-        label: "Local Shell",
-        labelZh: "本地 Shell",
-        description: "Open a plain local shell in the OpenClaw workspace.",
-        descriptionZh: "在 OpenClaw 工作区打开普通本地 Shell。",
+        label: "Default Shell",
+        labelZh: "默认终端",
+        description: "Open the default local shell resolved from the workspace environment.",
+        descriptionZh: "打开工作区环境解析出的默认本地 Shell。",
         kind: "shell",
         targetKind: "local",
         binaryId: "bash",
         command: "bash",
         pinned: true,
         color: "slate",
+      },
+      {
+        id: "shell-bash",
+        label: "Bash",
+        labelZh: "Bash",
+        description: "Open Bash as a local terminal shell.",
+        descriptionZh: "使用 Bash 创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "bash",
+        command: "bash",
+        pinned: true,
+        color: "emerald",
+      },
+      {
+        id: "shell-sh",
+        label: "Sh",
+        labelZh: "Sh",
+        description: "Open POSIX sh as a local terminal shell.",
+        descriptionZh: "使用 POSIX sh 创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "sh",
+        command: "sh",
+        pinned: false,
+        color: "slate",
+      },
+      {
+        id: "shell-zsh",
+        label: "Zsh",
+        labelZh: "Zsh",
+        description: "Open Zsh as a local terminal shell when installed.",
+        descriptionZh: "系统已安装 Zsh 时可使用 Zsh 创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "zsh",
+        command: "zsh",
+        pinned: false,
+        color: "violet",
+      },
+      {
+        id: "shell-fish",
+        label: "Fish",
+        labelZh: "Fish",
+        description: "Open Fish as a local terminal shell when installed.",
+        descriptionZh: "系统已安装 Fish 时可使用 Fish 创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "fish",
+        command: "fish",
+        pinned: false,
+        color: "cyan",
+      },
+      {
+        id: "shell-pwsh",
+        label: "PowerShell",
+        labelZh: "PowerShell",
+        description: "Open PowerShell Core when available.",
+        descriptionZh: "系统可用 PowerShell Core 时创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "pwsh",
+        command: "pwsh",
+        pinned: false,
+        color: "blue",
+      },
+      {
+        id: "shell-powershell",
+        label: "Windows PowerShell",
+        labelZh: "Windows PowerShell",
+        description: "Open Windows PowerShell when available.",
+        descriptionZh: "系统可用 Windows PowerShell 时创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "powershell",
+        command: "powershell",
+        pinned: false,
+        color: "blue",
+      },
+      {
+        id: "shell-cmd",
+        label: "Command Prompt",
+        labelZh: "命令提示符",
+        description: "Open cmd.exe when available.",
+        descriptionZh: "系统可用 cmd.exe 时创建本地终端。",
+        kind: "shell",
+        targetKind: "local",
+        binaryId: "cmd",
+        command: "cmd",
+        pinned: false,
+        color: "amber",
       },
       {
         id: "agent-codex",
@@ -2361,7 +2655,7 @@ export function createTerminalService(
           ? binaryById.get(profile.binaryId)
           : null;
         const installed =
-          profile.binaryId === "bash"
+          profile.binaryId === "bash" || profile.binaryId === "sh"
             ? true
             : profile.binaryId
               ? Boolean(binary?.installed)

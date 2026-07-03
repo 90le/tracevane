@@ -22,6 +22,12 @@ import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
+import {
+  createExplorerTransferPayload,
+  hasExplorerTransferPayload,
+  readExplorerTransferPayload,
+  writeExplorerTransferPayload,
+} from "@/shared/explorer-core";
 import type { useFilesBrowseQuery } from "@/lib/query/files";
 import type { FileEntrySummary } from "@/features/file-manager/file-tools";
 
@@ -87,8 +93,6 @@ const FILE_MANAGER_OPTIONAL_COLUMNS: Array<{
   { id: "owner", label: "Owner" },
 ];
 
-const FILE_MANAGER_ENTRY_DRAG_MIME =
-  "application/x-tracevane-file-manager-paths";
 const FILE_MANAGER_VIRTUALIZATION_THRESHOLD = 180;
 const FILE_MANAGER_VIRTUALIZATION_OVERSCAN = 10;
 const FILE_MANAGER_ROW_HEIGHT: Record<FileManagerListDensity, number> = {
@@ -998,24 +1002,35 @@ export function FileListPanel({
       const paths = selectedPaths.has(entry.path)
         ? Array.from(selectedPaths)
         : [entry.path];
-      event.dataTransfer.setData(
-        FILE_MANAGER_ENTRY_DRAG_MIME,
-        JSON.stringify({ rootId, paths }),
-      );
-      event.dataTransfer.setData("text/plain", paths[0] ?? entry.path);
-      event.dataTransfer.effectAllowed = "copyMove";
+      const payload = createExplorerTransferPayload({
+        rootId,
+        items: paths.map((path) => {
+          const source = entries.find((candidate) => candidate.path === path);
+          return {
+            path,
+            kind: source?.kind,
+            name: source?.name ?? path.split("/").pop() ?? path,
+          };
+        }),
+      });
+      writeExplorerTransferPayload(event.dataTransfer, payload, paths[0] ?? entry.path);
+      setFileManagerDragImage(event.dataTransfer, {
+        label: entry.name,
+        kind: entry.kind,
+        count: paths.length,
+      });
     },
-    [rootId, selectedPaths],
+    [entries, rootId, selectedPaths],
   );
 
   const dropOnDirectory = React.useCallback(
     (event: React.DragEvent, targetDirectory: FileEntrySummary) => {
       if (targetDirectory.kind !== "directory") return;
-      const raw = event.dataTransfer.getData(FILE_MANAGER_ENTRY_DRAG_MIME);
-      if (raw) {
+      const payload = readExplorerTransferPayload(event.dataTransfer);
+      if (payload?.items.length) {
         event.preventDefault();
         event.stopPropagation();
-        const parsed = parseFileManagerDragPayload(raw);
+        const parsed = payload.items.map((item) => item.path).filter(Boolean);
         if (!parsed.length) return;
         setDropTarget(null);
         onDropTransfer(
@@ -1038,7 +1053,7 @@ export function FileListPanel({
   const highlightDropTarget = React.useCallback(
     (event: React.DragEvent, targetDirectory: FileEntrySummary) => {
       if (targetDirectory.kind !== "directory") return;
-      if (event.dataTransfer.types.includes(FILE_MANAGER_ENTRY_DRAG_MIME)) {
+      if (hasExplorerTransferPayload(event.dataTransfer)) {
         setDropTarget({
           path: targetDirectory.path,
           operation: event.ctrlKey || event.altKey ? "copy" : "move",
@@ -1962,7 +1977,7 @@ function sortLabel(key: FileManagerSortKey): string {
 function isExternalFileDrag(dataTransfer: DataTransfer): boolean {
   return (
     dataTransfer.types.includes("Files") &&
-    !dataTransfer.types.includes(FILE_MANAGER_ENTRY_DRAG_MIME)
+    !hasExplorerTransferPayload(dataTransfer)
   );
 }
 
@@ -1988,18 +2003,6 @@ function useScrollSelectedFileIntoView(
   }, [ref, selected]);
 }
 
-function parseFileManagerDragPayload(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as { paths?: unknown };
-    return Array.isArray(parsed.paths)
-      ? parsed.paths.filter(
-          (path): path is string => typeof path === "string" && path.length > 0,
-        )
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 interface ViewportRect {
   left: number;
@@ -2220,7 +2223,7 @@ function FileRow({
       onDragStart={onDragStart}
       onDragOver={(event) => {
         if (entry.kind !== "directory") return;
-        if (event.dataTransfer.types.includes(FILE_MANAGER_ENTRY_DRAG_MIME)) {
+        if (hasExplorerTransferPayload(event.dataTransfer)) {
           event.preventDefault();
           event.dataTransfer.dropEffect =
             event.ctrlKey || event.altKey ? "copy" : "move";
@@ -2475,7 +2478,7 @@ function FileGridCard({
       onDragStart={onDragStart}
       onDragOver={(event) => {
         if (entry.kind !== "directory") return;
-        if (event.dataTransfer.types.includes(FILE_MANAGER_ENTRY_DRAG_MIME)) {
+        if (hasExplorerTransferPayload(event.dataTransfer)) {
           event.preventDefault();
           event.dataTransfer.dropEffect =
             event.ctrlKey || event.altKey ? "copy" : "move";
@@ -2601,6 +2604,83 @@ function FileGridCard({
       ) : null}
     </div>
   );
+}
+
+function setFileManagerDragImage(
+  dataTransfer: DataTransfer,
+  { label, kind, count }: { label: string; kind: FileEntrySummary["kind"]; count: number },
+): void {
+  if (typeof document === "undefined" || typeof dataTransfer.setDragImage !== "function") return;
+  const node = document.createElement("div");
+  node.style.position = "fixed";
+  node.style.top = "-1000px";
+  node.style.left = "-1000px";
+  node.style.zIndex = "10000";
+  node.style.pointerEvents = "none";
+  node.style.display = "flex";
+  node.style.alignItems = "center";
+  node.style.gap = "8px";
+  node.style.width = "210px";
+  node.style.padding = "7px 10px";
+  node.style.borderRadius = "12px";
+  node.style.border = "1px solid var(--primary-line)";
+  node.style.background = "color-mix(in oklab, var(--panel) 94%, transparent)";
+  node.style.color = "var(--ink-strong)";
+  node.style.boxShadow = "0 14px 34px rgba(0,0,0,0.30), 0 0 0 2px color-mix(in oklab, var(--primary) 12%, transparent)";
+  node.style.font = "12px/1.4 var(--font-sans, system-ui, sans-serif)";
+  node.style.transform = "rotate(0.5deg)";
+
+  const icon = document.createElement("span");
+  icon.textContent = kind === "directory" ? "📁" : "📄";
+  icon.style.display = "grid";
+  icon.style.placeItems = "center";
+  icon.style.width = "28px";
+  icon.style.height = "28px";
+  icon.style.flexShrink = "0";
+  icon.style.borderRadius = "10px";
+  icon.style.border = "1px solid var(--primary-line)";
+  icon.style.background = "var(--primary-soft)";
+
+  const text = document.createElement("span");
+  text.style.minWidth = "0";
+  text.style.flex = "1";
+
+  const title = document.createElement("span");
+  title.textContent = label;
+  title.style.display = "block";
+  title.style.overflow = "hidden";
+  title.style.textOverflow = "ellipsis";
+  title.style.whiteSpace = "nowrap";
+  title.style.fontWeight = "700";
+  title.style.fontSize = "12px";
+
+  const hint = document.createElement("span");
+  hint.textContent = count > 1 ? `${count} 个项目 · 拖到目录移动，Ctrl/Alt 复制` : "拖到目录移动，Ctrl/Alt 复制";
+  hint.style.display = "block";
+  hint.style.overflow = "hidden";
+  hint.style.textOverflow = "ellipsis";
+  hint.style.whiteSpace = "nowrap";
+  hint.style.color = "var(--muted)";
+  hint.style.fontSize = "10px";
+  hint.style.marginTop = "2px";
+
+  text.append(title, hint);
+  node.append(icon, text);
+  if (count > 1) {
+    const badge = document.createElement("span");
+    badge.textContent = `${count}`;
+    badge.style.flexShrink = "0";
+    badge.style.border = "1px solid var(--primary-line)";
+    badge.style.borderRadius = "999px";
+    badge.style.background = "var(--primary-soft)";
+    badge.style.color = "var(--primary)";
+    badge.style.padding = "1px 6px";
+    badge.style.fontWeight = "700";
+    node.append(badge);
+  }
+  document.body.append(node);
+  dataTransfer.setDragImage(node, 18, 18);
+  window.setTimeout(() => node.remove(), 0);
 }
 
 export function formatBytes(value: number): string {

@@ -32,6 +32,8 @@ export type {
   TerminalSessionDescriptor,
   TerminalSessionStatus,
   TerminalSessionSummaryResponse,
+  TerminalProfileDescriptor,
+  TerminalProfileCatalogResponse,
   TerminalAgentCliId,
   TerminalInstallRequestId,
   TerminalInstallTarget,

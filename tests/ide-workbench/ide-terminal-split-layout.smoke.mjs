@@ -18,6 +18,31 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+async function resetTerminalSessions() {
+  let sessions = [];
+  try {
+    const data = await api('/api/terminal/sessions');
+    sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+  } catch {
+    return;
+  }
+  await Promise.allSettled(sessions.map((session) => api('/api/terminal/end', {
+    method: 'POST',
+    body: JSON.stringify({ sid: session.sessionId }),
+  })));
+}
+
+
+async function waitForTabCount(page, minCount) {
+  await page.waitForFunction(
+    (expected) => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= expected,
+    minCount,
+    { timeout: 45_000 },
+  );
+  const count = await page.locator('[data-ide-terminal-tab]').count();
+  if (count < minCount) throw new Error(`Expected at least ${minCount} terminal tabs, got ${count}`);
+}
+
 async function waitForPaneCount(page, minCount) {
   await page.waitForFunction(
     (expected) => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') >= expected,
@@ -56,7 +81,9 @@ async function waitForRunnablePane(page, index) {
 async function echoInPane(page, index, token) {
   const pane = page.locator('[data-ide-terminal-pane]').nth(index);
   await pane.locator('[data-ide-terminal-xterm]').click({ timeout: 30_000 });
-  await page.keyboard.type(`printf '${token}\\n'`);
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Control+U');
+  await page.keyboard.type(`echo ${token}`);
   await page.keyboard.press('Enter');
   await page.waitForFunction(
     ({ paneIndex, expectedToken }) => {
@@ -79,10 +106,30 @@ async function resizePanel(page) {
   await page.mouse.up();
 }
 
+async function splitActiveTerminalTab(page, direction) {
+  const tabId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-tab-id');
+  if (!tabId) throw new Error('No active terminal tab id');
+  const menu = page.locator(`[data-ide-terminal-tab-menu][data-terminal-tab-id="${tabId}"]`);
+  await menu.waitFor({ state: 'visible', timeout: 30_000 });
+  await menu.click();
+  await page.locator('[data-ide-terminal-tab-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+  const item = direction === 'right'
+    ? page.locator('[data-ide-terminal-tab-menu-item="split-right"]')
+    : page.locator('[data-ide-terminal-tab-menu-item="split-down"]');
+  await item.waitFor({ state: 'visible', timeout: 30_000 });
+  await item.click({ force: true });
+}
+
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file root is available for IDE terminal split smoke');
+  await resetTerminalSessions();
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ layout: null, terminalLayouts: {} }),
+  });
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -104,24 +151,35 @@ async function run() {
     await echoInPane(page, 0, `TRACEVANE_M5XA_DEFAULT_${Date.now()}`);
 
     await page.locator('[data-ide-terminal-new]').click();
+    await waitForTabCount(page, 2);
+    await waitForPaneCountExactly(page, 1);
+    await waitForRunnablePane(page, 0);
+    await echoInPane(page, 0, `TRACEVANE_M5XA_NEW_TAB_${Date.now()}`);
+
+    await splitActiveTerminalTab(page, 'right');
     await waitForPaneCount(page, 2);
-    await waitForRunnablePane(page, 1);
-    await echoInPane(page, 1, `TRACEVANE_M5XA_NEW_${Date.now()}`);
-
-    await page.locator('[data-ide-terminal-split-right]').click();
-    await waitForPaneCount(page, 3);
     await page.locator('[data-terminal-orientation="horizontal"]').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await waitForRunnablePane(page, 2);
-    await echoInPane(page, 2, `TRACEVANE_M5XA_RIGHT_${Date.now()}`);
+    await waitForRunnablePane(page, 1);
+    await echoInPane(page, 1, `TRACEVANE_M5XA_RIGHT_${Date.now()}`);
 
-    await page.locator('[data-ide-terminal-split-down]').click();
-    await waitForPaneCount(page, 4);
+    await splitActiveTerminalTab(page, 'down');
+    await waitForPaneCount(page, 3);
     await page.locator('[data-terminal-orientation="vertical"]').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await waitForRunnablePane(page, 3);
-    await echoInPane(page, 3, `TRACEVANE_M5XA_DOWN_${Date.now()}`);
+    await waitForRunnablePane(page, 2);
+    await echoInPane(page, 2, `TRACEVANE_M5XA_DOWN_${Date.now()}`);
+
+    const splitHandle = page.locator('[data-ide-terminal-split-resize-handle]').first();
+    await splitHandle.waitFor({ state: 'visible', timeout: 30_000 });
+    const handleBox = await splitHandle.boundingBox();
+    if (handleBox) {
+      await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(handleBox.x + handleBox.width / 2 + 60, handleBox.y + handleBox.height / 2);
+      await page.mouse.up();
+    }
 
     await resizePanel(page);
-    await waitForPaneCount(page, 4);
+    await waitForPaneCount(page, 3);
 
     const beforeClose = await page.locator('[data-ide-terminal-pane]').count();
     await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '关闭终端 Pane' }).click();

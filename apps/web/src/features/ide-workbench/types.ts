@@ -1,5 +1,5 @@
 import type { SerializedDockview } from "dockview-react";
-import type { EditorDocumentId, EditorFileRef } from "@/shared/editor-core";
+import type { EditorDocumentId, EditorFileRef, EditorSaveState } from "@/shared/editor-core";
 
 export type WorkbenchActivityId =
   | "explorer"
@@ -55,6 +55,8 @@ export interface IdeWorkbenchEditorTab {
   preview: boolean;
   pinned: boolean;
   dirty: boolean;
+  saveState?: EditorSaveState;
+  saveError?: string | null;
   deleted?: boolean;
 }
 
@@ -64,11 +66,16 @@ export interface IdeWorkbenchEditorGroup {
   tabs: IdeWorkbenchEditorTab[];
 }
 
+export interface IdeWorkbenchExplorerState {
+  directoryPath: string;
+}
+
 export interface IdeWorkbenchLayoutState {
   layoutVersion: 1;
   activeActivityId: WorkbenchActivityId;
   sideBar: WorkbenchSideBarState;
   secondarySideBar: WorkbenchSideBarState;
+  explorer: IdeWorkbenchExplorerState;
   panel: WorkbenchPanelState;
   viewPlacements: WorkbenchViewPlacement[];
   editorGroups: IdeWorkbenchEditorGroup[];

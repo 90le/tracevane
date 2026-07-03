@@ -5,3 +5,4 @@ export * from "./ExplorerLoadingState";
 export * from "./ExplorerToolbarBase";
 export * from "./ExplorerTree";
 export * from "./ExplorerTreeNode";
+export * from "./DragFloatingPreview";

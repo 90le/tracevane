@@ -26,6 +26,7 @@ import {
 import {
   collectUploadFilesFromDataTransfer,
   hasFileDrag,
+  hasUploadFilesInDataTransfer,
   mergeUploadFiles,
   uploadFilesClipboardFingerprint,
 } from "@/features/file-manager/file-tools/uploadInputs";
@@ -104,6 +105,11 @@ import type {
 import type { OnlineEditorMiniExplorerPathEvent } from "./online-editor/mini-explorer";
 import type { CodeEditorViewState } from "./code-editor/CodeEditor";
 import { editorDocumentId } from "@/shared/editor-core";
+import {
+  createExplorerClipboardFromEntries,
+  filterSelfOrDescendantDrops,
+  type ExplorerClipboardState as SharedExplorerClipboardState,
+} from "@/shared/explorer-core";
 
 const PAGE_SIZE = 240;
 const RECENT_PATHS_STORAGE_KEY = "tracevane:file-manager:recent-paths";
@@ -141,10 +147,7 @@ interface UploadDialogState {
   conflictPolicy: FilesUploadConflictPolicy;
 }
 
-interface FileClipboardState {
-  operation: "copy" | "move";
-  paths: string[];
-}
+type FileClipboardState = SharedExplorerClipboardState;
 
 export function FileManagerPage() {
   const queryClient = useQueryClient();
@@ -1357,7 +1360,7 @@ export function FileManagerPage() {
     (event: React.ClipboardEvent<HTMLDivElement>) => {
       if (uploadDialog.open) return;
       const dataTransfer = event.clipboardData;
-      if (!dataTransfer?.files?.length && !dataTransfer?.items?.length) return;
+      if (!hasUploadFilesInDataTransfer(dataTransfer)) return;
       event.preventDefault();
       void collectUploadFilesFromDataTransfer(dataTransfer)
         .then((files) => queueQuickPasteUpload(files, directoryPath))
@@ -1434,7 +1437,15 @@ export function FileManagerPage() {
             ? [selectedEntry.path]
             : [];
       if (!paths.length) return false;
-      setFileClipboard({ operation, paths });
+      const items = paths.map((path) => {
+        const source = entries.find((entry) => entry.path === path);
+        return {
+          path,
+          kind: source?.kind,
+          name: source?.name ?? path.split("/").pop() ?? path,
+        };
+      });
+      setFileClipboard(createExplorerClipboardFromEntries(operation, items));
       toast.success(
         operation === "copy" ? "已复制到文件剪贴板" : "已剪切到文件剪贴板",
         {
@@ -1443,7 +1454,7 @@ export function FileManagerPage() {
       );
       return true;
     },
-    [selectedEntry, selectedPathList],
+    [entries, selectedEntry, selectedPathList],
   );
 
   const pasteFileClipboardToCurrentDirectory = React.useCallback(() => {
@@ -1485,11 +1496,10 @@ export function FileManagerPage() {
       sourcePaths: string[],
       operation: "copy" | "move",
     ) => {
-      const safeSources = sourcePaths.filter(
-        (path) =>
-          path !== targetDirectory.path &&
-          !targetDirectory.path.startsWith(`${path}/`),
-      );
+      const safeSources = filterSelfOrDescendantDrops(
+        sourcePaths.map((path) => ({ path, kind: entries.find((entry) => entry.path === path)?.kind })),
+        targetDirectory.path,
+      ).map((item) => item.path);
       if (!safeSources.length) {
         toast.error("无法投放到该目录", {
           description: "不能把目录移动/复制到自身或其子目录。",
@@ -1504,7 +1514,7 @@ export function FileManagerPage() {
         initialDirectoryPath: targetDirectory.path,
       });
     },
-    [],
+    [entries],
   );
 
   const handleFileManagerKeyDown = React.useCallback(

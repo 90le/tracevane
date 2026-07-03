@@ -23,6 +23,45 @@ const MONACO_KEYBOARD_MAX_SCROLL_DELTA = 96;
 
 const monacoLanguageLoadCache = new Map<string, Promise<unknown>>();
 
+interface MonacoModelLease {
+  model: monaco.editor.ITextModel;
+  uri: string;
+}
+
+const monacoModelRegistry = new Map<string, { model: monaco.editor.ITextModel; refs: number }>();
+
+function acquireCodeEditorModel({
+  path,
+  rootId,
+  initialContent,
+}: {
+  path: string;
+  rootId?: string;
+  initialContent: string;
+}): MonacoModelLease {
+  const uri = modelUriForPath(path, rootId);
+  const uriKey = uri.toString();
+  const existing = monacoModelRegistry.get(uriKey);
+  if (existing && !existing.model.isDisposed()) {
+    existing.refs += 1;
+    return { model: existing.model, uri: uriKey };
+  }
+  const existingModel = monaco.editor.getModel(uri);
+  const model = existingModel ?? monaco.editor.createModel(initialContent, "plaintext", uri);
+  monacoModelRegistry.set(uriKey, { model, refs: 1 });
+  return { model, uri: uriKey };
+}
+
+function releaseCodeEditorModel(lease: MonacoModelLease): void {
+  const entry = monacoModelRegistry.get(lease.uri);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    monacoModelRegistry.delete(lease.uri);
+    if (!entry.model.isDisposed()) entry.model.dispose();
+  }
+}
+
 export interface CodeEditorProps {
   path: string;
   rootId?: string;
@@ -38,6 +77,7 @@ export interface CodeEditorProps {
   onSelectionChange?: (selection: CodeEditorSelectionContext | null) => void;
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
   onLanguageChange?: (language: string) => void;
+  onSaveShortcut?: () => void;
   className?: string;
 }
 
@@ -55,6 +95,7 @@ export interface CodeEditorHandle {
   saveViewState: () => CodeEditorViewState | null;
   restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
   layout: () => void;
+  getValue: () => string;
 }
 
 export type CodeEditorViewState = monaco.editor.ICodeEditorViewState;
@@ -88,6 +129,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     onSelectionChange,
     onCursorPositionChange,
     onLanguageChange,
+    onSaveShortcut,
     className,
   },
   ref,
@@ -109,6 +151,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   const onSelectionChangeRef = React.useRef(onSelectionChange);
   const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
   const onLanguageChangeRef = React.useRef(onLanguageChange);
+  const onSaveShortcutRef = React.useRef(onSaveShortcut);
   const pendingKeyboardScrollDeltaRef = React.useRef(0);
   const [detectedLanguage, setDetectedLanguage] = React.useState(() => languageForPath(path));
   const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
@@ -132,6 +175,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   React.useEffect(() => {
     onLanguageChangeRef.current = onLanguageChange;
   }, [onLanguageChange]);
+
+  React.useEffect(() => {
+    onSaveShortcutRef.current = onSaveShortcut;
+  }, [onSaveShortcut]);
 
   React.useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -166,6 +213,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       requestAnimationFrame(() => editor.layout());
     },
     layout: () => editorRef.current?.layout(),
+    getValue: () => editorRef.current?.getValue() ?? "",
   }), []);
 
   const updateEditorKeyboardInset = React.useCallback(() => {
@@ -231,11 +279,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     if (!container) return undefined;
 
     let disposed = false;
-    const model = monaco.editor.createModel(
-      initialContent,
-      "plaintext",
-      modelUriForPath(path, rootId),
-    );
+    const modelLease = acquireCodeEditorModel({ path, rootId, initialContent });
+    const model = modelLease.model;
     const editor = monaco.editor.create(container, buildMonacoEditorOptions({
       model,
       fontSize,
@@ -264,6 +309,14 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     editorRef.current = editor;
     modelRef.current = model;
     setActionDiagnostics(readMonacoActionDiagnostics(editor));
+    const saveShortcutDisposable = editor.addAction({
+      id: "tracevane.editor.save",
+      label: "Save",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => {
+        onSaveShortcutRef.current?.();
+      },
+    });
     const subscription = editor.onDidChangeModelContent(() => {
       onChangeRef.current?.(editor.getValue());
     });
@@ -288,6 +341,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       disposed = true;
       cancelAnimationFrame(frame);
       cancelLanguageLoad();
+      saveShortcutDisposable?.dispose();
       subscription.dispose();
       cursorSubscription.dispose();
       selectionSubscription.dispose();
@@ -295,7 +349,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       onCursorPositionChangeRef.current?.(null);
       scrollSubscription.dispose();
       editor.dispose();
-      model.dispose();
+      releaseCodeEditorModel(modelLease);
       editorRef.current = null;
       modelRef.current = null;
       setActionDiagnostics({ count: 0, ids: [] });
