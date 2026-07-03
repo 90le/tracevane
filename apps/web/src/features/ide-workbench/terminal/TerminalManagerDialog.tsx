@@ -160,7 +160,7 @@ export function TerminalManagerDialog({
             <span className="ml-auto text-xs text-muted" data-ide-terminal-manager-count>
               {closeProgress
                 ? `正在关闭 ${closeProgress.done}/${closeProgress.total} · 已先从列表隐藏`
-                : `${sessions.length} 个可管理终端 · 当前：${currentRootLabel || currentRootId || "未选择"}`}
+                : `${sessions.length} 个活跃/可恢复终端 · 当前：${currentRootLabel || currentRootId || "未选择"}`}
             </span>
           </div>
 
