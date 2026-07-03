@@ -166,7 +166,7 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 下一步 M5.y / M5.5：IDE Editor Foundation
 - 把 IDE 中间 EditorDock 从 Dockview placeholder 升级为真实 Monaco 文件编辑器基础。
 - 只复用底层 shared/editor-core、Files API、Monaco model/语言/dirty/save/conflict 规则；不复用 File Manager Online Editor 产品壳，不创建第二套文件 API，不让 Dockview 拥有文件 IO。
-- 先做 M5.y-A 技术探查与接入计划，再分步实现真实 Monaco panel、保存/dirty/close confirm、preview/pinned/split 行为和验收 smoke。
+- M5.y-A/B/C 已完成技术探查、真实 Monaco panel、保存/dirty/close confirm 基础；M5.y-D 已完成 preview/pinned/多标签基础，后续继续补 split group、path sync 和 M5.y-E 验收文档。
 
 后续 M6：Watcher / Search / Problems / Output
 - 在真实 IDE Editor 基础可承载后，再做文件 watcher、全局搜索、Problems 数据模型和 Output channel/log 基础；Problems 可先展示结构化问题数据，但真实 LSP diagnostics 到 M7。

@@ -207,6 +207,7 @@ async function run() {
   const smokeDir = `${smokeParent}/.${prefix}`;
   const firstPath = `${smokeDir}/first.ts`;
   const secondPath = `${smokeDir}/second.ts`;
+  const thirdPath = `${smokeDir}/third.ts`;
   const savedContent = 'export const saved = "from ide dirty smoke";\n';
   const unsavedContent = 'export const unsaved = "discard me";\n';
 
@@ -218,12 +219,13 @@ async function run() {
   await ensureDirectory(rootId, smokeDir);
   await createFile(rootId, firstPath, 'export const initial = 1;\n');
   await createFile(rootId, secondPath, 'export const second = 2;\n');
+  await createFile(rootId, thirdPath, 'export const third = 3;\n');
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.addInitScript((key) => {
-    try { window.localStorage.removeItem(key); } catch { /* ignore */ }
-  }, `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`);
+  await page.addInitScript(({ key, layout }) => {
+    try { window.localStorage.setItem(key, JSON.stringify(layout)); } catch { /* ignore */ }
+  }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(explorerDirectoryPath) });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
@@ -241,9 +243,18 @@ async function run() {
     const persisted = await readFileContent(rootId, firstPath);
     if (persisted !== savedContent) throw new Error(`saved content mismatch: ${JSON.stringify(persisted)}`);
 
-    await page.locator(tabSelector(firstPath)).first().dblclick();
     await replaceEditorContent(page, firstPath, unsavedContent);
     await waitForTabDirty(page, firstPath, true);
+
+    await openFromExplorer(page, secondPath, explorerDirectoryPath);
+    await page.locator(tabSelector(firstPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(tabSelector(secondPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(tabSelector(firstPath)).first().dblclick();
+
+    await openFromExplorer(page, thirdPath, explorerDirectoryPath);
+    await page.locator(tabSelector(firstPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(tabSelector(secondPath)).first().waitFor({ state: 'detached', timeout: 30_000 });
+    await page.locator(tabSelector(thirdPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
 
     await openFromExplorer(page, secondPath, explorerDirectoryPath);
     await page.locator(tabSelector(firstPath)).first().waitFor({ state: 'visible', timeout: 30_000 });

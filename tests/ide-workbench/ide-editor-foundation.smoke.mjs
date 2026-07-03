@@ -183,9 +183,9 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.addInitScript((key) => {
-    try { window.localStorage.removeItem(key); } catch { /* ignore */ }
-  }, `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`);
+  await page.addInitScript(({ key, layout }) => {
+    try { window.localStorage.setItem(key, JSON.stringify(layout)); } catch { /* ignore */ }
+  }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(explorerDirectoryPath) });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
