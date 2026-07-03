@@ -236,6 +236,18 @@ async function run() {
     await page.locator('[data-ide-editor-dock]').waitFor({ state: 'visible', timeout: 30_000 });
 
     await openFromExplorer(page, firstPath, explorerDirectoryPath);
+    await page.locator(`${tabSelector(firstPath)} [data-ide-editor-tab-preview-icon]`).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`${tabSelector(firstPath)} [data-ide-editor-tab-close]`).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-editor-action-menu-trigger]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-editor-action-menu-trigger]').first().click();
+    await page.locator('[data-ide-editor-action-menu]').first().waitFor({ state: 'visible', timeout: 10_000 });
+    for (const item of ['action-save-current', 'action-close-saved', 'action-close-current', 'action-close-others', 'action-close-all', 'action-split-right', 'action-split-down']) {
+      await page.locator(`[data-ide-editor-tab-menu-item="${item}"]`).waitFor({ state: 'attached', timeout: 10_000 });
+    }
+    await page.locator('[data-ide-editor-action-menu-trigger]').first().click();
+    await page.locator('[data-ide-editor-action-menu]').first().waitFor({ state: 'detached', timeout: 10_000 });
+    const firstTabInitialText = await page.locator(tabSelector(firstPath)).first().innerText();
+    if (/\b(pinned|preview)\b/i.test(firstTabInitialText)) throw new Error(`tab should not render mode text: ${firstTabInitialText}`);
     await replaceEditorContent(page, firstPath, savedContent);
     await waitForTabDirty(page, firstPath, true);
     await page.keyboard.press('Control+S');
@@ -279,6 +291,10 @@ async function run() {
     await page.locator('[data-ide-editor-close-discard]').click();
     await page.locator(tabSelector(firstPath)).first().waitFor({ state: 'detached', timeout: 30_000 });
     await page.locator(tabSelector(secondPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+    const secondTabText = await page.locator(tabSelector(secondPath)).first().innerText();
+    if (/\b(pinned|preview)\b/i.test(secondTabText)) throw new Error(`tab should not render mode text: ${secondTabText}`);
+    await page.locator(`${tabSelector(secondPath)} [data-ide-editor-tab-close]`).first().click();
+    await page.locator(tabSelector(secondPath)).first().waitFor({ state: 'detached', timeout: 30_000 });
     const afterDiscard = await readFileContent(rootId, firstPath);
     if (afterDiscard !== savedContent) throw new Error(`discard unexpectedly wrote dirty content: ${JSON.stringify(afterDiscard)}`);
   } catch (error) {

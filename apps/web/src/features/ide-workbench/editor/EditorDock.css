@@ -35,3 +35,38 @@
 .tracevane-dockview .dv-tab.dv-active-tab {
   box-shadow: inset 0 -2px 0 var(--primary);
 }
+
+
+.tracevane-dockview .dv-tabs-container,
+.tracevane-dockview .dv-tabs-scroll-container {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.tracevane-dockview .dv-tabs-container::-webkit-scrollbar,
+.tracevane-dockview .dv-tabs-scroll-container::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.tracevane-dockview .dv-tabs-and-actions-container {
+  overflow: visible;
+}
+
+.tracevane-dockview .dv-tab {
+  min-width: 7.5rem;
+  max-width: 14rem;
+  flex: 1 1 10rem;
+}
+
+.tracevane-dockview .dv-tab .dv-default-tab-content {
+  min-width: 0;
+}
+
+.tracevane-dockview [data-ide-editor-tab-context-menu] {
+  background: var(--panel);
+  color: var(--ink);
+}

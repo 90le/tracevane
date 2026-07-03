@@ -2,15 +2,17 @@ import "dockview-react/dist/styles/dockview.css";
 import "./EditorDock.css";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type {
   DockviewApi,
   DockviewReadyEvent,
+  IDockviewHeaderActionsProps,
   IDockviewPanelHeaderProps,
   IWatermarkPanelProps,
   SerializedDockview,
 } from "dockview-react";
 import { DockviewReact } from "dockview-react";
-import { CheckCheck, Copy, Pin, Save, SplitSquareHorizontal, SplitSquareVertical, X } from "lucide-react";
+import { CheckCheck, Copy, Eye, MoreHorizontal, Pin, Save, SplitSquareHorizontal, SplitSquareVertical, X } from "lucide-react";
 
 import { toast } from "@/design/ui/sonner";
 import type { EditorSaveState } from "@/shared/editor-core";
@@ -176,6 +178,14 @@ export function EditorDock({
           defaultTabComponent={(props) => (
             <EditorDockTab {...props} tabs={tabs} onPinTab={onPinTab} onRequestCloseTabs={onRequestCloseTabs} onSplitEditor={splitEditor} />
           )}
+          rightHeaderActionsComponent={(props) => (
+            <EditorDockHeaderActions
+              {...props}
+              tabs={tabs}
+              onRequestCloseTabs={onRequestCloseTabs}
+              onSplitEditor={splitEditor}
+            />
+          )}
           onReady={handleReady}
         />
         </EditorDockCallbacksContext.Provider>
@@ -197,6 +207,153 @@ function EditorDockWatermark(_props: IWatermarkPanelProps) {
   );
 }
 
+
+function EditorDockHeaderActions({
+  activePanel,
+  tabs,
+  onRequestCloseTabs,
+  onSplitEditor,
+}: IDockviewHeaderActionsProps & {
+  tabs: readonly IdeWorkbenchEditorTab[];
+  onRequestCloseTabs: (tabIds: string[]) => void;
+  onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
+}) {
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [menuPosition, setMenuPosition] = React.useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const activeTab = (activePanel?.params as EditorPlaceholderParams | undefined)?.tab;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && (triggerRef.current?.contains(target) || menuRef.current?.contains(target))) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const runMenuAction = React.useCallback((action: () => void) => {
+    action();
+    setOpen(false);
+  }, []);
+
+  const closeSavedIds = React.useMemo(
+    () => tabs.filter((item) => !item.dirty && item.saveState !== "saving").map((item) => item.id),
+    [tabs],
+  );
+
+  const toggleMenu = React.useCallback(() => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    const menuWidth = 256;
+    setMenuPosition({
+      left: Math.max(8, Math.min((rect?.right ?? menuWidth) - menuWidth, window.innerWidth - menuWidth - 8)),
+      top: Math.min((rect?.bottom ?? 0) + 6, window.innerHeight - 16),
+    });
+    setOpen(true);
+  }, [open]);
+
+  return (
+    <div className="relative flex h-full shrink-0 items-center border-l border-line bg-panel px-1" data-ide-editor-action-menu-host>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-panel-2 px-2 text-xs font-medium text-ink outline-none hover:border-primary-line hover:bg-primary-soft focus-visible:shadow-[var(--ring)]"
+        aria-label="打开编辑器操作菜单"
+        aria-expanded={open ? "true" : "false"}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleMenu();
+        }}
+        data-ide-editor-action-menu-trigger
+      >
+        <MoreHorizontal className="size-4" aria-hidden />
+        <span className="hidden sm:inline">操作</span>
+      </button>
+
+      {open ? createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          className="fixed z-[1000] w-64 rounded-lg border border-line bg-panel p-2 text-sm text-ink shadow-lg"
+          style={{ left: menuPosition.left, top: menuPosition.top }}
+          onPointerDown={(event) => event.stopPropagation()}
+          data-ide-editor-action-menu
+        >
+          <div className="px-2 pb-2 text-xs font-semibold text-ink-strong">编辑器操作</div>
+          <EditorTabMenuButton
+            icon={<Save />}
+            label="保存当前"
+            shortcut="Ctrl S"
+            onClick={() => activeTab && runMenuAction(() => { void saveIdeEditorTab(activeTab.id); })}
+            dataAttr="action-save-current"
+            disabled={!activeTab || activeTab.deleted || activeTab.saveState === "saving" || !activeTab.dirty}
+          />
+          <EditorTabMenuButton
+            icon={<CheckCheck />}
+            label="关闭已保存"
+            onClick={() => runMenuAction(() => onRequestCloseTabs(closeSavedIds))}
+            dataAttr="action-close-saved"
+            disabled={closeSavedIds.length === 0}
+          />
+          <EditorTabMenuButton
+            icon={<X />}
+            label="关闭当前"
+            onClick={() => activeTab && runMenuAction(() => onRequestCloseTabs([activeTab.id]))}
+            dataAttr="action-close-current"
+            disabled={!activeTab}
+          />
+          <EditorTabMenuButton
+            icon={<X />}
+            label="关闭其他"
+            onClick={() => activeTab && runMenuAction(() => onRequestCloseTabs(tabs.filter((item) => item.id !== activeTab.id).map((item) => item.id)))}
+            dataAttr="action-close-others"
+            disabled={!activeTab || tabs.length <= 1}
+          />
+          <EditorTabMenuButton
+            icon={<X />}
+            label="关闭全部"
+            onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.map((item) => item.id)))}
+            dataAttr="action-close-all"
+            disabled={tabs.length === 0}
+          />
+          <div className="my-1 border-t border-line" />
+          <EditorTabMenuButton
+            icon={<SplitSquareHorizontal />}
+            label="向右拆分"
+            onClick={() => runMenuAction(() => onSplitEditor("right", activePanel?.id))}
+            dataAttr="action-split-right"
+            disabled={!activePanel}
+          />
+          <EditorTabMenuButton
+            icon={<SplitSquareVertical />}
+            label="向下拆分"
+            onClick={() => runMenuAction(() => onSplitEditor("below", activePanel?.id))}
+            dataAttr="action-split-down"
+            disabled={!activePanel}
+          />
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
 function EditorDockTab({
   api,
   params,
@@ -212,7 +369,6 @@ function EditorDockTab({
 }) {
   const tab = params.tab;
   const title = tabTitle(tab) || params.title || "Editor";
-  const modeLabel = tab?.pinned ? "pinned" : tab?.preview ? "preview" : "placeholder";
   const tabIndex = tab ? tabs.findIndex((item) => item.id === tab.id) : -1;
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
 
@@ -237,34 +393,63 @@ function EditorDockTab({
 
   return (
     <>
-      <button
-        type="button"
-        className="flex h-full min-w-0 items-center gap-1.5 px-2 text-sm text-ink outline-none focus-visible:shadow-[var(--ring)]"
+      <div
+        role="tab"
+        aria-selected={api.isActive ? "true" : "false"}
+        className="group/ide-editor-tab flex h-full min-w-[7.5rem] max-w-[14rem] flex-[1_1_10rem] items-center gap-1.5 px-2 text-sm text-ink outline-none focus-within:shadow-[var(--ring)]"
         title={tab?.ref.path ?? title}
         onClick={() => api.setActive()}
         onDoubleClick={() => tab && onPinTab(tab.id)}
         onContextMenu={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           api.setActive();
           setMenu({ x: event.clientX, y: event.clientY });
         }}
+        onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            event.stopPropagation();
+            api.setActive();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left + 12, y: rect.bottom + 4 });
+          }
+        }}
+        tabIndex={0}
         data-ide-editor-tab
         data-ide-editor-tab-id={tab?.id ?? api.id}
         data-ide-editor-tab-path={tab?.ref.path ?? ""}
         data-ide-editor-tab-dirty={tab?.dirty ? "true" : "false"}
         data-ide-editor-tab-save-state={tab?.saveState ?? (tab?.dirty ? "dirty" : "clean")}
       >
-        <span className="min-w-0 truncate">{title}</span>
-        <span className="rounded border border-line bg-panel-2 px-1 font-mono text-2xs text-subtle">
-          {modeLabel}
-        </span>
-        {tab?.dirty ? <span className="text-amber">●</span> : null}
+        {tab?.preview && !tab.pinned ? (
+          <Eye className="size-3.5 shrink-0 text-subtle" aria-label="预览标签" data-ide-editor-tab-preview-icon />
+        ) : null}
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {tab?.dirty ? <span className="shrink-0 text-amber" aria-label="未保存修改">●</span> : null}
+        {tab ? (
+          <button
+            type="button"
+            className="grid size-5 shrink-0 place-items-center rounded-sm text-subtle opacity-70 outline-none hover:bg-panel hover:text-ink focus-visible:opacity-100 focus-visible:shadow-[var(--ring)] group-hover/ide-editor-tab:opacity-100"
+            aria-label={`关闭 ${tab.title}`}
+            title="关闭标签"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRequestCloseTabs([tab.id]);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            data-ide-editor-tab-close
+          >
+            <X className="size-3" />
+          </button>
+        ) : null}
         <span className="sr-only">{api.title ?? title}</span>
-      </button>
-      {menu ? (
+      </div>
+      {menu ? createPortal(
         <div
           role="menu"
-          className="fixed z-50 min-w-56 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          className="fixed z-[1000] min-w-56 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-editor-tab-context-menu
@@ -350,7 +535,8 @@ function EditorDockTab({
             onClick={() => runMenuAction(() => onSplitEditor("below", api.id))}
             dataAttr="split-down"
           />
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );
