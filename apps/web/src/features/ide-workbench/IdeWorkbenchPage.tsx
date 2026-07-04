@@ -829,8 +829,15 @@ function removeDockviewPanels(
 ): SerializedDockview | null {
   if (!layout || panelIds.size === 0) return layout;
   const cloned = structuredClone(layout) as NonNullable<typeof layout>;
-  for (const id of panelIds) delete cloned.panels[id];
-  return removeDockviewPanelIds(cloned, panelIds);
+  const dockviewPanelIds = new Set<string>();
+  for (const [panelId, panel] of Object.entries(cloned.panels)) {
+    const tabId = serializedDockviewPanelTabId(panel, panelId);
+    if (panelIds.has(panelId) || (tabId && panelIds.has(tabId))) {
+      dockviewPanelIds.add(panelId);
+    }
+  }
+  for (const id of dockviewPanelIds) delete cloned.panels[id];
+  return removeDockviewPanelIds(cloned, dockviewPanelIds);
 }
 
 function removeDockviewPanelIds<T>(value: T, panelIds: Set<string>): T {
@@ -873,8 +880,29 @@ function syncDockviewLayoutForTabReplacements(
         },
       };
     }
+    for (const [panelId, candidatePanel] of Object.entries(cloned.panels)) {
+      if (panelId === nextTab.id) continue;
+      if (serializedDockviewPanelTabId(candidatePanel, panelId) !== oldId) continue;
+      cloned.panels[panelId] = {
+        ...candidatePanel,
+        title: `${nextTab.dirty ? "● " : ""}${nextTab.title}${nextTab.deleted ? " (deleted)" : ""}`,
+        params: {
+          ...candidatePanel.params,
+          kind: "file",
+          tab: nextTab,
+          title: nextTab.title,
+        },
+      };
+    }
   }
   return replaceDockviewPanelIds(cloned, byOldId);
+}
+
+function serializedDockviewPanelTabId(panel: unknown, fallbackPanelId: string): string | null {
+  if (!panel || typeof panel !== "object") return fallbackPanelId;
+  const params = (panel as { params?: { kind?: string; tab?: { id?: string } } }).params;
+  if (params?.kind === "file") return params.tab?.id ?? null;
+  return fallbackPanelId;
 }
 
 function replaceDockviewPanelIds<T>(value: T, replacements: Map<string, IdeWorkbenchEditorTab>): T {

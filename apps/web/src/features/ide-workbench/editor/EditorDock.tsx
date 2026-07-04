@@ -77,16 +77,20 @@ export function EditorDock({
     if (!api) return;
     const tabIds = new Set(tabsRef.current.map((tab) => tab.id));
     for (const panel of api.panels) {
-      if (panel.params?.kind === "file" && !tabIds.has(panel.id)) {
+      const params = panel.params as EditorPlaceholderParams | undefined;
+      const panelTabId = editorPanelTabId(panel);
+      if (params?.kind === "file" && (!panelTabId || !tabIds.has(panelTabId))) {
         api.removePanel(panel);
       }
     }
     for (const tab of tabsRef.current) {
       const params = filePanelParams(tab);
-      const existing = api.getPanel(tab.id);
-      if (existing) {
-        existing.setTitle(tabTitle(tab));
-        existing.update({ params });
+      const existingPanels = [...api.panels].filter((panel) => editorPanelTabId(panel) === tab.id);
+      if (existingPanels.length > 0) {
+        for (const panel of existingPanels) {
+          panel.setTitle(tabTitle(tab));
+          panel.update({ params });
+        }
         continue;
       }
       api.addPanel<EditorPlaceholderParams>({
@@ -107,7 +111,10 @@ export function EditorDock({
     }
     syncTabsToDockview();
     if (!api || !activeTabId) return;
-    api.getPanel(activeTabId)?.api.setActive();
+    const activePanelTabId = api.activePanel ? editorPanelTabId(api.activePanel) : null;
+    if (activePanelTabId === activeTabId) return;
+    const targetPanel = api.getPanel(activeTabId) ?? [...api.panels].find((panel) => editorPanelTabId(panel) === activeTabId);
+    targetPanel?.api.setActive();
   }, [activeTabId, dockviewLayout, syncTabsToDockview, tabs]);
 
   const handleReady = React.useCallback(
@@ -123,18 +130,21 @@ export function EditorDock({
       }
       restoredRef.current = true;
       syncTabsToDockview();
-      if (activeTabId) event.api.getPanel(activeTabId)?.api.setActive();
+      if (activeTabId) {
+        const targetPanel = event.api.getPanel(activeTabId) ?? [...event.api.panels].find((panel) => editorPanelTabId(panel) === activeTabId);
+        targetPanel?.api.setActive();
+      }
 
       disposablesRef.current.forEach((disposable) => disposable.dispose());
       disposablesRef.current = [
         event.api.onDidLayoutChange(() => saveCurrentLayout()),
         event.api.onDidActivePanelChange((change) => {
-          const nextId = change.panel?.id ?? null;
+          const nextId = change.panel ? editorPanelTabId(change.panel) : null;
           onActiveTabChange(nextId && tabsRef.current.some((tab) => tab.id === nextId) ? nextId : null);
         }),
         event.api.onDidRemovePanel((panel) => {
-          if (panel.id === activeTabId) {
-            const nextId = event.api.activePanel?.id ?? null;
+          if (editorPanelTabId(panel) === activeTabId) {
+            const nextId = event.api.activePanel ? editorPanelTabId(event.api.activePanel) : null;
             onActiveTabChange(nextId && tabsRef.current.some((tab) => tab.id === nextId) ? nextId : null);
           }
           saveCurrentLayout();
@@ -149,6 +159,21 @@ export function EditorDock({
     if (!api) return;
     const referencePanel = referencePanelId ? api.getPanel(referencePanelId) : api.activePanel;
     referencePanel?.api.setActive();
+    const referenceParams = referencePanel?.params as EditorPlaceholderParams | undefined;
+    if (referenceParams?.kind === "file" && referenceParams.tab) {
+      const splitId = `${referenceParams.tab.id}::split-${direction}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      api.addPanel<EditorPlaceholderParams>({
+        id: splitId,
+        title: tabTitle(referenceParams.tab),
+        component: EDITOR_COMPONENT,
+        params: filePanelParams(referenceParams.tab),
+        position: referencePanel
+          ? { referencePanel, direction }
+          : { direction },
+      });
+      saveCurrentLayout();
+      return;
+    }
     const id = `split-${direction}-${Date.now()}`;
     api.addPanel<EditorPlaceholderParams>({
       id,
@@ -589,6 +614,12 @@ function filePanelParams(
     description:
       "M5.y-C 已将该文件打开到 Dockview editor panel；Monaco 内容由 editor-core/Files API 负责读写，Dockview 只保存布局 metadata。",
   };
+}
+
+function editorPanelTabId(panel: { id: string; params?: unknown }): string | null {
+  const params = panel.params as EditorPlaceholderParams | undefined;
+  if (params?.kind === "file" && params.tab?.id) return params.tab.id;
+  return params?.kind === "file" ? null : panel.id;
 }
 
 async function copyText(text: string, successTitle: string): Promise<void> {

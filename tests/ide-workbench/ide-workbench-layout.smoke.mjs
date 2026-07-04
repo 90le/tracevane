@@ -140,6 +140,14 @@ async function openFileFromExplorer(page, path) {
   await page.locator(`[data-ide-editor-panel-path]`, { hasText: `path: ${path}` }).first().waitFor({ state: 'visible', timeout: 30_000 });
 }
 
+async function waitForEditorFilePanelCount(page, path, minimumCount) {
+  await page.waitForFunction(
+    ({ selector, minimumCount: expected }) => document.querySelectorAll(selector).length >= expected,
+    { selector: `[data-ide-monaco-editor-panel][data-ide-editor-file-path="${cssAttr(path)}"]`, minimumCount },
+    { timeout: 30_000 },
+  );
+}
+
 async function openContextMenu(page, path) {
   await revealPath(page, path);
   await page.locator(nodeSelector(path)).first().evaluate((node) => {
@@ -243,15 +251,17 @@ async function run() {
     await openFileFromExplorer(page, secondPath);
     await moveViaExplorer(page, secondPath, moveDir, movedPath);
     await deleteViaExplorer(page, movedPath);
+    await openFileFromExplorer(page, renamedPath);
 
-    const editorTab = page.locator('[data-ide-editor-tab]').first();
+    const editorTab = page.locator(tabSelector(renamedPath)).first();
     await editorTab.click();
+    await waitForEditorFilePanelCount(page, renamedPath, 1);
     await editorTab.click({ button: 'right' });
     await page.locator('[data-ide-editor-tab-menu-item="split-right"]').click();
-    await page.locator('[data-ide-editor-panel-title]', { hasText: 'Split Right' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await waitForEditorFilePanelCount(page, renamedPath, 2);
     await editorTab.click({ button: 'right' });
     await page.locator('[data-ide-editor-tab-menu-item="split-down"]').click();
-    await page.locator('[data-ide-editor-panel-title]', { hasText: 'Split Down' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await waitForEditorFilePanelCount(page, renamedPath, 3);
 
     await page.getByRole('button', { name: '重置布局' }).click();
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
