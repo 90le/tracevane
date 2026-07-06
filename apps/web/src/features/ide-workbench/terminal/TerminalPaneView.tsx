@@ -30,6 +30,9 @@ export type TerminalPaneStatus = "idle" | "creating" | "connecting" | "running" 
 const TERMINAL_INSERT_EVENT = "tracevane:ide-terminal-insert-text";
 const TERMINAL_CLIPBOARD_UPLOAD_ROOT = ".tracevane/tmp/terminal-paste";
 const TERMINAL_CLIPBOARD_UPLOAD_ROOT_FALLBACK = "tmp/tracevane-terminal-paste";
+const TERMINAL_PANE_MENU_WIDTH = 224;
+const TERMINAL_PANE_MENU_HEIGHT = 320;
+const TERMINAL_PANE_MENU_VIEWPORT_PADDING = 8;
 
 interface TerminalPaneMenuState {
   x: number;
@@ -459,7 +462,7 @@ export function TerminalPaneView({
         event.preventDefault();
         event.stopPropagation();
         onFocus(paneId);
-        setMenu({ x: event.clientX, y: event.clientY });
+        setMenu(positionTerminalPaneMenu(event.clientX, event.clientY));
       }}
       onDragOver={(event) => {
         if (hasTransferPath(event.dataTransfer)) event.preventDefault();
@@ -517,8 +520,12 @@ export function TerminalPaneView({
       {menu ? (
         <div
           role="menu"
-          className="fixed z-50 min-w-52 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
-          style={{ left: menu.x, top: menu.y }}
+          className="fixed z-50 min-w-52 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          style={{
+            left: menu.x,
+            top: menu.y,
+            maxHeight: `calc(100vh - ${menu.y + TERMINAL_PANE_MENU_VIEWPORT_PADDING}px)`,
+          }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-terminal-pane-context-menu
         >
@@ -535,6 +542,23 @@ export function TerminalPaneView({
       ) : null}
     </section>
   );
+}
+
+function positionTerminalPaneMenu(clientX: number, clientY: number): TerminalPaneMenuState {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || TERMINAL_PANE_MENU_WIDTH;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || TERMINAL_PANE_MENU_HEIGHT;
+  const maxX = Math.max(
+    TERMINAL_PANE_MENU_VIEWPORT_PADDING,
+    viewportWidth - TERMINAL_PANE_MENU_WIDTH - TERMINAL_PANE_MENU_VIEWPORT_PADDING,
+  );
+  const maxY = Math.max(
+    TERMINAL_PANE_MENU_VIEWPORT_PADDING,
+    viewportHeight - TERMINAL_PANE_MENU_HEIGHT - TERMINAL_PANE_MENU_VIEWPORT_PADDING,
+  );
+  return {
+    x: Math.max(TERMINAL_PANE_MENU_VIEWPORT_PADDING, Math.min(clientX, maxX)),
+    y: Math.max(TERMINAL_PANE_MENU_VIEWPORT_PADDING, Math.min(clientY, maxY)),
+  };
 }
 
 function TerminalPaneMenuButton({

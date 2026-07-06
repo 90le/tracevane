@@ -306,8 +306,19 @@ async function runUiSmoke(rootId) {
         },
       });
     });
-    await page.locator('[data-ide-terminal-pane]').first().click({ button: 'right' });
+    const viewport = page.viewportSize();
+    const terminalPaneBox = await page.locator('[data-ide-terminal-pane]').first().boundingBox();
+    if (!viewport || !terminalPaneBox) throw new Error('Terminal pane bounds were not available for context menu smoke');
+    await page.mouse.click(
+      Math.min(terminalPaneBox.x + terminalPaneBox.width - 2, viewport.width - 2),
+      Math.min(terminalPaneBox.y + terminalPaneBox.height - 2, viewport.height - 2),
+      { button: 'right' },
+    );
     await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    const paneMenuBox = await page.locator('[data-ide-terminal-pane-context-menu]').boundingBox();
+    if (!paneMenuBox || paneMenuBox.x < 0 || paneMenuBox.y < 0 || paneMenuBox.x + paneMenuBox.width > viewport.width || paneMenuBox.y + paneMenuBox.height > viewport.height) {
+      throw new Error(`Terminal pane context menu is clipped or offscreen: ${JSON.stringify(paneMenuBox)}`);
+    }
     await page.keyboard.press('Escape');
     await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-pane]').first().click({ button: 'right' });
