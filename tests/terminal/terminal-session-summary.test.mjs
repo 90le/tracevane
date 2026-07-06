@@ -529,6 +529,17 @@ test("terminal service source includes binary-name fallback verification for mar
   );
 });
 
+test("terminal client source deletes only confirmed ended batch descriptors", () => {
+  const source = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/terminalClient.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /const endedIds = endedTerminalIdsFromBatch\(batch\)/);
+  assert.match(source, /deleteEndedTerminalDescriptors\(Array\.from\(endedIds\)/);
+  assert.match(source, /const failedIds = sids\.filter\(\(sid\) => !endedIds\.has\(sid\)\)/);
+});
+
 test("terminal recent output summary resets stale output after clear marker", () => {
   const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
     {

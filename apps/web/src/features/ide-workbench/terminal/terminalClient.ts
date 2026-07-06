@@ -110,7 +110,13 @@ export async function endWorkbenchTerminalSessions(
   if (!sids.length) return { requested: 0, ended: 0, failed: 0, results: [] };
   try {
     const batch = await endTerminalSessions(sids);
-    await deleteEndedTerminalDescriptors(sids, options.retryDelayMs ?? 500);
+    const endedIds = endedTerminalIdsFromBatch(batch);
+    const failedIds = sids.filter((sid) => !endedIds.has(sid));
+    await deleteEndedTerminalDescriptors(Array.from(endedIds), options.retryDelayMs ?? 500);
+    if (failedIds.length && options.queueOnFailure !== false) {
+      for (const sid of failedIds) enqueuePendingTerminalKill(sid);
+      schedulePendingTerminalKillFlush(options.retryDelayMs ?? 1_500);
+    }
     return summarizeBatchEndResult(batch, sids.length);
   } catch (error) {
     if (options.queueOnFailure !== false) {
@@ -231,6 +237,14 @@ async function deleteEndedTerminalDescriptors(sids: string[], retryDelayMs: numb
     for (const sid of failed) enqueuePendingTerminalKill(sid);
     schedulePendingTerminalKillFlush(Math.max(750, retryDelayMs));
   }
+}
+
+function endedTerminalIdsFromBatch(batch: TerminalEndBatchResponse): Set<string> {
+  const results = Array.isArray(batch.results) ? batch.results : [];
+  return new Set(results
+    .filter((result) => result && result.ended)
+    .map((result) => normalizeTerminalSessionId(result.sid))
+    .filter(Boolean));
 }
 
 function summarizeBatchEndResult(
