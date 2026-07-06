@@ -226,7 +226,7 @@ export function TerminalManagerDialog({
             ) : null}
             {!loading && !sessions.length ? (
               <div className="rounded-md border border-dashed border-line bg-canvas p-6 text-center text-muted" data-ide-terminal-manager-empty>
-                没有仍在运行或可恢复的终端。
+                没有仍在运行或可恢复的终端。终端管理器不会自动创建终端；需要新终端时请回到 Panel 点击“新建终端”。
               </div>
             ) : null}
             {groups.map((group) => (
