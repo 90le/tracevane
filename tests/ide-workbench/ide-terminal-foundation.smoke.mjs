@@ -301,7 +301,7 @@ async function runUiSmoke(rootId) {
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Terminal was auto-created before the user requested a new terminal');
     }
-    await page.locator('[data-ide-terminal-new]').click();
+    await page.locator('[data-ide-terminal-empty-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => {
       const terminal = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
