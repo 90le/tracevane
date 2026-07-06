@@ -2,7 +2,7 @@ import * as React from "react";
 import type { TerminalProfileDescriptor } from "@/features/cli-agents/types";
 import { getTerminalProfiles, renameTerminalSession } from "@/lib/api/terminal";
 import { toast } from "@/design/ui/sonner";
-import { endWorkbenchTerminalSession, schedulePendingTerminalKillFlush } from "./terminalClient";
+import { endWorkbenchTerminalSession, endWorkbenchTerminalSessions, schedulePendingTerminalKillFlush } from "./terminalClient";
 import { useTerminalLayoutState } from "./terminalLayoutState";
 import { TerminalGroupView } from "./TerminalGroupView";
 import { TerminalManagerDialog } from "./TerminalManagerDialog";
@@ -72,12 +72,22 @@ export function TerminalPanel({
   }, []);
 
   const killTabSessions = React.useCallback(async (tabsToKill: Array<NonNullable<typeof activeTab>>) => {
-    const terminalIds = tabsToKill.flatMap((tab) => Object.values(tab.panes).map((pane) => pane.terminalId));
+    const terminalIds = [...new Set(tabsToKill.flatMap((tab) => Object.values(tab.panes).map((pane) => pane.terminalId)).filter(Boolean))];
     if (!terminalIds.length) return { failed: 0 };
-    const results = await Promise.allSettled(
-      terminalIds.map((terminalId) => endWorkbenchTerminalSession(terminalId, { attempts: 3, queueOnFailure: true })),
-    );
-    const failed = results.filter((result) => result.status === "rejected").length;
+    let failed = 0;
+    if (terminalIds.length === 1) {
+      const results = await Promise.allSettled(
+        terminalIds.map((terminalId) => endWorkbenchTerminalSession(terminalId, { attempts: 3, queueOnFailure: true })),
+      );
+      failed = results.filter((result) => result.status === "rejected").length;
+    } else {
+      try {
+        const result = await endWorkbenchTerminalSessions(terminalIds, { attempts: 3, queueOnFailure: true });
+        failed = result.failed;
+      } catch {
+        failed = terminalIds.length;
+      }
+    }
     if (failed > 0) {
       toast.warning("终端已从界面强制关闭，后台会继续重试清理残留进程", {
         description: `${failed}/${terminalIds.length} 个终端会话未即时确认关闭，已加入持久重试队列。`,

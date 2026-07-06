@@ -215,6 +215,48 @@ async function run() {
 
     await page.locator('[data-ide-terminal-new]').click();
     await waitForTabCount(page, 2);
+    await waitForRunnablePane(page, 0);
+    await page.locator('[data-ide-terminal-new]').click();
+    await waitForTabCount(page, 3);
+    await waitForRunnablePane(page, 0);
+    const activeTabForBatchClose = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-tab-id');
+    const batchCloseTargets = await page.evaluate((activeTabId) => Array.from(document.querySelectorAll('[data-ide-terminal-tab]'))
+      .filter((node) => node.getAttribute('data-terminal-tab-id') !== activeTabId)
+      .map((node) => node.getAttribute('data-terminal-id'))
+      .filter(Boolean), activeTabForBatchClose);
+    if (batchCloseTargets.length !== 2) throw new Error(`Expected 2 terminal tabs to batch close, got ${batchCloseTargets.length}`);
+    const batchCloseRequests = [];
+    const perSessionCloseRequests = [];
+    await page.route('**/api/terminal/end-batch', async (route) => {
+      batchCloseRequests.push(route.request().postDataJSON?.() ?? {});
+      await route.continue();
+    });
+    await page.route('**/api/terminal/end', async (route) => {
+      perSessionCloseRequests.push(route.request().postDataJSON?.() ?? {});
+      await route.continue();
+    });
+    await page.locator(`[data-ide-terminal-tab-menu][data-terminal-tab-id="${activeTabForBatchClose}"]`).click();
+    await page.locator('[data-ide-terminal-tab-menu-item="close-others"]').click();
+    await waitForTabCountExactly(page, 1);
+    const batchCloseDeadline = Date.now() + 10_000;
+    while (Date.now() < batchCloseDeadline && batchCloseRequests.length < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (batchCloseRequests.length !== 1) {
+      throw new Error(`Closing other terminal tabs should use one batch close request, got ${batchCloseRequests.length}`);
+    }
+    const batchIds = new Set(Array.isArray(batchCloseRequests[0]?.sids) ? batchCloseRequests[0].sids : []);
+    const missingBatchIds = batchCloseTargets.filter((sessionId) => !batchIds.has(sessionId));
+    if (missingBatchIds.length) throw new Error(`Batch close missed terminal ids: ${missingBatchIds.join(', ')}`);
+    const unexpectedPerSession = perSessionCloseRequests.filter((body) => batchCloseTargets.includes(String(body?.sid || '')));
+    if (unexpectedPerSession.length) {
+      throw new Error(`Closing other terminal tabs used per-session close requests: ${JSON.stringify(unexpectedPerSession)}`);
+    }
+    await page.unroute('**/api/terminal/end-batch');
+    await page.unroute('**/api/terminal/end');
+
+    await page.locator('[data-ide-terminal-new]').click();
+    await waitForTabCount(page, 2);
     await waitForPaneCountExactly(page, 1);
     await waitForRunnablePane(page, 0);
 
