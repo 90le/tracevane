@@ -34,6 +34,7 @@ export function TerminalManagerDialog({
   const [closingIds, setClosingIds] = React.useState<Set<string>>(() => new Set());
   const [closeProgress, setCloseProgress] = React.useState<{ done: number; total: number } | null>(null);
   const suppressedSessionIdsRef = React.useRef<Set<string>>(new Set());
+  const closingIdsRef = React.useRef<Set<string>>(new Set());
   const activeIdSet = React.useMemo(() => new Set(activeTerminalIds), [activeTerminalIds]);
 
   const refresh = React.useCallback(async (options: { silent?: boolean } = {}) => {
@@ -79,12 +80,15 @@ export function TerminalManagerDialog({
   }, [onOpenChange, open]);
 
   const closeSessions = React.useCallback(async (targetSessions: TerminalSessionDescriptor[], label: string) => {
-    const targets = uniqueSessions(targetSessions.filter(isManageableSession));
+    const targets = uniqueSessions(targetSessions.filter((session) => (
+      isManageableSession(session) && !closingIdsRef.current.has(session.sessionId)
+    )));
     if (!targets.length) return;
     const targetIds = targets.map((session) => session.sessionId);
     const targetIdSet = new Set(targetIds);
     for (const sessionId of targetIds) {
       suppressedSessionIdsRef.current.add(sessionId);
+      closingIdsRef.current.add(sessionId);
     }
     setClosingIds((current) => new Set([...current, ...targetIds]));
     setCloseProgress({ done: 0, total: targets.length });
@@ -121,7 +125,10 @@ export function TerminalManagerDialog({
     }
     setClosingIds((current) => {
       const next = new Set(current);
-      for (const session of targets) next.delete(session.sessionId);
+      for (const session of targets) {
+        closingIdsRef.current.delete(session.sessionId);
+        next.delete(session.sessionId);
+      }
       return next;
     });
     setCloseProgress(null);

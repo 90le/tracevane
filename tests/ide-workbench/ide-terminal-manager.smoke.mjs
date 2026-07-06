@@ -257,12 +257,45 @@ async function run() {
       await page.locator(`[data-ide-terminal-manager-session="${otherSidB}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     }
 
-    await page.locator('[data-ide-terminal-manager-close-all]').click();
+    const closeTargetIds = [sid, activeTerminalId, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])];
+    const closeEndCounts = Object.fromEntries(closeTargetIds.map((sessionId) => [sessionId, 0]));
+    await page.unroute('**/api/terminal/end');
+    await page.route('**/api/terminal/end', async (route) => {
+      const request = route.request();
+      const body = request.postDataJSON?.() ?? {};
+      const sessionId = String(body?.sid || '');
+      if (sessionId in closeEndCounts) closeEndCounts[sessionId] += 1;
+      if (sessionId === activeTerminalId) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'forced smoke kill failure' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.locator('[data-ide-terminal-manager-close-all]').evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement)) throw new Error('Close-all control is not a button');
+      button.click();
+      button.click();
+    });
     await page.waitForFunction(
       (sessionIds) => sessionIds.every((sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`)),
-      [sid, activeTerminalId, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])],
+      closeTargetIds,
       { timeout: 45_000 },
     );
+    const closeCountDeadline = Date.now() + 45_000;
+    while (Date.now() < closeCountDeadline) {
+      if (closeTargetIds.every((sessionId) => closeEndCounts[sessionId] >= (sessionId === activeTerminalId ? 2 : 1))) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    for (const sessionId of closeTargetIds) {
+      const expectedCloseRequests = sessionId === activeTerminalId ? 2 : 1;
+      if (closeEndCounts[sessionId] !== expectedCloseRequests) {
+        throw new Error(`Terminal Manager close-all was not idempotent for ${sessionId}; expected ${expectedCloseRequests} close request(s), got ${closeEndCounts[sessionId]}`);
+      }
+    }
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') === 0, { timeout: 30_000 });
     const layoutAfterFailedKill = await page.evaluate((sessionId) => ({
       paneCount: document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count'),
