@@ -332,7 +332,7 @@ export function TerminalPaneView({
     updateSelectedText("");
   }, [updateSelectedText]);
 
-  const closePane = React.useCallback(async () => {
+  const closePane = React.useCallback(() => {
     if (closeRequestedRef.current) return;
     closeRequestedRef.current = true;
     setClosing(true);
@@ -342,13 +342,14 @@ export function TerminalPaneView({
     closeSocket();
     setStatus("closed");
     setMessage("终端已关闭");
-    const result = await killSession(sid);
-    if (result.failed) {
-      toast.warning("终端窗格已从界面强制关闭，后台会继续重试清理残留进程", {
-        description: sid ? `终端会话 ${sid} 未即时确认关闭，已加入持久重试队列。` : undefined,
-      });
-    }
     onClose(paneId);
+    void killSession(sid).then((result) => {
+      if (result.failed) {
+        toast.warning("终端窗格已从界面强制关闭，后台会继续重试清理残留进程", {
+          description: sid ? `终端会话 ${sid} 未即时确认关闭，已加入持久重试队列。` : undefined,
+        });
+      }
+    });
   }, [closeSocket, killSession, onClose, paneId, terminalId]);
 
   const insertPath = React.useCallback((path: string | undefined) => {
