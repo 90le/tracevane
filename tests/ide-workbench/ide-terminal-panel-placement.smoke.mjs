@@ -162,6 +162,20 @@ async function run() {
     await page.locator('[data-ide-terminal-panel][data-ide-terminal-placement="bottom"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'Move Panel Right' }).click();
+    await waitForPlacement(page, 'right');
+    await page.locator('[data-ide-terminal-panel][data-ide-terminal-placement="right"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    if (await page.locator('[data-ide-terminal-xterm]').count()) {
+      throw new Error('Moving an empty terminal panel right auto-created a terminal');
+    }
+    await page.getByRole('button', { name: 'Move Panel Bottom' }).click();
+    await waitForPlacement(page, 'bottom');
+    await page.locator('[data-ide-terminal-panel][data-ide-terminal-placement="bottom"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+
     await page.locator('[data-ide-terminal-new]').click();
     await waitForRunnablePane(page, 0);
     await echoInActivePane(page, `TRACEVANE_M5XB_BOTTOM_${Date.now()}`);
