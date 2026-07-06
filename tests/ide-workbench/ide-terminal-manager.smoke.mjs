@@ -198,10 +198,10 @@ async function run() {
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-terminal-manager-dialog]', { hasText: '管理所有仍在运行、已分离且可恢复的终端' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-dialog]', { hasText: '当前工作区可恢复到面板' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-close-detached]', { hasText: '关闭已分离' }).waitFor({ state: 'visible', timeout: 30_000 });
     const managerDialogCopy = await page.locator('[data-ide-terminal-manager-dialog]').innerText();
-    if (managerDialogCopy.includes('running/detached/canResume') || managerDialogCopy.includes('关闭 detached')) {
+    if (managerDialogCopy.includes('running/detached/canResume') || managerDialogCopy.includes('关闭 detached') || managerDialogCopy.includes('Panel')) {
       throw new Error(`Terminal Manager leaked internal status wording: ${managerDialogCopy.slice(0, 800)}`);
     }
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
@@ -223,10 +223,10 @@ async function run() {
     await activeCloseButton.waitFor({ state: 'visible', timeout: 30_000 });
     await activeCloseButton.getByText('强制关闭').waitFor({ state: 'visible', timeout: 30_000 });
     const activeCloseTitle = await activeCloseButton.getAttribute('title');
-    if (!String(activeCloseTitle || '').includes('当前 Panel 布局')) {
+    if (!String(activeCloseTitle || '').includes('当前面板布局')) {
       throw new Error(`Attached terminal close button did not expose destructive title: ${activeCloseTitle}`);
     }
-    await page.locator(`[data-ide-terminal-manager-attach="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-attach="${activeTerminalId}"]`, { hasText: '恢复到面板' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.route('**/api/terminal/end', async (route) => {
@@ -286,7 +286,7 @@ async function run() {
     }
     await page.locator('[data-ide-terminal-manager-dialog]', { hasText: '没有仍在运行或可恢复的终端' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-empty]', { hasText: '终端管理器不会自动创建终端' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-terminal-manager-empty-back]').click();
+    await page.locator('[data-ide-terminal-manager-empty-back]', { hasText: '返回面板新建' }).click();
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });

@@ -114,10 +114,10 @@ export function TerminalManagerDialog({
     onClosedSessions?.(targetIds);
     if (failed) {
       toast.warning(`${label}：已从列表隐藏，后台继续清理`, {
-        description: `${failed}/${targets.length} 个 session 未即时确认 kill，已加入持久重试队列。`,
+        description: `${failed}/${targets.length} 个终端会话未即时确认关闭，已加入持久重试队列。`,
       });
     } else {
-      toast.success(`${label}已关闭`, { description: `${targets.length} 个终端 session` });
+      toast.success(`${label}已关闭`, { description: `${targets.length} 个终端会话` });
     }
     setClosingIds((current) => {
       const next = new Set(current);
@@ -173,7 +173,7 @@ export function TerminalManagerDialog({
           <div className="min-w-0">
             <h2 id="ide-terminal-manager-title" className="text-lg font-semibold text-ink-strong">终端管理器</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted">
-              管理所有仍在运行、已分离且可恢复的终端。当前工作区可恢复到 Panel；其它工作区只允许跳转或关闭，避免破坏工作区目录隔离。
+              管理所有仍在运行、已分离且可恢复的终端。当前工作区可恢复到面板；其它工作区只允许跳转或关闭，避免破坏工作区目录隔离。
             </p>
           </div>
         </header>
@@ -226,7 +226,7 @@ export function TerminalManagerDialog({
             ) : null}
             {!loading && !sessions.length ? (
               <div className="rounded-md border border-dashed border-line bg-canvas p-6 text-center text-muted" data-ide-terminal-manager-empty>
-                <div>没有仍在运行或可恢复的终端。终端管理器不会自动创建终端；需要新终端时请回到 Panel 点击“新建终端”。</div>
+                <div>没有仍在运行或可恢复的终端。终端管理器不会自动创建终端；需要新终端时请回到面板点击“新建终端”。</div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -234,7 +234,7 @@ export function TerminalManagerDialog({
                   onClick={() => onOpenChange(false)}
                   data-ide-terminal-manager-empty-back
                 >
-                  返回 Panel 新建
+                  返回面板新建
                 </Button>
               </div>
             ) : null}
@@ -266,7 +266,7 @@ export function TerminalManagerDialog({
                           </div>
                           <div className="grid gap-1 font-mono text-2xs text-muted md:grid-cols-2">
                             <span className="truncate" title={session.sessionId}>id: {session.sessionId}</span>
-                            <span className="truncate" title={normalizeRootId(session) || "unknown"}>工作区: {normalizeRootId(session) || "unknown"}</span>
+                            <span className="truncate" title={formatWorkspaceTitle(session)}>工作区: {formatWorkspaceLabel(session)}</span>
                             <span className="truncate" title={formatCwdTitle(session.cwd)}>目录: {formatCwd(session.cwd)}</span>
                             <span className="truncate">Shell: {session.shell || "bash"} · 更新: {formatTime(session.updatedAt)}</span>
                           </div>
@@ -280,7 +280,7 @@ export function TerminalManagerDialog({
                               onClick={() => onAttachSession(session)}
                               data-ide-terminal-manager-attach={session.sessionId}
                             >
-                              恢复到 Panel
+                              恢复到面板
                             </Button>
                           ) : (
                             <Button
@@ -297,7 +297,7 @@ export function TerminalManagerDialog({
                             variant={attached ? "outline" : "ghost"}
                             size="sm"
                             disabled={closing}
-                            title={attached ? "关闭会结束当前 Panel 布局中的终端 session" : "关闭终端 session"}
+                            title={attached ? "关闭会结束当前面板布局中的终端会话" : "关闭终端会话"}
                             onClick={() => void closeSessions([session], attached ? "当前布局终端" : "终端")}
                             data-ide-terminal-manager-close={session.sessionId}
                           >
@@ -330,6 +330,14 @@ function normalizeRootId(session: TerminalSessionDescriptor): string {
     || (session as TerminalSessionDescriptor & { rootId?: string | null; workspaceId?: string | null }).workspaceId
     || "";
   return String(value || "").trim();
+}
+
+function formatWorkspaceLabel(session: TerminalSessionDescriptor): string {
+  return normalizeRootId(session) || "未知工作区";
+}
+
+function formatWorkspaceTitle(session: TerminalSessionDescriptor): string {
+  return normalizeRootId(session) || "终端会话缺少工作区标记";
 }
 
 function uniqueSessions(sessions: TerminalSessionDescriptor[]): TerminalSessionDescriptor[] {
@@ -403,7 +411,7 @@ function normalizeCwd(value: string | null | undefined): string {
 
 function formatTime(value: string | null | undefined): string {
   const timestamp = Date.parse(String(value || ""));
-  if (!Number.isFinite(timestamp)) return "unknown";
+  if (!Number.isFinite(timestamp)) return "未知时间";
   return new Date(timestamp).toLocaleString();
 }
 
