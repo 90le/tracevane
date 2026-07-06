@@ -6,6 +6,7 @@
 - 正式交付入口：`standalone`，默认本机/内网端口 `3760`。
 - 单口入口：`gateway`，挂载到 OpenClaw Gateway 的 `/tracevane`，同时保留 `3760` 作为本机健康检查和回退入口。
 - Tracevane 自身版本不手工维护：发布时由 `pack.sh` 从 `package.json` 当前版本自动递增 patch，并同步安装脚本、站点页、发布包和站点元数据。
+- 官网安装脚本默认安装 `latest`，必须能读取站点元数据；离线或私有镜像安装时显式传入 `--version` 或 `--package-url`。
 
 低于 `2026.5.28` 的 OpenClaw 不作为新安装目标；如需兼容旧版本，必须单独验证宿主 schema、插件加载、Gateway 路由和健康检查。
 
@@ -58,6 +59,12 @@ version.json
 ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 ```
 
+只查看下一次自动版本号，不构建、不改源码：
+
+```bash
+./pack.sh --print-version
+```
+
 `pack.sh` 不再支持旧的 `--base-path` 参数。部署路径由运行时配置决定，不在打包阶段写死。
 
 ## 客户安装步骤
@@ -105,8 +112,9 @@ Gateway 单口模式：
 4. 修正发布包元数据，确保宿主加载 `./dist/index.js`。
 5. 安装生产依赖并重建 `node-pty`。
 6. 写入 `plugins.entries.tracevane`、`plugins.load.paths` 和 transport 配置。
-7. 安装/重启 OpenClaw Gateway；无可用用户级 service 管理器时降级为后台 `gateway run`。
-8. 执行健康检查。
+7. 备份 OpenClaw 配置，失败时尽量回滚本次安装改动。
+8. 安装/重启 OpenClaw Gateway；无可用用户级 service 管理器时降级为后台 `gateway run`。
+9. 执行健康检查。
 
 ## 手工安装兜底
 
@@ -115,10 +123,12 @@ Gateway 单口模式：
 ```bash
 cd ~/.openclaw/extensions
 curl -fsSL https://tracevane.90le.cn/tracevane-latest.json -o /tmp/tracevane-latest.json
-# 从 metadata 读取 packageUrl 后下载，或直接下载对应版本 tar.gz
-tar -xzf tracevane-<version>.tar.gz
+PACKAGE_URL="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.packageUrl)")"
+VERSION="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.version || m.latestVersion)")"
+curl -fL "$PACKAGE_URL" -o "tracevane-${VERSION}.tar.gz"
+tar -xzf "tracevane-${VERSION}.tar.gz"
 rm -rf tracevane
-mv tracevane-<version> tracevane
+mv "tracevane-${VERSION}" tracevane
 cd tracevane
 npm install --production --ignore-scripts
 npm rebuild @homebridge/node-pty-prebuilt-multiarch || true

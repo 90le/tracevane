@@ -2,6 +2,7 @@
 # Tracevane 打包脚本
 # 用法: ./pack.sh [版本号]
 # 未传版本号时自动把 package.json 当前版本递增一个 patch 版本。
+# 查看下一版本: ./pack.sh --print-version
 # 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 
 set -euo pipefail
@@ -20,11 +21,13 @@ Tracevane 打包脚本
   --source-sync              同步本地源码版本后再打包，默认用于正式发布
   --no-source-sync           测试打包模式，不修改当前源码里的版本文件
   --output-dir <dir>         输出目录，默认 ./release
+  --print-version            只打印将要使用的版本号，不构建、不写文件
   -h, --help                 显示帮助
 
 示例:
   ./pack.sh
   ./pack.sh 1.2.3
+  ./pack.sh --print-version
   ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 EOF
 }
@@ -33,6 +36,7 @@ SOURCE_SYNC=1
 OUTPUT_DIR_INPUT="${SCRIPT_DIR}/release"
 VERSION=""
 VERSION_AUTO=0
+PRINT_VERSION=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-dir=*)
       OUTPUT_DIR_INPUT="${1#*=}"
+      shift
+      ;;
+    --print-version)
+      PRINT_VERSION=1
       shift
       ;;
     -h|--help)
@@ -94,6 +102,10 @@ if (suffix) {
 console.log(`${major}.${minor}.${Number(patch) + 1}`);
 NODE
   )"
+fi
+if [[ "${PRINT_VERSION}" -eq 1 ]]; then
+  printf '%s\n' "${VERSION}"
+  exit 0
 fi
 mkdir -p "${OUTPUT_DIR_INPUT}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR_INPUT}" && pwd)"

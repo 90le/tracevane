@@ -101,12 +101,13 @@ Tracevane 一键安装脚本
 
 说明:
   gateway 单口模式会挂载到 OpenClaw Gateway 的 /tracevane，同时保留本机 3760 standalone 入口用于健康检查和回退。
+  默认 latest 需要能读取站点元数据；离线或私有镜像安装请传 --version 或 --package-url。
 
 选项:
   --mode <standalone|gateway>   安装模式，默认 standalone
   --version <version>           Tracevane 版本，默认 latest（站点最新）
   --site-base <url>             站点根地址，默认 https://tracevane.90le.cn
-  --package-url <url>           安装包地址，默认按版本拼接
+  --package-url <url>           安装包地址，默认优先读取站点 metadata
   --api-port <port>             standalone API 端口，默认 3760
   --base-path <path>            gateway basePath，默认 /tracevane
   --gateway-bind <mode>         gateway bind，默认 lan（auto|loopback|lan|tailnet|custom）

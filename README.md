@@ -97,6 +97,9 @@ Default local endpoints:
 - Web: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:3761`
 
+These are development endpoints. Customer standalone installs use the packaged
+runtime defaults documented in `DEPLOY.md` (currently port `3760`).
+
 ## Release and Installation
 
 Tracevane is released as an OpenClaw UI extension. New customer installs should
@@ -110,12 +113,15 @@ Common release commands:
 ```bash
 ./pack.sh
 ./pack.sh 1.2.3
+./pack.sh --print-version
 ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 ```
 
 Customer-facing deployment details live in [DEPLOY.md](DEPLOY.md). The public
 landing page is [index.html](index.html), and the self-contained installer is
-[install-tracevane.sh](install-tracevane.sh).
+[install-tracevane.sh](install-tracevane.sh). The installer defaults to the
+latest site metadata; offline or private-mirror installs should pass
+`--version` or `--package-url` explicitly.
 
 ## Testing and Smoke Checks
 
