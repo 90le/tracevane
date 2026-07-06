@@ -173,7 +173,7 @@ export function TerminalManagerDialog({
           <div className="min-w-0">
             <h2 id="ide-terminal-manager-title" className="text-lg font-semibold text-ink-strong">终端管理器</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted">
-              管理所有仍 running/detached/canResume 的终端。当前工作区可恢复到 Panel；其它工作区只允许跳转或关闭，避免破坏 root/cwd 隔离。
+              管理所有仍在运行、已分离且可恢复的终端。当前工作区可恢复到 Panel；其它工作区只允许跳转或关闭，避免破坏工作区目录隔离。
             </p>
           </div>
         </header>
@@ -187,11 +187,11 @@ export function TerminalManagerDialog({
               variant="outline"
               size="sm"
               disabled={!detachedSessions.length || closingIds.size > 0}
-              onClick={() => void closeSessions(detachedSessions, "Detached 终端")}
+              onClick={() => void closeSessions(detachedSessions, "已分离终端")}
               data-ide-terminal-manager-close-detached
             >
               <Trash2 />
-              关闭 detached
+              关闭已分离
             </Button>
             <Button
               variant="outline"
@@ -376,7 +376,13 @@ function groupSessions(sessions: TerminalSessionDescriptor[], currentRootId: str
 
 function StatusBadge({ status }: { status: TerminalSessionDescriptor["status"] }) {
   const tone = status === "running" ? "bg-green-soft text-green" : "bg-amber-soft text-amber";
-  return <span className={cn("rounded px-1.5 py-0.5 text-2xs", tone)}>{status}</span>;
+  return <span className={cn("rounded px-1.5 py-0.5 text-2xs", tone)}>{formatStatus(status)}</span>;
+}
+
+function formatStatus(status: TerminalSessionDescriptor["status"]): string {
+  if (status === "running") return "运行中";
+  if (status === "detached") return "已分离";
+  return status || "未知";
 }
 
 function formatCwd(value: string | null | undefined): string {

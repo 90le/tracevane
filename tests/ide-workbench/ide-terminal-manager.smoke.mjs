@@ -198,8 +198,21 @@ async function run() {
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-dialog]', { hasText: '管理所有仍在运行、已分离且可恢复的终端' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-close-detached]', { hasText: '关闭已分离' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const managerDialogCopy = await page.locator('[data-ide-terminal-manager-dialog]').innerText();
+    if (managerDialogCopy.includes('running/detached/canResume') || managerDialogCopy.includes('关闭 detached')) {
+      throw new Error(`Terminal Manager leaked internal status wording: ${managerDialogCopy.slice(0, 800)}`);
+    }
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const activeManagerSessionCopy = await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).innerText();
+    if (!activeManagerSessionCopy.includes('运行中') && !activeManagerSessionCopy.includes('已分离')) {
+      throw new Error(`Terminal Manager did not show a localized recoverable status: ${activeManagerSessionCopy}`);
+    }
+    if (/\b(running|detached)\b/.test(activeManagerSessionCopy)) {
+      throw new Error(`Terminal Manager session leaked raw status wording: ${activeManagerSessionCopy}`);
+    }
     const activeCloseButton = page.locator(`[data-ide-terminal-manager-close="${activeTerminalId}"]`);
     await activeCloseButton.waitFor({ state: 'visible', timeout: 30_000 });
     await activeCloseButton.getByText('强制关闭').waitFor({ state: 'visible', timeout: 30_000 });
