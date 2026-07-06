@@ -24,6 +24,7 @@ import type {
   TerminalBinaryStatus,
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalEndBatchResponse,
   TerminalGatewayAckResponse,
   TerminalGatewayAttachPayload,
   TerminalGatewayAttachResponse,
@@ -627,6 +628,7 @@ export interface TerminalService {
     emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
   ): Promise<TerminalInstallResponse>;
   endSession(payload: TerminalEndPayload): Promise<TerminalEndResponse>;
+  endSessions(sessionIds: string[]): Promise<TerminalEndBatchResponse>;
   attachGatewayClient(
     payload: TerminalGatewayAttachPayload,
     runtime: TerminalGatewayRuntime,
@@ -1862,6 +1864,21 @@ export function createTerminalService(
     return nextDescriptor;
   }
 
+  function endSessionById(sid: string): TerminalEndResponse {
+    const existed = sessions.has(sid);
+    let ended = existed;
+    if (existed) {
+      destroySession(sid);
+    } else {
+      ended = Boolean(markPersistedSessionEnded(sid));
+    }
+    return {
+      success: true,
+      sid,
+      ended,
+    };
+  }
+
   function markPersistedSessionEnded(
     sessionId: string,
     reason = "session_ended",
@@ -3027,17 +3044,17 @@ export function createTerminalService(
       if (!sid) {
         throw new Error("sid is required");
       }
-      const existed = sessions.has(sid);
-      let ended = existed;
-      if (existed) {
-        destroySession(sid);
-      } else {
-        ended = Boolean(markPersistedSessionEnded(sid));
-      }
+      return endSessionById(sid);
+    },
+
+    async endSessions(sessionIds: string[]): Promise<TerminalEndBatchResponse> {
+      const sids = [...new Set(sessionIds.map((sid) => String(sid || "").trim()).filter(Boolean))];
+      const results = sids.map((sid) => endSessionById(sid));
       return {
         success: true,
-        sid,
-        ended,
+        total: results.length,
+        ended: results.filter((result) => result.ended).length,
+        results,
       };
     },
 

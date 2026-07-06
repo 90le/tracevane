@@ -24,6 +24,29 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+
+async function listTerminalSessions() {
+  try {
+    const data = await api('/api/terminal/sessions');
+    return Array.isArray(data?.sessions) ? data.sessions : [];
+  } catch {
+    return [];
+  }
+}
+
+async function countRecoverableTerminalSessions() {
+  const sessions = await listTerminalSessions();
+  return sessions.filter((session) => session?.canResume || session?.status === 'running' || session?.status === 'detached').length;
+}
+
+async function resetTerminalSessions() {
+  const sessions = await listTerminalSessions();
+  await Promise.allSettled(sessions.map((session) => api('/api/terminal/end', {
+    method: 'POST',
+    body: JSON.stringify({ sid: session.sessionId }),
+  })));
+}
+
 async function cleanupPath(rootId, path) {
   await api('/api/files', {
     method: 'DELETE',
@@ -330,6 +353,13 @@ async function runUiSmoke(rootId) {
     localStorage.setItem(layoutKey, JSON.stringify(layout));
   }, `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, createDefaultWorkbenchLayout());
   const logs = [];
+  const terminalCreateRequests = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (request.method() === 'POST' && url.pathname === '/api/terminal/sessions') {
+      terminalCreateRequests.push(request.postData() || '');
+    }
+  });
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
   try {
@@ -349,6 +379,20 @@ async function runUiSmoke(rootId) {
     }
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Terminal was auto-created before the user requested a new terminal');
+    }
+    if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
+      throw new Error(`Opening the default terminal panel auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
+    }
+    await page.getByRole('button', { name: '关闭 Panel' }).click();
+    await page.locator('[data-ide-panel]').waitFor({ state: 'hidden', timeout: 30_000 }).catch(async () => {
+      await page.waitForFunction(() => document.querySelector('[data-ide-status-bar]')?.textContent?.includes('panel: collapsed'), { timeout: 30_000 });
+    });
+    await page.locator('[data-ide-panel-restore-button]').click();
+    await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
+      throw new Error(`Collapsing/restoring an empty terminal panel auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
     }
     await page.locator('[data-ide-terminal-empty-manager]').click();
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
@@ -380,8 +424,15 @@ async function runUiSmoke(rootId) {
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Persisted create-mode terminal layout auto-created a terminal on reload');
     }
+    if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
+      throw new Error(`Reloading a stale create-mode layout auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
+    }
+    terminalCreateRequests.length = 0;
     await page.locator('[data-ide-terminal-empty-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    if (terminalCreateRequests.length !== 1) {
+      throw new Error(`Explicit New Terminal should create exactly one backend terminal session, got ${terminalCreateRequests.length}`);
+    }
     await page.waitForFunction(() => {
       const terminal = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
       return terminal.includes('running') || terminal.includes('error') || terminal.includes('终端不可用');
@@ -542,6 +593,7 @@ async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file root is available for IDE terminal smoke');
+  await resetTerminalSessions();
   await cleanupPath(rootId, '.tracevane/tmp/terminal-paste');
   await cleanupPath(rootId, 'tmp/tracevane-terminal-paste');
   try {

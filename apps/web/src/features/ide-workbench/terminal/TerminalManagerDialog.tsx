@@ -6,7 +6,7 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import { getTerminalSessions } from "@/lib/api/terminal";
-import { endWorkbenchTerminalSession, flushPendingTerminalKillRetries, getPendingTerminalKillIds, schedulePendingTerminalKillFlush } from "./terminalClient";
+import { endWorkbenchTerminalSessions, flushPendingTerminalKillRetries, getPendingTerminalKillIds, schedulePendingTerminalKillFlush } from "./terminalClient";
 
 export function TerminalManagerDialog({
   open,
@@ -102,18 +102,16 @@ export function TerminalManagerDialog({
     // though the user already requested a force close from the manager.
     onClosedSessions?.(targetIds);
 
-    const results = await runWithConcurrency(targets, 6, async (session) => {
-      try {
-        await endWorkbenchTerminalSession(session.sessionId, { attempts: 2, retryDelayMs: 250, queueOnFailure: true });
-        return { ok: true as const };
-      } catch (error) {
-        return { ok: false as const, error };
-      } finally {
-        setCloseProgress((current) => current ? { ...current, done: Math.min(current.total, current.done + 1) } : current);
-      }
-    });
+    let failed = 0;
+    try {
+      const result = await endWorkbenchTerminalSessions(targetIds, { attempts: 2, retryDelayMs: 250, queueOnFailure: true });
+      failed = result.failed;
+    } catch {
+      failed = targets.length;
+    } finally {
+      setCloseProgress((current) => current ? { ...current, done: current.total } : current);
+    }
 
-    const failed = results.filter((result) => !result.ok).length;
     if (failed) {
       toast.warning(`${label}：已从列表隐藏，后台继续清理`, {
         description: `${failed}/${targets.length} 个终端会话未即时确认关闭，已加入持久重试队列。`,
@@ -349,24 +347,6 @@ function uniqueSessions(sessions: TerminalSessionDescriptor[]): TerminalSessionD
   const byId = new Map<string, TerminalSessionDescriptor>();
   for (const session of sessions) byId.set(session.sessionId, session);
   return Array.from(byId.values());
-}
-
-async function runWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(concurrency, items.length));
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await worker(items[index]);
-    }
-  }));
-  return results;
 }
 
 function groupSessions(sessions: TerminalSessionDescriptor[], currentRootId: string): Array<{ key: string; title: string; sessions: TerminalSessionDescriptor[] }> {

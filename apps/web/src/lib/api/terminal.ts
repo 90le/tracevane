@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 import type {
   TerminalEndPayload,
   TerminalEndResponse,
+  TerminalEndBatchResponse,
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalInstallResponse,
@@ -98,6 +99,16 @@ export function endTerminalSession(
   return apiRequest<TerminalEndResponse>(`${BASE}/end`, {
     method: "POST",
     body: jsonBody(payload),
+  });
+}
+
+/** POST /api/terminal/end-batch — end multiple live/persisted sessions in one request. */
+export function endTerminalSessions(
+  sessionIds: string[],
+): Promise<TerminalEndBatchResponse> {
+  return apiRequest<TerminalEndBatchResponse>(`${BASE}/end-batch`, {
+    method: "POST",
+    body: jsonBody({ sids: sessionIds }),
   });
 }
 

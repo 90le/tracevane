@@ -84,6 +84,7 @@ export function TerminalPaneView({
   const [closing, setClosing] = React.useState(false);
   const selectedTextRef = React.useRef("");
   const previousTerminalIdRef = React.useRef(terminalId);
+  const startSessionInFlightRef = React.useRef<{ terminalId: string; promise: Promise<void> } | null>(null);
   const disposedRef = React.useRef(false);
   const userClosedRef = React.useRef(false);
   const closeRequestedRef = React.useRef(false);
@@ -211,56 +212,71 @@ export function TerminalPaneView({
 
   const startSession = React.useCallback(async () => {
     if (!rootId) return;
-    setStatus(createMode === "create" ? "creating" : "connecting");
-    setMessage(createMode === "create"
-      ? "正在创建受工作区限制的 PTY 终端会话…"
-      : "正在恢复已存在的终端会话…");
-    try {
-      if (createMode !== "create") {
-        const persisted = await getTerminalSession(terminalId);
-        if (disposedRef.current || userClosedRef.current) return;
-        if (!persisted?.canResume || (persisted.status !== "running" && persisted.status !== "detached")) {
+    const existing = startSessionInFlightRef.current;
+    if (existing?.terminalId === terminalId) {
+      await existing.promise;
+      return;
+    }
+
+    const promise = (async () => {
+      setStatus(createMode === "create" ? "creating" : "connecting");
+      setMessage(createMode === "create"
+        ? "正在创建受工作区限制的 PTY 终端会话…"
+        : "正在恢复已存在的终端会话…");
+      try {
+        if (createMode !== "create") {
+          const persisted = await getTerminalSession(terminalId);
+          if (disposedRef.current || userClosedRef.current) return;
+          if (!persisted?.canResume || (persisted.status !== "running" && persisted.status !== "detached")) {
+            setStatus("closed");
+            setMessage("终端会话已结束，已从布局移除");
+            window.setTimeout(() => onClose(paneId), 0);
+            return;
+          }
+        }
+        const descriptor = await createWorkbenchTerminalSession({
+          rootId,
+          cwd,
+          sessionId: terminalId,
+          title,
+          profileId,
+          shell,
+          resume: createMode !== "create",
+          ...dimensionsRef.current,
+        });
+        sessionIdRef.current = descriptor.sessionId;
+        if (userClosedRef.current) {
+          await killSession(descriptor.sessionId);
+          return;
+        }
+        if (disposedRef.current) return;
+        setSessionId(descriptor.sessionId);
+        setBackend(descriptor.durableBackend ?? null);
+        attachSocket(descriptor.sessionId);
+      } catch (error) {
+        if (createMode !== "create") {
           setStatus("closed");
-          setMessage("终端会话已结束，已从布局移除");
+          setMessage("终端会话不可恢复，已从布局移除");
           window.setTimeout(() => onClose(paneId), 0);
           return;
         }
+        setStatus("error");
+        setMessage(error instanceof Error ? error.message : "创建终端失败");
+      } finally {
+        if (startSessionInFlightRef.current?.terminalId === terminalId) {
+          startSessionInFlightRef.current = null;
+        }
       }
-      const descriptor = await createWorkbenchTerminalSession({
-        rootId,
-        cwd,
-        sessionId: terminalId,
-        title,
-        profileId,
-        shell,
-        resume: createMode !== "create",
-        ...dimensionsRef.current,
-      });
-      sessionIdRef.current = descriptor.sessionId;
-      if (userClosedRef.current) {
-        await killSession(descriptor.sessionId);
-        return;
-      }
-      if (disposedRef.current) return;
-      setSessionId(descriptor.sessionId);
-      setBackend(descriptor.durableBackend ?? null);
-      attachSocket(descriptor.sessionId);
-    } catch (error) {
-      if (createMode !== "create") {
-        setStatus("closed");
-        setMessage("终端会话不可恢复，已从布局移除");
-        window.setTimeout(() => onClose(paneId), 0);
-        return;
-      }
-      setStatus("error");
-      setMessage(error instanceof Error ? error.message : "创建终端失败");
-    }
+    })();
+    startSessionInFlightRef.current = { terminalId, promise };
+    await promise;
   }, [attachSocket, createMode, cwd, killSession, onClose, paneId, profileId, rootId, shell, terminalId, title]);
 
   React.useEffect(() => {
     if (sessionId || status === "creating" || status === "connecting" || status === "running") return;
+    if (startSessionInFlightRef.current?.terminalId === terminalId) return;
     void startSession();
-  }, [sessionId, startSession, status]);
+  }, [sessionId, startSession, status, terminalId]);
 
   React.useEffect(() => {
     // Prop identity changes must not reuse the previous xterm/socket pair.
@@ -269,6 +285,7 @@ export function TerminalPaneView({
     userClosedRef.current = false;
     closeSocket();
     setTerminalFocused(false);
+    startSessionInFlightRef.current = null;
     sessionIdRef.current = null;
     setSessionId(null);
     setStatus("idle");

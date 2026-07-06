@@ -290,24 +290,15 @@ async function run() {
     }
 
     const closeTargetIds = [sid, activeTerminalId, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])];
-    const closeEndCounts = Object.fromEntries(closeTargetIds.map((sessionId) => [sessionId, 0]));
+    const closeBatchRequests = [];
+    const closeEndRequests = [];
     await page.unroute('**/api/terminal/end');
     await page.route('**/api/terminal/end', async (route) => {
-      const request = route.request();
-      const body = request.postDataJSON?.() ?? {};
-      const sessionId = String(body?.sid || '');
-      if (sessionId in closeEndCounts) closeEndCounts[sessionId] += 1;
-      if (sessionId === activeTerminalId) {
-        if (closeEndCounts[sessionId] === 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1_200));
-        }
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ message: 'forced smoke kill failure' }),
-        });
-        return;
-      }
+      closeEndRequests.push(route.request().postDataJSON?.() ?? {});
+      await route.continue();
+    });
+    await page.route('**/api/terminal/end-batch', async (route) => {
+      closeBatchRequests.push(route.request().postDataJSON?.() ?? {});
       await route.continue();
     });
     const closeAllStartedAt = Date.now();
@@ -326,16 +317,22 @@ async function run() {
       closeTargetIds,
       { timeout: 45_000 },
     );
-    const closeCountDeadline = Date.now() + 45_000;
-    while (Date.now() < closeCountDeadline) {
-      if (closeTargetIds.every((sessionId) => closeEndCounts[sessionId] >= (sessionId === activeTerminalId ? 2 : 1))) break;
+    const closeBatchDeadline = Date.now() + 45_000;
+    while (Date.now() < closeBatchDeadline) {
+      if (closeBatchRequests.length >= 1) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    for (const sessionId of closeTargetIds) {
-      const expectedCloseRequests = sessionId === activeTerminalId ? 2 : 1;
-      if (closeEndCounts[sessionId] !== expectedCloseRequests) {
-        throw new Error(`Terminal Manager close-all was not idempotent for ${sessionId}; expected ${expectedCloseRequests} close request(s), got ${closeEndCounts[sessionId]}`);
-      }
+    if (closeBatchRequests.length !== 1) {
+      throw new Error(`Terminal Manager close-all should send one batch close request, got ${closeBatchRequests.length}`);
+    }
+    const batchIds = new Set(Array.isArray(closeBatchRequests[0]?.sids) ? closeBatchRequests[0].sids : []);
+    const missingBatchIds = closeTargetIds.filter((sessionId) => !batchIds.has(sessionId));
+    if (missingBatchIds.length) {
+      throw new Error(`Terminal Manager close-all batch missed session ids: ${missingBatchIds.join(', ')}`);
+    }
+    const unexpectedPerSessionClose = closeEndRequests.filter((body) => closeTargetIds.includes(String(body?.sid || '')));
+    if (unexpectedPerSessionClose.length) {
+      throw new Error(`Terminal Manager close-all fell back to per-session close requests: ${JSON.stringify(unexpectedPerSessionClose)}`);
     }
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') === 0, { timeout: 30_000 });
     const layoutAfterFailedKill = await page.evaluate((sessionId) => ({

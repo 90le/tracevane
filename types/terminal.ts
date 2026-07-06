@@ -225,6 +225,17 @@ export interface TerminalEndResponse {
   ended: boolean;
 }
 
+export interface TerminalEndBatchPayload {
+  sids: string[];
+}
+
+export interface TerminalEndBatchResponse {
+  success: boolean;
+  total: number;
+  ended: number;
+  results: TerminalEndResponse[];
+}
+
 export interface TerminalInstallStreamEvent {
   type: "start" | "attempt" | "result" | "done" | "error";
   message?: string;

@@ -8,6 +8,7 @@ import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
   TerminalEndPayload,
+  TerminalEndBatchPayload,
   TerminalGatewayAttachPayload,
   TerminalInstallRequestId,
   TerminalTargetKind,
@@ -289,6 +290,11 @@ export function registerTerminalRoutes(
   router.post("/api/terminal/end", async (req, res, routeCtx) => {
     const body = await parseJsonBody<TerminalEndPayload>(req);
     sendJson(res, 200, await routeCtx.services.terminal.endSession(body));
+  });
+
+  router.post("/api/terminal/end-batch", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<TerminalEndBatchPayload>(req);
+    sendJson(res, 200, await routeCtx.services.terminal.endSessions(Array.isArray(body.sids) ? body.sids : []));
   });
 
   router.post(

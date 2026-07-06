@@ -1,10 +1,11 @@
 import type {
   TerminalEndResponse,
+  TerminalEndBatchResponse,
   TerminalGatewayAttachPayload,
   TerminalSessionDescriptor,
 } from "@/features/cli-agents/types";
 import { isApiError } from "@/lib/api/errors";
-import { createTerminalSession, deleteTerminalSession, endTerminalSession } from "@/lib/api/terminal";
+import { createTerminalSession, deleteTerminalSession, endTerminalSession, endTerminalSessions } from "@/lib/api/terminal";
 
 export type WorkbenchTerminalEvent =
   | {
@@ -87,6 +88,33 @@ export async function endWorkbenchTerminalSession(
   } catch (error) {
     if (options.queueOnFailure !== false) {
       enqueuePendingTerminalKill(sid);
+      schedulePendingTerminalKillFlush(options.retryDelayMs ?? 1_500);
+    }
+    throw error;
+  }
+}
+
+
+export interface EndWorkbenchTerminalSessionsResult {
+  requested: number;
+  ended: number;
+  failed: number;
+  results: TerminalEndResponse[];
+}
+
+export async function endWorkbenchTerminalSessions(
+  sessionIds: string[],
+  options: EndWorkbenchTerminalSessionOptions = {},
+): Promise<EndWorkbenchTerminalSessionsResult> {
+  const sids = [...new Set(sessionIds.map((sessionId) => normalizeTerminalSessionId(sessionId)).filter(Boolean))];
+  if (!sids.length) return { requested: 0, ended: 0, failed: 0, results: [] };
+  try {
+    const batch = await endTerminalSessions(sids);
+    await deleteEndedTerminalDescriptors(sids, options.retryDelayMs ?? 500);
+    return summarizeBatchEndResult(batch, sids.length);
+  } catch (error) {
+    if (options.queueOnFailure !== false) {
+      for (const sid of sids) enqueuePendingTerminalKill(sid);
       schedulePendingTerminalKillFlush(options.retryDelayMs ?? 1_500);
     }
     throw error;
@@ -186,6 +214,37 @@ async function endTerminalSessionWithRetries(
     }
   }
   throw lastError instanceof Error ? lastError : new Error("terminal session kill failed");
+}
+
+
+async function deleteEndedTerminalDescriptors(sids: string[], retryDelayMs: number): Promise<void> {
+  const results = await runWithConcurrency(sids, PENDING_TERMINAL_KILL_CONCURRENCY, async (sid) => {
+    try {
+      await deleteEndedTerminalDescriptor(sid, retryDelayMs);
+      return { sid, failed: false };
+    } catch {
+      return { sid, failed: true };
+    }
+  });
+  const failed = results.filter((result) => result.failed).map((result) => result.sid);
+  if (failed.length) {
+    for (const sid of failed) enqueuePendingTerminalKill(sid);
+    schedulePendingTerminalKillFlush(Math.max(750, retryDelayMs));
+  }
+}
+
+function summarizeBatchEndResult(
+  batch: TerminalEndBatchResponse,
+  requested: number,
+): EndWorkbenchTerminalSessionsResult {
+  const results = Array.isArray(batch.results) ? batch.results : [];
+  const ended = Number.isFinite(batch.ended) ? batch.ended : results.filter((result) => result.ended).length;
+  return {
+    requested,
+    ended,
+    failed: Math.max(0, requested - ended),
+    results,
+  };
 }
 
 async function deleteEndedTerminalDescriptor(sid: string, retryDelayMs: number): Promise<void> {
