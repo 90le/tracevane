@@ -233,6 +233,7 @@ export function TerminalPaneView({
         title,
         profileId,
         shell,
+        resume: createMode !== "create",
         ...dimensionsRef.current,
       });
       sessionIdRef.current = descriptor.sessionId;

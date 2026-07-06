@@ -227,6 +227,16 @@ async function runBackendTerminalRoundtrip(rootId) {
     shell: 'bash',
   }, 'terminal_profile_not_allowed');
 
+  await expectApiFailure('/api/terminal/sessions', {
+    sid: `${sid}-stale-resume`,
+    rootId,
+    workspaceId: rootId,
+    cwd,
+    profileId: 'local-shell',
+    shell: 'bash',
+    resume: true,
+  }, 'terminal_session_unavailable');
+
   const descriptor = await api('/api/terminal/sessions', {
     method: 'POST',
     body: JSON.stringify({

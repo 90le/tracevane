@@ -2009,6 +2009,14 @@ export function createTerminalService(
         reconcilePersistedDescriptor(persisted);
         throw new Error("terminal_session_unavailable");
       }
+
+      if (options.resumePersisted) {
+        // Resume is a reattach contract, not a create contract.  A stale
+        // workbench layout may still contain a generated terminal id after the
+        // backend descriptor was closed/deleted; opening the panel must remove
+        // that stale pane instead of spawning a brand-new shell.
+        throw new Error("terminal_session_unavailable");
+      }
     }
     return createSession(sessionId, options.metadata);
   }

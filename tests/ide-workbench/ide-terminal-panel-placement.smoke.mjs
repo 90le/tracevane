@@ -18,6 +18,16 @@ async function api(pathname, options = {}) {
   return data;
 }
 
+async function countRecoverableTerminalSessions() {
+  try {
+    const data = await api('/api/terminal/sessions');
+    const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+    return sessions.filter((session) => session?.canResume || session?.status === 'running' || session?.status === 'detached').length;
+  } catch {
+    return 0;
+  }
+}
+
 async function resetTerminalSessions() {
   let sessions = [];
   try {
@@ -162,6 +172,9 @@ async function run() {
     await page.locator('[data-ide-terminal-panel][data-ide-terminal-placement="bottom"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    if (await countRecoverableTerminalSessions() !== 0) {
+      throw new Error('Opening an empty terminal panel created recoverable backend terminal sessions');
+    }
 
     await page.getByRole('button', { name: 'Move Panel Right' }).click();
     await waitForPlacement(page, 'right');
@@ -171,10 +184,16 @@ async function run() {
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Moving an empty terminal panel right auto-created a terminal');
     }
+    if (await countRecoverableTerminalSessions() !== 0) {
+      throw new Error('Moving an empty terminal panel right created recoverable backend terminal sessions');
+    }
     await page.getByRole('button', { name: 'Move Panel Bottom' }).click();
     await waitForPlacement(page, 'bottom');
     await page.locator('[data-ide-terminal-panel][data-ide-terminal-placement="bottom"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    if (await countRecoverableTerminalSessions() !== 0) {
+      throw new Error('Moving an empty terminal panel bottom created recoverable backend terminal sessions');
+    }
 
     await page.locator('[data-ide-terminal-new]').click();
     await waitForRunnablePane(page, 0);

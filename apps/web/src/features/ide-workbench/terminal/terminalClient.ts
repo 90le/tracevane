@@ -30,6 +30,7 @@ export interface CreateWorkbenchTerminalOptions {
   title?: string | null;
   profileId?: string | null;
   shell?: string | null;
+  resume?: boolean;
 }
 
 declare global {
@@ -57,7 +58,7 @@ export function createWorkbenchTerminalSession(
     cols: options.cols ?? 80,
     rows: options.rows ?? 24,
     pinned: true,
-    resume: true,
+    resume: options.resume === true,
   };
   return createTerminalSession(payload);
 }
