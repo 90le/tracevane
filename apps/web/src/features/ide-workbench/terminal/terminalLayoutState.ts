@@ -739,7 +739,11 @@ function normalizePanes(value: Record<string, TerminalPaneRecord>): Record<strin
       createdAt: String(pane.createdAt || new Date().toISOString()),
       profileId: pane.profileId ?? null,
       shell: pane.shell ?? null,
-      createMode: pane.createMode === "create" ? "create" : "resume",
+      // createMode is intentionally ephemeral: it is only valid for a tab that
+      // was just created by the current UI action. Persisted/localStorage or
+      // server-restored layout metadata must never create a fresh PTY merely
+      // because the user expands the panel, refreshes, or switches workspaces.
+      createMode: "resume",
     };
   }
   return output;

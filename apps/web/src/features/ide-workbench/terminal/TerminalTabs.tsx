@@ -90,7 +90,8 @@ export function TerminalTabs({
 
   const openMenu = React.useCallback((tab: TerminalTabRecord, point: { x: number; y: number }) => {
     onFocusTab(tab.tabId);
-    setMenu({ tab, x: point.x, y: point.y });
+    const position = positionTerminalTabMenu(point.x, point.y);
+    setMenu({ tab, x: position.x, y: position.y });
   }, [onFocusTab]);
 
   const runMenuAction = React.useCallback((action: () => void) => {
@@ -324,8 +325,8 @@ export function TerminalTabs({
       {menu ? (
         <div
           role="menu"
-          className="fixed z-50 min-w-56 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
-          style={{ left: menu.x, top: menu.y }}
+          className="fixed z-50 min-w-56 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          style={{ left: menu.x, top: menu.y, maxHeight: `calc(100vh - ${menu.y + 8}px)` }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-terminal-tab-context-menu
           data-terminal-tab-id={menu.tab.tabId}
@@ -387,6 +388,20 @@ export function TerminalTabs({
   );
 }
 
+
+function positionTerminalTabMenu(x: number, y: number): { x: number; y: number } {
+  const width = 224;
+  const height = 286;
+  const padding = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+  const maxX = Math.max(padding, viewportWidth - width - padding);
+  const maxY = Math.max(padding, viewportHeight - height - padding);
+  return {
+    x: Math.max(padding, Math.min(x, maxX)),
+    y: Math.max(padding, Math.min(y, maxY)),
+  };
+}
 
 function positionNewTerminalMenu(rect: DOMRect): { x: number; y: number } {
   const width = 288;

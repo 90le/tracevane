@@ -43,6 +43,16 @@ async function waitForTabCount(page, minCount) {
   if (count < minCount) throw new Error(`Expected at least ${minCount} terminal tabs, got ${count}`);
 }
 
+async function waitForTabCountExactly(page, expectedCount) {
+  await page.waitForFunction(
+    (expected) => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === expected,
+    expectedCount,
+    { timeout: 45_000 },
+  );
+  const count = await page.locator('[data-ide-terminal-tab]').count();
+  if (count !== expectedCount) throw new Error(`Expected exactly ${expectedCount} terminal tabs, got ${count}`);
+}
+
 async function waitForPaneCount(page, minCount) {
   await page.waitForFunction(
     (expected) => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') >= expected,
@@ -158,6 +168,55 @@ async function run() {
     await waitForPaneCountExactly(page, 1);
     await waitForRunnablePane(page, 0);
     await echoInPane(page, 0, `TRACEVANE_M5XA_NEW_TAB_${Date.now()}`);
+
+    const closingTabId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-tab-id');
+    const closingTabTerminalId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-terminal-id');
+    if (!closingTabId || !closingTabTerminalId) throw new Error('Missing active terminal tab/session id before close-tab latency check');
+    let closeTabRequestCount = 0;
+    await page.route('**/api/terminal/end', async (route) => {
+      let sid = '';
+      try {
+        sid = String(route.request().postDataJSON()?.sid || '');
+      } catch {
+        sid = '';
+      }
+      if (sid === closingTabTerminalId) {
+        closeTabRequestCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, delayedBySmoke: true }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.locator(`[data-ide-terminal-tab-menu][data-terminal-tab-id="${closingTabId}"]`).click();
+    const closeTabStartedAt = Date.now();
+    await page.locator('[data-ide-terminal-tab-menu-item="close-tab"]').evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement)) throw new Error('Close-tab menu item is not a button');
+      button.click();
+    });
+    await waitForTabCountExactly(page, 1);
+    const closeTabUiElapsedMs = Date.now() - closeTabStartedAt;
+    if (closeTabUiElapsedMs >= 1_000) {
+      throw new Error(`Terminal tab UI waited for backend close before removing tab: ${closeTabUiElapsedMs}ms`);
+    }
+    const closeTabCountDeadline = Date.now() + 10_000;
+    while (Date.now() < closeTabCountDeadline && closeTabRequestCount < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (closeTabRequestCount !== 1) {
+      throw new Error(`Terminal tab close expected 1 backend close request, got ${closeTabRequestCount}`);
+    }
+    await page.waitForTimeout(1_300);
+    await page.unroute('**/api/terminal/end');
+
+    await page.locator('[data-ide-terminal-new]').click();
+    await waitForTabCount(page, 2);
+    await waitForPaneCountExactly(page, 1);
+    await waitForRunnablePane(page, 0);
 
     await splitActiveTerminalTab(page, 'right');
     await waitForPaneCount(page, 2);

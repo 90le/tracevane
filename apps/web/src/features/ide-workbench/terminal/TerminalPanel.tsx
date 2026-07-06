@@ -80,7 +80,7 @@ export function TerminalPanel({
     const failed = results.filter((result) => result.status === "rejected").length;
     if (failed > 0) {
       toast.warning("终端已从界面强制关闭，后台会继续重试清理残留进程", {
-        description: `${failed}/${terminalIds.length} 个 session 未即时确认 kill，已加入持久重试队列。`,
+        description: `${failed}/${terminalIds.length} 个终端会话未即时确认关闭，已加入持久重试队列。`,
       });
     }
     return { failed };
@@ -94,21 +94,23 @@ export function TerminalPanel({
     layoutApi.splitTabById(tabId, orientation);
   }, [layout.activeTabId, layoutApi]);
 
-  const closeTab = React.useCallback(async (tab: NonNullable<typeof activeTab>) => {
-    await killTabSessions([tab]);
+  const closeTab = React.useCallback((tab: NonNullable<typeof activeTab>) => {
     layoutApi.closeTab(tab.tabId);
+    void killTabSessions([tab]);
   }, [killTabSessions, layoutApi]);
 
-  const closeOtherTabs = React.useCallback(async (tab: NonNullable<typeof activeTab>) => {
-    await killTabSessions(layout.tabs.filter((item) => item.tabId !== tab.tabId));
+  const closeOtherTabs = React.useCallback((tab: NonNullable<typeof activeTab>) => {
+    const tabsToKill = layout.tabs.filter((item) => item.tabId !== tab.tabId);
     layoutApi.closeOtherTabs(tab.tabId);
+    void killTabSessions(tabsToKill);
   }, [killTabSessions, layout.tabs, layoutApi]);
 
-  const closeTabsToRight = React.useCallback(async (tab: NonNullable<typeof activeTab>) => {
+  const closeTabsToRight = React.useCallback((tab: NonNullable<typeof activeTab>) => {
     const index = layout.tabs.findIndex((item) => item.tabId === tab.tabId);
     if (index < 0) return;
-    await killTabSessions(layout.tabs.slice(index + 1));
+    const tabsToKill = layout.tabs.slice(index + 1);
     layoutApi.closeTabsToRight(tab.tabId);
+    void killTabSessions(tabsToKill);
   }, [killTabSessions, layout.tabs, layoutApi]);
 
   return (

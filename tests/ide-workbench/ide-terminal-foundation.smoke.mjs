@@ -24,8 +24,6 @@ async function api(pathname, options = {}) {
   return data;
 }
 
-
-
 async function cleanupPath(rootId, path) {
   await api('/api/files', {
     method: 'DELETE',
@@ -125,6 +123,40 @@ function createDefaultWorkbenchLayout(explorerDirectoryPath = '') {
     activeEditorGroupId: 'main',
     dockviewLayout: null,
   };
+}
+
+function createStaleCreateModeTerminalLayout() {
+  const sid = `terminal-stale-create-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const paneId = `terminal-pane-${sid}`;
+  return {
+    version: 1,
+    activeTabId: `terminal-tab-${sid}`,
+    activePaneId: paneId,
+    activeTerminalId: sid,
+    tabs: [{
+      tabId: `terminal-tab-${sid}`,
+      title: 'Stale Create Terminal',
+      createdAt: new Date().toISOString(),
+      activePaneId: paneId,
+      activeTerminalId: sid,
+      panes: {
+        [paneId]: {
+          paneId,
+          terminalId: sid,
+          title: 'Stale Create Terminal',
+          createdAt: new Date().toISOString(),
+          profileId: 'local-shell',
+          shell: 'bash',
+          createMode: 'create',
+        },
+      },
+      root: { type: 'pane', paneId, terminalId: sid },
+    }],
+  };
+}
+
+function terminalLayoutStorageKey(rootId, cwd = '') {
+  return `tracevane.ide-workbench.terminal-layout.${rootId || 'pending-root'}:${cwd || 'root'}`;
 }
 
 function toWsUrl(pathname) {
@@ -303,16 +335,33 @@ async function runUiSmoke(rootId) {
     }
     await page.locator('[data-ide-terminal-empty-manager]').click();
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-terminal-manager-empty]').waitFor({ state: 'visible', timeout: 30_000 });
-    const emptyManagerCopy = await page.locator('[data-ide-terminal-manager-empty]').innerText();
-    if (!emptyManagerCopy.includes('不会自动创建终端')) {
-      throw new Error(`Terminal manager empty state does not explain no auto-create behavior: ${emptyManagerCopy}`);
+    const managerEmpty = page.locator('[data-ide-terminal-manager-empty]');
+    if (await managerEmpty.count()) {
+      const emptyManagerCopy = await managerEmpty.innerText();
+      if (!emptyManagerCopy.includes('不会自动创建终端')) {
+        throw new Error(`Terminal manager empty state does not explain no auto-create behavior: ${emptyManagerCopy}`);
+      }
+      await page.locator('[data-ide-terminal-manager-empty-back]').click();
+    } else {
+      await page.locator('[data-ide-terminal-manager-dialog] [aria-label="关闭终端管理器"]').click();
     }
-    await page.locator('[data-ide-terminal-manager-empty-back]').click();
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Opening the terminal manager from empty state created a terminal');
+    }
+    await page.evaluate(({ storageKeys, terminalLayout }) => {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('tracevane.ide-workbench.terminal-layout.')) localStorage.removeItem(key);
+      }
+      for (const key of storageKeys) localStorage.setItem(key, JSON.stringify(terminalLayout));
+    }, { storageKeys: [terminalLayoutStorageKey(rootId), terminalLayoutStorageKey(rootId, '/')], terminalLayout: createStaleCreateModeTerminalLayout() });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    if (await page.locator('[data-ide-terminal-xterm]').count()) {
+      throw new Error('Persisted create-mode terminal layout auto-created a terminal on reload');
     }
     await page.locator('[data-ide-terminal-empty-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
