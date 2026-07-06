@@ -8945,6 +8945,817 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   });
 });
 
+test("model gateway maps responses refusal output through chat and anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-refusal",
+      name: "Responses Refusal Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://responses-refusal.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-refusal-secret",
+    },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const requestBody = JSON.parse(String(init.body || "{}"));
+    const refusal = requestBody.stream ? "Streamed refusal." : "Non-stream refusal.";
+    if (requestBody.stream) {
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_refusal_stream\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-native-responses\",\"output\":[],\"usage\":null}}",
+        "",
+        "event: response.output_item.added",
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_refusal_stream\",\"type\":\"message\",\"status\":\"in_progress\",\"role\":\"assistant\",\"content\":[]}}",
+        "",
+        "event: response.content_part.added",
+        "data: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_refusal_stream\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"\"}}",
+        "",
+        "event: response.refusal.delta",
+        "data: {\"type\":\"response.refusal.delta\",\"item_id\":\"msg_refusal_stream\",\"output_index\":0,\"content_index\":0,\"delta\":\"Streamed \"}",
+        "",
+        "event: response.refusal.delta",
+        "data: {\"type\":\"response.refusal.delta\",\"item_id\":\"msg_refusal_stream\",\"output_index\":0,\"content_index\":0,\"delta\":\"refusal.\"}",
+        "",
+        "event: response.refusal.done",
+        "data: {\"type\":\"response.refusal.done\",\"item_id\":\"msg_refusal_stream\",\"output_index\":0,\"content_index\":0,\"refusal\":\"Streamed refusal.\"}",
+        "",
+        "event: response.content_part.done",
+        "data: {\"type\":\"response.content_part.done\",\"item_id\":\"msg_refusal_stream\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"refusal\",\"refusal\":\"Streamed refusal.\"}}",
+        "",
+        "event: response.output_item.done",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_refusal_stream\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"Streamed refusal.\"}]}}",
+        "",
+        "event: response.completed",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_refusal_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"id\":\"msg_refusal_stream\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"refusal\",\"refusal\":\"Streamed refusal.\"}]}],\"usage\":{\"input_tokens\":5,\"output_tokens\":3,\"total_tokens\":8}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_refusal",
+      object: "response",
+      status: "completed",
+      model: "gpt-native-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "refusal", refusal }],
+      }],
+      usage: {
+        input_tokens: 7,
+        output_tokens: 4,
+        total_tokens: 11,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          messages: [{ role: "user", content: "refuse via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Non-stream refusal.");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 32,
+          messages: [{ role: "user", content: "refuse via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: "Non-stream refusal." }]);
+
+      const chatStream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          stream: true,
+          messages: [{ role: "user", content: "stream refusal via chat" }],
+        },
+      });
+      assert.equal(chatStream.status, 200);
+      const chatEvents = parseSseEvents(chatStream.body);
+      assert.equal(chatEvents[1].data.choices[0].delta.content, "Streamed ");
+      assert.equal(chatEvents[2].data.choices[0].delta.content, "refusal.");
+      assert.equal(chatEvents[3].data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents[4].data, "[DONE]");
+
+      const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 32,
+          stream: true,
+          messages: [{ role: "user", content: "stream refusal via anthropic" }],
+        },
+      });
+      assert.equal(messageStream.status, 200);
+      const messageEvents = parseSseEvents(messageStream.body);
+      assert.deepEqual(messageEvents.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.equal(messageEvents[2].data.delta.text, "Streamed ");
+      assert.equal(messageEvents[3].data.delta.text, "refusal.");
+      assert.equal(messageEvents[5].data.delta.stop_reason, "end_turn");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 4);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-refusal.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-responses-refusal-secret"));
+  assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream === true), [false, false, true, true]);
+});
+
+
+test("model gateway exposes non-streaming responses mcp outputs through chat and anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-mcp-output",
+      name: "Responses MCP Output Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://responses-mcp-output.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-mcp-output-secret" },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: `resp_mcp_output_${upstreamCalls.length}`,
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [
+        {
+          type: "mcp_list_tools",
+          server_label: "repo-tools",
+          tools: [{ name: "read_file" }, { name: "search" }],
+        },
+        {
+          type: "mcp_call",
+          server_label: "repo-tools",
+          name: "read_file",
+          arguments: "{\"path\":\"README.md\"}",
+          output: { path: "README.md", text: "Hello from MCP" },
+          status: "completed",
+        },
+      ],
+      usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const expectedText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]"
+    + "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "use mcp via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, expectedText);
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 128,
+          messages: [{ role: "user", content: "use mcp via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: expectedText }]);
+      assert.equal(messages.body.stop_reason, "end_turn");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-mcp-output.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-responses-mcp-output-secret"));
+});
+
+test("model gateway exposes streaming responses mcp outputs through chat and anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-mcp-output-stream",
+      name: "Responses MCP Output Stream Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://responses-mcp-output-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-mcp-output-stream-secret" },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const mcpListItem = {
+    id: "mcp_list_1",
+    type: "mcp_list_tools",
+    server_label: "repo-tools",
+    tools: [{ name: "read_file" }, { name: "search" }],
+  };
+  const mcpCallItem = {
+    id: "mcp_call_1",
+    type: "mcp_call",
+    server_label: "repo-tools",
+    name: "read_file",
+    arguments: "{\"path\":\"README.md\"}",
+    output: { path: "README.md", text: "Hello from MCP" },
+    status: "completed",
+  };
+  globalThis.fetch = async (url, init = {}) => {
+    const requestBody = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: requestBody,
+    });
+    const response = {
+      id: `resp_mcp_output_stream_${upstreamCalls.length}`,
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [mcpListItem, mcpCallItem],
+      usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+    };
+    const upstreamSse = [
+      `event: response.created\ndata: ${JSON.stringify({ response: { ...response, status: "in_progress", output: [] } })}`,
+      `event: response.output_item.added\ndata: ${JSON.stringify({ output_index: 0, item: { ...mcpListItem, tools: [] } })}`,
+      `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 0, item: mcpListItem })}`,
+      `event: response.output_item.added\ndata: ${JSON.stringify({ output_index: 1, item: { ...mcpCallItem, output: undefined } })}`,
+      `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 1, item: mcpCallItem })}`,
+      `event: response.completed\ndata: ${JSON.stringify({ response })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const expectedListText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]";
+  const expectedCallText = "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          stream: true,
+          messages: [{ role: "user", content: "stream mcp via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      const chatEvents = parseSseEvents(chat.body);
+      const chatText = chatEvents
+        .filter((item) => item.data !== "[DONE]")
+        .map((item) => item.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(chatText, expectedListText + expectedCallText);
+      assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+
+      const messages = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 128,
+          stream: true,
+          messages: [{ role: "user", content: "stream mcp via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      const messageEvents = parseSseEvents(messages.body);
+      const messageText = messageEvents
+        .filter((item) => item.event === "content_block_delta")
+        .map((item) => item.data.delta.text || "")
+        .join("");
+      assert.equal(messageText, expectedListText + expectedCallText);
+      const messageDelta = messageEvents.find((item) => item.event === "message_delta");
+      assert.equal(messageDelta.data.delta.stop_reason, "end_turn");
+      assert.equal(messageEvents.at(-1).event, "message_stop");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-mcp-output-stream.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-responses-mcp-output-stream-secret"));
+  assert.ok(upstreamCalls.every((call) => call.body.stream === true));
+});
+
+test("model gateway maps chat refusal output through anthropic and codex adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-refusal",
+      name: "Chat Refusal Provider",
+      appScopes: ["claude-code", "codex"],
+      baseUrl: "https://chat-refusal.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-chat-refusal-secret",
+    },
+    setActiveScopes: ["claude-code", "codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const requestBody = JSON.parse(String(init.body || "{}"));
+    if (requestBody.stream) {
+      const upstreamSse = [
+        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"Streamed \"},\"finish_reason\":null}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"chat refusal.\"},\"finish_reason\":null}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_refusal",
+      object: "chat.completion",
+      created: 1_710_000_042,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          refusal: "Non-stream chat refusal.",
+        },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 7,
+        completion_tokens: 4,
+        total_tokens: 11,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          max_tokens: 32,
+          messages: [{ role: "user", content: "refuse via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: "Non-stream chat refusal." }]);
+
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "refuse via responses",
+        },
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.output[0].content[0].text, "Non-stream chat refusal.");
+
+      const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          max_tokens: 32,
+          stream: true,
+          messages: [{ role: "user", content: "stream refusal via anthropic" }],
+        },
+      });
+      assert.equal(messageStream.status, 200);
+      const messageEvents = parseSseEvents(messageStream.body);
+      assert.equal(messageEvents[2].data.delta.text, "Streamed ");
+      assert.equal(messageEvents[3].data.delta.text, "chat refusal.");
+      assert.equal(messageEvents[5].data.delta.stop_reason, "end_turn");
+
+      const responsesStream = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "stream refusal via responses",
+          stream: true,
+        },
+      });
+      assert.equal(responsesStream.status, 200);
+      const responseEvents = parseSseEvents(responsesStream.body);
+      assert.equal(responseEvents[4].event, "response.output_text.delta");
+      assert.equal(responseEvents[4].data.delta, "Streamed ");
+      assert.equal(responseEvents[5].event, "response.output_text.delta");
+      assert.equal(responseEvents[5].data.delta, "chat refusal.");
+      assert.equal(responseEvents[9].event, "response.completed");
+      assert.equal(responseEvents[9].data.response.output[0].content[0].text, "Streamed chat refusal.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 4);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://chat-refusal.example.test/v1/chat/completions"));
+  assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-chat-refusal-secret"));
+  assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream === true), [false, false, true, true]);
+});
+
+test("model gateway maps non-streaming responses incomplete status to client stop reasons", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-incomplete",
+      name: "Responses Incomplete Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://responses-incomplete.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-incomplete-secret",
+    },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: `resp_incomplete_${upstreamCalls.length}`,
+      object: "response",
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      model: "gpt-native-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Partial answer", annotations: [] }],
+      }],
+      usage: {
+        input_tokens: 6,
+        output_tokens: 3,
+        total_tokens: 9,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          messages: [{ role: "user", content: "truncate via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Partial answer");
+      assert.equal(chat.body.choices[0].finish_reason, "length");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 3,
+          messages: [{ role: "user", content: "truncate via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: "Partial answer" }]);
+      assert.equal(messages.body.stop_reason, "max_tokens");
+      assert.deepEqual(messages.body.usage, {
+        input_tokens: 6,
+        output_tokens: 3,
+        cache_read_input_tokens: 0,
+      });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-incomplete.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-responses-incomplete-secret"));
+  assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream), [false, false]);
+});
+
+test("model gateway preserves service tier across chat and responses adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-service-tier",
+      name: "Responses Service Tier Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://responses-service-tier.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-service-tier-secret" },
+    setActiveScopes: ["openclaw"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-service-tier",
+      name: "Chat Service Tier Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-service-tier.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-service-tier-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    if (String(url).includes("responses-service-tier")) {
+      return new Response(JSON.stringify({
+        id: "resp_service_tier",
+        object: "response",
+        status: "completed",
+        model: "gpt-native-responses",
+        service_tier: "default",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Responses tier kept." }],
+        }],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_service_tier",
+      object: "chat.completion",
+      created: 1_710_000_043,
+      model: "gpt-chat",
+      service_tier: "flex",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Chat tier kept." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          service_tier: "flex",
+          messages: [{ role: "user", content: "chat via responses" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Responses tier kept.");
+      assert.equal(chat.body.service_tier, "default");
+
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          service_tier: "priority",
+          input: "responses via chat",
+        },
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.output[0].content[0].text, "Chat tier kept.");
+      assert.equal(responses.body.service_tier, "flex");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-service-tier.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-service-tier-secret");
+  assert.equal(upstreamCalls[0].body.service_tier, "flex");
+  assert.equal(upstreamCalls[1].url, "https://chat-service-tier.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-chat-service-tier-secret");
+  assert.equal(upstreamCalls[1].body.service_tier, "priority");
+});
+
+
+test("model gateway preserves modern responses request controls through chat adapter", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-modern-controls",
+      name: "Responses Modern Controls Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://responses-modern-controls.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-modern-controls-secret" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_modern_controls",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Modern controls preserved." }],
+      }],
+      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "preserve modern responses controls" }],
+          background: true,
+          conversation: "conv_123",
+          include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+          max_tool_calls: 7,
+          metadata: { trace_id: "strip-for-codex-responses" },
+          previous_response_id: "resp_previous",
+          prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
+          prompt_cache_key: "cache-key-123",
+          safety_identifier: "user-hash-123",
+          store: false,
+          stream_options: { include_usage: true },
+          top_logprobs: 3,
+          truncation: "auto",
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Modern controls preserved.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://responses-modern-controls.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-modern-controls-secret");
+  assert.deepEqual(upstreamCalls[0].body, {
+    model: "gpt-5.4",
+    input: [{ role: "user", content: [{ type: "input_text", text: "preserve modern responses controls" }] }],
+    stream: false,
+    background: true,
+    conversation: "conv_123",
+    include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+    max_tool_calls: 7,
+    previous_response_id: "resp_previous",
+    prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
+    prompt_cache_key: "cache-key-123",
+    safety_identifier: "user-hash-123",
+    store: false,
+    stream_options: { include_usage: true },
+    top_logprobs: 3,
+    truncation: "auto",
+  });
+});
+
 test("model gateway protocol matrix forwards native anthropic messages", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -11219,7 +12030,9 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           model: "gpt-reasoner",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Think." }],
+          metadata: { trace_id: "chat-strict-should-strip" },
           output_config: { effort: "xhigh" },
+          service_tier: "standard_only",
           stream: false,
         },
       });
@@ -11243,6 +12056,24 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           model: "gpt-reasoner",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Think." }],
+          metadata: { trace_id: "responses-should-preserve", session_id: "claude-code-session" },
+          service_tier: "standard_only",
+          mcp_servers: [
+            {
+              type: "url",
+              name: "repo-tools",
+              url: "https://mcp.example.test/sse",
+              description: "Repository tools",
+              authorization_token: "mcp-oauth-token",
+              tool_configuration: { enabled: true, allowed_tools: ["read_file", "search"] },
+            },
+            {
+              type: "url",
+              name: "disabled-tools",
+              url: "https://disabled-mcp.example.test/sse",
+              tool_configuration: { enabled: false, allowed_tools: ["delete_everything"] },
+            },
+          ],
           output_config: { effort: "max" },
           stream: false,
         },
@@ -11270,10 +12101,22 @@ test("model gateway carries reasoning effort across responses chat and anthropic
 
   assert.equal(upstreamCalls[3].url, "https://anthropic-to-chat-reasoning.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[3].body.reasoning_effort, "xhigh");
+  assert.equal("metadata" in upstreamCalls[3].body, false);
+  assert.equal("service_tier" in upstreamCalls[3].body, false);
   assert.equal("output_config" in upstreamCalls[3].body, false);
 
   assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
+  assert.equal("metadata" in upstreamCalls[4].body, false);
+  assert.equal(upstreamCalls[4].body.service_tier, "default");
   assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });
+  assert.deepEqual(upstreamCalls[4].body.tools, [{
+    type: "mcp",
+    server_label: "repo-tools",
+    server_url: "https://mcp.example.test/sse",
+    server_description: "Repository tools",
+    authorization: "mcp-oauth-token",
+    allowed_tools: ["read_file", "search"],
+  }]);
   assert.equal("output_config" in upstreamCalls[4].body, false);
 });
 

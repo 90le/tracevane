@@ -10710,7 +10710,10 @@ export function createModelGatewayService(
       }
     } else if (useAnthropicMessagesResponsesProviderAdapter) {
       try {
-        const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText);
+        const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText, {
+          preserveMcpServers: true,
+          preserveServiceTier: true,
+        });
         const responsesAdapted = adaptChatCompletionRequestToResponses(JSON.stringify(chatAdapted.chatRequest), {
           allowStreaming: true,
         });

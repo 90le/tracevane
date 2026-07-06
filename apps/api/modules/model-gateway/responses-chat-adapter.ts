@@ -63,14 +63,29 @@ export function adaptChatCompletionRequestToResponses(
   const instructions = extractInstructions(request.messages);
   if (instructions) responsesRequest.instructions = instructions;
 
+  // Do not forward Chat/Claude metadata through adapter-generated Responses
+  // requests. The Codex account Responses endpoint rejects it as an unsupported
+  // parameter, which breaks Claude Code CLI compatibility.
   copyScalarFields(request, responsesRequest, [
+    "background",
+    "conversation",
     "frequency_penalty",
-    "metadata",
+    "include",
+    "max_tool_calls",
     "parallel_tool_calls",
+    "previous_response_id",
     "presence_penalty",
+    "prompt",
+    "prompt_cache_key",
+    "safety_identifier",
     "seed",
+    "service_tier",
+    "store",
+    "stream_options",
     "temperature",
+    "top_logprobs",
     "top_p",
+    "truncation",
     "user",
   ]);
 
@@ -117,7 +132,7 @@ export function adaptResponsesToChatCompletion(response: unknown, fallbackModel:
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
 
-  return {
+  const chatCompletion: JsonRecord = {
     id: stringOrNull(response.id) || `chatcmpl_${Date.now().toString(36)}`,
     object: "chat.completion",
     created: numberOrNull(response.created_at) || Math.floor(Date.now() / 1_000),
@@ -125,10 +140,18 @@ export function adaptResponsesToChatCompletion(response: unknown, fallbackModel:
     choices: [{
       index: 0,
       message,
-      finish_reason: toolCalls.length ? "tool_calls" : "stop",
+      finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0),
     }],
     usage: mapResponsesUsageToChat(response.usage),
   };
+  if (response.service_tier !== undefined) chatCompletion.service_tier = response.service_tier;
+  return chatCompletion;
+}
+
+function mapResponsesFinishReasonToChat(response: JsonRecord, hasToolCalls: boolean): string {
+  if (hasToolCalls) return "tool_calls";
+  if (response.status === "incomplete") return "length";
+  return "stop";
 }
 
 function parseJsonObject(bodyText: string | undefined): JsonRecord {
@@ -349,14 +372,53 @@ function collectResponseOutputText(response: JsonRecord, output: unknown[]): str
   if (outputText) return outputText;
 
   return output
-    .map((item) => {
-      if (!isRecord(item)) return "";
-      if (item.type === "message") return responseContentToText(item.content);
-      if (item.type === "output_text") return stringOrNull(item.text) || "";
-      return "";
-    })
+    .map(responseOutputItemToText)
     .filter(Boolean)
     .join("");
+}
+
+function responseOutputItemToText(item: unknown): string {
+  if (!isRecord(item)) return "";
+  if (item.type === "message") return responseContentToText(item.content);
+  if (item.type === "output_text") return stringOrNull(item.text) || "";
+  if (item.type === "refusal") return stringOrNull(item.refusal) || "";
+  if (item.type === "mcp_call") return mcpCallOutputToText(item);
+  if (item.type === "mcp_list_tools") return mcpListToolsOutputToText(item);
+  return "";
+}
+
+function mcpCallOutputToText(item: JsonRecord): string {
+  const output = item.output ?? item.result ?? item.content;
+  const error = item.error;
+  const body = output !== undefined
+    ? ` output: ${stringifyCompact(output)}`
+    : error !== undefined
+      ? ` error: ${stringifyCompact(error)}`
+      : "";
+  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
+  const name = stringOrNull(item.name) || stringOrNull(item.tool_name) || stringOrNull(item.call_id) || "tool";
+  return `[OpenAI Responses mcp_call ${server}.${name}${body}]`;
+}
+
+function mcpListToolsOutputToText(item: JsonRecord): string {
+  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
+  const tools = Array.isArray(item.tools)
+    ? item.tools
+      .map((tool) => isRecord(tool) ? stringOrNull(tool.name) : null)
+      .filter((name): name is string => Boolean(name))
+    : [];
+  return tools.length
+    ? `[OpenAI Responses mcp_list_tools ${server}: ${tools.join(", ")}]`
+    : `[OpenAI Responses mcp_list_tools ${server}]`;
+}
+
+function stringifyCompact(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function collectResponseOutputAnnotations(output: unknown[]): JsonRecord[] {
@@ -389,7 +451,7 @@ function responseContentToText(content: unknown): string {
     .map((part) => {
       if (typeof part === "string") return part;
       if (!isRecord(part)) return "";
-      return stringOrNull(part.text) || stringOrNull(part.output_text) || "";
+      return stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.refusal) || "";
     })
     .filter(Boolean)
     .join("");

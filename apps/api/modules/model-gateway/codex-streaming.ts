@@ -232,7 +232,7 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   const delta = isRecord(choice.delta) ? choice.delta : {};
   const reasoningDelta = extractReasoningDelta(delta);
   if (reasoningDelta) pushReasoningDelta(reasoningDelta, state, res);
-  const content = stringOrNull(delta.content);
+  const content = stringOrNull(delta.content) || stringOrNull(delta.refusal);
   if (content) {
     const parts = splitContentAndInlineReasoning(content, state);
     if (parts.reasoning) pushReasoningDelta(parts.reasoning, state, res);

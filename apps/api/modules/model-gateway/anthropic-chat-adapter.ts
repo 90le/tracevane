@@ -35,6 +35,12 @@ export interface ChatAnthropicRequestAdapterOptions {
   allowStreaming?: boolean;
 }
 
+export interface AnthropicChatRequestAdapterOptions {
+  preserveMcpServers?: boolean;
+  preserveMetadata?: boolean;
+  preserveServiceTier?: boolean;
+}
+
 export function isChatToAnthropicMessagesAdapterTarget(decision: {
   routeId: string | null;
   provider: { apiFormat: string } | null;
@@ -148,7 +154,10 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   return { anthropicRequest, model, stream };
 }
 
-export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string | undefined): AnthropicChatRequestAdapterResult {
+export function adaptAnthropicMessagesRequestToChatCompletion(
+  bodyText: string | undefined,
+  options: AnthropicChatRequestAdapterOptions = {},
+): AnthropicChatRequestAdapterResult {
   const request = parseJsonObject(
     bodyText,
     "model_gateway_anthropic_chat",
@@ -177,8 +186,14 @@ export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string |
     "temperature",
     "top_p",
   ]);
+  if (options.preserveMetadata && request.metadata !== undefined) chatRequest.metadata = request.metadata;
+  if (options.preserveServiceTier) {
+    const serviceTier = mapAnthropicServiceTierToOpenAI(request.service_tier);
+    if (serviceTier) chatRequest.service_tier = serviceTier;
+  }
 
   const tools = mapAnthropicToolsToChat(request.tools);
+  if (options.preserveMcpServers) tools.push(...mapAnthropicMcpServersToResponsesTools(request.mcp_servers));
   if (tools.length) chatRequest.tools = tools;
 
   const toolChoice = mapAnthropicToolChoiceToChat(request.tool_choice);
@@ -250,7 +265,7 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
 
   const choice = firstChoice(response);
   const message = isRecord(choice?.message) ? choice.message : {};
-  const text = chatContentToText(message.content);
+  const text = chatMessageText(message);
   const toolUses = Array.isArray(message.tool_calls)
     ? message.tool_calls
       .map(mapChatToolCallToAnthropicToolUse)
@@ -678,6 +693,43 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
   });
 }
 
+function mapAnthropicServiceTierToOpenAI(value: unknown): string | null {
+  const tier = stringOrNull(value);
+  if (!tier) return null;
+  if (tier === "standard_only") return "default";
+  if (tier === "auto" || tier === "default" || tier === "flex" || tier === "priority") return tier;
+  return null;
+}
+
+function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown): JsonRecord[] {
+  if (!Array.isArray(mcpServers)) return [];
+  return mcpServers.flatMap((server) => {
+    if (!isRecord(server)) return [];
+    if (server.type !== "url") return [];
+    const serverLabel = stringOrNull(server.name) || stringOrNull(server.server_label);
+    const serverUrl = stringOrNull(server.url) || stringOrNull(server.server_url);
+    if (!serverLabel || !serverUrl) return [];
+
+    const toolConfiguration = isRecord(server.tool_configuration) ? server.tool_configuration : null;
+    if (toolConfiguration?.enabled === false) return [];
+
+    const tool: JsonRecord = {
+      type: "mcp",
+      server_label: serverLabel,
+      server_url: serverUrl,
+    };
+    const description = stringOrNull(server.description) || stringOrNull(server.server_description);
+    if (description) tool.server_description = description;
+    const authorization = stringOrNull(server.authorization_token) || stringOrNull(server.authorization);
+    if (authorization) tool.authorization = authorization;
+    if (Array.isArray(toolConfiguration?.allowed_tools)) {
+      const allowedTools = toolConfiguration.allowed_tools.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+      if (allowedTools.length) tool.allowed_tools = allowedTools;
+    }
+    return [tool];
+  });
+}
+
 function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
@@ -784,6 +836,10 @@ function parseToolArguments(value: unknown): unknown {
   } catch {
     return {};
   }
+}
+
+function chatMessageText(message: JsonRecord): string {
+  return chatContentToText(message.content) || stringOrNull(message.refusal) || "";
 }
 
 function chatContentToText(content: unknown): string {

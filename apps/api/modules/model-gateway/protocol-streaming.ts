@@ -110,7 +110,7 @@ export async function writeAnthropicMessagesSseFromChatSse(
       const choice = firstChoice(event.json);
       if (!choice) return;
       const delta = isRecord(choice.delta) ? choice.delta : {};
-      const content = stringOrNull(delta.content);
+      const content = stringOrNull(delta.content) || stringOrNull(delta.refusal);
       if (content) pushAnthropicTextDeltaFromChat(state, res, content);
       if (Array.isArray(delta.tool_calls)) {
         for (const toolDelta of delta.tool_calls) pushAnthropicToolDeltaFromChat(state, res, toolDelta);
@@ -256,6 +256,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
   const toolIndexByItemId = new Map<string, number>();
+  const emittedMcpItemKeys = new Set<string>();
   let sawCompleted = false;
 
   try {
@@ -287,8 +288,8 @@ export async function writeChatCompletionsSseFromResponsesSse(
       if (id) state.id = id;
       const model = stringOrNull(response.model);
       if (model) state.model = model;
-      if (event.event === "response.output_text.delta") {
-        const delta = stringOrNull(event.json.delta);
+      if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
+        const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
           ensureChatStreamStart(state, res);
           writeChatTextDelta(state, res, delta);
@@ -338,6 +339,15 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+        if (isResponsesMcpOutputItem(event.json.item)) {
+          const text = responsesMcpOutputItemToText(event.json.item);
+          if (text) {
+            emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
+            ensureChatStreamStart(state, res);
+            writeChatTextDelta(state, res, text);
+          }
+          return;
+        }
         if (isUsableResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
@@ -356,6 +366,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
         emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
+        emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         state.finishReason = response.status === "incomplete" ? "length" : "stop";
         if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
         finalizeChatStream(state, res);
@@ -403,6 +414,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     toolIndexByItemId: new Map<string, number>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
+  const emittedMcpItemKeys = new Set<string>();
   let sawCompleted = false;
 
   try {
@@ -434,8 +446,8 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
       const model = stringOrNull(response.model);
       if (model) state.model = model;
-      if (event.event === "response.output_text.delta") {
-        const delta = stringOrNull(event.json.delta);
+      if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
+        const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicTextDelta(state, res, delta);
@@ -492,6 +504,15 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+        if (isResponsesMcpOutputItem(event.json.item)) {
+          const text = responsesMcpOutputItemToText(event.json.item);
+          if (text) {
+            emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
+            ensureAnthropicTextMessageStart(state, res);
+            pushAnthropicTextDelta(state, res, text);
+          }
+          return;
+        }
         if (isUsableResponsesToolCallItem(event.json.item)) {
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
@@ -508,6 +529,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
+        emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
         if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
         finalizeAnthropicTextStream(state, res);
@@ -727,26 +749,27 @@ export function writeCodexResponsesSseFromResponse(
         },
       });
       content.forEach((part, contentIndex) => {
-        if (part.type !== "output_text") return;
-        const text = stringOrNull(part.text) || "";
+        if (part.type !== "output_text" && part.type !== "refusal") return;
+        const isRefusal = part.type === "refusal";
+        const text = stringOrNull(isRefusal ? part.refusal : part.text) || "";
         outputText += text;
         writeSseEvent(res, "response.content_part.added", {
           type: "response.content_part.added",
           item_id: itemId,
           output_index: outputIndex,
           content_index: contentIndex,
-          part: { type: "output_text", text: "", annotations: [] },
+          part: isRefusal ? { type: "refusal", refusal: "" } : { type: "output_text", text: "", annotations: [] },
         });
         if (text) {
-          writeSseEvent(res, "response.output_text.delta", {
-            type: "response.output_text.delta",
+          writeSseEvent(res, isRefusal ? "response.refusal.delta" : "response.output_text.delta", {
+            type: isRefusal ? "response.refusal.delta" : "response.output_text.delta",
             item_id: itemId,
             output_index: outputIndex,
             content_index: contentIndex,
             delta: text,
           });
         }
-        if (Array.isArray(part.annotations)) {
+        if (!isRefusal && Array.isArray(part.annotations)) {
           part.annotations.filter(isRecord).forEach((annotation, annotationIndex) => {
             writeSseEvent(res, "response.output_text.annotation.added", {
               type: "response.output_text.annotation.added",
@@ -758,12 +781,12 @@ export function writeCodexResponsesSseFromResponse(
             });
           });
         }
-        writeSseEvent(res, "response.output_text.done", {
-          type: "response.output_text.done",
+        writeSseEvent(res, isRefusal ? "response.refusal.done" : "response.output_text.done", {
+          type: isRefusal ? "response.refusal.done" : "response.output_text.done",
           item_id: itemId,
           output_index: outputIndex,
           content_index: contentIndex,
-          text,
+          ...(isRefusal ? { refusal: text } : { text }),
         });
         writeSseEvent(res, "response.content_part.done", {
           type: "response.content_part.done",
@@ -1885,6 +1908,26 @@ function emitMissingChatToolCallsFromResponsesOutput(
   }
 }
 
+function emitMissingChatMcpOutputsFromResponsesOutput(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || !isResponsesMcpOutputItem(item)) continue;
+    const key = responsesMcpOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const text = responsesMcpOutputItemToText(item);
+    if (!text) continue;
+    emittedKeys.add(key);
+    ensureChatStreamStart(state, res);
+    writeChatTextDelta(state, res, text);
+  }
+}
+
 function emitMissingAnthropicToolUsesFromResponsesOutput(
   state: {
     nextContentIndex: number;
@@ -1908,6 +1951,84 @@ function emitMissingAnthropicToolUsesFromResponsesOutput(
     pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
     stopAnthropicToolBlock(res, tool);
     state.stopReason = "tool_use";
+  }
+}
+
+function emitMissingAnthropicMcpOutputsFromResponsesOutput(
+  state: {
+    started: boolean;
+    messageId: string;
+    model: string | null;
+    usage: JsonRecord;
+    textBlockIndex: number | null;
+    nextContentIndex: number;
+    text: string;
+  },
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || !isResponsesMcpOutputItem(item)) continue;
+    const key = responsesMcpOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const text = responsesMcpOutputItemToText(item);
+    if (!text) continue;
+    emittedKeys.add(key);
+    ensureAnthropicTextMessageStart(state, res);
+    pushAnthropicTextDelta(state, res, text);
+  }
+}
+
+function isResponsesMcpOutputItem(item: JsonRecord): boolean {
+  return item.type === "mcp_call" || item.type === "mcp_list_tools";
+}
+
+function responsesMcpOutputItemKey(payload: JsonRecord, item: JsonRecord): string {
+  return stringOrNull(item.id)
+    || stringOrNull(payload.item_id)
+    || `${String(item.type || "mcp")}:${numberOrNull(payload.output_index) ?? "?"}`;
+}
+
+function responsesMcpOutputItemToText(item: JsonRecord): string {
+  if (item.type === "mcp_call") return responsesMcpCallOutputToText(item);
+  if (item.type === "mcp_list_tools") return responsesMcpListToolsOutputToText(item);
+  return "";
+}
+
+function responsesMcpCallOutputToText(item: JsonRecord): string {
+  const output = item.output ?? item.result ?? item.content;
+  const error = item.error;
+  const body = output !== undefined
+    ? ` output: ${stringifyCompact(output)}`
+    : error !== undefined
+      ? ` error: ${stringifyCompact(error)}`
+      : "";
+  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
+  const name = stringOrNull(item.name) || stringOrNull(item.tool_name) || stringOrNull(item.call_id) || "tool";
+  return `[OpenAI Responses mcp_call ${server}.${name}${body}]`;
+}
+
+function responsesMcpListToolsOutputToText(item: JsonRecord): string {
+  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
+  const tools = Array.isArray(item.tools)
+    ? item.tools
+      .map((tool) => isRecord(tool) ? stringOrNull(tool.name) : null)
+      .filter((name): name is string => Boolean(name))
+    : [];
+  return tools.length
+    ? `[OpenAI Responses mcp_list_tools ${server}: ${tools.join(", ")}]`
+    : `[OpenAI Responses mcp_list_tools ${server}]`;
+}
+
+function stringifyCompact(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 

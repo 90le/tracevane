@@ -86,6 +86,7 @@ export function adaptCodexResponsesRequestToChat(
     "parallel_tool_calls",
     "presence_penalty",
     "seed",
+    "service_tier",
     "stop",
     "stream_options",
     "temperature",
@@ -138,7 +139,7 @@ export function adaptChatCompletionToCodexResponse(
 
   const choice = firstChoice(chatCompletion);
   const message = isRecord(choice?.message) ? choice.message : {};
-  const text = stripTrailingPlaceholderText(contentToText(message.content));
+  const text = stripTrailingPlaceholderText(contentToText(message.content) || stringOrNull(message.refusal) || "");
   const reasoningText = extractReasoningText(message);
   const generatedSuffix = Date.now().toString(36);
   const output: JsonRecord[] = [];
@@ -169,7 +170,7 @@ export function adaptChatCompletionToCodexResponse(
     if (mapped) output.push(mapped);
   }
 
-  return {
+  const response: JsonRecord = {
     id: stringOrNull(chatCompletion.id) || `resp_${generatedSuffix}`,
     object: "response",
     created_at: numberOrNull(chatCompletion.created) || Math.floor(Date.now() / 1_000),
@@ -178,6 +179,8 @@ export function adaptChatCompletionToCodexResponse(
     output,
     usage: mapChatUsageToResponses(chatCompletion.usage),
   };
+  if (chatCompletion.service_tier !== undefined) response.service_tier = chatCompletion.service_tier;
+  return response;
 }
 
 function collectChatOutputAnnotations(message: JsonRecord): JsonRecord[] {
