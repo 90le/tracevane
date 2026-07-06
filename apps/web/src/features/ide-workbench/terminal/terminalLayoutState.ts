@@ -186,8 +186,7 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
 }
 
 export function createDefaultTerminalLayoutState(): TerminalLayoutState {
-  const tab = createTerminalTabRecord(1);
-  return stateFromTabs([tab], tab.tabId);
+  return createEmptyTerminalLayoutState();
 }
 
 function createEmptyTerminalLayoutState(): TerminalLayoutState {
@@ -323,7 +322,7 @@ function updateActiveTab(
   update: (tab: TerminalTabRecord) => TerminalTabRecord,
 ): TerminalLayoutState {
   const activeTab = layout.tabs.find((tab) => tab.tabId === layout.activeTabId) ?? layout.tabs[0];
-  if (!activeTab) return createDefaultTerminalLayoutState();
+  if (!activeTab) return layout;
   return updateTabById(layout, activeTab.tabId, update, true);
 }
 
@@ -412,7 +411,7 @@ function moveTabByOffset(layout: TerminalLayoutState, tabId: string, direction: 
 
 function closePaneInActiveTab(layout: TerminalLayoutState, paneId: string): TerminalLayoutState {
   const activeTab = layout.tabs.find((tab) => tab.tabId === layout.activeTabId) ?? layout.tabs[0];
-  if (!activeTab) return createDefaultTerminalLayoutState();
+  if (!activeTab) return layout;
   if (!activeTab.panes[paneId]) return layout;
 
   const paneIds = Object.keys(activeTab.panes);
@@ -681,7 +680,7 @@ function normalizeLayout(value: unknown): TerminalLayoutState {
     const tabs = candidate.tabs
       .map((tab, index) => normalizeTab(tab, index + 1))
       .filter((tab): tab is TerminalTabRecord => Boolean(tab));
-    if (!tabs.length) return createDefaultTerminalLayoutState();
+    if (!tabs.length) return createEmptyTerminalLayoutState();
     return stateFromTabs(tabs, candidate.activeTabId || tabs[0].tabId);
   }
 
@@ -701,7 +700,7 @@ function normalizeLayout(value: unknown): TerminalLayoutState {
     if (tab) return stateFromTabs([tab], tab.tabId);
   }
 
-  return createDefaultTerminalLayoutState();
+  return createEmptyTerminalLayoutState();
 }
 
 function normalizeTab(value: unknown, index: number): TerminalTabRecord | null {

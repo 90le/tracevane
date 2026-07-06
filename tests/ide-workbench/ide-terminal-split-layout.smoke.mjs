@@ -146,6 +146,9 @@ async function run() {
     await page.goto(`${BASE_URL}/#/ide/${encodeURIComponent(rootId)}`, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await waitForRunnablePane(page, 0);
     await echoInPane(page, 0, `TRACEVANE_M5XA_DEFAULT_${Date.now()}`);

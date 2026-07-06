@@ -296,6 +296,12 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-tabs]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    if (await page.locator('[data-ide-terminal-xterm]').count()) {
+      throw new Error('Terminal was auto-created before the user requested a new terminal');
+    }
+    await page.locator('[data-ide-terminal-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => {
       const terminal = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';

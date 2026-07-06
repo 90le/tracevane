@@ -304,6 +304,9 @@ async function run() {
     await page.locator('[data-ide-panel-placement="right"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
 
+    await waitForCounts(page, { tabs: 0, panes: 0 });
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-new]').click();
     await waitForCounts(page, { tabs: 1, panes: 1 });
     await waitForRunnablePane(page, 0);
     const firstToken = `TRACEVANE_M5X_PERSIST_FIRST_${Date.now()}`;
