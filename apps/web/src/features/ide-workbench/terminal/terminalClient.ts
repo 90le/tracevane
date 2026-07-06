@@ -71,6 +71,7 @@ export interface EndWorkbenchTerminalSessionOptions {
 const PENDING_TERMINAL_KILL_KEY = "tracevane.ide.pending-terminal-kills.v1";
 const PENDING_TERMINAL_KILL_CONCURRENCY = 6;
 let pendingKillFlushTimer: number | null = null;
+let pendingKillFlushPromise: Promise<void> | null = null;
 
 export async function endWorkbenchTerminalSession(
   sessionId: string,
@@ -105,8 +106,17 @@ export function isTerminalKillPending(sessionId: string): boolean {
 }
 
 export async function flushPendingTerminalKillRetries(): Promise<void> {
+  if (pendingKillFlushPromise) return pendingKillFlushPromise;
+  pendingKillFlushPromise = flushPendingTerminalKillRetriesOnce().finally(() => {
+    pendingKillFlushPromise = null;
+  });
+  return pendingKillFlushPromise;
+}
+
+async function flushPendingTerminalKillRetriesOnce(): Promise<void> {
   const pending = readPendingTerminalKills();
   if (!pending.length) return;
+  const flushing = new Set(pending);
   const results = await runWithConcurrency(pending, PENDING_TERMINAL_KILL_CONCURRENCY, async (sid) => {
     try {
       await endTerminalSessionWithRetries(sid, { attempts: 2, retryDelayMs: 750, queueOnFailure: false });
@@ -115,7 +125,11 @@ export async function flushPendingTerminalKillRetries(): Promise<void> {
       return { sid, failed: true };
     }
   });
-  const remaining = results.filter((result) => result.failed).map((result) => result.sid);
+  const newlyQueued = readPendingTerminalKills().filter((sid) => !flushing.has(sid));
+  const remaining = [
+    ...results.filter((result) => result.failed).map((result) => result.sid),
+    ...newlyQueued,
+  ];
   writePendingTerminalKills(remaining);
   if (remaining.length) schedulePendingTerminalKillFlush(5_000);
 }
