@@ -2013,21 +2013,26 @@ export function createTerminalService(
     if (rawSessionId) {
       const persisted = descriptorStore.get(sessionId);
       if (persisted) {
-        if (options.resumePersisted) {
+        const reconciled = reconcilePersistedDescriptor(persisted);
+        if (
+          options.resumePersisted &&
+          reconciled &&
+          isRecoverableTerminalStatus(reconciled.status) &&
+          reconciled.canResume
+        ) {
           return createSession(sessionId, {
-            profileId: options.metadata?.profileId ?? persisted.profileId,
-            title: (options.metadata as TerminalSessionLaunchMetadata & { title?: string | null } | undefined)?.title ?? persisted.title,
-            targetKind: options.metadata?.targetKind ?? persisted.targetKind,
-            rootId: options.metadata?.rootId,
-            workspaceId: options.metadata?.workspaceId,
-            cwd: options.metadata?.cwd ?? persisted.cwd,
-            shell: options.metadata?.shell,
+            profileId: options.metadata?.profileId ?? reconciled.profileId,
+            title: (options.metadata as TerminalSessionLaunchMetadata & { title?: string | null } | undefined)?.title ?? reconciled.title,
+            targetKind: options.metadata?.targetKind ?? reconciled.targetKind,
+            rootId: options.metadata?.rootId ?? reconciled.rootId,
+            workspaceId: options.metadata?.workspaceId ?? reconciled.workspaceId,
+            cwd: options.metadata?.cwd ?? reconciled.cwd,
+            shell: options.metadata?.shell ?? reconciled.shell,
             cols: options.metadata?.cols,
             rows: options.metadata?.rows,
-            pinned: options.metadata?.pinned ?? persisted.pinned,
+            pinned: options.metadata?.pinned ?? reconciled.pinned,
           });
         }
-        reconcilePersistedDescriptor(persisted);
         throw new Error("terminal_session_unavailable");
       }
 

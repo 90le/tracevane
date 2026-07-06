@@ -429,6 +429,21 @@ test("terminal service batch end marks sessions non-recoverable", async () => {
       assert.equal(descriptor.canResume, false);
       assert.equal(descriptor.status, "completed");
     }
+
+    await assert.rejects(
+      () => service.createPersistedSession({
+        sid: first.sid,
+        resume: true,
+        pinned: true,
+        title: "Should Not Recreate",
+      }),
+      /terminal_session_unavailable/,
+    );
+
+    const afterRejectedResume = await service.listPersistedSessions();
+    const firstAfterRejectedResume = afterRejectedResume.sessions.find((session) => session.sessionId === first.sid);
+    assert.equal(firstAfterRejectedResume?.canResume, false);
+    assert.equal(firstAfterRejectedResume?.status, "completed");
   } finally {
     service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
