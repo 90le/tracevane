@@ -9721,6 +9721,7 @@ test("model gateway preserves modern responses request controls through chat ada
           prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
           prompt_cache_key: "cache-key-123",
           safety_identifier: "user-hash-123",
+          stop: ["STOP"],
           store: false,
           stream_options: { include_usage: true },
           top_logprobs: 3,
@@ -12058,6 +12059,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           messages: [{ role: "user", content: "Think." }],
           metadata: { trace_id: "responses-should-preserve", session_id: "claude-code-session" },
           service_tier: "standard_only",
+          stop_sequences: ["STOP"],
           mcp_servers: [
             {
               type: "url",
@@ -12107,6 +12109,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
 
   assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
   assert.equal("metadata" in upstreamCalls[4].body, false);
+  assert.equal("stop" in upstreamCalls[4].body, false);
   assert.equal(upstreamCalls[4].body.service_tier, "default");
   assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });
   assert.deepEqual(upstreamCalls[4].body.tools, [{

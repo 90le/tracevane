@@ -94,7 +94,9 @@ export function adaptChatCompletionRequestToResponses(
   } else if (request.max_completion_tokens !== undefined) {
     responsesRequest.max_output_tokens = request.max_completion_tokens;
   }
-  if (request.stop !== undefined) responsesRequest.stop = request.stop;
+  // Do not forward Chat/Claude stop sequences through adapter-generated
+  // Responses requests. The Codex account Responses endpoint rejects `stop` as
+  // unsupported, which breaks Claude Code CLI compatibility.
 
   const tools = mapChatToolsToResponses(request.tools);
   if (tools.length) responsesRequest.tools = tools;
