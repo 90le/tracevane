@@ -16,6 +16,7 @@ import { registerIdeEditorRuntimeHandle } from "./ideEditorRuntime";
 import { EditorConflictDialog } from "./EditorConflictDialog";
 import type { IdeEditorPreferences } from "./editorPreferences";
 import { classifyFileSurfacePreview } from "@/shared/file-surface";
+import { useLspDiagnostics } from "../lsp";
 
 const IDE_EDITOR_SOFT_LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -47,6 +48,8 @@ export function IdeEditorFilePanel({
   const query = useIdeEditorFile(tab.ref, !tab.deleted);
   const [conflict, setConflict] = React.useState<IdeEditorConflictState | null>(null);
   const [conflictBusy, setConflictBusy] = React.useState(false);
+  const [editorContent, setEditorContent] = React.useState<string | null>(null);
+  const [editorContentVersion, setEditorContentVersion] = React.useState(0);
   const read = query.data;
   const metadata = read?.snapshot.metadata;
   const unsupportedReason = read ? unsupportedReasonForRead(read) : null;
@@ -67,6 +70,15 @@ export function IdeEditorFilePanel({
   }, [tab.dirty]);
 
   React.useEffect(() => {
+    if (!read || unsupportedReason) {
+      setEditorContent(null);
+      return;
+    }
+    setEditorContent(read.snapshot.content);
+    setEditorContentVersion((previous) => previous + 1);
+  }, [read, unsupportedReason]);
+
+  React.useEffect(() => {
     if (!read || unsupportedReason) return;
     if (cleanContentRef.current == null || !dirtyRef.current) {
       cleanContentRef.current = read.snapshot.content;
@@ -74,6 +86,8 @@ export function IdeEditorFilePanel({
   }, [read, unsupportedReason]);
 
   const markDirtyFromContent = React.useCallback((value: string) => {
+    setEditorContent(value);
+    setEditorContentVersion((previous) => previous + 1);
     const cleanContent = cleanContentRef.current;
     if (cleanContent == null) return;
     const dirty = value !== cleanContent;
@@ -247,6 +261,15 @@ export function IdeEditorFilePanel({
     save: saveCurrent,
     focus: () => editorRef.current?.focus(),
   }), [saveCurrent, tab.id]);
+
+  useLspDiagnostics({
+    enabled: Boolean(read && metadata?.textLike && !unsupportedReason && !tab.deleted),
+    rootId: tab.ref.rootId,
+    path: tab.ref.path,
+    language: metadata?.language,
+    content: editorContent,
+    version: editorContentVersion,
+  });
 
   const lastRevealKeyRef = React.useRef<string | null>(null);
   React.useEffect(() => {

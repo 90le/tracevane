@@ -23,6 +23,7 @@ import { createDashboardService } from "./modules/dashboard/service.js";
 import { createFilesService } from "./modules/files/service.js";
 import { createGitService } from "./modules/git/service.js";
 import { createIdeWorkbenchService } from "./modules/ide-workbench/service.js";
+import { createLspService } from "./modules/lsp/service.js";
 import {
   createModelGatewayService,
   type ModelGatewayServiceOptions,
@@ -73,6 +74,7 @@ export function createTracevaneContext(
   const files = createFilesService(options.config);
   const git = createGitService(options.config);
   const ideWorkbench = createIdeWorkbenchService(options.config);
+  const lsp = createLspService(options.config);
   const modelGateway = createModelGatewayService(
     options.config,
     options.modelGatewayOptions,
@@ -88,6 +90,7 @@ export function createTracevaneContext(
     files,
     git,
     ideWorkbench,
+    lsp,
     modelGateway,
     openclawRecovery,
     skills,

@@ -21,6 +21,7 @@ import { registerDashboardRoutes } from "./modules/dashboard/routes.js";
 import { registerFilesRoutes } from "./modules/files/routes.js";
 import { registerGitRoutes } from "./modules/git/routes.js";
 import { registerIdeWorkbenchRoutes } from "./modules/ide-workbench/routes.js";
+import { registerLspRoutes } from "./modules/lsp/routes.js";
 import { handleModelGatewayRealtimeUnsupportedUpgrade } from "./modules/model-gateway/realtime.js";
 import { registerModelGatewayRoutes } from "./modules/model-gateway/routes.js";
 import { registerOpenClawRecoveryRoutes } from "./modules/openclaw-recovery/routes.js";
@@ -45,6 +46,7 @@ export function createTracevaneRouter(
   registerFilesRoutes(router, ctx);
   registerGitRoutes(router, ctx);
   registerIdeWorkbenchRoutes(router, ctx);
+  registerLspRoutes(router, ctx);
   registerAgentsRoutes(router, ctx);
   registerChannelConnectorsRoutes(router);
   registerChannelsRoutes(router, ctx);
@@ -201,7 +203,8 @@ export function createTracevaneUpgradeHandler(
 
     const handled =
       handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head) ||
-      ctx.services.terminal.handleUpgrade(req, socket, head);
+      ctx.services.terminal.handleUpgrade(req, socket, head) ||
+      ctx.services.lsp.handleUpgrade(req, socket, head);
     if (!handled) {
       try {
         socket.destroy();

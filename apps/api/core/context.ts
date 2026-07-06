@@ -9,6 +9,7 @@ import type { DashboardService } from "../modules/dashboard/service.js";
 import type { FilesService } from "../modules/files/service.js";
 import type { GitService } from "../modules/git/service.js";
 import type { IdeWorkbenchService } from "../modules/ide-workbench/service.js";
+import type { LspService } from "../modules/lsp/service.js";
 import type { ModelGatewayService } from "../modules/model-gateway/service.js";
 import type { OpenClawRecoveryService } from "../modules/openclaw-recovery/service.js";
 import type { SkillsService } from "../modules/skills/service.js";
@@ -25,6 +26,7 @@ export interface TracevaneServices {
   files: FilesService;
   git: GitService;
   ideWorkbench: IdeWorkbenchService;
+  lsp: LspService;
   modelGateway: ModelGatewayService;
   openclawRecovery: OpenClawRecoveryService;
   skills: SkillsService;

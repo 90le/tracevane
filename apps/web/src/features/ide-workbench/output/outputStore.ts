@@ -1,6 +1,6 @@
 import * as React from "react";
 
-export type WorkbenchOutputChannelKind = "system" | "task" | "terminal" | "search" | "extension" | "watcher" | "custom";
+export type WorkbenchOutputChannelKind = "system" | "task" | "terminal" | "search" | "extension" | "watcher" | "lsp" | "custom";
 export type WorkbenchOutputLevel = "debug" | "info" | "warn" | "error";
 
 export interface WorkbenchOutputChannel {
@@ -35,6 +35,7 @@ const MAX_OUTPUT_EVENTS = 2_000;
 let channels: WorkbenchOutputChannel[] = [
   { id: "system", label: "System", kind: "system" },
   { id: "watcher", label: "Watcher", kind: "watcher" },
+  { id: "lsp", label: "LSP", kind: "lsp" },
 ];
 let events: WorkbenchOutputEvent[] = [];
 let snapshot: WorkbenchOutputSnapshot = { channels, events };

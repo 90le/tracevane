@@ -187,11 +187,9 @@ export default defineConfig({
 
         server.httpServer?.on("upgrade", (req, socket, head) => {
           const currentContext = getTracevaneDevContext();
-          const handled = currentContext.services.terminal.handleUpgrade(
-            req,
-            socket,
-            head,
-          );
+          const handled =
+            currentContext.services.terminal.handleUpgrade(req, socket, head) ||
+            currentContext.services.lsp.handleUpgrade(req, socket, head);
           if (!handled) return;
         });
 

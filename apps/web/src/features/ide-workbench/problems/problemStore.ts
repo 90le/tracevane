@@ -1,7 +1,7 @@
 import * as React from "react";
 
 export type WorkbenchProblemSeverity = "error" | "warning" | "info" | "hint";
-export type WorkbenchProblemSource = "search" | "task" | "custom" | "watcher" | "lsp-placeholder";
+export type WorkbenchProblemSource = "search" | "task" | "custom" | "watcher" | "lsp-placeholder" | "lsp";
 
 export interface WorkbenchProblem {
   id: string;
@@ -34,6 +34,27 @@ export function appendWorkbenchProblem(input: WorkbenchProblemInput): WorkbenchP
     .sort((left, right) => severityWeight(left.severity) - severityWeight(right.severity) || left.message.localeCompare(right.message));
   emitProblemsChanged();
   return problem;
+}
+
+
+export function replaceWorkbenchProblemsForFileSource({
+  rootId,
+  path,
+  source,
+  problems: nextProblems,
+}: {
+  rootId: string;
+  path: string;
+  source: WorkbenchProblemSource;
+  problems: WorkbenchProblemInput[];
+}) {
+  const normalizedPath = normalizeOptionalPath(path);
+  const normalizedNext = nextProblems.map((problem) => normalizeProblem(problem));
+  problems = [
+    ...problems.filter((problem) => !(problem.rootId === rootId && problem.path === normalizedPath && problem.source === source)),
+    ...normalizedNext,
+  ].sort((left, right) => severityWeight(left.severity) - severityWeight(right.severity) || left.message.localeCompare(right.message));
+  emitProblemsChanged();
 }
 
 export function removeWorkbenchProblem(id: string) {

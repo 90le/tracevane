@@ -99,6 +99,7 @@
 | [archive/m6-e-problems-output-foundation-summary.md](./archive/m6-e-problems-output-foundation-summary.md) | M6-E Problems / Output Foundation 执行总结，记录结构化 Problems 面板和 Output channel/log 基础 |
 | [archive/m6-execution-summary.md](./archive/m6-execution-summary.md) | M6 Watcher / Search / Diff / Problems / Output 总体验收、完成边界和 M7 入口 |
 | [archive/m7-a-lsp-git-debug-plan.md](./archive/m7-a-lsp-git-debug-plan.md) | M7-A LSP / Git / Debug 研究、边界与最小实现计划，明确 M7-B+ 分阶段路线 |
+| [archive/m7-b-lsp-diagnostics-summary.md](./archive/m7-b-lsp-diagnostics-summary.md) | M7-B 单语言 JSON diagnostics -> Problems/Output 验收总结 |
 
 ## 推荐技术选型
 
@@ -233,8 +234,9 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 已完成 M7-A：LSP / Git / Debug 研究与最小实现计划
 - 已探查 apps/api 与 IDE Workbench 现状：后端已有 Git service/API，暂无 LSP/DAP service；前端已有 Problems/Output/editor reveal 和 Git API hooks。
 - 已查证 LSP、DAP、Git porcelain 与 monaco-languageclient 方向，明确 M7 不一次性追完整 VS Code。
-- 下一步进入 M7-B：单语言 LSP diagnostics -> Problems。
-- 验收见 `archive/m7-a-lsp-git-debug-plan.md`。
+- M7-B 单语言 JSON diagnostics 已接入 Problems/Output。
+- 下一步进入 M7-C：LSP hover / completion / definition foundation。
+- 验收见 `archive/m7-a-lsp-git-debug-plan.md` 与 `archive/m7-b-lsp-diagnostics-summary.md`。
 ```
 
 ## 重要原则
