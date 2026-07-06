@@ -46,7 +46,7 @@ export function TerminalManagerDialog({
       } else {
         await flushPendingTerminalKillRetries();
       }
-      const payload = await getTerminalSessions();
+      const payload = await getTerminalSessions({ manageableOnly: true });
       const pendingKillIds = getPendingTerminalKillIds();
       setSessions((payload.sessions ?? []).filter((session) => (
         isManageableSession(session) &&

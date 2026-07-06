@@ -114,6 +114,7 @@ async function run() {
   const otherWorkspaceId = otherRootId;
   const otherSidA = `${sid}-other-a`;
   const otherSidB = `${sid}-other-b`;
+  const completedSid = `${sid}-completed`;
 
   await resetTerminalSessions();
   await api('/api/terminal/sessions', {
@@ -144,7 +145,35 @@ async function run() {
       }),
     });
   }
+  await api('/api/terminal/sessions', {
+    method: 'POST',
+    body: JSON.stringify({
+      sid: completedSid,
+      rootId,
+      workspaceId: rootId,
+      cwd: '',
+      profileId: 'local-shell',
+      shell: 'bash',
+      targetKind: 'local',
+      pinned: true,
+    }),
+  });
+  await api('/api/terminal/end', {
+    method: 'POST',
+    body: JSON.stringify({ sid: completedSid }),
+  });
+
   const sessionsBefore = await api('/api/terminal/sessions');
+  const manageableSessionsBefore = await api('/api/terminal/sessions?manageable=1');
+  if (!sessionsBefore.sessions?.some((session) => session.sessionId === completedSid && !isRecoverableSession(session))) {
+    throw new Error('Default terminal session roster did not retain the completed smoke descriptor');
+  }
+  if (manageableSessionsBefore.sessions?.some((session) => session.sessionId === completedSid)) {
+    throw new Error('Manageable terminal session roster included a completed descriptor');
+  }
+  if ((manageableSessionsBefore.sessions ?? []).some((session) => !isRecoverableSession(session))) {
+    throw new Error(`Manageable terminal session roster included non-recoverable sessions: ${JSON.stringify(manageableSessionsBefore.sessions)}`);
+  }
   const descriptor = sessionsBefore.sessions?.find((session) => session.sessionId === sid);
   if (!descriptor) throw new Error('Created terminal session was not listed by /api/terminal/sessions');
   if (descriptor.rootId !== rootId || descriptor.workspaceId !== rootId) {
@@ -205,6 +234,9 @@ async function run() {
       throw new Error(`Terminal Manager leaked internal status wording: ${managerDialogCopy.slice(0, 800)}`);
     }
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    if (await page.locator(`[data-ide-terminal-manager-session="${completedSid}"]`).count()) {
+      throw new Error('Terminal Manager displayed a completed historical descriptor');
+    }
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
     const activeManagerSessionCopy = await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).innerText();
     if (!activeManagerSessionCopy.includes('运行中') && !activeManagerSessionCopy.includes('已分离')) {
@@ -332,7 +364,7 @@ async function run() {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}\nlogs=${logs.slice(-120).join('\n')}`);
   } finally {
     await browser.close().catch(() => undefined);
-    await Promise.allSettled([sid, otherSidA, otherSidB].map((sessionId) => (
+    await Promise.allSettled([sid, otherSidA, otherSidB, completedSid].map((sessionId) => (
       api('/api/terminal/end', { method: 'POST', body: JSON.stringify({ sid: sessionId }) })
     )));
   }

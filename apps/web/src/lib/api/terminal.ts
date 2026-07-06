@@ -50,9 +50,12 @@ export function getTerminalProfiles(
 
 /** GET /api/terminal/sessions — persisted terminal session roster. */
 export function getTerminalSessions(
-  signal?: AbortSignal,
+  options?: AbortSignal | { signal?: AbortSignal; manageableOnly?: boolean },
 ): Promise<TerminalSessionSummaryResponse> {
-  return apiRequest<TerminalSessionSummaryResponse>(`${BASE}/sessions`, {
+  const signal = options instanceof AbortSignal ? options : options?.signal;
+  const manageableOnly = !(options instanceof AbortSignal) && Boolean(options?.manageableOnly);
+  const query = manageableOnly ? "?manageable=1" : "";
+  return apiRequest<TerminalSessionSummaryResponse>(`${BASE}/sessions${query}`, {
     signal,
   });
 }

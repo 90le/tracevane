@@ -13,6 +13,23 @@ import type {
   TerminalTargetKind,
 } from "../../../../types/terminal.js";
 
+function normalizeBooleanQuery(value: string | null): boolean {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function isManageableTerminalSession(session: {
+  sessionId?: string | null;
+  canResume?: boolean | null;
+  status?: string | null;
+}): boolean {
+  return Boolean(
+    session.sessionId &&
+    session.canResume &&
+    (session.status === "running" || session.status === "detached"),
+  );
+}
+
 export function registerTerminalRoutes(
   router: TracevaneRouter,
   ctx: TracevaneApiContext,
@@ -25,11 +42,19 @@ export function registerTerminalRoutes(
     sendJson(res, 200, await ctx.services.terminal.getStatus());
   });
 
-  router.get("/api/terminal/sessions", async (_req, res, routeCtx) => {
+  router.get("/api/terminal/sessions", async (req, res, routeCtx) => {
+    const payload = await routeCtx.services.terminal.listPersistedSessions();
+    const url = new URL(
+      req.url || "/",
+      `http://${req.headers.host || "127.0.0.1"}`,
+    );
+    const manageableOnly = normalizeBooleanQuery(url.searchParams.get("manageable"));
     sendJson(
       res,
       200,
-      await routeCtx.services.terminal.listPersistedSessions(),
+      manageableOnly
+        ? { sessions: payload.sessions.filter(isManageableTerminalSession) }
+        : payload,
     );
   });
 
