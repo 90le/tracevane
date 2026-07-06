@@ -1,8 +1,11 @@
 import * as React from "react";
-import { AlertCircle, FileDiff, GitBranch, Loader2, RefreshCcw } from "lucide-react";
+import { AlertCircle, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { toast } from "@/design/ui/sonner";
+import { stageFiles, unstageFiles } from "@/lib/api/git";
+import { appendWorkbenchOutput } from "../output";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
 
 export interface IdeSourceControlViewProps {
@@ -14,8 +17,39 @@ export interface IdeSourceControlViewProps {
 }
 
 export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDiff }: IdeSourceControlViewProps) {
+  const [busyKey, setBusyKey] = React.useState<string | null>(null);
+  const runGitAction = React.useCallback(async (kind: "stage" | "unstage", paths: string[], label: string) => {
+    const status = git.status;
+    if (!status?.available || busyKey) return;
+    const key = `${kind}:${paths.join("|") || "all"}`;
+    setBusyKey(key);
+    try {
+      const fn = kind === "stage" ? stageFiles : unstageFiles;
+      await fn({ rootId, path: status.directoryPath, paths });
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "info",
+        text: `${kind} ${paths.length ? paths.join(", ") : "all"}`,
+      });
+      toast.success(label);
+      git.refresh();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "error",
+        text: `${kind} failed: ${message}`,
+      });
+      toast.error(`${label}失败`, { description: message });
+    } finally {
+      setBusyKey(null);
+    }
+  }, [busyKey, git, rootId]);
+
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   const status = git.status;
+  const stagedChanges = git.changes.filter((change) => change.staged);
+  const unstagedChanges = git.changes.filter((change) => change.unstaged || change.kind === "untracked");
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel" data-ide-sidebar data-ide-source-control-view>
       <div className="border-b border-line bg-panel px-3 py-2" data-ide-source-control-toolbar>
@@ -43,6 +77,32 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             <span>{status?.message || "当前目录不是 Git 仓库，或 Git 状态不可用。"}</span>
           )}
         </div>
+        {status?.available && git.changes.length ? (
+          <div className="mt-2 grid grid-cols-2 gap-1" data-ide-source-control-bulk-actions>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 justify-center text-xs"
+              disabled={busyKey !== null || unstagedChanges.length === 0}
+              onClick={() => void runGitAction("stage", [], "已暂存全部变更")}
+              data-ide-source-control-stage-all
+            >
+              <PlusSquare className="size-3.5" />
+              全部暂存
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 justify-center text-xs"
+              disabled={busyKey !== null || stagedChanges.length === 0}
+              onClick={() => void runGitAction("unstage", [], "已取消暂存全部变更")}
+              data-ide-source-control-unstage-all
+            >
+              <MinusSquare className="size-3.5" />
+              全部取消
+            </Button>
+          </div>
+        ) : null}
       </div>
       <div className="min-h-0 overflow-auto p-2 [scrollbar-width:thin]" data-ide-source-control-changes>
         {git.loading && !status ? (
@@ -57,7 +117,10 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
               <SourceControlChangeRow
                 key={`${change.status}:${change.rootPath}:${change.previousPath ?? ""}`}
                 change={change}
+                busyKey={busyKey}
                 onOpen={() => onOpenDiff({ rootId, change })}
+                onStage={() => void runGitAction("stage", [change.path], `已暂存 ${change.path}`)}
+                onUnstage={() => void runGitAction("unstage", [change.path], `已取消暂存 ${change.path}`)}
               />
             ))}
           </div>
@@ -67,28 +130,63 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   );
 }
 
-function SourceControlChangeRow({ change, onOpen }: { change: IdeGitDecoratedChange; onOpen: () => void }) {
-  const disabled = false;
+function SourceControlChangeRow({
+  change,
+  busyKey,
+  onOpen,
+  onStage,
+  onUnstage,
+}: {
+  change: IdeGitDecoratedChange;
+  busyKey: string | null;
+  onOpen: () => void;
+  onStage: () => void;
+  onUnstage: () => void;
+}) {
+  const actionBusy = busyKey === `stage:${change.path}` || busyKey === `unstage:${change.path}`;
   return (
-    <button
-      type="button"
+    <div
       className={cn(
-        "group grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md border border-transparent px-2 py-2 text-left outline-none focus-visible:shadow-[var(--ring)]",
-        disabled ? "cursor-default opacity-75" : "hover:border-primary-line hover:bg-primary-soft/50",
+        "group grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-transparent px-2 py-2 text-left",
+        "hover:border-primary-line hover:bg-primary-soft/50 focus-within:shadow-[var(--ring)]",
       )}
-      onClick={() => { if (!disabled) onOpen(); }}
-      disabled={disabled}
       data-ide-source-control-change
       data-ide-source-control-change-path={change.rootPath}
       data-ide-source-control-change-kind={change.kind}
+      data-ide-source-control-change-staged={change.staged ? "true" : "false"}
+      data-ide-source-control-change-unstaged={change.unstaged || change.kind === "untracked" ? "true" : "false"}
     >
       <GitBadge label={change.label} tone={change.tone} />
-      <span className="min-w-0">
+      <button type="button" className="min-w-0 text-left outline-none" onClick={onOpen} data-ide-source-control-open-diff>
         <span className="block truncate text-sm font-medium text-ink-strong">{fileName(change.rootPath)}</span>
         <span className="block truncate font-mono text-2xs text-subtle">{change.rootPath}</span>
         {change.previousPath ? <span className="block truncate font-mono text-2xs text-subtle">from {change.previousPath}</span> : null}
+      </button>
+      <span className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        <button
+          type="button"
+          className="grid size-7 place-items-center rounded border border-line bg-panel-2 text-subtle outline-none hover:border-green/40 hover:bg-green-soft hover:text-green disabled:cursor-not-allowed disabled:opacity-40"
+          title="暂存"
+          aria-label={`暂存 ${change.rootPath}`}
+          disabled={busyKey !== null || actionBusy || (!change.unstaged && change.kind !== "untracked")}
+          onClick={onStage}
+          data-ide-source-control-stage
+        >
+          {actionBusy ? <Loader2 className="size-3.5 animate-spin" /> : <PlusSquare className="size-3.5" />}
+        </button>
+        <button
+          type="button"
+          className="grid size-7 place-items-center rounded border border-line bg-panel-2 text-subtle outline-none hover:border-amber/40 hover:bg-amber-soft hover:text-amber disabled:cursor-not-allowed disabled:opacity-40"
+          title="取消暂存"
+          aria-label={`取消暂存 ${change.rootPath}`}
+          disabled={busyKey !== null || actionBusy || !change.staged}
+          onClick={onUnstage}
+          data-ide-source-control-unstage
+        >
+          {actionBusy ? <Loader2 className="size-3.5 animate-spin" /> : <MinusSquare className="size-3.5" />}
+        </button>
       </span>
-    </button>
+    </div>
   );
 }
 
