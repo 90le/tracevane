@@ -8,6 +8,8 @@ import { TerminalGroupView } from "./TerminalGroupView";
 import { TerminalManagerDialog } from "./TerminalManagerDialog";
 import { TerminalTabs } from "./TerminalTabs";
 
+const TERMINAL_DEFAULT_PROFILE_KEY = "tracevane.ide-workbench.terminal.default-profile";
+
 export function TerminalPanel({
   rootId,
   cwd,
@@ -29,6 +31,7 @@ export function TerminalPanel({
   );
   const activePaneCount = activeTab ? Object.keys(activeTab.panes).length : 0;
   const [profiles, setProfiles] = React.useState<TerminalProfileDescriptor[]>([]);
+  const [defaultProfileId, setDefaultProfileId] = React.useState<string | null>(() => loadDefaultTerminalProfileId());
   const [managerOpen, setManagerOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -39,6 +42,16 @@ export function TerminalPanel({
     return () => controller.abort();
   }, []);
   const cwdAbsolutePath = React.useMemo(() => joinAbsolutePath(rootAbsolutePath, cwd), [cwd, rootAbsolutePath]);
+  const setDefaultTerminalProfile = React.useCallback((profile: TerminalProfileDescriptor) => {
+    setDefaultProfileId(profile.id);
+    saveDefaultTerminalProfileId(profile.id);
+    toast.success("已设置默认终端", {
+      description: `${profile.labelZh || profile.label} · ${profile.command}`,
+    });
+  }, []);
+  const newTerminalWithDefault = React.useCallback(() => {
+    layoutApi.newTerminal(createDefaultProfileSelection(profiles, defaultProfileId));
+  }, [defaultProfileId, layoutApi, profiles]);
   const activeTerminalIds = React.useMemo(() =>
     layout.tabs.flatMap((tab) => Object.values(tab.panes).map((pane) => pane.terminalId)),
   [layout.tabs]);
@@ -106,6 +119,8 @@ export function TerminalPanel({
         onFocusTab={layoutApi.setActiveTab}
         onNewTerminal={layoutApi.newTerminal}
         profiles={profiles}
+        defaultProfileId={defaultProfileId}
+        onSetDefaultProfile={setDefaultTerminalProfile}
         onSplitTab={splitTab}
         onCloseTab={(tab) => void closeTab(tab)}
         onCloseOtherTabs={(tab) => void closeOtherTabs(tab)}
@@ -164,7 +179,7 @@ export function TerminalPanel({
               <button
                 type="button"
                 className="mt-4 rounded-sm border border-line-2 bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-primary-line hover:bg-panel-2"
-                onClick={() => layoutApi.newTerminal()}
+                onClick={newTerminalWithDefault}
                 data-ide-terminal-empty-new
               >
                 新建终端
@@ -200,4 +215,43 @@ function joinAbsolutePath(rootAbsolutePath: string | undefined, relativePath: st
   const root = rootAbsolutePath.replace(/[\/]+$/, "");
   const child = normalizePanelCwd(relativePath);
   return child ? `${root}/${child}` : root;
+}
+
+
+function loadDefaultTerminalProfileId(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const value = localStorage.getItem(TERMINAL_DEFAULT_PROFILE_KEY);
+    return value && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDefaultTerminalProfileId(profileId: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(TERMINAL_DEFAULT_PROFILE_KEY, profileId);
+  } catch {
+    // Ignore storage failures; the current session still uses React state.
+  }
+}
+
+
+function createDefaultProfileSelection(
+  profiles: TerminalProfileDescriptor[],
+  defaultProfileId: string | null,
+): { profileId?: string | null; shell?: string | null; label?: string | null } | undefined {
+  const shellProfiles = profiles
+    .filter((profile) => profile.kind === "shell" && profile.targetKind === "local" && profile.launchable)
+    .filter((profile) => !/tmux/i.test(profile.id) && !/tmux/i.test(profile.command));
+  const profile = (defaultProfileId ? shellProfiles.find((item) => item.id === defaultProfileId) : null)
+    ?? shellProfiles.find((item) => item.id === "local-shell")
+    ?? shellProfiles[0];
+  if (!profile) return undefined;
+  return {
+    profileId: profile.id,
+    shell: profile.command,
+    label: profile.id === "local-shell" ? "Terminal" : (profile.labelZh || profile.label),
+  };
 }

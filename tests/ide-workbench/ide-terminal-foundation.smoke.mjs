@@ -242,9 +242,12 @@ async function runUiSmoke(rootId) {
     if (!menuBox || menuBox.x < 0 || menuBox.x + menuBox.width > page.viewportSize().width) {
       throw new Error(`New Terminal profile menu is clipped or offscreen: ${JSON.stringify(menuBox)}`);
     }
-    const shMenuItem = page.locator('[data-ide-terminal-new-profile="shell-sh"][data-terminal-shell="sh"]');
-    await shMenuItem.waitFor({ state: 'visible', timeout: 30_000 });
-    await shMenuItem.click();
+    const setShDefault = page.locator('[data-ide-terminal-set-default-profile="shell-sh"]');
+    await setShDefault.waitFor({ state: 'visible', timeout: 30_000 });
+    await setShDefault.click();
+    await page.locator('[data-ide-terminal-set-default-profile="shell-sh"][data-ide-terminal-default-profile="true"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.keyboard.press('Escape');
+    await page.locator('[data-ide-terminal-new]').click();
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 2, { timeout: 45_000 });
     await page.locator('[data-ide-terminal-tab][data-terminal-shell="sh"]').last().waitFor({ state: 'visible', timeout: 30_000 });
 

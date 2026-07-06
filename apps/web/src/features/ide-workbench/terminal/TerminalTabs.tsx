@@ -31,6 +31,8 @@ export function TerminalTabs({
   onFocusTab,
   onNewTerminal,
   profiles = [],
+  defaultProfileId = null,
+  onSetDefaultProfile,
   onSplitTab,
   onCloseTab,
   onCloseOtherTabs,
@@ -48,6 +50,8 @@ export function TerminalTabs({
   onFocusTab: (tabId: string) => void;
   onNewTerminal: (profile?: TerminalProfileSelection) => void;
   profiles?: TerminalProfileDescriptor[];
+  defaultProfileId?: string | null;
+  onSetDefaultProfile?: (profile: TerminalProfileDescriptor) => void;
   onSplitTab: (tabId: string, orientation: TerminalSplitOrientation) => void;
   onCloseTab: (tab: TerminalTabRecord) => void;
   onCloseOtherTabs: (tab: TerminalTabRecord) => void;
@@ -263,7 +267,7 @@ export function TerminalTabs({
           </Button>
         ) : null}
         <div className="flex shrink-0 items-center overflow-hidden rounded-md border border-line bg-panel">
-          <Button variant="ghost" size="sm" onClick={() => onNewTerminal(defaultTerminalProfile(profiles))} data-ide-terminal-new aria-label="新建终端" title="新建终端" className="h-8 shrink-0 rounded-none border-0 px-2 text-xs">
+          <Button variant="ghost" size="sm" onClick={() => onNewTerminal(defaultTerminalProfile(profiles, defaultProfileId))} data-ide-terminal-new aria-label="新建终端" title="新建终端" className="h-8 shrink-0 rounded-none border-0 px-2 text-xs">
             <Plus className="size-3.5" />
             <span className={cn(compact ? "hidden" : "hidden md:inline")}>新建</span>
           </Button>
@@ -306,6 +310,8 @@ export function TerminalTabs({
           x={newMenu.x}
           y={newMenu.y}
           profiles={profiles}
+          defaultProfileId={defaultProfileId}
+          onSetDefaultProfile={onSetDefaultProfile}
           onSelect={(profile) => {
             onNewTerminal(profile);
             setNewMenu(null);
@@ -400,11 +406,15 @@ function TerminalNewProfileMenu({
   y,
   profiles,
   onSelect,
+  defaultProfileId,
+  onSetDefaultProfile,
 }: {
   x: number;
   y: number;
   profiles: TerminalProfileDescriptor[];
   onSelect: (profile: TerminalProfileSelection) => void;
+  defaultProfileId?: string | null;
+  onSetDefaultProfile?: (profile: TerminalProfileDescriptor) => void;
 }) {
   const launchable = normalizeLaunchableProfiles(profiles);
   const unavailable = normalizeUnavailableShellProfiles(profiles);
@@ -414,8 +424,8 @@ function TerminalNewProfileMenu({
   return (
     <div
       role="menu"
-      className="fixed z-50 min-w-72 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
-      style={{ left: x, top: y }}
+      className="fixed z-50 min-w-72 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+      style={{ left: x, top: y, maxHeight: `calc(100vh - ${y + 8}px)` }}
       onPointerDown={(event) => event.stopPropagation()}
       data-ide-terminal-new-profile-menu
     >
@@ -424,7 +434,9 @@ function TerminalNewProfileMenu({
         <TerminalProfileMenuItem
           key={profile.id}
           profile={profile}
+          isDefault={profile.id === resolveDefaultProfileId(profiles, defaultProfileId)}
           onSelect={selectProfile}
+          onSetDefault={onSetDefaultProfile}
         />
       )) : (
         <button
@@ -481,33 +493,65 @@ function TerminalNewProfileMenu({
 
 function TerminalProfileMenuItem({
   profile,
+  isDefault,
   onSelect,
+  onSetDefault,
 }: {
   profile: TerminalProfileDescriptor;
+  isDefault: boolean;
   onSelect: (profile: TerminalProfileDescriptor) => void;
+  onSetDefault?: (profile: TerminalProfileDescriptor) => void;
 }) {
   const run = React.useCallback(() => onSelect(profile), [onSelect, profile]);
+  const setDefault = React.useCallback(() => onSetDefault?.(profile), [onSetDefault, profile]);
   return (
-    <button
-      type="button"
-      role="menuitem"
-      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        run();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      data-ide-terminal-new-profile={profile.id}
-      data-terminal-shell={profile.command}
-    >
-      <TerminalIcon className="size-3.5 text-subtle" />
-      <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
-      <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
-    </button>
+    <div className="flex w-full items-center gap-1 rounded-sm hover:bg-panel-3 focus-within:shadow-[var(--ring)]" role="none">
+      <button
+        type="button"
+        role="menuitem"
+        className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left outline-none"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          run();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        data-ide-terminal-new-profile={profile.id}
+        data-terminal-shell={profile.command}
+      >
+        <TerminalIcon className="size-3.5 shrink-0 text-subtle" />
+        <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
+        <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!onSetDefault || isDefault}
+        className={cn(
+          "mr-1 shrink-0 rounded px-1.5 py-0.5 text-2xs outline-none focus-visible:shadow-[var(--ring)]",
+          isDefault
+            ? "cursor-default bg-primary-soft text-primary"
+            : "text-muted hover:bg-panel hover:text-ink",
+        )}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!isDefault) setDefault();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        data-ide-terminal-set-default-profile={profile.id}
+        data-ide-terminal-default-profile={isDefault ? "true" : "false"}
+        title={isDefault ? "当前默认终端" : "设为默认终端"}
+      >
+        {isDefault ? "默认" : "设默认"}
+      </button>
+    </div>
   );
 }
 
@@ -528,10 +572,18 @@ function normalizeUnavailableShellProfiles(profiles: TerminalProfileDescriptor[]
   return normalizeShellProfiles(profiles).filter((profile) => !profile.launchable);
 }
 
-function defaultTerminalProfile(profiles: TerminalProfileDescriptor[]): TerminalProfileSelection {
+function resolveDefaultProfileId(profiles: TerminalProfileDescriptor[], defaultProfileId?: string | null): string | null {
   const launchable = normalizeLaunchableProfiles(profiles);
-  const local = launchable.find((profile) => profile.id === "local-shell") ?? launchable[0];
-  return local ? profileToSelection(local) : { profileId: "local-shell", shell: "bash", label: "Terminal" };
+  const preferred = defaultProfileId ? launchable.find((profile) => profile.id === defaultProfileId) : null;
+  const local = launchable.find((profile) => profile.id === "local-shell") ?? launchable[0] ?? null;
+  return (preferred ?? local)?.id ?? null;
+}
+
+function defaultTerminalProfile(profiles: TerminalProfileDescriptor[], defaultProfileId?: string | null): TerminalProfileSelection {
+  const launchable = normalizeLaunchableProfiles(profiles);
+  const resolvedId = resolveDefaultProfileId(profiles, defaultProfileId);
+  const profile = resolvedId ? launchable.find((item) => item.id === resolvedId) : null;
+  return profile ? profileToSelection(profile) : { profileId: "local-shell", shell: "bash", label: "Terminal" };
 }
 
 function profileToSelection(profile: TerminalProfileDescriptor): TerminalProfileSelection {
