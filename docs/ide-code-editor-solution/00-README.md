@@ -93,6 +93,7 @@
 | [archive/m5y-g-editor-preview-statusbar-hex-summary.md](./archive/m5y-g-editor-preview-statusbar-hex-summary.md) | M5.y-G IDE Preview StatusBar + Hex Editor Foundation，IDE embedded 预览、全局 StatusBar 文件信息和二进制 Hex 只读基础 |
 | [archive/m5y-h-layout-reset-empty-action-summary.md](./archive/m5y-h-layout-reset-empty-action-summary.md) | M5.y-H IDE Layout Reset / Empty State / Header Actions，Reset layout 只重置布局不清空工作区，EditorDock 空状态和操作菜单稳定化 |
 | [archive/m6-a-watcher-search-problems-output-plan.md](./archive/m6-a-watcher-search-problems-output-plan.md) | M6-A Watcher / Search / Problems / Output 研究与最小实现计划，明确 watcher/search/conflict/problems/output 切片、数据模型和验收路线 |
+| [archive/m6-b-watcher-foundation-summary.md](./archive/m6-b-watcher-foundation-summary.md) | M6-B Watcher Foundation 执行总结，记录 Files watch snapshot、Workbench file event bus 与 opened tab 外部变更保护 |
 
 ## 推荐技术选型
 
@@ -199,8 +200,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已明确 M6-B watcher、M6-C search、M6-D diff/conflict、M6-E problems/output、M6-F 验收文档的推荐切片。
 - 验收见 `archive/m6-a-watcher-search-problems-output-plan.md`。
 
-下一步 M6-B：Watcher Foundation
-- 先做 Files root guard 下的最小 watcher event contract 和 Workbench file event bus，重点验证 changed/deleted/renamed 不静默覆盖 dirty editor model。
+已完成 M6-B：Watcher Foundation
+- 新增 Files watch snapshot contract 与 Workbench file event bus；当前使用 bounded polling fallback，不新增第二套 Files API。
+- opened editor tab 可标记外部 changed/deleted；dirty deleted 不静默关闭或覆盖 Monaco 内容。
+- 验收见 `archive/m6-b-watcher-foundation-summary.md`。
+
+下一步 M6-C：Search Foundation
+- 复用现有 `/api/files/search` 与 content-index，补 Search Activity/View、结果列表和打开/跳转。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。

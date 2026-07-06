@@ -23,6 +23,7 @@ import type {
   FilesRenamePayload,
   FilesSearchPayload,
   FilesSummaryPayload,
+  FilesWatchSnapshotPayload,
   FilesTransferDryRunPayload,
   FilesTransferDryRunResponse,
   FilesTransferPayload,
@@ -162,6 +163,25 @@ export interface FilesSearchParams {
   regex?: boolean;
   /** Safe result limit for this search request. */
   limit?: number;
+}
+
+export interface FilesWatchSnapshotParams {
+  rootId: string;
+  path?: string;
+  hidden?: boolean;
+}
+
+/** GET /api/files/watch/snapshot — bounded directory snapshot for Workbench watcher polling. */
+export function getFilesWatchSnapshot(
+  params: FilesWatchSnapshotParams,
+  signal?: AbortSignal,
+): Promise<FilesWatchSnapshotPayload> {
+  const search = new URLSearchParams({ rootId: params.rootId });
+  if (params.path) search.set("path", params.path);
+  if (params.hidden != null) search.set("hidden", params.hidden ? "true" : "false");
+  return apiRequest<FilesWatchSnapshotPayload>(`${BASE}/watch/snapshot?${search.toString()}`, {
+    signal,
+  });
 }
 
 /** GET /api/files/search — recursive name/content search under a root. */

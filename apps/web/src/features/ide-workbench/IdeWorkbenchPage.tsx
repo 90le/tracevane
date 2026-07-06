@@ -33,6 +33,7 @@ import { IdeExplorerView } from "./explorer";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
+import { useWorkbenchFileEvents, type WorkbenchFileEvent } from "./watcher";
 import type {
   IdeWorkbenchEditorFileMetadata,
   IdeWorkbenchEditorTab,
@@ -210,6 +211,8 @@ export function IdeWorkbenchPage() {
                   saveState,
                   dirty: saveState === "dirty" || saveState === "saving" || saveState === "error" ? tab.dirty || saveState === "error" : false,
                   saveError: message,
+                  externalState: saveState === "saved" || saveState === "clean" ? undefined : tab.externalState,
+                  externalMessage: saveState === "saved" || saveState === "clean" ? null : tab.externalMessage,
                 }
               : tab,
           ),
@@ -332,6 +335,53 @@ export function IdeWorkbenchPage() {
       };
     });
   }, [layoutApi]);
+
+  const handleWorkbenchFileEvent = React.useCallback((event: WorkbenchFileEvent) => {
+    layoutApi.setLayout((current) => {
+      let changed = false;
+      const editorGroups = current.editorGroups.map((group) => {
+        const tabs = group.tabs.map((tab) => {
+          if (tab.ref.rootId !== event.rootId || tab.ref.path !== event.path) return tab;
+          if (event.type === "deleted") {
+            changed = true;
+            if (tab.dirty) {
+              return {
+                ...tab,
+                externalState: "deleted" as const,
+                externalMessage: "文件已在磁盘上删除；未保存内容仍保留在编辑器中。",
+              };
+            }
+            return {
+              ...tab,
+              deleted: true,
+              externalState: "deleted" as const,
+              externalMessage: "文件已在磁盘上删除。",
+            };
+          }
+          if (event.type === "changed" && event.kind === "file") {
+            changed = true;
+            return {
+              ...tab,
+              externalState: "changed" as const,
+              externalMessage: tab.dirty
+                ? "文件已在磁盘上变更；当前未保存内容不会被自动覆盖。"
+                : "文件已在磁盘上变更；请确认后重新读取。",
+            };
+          }
+          return tab;
+        });
+        return changed ? { ...group, tabs } : group;
+      });
+      return changed ? { ...current, editorGroups } : current;
+    });
+  }, [layoutApi]);
+
+  useWorkbenchFileEvents({
+    rootId,
+    directoryPath,
+    enabled: Boolean(rootId),
+    onEvent: handleWorkbenchFileEvent,
+  });
 
   return (
     <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
@@ -822,6 +872,8 @@ function syncTabForPathEvent(
     ref: nextRef,
     title: editorTitleForPath(nextPath),
     deleted: false,
+    externalState: undefined,
+    externalMessage: null,
   };
 }
 

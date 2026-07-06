@@ -488,6 +488,7 @@ function EditorDockTab({
         data-ide-editor-tab-path={tab?.ref.path ?? ""}
         data-ide-editor-tab-dirty={tab?.dirty ? "true" : "false"}
         data-ide-editor-tab-save-state={tab?.saveState ?? (tab?.dirty ? "dirty" : "clean")}
+        data-ide-editor-tab-external-state={tab?.externalState ?? "none"}
       >
         {tab?.preview && !tab.pinned ? (
           <Eye className="size-3.5 shrink-0 text-subtle" aria-label="预览标签" data-ide-editor-tab-preview-icon />
@@ -675,5 +676,6 @@ async function copyText(text: string, successTitle: string): Promise<void> {
 
 function tabTitle(tab?: IdeWorkbenchEditorTab): string {
   if (!tab) return "";
-  return `${tab.dirty ? "● " : ""}${tab.title}${tab.deleted ? " (deleted)" : ""}`;
+  const external = tab.externalState ? ` (${tab.externalState})` : "";
+  return `${tab.dirty ? "● " : ""}${tab.title}${tab.deleted ? " (deleted)" : external}`;
 }

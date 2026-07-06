@@ -98,6 +98,23 @@ export interface FilesTreePayload {
   children: FileTreeNodePayload[];
 }
 
+export interface FilesWatchSnapshotEntry {
+  path: string;
+  name: string;
+  kind: FileEntryKind;
+  size: number | null;
+  modifiedAt: string | null;
+  mtimeMs: number | null;
+}
+
+export interface FilesWatchSnapshotPayload {
+  checkedAt: string;
+  rootId: string;
+  directoryPath: string;
+  absolutePath: string;
+  entries: FilesWatchSnapshotEntry[];
+}
+
 export interface FilesReadPayload {
   checkedAt: string;
   rootId: string;

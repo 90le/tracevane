@@ -58,6 +58,8 @@ export interface IdeWorkbenchEditorTab {
   saveState?: EditorSaveState;
   saveError?: string | null;
   deleted?: boolean;
+  externalState?: "changed" | "deleted";
+  externalMessage?: string | null;
   metadata?: IdeWorkbenchEditorFileMetadata;
 }
 

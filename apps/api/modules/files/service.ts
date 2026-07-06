@@ -56,6 +56,7 @@ import type {
   FilesUploadInitResponse,
   FileTreeNodePayload,
   FilesTreePayload,
+  FilesWatchSnapshotPayload,
   FilesUnarchivePayload,
   FilesUnarchiveDryRunResponse,
   FilesUploadItemPayload,
@@ -362,6 +363,7 @@ export interface FilesService {
   getSummary(): FilesSummaryPayload;
   listDirectory(rootId: string, directoryPath?: string, showHidden?: boolean, options?: DirectoryListOptions): FilesDirectoryPayload;
   listTree(rootId: string, directoryPath?: string, showHidden?: boolean): FilesTreePayload;
+  getWatchSnapshot(rootId: string, directoryPath?: string, showHidden?: boolean): FilesWatchSnapshotPayload;
   readFile(rootId: string, filePath: string, options?: { offset?: number; limit?: number }): FilesReadPayload;
   search(rootId: string, directoryPath: string | undefined, query: string, recursive?: boolean, showHidden?: boolean, options?: FileSearchOptions): FilesSearchPayload;
   createDirectory(payload: FilesCreateDirectoryPayload): FilesMutationResponse;
@@ -3424,6 +3426,44 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         rootId: resolved.root.id,
         directoryPath: resolved.relativePath,
         children,
+      };
+    },
+
+    getWatchSnapshot(rootId: string, directoryPath = "", showHidden = true): FilesWatchSnapshotPayload {
+      const resolved = resolveExistingPath(config, rootId, directoryPath, {
+        allowRoot: true,
+        kind: "directory",
+      });
+      const entries: FilesWatchSnapshotPayload["entries"] = [];
+      for (const dirent of fs.readdirSync(resolved.absolutePath, { withFileTypes: true })) {
+        if (!showHidden && dirent.name.startsWith(".")) continue;
+        const absolutePath = path.join(resolved.absolutePath, dirent.name);
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(absolutePath);
+        } catch {
+          continue;
+        }
+        const kind: FileEntryKind = stat.isDirectory() ? "directory" : "file";
+        entries.push({
+          path: toPortableRelativePath(path.join(resolved.relativePath || "", dirent.name)),
+          name: dirent.name,
+          kind,
+          size: kind === "file" ? stat.size : null,
+          modifiedAt: toIsoTime(stat),
+          mtimeMs: Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : null,
+        });
+      }
+      entries.sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+        return FILE_NAME_COLLATOR.compare(left.name, right.name);
+      });
+      return {
+        checkedAt: new Date().toISOString(),
+        rootId: resolved.root.id,
+        directoryPath: resolved.relativePath,
+        absolutePath: resolved.absolutePath,
+        entries,
       };
     },
 

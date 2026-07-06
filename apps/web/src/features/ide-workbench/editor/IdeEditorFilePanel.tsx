@@ -228,15 +228,20 @@ export function IdeEditorFilePanel({
   return (
     <div
       ref={panelRef}
-      className="grid h-full min-h-0 min-w-0 bg-canvas"
+      className={cn(
+        "grid h-full min-h-0 min-w-0 bg-canvas",
+        tab.externalState ? "grid-rows-[auto_minmax(0,1fr)]" : "grid-rows-[minmax(0,1fr)]",
+      )}
       data-ide-monaco-editor-panel
       data-ide-editor-panel
       data-ide-editor-panel-kind="file"
       data-ide-editor-file-path={tab.ref.path}
       data-ide-editor-model-uri={editorModelUriString(tab.ref)}
       data-ide-editor-readonly={metadata.readonly ? "true" : "false"}
+      data-ide-editor-external-state={tab.externalState ?? "none"}
       onPointerDown={() => editorRef.current?.focus()}
     >
+      <IdeEditorExternalStateBanner tab={tab} />
       <CodeEditor
         ref={editorRef}
         key={`${tab.ref.rootId}:${tab.ref.path}`}
@@ -252,6 +257,27 @@ export function IdeEditorFilePanel({
         onSaveShortcut={() => { void saveCurrent(); }}
         className="h-full min-h-0 min-w-0"
       />
+    </div>
+  );
+}
+
+function IdeEditorExternalStateBanner({ tab }: { tab: IdeWorkbenchEditorTab }) {
+  if (!tab.externalState) return null;
+  return (
+    <div
+      className={cn(
+        "flex min-h-8 items-center gap-2 border-b px-3 text-xs",
+        tab.externalState === "deleted"
+          ? "border-amber-line bg-amber-soft text-amber"
+          : "border-primary-line bg-primary-soft text-primary",
+      )}
+      data-ide-editor-external-banner
+      data-ide-editor-external-state={tab.externalState}
+    >
+      <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">
+        {tab.externalMessage || (tab.externalState === "deleted" ? "文件已在磁盘上删除。" : "文件已在磁盘上变更。")}
+      </span>
     </div>
   );
 }

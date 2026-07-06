@@ -105,6 +105,19 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
     );
   });
 
+  router.get("/api/files/watch/snapshot", (req, res, routeCtx) => {
+    const url = readUrl(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.files.getWatchSnapshot(
+        url.searchParams.get("rootId") || "",
+        url.searchParams.get("path") || "",
+        readFlag(url.searchParams.get("hidden"), true),
+      ),
+    );
+  });
+
   router.get("/api/files/read", (req, res, routeCtx) => {
     const url = readUrl(req);
     sendJson(
