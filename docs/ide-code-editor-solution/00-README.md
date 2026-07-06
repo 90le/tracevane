@@ -211,8 +211,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 复用现有 `/api/files/search`；精确 range/reveal、Problems/Output 写入和替换后置。
 - 验收见 `archive/m6-c-search-foundation-summary.md`。
 
-下一步 M6-D：Diff / Conflict Flow
-- 基于 watcher external changed/deleted 和 save 409，补 compare / reload / overwrite / cancel。
+已完成 M6-D：Diff / Conflict Flow
+- IDE 保存时携带 `expectedModifiedAt` / `expectedSize`，Files API 返回 `file_write_conflict` 时进入 Monaco Diff 对比。
+- watcher changed + dirty 复用同一 compare / reload / overwrite / cancel 流程；deleted + dirty 继续保护内容，不自动覆盖或关闭。
+- 验收见 `archive/m6-d-editor-conflict-diff-summary.md`。
+
+下一步 M6-E：Problems / Output Foundation
+- 建立 Problems 数据模型和 Output channel/log 基础，不接 LSP/Git/Debug。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。

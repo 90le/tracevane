@@ -37,6 +37,9 @@ export async function saveEditorFile(request: EditorSaveRequest): Promise<Editor
     rootId: request.rootId,
     path: request.path,
     content: request.content,
+    expectedModifiedAt: request.expectedModifiedAt,
+    expectedSize: request.expectedSize,
+    force: request.force,
   });
   return {
     ref: { rootId: request.rootId, path: request.path },

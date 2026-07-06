@@ -96,6 +96,7 @@ export interface CodeEditorHandle {
   restoreViewState: (viewState: CodeEditorViewState | null | undefined) => void;
   layout: () => void;
   getValue: () => string;
+  setValue: (value: string) => void;
 }
 
 export type CodeEditorViewState = monaco.editor.ICodeEditorViewState;
@@ -214,6 +215,18 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     },
     layout: () => editorRef.current?.layout(),
     getValue: () => editorRef.current?.getValue() ?? "",
+    setValue: (value: string) => {
+      const editor = editorRef.current;
+      const model = modelRef.current;
+      if (!editor || !model) return;
+      if (model.getValue() === value) return;
+      model.pushEditOperations(
+        [],
+        [{ range: model.getFullModelRange(), text: value }],
+        () => null,
+      );
+      requestAnimationFrame(() => editor.layout());
+    },
   }), []);
 
   const updateEditorKeyboardInset = React.useCallback(() => {

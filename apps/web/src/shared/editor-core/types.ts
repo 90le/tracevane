@@ -55,6 +55,9 @@ export interface EditorReadResult {
 
 export interface EditorSaveRequest extends EditorFileRef {
   content: string;
+  expectedModifiedAt?: string | null;
+  expectedSize?: number | null;
+  force?: boolean;
 }
 
 export interface EditorSaveResult {

@@ -36,8 +36,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M6-A Watcher / Search / Problems / Output research and minimal implementation plan.
 - Done: M6-B Watcher Foundation.
 - Done: M6-C Search Foundation.
-- Next: M6-D Diff / Conflict Flow.
-- Later: M6-E Problems / Output Foundation.
+- Done: M6-D Diff / Conflict Flow.
+- Next: M6-E Problems / Output Foundation.
 - Later: M7 LSP / Git / Debug.
 
 ## Required reading by task
