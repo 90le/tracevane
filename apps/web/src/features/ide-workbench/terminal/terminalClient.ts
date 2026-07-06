@@ -176,7 +176,7 @@ async function endTerminalSessionWithRetries(
   for (let index = 0; index < attempts; index += 1) {
     try {
       const result = await endTerminalSession({ sid });
-      await deleteEndedTerminalDescriptor(sid);
+      await deleteEndedTerminalDescriptor(sid, retryDelayMs);
       return result;
     } catch (error) {
       lastError = error;
@@ -188,13 +188,25 @@ async function endTerminalSessionWithRetries(
   throw lastError instanceof Error ? lastError : new Error("terminal session kill failed");
 }
 
-async function deleteEndedTerminalDescriptor(sid: string): Promise<void> {
-  try {
-    await deleteTerminalSession(sid);
-  } catch (error) {
-    if (isApiError(error) && error.status === 404) return;
-    throw error;
+async function deleteEndedTerminalDescriptor(sid: string, retryDelayMs: number): Promise<void> {
+  let lastConflict: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await deleteTerminalSession(sid);
+      return;
+    } catch (error) {
+      if (isApiError(error) && error.status === 404) return;
+      if (isApiError(error) && error.status === 409) {
+        lastConflict = error;
+        if (attempt < 2) {
+          await delay(Math.max(100, retryDelayMs) * (attempt + 1));
+          continue;
+        }
+      }
+      throw error;
+    }
   }
+  throw lastConflict instanceof Error ? lastConflict : new Error("terminal descriptor delete conflict");
 }
 
 function enqueuePendingTerminalKill(sessionId: string): void {

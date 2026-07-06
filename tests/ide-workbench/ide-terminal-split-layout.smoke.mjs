@@ -250,6 +250,7 @@ async function run() {
     const closingTerminalId = await page.locator('[data-ide-terminal-pane]').nth(0).getAttribute('data-terminal-id');
     if (!closingTerminalId) throw new Error('Missing terminal id before close idempotency check');
     let closeRequestCount = 0;
+    let descriptorDeleteRequestCount = 0;
     await page.route('**/api/terminal/end', async (route) => {
       let sid = '';
       try {
@@ -260,6 +261,21 @@ async function run() {
       if (sid === closingTerminalId) {
         closeRequestCount += 1;
         await new Promise((resolve) => setTimeout(resolve, 1_200));
+      }
+      await route.continue();
+    });
+    await page.route('**/api/terminal/sessions/*/delete', async (route) => {
+      const url = route.request().url();
+      if (url.includes(`/api/terminal/sessions/${encodeURIComponent(closingTerminalId)}/delete`)) {
+        descriptorDeleteRequestCount += 1;
+        if (descriptorDeleteRequestCount === 1) {
+          await route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'conflict', message: 'forced smoke descriptor delete conflict' }),
+          });
+          return;
+        }
       }
       await route.continue();
     });
@@ -278,6 +294,14 @@ async function run() {
     if (closeRequestCount !== 1) {
       throw new Error(`Terminal pane close was not idempotent; expected 1 close request, got ${closeRequestCount}`);
     }
+    const deleteRetryDeadline = Date.now() + 10_000;
+    while (Date.now() < deleteRetryDeadline && descriptorDeleteRequestCount < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (descriptorDeleteRequestCount < 2) {
+      throw new Error(`Terminal descriptor delete conflict was not retried; got ${descriptorDeleteRequestCount} request(s)`);
+    }
+    await page.unroute('**/api/terminal/sessions/*/delete');
     await page.waitForTimeout(1_300);
 
     await page.getByRole('button', { name: 'Output' }).click();
