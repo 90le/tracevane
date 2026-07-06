@@ -213,6 +213,12 @@ async function run() {
     if (/\b(running|detached)\b/.test(activeManagerSessionCopy)) {
       throw new Error(`Terminal Manager session leaked raw status wording: ${activeManagerSessionCopy}`);
     }
+    if (!activeManagerSessionCopy.includes('工作区:') || !activeManagerSessionCopy.includes('目录: 工作区根目录')) {
+      throw new Error(`Terminal Manager did not show localized workspace/cwd labels: ${activeManagerSessionCopy}`);
+    }
+    if (activeManagerSessionCopy.includes('cwd: /') || activeManagerSessionCopy.includes('workspace:')) {
+      throw new Error(`Terminal Manager leaked raw workspace/cwd labels: ${activeManagerSessionCopy}`);
+    }
     const activeCloseButton = page.locator(`[data-ide-terminal-manager-close="${activeTerminalId}"]`);
     await activeCloseButton.waitFor({ state: 'visible', timeout: 30_000 });
     await activeCloseButton.getByText('强制关闭').waitFor({ state: 'visible', timeout: 30_000 });

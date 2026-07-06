@@ -266,9 +266,9 @@ export function TerminalManagerDialog({
                           </div>
                           <div className="grid gap-1 font-mono text-2xs text-muted md:grid-cols-2">
                             <span className="truncate" title={session.sessionId}>id: {session.sessionId}</span>
-                            <span className="truncate" title={normalizeRootId(session) || "unknown"}>workspace: {normalizeRootId(session) || "unknown"}</span>
-                            <span className="truncate" title={formatCwdTitle(session.cwd)}>cwd: {formatCwd(session.cwd)}</span>
-                            <span className="truncate">shell: {session.shell || "bash"} · updated: {formatTime(session.updatedAt)}</span>
+                            <span className="truncate" title={normalizeRootId(session) || "unknown"}>工作区: {normalizeRootId(session) || "unknown"}</span>
+                            <span className="truncate" title={formatCwdTitle(session.cwd)}>目录: {formatCwd(session.cwd)}</span>
+                            <span className="truncate">Shell: {session.shell || "bash"} · 更新: {formatTime(session.updatedAt)}</span>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-1">
@@ -386,13 +386,19 @@ function formatStatus(status: TerminalSessionDescriptor["status"]): string {
 }
 
 function formatCwd(value: string | null | undefined): string {
-  const cwd = String(value || "").trim();
-  return cwd ? cwd : "workspace 根目录";
+  const cwd = normalizeCwd(value);
+  if (!cwd || cwd === "." || cwd === "/") return "工作区根目录";
+  return cwd;
 }
 
 function formatCwdTitle(value: string | null | undefined): string {
-  const cwd = String(value || "").trim();
-  return cwd || "workspace-relative cwd is empty; terminal starts at selected workspace root";
+  const cwd = normalizeCwd(value);
+  if (!cwd || cwd === "." || cwd === "/") return "终端会从当前工作区根目录恢复";
+  return cwd;
+}
+
+function normalizeCwd(value: string | null | undefined): string {
+  return String(value || "").trim().replace(/\\/g, "/");
 }
 
 function formatTime(value: string | null | undefined): string {
