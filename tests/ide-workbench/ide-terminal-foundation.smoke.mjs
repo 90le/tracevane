@@ -236,6 +236,14 @@ async function runUiSmoke(rootId) {
     const terminalText = await page.locator('[data-ide-terminal-pane]').first().innerText();
     if (terminalText.includes('终端不可用') || terminalText.includes('error')) throw new Error(terminalText);
     await page.locator('[data-ide-terminal-xterm]').first().click();
+    const focusLeakToken = `TRACEVANE_TERMINAL_FOCUS_LEAK_${Date.now()}`;
+    await page.locator('[data-ide-editor-dock]').click({ position: { x: 12, y: 12 } });
+    await page.keyboard.type(focusLeakToken);
+    await page.waitForTimeout(300);
+    const terminalAfterEditorClick = await page.locator('[data-ide-terminal-pane]').first().innerText();
+    if (terminalAfterEditorClick.includes(focusLeakToken)) {
+      throw new Error('Terminal kept receiving keyboard input after clicking the editor dock');
+    }
     await page.evaluate(() => {
       const input = document.createElement('input');
       input.id = 'terminal-focus-regression-probe';
@@ -245,8 +253,8 @@ async function runUiSmoke(rootId) {
       input.style.top = '8px';
       input.style.zIndex = '99999';
       document.body.appendChild(input);
-      input.focus();
     });
+    await page.locator('#terminal-focus-regression-probe').click();
     await page.keyboard.type('focus-ok');
     const focusProbe = await page.evaluate(() => ({
       activeId: document.activeElement?.id || '',

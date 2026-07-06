@@ -160,8 +160,18 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
         if (!container.contains(document.activeElement)) onFocusChangeRef.current?.(false);
       }, 0);
     };
+    const releaseTerminalFocus = () => {
+      terminal.blur();
+      onFocusChangeRef.current?.(false);
+    };
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && container.contains(target)) return;
+      releaseTerminalFocus();
+    };
     container.addEventListener("focusin", handleFocusIn);
     container.addEventListener("focusout", handleFocusOut);
+    window.addEventListener("pointerdown", handlePointerDownOutside, true);
 
     const fit = () => {
       try {
@@ -182,6 +192,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       selectionDisposable.dispose();
       container.removeEventListener("focusin", handleFocusIn);
       container.removeEventListener("focusout", handleFocusOut);
+      window.removeEventListener("pointerdown", handlePointerDownOutside, true);
       onFocusChangeRef.current?.(false);
       terminal.dispose();
       terminalRef.current = null;
