@@ -110,7 +110,11 @@ export function schedulePendingTerminalKillFlush(delayMs = 1_500): void {
 export function isTerminalKillPending(sessionId: string): boolean {
   const sid = normalizeTerminalSessionId(sessionId);
   if (!sid) return false;
-  return readPendingTerminalKills().includes(sid);
+  return getPendingTerminalKillIds().has(sid);
+}
+
+export function getPendingTerminalKillIds(): Set<string> {
+  return new Set(readPendingTerminalKills());
 }
 
 export async function flushPendingTerminalKillRetries(): Promise<void> {

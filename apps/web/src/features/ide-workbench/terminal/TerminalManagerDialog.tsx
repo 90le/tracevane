@@ -6,7 +6,7 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import { getTerminalSessions } from "@/lib/api/terminal";
-import { endWorkbenchTerminalSession, isTerminalKillPending, schedulePendingTerminalKillFlush } from "./terminalClient";
+import { endWorkbenchTerminalSession, getPendingTerminalKillIds, schedulePendingTerminalKillFlush } from "./terminalClient";
 
 export function TerminalManagerDialog({
   open,
@@ -41,10 +41,11 @@ export function TerminalManagerDialog({
     schedulePendingTerminalKillFlush(options.silent ? 1_000 : 250);
     try {
       const payload = await getTerminalSessions();
+      const pendingKillIds = getPendingTerminalKillIds();
       setSessions((payload.sessions ?? []).filter((session) => (
         isManageableSession(session) &&
         !suppressedSessionIdsRef.current.has(session.sessionId) &&
-        !isTerminalKillPending(session.sessionId)
+        !pendingKillIds.has(session.sessionId)
       )));
     } catch (error) {
       if (!options.silent) {
