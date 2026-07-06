@@ -38,8 +38,9 @@ Both products share lower-level core services, not full product shells.
 - Done: M6-C Search Foundation.
 - Done: M6-D Diff / Conflict Flow.
 - Done: M6-E Problems / Output Foundation.
-- Next: M6-F M6 acceptance/docs closeout.
-- Later: M7 LSP / Git / Debug.
+- Done: M6-F M6 watcher/search/diff/problems/output acceptance/docs closeout.
+- Next: M7-A LSP / Git / Debug research and minimal implementation plan.
+- Later: M7 LSP / Git / Debug implementation slices.
 
 ## Required reading by task
 
@@ -49,7 +50,7 @@ Always read these before changing matching scope:
 - File Manager Online Editor / File Surface: `03-文件管理器在线编辑器方案.md`, `10-monaco-first-online-editor-strategy.md`, `12-file-surface-unification-and-monaco-gap-plan.md`.
 - Completed Mini Explorer / Shared Explorer Core record: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
 - IDE Workbench layout / IDE Editor Foundation: `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, `09-IDE参考行为与术语对照.md`, `archive/m5y-a-ide-editor-foundation-plan.md`, `archive/m5y-execution-summary.md`, `archive/m5y-g-editor-preview-statusbar-hex-summary.md`, and `archive/m5y-h-layout-reset-empty-action-summary.md`.
-- Watcher / Search / Problems / Output: `06-后端服务与接口方案.md`, `07-终端运行语言服务Git方案.md`, `08`, and `archive/m6-a-watcher-search-problems-output-plan.md`.
+- Completed Watcher / Search / Problems / Output: `06-后端服务与接口方案.md`, `07-终端运行语言服务Git方案.md`, `08`, `archive/m6-a-watcher-search-problems-output-plan.md`, and `archive/m6-execution-summary.md`.
 - Terminal / LSP / Git / Debug: `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, `08`.
 - Visual/theme work: `14-视觉主题与设计系统适配.md`, `DESIGN.md`, `docs/界面设计守则.md`, `apps/web/src/design/theme.css`.
 
@@ -75,4 +76,5 @@ Use the smallest sufficient proof for the changed surface:
 - File operations: `npm run smoke:file-manager:file-operations` and targeted system tests or focused API checks.
 - Theme changes: verify both light and dark on File Manager, File Surface/Monaco, and any IDE/terminal/panel surface touched.
 - Terminal/backend runtime changes: include lifecycle evidence for create/input/output/resize/kill/error/disconnect and cwd/root guard.
-- M6 watcher/search/problems/output changes: prove watcher path events, editor/explorer refresh behavior, search result jump, Problems data rendering, Output channel rendering, and dirty/conflict protection before claiming completion.
+- M6 watcher/search/problems/output changes are complete; regression changes must still prove watcher path events, editor/explorer refresh behavior, search result jump, Problems data rendering, Output channel rendering, and dirty/conflict protection.
+- M7 LSP/Git/Debug changes must start from research/contract planning before implementation and prove diagnostics/status/debug events through the existing Problems/Output/editor reveal foundations.

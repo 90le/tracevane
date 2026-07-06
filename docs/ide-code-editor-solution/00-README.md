@@ -97,6 +97,7 @@
 | [archive/m6-c-search-foundation-summary.md](./archive/m6-c-search-foundation-summary.md) | M6-C IDE Search Foundation 执行总结，记录 Search Activity/View、Files search 复用和结果打开 IDE Editor |
 | [archive/m6-d-editor-conflict-diff-summary.md](./archive/m6-d-editor-conflict-diff-summary.md) | M6-D IDE Diff / Conflict Flow 执行总结，记录 Monaco Diff、保存冲突和显式 reload/overwrite/cancel 流程 |
 | [archive/m6-e-problems-output-foundation-summary.md](./archive/m6-e-problems-output-foundation-summary.md) | M6-E Problems / Output Foundation 执行总结，记录结构化 Problems 面板和 Output channel/log 基础 |
+| [archive/m6-execution-summary.md](./archive/m6-execution-summary.md) | M6 Watcher / Search / Diff / Problems / Output 总体验收、完成边界和 M7 入口 |
 
 ## 推荐技术选型
 
@@ -223,11 +224,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - Output Panel 支持 channel/log、追加、清空、自动滚动/锁定；不持久化完整大日志。
 - 验收见 `archive/m6-e-problems-output-foundation-summary.md`。
 
-下一步 M6-F：M6 验收与文档收口
-- 汇总 watcher/search/diff/problems/output 完成口径，补齐 M7 入口。
+已完成 M6-F：M6 验收与文档收口
+- 已汇总 watcher/search/diff/problems/output 完成口径，明确 M6 不接 LSP/Git/Debug/真实 task runner。
+- 已把下一阶段入口更新为 M7-A LSP / Git / Debug 研究与最小实现计划。
+- 验收见 `archive/m6-execution-summary.md`。
 
-后续 M7：LSP / Git / Debug
-- 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。
+下一步 M7-A：LSP / Git / Debug 研究与最小实现计划
+- 先探查当前后端/前端扩展点、协议边界和可复用 Problems/Output/editor reveal 基础；不要直接一次性实现完整 LSP/Git/Debug。
 ```
 
 ## 重要原则

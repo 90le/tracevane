@@ -46,9 +46,10 @@ M5.y / M5.5：IDE Editor Foundation（下一步，终端保持 M5.x 边界）
 - 复用 shared/editor-core / Files API / Monaco-first 底层能力，不复用 File Manager Online Editor 产品壳。
 - 不改变 M5.x 终端 API，不做 LSP/Git/Debug，不做 Problems/Output 数据接入。
 
-M6+：终端参与更完整 Workbench 全局布局
+M6 已完成 / M7+：终端参与更完整 Workbench 全局布局
 - Terminal View 在 Panel / SecondarySideBar / dockable region 间移动。
 - 可评估 Terminal 最大化为主区域，或作为 editor-like tab 打开。
+- Terminal / Problems / Output 基础已在 M6 完成；Debug Console 仍到 M7.x。
 - Terminal / Problems / Output / Debug Console 与 Workbench layout 一起保存/恢复。
 - 持久化验收必须覆盖：刷新页面、重新进入 `/ide`、清空 localStorage、以及后端重启后 pinned terminal 尽量恢复同一 shell 进程。
 ```
@@ -309,14 +310,15 @@ TaskRunner
 ## 3.1 M6 / M7 边界
 
 ```txt
-M6：Watcher / Search / Problems / Output
-- 做文件 watcher、全局搜索、DiffEditor、Problems 数据模型、Output channel/log 基础。
+M6：Watcher / Search / Problems / Output（已完成）
+- 已做文件 watcher、全局搜索、DiffEditor、Problems 数据模型、Output channel/log 基础。
 - Problems 可以展示结构化问题数据，但不要求来自 LSP diagnostics。
-- Output 可以展示任务、终端辅助、语言服务预备日志等 channel。
+- Output 可以展示 watcher/系统/自定义 channel，不持久化完整大日志。
 - 不做 LSP Gateway，不做 Git，不做 Debug。
+- 总体验收见 [`archive/m6-execution-summary.md`](./archive/m6-execution-summary.md)。
 
 M7：LSP / Git / Debug
-- 先接单语言 LSP，让 diagnostics 进入 Problems。
+- 先做 M7-A 研究与最小实现计划，再接单语言 LSP，让 diagnostics 进入 Problems。
 - Git 先做 status/diff，再做 stage/commit。
 - Debug 后置到 M7.x，不和 LSP/Git 同时追完整。
 ```
@@ -502,11 +504,12 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 2. 独立 IDE 布局
 3. xterm 终端
 4. 任务运行
-5. M6：Diff / Search / Watcher / Problems 数据基础 / Output channel
-6. M7.1：单语言 LSP + diagnostics + Problems 跳转
-7. M7.2：Git 只读状态 + diff
-8. M7.3：Git 基础操作
-9. M7.x：Debug
+5. M6：Diff / Search / Watcher / Problems 数据基础 / Output channel（已完成）
+6. M7-A：LSP / Git / Debug 研究与最小实现计划
+7. M7.1：单语言 LSP + diagnostics + Problems 跳转
+8. M7.2：Git 只读状态 + diff
+9. M7.3：Git 基础操作
+10. M7.x：Debug
 ```
 
 ## 9. 验收标准
