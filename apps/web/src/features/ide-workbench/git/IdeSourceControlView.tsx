@@ -88,6 +88,9 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   const status = git.status;
   const stagedChanges = git.changes.filter((change) => change.staged);
   const unstagedChanges = git.changes.filter((change) => change.unstaged || change.kind === "untracked");
+  const untrackedChanges = git.changes.filter((change) => change.kind === "untracked");
+  const unstagedTrackedChanges = git.changes.filter((change) => change.unstaged && change.kind !== "untracked");
+  const trackingLabel = formatTracking(status?.upstream ?? null, status?.ahead ?? 0, status?.behind ?? 0);
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel" data-ide-sidebar data-ide-source-control-view>
       <div className="border-b border-line bg-panel px-3 py-2" data-ide-source-control-toolbar>
@@ -101,13 +104,27 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             {git.loading ? <Loader2 className="animate-spin" /> : <RefreshCcw />}
           </Button>
         </div>
-        <div className="mt-2 rounded-md border border-line bg-panel-2 px-2 py-1 text-xs text-muted" data-ide-source-control-summary>
+        <div className="mt-2 grid gap-1 rounded-md border border-line bg-panel-2 px-2 py-1 text-xs text-muted" data-ide-source-control-summary>
           {status?.available ? (
             <>
-              <span className="font-medium text-ink-strong">{status.branch || "HEAD"}</span>
-              <span className="mx-1 text-subtle">·</span>
-              <span>{git.changes.length} 个变更</span>
-              {status.ahead || status.behind ? <span className="ml-1">↑{status.ahead} ↓{status.behind}</span> : null}
+              <div className="flex min-w-0 items-center gap-1.5" data-ide-source-control-branch-summary>
+                <span className="font-medium text-ink-strong" data-ide-source-control-branch>{status.branch || "HEAD"}</span>
+                {status.upstream ? (
+                  <span className="truncate text-subtle" data-ide-source-control-upstream>→ {status.upstream}</span>
+                ) : (
+                  <span className="truncate text-subtle" data-ide-source-control-upstream>无 upstream</span>
+                )}
+                {status.ahead || status.behind ? (
+                  <span className="ml-auto shrink-0 text-primary" data-ide-source-control-ahead-behind>↑{status.ahead} ↓{status.behind}</span>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-subtle" data-ide-source-control-change-summary>
+                <span data-ide-source-control-change-count>{git.changes.length} 变更</span>
+                <span data-ide-source-control-staged-count>{stagedChanges.length} 暂存</span>
+                <span data-ide-source-control-unstaged-count>{unstagedTrackedChanges.length} 未暂存</span>
+                <span data-ide-source-control-untracked-count>{untrackedChanges.length} 未跟踪</span>
+                {trackingLabel ? <span className="text-muted" data-ide-source-control-tracking-label>{trackingLabel}</span> : null}
+              </div>
             </>
           ) : git.error ? (
             <span className="text-danger">{git.error}</span>
@@ -286,4 +303,12 @@ function SourceControlState({ title, description, tone = "default", loading = fa
 function fileName(value: string) {
   const parts = value.split("/").filter(Boolean);
   return parts.at(-1) || value || "/";
+}
+
+function formatTracking(upstream: string | null, ahead: number, behind: number): string {
+  if (!upstream) return "未设置远端跟踪";
+  if (ahead > 0 && behind > 0) return `领先 ${ahead} / 落后 ${behind}`;
+  if (ahead > 0) return `领先 ${ahead}`;
+  if (behind > 0) return `落后 ${behind}`;
+  return "已同步 upstream";
 }

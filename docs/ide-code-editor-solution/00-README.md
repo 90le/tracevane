@@ -105,6 +105,7 @@
 | [archive/m7-e-a-git-diff-foundation-summary.md](./archive/m7-e-a-git-diff-foundation-summary.md) | M7-E-A Git Diff Foundation 验收总结 |
 | [archive/m7-e-b-git-stage-unstage-summary.md](./archive/m7-e-b-git-stage-unstage-summary.md) | M7-E-B Git Stage / Unstage Foundation 验收总结 |
 | [archive/m7-e-c-git-commit-foundation-summary.md](./archive/m7-e-c-git-commit-foundation-summary.md) | M7-E-C Git Commit Foundation 验收总结 |
+| [archive/m7-e-d-git-branch-upstream-summary.md](./archive/m7-e-d-git-branch-upstream-summary.md) | M7-E-D Git Branch / Upstream Status Foundation 验收总结 |
 
 ## 推荐技术选型
 
@@ -242,8 +243,8 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - M7-B 单语言 JSON diagnostics 已接入 Problems/Output。
 - M7-C 已接入 JSON hover / completion / definition foundation。
 - M7-D 已接入 Git status + Explorer decoration + Source Control View。
-- 下一步进入 M7-E：Git diff / stage / unstage / commit。
-- 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md` 与 `archive/m7-c-lsp-interaction-summary.md`。
+- M7-E-D 已完成 Git branch / upstream status foundation；下一步进入 M7 Git acceptance closeout，随后进入 M7-F Debug Adapter Protocol。
+- 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md`、`archive/m7-c-lsp-interaction-summary.md`、`archive/m7-d-git-status-source-control-summary.md`、`archive/m7-e-a-git-diff-foundation-summary.md`、`archive/m7-e-b-git-stage-unstage-summary.md`、`archive/m7-e-c-git-commit-foundation-summary.md` 与 `archive/m7-e-d-git-branch-upstream-summary.md`。
 ```
 
 ## 重要原则

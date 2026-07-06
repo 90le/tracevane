@@ -46,6 +46,7 @@ import type {
   WorkbenchPanelId,
   WorkbenchPanelPlacement,
 } from "./types";
+import type { GitStatusPayload } from "../../../../../types/git";
 import { IDE_ACTIVITY_LABELS, IDE_PANEL_LABELS } from "./types";
 
 const ACTIVITY_ITEMS: Array<{
@@ -604,6 +605,7 @@ export function IdeWorkbenchPage() {
         panelCollapsed={layout.panel.collapsed}
         activePanelId={layout.panel.activePanelId}
         activeTab={activeTab}
+        git={gitStatus.status}
       />
     </div>
   );
@@ -1153,6 +1155,7 @@ function WorkbenchStatusBar({
   panelCollapsed,
   activePanelId,
   activeTab,
+  git,
 }: {
   rootId: string;
   rootAbsolutePath?: string;
@@ -1161,15 +1164,27 @@ function WorkbenchStatusBar({
   panelCollapsed: boolean;
   activePanelId: WorkbenchPanelId;
   activeTab: IdeWorkbenchEditorTab | null;
+  git: GitStatusPayload | null;
 }) {
   const fileState = activeTab?.deleted
     ? "deleted"
     : activeTab?.saveState ?? (activeTab?.dirty ? "dirty" : "clean");
   const metadata = activeTab?.metadata;
+  const gitChangeCount = git?.available ? git.changes.length : 0;
+  const gitSummary = git?.available ? formatGitStatusBar(git) : null;
   return (
     <footer className="flex min-h-6 items-center gap-3 overflow-hidden border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
       <span className="truncate">root: {rootId || "pending"}</span>
       <span className="truncate">path: /{directoryPath}</span>
+      {git?.available ? (
+        <span className="inline-flex max-w-[34vw] shrink-0 items-center gap-1 truncate text-primary" title={gitSummary ?? undefined} data-ide-status-git>
+          <GitBranch className="size-3" aria-hidden />
+          <span className="truncate" data-ide-status-git-branch>{git.branch || "HEAD"}</span>
+          {git.upstream ? <span className="hidden truncate text-subtle sm:inline" data-ide-status-git-upstream>→ {git.upstream}</span> : null}
+          {(git.ahead || git.behind) ? <span className="shrink-0" data-ide-status-git-ahead-behind>↑{git.ahead} ↓{git.behind}</span> : null}
+          <span className="shrink-0 text-subtle" data-ide-status-git-change-count>{gitChangeCount}</span>
+        </span>
+      ) : null}
       <span className="shrink-0">sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
       <span className="shrink-0">panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
       {activeTab ? (
@@ -1200,4 +1215,10 @@ function formatStatusBytes(bytes: number): string {
     index += 1;
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function formatGitStatusBar(status: GitStatusPayload): string {
+  const upstream = status.upstream ? ` → ${status.upstream}` : "";
+  const tracking = status.ahead || status.behind ? ` ↑${status.ahead} ↓${status.behind}` : "";
+  return `${status.branch || "HEAD"}${upstream}${tracking} · ${status.changes.length} change(s)`;
 }
