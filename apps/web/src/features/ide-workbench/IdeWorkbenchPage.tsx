@@ -31,6 +31,7 @@ import { EditorDock } from "./editor";
 import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
+import { IdeSourceControlView, useIdeGitStatus } from "./git";
 import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { TerminalPanel } from "./terminal";
@@ -54,7 +55,7 @@ const ACTIVITY_ITEMS: Array<{
 }> = [
   { id: "explorer", icon: <Files /> },
   { id: "search", icon: <Search /> },
-  { id: "git", icon: <GitBranch />, disabled: true },
+  { id: "git", icon: <GitBranch /> },
   { id: "run", icon: <Play />, disabled: true },
   { id: "extensions", icon: <Package />, disabled: true },
 ];
@@ -83,6 +84,7 @@ export function IdeWorkbenchPage() {
   const layoutApi = useIdeWorkbenchLayoutState(rootId || "pending-root");
   const { layout } = layoutApi;
   const directoryPath = layout.explorer.directoryPath;
+  const gitStatus = useIdeGitStatus(rootId, directoryPath);
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
 
@@ -157,6 +159,10 @@ export function IdeWorkbenchPage() {
     }
     openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true });
   }, [layoutApi, openFilePath]);
+
+  const openGitChange = React.useCallback((request: { rootId: string; path: string; pinned?: boolean }) => {
+    openFilePath({ rootId: request.rootId, path: request.path }, { pinned: request.pinned ?? true });
+  }, [openFilePath]);
 
   const openProblem = React.useCallback((problem: WorkbenchProblem) => {
     if (!problem.path) return;
@@ -469,6 +475,14 @@ export function IdeWorkbenchPage() {
               directoryPath={directoryPath}
               onOpenResult={openSearchResult}
             />
+          ) : layout.activeActivityId === "git" ? (
+            <IdeSourceControlView
+              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+              rootId={rootId}
+              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+              git={gitStatus}
+              onOpenFile={openGitChange}
+            />
           ) : layout.activeActivityId === "explorer" ? (
             <IdeExplorerView
               hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
@@ -479,9 +493,13 @@ export function IdeWorkbenchPage() {
               activeRootId={activeTab?.ref.rootId}
               activePath={activeTab?.ref.path}
               openTabs={openTabs}
+              gitDecorations={gitStatus.byPath}
               onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
               onOpenEntry={openEntry}
-              onPathEvent={handleExplorerPathEvent}
+              onPathEvent={(event) => {
+                handleExplorerPathEvent(event);
+                gitStatus.refresh();
+              }}
             />
           ) : (
             <IdePendingActivityView
@@ -523,6 +541,7 @@ export function IdeWorkbenchPage() {
                 onSaveStateChange={updateEditorTabSaveState}
                 onFileMetadataChange={updateEditorTabMetadata}
                 onRequestCloseTabs={requestCloseEditorTabs}
+                gitDecorations={gitStatus.byPath}
               />
             )}
             <PanelArea

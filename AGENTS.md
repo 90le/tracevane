@@ -156,8 +156,9 @@ Done: M6 Watcher / Search / Problems / Output
 Done: M7-A LSP / Git / Debug research and minimal implementation plan
 Done: M7-B single-language JSON diagnostics to Problems/Output
 Done: M7-C LSP hover/completion/definition foundation
-Next: M7-D Git status + Explorer decoration + Source Control View
-Later: M7-E Git diff/stage/commit; M7-F/M7.x Debug
+Done: M7-D Git status + Explorer decoration + Source Control View
+Next: M7-E Git diff/stage/commit
+Later: M7-F/M7.x Debug
 ```
 
 Do not pull future-stage functionality forward unless the user explicitly changes the stage target. In particular:
@@ -167,7 +168,7 @@ Do not pull future-stage functionality forward unless the user explicitly change
 - M5 is complete: real terminal lifecycle and safety are proven at foundation level.
 - M5.x is complete: terminal split/group, bottom/right placement, profile selection, persistence and clipboard-path bridge are accepted terminal layout foundations.
 - M5.y is complete: IDE EditorDock now has real Monaco-backed file editing, dirty/save/close protection, preview/pinned tabs, tab menus, file panel splits, and Explorer rename/move/delete path sync while reusing shared/editor-core and Files API.
-- M6 watcher/search/problems/output foundations are complete; M7-A/M7-B/M7-C LSP foundation is complete. M7-D must reuse existing Git API/service for status and Explorer/Source Control surfaces, not implement Debug or a second Git API.
+- M6 watcher/search/problems/output foundations are complete; M7-A/M7-B/M7-C LSP foundation and M7-D Git status visibility are complete. M7-E must reuse existing Git API/service for diff/stage/commit surfaces, not implement Debug or a second Git API.
 
 Shared architecture rules:
 

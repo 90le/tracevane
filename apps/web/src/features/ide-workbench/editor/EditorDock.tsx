@@ -17,6 +17,7 @@ import { CheckCheck, Copy, Eye, MoreHorizontal, Pin, Save, SplitSquareHorizontal
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
 import type { EditorSaveState } from "@/shared/editor-core";
+import type { IdeGitDecoration } from "../git";
 import type { IdeWorkbenchEditorFileMetadata, IdeWorkbenchEditorTab } from "../types";
 import { saveIdeEditorTab } from "./ideEditorRuntime";
 import { EditorDockCallbacksContext, EditorPlaceholderPanel, type EditorPlaceholderParams } from "./EditorPlaceholderPanel";
@@ -33,6 +34,7 @@ export interface EditorDockProps {
   onSaveStateChange: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
   onFileMetadataChange: (tabId: string, metadata: IdeWorkbenchEditorFileMetadata) => void;
   onRequestCloseTabs: (tabIds: string[]) => void;
+  gitDecorations?: ReadonlyMap<string, IdeGitDecoration>;
 }
 
 const EDITOR_COMPONENT = "tracevane.editor.placeholder";
@@ -56,6 +58,7 @@ export function EditorDock({
   onSaveStateChange,
   onFileMetadataChange,
   onRequestCloseTabs,
+  gitDecorations,
 }: EditorDockProps) {
   const apiRef = React.useRef<DockviewApi | null>(null);
   const disposablesRef = React.useRef<Array<{ dispose: () => void }>>([]);
@@ -223,7 +226,7 @@ export function EditorDock({
           components={{ [EDITOR_COMPONENT]: EditorPlaceholderPanel }}
           watermarkComponent={EditorDockWatermark}
           defaultTabComponent={(props) => (
-            <EditorDockTab {...props} tabs={tabs} onPinTab={onPinTab} onRequestCloseTabs={onRequestCloseTabs} onSplitEditor={splitEditor} />
+            <EditorDockTab {...props} tabs={tabs} gitDecorations={gitDecorations} onPinTab={onPinTab} onRequestCloseTabs={onRequestCloseTabs} onSplitEditor={splitEditor} />
           )}
           rightHeaderActionsComponent={EditorDockHeaderActionsAdapter}
           onReady={handleReady}
@@ -425,11 +428,13 @@ function EditorDockTab({
   api,
   params,
   tabs,
+  gitDecorations,
   onPinTab,
   onRequestCloseTabs,
   onSplitEditor,
 }: IDockviewPanelHeaderProps<EditorPlaceholderParams> & {
   tabs: readonly IdeWorkbenchEditorTab[];
+  gitDecorations?: ReadonlyMap<string, IdeGitDecoration>;
   onPinTab: (tabId: string) => void;
   onRequestCloseTabs: (tabIds: string[]) => void;
   onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
@@ -437,6 +442,7 @@ function EditorDockTab({
   const tab = params.tab;
   const title = tabTitle(tab) || params.title || "Editor";
   const tabIndex = tab ? tabs.findIndex((item) => item.id === tab.id) : -1;
+  const gitDecoration = tab ? gitDecorations?.get(tab.ref.path) : undefined;
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
 
   React.useEffect(() => {
@@ -494,6 +500,24 @@ function EditorDockTab({
           <Eye className="size-3.5 shrink-0 text-subtle" aria-label="预览标签" data-ide-editor-tab-preview-icon />
         ) : null}
         <span className="min-w-0 flex-1 truncate">{title}</span>
+        {gitDecoration && !gitDecoration.aggregate ? (
+          <span
+            className={cn(
+              "grid min-w-4 shrink-0 place-items-center rounded border px-1 py-0.5 text-[10px] font-semibold leading-none",
+              gitDecoration.tone === "added" && "border-green/40 bg-green-soft text-green",
+              gitDecoration.tone === "modified" && "border-amber/40 bg-amber-soft text-amber",
+              gitDecoration.tone === "deleted" && "border-danger-line bg-danger-soft text-danger",
+              gitDecoration.tone === "renamed" && "border-primary-line bg-primary-soft text-primary",
+              gitDecoration.tone === "untracked" && "border-primary-line bg-primary-soft text-primary",
+              gitDecoration.tone === "conflicted" && "border-danger-line bg-danger-soft text-danger",
+              gitDecoration.tone === "unknown" && "border-line bg-panel-2 text-muted",
+            )}
+            title={`Git: ${gitDecoration.kind}`}
+            data-ide-editor-tab-git-decoration
+          >
+            {gitDecoration.label}
+          </span>
+        ) : null}
         {tab?.dirty ? <span className="shrink-0 text-amber" aria-label="未保存修改">●</span> : null}
         {tab ? (
           <button

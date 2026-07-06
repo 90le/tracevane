@@ -68,6 +68,7 @@ import {
   DragFloatingPreview,
 } from "@/shared/explorer-ui";
 import type { ExplorerContextMenuItem, ExplorerTreeItem } from "@/shared/explorer-ui";
+import type { IdeGitDecoration } from "../git";
 
 export type IdeExplorerPathEvent =
   | {
@@ -100,6 +101,7 @@ export interface IdeExplorerViewProps {
   activeRootId?: string;
   activePath?: string;
   openTabs?: readonly IdeExplorerOpenTabRef[];
+  gitDecorations?: ReadonlyMap<string, IdeGitDecoration>;
   onDirectoryPathChange: (path: string) => void;
   onOpenEntry: (entry: ExplorerEntry, options?: { pinned?: boolean }) => void;
   onPathEvent?: (event: IdeExplorerPathEvent) => void;
@@ -138,6 +140,7 @@ export function IdeExplorerView({
   activeRootId,
   activePath,
   openTabs = [],
+  gitDecorations,
   onDirectoryPathChange,
   onOpenEntry,
   onPathEvent,
@@ -746,6 +749,7 @@ export function IdeExplorerView({
                 activeNodeKey={activeNodeKey}
                 expandedKeys={treeState.expandedKeys}
                 selectedKeys={treeState.selectedKeys}
+                gitDecorations={gitDecorations}
                 onToggleDirectory={(item) => toggleExpanded(item.id)}
                 onOpenFile={onOpenEntry}
                 onSelect={selectEntry}
@@ -839,6 +843,29 @@ export function IdeExplorerView({
   );
 }
 
+function GitDecorationBadge({ decoration }: { decoration: IdeGitDecoration }) {
+  return (
+    <span
+      className={cn(
+        "grid min-w-4 place-items-center rounded border px-1 py-0.5 text-[10px] font-semibold leading-none",
+        decoration.aggregate && "min-w-3 border-transparent bg-transparent px-0 text-base",
+        decoration.tone === "added" && "border-green/40 bg-green-soft text-green",
+        decoration.tone === "modified" && "border-amber/40 bg-amber-soft text-amber",
+        decoration.tone === "deleted" && "border-danger-line bg-danger-soft text-danger",
+        decoration.tone === "renamed" && "border-primary-line bg-primary-soft text-primary",
+        decoration.tone === "untracked" && "border-primary-line bg-primary-soft text-primary",
+        decoration.tone === "conflicted" && "border-danger-line bg-danger-soft text-danger",
+        decoration.tone === "unknown" && "border-line bg-panel-2 text-muted",
+      )}
+      title={`Git: ${decoration.kind}`}
+      data-ide-explorer-git-decoration
+      data-ide-explorer-git-kind={decoration.kind}
+    >
+      {decoration.label}
+    </span>
+  );
+}
+
 function ExplorerToolbarIconButton({
   label,
   children,
@@ -881,6 +908,7 @@ interface IdeExplorerBranchProps {
   onDropTargetChange: (directoryPath: string | null) => void;
   currentDirectoryPath: string;
   dropTargetPath: string | null;
+  gitDecorations?: ReadonlyMap<string, IdeGitDecoration>;
 }
 
 function IdeExplorerBranch({
@@ -900,8 +928,10 @@ function IdeExplorerBranch({
   onDropTargetChange,
   currentDirectoryPath,
   dropTargetPath,
+  gitDecorations,
 }: IdeExplorerBranchProps) {
   const expanded = expandedKeys.has(entry.id);
+  const gitDecoration = gitDecorations?.get(entry.path);
   const children = useExplorerDirectory({
     rootId,
     directoryPath: entry.path,
@@ -1000,6 +1030,7 @@ function IdeExplorerBranch({
         selected={selectedKeys.has(entry.id)}
         active={entry.id === activeNodeKey}
         minTouchTarget
+        renderDecoration={() => gitDecoration ? <GitDecorationBadge decoration={gitDecoration} /> : null}
         renderActions={() => (
           <button
             type="button"
@@ -1108,6 +1139,7 @@ function IdeExplorerBranch({
                 activeNodeKey={activeNodeKey}
                 expandedKeys={expandedKeys}
                 selectedKeys={selectedKeys}
+                gitDecorations={gitDecorations}
                 onToggleDirectory={onToggleDirectory}
                 onOpenFile={onOpenFile}
                 onSelect={onSelect}

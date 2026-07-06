@@ -39,6 +39,7 @@ export interface ExplorerTreeNodeProps extends Omit<React.HTMLAttributes<HTMLDiv
   active?: boolean;
   disabled?: boolean;
   minTouchTarget?: boolean;
+  renderDecoration?: (state: ExplorerTreeNodeRenderState) => React.ReactNode;
   renderActions?: (state: ExplorerTreeNodeRenderState) => React.ReactNode;
   onToggle?: (item: ExplorerTreeItem) => void;
   onOpen?: (item: ExplorerTreeItem) => void;
@@ -54,6 +55,7 @@ export function ExplorerTreeNode({
   active = false,
   disabled = false,
   minTouchTarget = true,
+  renderDecoration,
   renderActions,
   onToggle,
   onOpen,
@@ -165,6 +167,11 @@ export function ExplorerTreeNode({
       {item.isLoadingChildren && (
         <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" aria-label="加载中" />
       )}
+      {renderDecoration ? (
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {renderDecoration(state)}
+        </span>
+      ) : null}
       {renderActions && (
         <span className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/explorer-node:opacity-100 group-focus-within/explorer-node:opacity-100">
           {renderActions(state)}

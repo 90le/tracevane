@@ -101,6 +101,7 @@
 | [archive/m7-a-lsp-git-debug-plan.md](./archive/m7-a-lsp-git-debug-plan.md) | M7-A LSP / Git / Debug 研究、边界与最小实现计划，明确 M7-B+ 分阶段路线 |
 | [archive/m7-b-lsp-diagnostics-summary.md](./archive/m7-b-lsp-diagnostics-summary.md) | M7-B 单语言 JSON diagnostics -> Problems/Output 验收总结 |
 | [archive/m7-c-lsp-interaction-summary.md](./archive/m7-c-lsp-interaction-summary.md) | M7-C LSP hover / completion / definition foundation 验收总结 |
+| [archive/m7-d-git-status-source-control-summary.md](./archive/m7-d-git-status-source-control-summary.md) | M7-D Git status + Explorer decoration + Source Control View 验收总结 |
 
 ## 推荐技术选型
 
@@ -237,7 +238,8 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已查证 LSP、DAP、Git porcelain 与 monaco-languageclient 方向，明确 M7 不一次性追完整 VS Code。
 - M7-B 单语言 JSON diagnostics 已接入 Problems/Output。
 - M7-C 已接入 JSON hover / completion / definition foundation。
-- 下一步进入 M7-D：Git status + Explorer decoration + Source Control View。
+- M7-D 已接入 Git status + Explorer decoration + Source Control View。
+- 下一步进入 M7-E：Git diff / stage / unstage / commit。
 - 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md` 与 `archive/m7-c-lsp-interaction-summary.md`。
 ```
 

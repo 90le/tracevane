@@ -76,11 +76,15 @@ function realPathOrSelf(value: string): string {
 }
 
 function buildGitRoots(config: TracevaneServerConfig): GitRootContext[] {
+  const filesystemRoot = path.parse(config.openclawRoot || process.cwd()).root || "/";
   const candidates: Array<{ id: string; absolutePath: string }> = [
-    { id: "openclaw-root", absolutePath: config.openclawRoot },
+    // Match Files service root semantics: openclaw-root is the filesystem root
+    // so IDE Explorer paths can be passed directly to Git routes.
+    { id: "openclaw-root", absolutePath: filesystemRoot },
     { id: "home-root", absolutePath: os.homedir() },
-    { id: "system-root", absolutePath: path.parse(config.openclawRoot || process.cwd()).root || "/" },
+    { id: "system-root", absolutePath: filesystemRoot },
     { id: "project-root", absolutePath: config.projectRoot },
+    { id: "openclaw-state-root", absolutePath: config.openclawRoot },
   ];
   const roots: GitRootContext[] = [];
   const seenIds = new Set<string>();
@@ -346,6 +350,21 @@ function statusToKind(status: string): GitFileChangeKind {
   return "unknown";
 }
 
+function parseChangeRecord(status: string, rawPath: string, previousPath = ""): GitFileChange | null {
+  const normalizedPath = rawPath.trim();
+  if (!normalizedPath) return null;
+  const x = status[0] || " ";
+  const y = status[1] || " ";
+  return {
+    path: toPortablePath(normalizedPath),
+    previousPath: previousPath ? toPortablePath(previousPath) : null,
+    status,
+    kind: statusToKind(status),
+    staged: x !== " " && x !== "?",
+    unstaged: y !== " " && y !== "?",
+  };
+}
+
 function parseChangeLine(line: string): GitFileChange | null {
   if (line.length < 4) return null;
   const status = line.slice(0, 2);
@@ -355,16 +374,30 @@ function parseChangeLine(line: string): GitFileChange | null {
   const [previousPath, nextPath] = renamed
     ? rawPath.split(" -> ", 2)
     : ["", rawPath];
-  const x = status[0] || " ";
-  const y = status[1] || " ";
-  return {
-    path: toPortablePath(nextPath || rawPath),
-    previousPath: previousPath ? toPortablePath(previousPath) : null,
-    status,
-    kind: statusToKind(status),
-    staged: x !== " " && x !== "?",
-    unstaged: y !== " " && y !== "?",
-  };
+  return parseChangeRecord(status, nextPath || rawPath, previousPath);
+}
+
+function parseStatusPorcelain(output: string): { branch: ReturnType<typeof parseBranchLine>; changes: GitFileChange[] } {
+  const records = output.split("\0").filter(Boolean);
+  const branchRecord = records[0] || "## HEAD";
+  const branch = parseBranchLine(branchRecord);
+  const changes: GitFileChange[] = [];
+  for (let index = 1; index < records.length && changes.length < GIT_STATUS_CHANGE_LIMIT; index += 1) {
+    const record = records[index] || "";
+    if (record.length < 4) continue;
+    const status = record.slice(0, 2);
+    const rawPath = record.slice(3);
+    if (status.includes("R") || status.includes("C")) {
+      const nextRecord = records[index + 1] || "";
+      index += 1;
+      const change = parseChangeRecord(status, nextRecord || rawPath, rawPath);
+      if (change) changes.push(change);
+      continue;
+    }
+    const change = parseChangeRecord(status, rawPath);
+    if (change) changes.push(change);
+  }
+  return { branch, changes };
 }
 
 function parseBranchSummaryLine(line: string): GitBranchSummary | null {
@@ -560,14 +593,8 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       );
     }
 
-    const branchOutput = runGit(repositoryRoot, ["status", "--porcelain=v1", "-b"]);
-    const lines = branchOutput.split(/\r?\n/).filter(Boolean);
-    const branch = parseBranchLine(lines[0] || "## HEAD");
-    const changes = lines
-      .slice(1)
-      .map(parseChangeLine)
-      .filter((change): change is GitFileChange => Boolean(change))
-      .slice(0, GIT_STATUS_CHANGE_LIMIT);
+    const branchOutput = runGit(repositoryRoot, ["status", "--porcelain=v1", "-z", "-b"]);
+    const { branch, changes } = parseStatusPorcelain(branchOutput);
 
     const branches = listBranches(repositoryRoot);
     if (!branches.length && branch.branch && branch.branch !== "HEAD") {
