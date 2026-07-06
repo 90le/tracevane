@@ -37,13 +37,14 @@ export function TerminalManagerDialog({
   const activeIdSet = React.useMemo(() => new Set(activeTerminalIds), [activeTerminalIds]);
 
   const refresh = React.useCallback(async (options: { silent?: boolean } = {}) => {
-    if (!options.silent) setLoading(true);
-    if (options.silent) {
-      schedulePendingTerminalKillFlush(1_000);
-    } else {
-      await flushPendingTerminalKillRetries();
-    }
+    const silent = Boolean(options.silent);
+    if (!silent) setLoading(true);
     try {
+      if (silent) {
+        schedulePendingTerminalKillFlush(1_000);
+      } else {
+        await flushPendingTerminalKillRetries();
+      }
       const payload = await getTerminalSessions();
       const pendingKillIds = getPendingTerminalKillIds();
       setSessions((payload.sessions ?? []).filter((session) => (
@@ -52,11 +53,11 @@ export function TerminalManagerDialog({
         !pendingKillIds.has(session.sessionId)
       )));
     } catch (error) {
-      if (!options.silent) {
+      if (!silent) {
         toast.error("读取终端列表失败", { description: error instanceof Error ? error.message : String(error) });
       }
     } finally {
-      if (!options.silent) setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 

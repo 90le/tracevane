@@ -247,6 +247,10 @@ async function run() {
     }
     await page.waitForTimeout(1_500);
     await page.locator('[data-ide-terminal-manager-refresh]').click();
+    await page.waitForFunction(() => {
+      const label = document.querySelector('[data-ide-terminal-manager-count]')?.textContent || '';
+      return !label.includes('正在关闭');
+    }, { timeout: 30_000 });
     await page.waitForTimeout(500);
     const bouncedClosedSessions = await page
       .locator(`[data-ide-terminal-manager-session="${sid}"], [data-ide-terminal-manager-session="${activeTerminalId}"]${hasOtherRoot ? `, [data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]` : ''}`)
