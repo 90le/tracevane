@@ -237,7 +237,7 @@ async function newCleanPage(browser, logs, viewport = { width: 1440, height: 900
   const context = await browser.newContext({ viewport });
   await context.addInitScript(() => {
     for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal-layout.')) {
+      if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal')) {
         localStorage.removeItem(key);
       }
     }

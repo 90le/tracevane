@@ -216,7 +216,7 @@ async function runUiSmoke(rootId) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.addInitScript(() => {
     for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal-layout.')) localStorage.removeItem(key);
+      if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal')) localStorage.removeItem(key);
     }
   });
   const logs = [];
