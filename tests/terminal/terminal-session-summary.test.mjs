@@ -354,6 +354,82 @@ test("terminal service delete rejects running and detached sessions", async () =
   }
 });
 
+
+test("terminal service batch end marks sessions non-recoverable", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-batch-end-"));
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+
+  const service = terminalService.createTerminalService({
+    config: {
+      pluginId: "test",
+      pluginName: "test",
+      version: "0.0.0",
+      port: 0,
+      autoStart: false,
+      openclawRoot: tempDir,
+      openclawConfigFile: configFile,
+      projectRoot: tempDir,
+      webDistDir: tempDir,
+      gatewayPort: 0,
+      gatewayWsUrl: "ws://127.0.0.1",
+      gatewayControlUiBasePath: "/",
+      transport: {
+        standalone: { enabled: false, port: 0 },
+        gateway: { enabled: false, basePath: "/" },
+      },
+    },
+    skills: {
+      async getSummary() {
+        return {
+          skills: [],
+          tools: {
+            clawhubInstalled: false,
+            skillhubInstalled: false,
+          },
+        };
+      },
+    },
+  });
+
+  try {
+    const first = service.attachGatewayClient(
+      { sid: "term-batch-first", pinned: true, title: "Batch First" },
+      { connId: "conn-batch-first", emit: () => true },
+    );
+    const second = service.attachGatewayClient(
+      { sid: "term-batch-second", pinned: true, title: "Batch Second" },
+      { connId: "conn-batch-second", emit: () => true },
+    );
+
+    service.detachGatewayClient({ sid: first.sid }, { connId: "conn-batch-first" });
+    service.detachGatewayClient({ sid: second.sid }, { connId: "conn-batch-second" });
+
+    const before = await service.listPersistedSessions();
+    const recoverableBefore = before.sessions
+      .filter((session) => [first.sid, second.sid].includes(session.sessionId))
+      .map((session) => session.canResume);
+    assert.deepEqual(recoverableBefore, [true, true]);
+
+    const ended = await service.endSessions([first.sid, second.sid, first.sid, ""]);
+    assert.equal(ended.success, true);
+    assert.equal(ended.total, 2);
+    assert.equal(ended.ended, 2);
+    assert.deepEqual(ended.results.map((result) => result.sid).sort(), [first.sid, second.sid].sort());
+
+    const after = await service.listPersistedSessions();
+    const endedDescriptors = after.sessions.filter((session) => [first.sid, second.sid].includes(session.sessionId));
+    assert.equal(endedDescriptors.length, 2);
+    for (const descriptor of endedDescriptors) {
+      assert.equal(descriptor.canResume, false);
+      assert.equal(descriptor.status, "lost");
+    }
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("recent output summary 提取 tailText/lastError/lastCommandHint/exitSummary/updatedAt", () => {
   const summary = terminalSessionSummary.buildTerminalRecentOutputSummary([
     {
@@ -424,7 +500,7 @@ test("terminal service source includes binary-name fallback verification for mar
   );
   assert.match(
     source,
-    /const fallbackVerify = verifyFromPath\?\.success[\s\S]*await verifyAt\(spec\.binary\);/,
+    /const fallbackVerify =[\s\S]*verifyFromPath\?\.success[\s\S]*await verifyAt\(spec\.binary\);/,
   );
   assert.match(source, /path: resolvedPath,/);
 });
