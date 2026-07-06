@@ -152,6 +152,10 @@ async function run() {
   }
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
     method: 'PUT',
+    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
+  });
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
     body: JSON.stringify({
       layout: createDefaultWorkbenchLayout(),
       terminalLayouts: {
@@ -197,6 +201,19 @@ async function run() {
     await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.route('**/api/terminal/end', async (route) => {
+      const request = route.request();
+      const body = request.postDataJSON?.() ?? {};
+      if (body?.sid === sid) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'forced smoke kill failure' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
     const sessionsAfterWorkbenchOpen = await api('/api/terminal/sessions');
     const currentWorkspaceRecoverable = (sessionsAfterWorkbenchOpen.sessions ?? [])
       .filter((session) => normalizeRootId(session) === rootId)
@@ -218,6 +235,14 @@ async function run() {
       [sid, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])],
       { timeout: 45_000 },
     );
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') === 0, { timeout: 30_000 });
+    const layoutAfterFailedKill = await page.evaluate((sessionId) => ({
+      paneCount: document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count'),
+      stillInLayout: Boolean(document.querySelector(`[data-terminal-id="${sessionId}"]`)),
+    }), sid);
+    if (layoutAfterFailedKill.stillInLayout || layoutAfterFailedKill.paneCount !== '0') {
+      throw new Error(`Failed close did not remove terminal from Panel layout: ${JSON.stringify(layoutAfterFailedKill)}`);
+    }
     await page.waitForTimeout(1_500);
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.waitForTimeout(500);

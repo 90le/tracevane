@@ -96,12 +96,12 @@ export function TerminalManagerDialog({
     });
 
     const failed = results.filter((result) => !result.ok).length;
-    const closedIds = targets
-      .filter((_, index) => results[index]?.ok)
-      .map((session) => session.sessionId);
-    if (closedIds.length) {
-      onClosedSessions?.(closedIds);
-    }
+    // A close request is an explicit user intent to remove the terminal from
+    // the visible workbench. Even when the immediate backend kill fails, the
+    // session has already been hidden and queued for retry, so keep Panel
+    // layout in sync with that forced-close intent instead of letting a failed
+    // kill resurrect the pane on the next render/refresh.
+    onClosedSessions?.(targetIds);
     if (failed) {
       toast.warning(`${label}：已从列表隐藏，后台继续清理`, {
         description: `${failed}/${targets.length} 个 session 未即时确认 kill，已加入持久重试队列。`,
