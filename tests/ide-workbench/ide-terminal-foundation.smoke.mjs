@@ -335,7 +335,7 @@ async function runBackendTerminalRoundtrip(rootId) {
   if (!end.success || !end.ended) throw new Error(`Terminal end did not report success: ${JSON.stringify(end)}`);
 }
 
-async function runUiSmoke(rootId) {
+async function runUiSmoke(rootId, otherRootId = null) {
   const focusSmokeFile = `${repoRelativeCwd()}/tracevane-terminal-focus-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ts`;
   await cleanupPath(rootId, focusSmokeFile);
   await createFile(rootId, focusSmokeFile, 'export const terminalFocus = true;\n');
@@ -343,6 +343,12 @@ async function runUiSmoke(rootId) {
     method: 'PUT',
     body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
   });
+  if (otherRootId && otherRootId !== rootId) {
+    await api(`/api/ide-workbench/layouts/${encodeURIComponent(otherRootId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
+    });
+  }
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -393,6 +399,22 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
     if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
       throw new Error(`Collapsing/restoring an empty terminal panel auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
+    }
+    if (otherRootId && otherRootId !== rootId) {
+      await page.goto(`${BASE_URL}/#/ide/${encodeURIComponent(otherRootId)}`, { waitUntil: 'domcontentloaded' });
+      await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
+      await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+      await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+      if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
+        throw new Error(`Switching to an empty workspace auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
+      }
+      await page.goto(`${BASE_URL}/#/ide/${encodeURIComponent(rootId)}`, { waitUntil: 'domcontentloaded' });
+      await page.locator('[data-ide-terminal-panel]').waitFor({ state: 'visible', timeout: 30_000 });
+      await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+      await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+      if (await countRecoverableTerminalSessions() !== 0 || terminalCreateRequests.length !== 0) {
+        throw new Error(`Returning to an empty workspace auto-created backend terminal sessions: requests=${terminalCreateRequests.length}`);
+      }
     }
     await page.locator('[data-ide-terminal-empty-manager]').click();
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
@@ -598,7 +620,7 @@ async function run() {
   await cleanupPath(rootId, 'tmp/tracevane-terminal-paste');
   try {
     await runBackendTerminalRoundtrip(rootId);
-    await runUiSmoke(rootId);
+    await runUiSmoke(rootId, summary.roots?.find((root) => root?.id && root.id !== rootId)?.id ?? null);
   } finally {
     await cleanupPath(rootId, '.tracevane/tmp/terminal-paste');
     await cleanupPath(rootId, 'tmp/tracevane-terminal-paste');
