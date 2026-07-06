@@ -235,6 +235,26 @@ async function runUiSmoke(rootId) {
     }, { timeout: 30_000 });
     const terminalText = await page.locator('[data-ide-terminal-pane]').first().innerText();
     if (terminalText.includes('终端不可用') || terminalText.includes('error')) throw new Error(terminalText);
+    await page.locator('[data-ide-terminal-xterm]').first().click();
+    await page.evaluate(() => {
+      const input = document.createElement('input');
+      input.id = 'terminal-focus-regression-probe';
+      input.setAttribute('aria-label', 'terminal focus regression probe');
+      input.style.position = 'fixed';
+      input.style.left = '8px';
+      input.style.top = '8px';
+      input.style.zIndex = '99999';
+      document.body.appendChild(input);
+      input.focus();
+    });
+    await page.keyboard.type('focus-ok');
+    const focusProbe = await page.evaluate(() => ({
+      activeId: document.activeElement?.id || '',
+      value: document.getElementById('terminal-focus-regression-probe')?.value || '',
+    }));
+    if (focusProbe.activeId !== 'terminal-focus-regression-probe' || focusProbe.value !== 'focus-ok') {
+      throw new Error(`Terminal stole focus from external input: ${JSON.stringify(focusProbe)}`);
+    }
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new-menu]').click();
     await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'visible', timeout: 30_000 });

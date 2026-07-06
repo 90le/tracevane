@@ -77,6 +77,7 @@ export function TerminalPaneView({
   const [backend, setBackend] = React.useState<"pty" | "tmux" | null>(null);
   const [menu, setMenu] = React.useState<TerminalPaneMenuState | null>(null);
   const [selectedText, setSelectedText] = React.useState("");
+  const [terminalFocused, setTerminalFocused] = React.useState(false);
   const selectedTextRef = React.useRef("");
   const previousTerminalIdRef = React.useRef(terminalId);
 
@@ -95,7 +96,6 @@ export function TerminalPaneView({
     const socket = socketRef.current;
     if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(text);
-    xtermRef.current?.focus();
   }, []);
 
   const updateSelectedText = React.useCallback((selection: string) => {
@@ -246,6 +246,7 @@ export function TerminalPaneView({
     if (previousTerminalIdRef.current === terminalId) return;
     previousTerminalIdRef.current = terminalId;
     closeSocket();
+    setTerminalFocused(false);
     sessionIdRef.current = null;
     setSessionId(null);
     setStatus("idle");
@@ -484,10 +485,11 @@ export function TerminalPaneView({
         ) : null}
         <XtermHost
           ref={xtermRef}
-          acceptInput={active && status !== "closed" && status !== "error"}
+          acceptInput={active && terminalFocused && status !== "closed" && status !== "error"}
           onInput={handleInput}
           onResize={handleResize}
           onSelectionChange={updateSelectedText}
+          onFocusChange={setTerminalFocused}
           onCopyShortcut={() => void copyTerminalSelectionToClipboard()}
           onPasteShortcut={() => void pasteClipboardToTerminal()}
         />

@@ -27,7 +27,8 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
   onSelectionChange?: (selection: string) => void;
   onCopyShortcut?: () => void;
   onPasteShortcut?: () => void;
-}>(function XtermHost({ acceptInput = false, onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut }, ref) {
+  onFocusChange?: (focused: boolean) => void;
+}>(function XtermHost({ acceptInput = false, onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut, onFocusChange }, ref) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const terminalRef = React.useRef<Terminal | null>(null);
   const fitAddonRef = React.useRef<FitAddon | null>(null);
@@ -36,6 +37,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
   const onSelectionChangeRef = React.useRef(onSelectionChange);
   const onCopyShortcutRef = React.useRef(onCopyShortcut);
   const onPasteShortcutRef = React.useRef(onPasteShortcut);
+  const onFocusChangeRef = React.useRef(onFocusChange);
   const suppressProgrammaticInputUntilRef = React.useRef(0);
 
   React.useEffect(() => {
@@ -44,7 +46,8 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     onSelectionChangeRef.current = onSelectionChange;
     onCopyShortcutRef.current = onCopyShortcut;
     onPasteShortcutRef.current = onPasteShortcut;
-  }, [onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut]);
+    onFocusChangeRef.current = onFocusChange;
+  }, [onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut, onFocusChange]);
 
   React.useImperativeHandle(ref, () => ({
     write(data) {
@@ -151,6 +154,15 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
+    const handleFocusIn = () => onFocusChangeRef.current?.(true);
+    const handleFocusOut = () => {
+      window.setTimeout(() => {
+        if (!container.contains(document.activeElement)) onFocusChangeRef.current?.(false);
+      }, 0);
+    };
+    container.addEventListener("focusin", handleFocusIn);
+    container.addEventListener("focusout", handleFocusOut);
+
     const fit = () => {
       try {
         fitAddon.fit();
@@ -168,6 +180,9 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       suppressProgrammaticInputUntilRef.current = 0;
       dataDisposable.dispose();
       selectionDisposable.dispose();
+      container.removeEventListener("focusin", handleFocusIn);
+      container.removeEventListener("focusout", handleFocusOut);
+      onFocusChangeRef.current?.(false);
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -185,7 +200,10 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     <div
       ref={containerRef}
       className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-panel text-ink"
-      onPointerDown={() => terminalRef.current?.focus()}
+      onPointerDown={() => {
+        onFocusChangeRef.current?.(true);
+        terminalRef.current?.focus();
+      }}
       data-ide-terminal-xterm
     />
   );
