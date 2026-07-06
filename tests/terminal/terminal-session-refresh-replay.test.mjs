@@ -236,6 +236,33 @@ test("terminal service attach responses include authoritative session descriptor
   }
 });
 
+test("terminal service rejects unknown workspace roots instead of falling back", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
+  const service = createTestService(tempDir);
+
+  try {
+    await assert.rejects(
+      () => service.createPersistedSession({
+        sid: "term-unknown-root",
+        rootId: "missing-workspace-root",
+        workspaceId: "missing-workspace-root",
+        cwd: "",
+        targetKind: "local",
+      }),
+      /Terminal workspace root was not found/,
+    );
+
+    const sessions = await service.listPersistedSessions();
+    assert.equal(
+      sessions.sessions.some((session) => session.sessionId === "term-unknown-root"),
+      false,
+    );
+  } finally {
+    service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("terminal service creates a persisted session before http stream attach", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);

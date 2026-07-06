@@ -1654,11 +1654,13 @@ export function createTerminalService(
     relativePath: string | undefined,
   ): string {
     try {
-      return resolveFilesServiceDirectoryPath(
+      const directory = resolveFilesServiceDirectoryPath(
         options.config,
         rootId,
         relativePath,
-      ).absolutePath;
+      );
+      assertResolvedTerminalRoot(directory.root.id, rootId);
+      return directory.absolutePath;
     } catch (directoryError) {
       try {
         const file = resolveFilesServiceExistingFilePath(
@@ -1666,11 +1668,20 @@ export function createTerminalService(
           rootId,
           relativePath,
         );
+        assertResolvedTerminalRoot(file.root.id, rootId);
         return path.dirname(file.absolutePath);
       } catch {
         throw directoryError;
       }
     }
+  }
+
+  function assertResolvedTerminalRoot(
+    resolvedRootId: string | undefined,
+    requestedRootId: string,
+  ): void {
+    if (String(resolvedRootId || "").trim() === requestedRootId) return;
+    throw new Error(`Terminal workspace root was not found: ${requestedRootId}`);
   }
 
   function buildLaunchMetadata(
