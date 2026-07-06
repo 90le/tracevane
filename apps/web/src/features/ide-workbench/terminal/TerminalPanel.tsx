@@ -176,14 +176,24 @@ export function TerminalPanel({
               <p className="mt-2 leading-relaxed">
                 尚未创建或恢复终端。点击“新建终端”创建 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
               </p>
-              <button
-                type="button"
-                className="mt-4 rounded-sm border border-line-2 bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-primary-line hover:bg-panel-2"
-                onClick={newTerminalWithDefault}
-                data-ide-terminal-empty-new
-              >
-                新建终端
-              </button>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-sm border border-line-2 bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-primary-line hover:bg-panel-2"
+                  onClick={newTerminalWithDefault}
+                  data-ide-terminal-empty-new
+                >
+                  新建终端
+                </button>
+                <button
+                  type="button"
+                  className="rounded-sm border border-line bg-canvas px-3 py-1.5 text-sm font-medium text-muted hover:border-primary-line hover:bg-panel-2 hover:text-ink"
+                  onClick={() => setManagerOpen(true)}
+                  data-ide-terminal-empty-manager
+                >
+                  打开终端管理器
+                </button>
+              </div>
             </div>
           </div>
         )}

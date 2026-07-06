@@ -301,6 +301,19 @@ async function runUiSmoke(rootId) {
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Terminal was auto-created before the user requested a new terminal');
     }
+    await page.locator('[data-ide-terminal-empty-manager]').click();
+    await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    const emptyManagerCopy = await page.locator('[data-ide-terminal-manager-empty]').innerText();
+    if (!emptyManagerCopy.includes('不会自动创建终端')) {
+      throw new Error(`Terminal manager empty state does not explain no auto-create behavior: ${emptyManagerCopy}`);
+    }
+    await page.locator('[data-ide-terminal-manager-empty-back]').click();
+    await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
+    if (await page.locator('[data-ide-terminal-xterm]').count()) {
+      throw new Error('Opening the terminal manager from empty state created a terminal');
+    }
     await page.locator('[data-ide-terminal-empty-new]').click();
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => {
