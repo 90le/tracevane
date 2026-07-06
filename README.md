@@ -97,6 +97,26 @@ Default local endpoints:
 - Web: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:3761`
 
+## Release and Installation
+
+Tracevane is released as an OpenClaw UI extension. New customer installs should
+use OpenClaw `>= 2026.5.28`. The release pipeline does not require manual
+Tracevane version editing: `./pack.sh` auto-increments the patch version from
+`package.json`, synchronizes the installer and landing page, builds API/Web
+artifacts, and emits site metadata consumed by the installer and upgrade checks.
+
+Common release commands:
+
+```bash
+./pack.sh
+./pack.sh 1.2.3
+./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
+```
+
+Customer-facing deployment details live in [DEPLOY.md](DEPLOY.md). The public
+landing page is [index.html](index.html), and the self-contained installer is
+[install-tracevane.sh](install-tracevane.sh).
+
 ## Testing and Smoke Checks
 
 The repository includes targeted system tests and smoke scripts under `tests/`

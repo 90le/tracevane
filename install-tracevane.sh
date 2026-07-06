@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TRACEVANE_DEFAULT_VERSION="${TRACEVANE_DEFAULT_VERSION:-0.1.70}"
+TRACEVANE_DEFAULT_VERSION="${TRACEVANE_DEFAULT_VERSION:-latest}"
 VERSION_EXPLICIT=0
 PACKAGE_URL_EXPLICIT=0
 GATEWAY_BIND_EXPLICIT=0
@@ -21,7 +21,7 @@ if [[ -n "${OPENCLAW_MIN_VERSION:-}" ]]; then
   MIN_VERSION_EXPLICIT=1
 fi
 TRACEVANE_VERSION="${TRACEVANE_VERSION:-}"
-OPENCLAW_MIN_VERSION="${OPENCLAW_MIN_VERSION:-2026.4.8}"
+OPENCLAW_MIN_VERSION="${OPENCLAW_MIN_VERSION:-2026.5.28}"
 TRACEVANE_SITE_BASE="${TRACEVANE_SITE_BASE:-https://tracevane.90le.cn}"
 TRACEVANE_PACKAGE_URL="${TRACEVANE_PACKAGE_URL:-}"
 TRACEVANE_MODE="${TRACEVANE_MODE:-standalone}"
@@ -259,6 +259,10 @@ resolve_requested_release() {
 
   if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ]]; then
     TRACEVANE_VERSION="${remote_version:-${TRACEVANE_DEFAULT_VERSION}}"
+  fi
+
+  if [[ "${PACKAGE_URL_EXPLICIT}" -eq 0 && ( "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ) ]]; then
+    die "无法从 ${TRACEVANE_SITE_BASE} 解析最新 Tracevane 版本；请检查站点元数据，或显式传入 --version / --package-url"
   fi
 
   if [[ "${PACKAGE_URL_EXPLICIT}" -eq 0 ]]; then

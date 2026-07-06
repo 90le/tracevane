@@ -1,8 +1,8 @@
 #!/bin/bash
 # Tracevane 打包脚本
 # 用法: ./pack.sh [版本号]
-# 示例: ./pack.sh 0.1.63
-# 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test 0.1.26
+# 未传版本号时自动把 package.json 当前版本递增一个 patch 版本。
+# 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 
 set -euo pipefail
 
@@ -16,6 +16,7 @@ Tracevane 打包脚本
   ./pack.sh [options] [版本号]
 
 选项:
+  [版本号]                  可选；未传时自动从 package.json 递增 patch 版本
   --source-sync              同步本地源码版本后再打包，默认用于正式发布
   --no-source-sync           测试打包模式，不修改当前源码里的版本文件
   --output-dir <dir>         输出目录，默认 ./release
@@ -23,14 +24,15 @@ Tracevane 打包脚本
 
 示例:
   ./pack.sh
-  ./pack.sh 0.1.26
-  ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test 0.1.26
+  ./pack.sh 1.2.3
+  ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
 EOF
 }
 
 SOURCE_SYNC=1
 OUTPUT_DIR_INPUT="${SCRIPT_DIR}/release"
 VERSION=""
+VERSION_AUTO=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,7 +77,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VERSION=${VERSION:-$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")}
+CURRENT_VERSION="$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")"
+if [[ -z "${VERSION}" ]]; then
+  VERSION_AUTO=1
+  VERSION="$(
+    node - "${CURRENT_VERSION}" <<'NODE'
+const current = String(process.argv[2] || '').trim();
+const match = current.match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
+if (!match) {
+  throw new Error(`Cannot auto-increment non-semver version: ${current}`);
+}
+const [, major, minor, patch, suffix] = match;
+if (suffix) {
+  throw new Error(`Cannot auto-increment prerelease/build version automatically: ${current}`);
+}
+console.log(`${major}.${minor}.${Number(patch) + 1}`);
+NODE
+  )"
+fi
 mkdir -p "${OUTPUT_DIR_INPUT}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR_INPUT}" && pwd)"
 PACKAGE_NAME="tracevane-${VERSION}"
@@ -87,15 +106,33 @@ APP_REACT_SOURCE_PATH="${SCRIPT_DIR}/apps/web/src/app/App.tsx"
 OPENCLAW_TARGET_VERSION="$(
   node - "${SCRIPT_DIR}/package.json" <<'NODE'
 const fs = require('node:fs');
+const DEFAULT_OPENCLAW_TARGET_VERSION = '2026.5.28';
 const pkg = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const raw = String(pkg?.openclaw?.install?.minHostVersion || '2026.4.8');
+const raw = String(pkg?.openclaw?.install?.minHostVersion || DEFAULT_OPENCLAW_TARGET_VERSION);
 const match = raw.match(/[0-9]+(?:\.[0-9A-Za-z-]+)+/g);
-console.log(match ? match[match.length - 1] : '2026.4.8');
+const candidate = match ? match[match.length - 1] : DEFAULT_OPENCLAW_TARGET_VERSION;
+function compareVersions(left, right) {
+  const leftParts = String(left).match(/\d+/g)?.map(Number) || [];
+  const rightParts = String(right).match(/\d+/g)?.map(Number) || [];
+  const size = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < size; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart !== rightPart) return leftPart - rightPart;
+  }
+  return 0;
+}
+console.log(compareVersions(candidate, DEFAULT_OPENCLAW_TARGET_VERSION) >= 0 ? candidate : DEFAULT_OPENCLAW_TARGET_VERSION);
 NODE
 )"
 
 echo "=== Tracevane 打包脚本 ==="
 echo "版本: ${VERSION}"
+if [[ "${VERSION_AUTO}" -eq 1 ]]; then
+  echo "版本策略: auto patch (${CURRENT_VERSION} -> ${VERSION})"
+else
+  echo "版本策略: explicit"
+fi
 echo "输出目录: ${OUTPUT_DIR}"
 if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
   echo "源码同步: enabled (会覆盖本地版本源)"
@@ -106,16 +143,18 @@ echo ""
 
 if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
   echo "[0.2/6] 同步 package/workspace 版本..."
-  node - "${SCRIPT_DIR}" "${VERSION}" <<'NODE'
+  node - "${SCRIPT_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 
 const scriptDir = process.argv[2];
 const version = process.argv[3];
+const openClawTargetVersion = process.argv[4];
 const packageFiles = [
   'package.json',
   'apps/api/package.json',
   'apps/web/package.json',
+  'openclaw.plugin.json',
 ];
 
 for (const relativePath of packageFiles) {
@@ -123,6 +162,11 @@ for (const relativePath of packageFiles) {
   if (!fs.existsSync(filePath)) continue;
   const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   payload.version = version;
+  if (relativePath === 'package.json') {
+    payload.openclaw = payload.openclaw && typeof payload.openclaw === 'object' ? payload.openclaw : {};
+    payload.openclaw.install = payload.openclaw.install && typeof payload.openclaw.install === 'object' ? payload.openclaw.install : {};
+    payload.openclaw.install.minHostVersion = `>=${openClawTargetVersion}`;
+  }
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
@@ -155,7 +199,7 @@ rewriteTextFile('apps/api/config.ts', [
   [/const TRACEVANE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_VERSION_FALLBACK = '${version}';`],
 ]);
 rewriteTextFile('apps/web/vite.config.ts', [
-  [/const TRACEVANE_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_PACKAGE_VERSION_FALLBACK = '${version}';`],
+  [/const TRACEVANE_PACKAGE_VERSION_FALLBACK = ["'][^"']+["'];/, `const TRACEVANE_PACKAGE_VERSION_FALLBACK = "${version}";`],
 ]);
 NODE
 else
@@ -282,7 +326,7 @@ fs.writeFileSync(path.join(packageDir, 'release-build.json'), `${JSON.stringify(
 NODE
 
 echo "[6/6] 生成安装脚本..."
-cat > "${PACKAGE_DIR}/install.sh" << 'INSTALL_EOF'
+cat > "${PACKAGE_DIR}/install.sh" << INSTALL_EOF
 #!/bin/bash
 set -euo pipefail
 
@@ -294,7 +338,7 @@ npm rebuild @homebridge/node-pty-prebuilt-multiarch 2>/dev/null || echo "警告:
 
 echo ""
 echo "安装完成。"
-echo "请确认 OpenClaw 主程序版本 >= 2026.4.8。"
+echo "请确认 OpenClaw 主程序版本 >= ${OPENCLAW_TARGET_VERSION}。"
 INSTALL_EOF
 chmod +x "${PACKAGE_DIR}/install.sh"
 chmod +x "${PACKAGE_DIR}/install-tracevane.sh"
