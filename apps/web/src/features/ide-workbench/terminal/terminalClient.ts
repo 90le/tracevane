@@ -216,12 +216,17 @@ function readPendingTerminalKills(): string[] {
 
 function writePendingTerminalKills(sessionIds: string[]): void {
   if (typeof window === "undefined") return;
-  const normalized = [...new Set(sessionIds.map((sid) => normalizeTerminalSessionId(sid)).filter(Boolean))];
-  if (!normalized.length) {
-    window.localStorage.removeItem(PENDING_TERMINAL_KILL_KEY);
-    return;
+  try {
+    const normalized = [...new Set(sessionIds.map((sid) => normalizeTerminalSessionId(sid)).filter(Boolean))];
+    if (!normalized.length) {
+      window.localStorage.removeItem(PENDING_TERMINAL_KILL_KEY);
+      return;
+    }
+    window.localStorage.setItem(PENDING_TERMINAL_KILL_KEY, JSON.stringify(normalized));
+  } catch {
+    // Browser storage may be unavailable, full, or disabled. Losing the local
+    // retry marker is less harmful than breaking the explicit close path.
   }
-  window.localStorage.setItem(PENDING_TERMINAL_KILL_KEY, JSON.stringify(normalized));
 }
 
 function delay(ms: number): Promise<void> {
