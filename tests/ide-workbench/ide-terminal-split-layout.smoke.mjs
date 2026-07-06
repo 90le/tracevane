@@ -183,7 +183,7 @@ async function run() {
     await waitForPaneCount(page, 3);
 
     const beforeClose = await page.locator('[data-ide-terminal-pane]').count();
-    await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '关闭终端 Pane' }).click();
+    await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '强制关闭终端 Pane' }).click();
     await waitForPaneCountExactly(page, Math.max(1, beforeClose - 1));
 
     await page.getByRole('button', { name: 'Output' }).click();
