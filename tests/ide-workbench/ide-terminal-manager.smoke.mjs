@@ -62,6 +62,48 @@ function createDefaultWorkbenchLayout() {
   };
 }
 
+function createTerminalLayoutForSession(session) {
+  const sid = String(session.sessionId || '').trim();
+  if (!sid) throw new Error('Cannot create terminal layout without session id');
+  const paneId = `terminal-pane-${sid}`;
+  return {
+    version: 1,
+    activeTabId: `terminal-tab-${sid}`,
+    activePaneId: paneId,
+    activeTerminalId: sid,
+    tabs: [{
+      tabId: `terminal-tab-${sid}`,
+      title: session.title || `Terminal ${sid}`,
+      createdAt: session.createdAt || new Date().toISOString(),
+      activePaneId: paneId,
+      activeTerminalId: sid,
+      panes: {
+        [paneId]: {
+          paneId,
+          terminalId: sid,
+          title: session.title || 'Terminal',
+          createdAt: session.createdAt || new Date().toISOString(),
+          profileId: session.profileId || 'local-shell',
+          shell: session.shell || 'bash',
+        },
+      },
+      root: { type: 'pane', paneId, terminalId: sid },
+    }],
+  };
+}
+
+function terminalLayoutKey(rootId, cwd = '') {
+  return `${rootId || 'pending-root'}:${cwd || 'root'}`;
+}
+
+function isRecoverableSession(session) {
+  return Boolean(session?.sessionId && session?.canResume && (session.status === 'running' || session.status === 'detached'));
+}
+
+function normalizeRootId(session) {
+  return String(session?.rootId || session?.workspaceId || '').trim();
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
@@ -74,10 +116,6 @@ async function run() {
   const otherSidB = `${sid}-other-b`;
 
   await resetTerminalSessions();
-  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
-  });
   await api('/api/terminal/sessions', {
     method: 'POST',
     body: JSON.stringify({
@@ -112,6 +150,15 @@ async function run() {
   if (descriptor.rootId !== rootId || descriptor.workspaceId !== rootId) {
     throw new Error(`Terminal descriptor did not preserve workspace metadata: ${JSON.stringify(descriptor)}`);
   }
+  await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      layout: createDefaultWorkbenchLayout(),
+      terminalLayouts: {
+        [terminalLayoutKey(rootId)]: createTerminalLayoutForSession(descriptor),
+      },
+    }),
+  });
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -135,6 +182,16 @@ async function run() {
     await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    const sessionsAfterWorkbenchOpen = await api('/api/terminal/sessions');
+    const currentWorkspaceRecoverable = (sessionsAfterWorkbenchOpen.sessions ?? [])
+      .filter((session) => normalizeRootId(session) === rootId)
+      .filter(isRecoverableSession);
+    const unexpectedCurrentSessions = currentWorkspaceRecoverable
+      .filter((session) => session.sessionId !== sid)
+      .map((session) => `${session.sessionId}:${session.status}:${session.cwd}`);
+    if (unexpectedCurrentSessions.length) {
+      throw new Error(`Workbench created unexpected extra current-workspace terminals: ${unexpectedCurrentSessions.join(', ')}`);
+    }
     if (hasOtherRoot) {
       await page.locator(`[data-ide-terminal-manager-session="${otherSidA}"]`).waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator(`[data-ide-terminal-manager-session="${otherSidB}"]`).waitFor({ state: 'visible', timeout: 30_000 });

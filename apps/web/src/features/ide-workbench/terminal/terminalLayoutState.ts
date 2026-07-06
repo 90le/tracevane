@@ -74,8 +74,8 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
 
   React.useEffect(() => {
     if (layoutState.key !== key) return;
-    saveTerminalLayout(key, layout);
     if (!remoteReady) return;
+    saveTerminalLayout(key, layout);
     const timer = window.setTimeout(() => {
       void putIdeWorkbenchLayout(normalizedWorkspaceKey, {
         terminalLayouts: { [terminalLayoutKey]: layout },
@@ -159,6 +159,7 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
   }, []);
 
   return {
+    ready: remoteReady,
     layout,
     setActiveTab,
     setActivePane,

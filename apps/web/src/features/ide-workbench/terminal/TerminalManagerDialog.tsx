@@ -14,6 +14,7 @@ export function TerminalManagerDialog({
   currentRootId,
   currentRootLabel,
   activeTerminalIds,
+  visibleTerminalId,
   onAttachSession,
   onClosedSessions,
 }: {
@@ -22,6 +23,7 @@ export function TerminalManagerDialog({
   currentRootId: string;
   currentRootLabel?: string | null;
   activeTerminalIds: string[];
+  visibleTerminalId?: string | null;
   onAttachSession: (session: TerminalSessionDescriptor) => void;
   onClosedSessions?: (sessionIds: string[]) => void;
 }) {
@@ -214,6 +216,7 @@ export function TerminalManagerDialog({
                   {group.sessions.map((session) => {
                     const sameWorkspace = normalizeRootId(session) === currentRootId;
                     const attached = activeIdSet.has(session.sessionId);
+                    const visible = visibleTerminalId === session.sessionId;
                     const closing = closingIds.has(session.sessionId);
                     return (
                       <article key={session.sessionId} className="grid gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto]" data-ide-terminal-manager-session={session.sessionId}>
@@ -221,7 +224,11 @@ export function TerminalManagerDialog({
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <span className="truncate font-medium text-ink-strong">{session.title || session.sessionId}</span>
                             <StatusBadge status={session.status} />
-                            {attached ? <span className="rounded bg-primary-soft px-1.5 py-0.5 text-2xs text-primary">已在当前 Panel</span> : null}
+                            {visible ? (
+                              <span className="rounded bg-primary-soft px-1.5 py-0.5 text-2xs text-primary">当前显示</span>
+                            ) : attached ? (
+                              <span className="rounded bg-panel-3 px-1.5 py-0.5 text-2xs text-muted">在当前布局</span>
+                            ) : null}
                             {session.durableBackend ? <span className="rounded bg-panel-3 px-1.5 py-0.5 font-mono text-2xs text-muted">{session.durableBackend}</span> : null}
                           </div>
                           <div className="grid gap-1 font-mono text-2xs text-muted md:grid-cols-2">

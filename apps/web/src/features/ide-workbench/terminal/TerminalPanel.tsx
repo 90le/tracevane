@@ -22,7 +22,7 @@ export function TerminalPanel({
   rootAbsolutePath?: string;
 }) {
   const layoutApi = useTerminalLayoutState(`${rootId || "pending-root"}:${cwd || "root"}`, rootId || "default");
-  const { layout } = layoutApi;
+  const { layout, ready: layoutReady } = layoutApi;
   const activeTab = React.useMemo(
     () => layout.tabs.find((tab) => tab.tabId === layout.activeTabId) ?? layout.tabs[0],
     [layout.activeTabId, layout.tabs],
@@ -106,7 +106,13 @@ export function TerminalPanel({
         metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}
       />
       <div className="min-h-0 min-w-0" data-ide-terminal-layout data-terminal-tab-count={layout.tabs.length} data-terminal-pane-count={activePaneCount} data-terminal-active-tab-id={layout.activeTabId} data-terminal-active-pane-id={layout.activePaneId}>
-        {active && activeTab ? (
+        {!layoutReady ? (
+          <div className="grid h-full place-items-center p-6 text-center" data-ide-terminal-loading>
+            <div className="max-w-md rounded-lg border border-line bg-canvas px-6 py-5 text-sm text-muted">
+              正在恢复终端布局…
+            </div>
+          </div>
+        ) : active && activeTab ? (
           <TerminalGroupView
             key={activeTab.tabId}
             node={activeTab.root}
@@ -146,6 +152,7 @@ export function TerminalPanel({
         currentRootId={rootId}
         currentRootLabel={rootId}
         activeTerminalIds={activeTerminalIds}
+        visibleTerminalId={activeTab?.activeTerminalId ?? null}
         onAttachSession={(session) => {
           layoutApi.attachSessionDescriptor(session);
           setManagerOpen(false);
