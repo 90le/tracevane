@@ -1855,6 +1855,58 @@ export function createTerminalService(
     return nextDescriptor;
   }
 
+  function markPersistedSessionEnded(
+    sessionId: string,
+    reason = "session_ended",
+  ): TerminalSessionDescriptor | null {
+    const persisted = descriptorStore.get(sessionId);
+    if (!persisted) return null;
+
+    if (persisted.durableBackend === "tmux") {
+      forceKillPersistedTmuxSession(
+        persisted.tmuxSessionName || normalizeTmuxSessionName(sessionId),
+      );
+    }
+
+    const nextUpdatedAt = new Date().toISOString();
+    ledger.append({
+      eventId: crypto.randomUUID(),
+      sessionId,
+      type: "ended",
+      timestamp: nextUpdatedAt,
+      actorClientId: null,
+      detail: { reason },
+    });
+
+    const nextDescriptor: TerminalSessionDescriptor = {
+      ...persisted,
+      status: "completed",
+      canResume: false,
+      resumeKey: null,
+      controllerClientId: null,
+      observerClientIds: [],
+      controlState: "observer",
+      observerCount: 0,
+      updatedAt: nextUpdatedAt,
+      lastActiveAt: nextUpdatedAt,
+    };
+    descriptorStore.upsert(nextDescriptor);
+    return nextDescriptor;
+  }
+
+  function forceKillPersistedTmuxSession(
+    sessionName: string | null | undefined,
+    attempt = 0,
+  ): void {
+    if (!sessionName) return;
+    const killed = killTmuxSession(sessionName);
+    if ((killed && !hasTmuxSession(sessionName)) || attempt >= 4) return;
+    const retryTimer = setTimeout(() => {
+      forceKillPersistedTmuxSession(sessionName, attempt + 1);
+    }, 500 * (attempt + 1));
+    retryTimer.unref?.();
+  }
+
   function reconcilePersistedDescriptor(
     descriptor: TerminalSessionDescriptor | null,
   ): TerminalSessionDescriptor | null {
@@ -2914,11 +2966,16 @@ export function createTerminalService(
         throw new Error("sid is required");
       }
       const existed = sessions.has(sid);
-      destroySession(sid);
+      let ended = existed;
+      if (existed) {
+        destroySession(sid);
+      } else {
+        ended = Boolean(markPersistedSessionEnded(sid));
+      }
       return {
         success: true,
         sid,
-        ended: existed,
+        ended,
       };
     },
 

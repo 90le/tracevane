@@ -3,7 +3,8 @@ import type {
   TerminalGatewayAttachPayload,
   TerminalSessionDescriptor,
 } from "@/features/cli-agents/types";
-import { createTerminalSession, endTerminalSession } from "@/lib/api/terminal";
+import { isApiError } from "@/lib/api/errors";
+import { createTerminalSession, deleteTerminalSession, endTerminalSession } from "@/lib/api/terminal";
 
 export type WorkbenchTerminalEvent =
   | {
@@ -118,7 +119,9 @@ async function endTerminalSessionWithRetries(
   let lastError: unknown = null;
   for (let index = 0; index < attempts; index += 1) {
     try {
-      return await endTerminalSession({ sid });
+      const result = await endTerminalSession({ sid });
+      await deleteEndedTerminalDescriptor(sid);
+      return result;
     } catch (error) {
       lastError = error;
       if (index < attempts - 1) {
@@ -127,6 +130,15 @@ async function endTerminalSessionWithRetries(
     }
   }
   throw lastError instanceof Error ? lastError : new Error("terminal session kill failed");
+}
+
+async function deleteEndedTerminalDescriptor(sid: string): Promise<void> {
+  try {
+    await deleteTerminalSession(sid);
+  } catch (error) {
+    if (isApiError(error) && error.status === 404) return;
+    throw error;
+  }
 }
 
 function enqueuePendingTerminalKill(sessionId: string): void {

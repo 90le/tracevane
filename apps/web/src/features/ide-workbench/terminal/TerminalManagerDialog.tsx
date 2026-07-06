@@ -27,13 +27,17 @@ export function TerminalManagerDialog({
   const [loading, setLoading] = React.useState(false);
   const [closingIds, setClosingIds] = React.useState<Set<string>>(() => new Set());
   const [closeProgress, setCloseProgress] = React.useState<{ done: number; total: number } | null>(null);
+  const suppressedSessionIdsRef = React.useRef<Set<string>>(new Set());
   const activeIdSet = React.useMemo(() => new Set(activeTerminalIds), [activeTerminalIds]);
 
   const refresh = React.useCallback(async (options: { silent?: boolean } = {}) => {
     if (!options.silent) setLoading(true);
     try {
       const payload = await getTerminalSessions();
-      setSessions((payload.sessions ?? []).filter(isManageableSession));
+      setSessions((payload.sessions ?? []).filter((session) => (
+        isManageableSession(session) &&
+        !suppressedSessionIdsRef.current.has(session.sessionId)
+      )));
     } catch (error) {
       if (!options.silent) {
         toast.error("读取终端列表失败", { description: error instanceof Error ? error.message : String(error) });
@@ -52,6 +56,9 @@ export function TerminalManagerDialog({
     const targets = uniqueSessions(targetSessions.filter(isManageableSession));
     if (!targets.length) return;
     const targetIds = targets.map((session) => session.sessionId);
+    for (const sessionId of targetIds) {
+      suppressedSessionIdsRef.current.add(sessionId);
+    }
     setClosingIds((current) => new Set([...current, ...targetIds]));
     setCloseProgress({ done: 0, total: targets.length });
     // Optimistically hide sessions as soon as close is requested. The backend
@@ -88,6 +95,12 @@ export function TerminalManagerDialog({
     window.setTimeout(() => {
       void refresh({ silent: true });
     }, 750);
+    window.setTimeout(() => {
+      for (const sessionId of targetIds) {
+        suppressedSessionIdsRef.current.delete(sessionId);
+      }
+      void refresh({ silent: true });
+    }, 15_000);
   }, [refresh]);
 
   const groups = React.useMemo(() => groupSessions(sessions, currentRootId), [currentRootId, sessions]);

@@ -67,6 +67,11 @@ async function run() {
   const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
   if (!rootId) throw new Error('No file root is available for terminal manager smoke');
   const sid = `terminal-manager-smoke-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const otherRootId = summary.roots?.find((root) => root?.id && root.id !== rootId)?.id ?? rootId;
+  const hasOtherRoot = otherRootId !== rootId;
+  const otherWorkspaceId = otherRootId;
+  const otherSidA = `${sid}-other-a`;
+  const otherSidB = `${sid}-other-b`;
 
   await resetTerminalSessions();
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
@@ -86,6 +91,21 @@ async function run() {
       pinned: true,
     }),
   });
+  for (const otherSid of hasOtherRoot ? [otherSidA, otherSidB] : []) {
+    await api('/api/terminal/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        sid: otherSid,
+        rootId: otherRootId,
+        workspaceId: otherWorkspaceId,
+        cwd: '',
+        profileId: 'local-shell',
+        shell: 'bash',
+        targetKind: 'local',
+        pinned: true,
+      }),
+    });
+  }
   const sessionsBefore = await api('/api/terminal/sessions');
   const descriptor = sessionsBefore.sessions?.find((session) => session.sessionId === sid);
   if (!descriptor) throw new Error('Created terminal session was not listed by /api/terminal/sessions');
@@ -113,12 +133,41 @@ async function run() {
     await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    if (hasOtherRoot) {
+      await page.locator(`[data-ide-terminal-manager-session="${otherSidA}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+      await page.locator(`[data-ide-terminal-manager-session="${otherSidB}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+
+      await page.locator('[data-ide-terminal-manager-close-other-workspaces]').click();
+      await page.waitForFunction(
+        ([first, second]) => (
+          !document.querySelector(`[data-ide-terminal-manager-session="${first}"]`) &&
+          !document.querySelector(`[data-ide-terminal-manager-session="${second}"]`)
+        ),
+        [otherSidA, otherSidB],
+        { timeout: 45_000 },
+      );
+      await page.waitForTimeout(1_500);
+      await page.locator('[data-ide-terminal-manager-refresh]').click();
+      await page.waitForTimeout(500);
+      const bouncedOtherSessions = await page.locator(`[data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]`).count();
+      if (bouncedOtherSessions !== 0) {
+        throw new Error(`Closed other-workspace sessions bounced back into Terminal Manager: ${bouncedOtherSessions}`);
+      }
+    }
+
     await page.locator(`[data-ide-terminal-manager-close="${sid}"]`).click();
     await page.waitForFunction(
       (sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`),
       sid,
       { timeout: 45_000 },
     );
+    await page.waitForTimeout(1_500);
+    await page.locator('[data-ide-terminal-manager-refresh]').click();
+    await page.waitForTimeout(500);
+    const bouncedCurrentSession = await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).count();
+    if (bouncedCurrentSession !== 0) {
+      throw new Error('Closed current-workspace detached session bounced back into Terminal Manager');
+    }
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,
@@ -128,7 +177,9 @@ async function run() {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}\nlogs=${logs.slice(-120).join('\n')}`);
   } finally {
     await browser.close().catch(() => undefined);
-    await api('/api/terminal/end', { method: 'POST', body: JSON.stringify({ sid }) }).catch(() => undefined);
+    await Promise.allSettled([sid, otherSidA, otherSidB].map((sessionId) => (
+      api('/api/terminal/end', { method: 'POST', body: JSON.stringify({ sid: sessionId }) })
+    )));
   }
 }
 
