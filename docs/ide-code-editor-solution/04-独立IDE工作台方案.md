@@ -1,11 +1,13 @@
 # 独立 IDE 工作台方案
 
 
-## 当前实现状态（M4 已完成）
+## 当前实现状态（M5.y 已完成）
 
-M4 Workbench Layout Foundation 已完成，验收记录见 [`archive/m4-execution-summary.md`](./archive/m4-execution-summary.md)。当前实现已经提供独立 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 独立 Workbench shell、ActivityBar、SideBar Explorer、Editor Dock / Dockview placeholder tabs、Split Right / Split Down placeholder、底部 Panel placeholder tabs、StatusBar、sidebar/panel resize/collapse/maximize、layoutVersion + localStorage persistence + fallback/reset、IDE Explorer 文件操作，以及已打开 Dockview placeholder tab 在 rename/move/delete 时的 path/title/document id/deleted 同步。
+M4 Workbench Layout Foundation 已完成，验收记录见 [`archive/m4-execution-summary.md`](./archive/m4-execution-summary.md)。M5 Real Terminal Foundation 与 M5.x Terminal Split / Group / Panel Placement 已完成，验收记录见 [`archive/m5-execution-summary.md`](./archive/m5-execution-summary.md) 和 [`archive/m5x-execution-summary.md`](./archive/m5x-execution-summary.md)。M5.y / M5.5 IDE Editor Foundation 已完成，验收记录见 [`archive/m5y-execution-summary.md`](./archive/m5y-execution-summary.md)。
 
-M4 的完成状态只代表 **Workbench Layout Foundation** 完成：真实 Monaco 编辑内容与保存/dirty 冲突、Terminal/xterm/PTY、Terminal split/group、LSP、Git、Debug、Problems/Output 数据接入、watcher、Panel right placement、Secondary SideBar、完整 VS Code 行为和插件市场均后置。
+当前独立 IDE Workbench 已提供 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 独立 shell、ActivityBar、SideBar Explorer、Editor Dock / Dockview、真实 Monaco 文件编辑 panel、preview/pinned 多标签、tab 右键菜单、向右/向下真实 file panel split、底部/右侧 Terminal Panel、StatusBar、sidebar/panel resize/collapse/maximize、layoutVersion + persistence + fallback/reset、IDE Explorer 文件操作，以及已打开 editor tab/panel 在 rename/move/delete 时的 path/title/document id/deleted 同步。
+
+M5.y 的完成状态代表 **IDE Editor Foundation** 完成，不代表完整 IDE：watcher、全局搜索、Problems/Output 数据、LSP、Git、Debug、Secondary SideBar、完整 View Movement、插件市场和完整 VS Code 行为仍后置。
 
 ## 1. 产品定位
 
@@ -138,7 +140,7 @@ IdeWorkbench
 ```txt
 - ActivityBar: Explorer
 - SideBar: ExplorerView
-- EditorDock: 多 Tab + 可拆分编辑组
+- EditorDock: 真实 Monaco 多 Tab + 可拆分 file panel group
 - PanelArea: Terminal / Problems / Output 框架
 - StatusBar: 基础状态
 ```
@@ -295,6 +297,13 @@ M4 不做：
 ## 7. Editor Area
 
 Editor Area 是独立 IDE 的核心。
+
+### M5.y 已完成的 IDE Editor Foundation
+
+M5.y 已把 Editor Area 从 M4 的 Dockview placeholder 升级为真实 Monaco 文件编辑器基础：Explorer 打开文本/code 文件进入 Monaco panel，支持 preview/pinned、多标签、dirty/save、关闭确认、tab 右键菜单、向右/向下真实 file panel split，以及 Explorer rename/move/delete 对 primary/split editor panel 的 path/title/tab params 同步。
+
+这仍不是完整 IDE Editor：watcher 外部变更、全局搜索、Problems/Output 数据、LSP/Git/Debug 均后置到 M6/M7。Dockview 继续只负责布局与 panel 容器，不拥有 FileService、SaveService 或 Monaco model lifecycle。
+
 
 能力要求：
 

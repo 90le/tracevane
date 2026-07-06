@@ -151,8 +151,8 @@ Done: M3 Online Editor Mini Explorer + Shared Explorer Core
 Done: M4 IDE Workbench Layout Foundation
 Done: M5 Real Terminal Foundation
 Done: M5.x Terminal Split / Group / Panel Placement
-Next: M5.y / M5.5 IDE Editor Foundation
-Later: M6 Watcher / Search / Problems / Output
+Done: M5.y / M5.5 IDE Editor Foundation
+Next: M6 Watcher / Search / Problems / Output
 Later: M7 LSP / Git / Debug
 ```
 
@@ -162,7 +162,7 @@ Do not pull future-stage functionality forward unless the user explicitly change
 - M4 must not pretend to have real terminal, LSP, Git, Debug, Problems diagnostics, Output channels, or full View Movement; it is the Workbench Layout Foundation.
 - M5 is complete: real terminal lifecycle and safety are proven at foundation level.
 - M5.x is complete: terminal split/group, bottom/right placement, profile selection, persistence and clipboard-path bridge are accepted terminal layout foundations.
-- M5.y is the next pre-M6 editor foundation stage: replace IDE EditorDock placeholders with real Monaco-backed file editing while reusing shared/editor-core and Files API.
+- M5.y is complete: IDE EditorDock now has real Monaco-backed file editing, dirty/save/close protection, preview/pinned tabs, tab menus, file panel splits, and Explorer rename/move/delete path sync while reusing shared/editor-core and Files API.
 - M6 must close watcher/search/problems/output foundations before M7 LSP/Git/Debug.
 
 Shared architecture rules:
