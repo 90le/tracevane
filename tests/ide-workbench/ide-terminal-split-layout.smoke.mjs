@@ -184,9 +184,9 @@ async function run() {
     await waitForPaneCountExactly(page, Math.max(1, beforeClose - 1));
 
     await page.getByRole('button', { name: 'Output' }).click();
-    await page.getByText('Output 占位').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-output-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('button', { name: 'Debug Console' }).click();
-    await page.getByText('Debug Console 占位').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-console-placeholder]').waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,
