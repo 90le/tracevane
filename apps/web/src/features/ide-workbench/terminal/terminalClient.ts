@@ -207,7 +207,7 @@ function readPendingTerminalKills(): string[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PENDING_TERMINAL_KILL_KEY) || "[]") as unknown;
     return Array.isArray(parsed)
-      ? parsed.map((item) => normalizeTerminalSessionId(String(item || ""))).filter(Boolean)
+      ? [...new Set(parsed.map((item) => normalizeTerminalSessionId(String(item || ""))).filter(Boolean))]
       : [];
   } catch {
     return [];
