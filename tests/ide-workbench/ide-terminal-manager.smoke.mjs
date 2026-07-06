@@ -184,27 +184,29 @@ async function run() {
     await page.locator('[data-ide-terminal-tab-menu]').first().click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-tab-menu-item="rename"]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-tab]', { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const activeTerminalId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-terminal-id');
+    if (!activeTerminalId) throw new Error('Active terminal id was not exposed by terminal layout');
     await page.waitForFunction(async (sessionId) => {
       const response = await fetch(`/api/terminal/sessions/${encodeURIComponent(sessionId)}`);
       if (!response.ok) return false;
       const session = await response.json();
       return session.title === 'Manager Smoke Renamed Terminal';
-    }, sid, { timeout: 30_000 });
+    }, activeTerminalId, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.keyboard.press('Escape');
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator(`[data-ide-terminal-manager-session="${sid}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-attach="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
-    await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.route('**/api/terminal/end', async (route) => {
       const request = route.request();
       const body = request.postDataJSON?.() ?? {};
-      if (body?.sid === sid) {
+      if (body?.sid === activeTerminalId) {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -219,7 +221,7 @@ async function run() {
       .filter((session) => normalizeRootId(session) === rootId)
       .filter(isRecoverableSession);
     const unexpectedCurrentSessions = currentWorkspaceRecoverable
-      .filter((session) => session.sessionId !== sid)
+      .filter((session) => ![sid, activeTerminalId].includes(session.sessionId))
       .map((session) => `${session.sessionId}:${session.status}:${session.cwd}`);
     if (unexpectedCurrentSessions.length) {
       throw new Error(`Workbench created unexpected extra current-workspace terminals: ${unexpectedCurrentSessions.join(', ')}`);
@@ -232,14 +234,14 @@ async function run() {
     await page.locator('[data-ide-terminal-manager-close-all]').click();
     await page.waitForFunction(
       (sessionIds) => sessionIds.every((sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`)),
-      [sid, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])],
+      [sid, activeTerminalId, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])],
       { timeout: 45_000 },
     );
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') === 0, { timeout: 30_000 });
     const layoutAfterFailedKill = await page.evaluate((sessionId) => ({
       paneCount: document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count'),
       stillInLayout: Boolean(document.querySelector(`[data-terminal-id="${sessionId}"]`)),
-    }), sid);
+    }), activeTerminalId);
     if (layoutAfterFailedKill.stillInLayout || layoutAfterFailedKill.paneCount !== '0') {
       throw new Error(`Failed close did not remove terminal from Panel layout: ${JSON.stringify(layoutAfterFailedKill)}`);
     }
@@ -247,7 +249,7 @@ async function run() {
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.waitForTimeout(500);
     const bouncedClosedSessions = await page
-      .locator(`[data-ide-terminal-manager-session="${sid}"]${hasOtherRoot ? `, [data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]` : ''}`)
+      .locator(`[data-ide-terminal-manager-session="${sid}"], [data-ide-terminal-manager-session="${activeTerminalId}"]${hasOtherRoot ? `, [data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]` : ''}`)
       .count();
     if (bouncedClosedSessions !== 0) {
       throw new Error(`Closed sessions bounced back into Terminal Manager after close-all: ${bouncedClosedSessions}`);

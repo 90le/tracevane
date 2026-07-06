@@ -132,7 +132,7 @@ async function flushPendingTerminalKillRetriesOnce(): Promise<void> {
   const flushing = new Set(pending);
   const results = await runWithConcurrency(pending, PENDING_TERMINAL_KILL_CONCURRENCY, async (sid) => {
     try {
-      await endTerminalSessionWithRetries(sid, { attempts: 2, retryDelayMs: 750, queueOnFailure: false });
+      await endTerminalSessionWithRetries(sid, { attempts: 2, retryDelayMs: 750 });
       return { sid, failed: false };
     } catch {
       return { sid, failed: true };
@@ -167,7 +167,7 @@ async function runWithConcurrency<T, R>(
 
 async function endTerminalSessionWithRetries(
   sid: string,
-  options: EndWorkbenchTerminalSessionOptions,
+  options: Pick<EndWorkbenchTerminalSessionOptions, "attempts" | "retryDelayMs">,
 ): Promise<TerminalEndResponse> {
   const attempts = Math.max(1, options.attempts ?? 3);
   const retryDelayMs = Math.max(100, options.retryDelayMs ?? 500);

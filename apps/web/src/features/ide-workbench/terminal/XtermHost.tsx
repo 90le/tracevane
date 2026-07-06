@@ -39,6 +39,8 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
   const onPasteShortcutRef = React.useRef(onPasteShortcut);
   const onFocusChangeRef = React.useRef(onFocusChange);
   const suppressProgrammaticInputUntilRef = React.useRef(0);
+  const acceptInputRef = React.useRef(acceptInput);
+  const inputArmedRef = React.useRef(false);
 
   React.useEffect(() => {
     onInputRef.current = onInput;
@@ -47,7 +49,8 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     onCopyShortcutRef.current = onCopyShortcut;
     onPasteShortcutRef.current = onPasteShortcut;
     onFocusChangeRef.current = onFocusChange;
-  }, [onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut, onFocusChange]);
+    acceptInputRef.current = acceptInput;
+  }, [onInput, onResize, onSelectionChange, onCopyShortcut, onPasteShortcut, onFocusChange, acceptInput]);
 
   React.useImperativeHandle(ref, () => ({
     write(data) {
@@ -108,6 +111,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     const dataDisposable = terminal.onData((data) => {
+      if (!inputArmedRef.current || !acceptInputRef.current) return;
       if (performance.now() < suppressProgrammaticInputUntilRef.current) return;
       const userInput = stripXtermGeneratedReports(data);
       if (userInput) onInputRef.current(userInput);
@@ -154,13 +158,17 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
-    const handleFocusIn = () => onFocusChangeRef.current?.(true);
+    const handleFocusIn = () => onFocusChangeRef.current?.(inputArmedRef.current);
     const handleFocusOut = () => {
       window.setTimeout(() => {
-        if (!container.contains(document.activeElement)) onFocusChangeRef.current?.(false);
+        if (!container.contains(document.activeElement)) {
+          inputArmedRef.current = false;
+          onFocusChangeRef.current?.(false);
+        }
       }, 0);
     };
     const releaseTerminalFocus = () => {
+      inputArmedRef.current = false;
       terminal.blur();
       onFocusChangeRef.current?.(false);
     };
@@ -188,6 +196,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     return () => {
       resizeObserver.disconnect();
       suppressProgrammaticInputUntilRef.current = 0;
+      inputArmedRef.current = false;
       dataDisposable.dispose();
       selectionDisposable.dispose();
       container.removeEventListener("focusin", handleFocusIn);
@@ -204,7 +213,11 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.disableStdin = !acceptInput;
-    if (!acceptInput) terminal.blur();
+    acceptInputRef.current = acceptInput;
+    if (!acceptInput) {
+      inputArmedRef.current = false;
+      terminal.blur();
+    }
   }, [acceptInput]);
 
   return (
@@ -212,6 +225,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       ref={containerRef}
       className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-panel text-ink"
       onPointerDown={() => {
+        inputArmedRef.current = true;
         onFocusChangeRef.current?.(true);
         terminalRef.current?.focus();
       }}

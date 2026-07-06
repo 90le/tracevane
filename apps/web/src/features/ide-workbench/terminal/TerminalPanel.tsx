@@ -147,7 +147,7 @@ export function TerminalPanel({
         cwdLabel={placement === "right" ? undefined : cwdAbsolutePath}
         metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}
       />
-      <div className="min-h-0 min-w-0" data-ide-terminal-layout data-terminal-tab-count={layout.tabs.length} data-terminal-pane-count={activePaneCount} data-terminal-active-tab-id={layout.activeTabId} data-terminal-active-pane-id={layout.activePaneId}>
+      <div className="min-h-0 min-w-0" data-ide-terminal-layout data-terminal-tab-count={layout.tabs.length} data-terminal-pane-count={activePaneCount} data-terminal-active-tab-id={layout.activeTabId} data-terminal-active-pane-id={layout.activePaneId} data-terminal-active-terminal-id={activeTab?.activeTerminalId ?? undefined}>
         {!layoutReady ? (
           <div className="grid h-full place-items-center p-6 text-center" data-ide-terminal-loading>
             <div className="max-w-md rounded-lg border border-line bg-canvas px-6 py-5 text-sm text-muted">
