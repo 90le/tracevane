@@ -388,34 +388,39 @@ function TerminalNewProfileMenu({
   onSelect: (profile: TerminalProfileSelection) => void;
 }) {
   const launchable = normalizeLaunchableProfiles(profiles);
+  const unavailable = normalizeUnavailableShellProfiles(profiles);
+  const selectProfile = React.useCallback((profile: TerminalProfileDescriptor) => {
+    onSelect(profileToSelection(profile));
+  }, [onSelect]);
   return (
     <div
       role="menu"
-      className="fixed z-50 min-w-60 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+      className="fixed z-50 min-w-72 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
       style={{ left: x, top: y }}
       onPointerDown={(event) => event.stopPropagation()}
       data-ide-terminal-new-profile-menu
     >
+      <div className="px-2 pb-1 pt-1 text-2xs font-medium uppercase tracking-wide text-muted">可创建的本地 Shell</div>
       {launchable.length ? launchable.map((profile) => (
-        <button
+        <TerminalProfileMenuItem
           key={profile.id}
-          type="button"
-          role="menuitem"
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
-          onClick={() => onSelect(profileToSelection(profile))}
-          data-ide-terminal-new-profile={profile.id}
-          data-terminal-shell={profile.command}
-        >
-          <TerminalIcon className="size-3.5 text-subtle" />
-          <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
-          <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
-        </button>
+          profile={profile}
+          onSelect={selectProfile}
+        />
       )) : (
         <button
           type="button"
           role="menuitem"
           className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
-          onClick={() => onSelect({ profileId: "local-shell", shell: "bash", label: "Terminal" })}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect({ profileId: "local-shell", shell: "bash", label: "Terminal" });
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           data-ide-terminal-new-profile="local-shell"
           data-terminal-shell="bash"
         >
@@ -424,19 +429,84 @@ function TerminalNewProfileMenu({
           <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">bash</span>
         </button>
       )}
+      {unavailable.length ? (
+        <>
+          <div className="my-1 border-t border-line" />
+          <div className="px-2 pb-1 pt-1 text-2xs font-medium uppercase tracking-wide text-muted">未安装 / 暂不可用</div>
+          {unavailable.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              role="menuitem"
+              disabled
+              className="flex w-full cursor-not-allowed items-center gap-2 rounded-sm px-2 py-1.5 text-left text-muted opacity-70"
+              title={profile.descriptionZh || profile.description}
+              data-ide-terminal-new-profile-disabled={profile.id}
+              data-terminal-shell={profile.command}
+            >
+              <TerminalIcon className="size-3.5 text-subtle" />
+              <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
+              <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
+              <span className="rounded bg-warning-soft px-1 text-2xs text-warning">不可用</span>
+            </button>
+          ))}
+        </>
+      ) : null}
       <div className="my-1 border-t border-line" />
-      <div className="px-2 py-1 text-2xs text-muted">tmux 是持久化后端，不作为 Shell 选项。</div>
+      <div className="px-2 py-1 text-2xs leading-relaxed text-muted">
+        下拉只创建后端确认可用的本地 shell。tmux 是持久化后端；Codex/Claude 等 Agent 终端入口后续单独接入，不伪装成 shell。
+      </div>
     </div>
   );
 }
 
-function normalizeLaunchableProfiles(profiles: TerminalProfileDescriptor[]): TerminalProfileDescriptor[] {
+function TerminalProfileMenuItem({
+  profile,
+  onSelect,
+}: {
+  profile: TerminalProfileDescriptor;
+  onSelect: (profile: TerminalProfileDescriptor) => void;
+}) {
+  const run = React.useCallback(() => onSelect(profile), [onSelect, profile]);
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        run();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      data-ide-terminal-new-profile={profile.id}
+      data-terminal-shell={profile.command}
+    >
+      <TerminalIcon className="size-3.5 text-subtle" />
+      <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
+      <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
+    </button>
+  );
+}
+
+function normalizeShellProfiles(profiles: TerminalProfileDescriptor[]): TerminalProfileDescriptor[] {
   const shellProfiles = profiles
-    .filter((profile) => profile.kind === "shell" && profile.targetKind === "local" && profile.launchable)
+    .filter((profile) => profile.kind === "shell" && profile.targetKind === "local")
     .filter((profile) => !/tmux/i.test(profile.id) && !/tmux/i.test(profile.command));
   const local = shellProfiles.find((profile) => profile.id === "local-shell");
   const rest = shellProfiles.filter((profile) => profile.id !== "local-shell");
   return local ? [local, ...rest] : shellProfiles;
+}
+
+function normalizeLaunchableProfiles(profiles: TerminalProfileDescriptor[]): TerminalProfileDescriptor[] {
+  return normalizeShellProfiles(profiles).filter((profile) => profile.launchable);
+}
+
+function normalizeUnavailableShellProfiles(profiles: TerminalProfileDescriptor[]): TerminalProfileDescriptor[] {
+  return normalizeShellProfiles(profiles).filter((profile) => !profile.launchable);
 }
 
 function defaultTerminalProfile(profiles: TerminalProfileDescriptor[]): TerminalProfileSelection {

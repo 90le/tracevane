@@ -238,11 +238,11 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new-menu]').click();
     await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'visible', timeout: 30_000 });
-    const bashMenuItem = page.locator('[data-ide-terminal-new-profile="shell-bash"][data-terminal-shell="bash"]');
-    await bashMenuItem.waitFor({ state: 'visible', timeout: 30_000 });
-    await bashMenuItem.click();
+    const shMenuItem = page.locator('[data-ide-terminal-new-profile="shell-sh"][data-terminal-shell="sh"]');
+    await shMenuItem.waitFor({ state: 'visible', timeout: 30_000 });
+    await shMenuItem.click();
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 2, { timeout: 45_000 });
-    await page.locator('[data-ide-terminal-tab][data-terminal-shell="bash"]').last().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-tab][data-terminal-shell="sh"]').last().waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.locator('[data-ide-terminal-pane]').first().evaluate((node) => {
       const file = new File(['terminal clipboard paste smoke\n'], 'terminal-clipboard-paste.txt', { type: 'text/plain' });

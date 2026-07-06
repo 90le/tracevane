@@ -34,7 +34,7 @@ export function TerminalPanel({
   React.useEffect(() => {
     const controller = new AbortController();
     getTerminalProfiles(controller.signal)
-      .then((catalog) => setProfiles(catalog.profiles.filter((profile) => profile.kind === "shell" && profile.targetKind === "local")))
+      .then((catalog) => setProfiles(catalog.profiles))
       .catch(() => setProfiles([]));
     return () => controller.abort();
   }, []);
