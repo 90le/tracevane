@@ -73,6 +73,7 @@ const PENDING_TERMINAL_KILL_CONCURRENCY = 6;
 let pendingKillFlushTimer: number | null = null;
 let pendingKillFlushDueAt = 0;
 let pendingKillFlushPromise: Promise<void> | null = null;
+let pendingKillMemoryFallback = new Set<string>();
 
 export async function endWorkbenchTerminalSession(
   sessionId: string,
@@ -203,21 +204,24 @@ function enqueuePendingTerminalKill(sessionId: string): void {
 }
 
 function readPendingTerminalKills(): string[] {
-  if (typeof window === "undefined") return [];
+  const fallback = Array.from(pendingKillMemoryFallback);
+  if (typeof window === "undefined") return fallback;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PENDING_TERMINAL_KILL_KEY) || "[]") as unknown;
-    return Array.isArray(parsed)
+    const persisted = Array.isArray(parsed)
       ? [...new Set(parsed.map((item) => normalizeTerminalSessionId(String(item || ""))).filter(Boolean))]
       : [];
+    return [...new Set([...persisted, ...fallback])];
   } catch {
-    return [];
+    return fallback;
   }
 }
 
 function writePendingTerminalKills(sessionIds: string[]): void {
+  const normalized = [...new Set(sessionIds.map((sid) => normalizeTerminalSessionId(sid)).filter(Boolean))];
+  pendingKillMemoryFallback = new Set(normalized);
   if (typeof window === "undefined") return;
   try {
-    const normalized = [...new Set(sessionIds.map((sid) => normalizeTerminalSessionId(sid)).filter(Boolean))];
     if (!normalized.length) {
       window.localStorage.removeItem(PENDING_TERMINAL_KILL_KEY);
       return;
