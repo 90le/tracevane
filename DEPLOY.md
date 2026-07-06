@@ -29,7 +29,7 @@ version.json
 - `tracevane-<version>.tar.gz` 是客户安装包。
 - `install-tracevane.sh` 是官网下载后执行的一键安装脚本。
 - `index.html` 是官网安装页。
-- `tracevane-latest.json`、`tracevane-version.json`、`version.json` 是安装器和系统升级检查读取的发布元数据。
+- `tracevane-latest.json`、`tracevane-version.json`、`version.json` 是安装器和系统升级检查读取的发布元数据，包含安装包 URL、最低 OpenClaw 版本和安装包 SHA-256。
 
 ## 发布流程
 
@@ -45,7 +45,7 @@ version.json
 2. 自动递增 patch 版本，例如 `<major>.<minor>.<patch> -> <major>.<minor>.<patch+1>`。
 3. 同步 root/workspace package、lockfile、fallback 版本、installer 和官网页。
 4. 构建 API 与 Web。
-5. 生成发布包和站点元数据。
+5. 生成发布包、安装包 SHA-256 和站点元数据。
 
 指定版本发布：
 
@@ -92,6 +92,12 @@ chmod +x /tmp/install-tracevane.sh
 
 ### 3. 选择安装模式
 
+可选：先只检查站点元数据和安装包 URL，不安装、不改配置：
+
+```bash
+/tmp/install-tracevane.sh --check-release
+```
+
 正式 standalone 模式：
 
 ```bash
@@ -106,15 +112,16 @@ Gateway 单口模式：
 
 安装脚本会自动：
 
-1. 从站点元数据解析最新 Tracevane 版本、下载地址和最低 OpenClaw 版本。
+1. 从站点元数据解析最新 Tracevane 版本、下载地址、最低 OpenClaw 版本和安装包 SHA-256。
 2. 必要时升级 OpenClaw。
-3. 下载并解压发布包。
-4. 修正发布包元数据，确保宿主加载 `./dist/index.js`。
-5. 安装生产依赖并重建 `node-pty`。
-6. 写入 `plugins.entries.tracevane`、`plugins.load.paths` 和 transport 配置。
-7. 备份 OpenClaw 配置，失败时尽量回滚本次安装改动。
-8. 安装/重启 OpenClaw Gateway；无可用用户级 service 管理器时降级为后台 `gateway run`。
-9. 执行健康检查。
+3. 下载发布包并校验 SHA-256；metadata 未提供校验值时会明确告警。
+4. 解压发布包。
+5. 修正发布包元数据，确保宿主加载 `./dist/index.js`。
+6. 安装生产依赖并重建 `node-pty`。
+7. 写入 `plugins.entries.tracevane`、`plugins.load.paths` 和 transport 配置。
+8. 备份 OpenClaw 配置，失败时尽量回滚本次安装改动。
+9. 安装/重启 OpenClaw Gateway；无可用用户级 service 管理器时降级为后台 `gateway run`。
+10. 执行健康检查。
 
 ## 手工安装兜底
 
@@ -125,7 +132,9 @@ cd ~/.openclaw/extensions
 curl -fsSL https://tracevane.90le.cn/tracevane-latest.json -o /tmp/tracevane-latest.json
 PACKAGE_URL="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.packageUrl)")"
 VERSION="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.version || m.latestVersion)")"
+SHA256="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.sha256 || m.packageSha256 || m.checksum?.sha256 || '')")"
 curl -fL "$PACKAGE_URL" -o "tracevane-${VERSION}.tar.gz"
+node -e "const crypto=require('node:crypto'); const fs=require('node:fs'); const expected=process.argv[2]; if (expected) { const actual=crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'); if (actual !== expected) throw new Error('sha256 mismatch: '+actual); }" "tracevane-${VERSION}.tar.gz" "$SHA256"
 tar -xzf "tracevane-${VERSION}.tar.gz"
 rm -rf tracevane
 mv "tracevane-${VERSION}" tracevane

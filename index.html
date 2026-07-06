@@ -457,11 +457,12 @@
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
 2. 解析站点发布元数据并下载最新 Tracevane 安装包（当前 metadata 版本：{{TRACEVANE_VERSION}}）
-3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
-4. 安装依赖并重建 node-pty
-5. 写入 plugins.entries.tracevane / plugins.load.paths / transport 配置
-6. 执行 openclaw gateway install --force 与重启
-7. 对 http://127.0.0.1:3760/api/system/health 做健康检查
+3. 校验安装包 SHA-256，防止下载损坏或元数据不匹配
+4. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
+5. 安装依赖并重建 node-pty
+6. 写入 plugins.entries.tracevane / plugins.load.paths / transport 配置
+7. 执行 openclaw gateway install --force 与重启
+8. 对 http://127.0.0.1:3760/api/system/health 做健康检查
 
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本
@@ -491,12 +492,13 @@
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
 2. 解析站点发布元数据并下载最新 Tracevane 安装包（当前 metadata 版本：{{TRACEVANE_VERSION}}）
-3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
-4. 安装依赖并重建 node-pty
-5. 写入 plugins.entries.tracevane / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
-6. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
-7. 执行 openclaw gateway install --force 与重启
-8. 对 http://127.0.0.1:&lt;gateway_port&gt;/tracevane/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
+3. 校验安装包 SHA-256，防止下载损坏或元数据不匹配
+4. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
+5. 安装依赖并重建 node-pty
+6. 写入 plugins.entries.tracevane / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
+7. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
+8. 执行 openclaw gateway install --force 与重启
+9. 对 http://127.0.0.1:&lt;gateway_port&gt;/tracevane/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
 
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本

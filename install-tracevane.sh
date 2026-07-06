@@ -24,6 +24,7 @@ TRACEVANE_VERSION="${TRACEVANE_VERSION:-}"
 OPENCLAW_MIN_VERSION="${OPENCLAW_MIN_VERSION:-2026.5.28}"
 TRACEVANE_SITE_BASE="${TRACEVANE_SITE_BASE:-https://tracevane.90le.cn}"
 TRACEVANE_PACKAGE_URL="${TRACEVANE_PACKAGE_URL:-}"
+TRACEVANE_PACKAGE_SHA256="${TRACEVANE_PACKAGE_SHA256:-}"
 TRACEVANE_MODE="${TRACEVANE_MODE:-standalone}"
 TRACEVANE_API_PORT="${TRACEVANE_API_PORT:-3760}"
 TRACEVANE_GATEWAY_BASE_PATH="${TRACEVANE_GATEWAY_BASE_PATH:-/tracevane}"
@@ -35,6 +36,7 @@ INSTALL_DIR="${TRACEVANE_EXTENSIONS_DIR}/tracevane"
 BACKUP_ROOT="${OPENCLAW_HOME_DIR}/backups/tracevane"
 DRY_RUN=0
 SKIP_UPGRADE=0
+CHECK_RELEASE=0
 ACTIVE_BACKUP_DIR=""
 CONFIG_BACKUP=""
 ROLLBACK_DONE=0
@@ -96,6 +98,7 @@ Tracevane 一键安装脚本
 常用示例:
   bash install-tracevane.sh --mode standalone
   bash install-tracevane.sh --mode gateway
+  bash install-tracevane.sh --check-release
   chmod +x ./install-tracevane.sh
   ./install-tracevane.sh --mode gateway
 
@@ -108,12 +111,14 @@ Tracevane 一键安装脚本
   --version <version>           Tracevane 版本，默认 latest（站点最新）
   --site-base <url>             站点根地址，默认 https://tracevane.90le.cn
   --package-url <url>           安装包地址，默认优先读取站点 metadata
+  --package-sha256 <sha256>     安装包 SHA-256；metadata 提供时会自动校验
   --api-port <port>             standalone API 端口，默认 3760
   --base-path <path>            gateway basePath，默认 /tracevane
   --gateway-bind <mode>         gateway bind，默认 lan（auto|loopback|lan|tailnet|custom）
   --config <path>               OpenClaw 配置文件路径
   --extensions-dir <path>       扩展目录，默认 ~/.openclaw/extensions
   --skip-upgrade                不自动升级 OpenClaw
+  --check-release               只解析 metadata 并检查安装包 URL，不安装
   --dry-run                     仅打印将执行的动作，不落盘
   -h, --help                    显示帮助
 EOF
@@ -233,7 +238,17 @@ const minVersion = typeof record.minOpenClawVersion === 'string'
 const packageUrl = typeof record.packageUrl === 'string'
   ? record.packageUrl.trim()
   : '';
-process.stdout.write([version, packageUrl, minVersion].join('\t'));
+const checksum = record.checksum && typeof record.checksum === 'object' && !Array.isArray(record.checksum)
+  ? record.checksum
+  : {};
+const sha256 = typeof record.sha256 === 'string'
+  ? record.sha256.trim()
+  : typeof record.packageSha256 === 'string'
+    ? record.packageSha256.trim()
+    : typeof checksum.sha256 === 'string'
+      ? checksum.sha256.trim()
+      : '';
+process.stdout.write([version, packageUrl, minVersion, sha256].join('\t'));
 NODE
     )"; then
       continue
@@ -250,16 +265,25 @@ resolve_requested_release() {
   local remote_version=""
   local remote_package_url=""
   local remote_min_version=""
+  local remote_package_sha256=""
   local remote_metadata=""
 
   if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" || "${PACKAGE_URL_EXPLICIT}" -eq 0 ]]; then
     if remote_metadata="$(resolve_remote_release_metadata)"; then
-      IFS=$'\t' read -r remote_version remote_package_url remote_min_version <<< "${remote_metadata}"
+      IFS=$'\t' read -r remote_version remote_package_url remote_min_version remote_package_sha256 <<< "${remote_metadata}"
     fi
   fi
 
   if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ]]; then
     TRACEVANE_VERSION="${remote_version:-${TRACEVANE_DEFAULT_VERSION}}"
+  fi
+
+  if [[ "${PACKAGE_URL_EXPLICIT}" -eq 1 && "${VERSION_EXPLICIT}" -eq 0 && -z "${remote_version}" ]]; then
+    if [[ "${TRACEVANE_PACKAGE_URL}" =~ tracevane-([0-9][0-9A-Za-z._-]*)\.tar\.gz ]]; then
+      TRACEVANE_VERSION="${BASH_REMATCH[1]}"
+    else
+      die "使用 --package-url 且无法读取站点 metadata 时，请同时传入 --version"
+    fi
   fi
 
   if [[ "${PACKAGE_URL_EXPLICIT}" -eq 0 && ( "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ) ]]; then
@@ -276,6 +300,9 @@ resolve_requested_release() {
 
   if [[ -n "${remote_min_version}" && "${MIN_VERSION_EXPLICIT}" -eq 0 ]]; then
     OPENCLAW_MIN_VERSION="${remote_min_version}"
+  fi
+  if [[ -n "${remote_package_sha256}" && -z "${TRACEVANE_PACKAGE_SHA256}" ]]; then
+    TRACEVANE_PACKAGE_SHA256="${remote_package_sha256}"
   fi
 }
 
@@ -337,6 +364,44 @@ download_file() {
     return 0
   fi
   die "缺少 curl 或 wget，无法下载安装包"
+}
+
+probe_url() {
+  local url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsIL --max-time 20 "${url}" >/dev/null \
+      || curl -fsL --range 0-0 --max-time 20 "${url}" -o /dev/null
+    return $?
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget --spider -q "${url}" \
+      || wget -qO /dev/null --header='Range: bytes=0-0' "${url}"
+    return $?
+  fi
+  return 127
+}
+
+verify_package_checksum() {
+  local archive_path="$1"
+  local expected_sha256="$2"
+  [[ -n "${expected_sha256}" ]] || return 0
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf '[dry-run] verify sha256 %q %q\n' "${archive_path}" "${expected_sha256}"
+    return 0
+  fi
+
+  node - "${archive_path}" "${expected_sha256}" <<'NODE'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+
+const archivePath = process.argv[2];
+const expected = String(process.argv[3] || '').trim().toLowerCase();
+const actual = crypto.createHash('sha256').update(fs.readFileSync(archivePath)).digest('hex');
+if (actual !== expected) {
+  console.error(`SHA-256 mismatch: expected ${expected}, got ${actual}`);
+  process.exit(1);
+}
+NODE
 }
 
 version_lt() {
@@ -562,6 +627,10 @@ parse_args() {
         PACKAGE_URL_EXPLICIT=1
         shift 2
         ;;
+      --package-sha256)
+        TRACEVANE_PACKAGE_SHA256="${2:-}"
+        shift 2
+        ;;
       --api-port)
         TRACEVANE_API_PORT="${2:-}"
         shift 2
@@ -586,6 +655,10 @@ parse_args() {
         ;;
       --skip-upgrade)
         SKIP_UPGRADE=1
+        shift
+        ;;
+      --check-release)
+        CHECK_RELEASE=1
         shift
         ;;
       --dry-run)
@@ -616,6 +689,23 @@ case "${TRACEVANE_MODE}" in
 esac
 
 require_command node
+if [[ "${CHECK_RELEASE}" -eq 1 ]]; then
+  log "Tracevane release metadata OK"
+  log "版本: ${TRACEVANE_VERSION}"
+  log "最低 OpenClaw: ${OPENCLAW_MIN_VERSION}"
+  log "安装包: ${TRACEVANE_PACKAGE_URL}"
+  if [[ -n "${TRACEVANE_PACKAGE_SHA256}" ]]; then
+    log "安装包 SHA-256: ${TRACEVANE_PACKAGE_SHA256}"
+  else
+    warn "metadata 未提供安装包 SHA-256，安装时只能校验下载/解压是否成功"
+  fi
+  if probe_url "${TRACEVANE_PACKAGE_URL}"; then
+    log "安装包 URL 可访问"
+  else
+    die "安装包 URL 不可访问: ${TRACEVANE_PACKAGE_URL}"
+  fi
+  exit 0
+fi
 require_command npm
 require_command tar
 require_command openclaw
@@ -669,6 +759,12 @@ fi
 ARCHIVE_PATH="${TMP_DIR}/tracevane.tar.gz"
 log "下载安装包: ${TRACEVANE_PACKAGE_URL}"
 download_file "${TRACEVANE_PACKAGE_URL}" "${ARCHIVE_PATH}"
+if [[ -n "${TRACEVANE_PACKAGE_SHA256}" ]]; then
+  log "校验安装包 SHA-256"
+  verify_package_checksum "${ARCHIVE_PATH}" "${TRACEVANE_PACKAGE_SHA256}"
+else
+  warn "未提供安装包 SHA-256，跳过完整性校验"
+fi
 
 log "解压安装包"
 run_cmd tar -xzf "${ARCHIVE_PATH}" -C "${TMP_DIR}"

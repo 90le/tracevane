@@ -106,7 +106,8 @@ Tracevane is released as an OpenClaw UI extension. New customer installs should
 use OpenClaw `>= 2026.5.28`. The release pipeline does not require manual
 Tracevane version editing: `./pack.sh` auto-increments the patch version from
 `package.json`, synchronizes the installer and landing page, builds API/Web
-artifacts, and emits site metadata consumed by the installer and upgrade checks.
+artifacts, and emits site metadata plus the release tarball SHA-256 consumed by
+the installer and upgrade checks.
 
 Common release commands:
 
@@ -115,13 +116,15 @@ Common release commands:
 ./pack.sh 1.2.3
 ./pack.sh --print-version
 ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
+bash install-tracevane.sh --check-release
 ```
 
 Customer-facing deployment details live in [DEPLOY.md](DEPLOY.md). The public
 landing page is [index.html](index.html), and the self-contained installer is
 [install-tracevane.sh](install-tracevane.sh). The installer defaults to the
 latest site metadata; offline or private-mirror installs should pass
-`--version` or `--package-url` explicitly.
+`--version` or `--package-url` explicitly, and should also provide
+`--package-sha256` when metadata is unavailable.
 
 ## Testing and Smoke Checks
 

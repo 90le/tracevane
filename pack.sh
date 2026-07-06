@@ -363,6 +363,7 @@ tar -czvf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
 
 echo "[6.5/6] 生成站点升级元数据..."
 node - "${OUTPUT_DIR}" "${VERSION}" "${OPENCLAW_TARGET_VERSION}" <<'NODE'
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -370,10 +371,18 @@ const outputDir = process.argv[2];
 const version = process.argv[3];
 const targetVersion = process.argv[4];
 const packageUrl = `https://tracevane.90le.cn/tracevane-${version}.tar.gz`;
+const archivePath = path.join(outputDir, `tracevane-${version}.tar.gz`);
+const packageSha256 = crypto.createHash('sha256').update(fs.readFileSync(archivePath)).digest('hex');
 const payload = {
   version,
   latestVersion: version,
   packageUrl,
+  packageSha256,
+  sha256: packageSha256,
+  checksum: {
+    algorithm: 'sha256',
+    sha256: packageSha256,
+  },
   minOpenClawVersion: targetVersion,
   notes: [
     'Tracevane release package',
