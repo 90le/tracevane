@@ -9662,7 +9662,7 @@ test("model gateway preserves service tier across chat and responses adapters", 
 });
 
 
-test("model gateway preserves modern responses request controls through chat adapter", async () => {
+test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const ctx = createTracevaneContext({ config, logger: createLogger() });
@@ -9716,11 +9716,14 @@ test("model gateway preserves modern responses request controls through chat ada
           conversation: "conv_123",
           include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
           max_tool_calls: 7,
+          frequency_penalty: 0,
           metadata: { trace_id: "strip-for-codex-responses" },
+          presence_penalty: 0,
           previous_response_id: "resp_previous",
           prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
           prompt_cache_key: "cache-key-123",
           safety_identifier: "user-hash-123",
+          seed: 123,
           stop: ["STOP"],
           store: false,
           stream_options: { include_usage: true },
@@ -9752,9 +9755,14 @@ test("model gateway preserves modern responses request controls through chat ada
     safety_identifier: "user-hash-123",
     store: false,
     stream_options: { include_usage: true },
-    top_logprobs: 3,
     truncation: "auto",
   });
+  assert.equal("metadata" in upstreamCalls[0].body, false);
+  assert.equal("stop" in upstreamCalls[0].body, false);
+  assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
+  assert.equal("presence_penalty" in upstreamCalls[0].body, false);
+  assert.equal("seed" in upstreamCalls[0].body, false);
+  assert.equal("top_logprobs" in upstreamCalls[0].body, false);
 });
 
 test("model gateway applies responses adapter stop sequences locally without forwarding unsupported stop", async () => {
