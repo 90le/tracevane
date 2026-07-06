@@ -6,7 +6,7 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import { getTerminalSessions } from "@/lib/api/terminal";
-import { endWorkbenchTerminalSession } from "./terminalClient";
+import { endWorkbenchTerminalSession, isTerminalKillPending, schedulePendingTerminalKillFlush } from "./terminalClient";
 
 export function TerminalManagerDialog({
   open,
@@ -38,11 +38,13 @@ export function TerminalManagerDialog({
 
   const refresh = React.useCallback(async (options: { silent?: boolean } = {}) => {
     if (!options.silent) setLoading(true);
+    schedulePendingTerminalKillFlush(options.silent ? 1_000 : 250);
     try {
       const payload = await getTerminalSessions();
       setSessions((payload.sessions ?? []).filter((session) => (
         isManageableSession(session) &&
-        !suppressedSessionIdsRef.current.has(session.sessionId)
+        !suppressedSessionIdsRef.current.has(session.sessionId) &&
+        !isTerminalKillPending(session.sessionId)
       )));
     } catch (error) {
       if (!options.silent) {

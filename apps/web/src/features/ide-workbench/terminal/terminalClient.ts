@@ -97,6 +97,12 @@ export function schedulePendingTerminalKillFlush(delayMs = 1_500): void {
   }, Math.max(250, delayMs));
 }
 
+export function isTerminalKillPending(sessionId: string): boolean {
+  const sid = normalizeTerminalSessionId(sessionId);
+  if (!sid) return false;
+  return readPendingTerminalKills().includes(sid);
+}
+
 export async function flushPendingTerminalKillRetries(): Promise<void> {
   const pending = readPendingTerminalKills();
   if (!pending.length) return;
