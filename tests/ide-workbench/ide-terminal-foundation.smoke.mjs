@@ -299,6 +299,10 @@ async function runUiSmoke(rootId) {
     });
     await page.locator('[data-ide-terminal-pane]').first().click({ button: 'right' });
     await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.keyboard.press('Escape');
+    await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'hidden', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-pane]').first().click({ button: 'right' });
+    await page.locator('[data-ide-terminal-pane-context-menu]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('menuitem', { name: '粘贴文件/图片为路径' }).click();
     await page.waitForFunction(() => {
       const text = document.querySelector('[data-ide-terminal-pane]')?.textContent || '';
