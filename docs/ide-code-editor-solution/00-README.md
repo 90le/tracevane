@@ -95,6 +95,8 @@
 | [archive/m6-a-watcher-search-problems-output-plan.md](./archive/m6-a-watcher-search-problems-output-plan.md) | M6-A Watcher / Search / Problems / Output 研究与最小实现计划，明确 watcher/search/conflict/problems/output 切片、数据模型和验收路线 |
 | [archive/m6-b-watcher-foundation-summary.md](./archive/m6-b-watcher-foundation-summary.md) | M6-B Watcher Foundation 执行总结，记录 Files watch snapshot、Workbench file event bus 与 opened tab 外部变更保护 |
 | [archive/m6-c-search-foundation-summary.md](./archive/m6-c-search-foundation-summary.md) | M6-C IDE Search Foundation 执行总结，记录 Search Activity/View、Files search 复用和结果打开 IDE Editor |
+| [archive/m6-d-editor-conflict-diff-summary.md](./archive/m6-d-editor-conflict-diff-summary.md) | M6-D IDE Diff / Conflict Flow 执行总结，记录 Monaco Diff、保存冲突和显式 reload/overwrite/cancel 流程 |
+| [archive/m6-e-problems-output-foundation-summary.md](./archive/m6-e-problems-output-foundation-summary.md) | M6-E Problems / Output Foundation 执行总结，记录结构化 Problems 面板和 Output channel/log 基础 |
 
 ## 推荐技术选型
 
@@ -216,8 +218,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - watcher changed + dirty 复用同一 compare / reload / overwrite / cancel 流程；deleted + dirty 继续保护内容，不自动覆盖或关闭。
 - 验收见 `archive/m6-d-editor-conflict-diff-summary.md`。
 
-下一步 M6-E：Problems / Output Foundation
-- 建立 Problems 数据模型和 Output channel/log 基础，不接 LSP/Git/Debug。
+已完成 M6-E：Problems / Output Foundation
+- Problems Panel 支持结构化 severity/source/path/range 列表，点击可打开文件并 reveal 行列。
+- Output Panel 支持 channel/log、追加、清空、自动滚动/锁定；不持久化完整大日志。
+- 验收见 `archive/m6-e-problems-output-foundation-summary.md`。
+
+下一步 M6-F：M6 验收与文档收口
+- 汇总 watcher/search/diff/problems/output 完成口径，补齐 M7 入口。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。

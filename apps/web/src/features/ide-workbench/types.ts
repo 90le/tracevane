@@ -61,6 +61,12 @@ export interface IdeWorkbenchEditorTab {
   externalState?: "changed" | "deleted";
   externalMessage?: string | null;
   metadata?: IdeWorkbenchEditorFileMetadata;
+  reveal?: IdeWorkbenchEditorRevealRange | null;
+}
+
+export interface IdeWorkbenchEditorRevealRange {
+  lineNumber: number;
+  column?: number;
 }
 
 export interface IdeWorkbenchEditorFileMetadata {

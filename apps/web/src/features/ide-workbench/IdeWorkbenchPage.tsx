@@ -31,12 +31,15 @@ import { EditorDock } from "./editor";
 import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
+import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
+import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import { useWorkbenchFileEvents, type WorkbenchFileEvent } from "./watcher";
 import type {
   IdeWorkbenchEditorFileMetadata,
+  IdeWorkbenchEditorRevealRange,
   IdeWorkbenchEditorTab,
   WorkbenchActivityId,
   WorkbenchPanelId,
@@ -84,7 +87,7 @@ export function IdeWorkbenchPage() {
   const [closeSaving, setCloseSaving] = React.useState(false);
 
   const openFilePath = React.useCallback(
-    (fileRef: { rootId: string; path: string }, options: { pinned?: boolean } = {}) => {
+    (fileRef: { rootId: string; path: string }, options: { pinned?: boolean; reveal?: IdeWorkbenchEditorRevealRange } = {}) => {
       const pinned = Boolean(options.pinned);
       const tab: IdeWorkbenchEditorTab = {
         id: editorDocumentId({ rootId: fileRef.rootId, path: fileRef.path }),
@@ -93,6 +96,7 @@ export function IdeWorkbenchPage() {
         preview: !pinned,
         pinned,
         dirty: false,
+        reveal: options.reveal ?? null,
       };
       layoutApi.setLayout((current) => ({
         ...current,
@@ -104,8 +108,8 @@ export function IdeWorkbenchPage() {
               ...group,
               activeTabId: existing.id,
               tabs: pinned
-                ? group.tabs.map((item) => item.id === existing.id ? { ...item, preview: false, pinned: true } : item)
-                : group.tabs,
+                ? group.tabs.map((item) => item.id === existing.id ? { ...item, preview: false, pinned: true, reveal: options.reveal ?? item.reveal ?? null } : item)
+                : group.tabs.map((item) => item.id === existing.id ? { ...item, reveal: options.reveal ?? item.reveal ?? null } : item),
             };
           }
 
@@ -153,6 +157,17 @@ export function IdeWorkbenchPage() {
     }
     openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true });
   }, [layoutApi, openFilePath]);
+
+  const openProblem = React.useCallback((problem: WorkbenchProblem) => {
+    if (!problem.path) return;
+    openFilePath(
+      { rootId: problem.rootId, path: problem.path },
+      {
+        pinned: true,
+        reveal: problem.startLine ? { lineNumber: problem.startLine, column: problem.startColumn } : undefined,
+      },
+    );
+  }, [openFilePath]);
 
   const editorGroupsRef = React.useRef(layout.editorGroups);
   React.useEffect(() => {
@@ -354,6 +369,23 @@ export function IdeWorkbenchPage() {
   }, [layoutApi]);
 
   const handleWorkbenchFileEvent = React.useCallback((event: WorkbenchFileEvent) => {
+    appendWorkbenchOutput({
+      channel: { id: "watcher", label: "Watcher", kind: "watcher" },
+      level: event.type === "deleted" ? "warn" : "info",
+      text: `${event.type} ${event.kind}: ${event.path}`,
+    });
+    if (event.type === "deleted") {
+      appendWorkbenchProblem({
+        id: `watcher:deleted:${event.rootId}:${event.path}`,
+        rootId: event.rootId,
+        path: event.kind === "file" ? event.path : undefined,
+        severity: "warning",
+        source: "watcher",
+        message: `文件已在磁盘上删除：${event.path}`,
+      });
+    } else if (event.type === "changed" && event.kind === "file") {
+      removeWorkbenchProblem(`watcher:deleted:${event.rootId}:${event.path}`);
+    }
     layoutApi.setLayout((current) => {
       let changed = false;
       const editorGroups = current.editorGroups.map((group) => {
@@ -503,6 +535,7 @@ export function IdeWorkbenchPage() {
               onActivePanelChange={layoutApi.setActivePanelId}
               onResizePanel={layoutApi.setPanelSize}
               onPanelPlacementChange={layoutApi.setPanelPlacement}
+              onOpenProblem={openProblem}
             />
           </div>
         </div>
@@ -717,6 +750,7 @@ function PanelArea({
   onActivePanelChange,
   onResizePanel,
   onPanelPlacementChange,
+  onOpenProblem,
 }: {
   panel: {
     placement: WorkbenchPanelPlacement;
@@ -736,6 +770,7 @@ function PanelArea({
   onActivePanelChange: (id: WorkbenchPanelId) => void;
   onResizePanel: (size: number) => void;
   onPanelPlacementChange: (placement: WorkbenchPanelPlacement) => void;
+  onOpenProblem: (problem: WorkbenchProblem) => void;
 }) {
   const isRight = panel.placement === "right";
   const panelStyle = panel.maximized
@@ -819,12 +854,16 @@ function PanelArea({
       </div>
       {panel.activePanelId === "terminal" ? (
         <TerminalPanel rootId={rootId} rootAbsolutePath={rootAbsolutePath} cwd={directoryPath} active placement={panel.placement} />
+      ) : panel.activePanelId === "problems" ? (
+        <IdeProblemsPanel rootId={rootId} onOpenProblem={onOpenProblem} />
+      ) : panel.activePanelId === "output" ? (
+        <IdeOutputPanel />
       ) : (
-        <div className="grid min-h-0 place-items-center p-4 text-sm text-muted">
+        <div className="grid min-h-0 place-items-center p-4 text-sm text-muted" data-ide-debug-console-placeholder>
           <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
             <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
             <div className="mt-1 max-w-lg">
-              M5.x-B 只增加 Panel bottom/right placement；Problems diagnostics、Output channel、Debug runtime 后置。
+              Debug Console 仍后置到 M7；M6-E 只接入 Problems / Output 数据基础。
             </div>
           </div>
         </div>

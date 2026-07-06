@@ -248,6 +248,18 @@ export function IdeEditorFilePanel({
     focus: () => editorRef.current?.focus(),
   }), [saveCurrent, tab.id]);
 
+  const lastRevealKeyRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!tab.reveal) return;
+    const key = `${tab.id}:${tab.reveal.lineNumber}:${tab.reveal.column ?? 1}`;
+    if (lastRevealKeyRef.current === key) return;
+    lastRevealKeyRef.current = key;
+    const frame = requestAnimationFrame(() => {
+      editorRef.current?.gotoLine(tab.reveal?.lineNumber ?? 1, tab.reveal?.column ?? 1);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab.id, tab.reveal]);
+
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
