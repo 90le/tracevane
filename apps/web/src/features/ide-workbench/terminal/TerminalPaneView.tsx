@@ -73,7 +73,6 @@ export function TerminalPaneView({
   const [message, setMessage] = React.useState("准备启动本地 Shell");
   const [backend, setBackend] = React.useState<"pty" | "tmux" | null>(null);
   const [menu, setMenu] = React.useState<TerminalPaneMenuState | null>(null);
-  const [acceptInput, setAcceptInput] = React.useState(false);
   const [selectedText, setSelectedText] = React.useState("");
   const selectedTextRef = React.useRef("");
   const previousTerminalIdRef = React.useRef(terminalId);
@@ -266,21 +265,6 @@ export function TerminalPaneView({
     return () => window.removeEventListener(TERMINAL_INSERT_EVENT, handleInsert);
   }, [active, sendText]);
 
-  React.useEffect(() => {
-    if (!active) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof Element)) return;
-      if (event.target.closest(`[data-terminal-pane-id="${paneId}"]`)) return;
-      setAcceptInput(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown, true);
-    return () => window.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [active, paneId]);
-
-  React.useEffect(() => {
-    if (!active) setAcceptInput(false);
-  }, [active]);
-
   const handleInput = React.useCallback((data: string) => {
     sendText(data);
   }, [sendText]);
@@ -427,7 +411,6 @@ export function TerminalPaneView({
       data-terminal-shell={shell || undefined}
       data-active-terminal-pane={active ? "true" : "false"}
       onPointerDown={(event) => {
-        if (event.button === 0) setAcceptInput(true);
         onFocus(paneId);
       }}
       onContextMenuCapture={(event) => {
@@ -480,7 +463,7 @@ export function TerminalPaneView({
         ) : null}
         <XtermHost
           ref={xtermRef}
-          acceptInput={active && acceptInput}
+          acceptInput={active && status !== "closed" && status !== "error"}
           onInput={handleInput}
           onResize={handleResize}
           onSelectionChange={updateSelectedText}

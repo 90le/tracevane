@@ -124,6 +124,10 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     setLayout((current) => closeTabsRightOf(current, tabId));
   }, []);
 
+  const removeTerminalIds = React.useCallback((terminalIds: string[]) => {
+    setLayout((current) => removeTerminalIdsFromLayout(current, terminalIds));
+  }, []);
+
   const reorderTab = React.useCallback((tabId: string, targetTabId: string, placement: "before" | "after" = "before") => {
     setLayout((current) => reorderTabAround(current, tabId, targetTabId, placement));
   }, []);
@@ -166,6 +170,7 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     closeTab,
     closeOtherTabs,
     closeTabsToRight,
+    removeTerminalIds,
     reorderTab,
     moveTab,
     resizeSplit,
@@ -177,6 +182,16 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
 export function createDefaultTerminalLayoutState(): TerminalLayoutState {
   const tab = createTerminalTabRecord(1);
   return stateFromTabs([tab], tab.tabId);
+}
+
+function createEmptyTerminalLayoutState(): TerminalLayoutState {
+  return {
+    version: TERMINAL_LAYOUT_VERSION,
+    tabs: [],
+    activeTabId: "",
+    activePaneId: "",
+    activeTerminalId: "",
+  };
 }
 
 function createTerminalTabRecord(index: number, profile?: TerminalProfileSelection): TerminalTabRecord {
@@ -257,8 +272,9 @@ function splitNode(
 }
 
 function stateFromTabs(tabs: TerminalTabRecord[], activeTabId: string): TerminalLayoutState {
-  const activeTab = tabs.find((tab) => tab.tabId === activeTabId) ?? tabs[0] ?? createTerminalTabRecord(1);
-  const nextTabs = tabs.length ? tabs : [activeTab];
+  if (!tabs.length) return createEmptyTerminalLayoutState();
+  const activeTab = tabs.find((tab) => tab.tabId === activeTabId) ?? tabs[0];
+  const nextTabs = tabs;
   return {
     version: TERMINAL_LAYOUT_VERSION,
     tabs: nextTabs,
@@ -342,7 +358,7 @@ function closeTabById(layout: TerminalLayoutState, tabId: string): TerminalLayou
   const targetIndex = layout.tabs.findIndex((tab) => tab.tabId === tabId);
   if (targetIndex < 0) return layout;
   const tabs = layout.tabs.filter((tab) => tab.tabId !== tabId);
-  if (!tabs.length) return createDefaultTerminalLayoutState();
+  if (!tabs.length) return createEmptyTerminalLayoutState();
   const fallback = tabs[Math.max(0, targetIndex - 1)] ?? tabs.at(-1)!;
   return stateFromTabs(tabs, layout.activeTabId === tabId ? fallback.tabId : layout.activeTabId);
 }
@@ -395,7 +411,7 @@ function closePaneInActiveTab(layout: TerminalLayoutState, paneId: string): Term
   const paneIds = Object.keys(activeTab.panes);
   if (paneIds.length <= 1) {
     const tabs = layout.tabs.filter((tab) => tab.tabId !== activeTab.tabId);
-    if (!tabs.length) return createDefaultTerminalLayoutState();
+    if (!tabs.length) return createEmptyTerminalLayoutState();
     const fallback = tabs[Math.max(0, layout.tabs.findIndex((tab) => tab.tabId === activeTab.tabId) - 1)] ?? tabs.at(-1)!;
     return stateFromTabs(tabs, fallback.tabId);
   }
@@ -415,6 +431,50 @@ function closePaneInActiveTab(layout: TerminalLayoutState, paneId: string): Term
     activeTerminalId: activePane.terminalId,
   };
   return stateFromTabs(layout.tabs.map((tab) => (tab.tabId === activeTab.tabId ? nextTab : tab)), nextTab.tabId);
+}
+
+function removeTerminalIdsFromLayout(
+  layout: TerminalLayoutState,
+  terminalIds: string[],
+): TerminalLayoutState {
+  const targetIds = new Set(terminalIds.map((id) => normalizeHydratedId(id)).filter(Boolean));
+  if (!targetIds.size) return layout;
+  const nextTabs: TerminalTabRecord[] = [];
+  for (const tab of layout.tabs) {
+    let nextTab: TerminalTabRecord | null = tab;
+    for (const pane of Object.values(tab.panes)) {
+      if (!targetIds.has(normalizeHydratedId(pane.terminalId))) continue;
+      const paneCount = Object.keys(nextTab.panes).length;
+      if (paneCount <= 1) {
+        nextTab = null;
+        break;
+      }
+      nextTab = removePaneFromTab(nextTab, pane.paneId);
+      if (!nextTab) break;
+    }
+    if (nextTab) nextTabs.push(nextTab);
+  }
+  const activeTabId = nextTabs.some((tab) => tab.tabId === layout.activeTabId)
+    ? layout.activeTabId
+    : (nextTabs[0]?.tabId ?? "");
+  return stateFromTabs(nextTabs, activeTabId);
+}
+
+function removePaneFromTab(tab: TerminalTabRecord, paneId: string): TerminalTabRecord | null {
+  if (!tab.panes[paneId]) return tab;
+  const panes = { ...tab.panes };
+  delete panes[paneId];
+  const remaining = Object.values(panes);
+  if (!remaining.length) return null;
+  const root = compactNode(removeNode(tab.root, paneId));
+  const activePane = panes[tab.activePaneId] ?? remaining[0];
+  return {
+    ...tab,
+    panes,
+    root: root ?? paneLeaf(activePane),
+    activePaneId: activePane.paneId,
+    activeTerminalId: activePane.terminalId,
+  };
 }
 
 function replaceNode(
@@ -586,7 +646,8 @@ function normalizeLayout(value: unknown): TerminalLayoutState {
   };
   if (candidate.version !== TERMINAL_LAYOUT_VERSION) return createDefaultTerminalLayoutState();
 
-  if (Array.isArray(candidate.tabs) && candidate.tabs.length) {
+  if (Array.isArray(candidate.tabs)) {
+    if (!candidate.tabs.length) return createEmptyTerminalLayoutState();
     const tabs = candidate.tabs
       .map((tab, index) => normalizeTab(tab, index + 1))
       .filter((tab): tab is TerminalTabRecord => Boolean(tab));

@@ -36,8 +36,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
   const onSelectionChangeRef = React.useRef(onSelectionChange);
   const onCopyShortcutRef = React.useRef(onCopyShortcut);
   const onPasteShortcutRef = React.useRef(onPasteShortcut);
-  const suppressProgrammaticInputRef = React.useRef(0);
-  const suppressProgrammaticInputTimerRef = React.useRef<number | null>(null);
+  const suppressProgrammaticInputUntilRef = React.useRef(0);
 
   React.useEffect(() => {
     onInputRef.current = onInput;
@@ -52,22 +51,15 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       const terminal = terminalRef.current;
       if (!terminal) return;
       // Writing replayed/backlog output into xterm can make xterm answer
-      // terminal capability queries (for example DA/DSR) through onData.
-      // Those bytes are not user input and must never be sent back to the PTY,
-      // otherwise shells receive fragments like `1;2c0;276;0c` after
-      // refresh/reattach. Suppress onData only around programmatic writes;
-      // normal focused keyboard input remains unaffected.
-      suppressProgrammaticInputRef.current += 1;
-      if (suppressProgrammaticInputTimerRef.current !== null) {
-        window.clearTimeout(suppressProgrammaticInputTimerRef.current);
-        suppressProgrammaticInputTimerRef.current = null;
+      // terminal capability/status queries through onData. Those bytes are
+      // not user input and must never be sent back to the PTY. Use a very
+      // short time window instead of a write-callback counter: callback-based
+      // suppression could linger and swallow real typing, while pure regex
+      // filtering could leave fragments when escape responses were split.
+      if (mayTriggerXtermGeneratedReport(data)) {
+        suppressProgrammaticInputUntilRef.current = performance.now() + 40;
       }
-      terminal.write(data, () => {
-        suppressProgrammaticInputTimerRef.current = window.setTimeout(() => {
-          suppressProgrammaticInputRef.current = Math.max(0, suppressProgrammaticInputRef.current - 1);
-          suppressProgrammaticInputTimerRef.current = null;
-        }, 0);
-      });
+      terminal.write(data);
     },
     clear() {
       terminalRef.current?.clear();
@@ -113,8 +105,9 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     terminal.loadAddon(fitAddon);
     terminal.open(container);
     const dataDisposable = terminal.onData((data) => {
-      if (suppressProgrammaticInputRef.current > 0) return;
-      onInputRef.current(data);
+      if (performance.now() < suppressProgrammaticInputUntilRef.current) return;
+      const userInput = stripXtermGeneratedReports(data);
+      if (userInput) onInputRef.current(userInput);
     });
     const selectionDisposable = terminal.onSelectionChange(() => {
       onSelectionChangeRef.current?.(terminal.getSelection());
@@ -172,11 +165,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
 
     return () => {
       resizeObserver.disconnect();
-      if (suppressProgrammaticInputTimerRef.current !== null) {
-        window.clearTimeout(suppressProgrammaticInputTimerRef.current);
-        suppressProgrammaticInputTimerRef.current = null;
-      }
-      suppressProgrammaticInputRef.current = 0;
+      suppressProgrammaticInputUntilRef.current = 0;
       dataDisposable.dispose();
       selectionDisposable.dispose();
       terminal.dispose();
@@ -196,7 +185,18 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     <div
       ref={containerRef}
       className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-panel text-ink"
+      onPointerDown={() => terminalRef.current?.focus()}
       data-ide-terminal-xterm
     />
   );
 });
+
+function stripXtermGeneratedReports(data: string): string {
+  return data
+    .replace(/(?:\x1b\[[?>]?[0-9;]*[cnR])+/g, "")
+    .replace(/(?:\x9b[?>]?[0-9;]*[cnR])+/g, "");
+}
+
+function mayTriggerXtermGeneratedReport(data: string): boolean {
+  return /(?:\x1b\[[?>]?[0-9;]*[cn]|\x9b[?>]?[0-9;]*[cn])/.test(data);
+}

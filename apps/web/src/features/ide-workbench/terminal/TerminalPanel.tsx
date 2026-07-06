@@ -121,7 +121,24 @@ export function TerminalPanel({
             onClosePane={layoutApi.closePane}
             onResizeSplit={layoutApi.resizeSplit}
           />
-        ) : null}
+        ) : (
+          <div className="grid h-full place-items-center p-6 text-center" data-ide-terminal-empty>
+            <div className="max-w-md rounded-lg border border-dashed border-line bg-canvas px-6 py-5 text-sm text-muted">
+              <div className="text-base font-medium text-ink-strong">没有正在运行的终端</div>
+              <p className="mt-2 leading-relaxed">
+                已关闭全部终端。点击右上角 New Terminal 创建新的 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
+              </p>
+              <button
+                type="button"
+                className="mt-4 rounded-sm border border-line-2 bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-primary-line hover:bg-panel-2"
+                onClick={() => layoutApi.newTerminal()}
+                data-ide-terminal-empty-new
+              >
+                New Terminal
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <TerminalManagerDialog
         open={managerOpen}
@@ -133,6 +150,7 @@ export function TerminalPanel({
           layoutApi.attachSessionDescriptor(session);
           setManagerOpen(false);
         }}
+        onClosedSessions={layoutApi.removeTerminalIds}
       />
     </div>
   );

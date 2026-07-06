@@ -15,6 +15,7 @@ export function TerminalManagerDialog({
   currentRootLabel,
   activeTerminalIds,
   onAttachSession,
+  onClosedSessions,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -22,6 +23,7 @@ export function TerminalManagerDialog({
   currentRootLabel?: string | null;
   activeTerminalIds: string[];
   onAttachSession: (session: TerminalSessionDescriptor) => void;
+  onClosedSessions?: (sessionIds: string[]) => void;
 }) {
   const [sessions, setSessions] = React.useState<TerminalSessionDescriptor[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -79,6 +81,12 @@ export function TerminalManagerDialog({
     });
 
     const failed = results.filter((result) => !result.ok).length;
+    const closedIds = targets
+      .filter((_, index) => results[index]?.ok)
+      .map((session) => session.sessionId);
+    if (closedIds.length) {
+      onClosedSessions?.(closedIds);
+    }
     if (failed) {
       toast.warning(`${label}：已从列表隐藏，后台继续清理`, {
         description: `${failed}/${targets.length} 个 session 未即时确认 kill，已加入持久重试队列。`,
@@ -101,7 +109,7 @@ export function TerminalManagerDialog({
       }
       void refresh({ silent: true });
     }, 15_000);
-  }, [refresh]);
+  }, [onClosedSessions, refresh]);
 
   const groups = React.useMemo(() => groupSessions(sessions, currentRootId), [currentRootId, sessions]);
   const detachedSessions = sessions.filter((session) => session.status === "detached");
@@ -169,6 +177,16 @@ export function TerminalManagerDialog({
             >
               <Trash2 />
               关闭其它工作区
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!sessions.length || closingIds.size > 0}
+              onClick={() => void closeSessions(sessions, "全部终端")}
+              data-ide-terminal-manager-close-all
+            >
+              <Trash2 />
+              关闭全部终端
             </Button>
             <span className="ml-auto text-xs text-muted" data-ide-terminal-manager-count>
               {closeProgress

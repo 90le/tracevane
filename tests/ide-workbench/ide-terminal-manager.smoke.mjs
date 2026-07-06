@@ -127,6 +127,8 @@ async function run() {
   try {
     await page.goto(`${BASE_URL}/#/ide/${encodeURIComponent(rootId)}`, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 1, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
@@ -136,38 +138,24 @@ async function run() {
     if (hasOtherRoot) {
       await page.locator(`[data-ide-terminal-manager-session="${otherSidA}"]`).waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator(`[data-ide-terminal-manager-session="${otherSidB}"]`).waitFor({ state: 'visible', timeout: 30_000 });
-
-      await page.locator('[data-ide-terminal-manager-close-other-workspaces]').click();
-      await page.waitForFunction(
-        ([first, second]) => (
-          !document.querySelector(`[data-ide-terminal-manager-session="${first}"]`) &&
-          !document.querySelector(`[data-ide-terminal-manager-session="${second}"]`)
-        ),
-        [otherSidA, otherSidB],
-        { timeout: 45_000 },
-      );
-      await page.waitForTimeout(1_500);
-      await page.locator('[data-ide-terminal-manager-refresh]').click();
-      await page.waitForTimeout(500);
-      const bouncedOtherSessions = await page.locator(`[data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]`).count();
-      if (bouncedOtherSessions !== 0) {
-        throw new Error(`Closed other-workspace sessions bounced back into Terminal Manager: ${bouncedOtherSessions}`);
-      }
     }
 
-    await page.locator(`[data-ide-terminal-manager-close="${sid}"]`).click();
+    await page.locator('[data-ide-terminal-manager-close-all]').click();
     await page.waitForFunction(
-      (sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`),
-      sid,
+      (sessionIds) => sessionIds.every((sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`)),
+      [sid, ...(hasOtherRoot ? [otherSidA, otherSidB] : [])],
       { timeout: 45_000 },
     );
     await page.waitForTimeout(1_500);
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.waitForTimeout(500);
-    const bouncedCurrentSession = await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).count();
-    if (bouncedCurrentSession !== 0) {
-      throw new Error('Closed current-workspace detached session bounced back into Terminal Manager');
+    const bouncedClosedSessions = await page
+      .locator(`[data-ide-terminal-manager-session="${sid}"]${hasOtherRoot ? `, [data-ide-terminal-manager-session="${otherSidA}"], [data-ide-terminal-manager-session="${otherSidB}"]` : ''}`)
+      .count();
+    if (bouncedClosedSessions !== 0) {
+      throw new Error(`Closed sessions bounced back into Terminal Manager after close-all: ${bouncedClosedSessions}`);
     }
+    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

@@ -1914,6 +1914,12 @@ export function createTerminalService(
     if (!isRecoverableTerminalStatus(descriptor.status)) {
       return descriptor;
     }
+    if (!isPersistedDescriptorWorkspaceSafe(descriptor)) {
+      return markPersistedSessionEnded(
+        descriptor.sessionId,
+        "invalid_workspace_cwd",
+      ) || descriptor;
+    }
     const runtimeSession = sessions.get(descriptor.sessionId);
     if (runtimeSession && !runtimeSession.closed) {
       return descriptor;
@@ -1930,6 +1936,37 @@ export function createTerminalService(
       };
     }
     return markPersistedSessionLost(descriptor.sessionId) || descriptor;
+  }
+
+  function isPersistedDescriptorWorkspaceSafe(
+    descriptor: TerminalSessionDescriptor,
+  ): boolean {
+    const rootId = String(descriptor.rootId || descriptor.workspaceId || "").trim();
+    if (!rootId) return true;
+    const cwd = String(descriptor.cwd || "").trim();
+    try {
+      const rootPath = resolveFilesServiceDirectoryPath(
+        options.config,
+        rootId,
+        undefined,
+      ).absolutePath;
+      if (!cwd) return true;
+      if (path.isAbsolute(cwd)) {
+        return isSameOrChildPath(rootPath, cwd);
+      }
+      resolveFilesServiceDirectoryPath(options.config, rootId, cwd);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function isSameOrChildPath(parentPath: string, candidatePath: string): boolean {
+    const parent = path.resolve(parentPath);
+    const candidate = path.resolve(candidatePath);
+    if (candidate === parent) return true;
+    const relative = path.relative(parent, candidate);
+    return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
   }
 
   function getOrCreateSession(
