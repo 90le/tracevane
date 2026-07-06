@@ -37,6 +37,30 @@ export interface FilesSummaryPayload {
   defaultRootId: string;
 }
 
+export interface FilesFavoriteLocation {
+  rootId: string;
+  directoryPath: string;
+  label: string;
+  displayName?: string;
+}
+
+export interface FilesFavoriteBookmarkItem {
+  id: string;
+  type: "folder" | "bookmark";
+  title: string;
+  location?: FilesFavoriteLocation;
+  children?: FilesFavoriteBookmarkItem[];
+}
+
+export interface FilesFavoriteBookmarksPayload {
+  checkedAt: string;
+  items: FilesFavoriteBookmarkItem[];
+}
+
+export interface FilesFavoriteBookmarksUpdatePayload {
+  items: FilesFavoriteBookmarkItem[];
+}
+
 export interface FilesDirectoryPayload {
   checkedAt: string;
   rootId: string;

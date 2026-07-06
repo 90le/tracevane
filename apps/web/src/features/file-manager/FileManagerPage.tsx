@@ -6,7 +6,9 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import {
   filesKeys,
+  useFilesFavoritesQuery,
   useFilesBrowseQuery,
+  useReplaceFilesFavoritesMutation,
   useFilesSummaryQuery,
 } from "@/lib/query/files";
 import { toast } from "@/design/ui/sonner";
@@ -153,6 +155,8 @@ export function FileManagerPage() {
   const queryClient = useQueryClient();
   const ops = useFileOperations();
   const summary = useFilesSummaryQuery();
+  const favorites = useFilesFavoritesQuery();
+  const { mutate: replaceFavorites } = useReplaceFilesFavoritesMutation();
   const roots = summary.data?.roots ?? [];
   const defaultRootId = summary.data?.defaultRootId ?? roots[0]?.id ?? "";
   const [sessionStateLoaded] = React.useState(() =>
@@ -279,6 +283,7 @@ export function FileManagerPage() {
   const [favoriteTree, setFavoriteTree] = React.useState<
     FileManagerBookmarkItem[]
   >(() => loadFavoriteBookmarkTree());
+  const migratedLocalFavoritesRef = React.useRef(false);
   const [directoryTabs, setDirectoryTabs] = React.useState<
     FileManagerDirectoryTab[]
   >(() => loadDirectoryTabLocations(initialTabSeed));
@@ -295,6 +300,20 @@ export function FileManagerPage() {
     null,
   );
   const fileManagerFilterRef = React.useRef<HTMLInputElement | null>(null);
+
+  React.useEffect(() => {
+    if (!favorites.data) return;
+    const serverTree = normalizeFavoriteBookmarkTree(favorites.data.items);
+    const localTree = loadFavoriteBookmarkTree();
+    if (!serverTree.length && localTree.length && !migratedLocalFavoritesRef.current) {
+      migratedLocalFavoritesRef.current = true;
+      setFavoriteTree(localTree);
+      replaceFavorites({ items: trimFavoriteBookmarkTree(localTree) });
+      return;
+    }
+    setFavoriteTree(serverTree);
+    storeFavoriteBookmarkTree(serverTree);
+  }, [favorites.data, replaceFavorites]);
 
   React.useEffect(() => {
     if (!roots.length) return;
@@ -525,6 +544,27 @@ export function FileManagerPage() {
     () => normalizeDirectoryTabs(directoryTabs),
     [directoryTabs],
   );
+  const persistFavoriteBookmarkTree = React.useCallback(
+    (tree: FileManagerBookmarkItem[]) => {
+      const normalized = trimFavoriteBookmarkTree(tree);
+      storeFavoriteBookmarkTree(normalized);
+      replaceFavorites(
+        { items: normalized },
+        {
+          onError: (error) => {
+            toast.error("收藏夹同步失败", {
+              description:
+                error instanceof Error
+                  ? error.message
+                  : "已保留在当前浏览器，稍后可刷新重试。",
+            });
+          },
+        },
+      );
+      return normalized;
+    },
+    [replaceFavorites],
+  );
 
   React.useEffect(() => {
     setActivePathSuggestionIndex((index) =>
@@ -614,12 +654,11 @@ export function FileManagerPage() {
           parentId,
           createFavoriteBookmark(currentLocation, bookmarkTitle),
         );
-        storeFavoriteBookmarkTree(next);
-        return next;
+        return persistFavoriteBookmarkTree(next);
       });
       toast.success("已收藏当前位置", { description: bookmarkTitle });
     },
-    [currentLocation],
+    [currentLocation, persistFavoriteBookmarkTree],
   );
 
   const toggleFavoriteCurrentLocation = React.useCallback(() => {
@@ -634,10 +673,9 @@ export function FileManagerPage() {
               displayNameForFavoriteLocation(currentLocation),
             ),
           );
-      storeFavoriteBookmarkTree(next);
-      return next;
+      return persistFavoriteBookmarkTree(next);
     });
-  }, [currentLocation, currentLocationFavorited]);
+  }, [currentLocation, currentLocationFavorited, persistFavoriteBookmarkTree]);
 
   const openFavoriteItem = React.useCallback(
     (itemId: string) => {
@@ -659,11 +697,10 @@ export function FileManagerPage() {
           parentId,
           createFavoriteFolder(title.trim()),
         );
-        storeFavoriteBookmarkTree(next);
-        return next;
+        return persistFavoriteBookmarkTree(next);
       });
     },
-    [],
+    [persistFavoriteBookmarkTree],
   );
 
   const renameFavoriteItem = React.useCallback(
@@ -674,20 +711,21 @@ export function FileManagerPage() {
           ...current,
           title: title.trim(),
         }));
-        storeFavoriteBookmarkTree(next);
-        return next;
+        return persistFavoriteBookmarkTree(next);
       });
     },
-    [],
+    [persistFavoriteBookmarkTree],
   );
 
-  const removeFavoriteItem = React.useCallback((itemId: string) => {
-    setFavoriteTree((prev) => {
-      const next = removeFavoriteBookmarkItem(prev, itemId);
-      storeFavoriteBookmarkTree(next);
-      return next;
-    });
-  }, []);
+  const removeFavoriteItem = React.useCallback(
+    (itemId: string) => {
+      setFavoriteTree((prev) => {
+        const next = removeFavoriteBookmarkItem(prev, itemId);
+        return persistFavoriteBookmarkTree(next);
+      });
+    },
+    [persistFavoriteBookmarkTree],
+  );
 
   const moveFavoriteItem = React.useCallback(
     (
@@ -702,11 +740,10 @@ export function FileManagerPage() {
           targetParentId,
           targetIndex,
         );
-        storeFavoriteBookmarkTree(next);
-        return next;
+        return persistFavoriteBookmarkTree(next);
       });
     },
-    [],
+    [persistFavoriteBookmarkTree],
   );
 
   const selectDirectoryTab = React.useCallback(

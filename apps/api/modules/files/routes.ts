@@ -12,6 +12,7 @@ import type {
   FilesCreateDirectoryPayload,
   FilesCreateFilePayload,
   FilesDeletePayload,
+  FilesFavoriteBookmarksUpdatePayload,
   FilesRenamePayload,
   FilesTransferDryRunPayload,
   FilesTransferPayload,
@@ -61,6 +62,15 @@ async function readBinaryBody(req: http.IncomingMessage): Promise<Buffer> {
 export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get("/api/files/summary", (_req, res) => {
     sendJson(res, 200, ctx.services.files.getSummary());
+  });
+
+  router.get("/api/files/favorites", (_req, res, routeCtx) => {
+    sendJson(res, 200, routeCtx.services.files.getFavoriteBookmarks());
+  });
+
+  router.put("/api/files/favorites", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<FilesFavoriteBookmarksUpdatePayload>(req);
+    sendJson(res, 200, routeCtx.services.files.replaceFavoriteBookmarks(payload));
   });
 
   router.get("/api/files/browse", (req, res, routeCtx) => {

@@ -16,6 +16,7 @@ import {
   deleteFiles,
   getFilesContentIndexRecords,
   getFilesContentIndexStats,
+  getFilesFavorites,
   getFilesSummary,
   getFilesTrash,
   getFileVersions,
@@ -26,6 +27,7 @@ import {
   purgeFilesTrash,
   readFile,
   rebuildFilesContentIndex,
+  replaceFilesFavorites,
   renameFile,
   restoreFilesTrash,
   scanFilesContentIndex,
@@ -44,6 +46,7 @@ import type { FilesContentIndexRecordsParams, FilesTrashListParams } from "../..
 import type { ApiError } from "../api/errors";
 import type {
   FilesDirectoryPayload,
+  FilesFavoriteBookmarksPayload,
   FilesReadPayload,
   FilesSearchPayload,
   FilesVersionReadPayload,
@@ -70,6 +73,7 @@ export const FILES_GLOBAL_SCOPE_ID = "global";
 export const filesKeys = {
   all: ["files"] as const,
   summary: () => ["files", "summary"] as const,
+  favorites: () => ["files", "favorites"] as const,
   browse: (params: {
     rootId: string;
     path?: string;
@@ -150,6 +154,19 @@ export function useFilesSummaryQuery(options?: QueryOpts<FilesSummaryPayload>) {
     queryKey: filesKeys.summary(),
     queryFn: ({ signal }) => getFilesSummary(signal),
     staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    ...options,
+  });
+}
+
+/** Server-persisted File Manager favorites (`/api/files/favorites`). */
+export function useFilesFavoritesQuery(
+  options?: QueryOpts<FilesFavoriteBookmarksPayload>,
+) {
+  return useQuery<FilesFavoriteBookmarksPayload, ApiError>({
+    queryKey: filesKeys.favorites(),
+    queryFn: ({ signal }) => getFilesFavorites(signal),
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
     ...options,
   });
@@ -345,6 +362,15 @@ export function useWriteFileContentMutation() {
   return useMutation({
     mutationFn: writeFileContent,
     onSuccess: () => qc.invalidateQueries({ queryKey: filesKeys.all }),
+  });
+}
+
+/** PUT /api/files/favorites — replace the server-persisted favorite tree. */
+export function useReplaceFilesFavoritesMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: replaceFilesFavorites,
+    onSuccess: () => qc.invalidateQueries({ queryKey: filesKeys.favorites() }),
   });
 }
 

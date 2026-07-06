@@ -15,6 +15,8 @@ import type {
   FilesCreateDirectoryPayload,
   FilesCreateFilePayload,
   FilesDeletePayload,
+  FilesFavoriteBookmarksPayload,
+  FilesFavoriteBookmarksUpdatePayload,
   FilesDirectoryPayload,
   FilesMutationResponse,
   FilesReadPayload,
@@ -73,6 +75,23 @@ export function getFilesSummary(
   signal?: AbortSignal,
 ): Promise<FilesSummaryPayload> {
   return apiRequest<FilesSummaryPayload>(`${BASE}/summary`, { signal });
+}
+
+/** GET /api/files/favorites — server-persisted file-manager favorite tree. */
+export function getFilesFavorites(
+  signal?: AbortSignal,
+): Promise<FilesFavoriteBookmarksPayload> {
+  return apiRequest<FilesFavoriteBookmarksPayload>(`${BASE}/favorites`, { signal });
+}
+
+/** PUT /api/files/favorites — replace the server-persisted favorite tree. */
+export function replaceFilesFavorites(
+  payload: FilesFavoriteBookmarksUpdatePayload,
+): Promise<FilesFavoriteBookmarksPayload> {
+  return apiRequest<FilesFavoriteBookmarksPayload>(`${BASE}/favorites`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export interface FilesBrowseParams {

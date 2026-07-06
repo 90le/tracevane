@@ -18,6 +18,10 @@ import type {
   FilesContentIndexRebuildResponse,
   FilesContentIndexRebuildJobPayload,
   FilesContentIndexStatsPayload,
+  FilesFavoriteBookmarkItem,
+  FilesFavoriteBookmarksPayload,
+  FilesFavoriteBookmarksUpdatePayload,
+  FilesFavoriteLocation,
   FileEntryKind,
   FileEntrySummary,
   FileRootSummary,
@@ -102,7 +106,7 @@ const FILE_VERSION_DIR_NAME = "file-versions";
 const MAX_FILE_VERSION_BYTES = 1024 * 1024;
 const MAX_FILE_VERSIONS_PER_FILE = 20;
 const FILE_MANAGER_SQLITE_DB_NAME = "file-manager.sqlite";
-const FILE_MANAGER_SQLITE_SCHEMA_VERSION = 1;
+const FILE_MANAGER_SQLITE_SCHEMA_VERSION = 2;
 
 type FileRootContext = FileRootSummary & {
   absolutePath: string;
@@ -388,6 +392,8 @@ export interface FilesService {
   dryRunArchive(payload: FilesArchivePayload): FilesArchiveDryRunResponse;
   archivePaths(payload: FilesArchivePayload): FilesMutationResponse;
   dryRunUnarchive(payload: FilesUnarchivePayload): FilesUnarchiveDryRunResponse;
+  getFavoriteBookmarks(): FilesFavoriteBookmarksPayload;
+  replaceFavoriteBookmarks(payload: FilesFavoriteBookmarksUpdatePayload): FilesFavoriteBookmarksPayload;
   unarchiveFile(payload: FilesUnarchivePayload): FilesMutationResponse;
   getContentIndexStats(rootId: string): FilesContentIndexStatsPayload;
   getContentIndexRecords(params: FilesContentIndexRecordsParams): FilesContentIndexRecordsPayload;
@@ -901,6 +907,18 @@ interface SqlContentIndexRow extends SqliteRow {
   indexed_at: string;
 }
 
+interface SqlFavoriteRow extends SqliteRow {
+  id: string;
+  parent_id: string | null;
+  type: string;
+  title: string;
+  root_id: string | null;
+  directory_path: string | null;
+  label: string | null;
+  display_name: string | null;
+  sort_order: number;
+}
+
 interface SqlTrashRow extends SqliteRow {
   id: string;
   root_id: string;
@@ -919,6 +937,7 @@ let fileManagerSqliteDb: FileManagerSqliteDatabase | null = null;
 let fileManagerSqliteDbPath: string | null = null;
 const migratedContentIndexRoots = new Set<string>();
 const migratedTrashStores = new Set<string>();
+const MAX_FAVORITE_BOOKMARK_ITEMS = 200;
 
 function fileManagerSqlitePath(config: TracevaneServerConfig): string {
   return path.join(config.openclawRoot, ".tracevane", FILE_MANAGER_SQLITE_DB_NAME);
@@ -965,6 +984,19 @@ function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase
       path,
       sha256 UNINDEXED
     );
+    CREATE TABLE IF NOT EXISTS favorite_bookmarks (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT REFERENCES favorite_bookmarks(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK (type IN ('folder', 'bookmark')),
+      title TEXT NOT NULL,
+      root_id TEXT,
+      directory_path TEXT,
+      label TEXT,
+      display_name TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_favorite_bookmarks_parent_order ON favorite_bookmarks(parent_id, sort_order);
     CREATE TABLE IF NOT EXISTS trash_items (
       id TEXT PRIMARY KEY,
       root_id TEXT NOT NULL,
@@ -997,6 +1029,136 @@ function runSqlTransaction<T>(db: FileManagerSqliteDatabase, task: () => T): T {
     try { db.exec("ROLLBACK"); } catch { /* ignore rollback failures */ }
     throw error;
   }
+}
+
+function sanitizeFavoriteTitle(value: unknown, fallback: string): string {
+  return (normalizeString(value) || fallback).slice(0, 120);
+}
+
+function normalizeFavoriteLocation(value: unknown): FilesFavoriteLocation | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<FilesFavoriteLocation>;
+  const rootId = normalizeString(candidate.rootId);
+  const directoryPath = normalizeRelativePath(candidate.directoryPath);
+  const label = normalizeString(candidate.label);
+  if (!rootId || !label) return null;
+  const displayName = normalizeString(candidate.displayName);
+  return {
+    rootId,
+    directoryPath,
+    label,
+    ...(displayName ? { displayName: displayName.slice(0, 120) } : {}),
+  };
+}
+
+function createServerBookmarkId(): string {
+  return `bookmark:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function trimFavoriteBookmarkTree(tree: FilesFavoriteBookmarkItem[]): FilesFavoriteBookmarkItem[] {
+  let remaining = MAX_FAVORITE_BOOKMARK_ITEMS;
+  const visit = (items: FilesFavoriteBookmarkItem[]): FilesFavoriteBookmarkItem[] => {
+    const next: FilesFavoriteBookmarkItem[] = [];
+    for (const item of items) {
+      if (remaining <= 0) break;
+      remaining -= 1;
+      if (item.type === "folder") {
+        next.push({
+          id: normalizeString(item.id) || createServerBookmarkId(),
+          type: "folder",
+          title: sanitizeFavoriteTitle(item.title, "文件夹"),
+          children: visit(item.children ?? []),
+        });
+        continue;
+      }
+      const location = normalizeFavoriteLocation(item.location);
+      if (!location) continue;
+      next.push({
+        id: normalizeString(item.id) || createServerBookmarkId(),
+        type: "bookmark",
+        title: sanitizeFavoriteTitle(item.title, path.basename(location.directoryPath) || location.label || "收藏"),
+        location,
+      });
+    }
+    return next;
+  };
+  return visit(Array.isArray(tree) ? tree : []);
+}
+
+function favoriteBookmarksFromSql(config: TracevaneServerConfig): FilesFavoriteBookmarkItem[] {
+  const rows = fileManagerDb(config)
+    .prepare("SELECT * FROM favorite_bookmarks ORDER BY parent_id IS NOT NULL, parent_id, sort_order, title COLLATE NOCASE")
+    .all() as SqlFavoriteRow[];
+  const byParent = new Map<string, SqlFavoriteRow[]>();
+  for (const row of rows) {
+    const parentKey = row.parent_id || "";
+    byParent.set(parentKey, [...(byParent.get(parentKey) ?? []), row]);
+  }
+  const visit = (parentId = ""): FilesFavoriteBookmarkItem[] =>
+    (byParent.get(parentId) ?? []).flatMap((row): FilesFavoriteBookmarkItem[] => {
+      if (row.type === "folder") {
+        return [{
+          id: row.id,
+          type: "folder" as const,
+          title: row.title,
+          children: visit(row.id),
+        }];
+      }
+      const location = normalizeFavoriteLocation({
+        rootId: row.root_id,
+        directoryPath: row.directory_path,
+        label: row.label,
+        displayName: row.display_name,
+      });
+      if (!location) return [];
+      return [{
+        id: row.id,
+        type: "bookmark" as const,
+        title: row.title,
+        location,
+      }];
+    });
+  return trimFavoriteBookmarkTree(visit());
+}
+
+function replaceFavoriteBookmarksSql(
+  config: TracevaneServerConfig,
+  items: FilesFavoriteBookmarkItem[],
+): FilesFavoriteBookmarksPayload {
+  const db = fileManagerDb(config);
+  const normalized = trimFavoriteBookmarkTree(items);
+  const now = new Date().toISOString();
+  runSqlTransaction(db, () => {
+    db.prepare("DELETE FROM favorite_bookmarks").run();
+    const insert = db.prepare(`
+      INSERT INTO favorite_bookmarks
+        (id, parent_id, type, title, root_id, directory_path, label, display_name, sort_order, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const visit = (children: FilesFavoriteBookmarkItem[], parentId: string | null) => {
+      children.forEach((item, index) => {
+        const location = item.type === "bookmark" ? item.location : undefined;
+        insert.run(
+          item.id,
+          parentId,
+          item.type,
+          item.title,
+          location?.rootId ?? null,
+          location?.directoryPath ?? null,
+          location?.label ?? null,
+          location?.displayName ?? null,
+          index,
+          now,
+        );
+        if (item.type === "folder") visit(item.children ?? [], item.id);
+      });
+    };
+    visit(normalized, null);
+  });
+  return {
+    checkedAt: now,
+    items: normalized,
+  };
 }
 
 function toContentIndexRecord(row: SqlContentIndexRow): ContentIndexRecord {
@@ -3156,6 +3318,17 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         roots: roots.map(({ realPath, ...root }) => root),
         defaultRootId: defaultRoot.id,
       };
+    },
+
+    getFavoriteBookmarks(): FilesFavoriteBookmarksPayload {
+      return {
+        checkedAt: new Date().toISOString(),
+        items: favoriteBookmarksFromSql(config),
+      };
+    },
+
+    replaceFavoriteBookmarks(payload: FilesFavoriteBookmarksUpdatePayload): FilesFavoriteBookmarksPayload {
+      return replaceFavoriteBookmarksSql(config, payload.items);
     },
 
     listDirectory(

@@ -108,6 +108,57 @@ test("files service discovers safe roots and browses directories", () => {
   assert.equal(clampedPageSize.pagination.pageSize, 500);
 });
 
+test("files service persists favorites through sqlite across service instances", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  const first = createFilesService(config);
+  const seed = [
+    {
+      id: "bookmark:alpha",
+      type: "bookmark",
+      title: "Alpha",
+      location: {
+        rootId: "openclaw-root",
+        directoryPath: "tmp/alpha",
+        label: "/tmp/alpha",
+      },
+    },
+    {
+      id: "bookmark:folder",
+      type: "folder",
+      title: "Folder",
+      children: [
+        {
+          id: "bookmark:nested",
+          type: "bookmark",
+          title: "Nested",
+          location: {
+            rootId: "openclaw-root",
+            directoryPath: "tmp/nested",
+            label: "/tmp/nested",
+            displayName: "Nested Display",
+          },
+        },
+      ],
+    },
+  ];
+
+  const saved = first.replaceFavoriteBookmarks({ items: seed });
+  assert.equal(saved.items.length, 2);
+  assert.equal(saved.items[1].children[0].title, "Nested");
+
+  const second = createFilesService(config);
+  const loaded = second.getFavoriteBookmarks();
+  assert.equal(loaded.items[0].title, "Alpha");
+  assert.equal(loaded.items[1].type, "folder");
+  assert.equal(loaded.items[1].children[0].location.displayName, "Nested Display");
+
+  second.replaceFavoriteBookmarks({ items: [seed[1]] });
+  const replaced = first.getFavoriteBookmarks();
+  assert.equal(replaced.items.length, 1);
+  assert.equal(replaced.items[0].id, "bookmark:folder");
+});
+
 test("files service supports search, read, write, create, rename, copy, move, delete, and upload", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
