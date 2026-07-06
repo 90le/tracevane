@@ -77,6 +77,7 @@ export function TerminalManagerDialog({
     const targets = uniqueSessions(targetSessions.filter(isManageableSession));
     if (!targets.length) return;
     const targetIds = targets.map((session) => session.sessionId);
+    const targetIdSet = new Set(targetIds);
     for (const sessionId of targetIds) {
       suppressedSessionIdsRef.current.add(sessionId);
     }
@@ -86,7 +87,7 @@ export function TerminalManagerDialog({
     // still performs real kill/retry; a silent refresh later reconciles anything
     // that genuinely survived. This avoids the misleading "closed but still in
     // list" feeling on slow PTY/tmux teardown.
-    setSessions((current) => current.filter((session) => !targetIds.includes(session.sessionId)));
+    setSessions((current) => current.filter((session) => !targetIdSet.has(session.sessionId)));
 
     const results = await runWithConcurrency(targets, 6, async (session) => {
       try {
