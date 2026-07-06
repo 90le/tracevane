@@ -33,13 +33,77 @@ async function cleanupPath(rootId, path) {
   }).catch(() => undefined);
 }
 
-function createDefaultWorkbenchLayout() {
+async function ensureDirectory(rootId, targetPath) {
+  const normalized = normalizePortablePath(targetPath);
+  if (!normalized) return;
+  const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+  await ensureDirectory(rootId, parent);
+  const name = normalized.includes('/') ? normalized.slice(normalized.lastIndexOf('/') + 1) : normalized;
+  await api('/api/files/directories', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, directoryPath: parent, name }),
+  }).catch((error) => {
+    if (String(error?.message || error).toLowerCase().includes('exists')) return;
+    throw error;
+  });
+}
+
+async function createFile(rootId, targetPath, content = '') {
+  const normalized = normalizePortablePath(targetPath);
+  const directoryPath = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
+  const name = normalized.includes('/') ? normalized.slice(normalized.lastIndexOf('/') + 1) : normalized;
+  await ensureDirectory(rootId, directoryPath);
+  await api('/api/files/files', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, directoryPath, name, content, overwrite: true }),
+  });
+}
+
+function normalizePortablePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function cssAttr(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\"');
+}
+
+function explorerNodeSelector(path) {
+  return `[data-ide-explorer-node-path="${cssAttr(path)}"]`;
+}
+
+
+async function waitForExplorerNode(page, targetPath) {
+  await page.locator(explorerNodeSelector(targetPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+async function expandExplorerDirectory(page, targetPath) {
+  await waitForExplorerNode(page, targetPath);
+  const row = page.locator(explorerNodeSelector(targetPath)).first();
+  const expanded = await row.getAttribute('aria-expanded');
+  if (expanded === 'true') return;
+  await row.dblclick();
+  await page.waitForFunction(
+    (selector) => document.querySelector(selector)?.getAttribute('aria-expanded') === 'true',
+    explorerNodeSelector(targetPath),
+    { timeout: 30_000 },
+  );
+}
+
+async function revealExplorerPath(page, targetPath) {
+  const parts = normalizePortablePath(targetPath).split('/').filter(Boolean);
+  for (let index = 1; index < parts.length; index += 1) {
+    await expandExplorerDirectory(page, parts.slice(0, index).join('/'));
+  }
+  await waitForExplorerNode(page, targetPath);
+}
+
+function createDefaultWorkbenchLayout(explorerDirectoryPath = '') {
   return {
     layoutVersion: 1,
     activeActivityId: 'explorer',
     sideBar: { placement: 'left', visible: true, collapsed: false, width: 288 },
     secondarySideBar: { placement: 'right', visible: false, collapsed: true, width: 280 },
-    explorer: { directoryPath: '' },
+    explorer: { directoryPath: explorerDirectoryPath },
     panel: {
       placement: 'bottom',
       visible: true,
@@ -207,6 +271,9 @@ async function runBackendTerminalRoundtrip(rootId) {
 }
 
 async function runUiSmoke(rootId) {
+  const focusSmokeFile = `${repoRelativeCwd()}/tracevane-terminal-focus-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ts`;
+  await cleanupPath(rootId, focusSmokeFile);
+  await createFile(rootId, focusSmokeFile, 'export const terminalFocus = true;\n');
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
     method: 'PUT',
     body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
@@ -214,11 +281,12 @@ async function runUiSmoke(rootId) {
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.addInitScript(() => {
+  await page.addInitScript((layoutKey, layout) => {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith('tracevane.ide-workbench.layout.') || key.startsWith('tracevane.ide-workbench.terminal')) localStorage.removeItem(key);
     }
-  });
+    localStorage.setItem(layoutKey, JSON.stringify(layout));
+  }, `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, createDefaultWorkbenchLayout());
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
@@ -262,6 +330,33 @@ async function runUiSmoke(rootId) {
     }));
     if (focusProbe.activeId !== 'terminal-focus-regression-probe' || focusProbe.value !== 'focus-ok') {
       throw new Error(`Terminal stole focus from external input: ${JSON.stringify(focusProbe)}`);
+    }
+    await page.locator('[data-ide-terminal-xterm]').first().click();
+    await page.getByLabel('新建文件').click({ timeout: 30_000 });
+    const explorerInput = page.locator('[data-ide-explorer-name-input]');
+    await explorerInput.waitFor({ state: 'visible', timeout: 30_000 });
+    await explorerInput.fill('');
+    await page.keyboard.type('terminal-focus-explorer-input.txt');
+    const explorerInputValue = await explorerInput.inputValue();
+    if (explorerInputValue !== 'terminal-focus-explorer-input.txt') {
+      throw new Error(`Terminal stole focus from Explorer name input: ${explorerInputValue}`);
+    }
+    await page.keyboard.press('Escape');
+    await page.locator('[data-ide-explorer-name-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
+
+    await page.locator('[data-ide-terminal-xterm]').first().click();
+    await revealExplorerPath(page, focusSmokeFile);
+    await page.locator(explorerNodeSelector(focusSmokeFile)).first().dblclick({ timeout: 30_000 });
+    await page.locator(`[data-ide-editor-tab-path="${cssAttr(focusSmokeFile)}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-monaco-editor-panel][data-ide-editor-file-path="' + cssAttr(focusSmokeFile) + '"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('.monaco-editor').first().click();
+    const monacoToken = `terminal_focus_monaco_${Date.now()}`;
+    await page.keyboard.type(`
+// ${monacoToken}`);
+    await page.waitForFunction((token) => document.body.innerText.includes(token), monacoToken, { timeout: 30_000 });
+    const terminalAfterMonacoTyping = await page.locator('[data-ide-terminal-pane]').first().innerText();
+    if (terminalAfterMonacoTyping.includes(monacoToken)) {
+      throw new Error('Terminal received Monaco editor typing after editor focus');
     }
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new-menu]').click();
@@ -354,6 +449,7 @@ async function runUiSmoke(rootId) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}\nlogs=${logs.slice(-80).join('\n')}`);
   } finally {
     await browser.close().catch(() => undefined);
+    await cleanupPath(rootId, focusSmokeFile);
   }
 }
 
