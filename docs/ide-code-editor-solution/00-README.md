@@ -92,6 +92,7 @@
 | [archive/m5y-f-shared-file-surface-summary.md](./archive/m5y-f-shared-file-surface-summary.md) | M5.y-F Shared File Surface + IDE Editor Preferences，共享预览层和 IDE 小地图偏好收口 |
 | [archive/m5y-g-editor-preview-statusbar-hex-summary.md](./archive/m5y-g-editor-preview-statusbar-hex-summary.md) | M5.y-G IDE Preview StatusBar + Hex Editor Foundation，IDE embedded 预览、全局 StatusBar 文件信息和二进制 Hex 只读基础 |
 | [archive/m5y-h-layout-reset-empty-action-summary.md](./archive/m5y-h-layout-reset-empty-action-summary.md) | M5.y-H IDE Layout Reset / Empty State / Header Actions，Reset layout 只重置布局不清空工作区，EditorDock 空状态和操作菜单稳定化 |
+| [archive/m6-a-watcher-search-problems-output-plan.md](./archive/m6-a-watcher-search-problems-output-plan.md) | M6-A Watcher / Search / Problems / Output 研究与最小实现计划，明确 watcher/search/conflict/problems/output 切片、数据模型和验收路线 |
 
 ## 推荐技术选型
 
@@ -193,8 +194,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - Panel 收起后的恢复入口为顶部右侧图标按钮；Dockview header 的“操作”菜单通过稳定 adapter 注入，避免闪烁和不可点击。
 - 验收见 `archive/m5y-h-layout-reset-empty-action-summary.md`。
 
-下一步 M6：Watcher / Search / Problems / Output
-- 在真实 IDE Editor 基础可承载后，做文件 watcher、全局搜索、Problems 数据模型和 Output channel/log 基础；Problems 可先展示结构化问题数据，但真实 LSP diagnostics 到 M7。
+已完成 M6-A：Watcher / Search / Problems / Output 研究与最小实现计划
+- 已探查现有 Files search/content-index、Workbench panel placeholder、Editor dirty/save/path sync 和缺失 watcher/event bus。
+- 已明确 M6-B watcher、M6-C search、M6-D diff/conflict、M6-E problems/output、M6-F 验收文档的推荐切片。
+- 验收见 `archive/m6-a-watcher-search-problems-output-plan.md`。
+
+下一步 M6-B：Watcher Foundation
+- 先做 Files root guard 下的最小 watcher event contract 和 Workbench file event bus，重点验证 changed/deleted/renamed 不静默覆盖 dirty editor model。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。

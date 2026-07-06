@@ -33,7 +33,11 @@ Both products share lower-level core services, not full product shells.
 - Done: M5.y-F Shared File Surface + IDE Editor Preferences.
 - Done: M5.y-G IDE Preview StatusBar + Hex Editor Foundation.
 - Done: M5.y-H IDE Layout Reset / Empty State / Header Actions.
-- Next: M6 Watcher / Search / Problems / Output.
+- Done: M6-A Watcher / Search / Problems / Output research and minimal implementation plan.
+- Next: M6-B Watcher Foundation.
+- Later: M6-C Search Foundation.
+- Later: M6-D Diff / Conflict Flow.
+- Later: M6-E Problems / Output Foundation.
 - Later: M7 LSP / Git / Debug.
 
 ## Required reading by task
@@ -44,6 +48,7 @@ Always read these before changing matching scope:
 - File Manager Online Editor / File Surface: `03-文件管理器在线编辑器方案.md`, `10-monaco-first-online-editor-strategy.md`, `12-file-surface-unification-and-monaco-gap-plan.md`.
 - Completed Mini Explorer / Shared Explorer Core record: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
 - IDE Workbench layout / IDE Editor Foundation: `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, `09-IDE参考行为与术语对照.md`, `archive/m5y-a-ide-editor-foundation-plan.md`, `archive/m5y-execution-summary.md`, `archive/m5y-g-editor-preview-statusbar-hex-summary.md`, and `archive/m5y-h-layout-reset-empty-action-summary.md`.
+- Watcher / Search / Problems / Output: `06-后端服务与接口方案.md`, `07-终端运行语言服务Git方案.md`, `08`, and `archive/m6-a-watcher-search-problems-output-plan.md`.
 - Terminal / LSP / Git / Debug: `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, `08`.
 - Visual/theme work: `14-视觉主题与设计系统适配.md`, `DESIGN.md`, `docs/界面设计守则.md`, `apps/web/src/design/theme.css`.
 
