@@ -1886,14 +1886,14 @@ export function createTerminalService(
   ): TerminalSessionDescriptor | null {
     const persisted = descriptorStore.get(sessionId);
     if (!persisted) return null;
-    if (persisted.status === "completed" && persisted.canResume === false) {
-      return persisted;
-    }
 
     if (persisted.durableBackend === "tmux") {
       forceKillPersistedTmuxSession(
         persisted.tmuxSessionName || normalizeTmuxSessionName(sessionId),
       );
+    }
+    if (persisted.status === "completed" && persisted.canResume === false) {
+      return persisted;
     }
 
     const nextUpdatedAt = new Date().toISOString();

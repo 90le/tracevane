@@ -417,6 +417,11 @@ test("terminal service batch end marks sessions non-recoverable", async () => {
     assert.equal(ended.ended, 2);
     assert.deepEqual(ended.results.map((result) => result.sid).sort(), [first.sid, second.sid].sort());
 
+    const endedAgain = await service.endSessions([first.sid, second.sid]);
+    assert.equal(endedAgain.success, true);
+    assert.equal(endedAgain.total, 2);
+    assert.equal(endedAgain.ended, 2);
+
     const after = await service.listPersistedSessions();
     const endedDescriptors = after.sessions.filter((session) => [first.sid, second.sid].includes(session.sessionId));
     assert.equal(endedDescriptors.length, 2);
@@ -503,6 +508,10 @@ test("terminal service source includes binary-name fallback verification for mar
     /const fallbackVerify =[\s\S]*verifyFromPath\?\.success[\s\S]*await verifyAt\(spec\.binary\);/,
   );
   assert.match(source, /path: resolvedPath,/);
+  assert.match(
+    source,
+    /if \(persisted\.durableBackend === "tmux"\)[\s\S]*forceKillPersistedTmuxSession[\s\S]*if \(persisted\.status === "completed" && persisted\.canResume === false\)/,
+  );
 });
 
 test("terminal recent output summary resets stale output after clear marker", () => {
