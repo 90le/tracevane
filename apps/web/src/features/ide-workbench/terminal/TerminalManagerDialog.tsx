@@ -66,10 +66,11 @@ export function TerminalManagerDialog({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      event.stopPropagation();
       onOpenChange(false);
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onOpenChange, open]);
 
   const closeSessions = React.useCallback(async (targetSessions: TerminalSessionDescriptor[], label: string) => {
