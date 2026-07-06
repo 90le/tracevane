@@ -75,13 +75,16 @@ export function TerminalTabs({
     if (!menu && !newMenu) return;
     const close = () => { setMenu(null); setNewMenu(null); };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
     };
     window.addEventListener("pointerdown", close);
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.removeEventListener("pointerdown", close);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [menu, newMenu]);
 

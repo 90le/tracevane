@@ -267,6 +267,7 @@ async function runUiSmoke(rootId) {
     await setShDefault.click();
     await page.locator('[data-ide-terminal-set-default-profile="shell-sh"][data-ide-terminal-default-profile="true"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.keyboard.press('Escape');
+    await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new]').click();
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 2, { timeout: 45_000 });
     await page.locator('[data-ide-terminal-tab][data-terminal-shell="sh"]').last().waitFor({ state: 'visible', timeout: 30_000 });
