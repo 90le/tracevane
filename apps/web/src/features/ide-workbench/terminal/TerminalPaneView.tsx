@@ -81,10 +81,12 @@ export function TerminalPaneView({
   const [menu, setMenu] = React.useState<TerminalPaneMenuState | null>(null);
   const [selectedText, setSelectedText] = React.useState("");
   const [terminalFocused, setTerminalFocused] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
   const selectedTextRef = React.useRef("");
   const previousTerminalIdRef = React.useRef(terminalId);
   const disposedRef = React.useRef(false);
   const userClosedRef = React.useRef(false);
+  const closeRequestedRef = React.useRef(false);
 
   React.useEffect(() => {
     disposedRef.current = false;
@@ -331,6 +333,10 @@ export function TerminalPaneView({
   }, [updateSelectedText]);
 
   const closePane = React.useCallback(async () => {
+    if (closeRequestedRef.current) return;
+    closeRequestedRef.current = true;
+    setClosing(true);
+    setMenu(null);
     userClosedRef.current = true;
     const sid = sessionIdRef.current || terminalId;
     closeSocket();
@@ -491,7 +497,14 @@ export function TerminalPaneView({
               </span>
             ) : null}
           </button>
-          <Button variant="ghost" size="icon" onClick={closePane} aria-label="强制关闭终端窗格" title="强制关闭终端窗格">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={closePane}
+            disabled={closing}
+            aria-label={closing ? "正在关闭终端窗格" : "强制关闭终端窗格"}
+            title={closing ? "正在关闭终端窗格" : "强制关闭终端窗格"}
+          >
             <X />
           </Button>
         </header>
@@ -537,7 +550,7 @@ export function TerminalPaneView({
           <TerminalPaneMenuButton icon={<Copy />} label="复制终端 ID" onClick={() => { void navigator.clipboard?.writeText?.(terminalId); setMenu(null); }} />
           <TerminalPaneMenuButton icon={<X />} label="清空选区" disabled={!selectedText} onClick={() => { clearSelection(); setMenu(null); }} />
           <div className="my-1 border-t border-line" />
-          <TerminalPaneMenuButton danger icon={<X />} label="强制关闭终端窗格" onClick={() => { setMenu(null); void closePane(); }} />
+          <TerminalPaneMenuButton danger icon={<X />} label={closing ? "正在关闭终端窗格" : "强制关闭终端窗格"} disabled={closing} onClick={() => { setMenu(null); void closePane(); }} />
         </div>
       ) : null}
     </section>

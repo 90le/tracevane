@@ -188,8 +188,32 @@ async function run() {
     await waitForPaneCount(page, 3);
 
     const beforeClose = await page.locator('[data-ide-terminal-pane]').count();
-    await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '强制关闭终端窗格' }).click();
+    const closingTerminalId = await page.locator('[data-ide-terminal-pane]').nth(0).getAttribute('data-terminal-id');
+    if (!closingTerminalId) throw new Error('Missing terminal id before close idempotency check');
+    let closeRequestCount = 0;
+    await page.route('**/api/terminal/end', async (route) => {
+      let sid = '';
+      try {
+        sid = String(route.request().postDataJSON()?.sid || '');
+      } catch {
+        sid = '';
+      }
+      if (sid === closingTerminalId) {
+        closeRequestCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      await route.continue();
+    });
+    const closeButton = page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '强制关闭终端窗格' });
+    await closeButton.evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement)) throw new Error('Terminal close control is not a button');
+      button.click();
+      button.click();
+    });
     await waitForPaneCountExactly(page, Math.max(1, beforeClose - 1));
+    if (closeRequestCount !== 1) {
+      throw new Error(`Terminal pane close was not idempotent; expected 1 close request, got ${closeRequestCount}`);
+    }
 
     await page.getByRole('button', { name: 'Output' }).click();
     await page.locator('[data-ide-output-panel]').waitFor({ state: 'visible', timeout: 30_000 });
