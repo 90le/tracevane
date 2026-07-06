@@ -104,6 +104,7 @@
 | [archive/m7-d-git-status-source-control-summary.md](./archive/m7-d-git-status-source-control-summary.md) | M7-D Git status + Explorer decoration + Source Control View 验收总结 |
 | [archive/m7-e-a-git-diff-foundation-summary.md](./archive/m7-e-a-git-diff-foundation-summary.md) | M7-E-A Git Diff Foundation 验收总结 |
 | [archive/m7-e-b-git-stage-unstage-summary.md](./archive/m7-e-b-git-stage-unstage-summary.md) | M7-E-B Git Stage / Unstage Foundation 验收总结 |
+| [archive/m7-e-c-git-commit-foundation-summary.md](./archive/m7-e-c-git-commit-foundation-summary.md) | M7-E-C Git Commit Foundation 验收总结 |
 
 ## 推荐技术选型
 

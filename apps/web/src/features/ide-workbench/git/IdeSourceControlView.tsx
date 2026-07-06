@@ -1,10 +1,10 @@
 import * as React from "react";
-import { AlertCircle, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
-import { stageFiles, unstageFiles } from "@/lib/api/git";
+import { commitFiles, stageFiles, unstageFiles } from "@/lib/api/git";
 import { appendWorkbenchOutput } from "../output";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
 
@@ -18,6 +18,7 @@ export interface IdeSourceControlViewProps {
 
 export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDiff }: IdeSourceControlViewProps) {
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
+  const [commitMessage, setCommitMessage] = React.useState("");
   const runGitAction = React.useCallback(async (kind: "stage" | "unstage", paths: string[], label: string) => {
     const status = git.status;
     if (!status?.available || busyKey) return;
@@ -45,6 +46,43 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       setBusyKey(null);
     }
   }, [busyKey, git, rootId]);
+
+  const runCommit = React.useCallback(async () => {
+    const status = git.status;
+    const message = commitMessage.trim();
+    const stagedCount = git.changes.filter((change) => change.staged).length;
+    if (!status?.available || busyKey) return;
+    if (!stagedCount) {
+      toast.error("没有已暂存的变更", { description: "请先暂存需要提交的文件。" });
+      return;
+    }
+    if (!message) {
+      toast.error("提交信息不能为空");
+      return;
+    }
+    setBusyKey("commit:staged");
+    try {
+      await commitFiles({ rootId, path: status.directoryPath, message });
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "info",
+        text: `commit ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}: ${message.split("\n")[0]}`,
+      });
+      toast.success("已提交暂存变更");
+      setCommitMessage("");
+      git.refresh();
+    } catch (reason) {
+      const errorMessage = reason instanceof Error ? reason.message : String(reason);
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "error",
+        text: `commit failed: ${errorMessage}`,
+      });
+      toast.error("提交失败", { description: errorMessage });
+    } finally {
+      setBusyKey(null);
+    }
+  }, [busyKey, commitMessage, git, rootId]);
 
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   const status = git.status;
@@ -77,6 +115,30 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             <span>{status?.message || "当前目录不是 Git 仓库，或 Git 状态不可用。"}</span>
           )}
         </div>
+        {status?.available ? (
+          <div className="mt-2 grid gap-2" data-ide-source-control-commit-box>
+            <textarea
+              className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas px-2 py-2 text-sm text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+              value={commitMessage}
+              onChange={(event) => setCommitMessage(event.target.value)}
+              placeholder="提交信息"
+              aria-label="Git 提交信息"
+              disabled={busyKey !== null}
+              data-ide-source-control-commit-message
+            />
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 justify-center text-xs"
+              disabled={busyKey !== null || stagedChanges.length === 0 || !commitMessage.trim()}
+              onClick={() => void runCommit()}
+              data-ide-source-control-commit
+            >
+              {busyKey === "commit:staged" ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+              提交已暂存
+            </Button>
+          </div>
+        ) : null}
         {status?.available && git.changes.length ? (
           <div className="mt-2 grid grid-cols-2 gap-1" data-ide-source-control-bulk-actions>
             <Button
