@@ -8,6 +8,10 @@ import "tsx/esm";
 const terminalService =
   await import("../../apps/api/modules/terminal/service.ts");
 
+function filesystemRootRelative(absolutePath) {
+  return path.relative(path.parse(absolutePath).root, absolutePath).replace(/\\/g, "/");
+}
+
 function createTestService(tempDir) {
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
@@ -180,7 +184,9 @@ test("terminal service attach responses include authoritative session descriptor
         sid: "term-descriptor-contract",
         profileId: "agent-codex",
         targetKind: "local",
-        cwd: tempDir,
+        rootId: "openclaw-root",
+        workspaceId: "openclaw-root",
+        cwd: filesystemRootRelative(tempDir),
         pinned: true,
       },
       { connId: "conn-live", emit: () => true },
@@ -239,7 +245,9 @@ test("terminal service creates a persisted session before http stream attach", a
     const created = await service.createPersistedSession({
       sid: "term-http-create-first",
       targetKind: "local",
-      cwd: tempDir,
+      rootId: "openclaw-root",
+      workspaceId: "openclaw-root",
+      cwd: filesystemRootRelative(tempDir),
     });
 
     assert.equal(created.sessionId, "term-http-create-first");
@@ -278,7 +286,9 @@ test("terminal service starts new pty sessions in requested resource cwd", async
     const attached = service.attachGatewayClient(
       {
         sid: "term-resource-cwd",
-        cwd: resourceDir,
+        rootId: "openclaw-root",
+        workspaceId: "openclaw-root",
+        cwd: filesystemRootRelative(resourceDir),
       },
       {
         connId: "conn-resource",
@@ -325,7 +335,9 @@ test("terminal service treats requested resource files as parent cwd", async () 
     const attached = service.attachGatewayClient(
       {
         sid: "term-resource-file-cwd",
-        cwd: resourceFile,
+        rootId: "openclaw-root",
+        workspaceId: "openclaw-root",
+        cwd: filesystemRootRelative(resourceFile),
       },
       {
         connId: "conn-resource-file",
@@ -359,7 +371,7 @@ test("terminal service treats requested resource files as parent cwd", async () 
   }
 });
 
-test("terminal service requires explicit resume before reopening a persisted ended session id", async () => {
+test("terminal service rejects resume for explicitly ended session ids", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
 
@@ -381,16 +393,18 @@ test("terminal service requires explicit resume before reopening a persisted end
       /terminal_session_unavailable/,
     );
 
-    const resumed = service.attachGatewayClient(
-      { sid: attached.sid, resume: true },
-      { connId: "conn-resume", emit: () => true },
+    assert.throws(
+      () =>
+        service.attachGatewayClient(
+          { sid: attached.sid, resume: true },
+          { connId: "conn-resume", emit: () => true },
+        ),
+      /terminal_session_unavailable/,
     );
 
-    assert.equal(resumed.sid, attached.sid);
-    assert.equal(
-      resumed.events.some((event) => event.type === "session"),
-      true,
-    );
+    const persisted = await service.getPersistedSession(attached.sid);
+    assert.equal(persisted?.status, "completed");
+    assert.equal(persisted?.canResume, false);
   } finally {
     service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });

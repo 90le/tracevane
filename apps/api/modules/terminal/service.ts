@@ -8,7 +8,7 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
-import { resolveFilesServiceDirectoryPath } from "../files/service.js";
+import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
 import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
@@ -1630,11 +1630,7 @@ export function createTerminalService(
       if (path.isAbsolute(rawCwd)) {
         throw new Error("Terminal cwd must be relative to the selected workspace root");
       }
-      return resolveFilesServiceDirectoryPath(
-        options.config,
-        rawRootId,
-        rawCwd || undefined,
-      ).absolutePath;
+      return resolveTerminalWorkspaceCwd(rawRootId, rawCwd || undefined);
     }
 
     const fallback = options.config.openclawRoot || process.cwd();
@@ -1651,6 +1647,30 @@ export function createTerminalService(
       // Invalid launch directories fall through to the configured workspace root.
     }
     return fallback;
+  }
+
+  function resolveTerminalWorkspaceCwd(
+    rootId: string,
+    relativePath: string | undefined,
+  ): string {
+    try {
+      return resolveFilesServiceDirectoryPath(
+        options.config,
+        rootId,
+        relativePath,
+      ).absolutePath;
+    } catch (directoryError) {
+      try {
+        const file = resolveFilesServiceExistingFilePath(
+          options.config,
+          rootId,
+          relativePath,
+        );
+        return path.dirname(file.absolutePath);
+      } catch {
+        throw directoryError;
+      }
+    }
   }
 
   function buildLaunchMetadata(
