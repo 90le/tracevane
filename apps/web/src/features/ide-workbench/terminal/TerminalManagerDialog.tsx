@@ -250,7 +250,7 @@ export function TerminalManagerDialog({
                           <div className="grid gap-1 font-mono text-2xs text-muted md:grid-cols-2">
                             <span className="truncate" title={session.sessionId}>id: {session.sessionId}</span>
                             <span className="truncate" title={normalizeRootId(session) || "unknown"}>workspace: {normalizeRootId(session) || "unknown"}</span>
-                            <span className="truncate" title={session.cwd || ""}>cwd: {formatCwd(session.cwd)}</span>
+                            <span className="truncate" title={formatCwdTitle(session.cwd)}>cwd: {formatCwd(session.cwd)}</span>
                             <span className="truncate">shell: {session.shell || "bash"} · updated: {formatTime(session.updatedAt)}</span>
                           </div>
                         </div>
@@ -362,7 +362,13 @@ function StatusBadge({ status }: { status: TerminalSessionDescriptor["status"] }
 }
 
 function formatCwd(value: string | null | undefined): string {
-  return String(value || "/");
+  const cwd = String(value || "").trim();
+  return cwd ? cwd : "workspace 根目录";
+}
+
+function formatCwdTitle(value: string | null | undefined): string {
+  const cwd = String(value || "").trim();
+  return cwd || "workspace-relative cwd is empty; terminal starts at selected workspace root";
 }
 
 function formatTime(value: string | null | undefined): string {
