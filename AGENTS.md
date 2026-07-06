@@ -153,8 +153,9 @@ Done: M5 Real Terminal Foundation
 Done: M5.x Terminal Split / Group / Panel Placement
 Done: M5.y / M5.5 IDE Editor Foundation
 Done: M6 Watcher / Search / Problems / Output
-Next: M7-A LSP / Git / Debug research and minimal implementation plan
-Later: M7 LSP / Git / Debug implementation slices
+Done: M7-A LSP / Git / Debug research and minimal implementation plan
+Next: M7-B single-language LSP diagnostics to Problems
+Later: M7-C LSP hover/completion/definition; M7-D/M7-E Git; M7-F/M7.x Debug
 ```
 
 Do not pull future-stage functionality forward unless the user explicitly changes the stage target. In particular:
@@ -164,7 +165,7 @@ Do not pull future-stage functionality forward unless the user explicitly change
 - M5 is complete: real terminal lifecycle and safety are proven at foundation level.
 - M5.x is complete: terminal split/group, bottom/right placement, profile selection, persistence and clipboard-path bridge are accepted terminal layout foundations.
 - M5.y is complete: IDE EditorDock now has real Monaco-backed file editing, dirty/save/close protection, preview/pinned tabs, tab menus, file panel splits, and Explorer rename/move/delete path sync while reusing shared/editor-core and Files API.
-- M6 watcher/search/problems/output foundations are complete; M7 must begin with research/contract planning before wiring LSP/Git/Debug producers into the existing Problems/Output/editor reveal foundations.
+- M6 watcher/search/problems/output foundations are complete; M7-A research is complete. M7-B must start with one language server diagnostics -> existing Problems/Output/editor reveal, not full LSP/Git/Debug at once.
 
 Shared architecture rules:
 

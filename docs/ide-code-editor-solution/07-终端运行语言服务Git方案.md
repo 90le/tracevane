@@ -318,9 +318,11 @@ M6：Watcher / Search / Problems / Output（已完成）
 - 总体验收见 [`archive/m6-execution-summary.md`](./archive/m6-execution-summary.md)。
 
 M7：LSP / Git / Debug
-- 先做 M7-A 研究与最小实现计划，再接单语言 LSP，让 diagnostics 进入 Problems。
-- Git 先做 status/diff，再做 stage/commit。
-- Debug 后置到 M7.x，不和 LSP/Git 同时追完整。
+- M7-A 研究与最小实现计划已完成，记录见 [`archive/m7-a-lsp-git-debug-plan.md`](./archive/m7-a-lsp-git-debug-plan.md)。
+- M7-B 先接单语言 LSP，让 diagnostics 进入 M6 Problems，并把 lifecycle/error 写入 Output。
+- M7-C 再补 hover/completion/definition。
+- M7-D/M7-E 接现有 Git API：先 status/diff，再 stage/commit。
+- Debug 后置到 M7-F/M7.x，不和 LSP/Git 同时追完整。
 ```
 
 ## 4. LSP 语言服务方案
@@ -370,9 +372,10 @@ JSON: Monaco 内置或 vscode-json-languageserver
 第一版：
 - 使用 Monaco 内置 JS/TS/JSON/CSS/HTML 基础能力。
 
-第二版：
+第二版（M7-B）：
 - 接一个后端 LSP Gateway。
 - 先支持最重要的一种语言。
+- diagnostics 只写入现有 Problems store/panel；LSP lifecycle/error 写入现有 Output channel。
 
 第三版：
 - 多语言按 workspace 配置启用。
@@ -418,7 +421,7 @@ type ProblemItem = {
 
 ## 6. Git 方案
 
-Git 不属于 M6，也不属于 M7.1 的必要阻塞项。建议在 M7 内继续分阶段：
+Git 不属于 M6，也不阻塞 M7-B 的 LSP diagnostics。M7-A 探查确认项目已有后端 Git service 和前端 API/query hooks，因此 M7-D/M7-E 应复用现有能力继续分阶段：
 
 ### Git 阶段一：只读状态
 
@@ -505,11 +508,12 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 3. xterm 终端
 4. 任务运行
 5. M6：Diff / Search / Watcher / Problems 数据基础 / Output channel（已完成）
-6. M7-A：LSP / Git / Debug 研究与最小实现计划
-7. M7.1：单语言 LSP + diagnostics + Problems 跳转
-8. M7.2：Git 只读状态 + diff
-9. M7.3：Git 基础操作
-10. M7.x：Debug
+6. M7-A：LSP / Git / Debug 研究与最小实现计划（已完成）
+7. M7-B：单语言 LSP diagnostics -> Problems
+8. M7-C：LSP hover / completion / definition
+9. M7-D：Git status + Explorer decoration + Source Control View
+10. M7-E：Git diff / stage / unstage / commit
+11. M7-F/M7.x：Debug Adapter Protocol 研究与最小实现
 ```
 
 ## 9. 验收标准
