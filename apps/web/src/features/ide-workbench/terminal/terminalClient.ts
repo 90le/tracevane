@@ -69,6 +69,7 @@ export interface EndWorkbenchTerminalSessionOptions {
 }
 
 const PENDING_TERMINAL_KILL_KEY = "tracevane.ide.pending-terminal-kills.v1";
+const PENDING_TERMINAL_KILL_CONCURRENCY = 6;
 let pendingKillFlushTimer: number | null = null;
 
 export async function endWorkbenchTerminalSession(
@@ -106,16 +107,35 @@ export function isTerminalKillPending(sessionId: string): boolean {
 export async function flushPendingTerminalKillRetries(): Promise<void> {
   const pending = readPendingTerminalKills();
   if (!pending.length) return;
-  const remaining: string[] = [];
-  for (const sid of pending) {
+  const results = await runWithConcurrency(pending, PENDING_TERMINAL_KILL_CONCURRENCY, async (sid) => {
     try {
       await endTerminalSessionWithRetries(sid, { attempts: 2, retryDelayMs: 750, queueOnFailure: false });
+      return { sid, failed: false };
     } catch {
-      remaining.push(sid);
+      return { sid, failed: true };
     }
-  }
+  });
+  const remaining = results.filter((result) => result.failed).map((result) => result.sid);
   writePendingTerminalKills(remaining);
   if (remaining.length) schedulePendingTerminalKillFlush(5_000);
+}
+
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency) || 1, items.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]);
+    }
+  }));
+  return results;
 }
 
 async function endTerminalSessionWithRetries(
