@@ -163,6 +163,11 @@ async function run() {
     await waitForPaneCount(page, 2);
     await page.locator('[data-terminal-orientation="horizontal"]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await waitForRunnablePane(page, 1);
+    await page.locator('[data-ide-terminal-pane]').nth(1).locator('header', { hasText: '运行中' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const firstSplitHeader = await page.locator('[data-ide-terminal-pane]').nth(1).locator('header').innerText();
+    if (/\brunning\b/.test(firstSplitHeader) || firstSplitHeader.includes('Pane')) {
+      throw new Error(`Terminal pane header leaked raw status wording: ${firstSplitHeader}`);
+    }
 
     await splitActiveTerminalTab(page, 'down');
     await waitForPaneCount(page, 3);
@@ -183,7 +188,7 @@ async function run() {
     await waitForPaneCount(page, 3);
 
     const beforeClose = await page.locator('[data-ide-terminal-pane]').count();
-    await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '强制关闭终端 Pane' }).click();
+    await page.locator('[data-ide-terminal-pane]').nth(0).getByRole('button', { name: '强制关闭终端窗格' }).click();
     await waitForPaneCountExactly(page, Math.max(1, beforeClose - 1));
 
     await page.getByRole('button', { name: 'Output' }).click();

@@ -338,8 +338,8 @@ export function TerminalPaneView({
     setMessage("终端已关闭");
     const result = await killSession(sid);
     if (result.failed) {
-      toast.warning("终端 Pane 已从界面强制关闭，后台会继续重试清理残留进程", {
-        description: sid ? `session ${sid} 未即时确认 kill，已加入持久重试队列。` : undefined,
+      toast.warning("终端窗格已从界面强制关闭，后台会继续重试清理残留进程", {
+        description: sid ? `终端会话 ${sid} 未即时确认关闭，已加入持久重试队列。` : undefined,
       });
     }
     onClose(paneId);
@@ -479,9 +479,9 @@ export function TerminalPaneView({
             onClick={() => onFocus(paneId)}
           >
             {title}
-            <span className="ml-2 rounded bg-panel px-1 font-mono text-2xs text-muted">{status}</span>
+            <span className="ml-2 rounded bg-panel px-1 text-2xs text-muted">{formatPaneStatus(status)}</span>
             {shell ? (
-              <span className="ml-1 rounded bg-panel px-1 font-mono text-2xs text-muted" title="Shell/Profile" data-ide-terminal-shell>
+              <span className="ml-1 rounded bg-panel px-1 font-mono text-2xs text-muted" title="Shell / 终端配置" data-ide-terminal-shell>
                 {shell}
               </span>
             ) : null}
@@ -491,7 +491,7 @@ export function TerminalPaneView({
               </span>
             ) : null}
           </button>
-          <Button variant="ghost" size="icon" onClick={closePane} aria-label="强制关闭终端 Pane" title="强制关闭终端 Pane">
+          <Button variant="ghost" size="icon" onClick={closePane} aria-label="强制关闭终端窗格" title="强制关闭终端窗格">
             <X />
           </Button>
         </header>
@@ -537,7 +537,7 @@ export function TerminalPaneView({
           <TerminalPaneMenuButton icon={<Copy />} label="复制终端 ID" onClick={() => { void navigator.clipboard?.writeText?.(terminalId); setMenu(null); }} />
           <TerminalPaneMenuButton icon={<X />} label="清空选区" disabled={!selectedText} onClick={() => { clearSelection(); setMenu(null); }} />
           <div className="my-1 border-t border-line" />
-          <TerminalPaneMenuButton danger icon={<X />} label="强制关闭终端 Pane" onClick={() => { setMenu(null); void closePane(); }} />
+          <TerminalPaneMenuButton danger icon={<X />} label="强制关闭终端窗格" onClick={() => { setMenu(null); void closePane(); }} />
         </div>
       ) : null}
     </section>
@@ -559,6 +559,25 @@ function positionTerminalPaneMenu(clientX: number, clientY: number): TerminalPan
     x: Math.max(TERMINAL_PANE_MENU_VIEWPORT_PADDING, Math.min(clientX, maxX)),
     y: Math.max(TERMINAL_PANE_MENU_VIEWPORT_PADDING, Math.min(clientY, maxY)),
   };
+}
+
+function formatPaneStatus(status: TerminalPaneStatus): string {
+  switch (status) {
+    case "idle":
+      return "待启动";
+    case "creating":
+      return "创建中";
+    case "connecting":
+      return "连接中";
+    case "running":
+      return "运行中";
+    case "closed":
+      return "已关闭";
+    case "error":
+      return "错误";
+    default:
+      return status;
+  }
 }
 
 function TerminalPaneMenuButton({
