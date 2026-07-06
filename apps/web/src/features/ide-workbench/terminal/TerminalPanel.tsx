@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { TerminalProfileDescriptor } from "@/features/cli-agents/types";
-import { getTerminalProfiles } from "@/lib/api/terminal";
+import { getTerminalProfiles, renameTerminalSession } from "@/lib/api/terminal";
 import { toast } from "@/design/ui/sonner";
 import { endWorkbenchTerminalSession, schedulePendingTerminalKillFlush } from "./terminalClient";
 import { useTerminalLayoutState } from "./terminalLayoutState";
@@ -101,6 +101,17 @@ export function TerminalPanel({
         onCloseTabsToRight={(tab) => void closeTabsToRight(tab)}
         onMoveTab={layoutApi.moveTab}
         onReorderTab={layoutApi.reorderTab}
+        onRenameTab={(tab, title) => {
+          layoutApi.renameTab(tab.tabId, title);
+          const terminalId = tab.activeTerminalId;
+          if (terminalId) {
+            void renameTerminalSession(terminalId, title).catch((error) => {
+              toast.warning("终端标签已重命名，但 session 标题同步失败", {
+                description: error instanceof Error ? error.message : String(error),
+              });
+            });
+          }
+        }}
         onOpenManager={() => setManagerOpen(true)}
         cwdLabel={placement === "right" ? undefined : cwdAbsolutePath}
         metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}

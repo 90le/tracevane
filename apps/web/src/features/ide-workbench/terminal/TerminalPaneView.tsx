@@ -5,6 +5,7 @@ import { Button } from "@/design/ui/button";
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
 import { createDirectory } from "@/lib/api/files";
+import { getTerminalSession } from "@/lib/api/terminal";
 import { createUploadBatch } from "@/features/file-manager/file-tools/uploadManager";
 import {
   collectUploadFilesFromDataTransfer,
@@ -44,6 +45,7 @@ export function TerminalPaneView({
   title,
   profileId,
   shell,
+  createMode = "resume",
   active,
   compact = false,
   showHeader = true,
@@ -58,6 +60,7 @@ export function TerminalPaneView({
   title: string;
   profileId?: string | null;
   shell?: string | null;
+  createMode?: "create" | "resume";
   active: boolean;
   compact?: boolean;
   showHeader?: boolean;
@@ -194,13 +197,25 @@ export function TerminalPaneView({
 
   const startSession = React.useCallback(async () => {
     if (!rootId) return;
-    setStatus("creating");
-    setMessage("正在创建受 workspace 限制的 PTY session…");
+    setStatus(createMode === "create" ? "creating" : "connecting");
+    setMessage(createMode === "create"
+      ? "正在创建受 workspace 限制的 PTY session…"
+      : "正在恢复已存在的终端 session…");
     try {
+      if (createMode !== "create") {
+        const persisted = await getTerminalSession(terminalId);
+        if (!persisted?.canResume || (persisted.status !== "running" && persisted.status !== "detached")) {
+          setStatus("closed");
+          setMessage("终端 session 已结束，已从布局移除");
+          window.setTimeout(() => onClose(paneId), 0);
+          return;
+        }
+      }
       const descriptor = await createWorkbenchTerminalSession({
         rootId,
         cwd,
         sessionId: terminalId,
+        title,
         profileId,
         shell,
         ...dimensionsRef.current,
@@ -210,10 +225,16 @@ export function TerminalPaneView({
       setBackend(descriptor.durableBackend ?? null);
       attachSocket(descriptor.sessionId);
     } catch (error) {
+      if (createMode !== "create") {
+        setStatus("closed");
+        setMessage("终端 session 不可恢复，已从布局移除");
+        window.setTimeout(() => onClose(paneId), 0);
+        return;
+      }
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "创建终端失败");
     }
-  }, [attachSocket, cwd, profileId, rootId, shell, terminalId]);
+  }, [attachSocket, createMode, cwd, onClose, paneId, profileId, rootId, shell, terminalId, title]);
 
   React.useEffect(() => {
     if (sessionId || status === "creating" || status === "connecting" || status === "running") return;

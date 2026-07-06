@@ -96,6 +96,7 @@ interface TerminalSession {
   closed: boolean;
   lastCols: number;
   lastRows: number;
+  title: string;
   shell: string;
   cwd: string;
   rootId: string | null;
@@ -754,6 +755,11 @@ export function createTerminalService(
       session.targetKind = targetKind;
     }
 
+    const title = String((metadata as TerminalSessionLaunchMetadata & { title?: string | null }).title || "").trim();
+    if (title) {
+      session.title = title;
+    }
+
     if (typeof metadata.pinned === "boolean") {
       session.pinned = metadata.pinned;
     }
@@ -779,7 +785,7 @@ export function createTerminalService(
 
     return {
       sessionId: session.id,
-      title: `Terminal ${session.id}`,
+      title: session.title || `Terminal ${session.id}`,
       profileId: session.profileId,
       shell: session.shell,
       targetKind: session.targetKind,
@@ -1761,6 +1767,7 @@ export function createTerminalService(
       createdAt: lastActivityAt,
       lastActivityAt,
       lastAttachedAt: null,
+      title: String((metadata as TerminalSessionLaunchMetadata & { title?: string | null }).title || `Terminal ${sessionId}`).trim() || `Terminal ${sessionId}`,
       durableBackend: launchMetadata.durableBackend,
       tmuxSessionName: launchMetadata.tmuxSessionName,
     };
@@ -1988,6 +1995,7 @@ export function createTerminalService(
         if (options.resumePersisted) {
           return createSession(sessionId, {
             profileId: options.metadata?.profileId ?? persisted.profileId,
+            title: (options.metadata as TerminalSessionLaunchMetadata & { title?: string | null } | undefined)?.title ?? persisted.title,
             targetKind: options.metadata?.targetKind ?? persisted.targetKind,
             rootId: options.metadata?.rootId,
             workspaceId: options.metadata?.workspaceId,
@@ -2924,7 +2932,16 @@ export function createTerminalService(
       sessionId: string,
       title: string,
     ): Promise<TerminalSessionDescriptor | null> {
-      return descriptorStore.rename(sessionId, title);
+      const normalized = String(sessionId || "").trim();
+      const normalizedTitle = String(title || "").trim();
+      const runtimeSession = sessions.get(normalized);
+      if (runtimeSession && !runtimeSession.closed) {
+        runtimeSession.title = normalizedTitle || `Terminal ${runtimeSession.id}`;
+        markSessionActivity(runtimeSession);
+        persistSessionDescriptor(runtimeSession);
+        return descriptorStore.get(normalized);
+      }
+      return descriptorStore.rename(normalized, normalizedTitle);
     },
 
     async deletePersistedSession(sessionId: string): Promise<{

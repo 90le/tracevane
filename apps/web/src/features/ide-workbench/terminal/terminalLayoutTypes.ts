@@ -23,6 +23,7 @@ export interface TerminalPaneRecord {
   createdAt: string;
   profileId?: string | null;
   shell?: string | null;
+  createMode?: "create" | "resume";
 }
 
 export interface TerminalTabRecord {

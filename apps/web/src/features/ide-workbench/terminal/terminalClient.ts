@@ -27,6 +27,7 @@ export interface CreateWorkbenchTerminalOptions {
   cols?: number;
   rows?: number;
   sessionId?: string;
+  title?: string | null;
   profileId?: string | null;
   shell?: string | null;
 }
@@ -48,6 +49,7 @@ export function createWorkbenchTerminalSession(
     sid: normalizeTerminalSessionId(options.sessionId) || `ide-terminal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     rootId: options.rootId,
     workspaceId: options.rootId,
+    title: normalizeTerminalTitle(options.title),
     cwd: normalizeRelativeCwd(options.cwd),
     profileId: normalizeProfileId(options.profileId),
     shell: normalizeShellName(options.shell),
@@ -211,6 +213,11 @@ export function normalizeRelativeCwd(value: string | null | undefined): string {
   if (!raw || raw === ".") return "";
   if (raw === ".." || raw.startsWith("../")) return "";
   return raw;
+}
+
+function normalizeTerminalTitle(value: string | null | undefined): string | null {
+  const raw = String(value || "").trim();
+  return raw || null;
 }
 
 function normalizeProfileId(value: string | null | undefined): string {

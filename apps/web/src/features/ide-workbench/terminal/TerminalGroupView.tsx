@@ -42,6 +42,7 @@ export function TerminalGroupView({
         title={pane.title}
         profileId={pane.profileId}
         shell={pane.shell}
+        createMode={pane.createMode}
         active={activePaneId === pane.paneId}
         compact={compact}
         showHeader={showPaneHeader}

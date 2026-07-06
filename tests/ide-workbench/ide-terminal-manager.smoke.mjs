@@ -166,6 +166,7 @@ async function run() {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith('tracevane.ide-workbench.')) localStorage.removeItem(key);
     }
+    window.prompt = () => 'Manager Smoke Renamed Terminal';
   });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
@@ -176,9 +177,19 @@ async function run() {
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-xterm]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 1, { timeout: 30_000 });
+    await page.locator('[data-ide-terminal-tab-menu]').first().click({ timeout: 30_000 });
+    await page.locator('[data-ide-terminal-tab-menu-item="rename"]').click({ timeout: 30_000 });
+    await page.locator('[data-ide-terminal-tab]', { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.waitForFunction(async (sessionId) => {
+      const response = await fetch(`/api/terminal/sessions/${encodeURIComponent(sessionId)}`);
+      if (!response.ok) return false;
+      const session = await response.json();
+      return session.title === 'Manager Smoke Renamed Terminal';
+    }, sid, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-manager-session="${sid}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });

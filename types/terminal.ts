@@ -243,6 +243,7 @@ export interface TerminalGatewayAttachPayload {
   rootId?: string | null;
   workspaceId?: string | null;
   profileId?: string | null;
+  title?: string | null;
   shell?: string | null;
   targetKind?: TerminalTargetKind | null;
   cwd?: string | null;

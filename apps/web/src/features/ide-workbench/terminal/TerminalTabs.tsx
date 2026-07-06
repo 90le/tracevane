@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   MonitorCog,
   PanelTopOpen,
+  Pencil,
   Plus,
   Split,
   Terminal as TerminalIcon,
@@ -36,6 +37,7 @@ export function TerminalTabs({
   onCloseTabsToRight,
   onMoveTab,
   onReorderTab,
+  onRenameTab,
   cwdLabel,
   metaLabel,
   onOpenManager,
@@ -51,6 +53,7 @@ export function TerminalTabs({
   onCloseTabsToRight: (tab: TerminalTabRecord) => void;
   onMoveTab: (tabId: string, direction: -1 | 1) => void;
   onReorderTab: (tabId: string, targetTabId: string, placement?: "before" | "after") => void;
+  onRenameTab: (tab: TerminalTabRecord, title: string) => void;
   cwdLabel?: string;
   metaLabel?: string;
   onOpenManager?: () => void;
@@ -85,6 +88,14 @@ export function TerminalTabs({
     action();
     setMenu(null);
   }, []);
+
+  const renameTabFromMenu = React.useCallback((tab: TerminalTabRecord) => {
+    const nextTitle = window.prompt("重命名终端标签", tab.title);
+    if (nextTitle === null) return;
+    const normalized = nextTitle.trim();
+    if (!normalized || normalized === tab.title) return;
+    onRenameTab(tab, normalized);
+  }, [onRenameTab]);
 
   const beginPointerTabDrag = React.useCallback((tab: TerminalTabRecord, event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
@@ -308,6 +319,13 @@ export function TerminalTabs({
           data-ide-terminal-tab-context-menu
           data-terminal-tab-id={menu.tab.tabId}
         >
+          <TerminalMenuButton
+            icon={<Pencil />}
+            label="重命名"
+            onClick={() => runMenuAction(() => renameTabFromMenu(menu.tab))}
+            dataAttr="rename"
+          />
+          <div className="my-1 border-t border-line" />
           <TerminalMenuButton
             icon={<ArrowLeft />}
             label="左移"

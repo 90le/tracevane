@@ -128,6 +128,10 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     setLayout((current) => removeTerminalIdsFromLayout(current, terminalIds));
   }, []);
 
+  const renameTab = React.useCallback((tabId: string, title: string) => {
+    setLayout((current) => renameTerminalTab(current, tabId, title));
+  }, []);
+
   const reorderTab = React.useCallback((tabId: string, targetTabId: string, placement: "before" | "after" = "before") => {
     setLayout((current) => reorderTabAround(current, tabId, targetTabId, placement));
   }, []);
@@ -172,6 +176,7 @@ export function useTerminalLayoutState(storageKey: string, workspaceKey = "defau
     closeOtherTabs,
     closeTabsToRight,
     removeTerminalIds,
+    renameTab,
     reorderTab,
     moveTab,
     resizeSplit,
@@ -220,6 +225,7 @@ function createPaneRecord(tabIndex: number, paneIndex: number, profile?: Termina
     createdAt: new Date().toISOString(),
     profileId: normalizeProfileId(profile?.profileId),
     shell: normalizeShell(profile?.shell),
+    createMode: "create",
   };
 }
 
@@ -461,6 +467,28 @@ function removeTerminalIdsFromLayout(
   return stateFromTabs(nextTabs, activeTabId);
 }
 
+function renameTerminalTab(
+  layout: TerminalLayoutState,
+  tabId: string,
+  title: string,
+): TerminalLayoutState {
+  const normalizedTitle = String(title || "").trim();
+  if (!normalizedTitle) return layout;
+  return updateTabById(layout, tabId, (tab) => {
+    const activePane = tab.panes[tab.activePaneId];
+    return {
+      ...tab,
+      title: normalizedTitle,
+      panes: activePane
+        ? {
+            ...tab.panes,
+            [activePane.paneId]: { ...activePane, title: normalizedTitle },
+          }
+        : tab.panes,
+    };
+  }, false);
+}
+
 function removePaneFromTab(tab: TerminalTabRecord, paneId: string): TerminalTabRecord | null {
   if (!tab.panes[paneId]) return tab;
   const panes = { ...tab.panes };
@@ -597,6 +625,7 @@ function createTerminalTabFromDescriptor(
     createdAt: String(session.createdAt || session.updatedAt || new Date().toISOString()),
     profileId: session.profileId ?? null,
     shell: session.shell ?? null,
+    createMode: "resume",
   };
   return {
     tabId: `terminal-tab-${terminalId}`,
@@ -711,6 +740,7 @@ function normalizePanes(value: Record<string, TerminalPaneRecord>): Record<strin
       createdAt: String(pane.createdAt || new Date().toISOString()),
       profileId: pane.profileId ?? null,
       shell: pane.shell ?? null,
+      createMode: pane.createMode === "create" ? "create" : "resume",
     };
   }
   return output;
