@@ -174,7 +174,7 @@ export function TerminalPanel({
             <div className="max-w-md rounded-lg border border-dashed border-line bg-canvas px-6 py-5 text-sm text-muted">
               <div className="text-base font-medium text-ink-strong">没有正在运行的终端</div>
               <p className="mt-2 leading-relaxed">
-                已关闭全部终端。点击右上角“新建”创建 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
+                尚未创建或恢复终端。点击“新建终端”创建 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
               </p>
               <button
                 type="button"
