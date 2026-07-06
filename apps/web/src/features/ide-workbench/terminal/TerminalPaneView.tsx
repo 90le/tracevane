@@ -80,6 +80,15 @@ export function TerminalPaneView({
   const [terminalFocused, setTerminalFocused] = React.useState(false);
   const selectedTextRef = React.useRef("");
   const previousTerminalIdRef = React.useRef(terminalId);
+  const disposedRef = React.useRef(false);
+  const userClosedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
+    };
+  }, []);
 
   const closeSocket = React.useCallback(() => {
     const socket = socketRef.current;
@@ -204,6 +213,7 @@ export function TerminalPaneView({
     try {
       if (createMode !== "create") {
         const persisted = await getTerminalSession(terminalId);
+        if (disposedRef.current || userClosedRef.current) return;
         if (!persisted?.canResume || (persisted.status !== "running" && persisted.status !== "detached")) {
           setStatus("closed");
           setMessage("终端 session 已结束，已从布局移除");
@@ -221,6 +231,11 @@ export function TerminalPaneView({
         ...dimensionsRef.current,
       });
       sessionIdRef.current = descriptor.sessionId;
+      if (userClosedRef.current) {
+        await killSession(descriptor.sessionId);
+        return;
+      }
+      if (disposedRef.current) return;
       setSessionId(descriptor.sessionId);
       setBackend(descriptor.durableBackend ?? null);
       attachSocket(descriptor.sessionId);
@@ -234,7 +249,7 @@ export function TerminalPaneView({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "创建终端失败");
     }
-  }, [attachSocket, createMode, cwd, onClose, paneId, profileId, rootId, shell, terminalId, title]);
+  }, [attachSocket, createMode, cwd, killSession, onClose, paneId, profileId, rootId, shell, terminalId, title]);
 
   React.useEffect(() => {
     if (sessionId || status === "creating" || status === "connecting" || status === "running") return;
@@ -245,6 +260,7 @@ export function TerminalPaneView({
     // Prop identity changes must not reuse the previous xterm/socket pair.
     if (previousTerminalIdRef.current === terminalId) return;
     previousTerminalIdRef.current = terminalId;
+    userClosedRef.current = false;
     closeSocket();
     setTerminalFocused(false);
     sessionIdRef.current = null;
@@ -309,7 +325,8 @@ export function TerminalPaneView({
   }, [updateSelectedText]);
 
   const closePane = React.useCallback(async () => {
-    const sid = sessionIdRef.current;
+    userClosedRef.current = true;
+    const sid = sessionIdRef.current || terminalId;
     closeSocket();
     setStatus("closed");
     setMessage("终端已关闭");
@@ -320,7 +337,7 @@ export function TerminalPaneView({
       });
     }
     onClose(paneId);
-  }, [closeSocket, killSession, onClose, paneId]);
+  }, [closeSocket, killSession, onClose, paneId, terminalId]);
 
   const insertPath = React.useCallback((path: string | undefined) => {
     const normalized = String(path || "").trim();
