@@ -252,7 +252,8 @@ function summarizeBatchEndResult(
   requested: number,
 ): EndWorkbenchTerminalSessionsResult {
   const results = Array.isArray(batch.results) ? batch.results : [];
-  const ended = Number.isFinite(batch.ended) ? batch.ended : results.filter((result) => result.ended).length;
+  const confirmedEnded = results.filter((result) => result.ended).length;
+  const ended = results.length ? confirmedEnded : (Number.isFinite(batch.ended) ? batch.ended : 0);
   return {
     requested,
     ended,

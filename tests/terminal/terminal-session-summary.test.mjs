@@ -538,6 +538,8 @@ test("terminal client source deletes only confirmed ended batch descriptors", ()
   assert.match(source, /const endedIds = endedTerminalIdsFromBatch\(batch\)/);
   assert.match(source, /deleteEndedTerminalDescriptors\(Array\.from\(endedIds\)/);
   assert.match(source, /const failedIds = sids\.filter\(\(sid\) => !endedIds\.has\(sid\)\)/);
+  assert.match(source, /const confirmedEnded = results\.filter\(\(result\) => result\.ended\)\.length/);
+  assert.match(source, /const ended = results\.length \? confirmedEnded :/);
 });
 
 test("terminal recent output summary resets stale output after clear marker", () => {
