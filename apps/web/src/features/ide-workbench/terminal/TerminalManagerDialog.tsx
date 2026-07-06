@@ -15,6 +15,7 @@ export function TerminalManagerDialog({
   currentRootLabel,
   activeTerminalIds,
   visibleTerminalId,
+  terminalTitlesById,
   onAttachSession,
   onClosedSessions,
 }: {
@@ -24,6 +25,7 @@ export function TerminalManagerDialog({
   currentRootLabel?: string | null;
   activeTerminalIds: string[];
   visibleTerminalId?: string | null;
+  terminalTitlesById?: Record<string, string>;
   onAttachSession: (session: TerminalSessionDescriptor) => void;
   onClosedSessions?: (sessionIds: string[]) => void;
 }) {
@@ -218,11 +220,12 @@ export function TerminalManagerDialog({
                     const attached = activeIdSet.has(session.sessionId);
                     const visible = visibleTerminalId === session.sessionId;
                     const closing = closingIds.has(session.sessionId);
+                    const displayTitle = terminalTitlesById?.[session.sessionId] || session.title || session.sessionId;
                     return (
                       <article key={session.sessionId} className="grid gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto]" data-ide-terminal-manager-session={session.sessionId}>
                         <div className="min-w-0 space-y-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <span className="truncate font-medium text-ink-strong">{session.title || session.sessionId}</span>
+                            <span className="truncate font-medium text-ink-strong">{displayTitle}</span>
                             <StatusBadge status={session.status} />
                             {visible ? (
                               <span className="rounded bg-primary-soft px-1.5 py-0.5 text-2xs text-primary">当前显示</span>

@@ -42,6 +42,17 @@ export function TerminalPanel({
   const activeTerminalIds = React.useMemo(() =>
     layout.tabs.flatMap((tab) => Object.values(tab.panes).map((pane) => pane.terminalId)),
   [layout.tabs]);
+  const terminalTitlesById = React.useMemo(() => {
+    const titles: Record<string, string> = {};
+    for (const tab of layout.tabs) {
+      for (const pane of Object.values(tab.panes)) {
+        const terminalId = pane.terminalId;
+        if (!terminalId) continue;
+        titles[terminalId] = pane.title || tab.title || terminalId;
+      }
+    }
+    return titles;
+  }, [layout.tabs]);
 
   React.useEffect(() => {
     schedulePendingTerminalKillFlush(500);
@@ -103,11 +114,15 @@ export function TerminalPanel({
         onReorderTab={layoutApi.reorderTab}
         onRenameTab={(tab, title) => {
           layoutApi.renameTab(tab.tabId, title);
-          const terminalId = tab.activeTerminalId;
-          if (terminalId) {
-            void renameTerminalSession(terminalId, title).catch((error) => {
+          const terminalIds = [...new Set(Object.values(tab.panes).map((pane) => pane.terminalId).filter(Boolean))];
+          if (terminalIds.length) {
+            void Promise.allSettled(terminalIds.map((terminalId) => renameTerminalSession(terminalId, title))).then((results) => {
+              const failed = results.filter((result) => result.status === "rejected");
+              if (!failed.length) return;
+              const first = failed[0];
+              const reason = first.status === "rejected" ? first.reason : null;
               toast.warning("终端标签已重命名，但 session 标题同步失败", {
-                description: error instanceof Error ? error.message : String(error),
+                description: reason instanceof Error ? reason.message : String(reason || "unknown error"),
               });
             });
           }
@@ -164,6 +179,7 @@ export function TerminalPanel({
         currentRootLabel={rootId}
         activeTerminalIds={activeTerminalIds}
         visibleTerminalId={activeTab?.activeTerminalId ?? null}
+        terminalTitlesById={terminalTitlesById}
         onAttachSession={(session) => {
           layoutApi.attachSessionDescriptor(session);
           setManagerOpen(false);
