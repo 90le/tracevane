@@ -71,6 +71,7 @@ export interface EndWorkbenchTerminalSessionOptions {
 const PENDING_TERMINAL_KILL_KEY = "tracevane.ide.pending-terminal-kills.v1";
 const PENDING_TERMINAL_KILL_CONCURRENCY = 6;
 let pendingKillFlushTimer: number | null = null;
+let pendingKillFlushDueAt = 0;
 let pendingKillFlushPromise: Promise<void> | null = null;
 
 export async function endWorkbenchTerminalSession(
@@ -92,11 +93,18 @@ export async function endWorkbenchTerminalSession(
 
 export function schedulePendingTerminalKillFlush(delayMs = 1_500): void {
   if (typeof window === "undefined") return;
-  if (pendingKillFlushTimer !== null) return;
+  const normalizedDelayMs = Math.max(250, delayMs);
+  const dueAt = Date.now() + normalizedDelayMs;
+  if (pendingKillFlushTimer !== null) {
+    if (pendingKillFlushDueAt && pendingKillFlushDueAt <= dueAt) return;
+    window.clearTimeout(pendingKillFlushTimer);
+  }
+  pendingKillFlushDueAt = dueAt;
   pendingKillFlushTimer = window.setTimeout(() => {
     pendingKillFlushTimer = null;
+    pendingKillFlushDueAt = 0;
     void flushPendingTerminalKillRetries();
-  }, Math.max(250, delayMs));
+  }, normalizedDelayMs);
 }
 
 export function isTerminalKillPending(sessionId: string): boolean {
