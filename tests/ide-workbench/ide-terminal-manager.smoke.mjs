@@ -188,6 +188,10 @@ async function run() {
     }, sid, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.keyboard.press('Escape');
+    await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'hidden', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-open]').click({ timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${sid}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-attach="${sid}"]`).waitFor({ state: 'visible', timeout: 30_000 });
