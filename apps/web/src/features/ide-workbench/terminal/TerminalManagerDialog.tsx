@@ -97,6 +97,10 @@ export function TerminalManagerDialog({
     // that genuinely survived. This avoids the misleading "closed but still in
     // list" feeling on slow PTY/tmux teardown.
     setSessions((current) => current.filter((session) => !targetIdSet.has(session.sessionId)));
+    // Apply the same forced-close intent to the visible Panel layout immediately.
+    // Waiting for PTY/tmux teardown makes an attached terminal look alive even
+    // though the user already requested a force close from the manager.
+    onClosedSessions?.(targetIds);
 
     const results = await runWithConcurrency(targets, 6, async (session) => {
       try {
@@ -110,12 +114,6 @@ export function TerminalManagerDialog({
     });
 
     const failed = results.filter((result) => !result.ok).length;
-    // A close request is an explicit user intent to remove the terminal from
-    // the visible workbench. Even when the immediate backend kill fails, the
-    // session has already been hidden and queued for retry, so keep Panel
-    // layout in sync with that forced-close intent instead of letting a failed
-    // kill resurrect the pane on the next render/refresh.
-    onClosedSessions?.(targetIds);
     if (failed) {
       toast.warning(`${label}：已从列表隐藏，后台继续清理`, {
         description: `${failed}/${targets.length} 个终端会话未即时确认关闭，已加入持久重试队列。`,

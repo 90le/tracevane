@@ -298,6 +298,9 @@ async function run() {
       const sessionId = String(body?.sid || '');
       if (sessionId in closeEndCounts) closeEndCounts[sessionId] += 1;
       if (sessionId === activeTerminalId) {
+        if (closeEndCounts[sessionId] === 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1_200));
+        }
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -307,11 +310,17 @@ async function run() {
       }
       await route.continue();
     });
+    const closeAllStartedAt = Date.now();
     await page.locator('[data-ide-terminal-manager-close-all]').evaluate((button) => {
       if (!(button instanceof HTMLButtonElement)) throw new Error('Close-all control is not a button');
       button.click();
       button.click();
     });
+    await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-pane-count') || '0') === 0, { timeout: 30_000 });
+    const closeAllPanelElapsedMs = Date.now() - closeAllStartedAt;
+    if (closeAllPanelElapsedMs >= 1_000) {
+      throw new Error(`Terminal Manager close-all waited for backend close before clearing Panel layout: ${closeAllPanelElapsedMs}ms`);
+    }
     await page.waitForFunction(
       (sessionIds) => sessionIds.every((sessionId) => !document.querySelector(`[data-ide-terminal-manager-session="${sessionId}"]`)),
       closeTargetIds,
