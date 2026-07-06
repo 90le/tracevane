@@ -41,6 +41,7 @@ export function TerminalTabs({
   cwdLabel,
   metaLabel,
   onOpenManager,
+  compact = false,
 }: {
   tabs: TerminalTabRecord[];
   activeTabId: string;
@@ -57,6 +58,7 @@ export function TerminalTabs({
   cwdLabel?: string;
   metaLabel?: string;
   onOpenManager?: () => void;
+  compact?: boolean;
 }) {
   const [menu, setMenu] = React.useState<TerminalTabMenuState | null>(null);
   const [newMenu, setNewMenu] = React.useState<{ x: number; y: number } | null>(null);
@@ -261,9 +263,9 @@ export function TerminalTabs({
           </Button>
         ) : null}
         <div className="flex shrink-0 items-center overflow-hidden rounded-md border border-line bg-panel">
-          <Button variant="ghost" size="sm" onClick={() => onNewTerminal(defaultTerminalProfile(profiles))} data-ide-terminal-new aria-label="New Terminal" title="New Terminal" className="shrink-0 rounded-none border-0 px-2">
-            <Plus />
-            <span className="hidden sm:inline">New Terminal</span>
+          <Button variant="ghost" size="sm" onClick={() => onNewTerminal(defaultTerminalProfile(profiles))} data-ide-terminal-new aria-label="新建终端" title="新建终端" className="h-8 shrink-0 rounded-none border-0 px-2 text-xs">
+            <Plus className="size-3.5" />
+            <span className={cn(compact ? "hidden" : "hidden md:inline")}>新建</span>
           </Button>
           <button
             type="button"
@@ -278,7 +280,7 @@ export function TerminalTabs({
               event.preventDefault();
               event.stopPropagation();
               const rect = event.currentTarget.getBoundingClientRect();
-              setNewMenu((current) => current ? null : { x: rect.right - 4, y: rect.bottom + 4 });
+              setNewMenu((current) => current ? null : positionNewTerminalMenu(rect));
             }}
           >
             <ChevronDown className="size-3.5" />
@@ -376,6 +378,23 @@ export function TerminalTabs({
   );
 }
 
+
+function positionNewTerminalMenu(rect: DOMRect): { x: number; y: number } {
+  const width = 288;
+  const height = 320;
+  const padding = 8;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || width;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || height;
+  const preferredX = rect.right - width;
+  const preferredY = rect.bottom + 4;
+  const maxX = Math.max(padding, viewportWidth - width - padding);
+  const maxY = Math.max(padding, viewportHeight - height - padding);
+  return {
+    x: Math.max(padding, Math.min(preferredX, maxX)),
+    y: Math.max(padding, Math.min(preferredY, maxY)),
+  };
+}
+
 function TerminalNewProfileMenu({
   x,
   y,
@@ -454,7 +473,7 @@ function TerminalNewProfileMenu({
       ) : null}
       <div className="my-1 border-t border-line" />
       <div className="px-2 py-1 text-2xs leading-relaxed text-muted">
-        下拉只创建后端确认可用的本地 shell。tmux 是持久化后端；Codex/Claude 等 Agent 终端入口后续单独接入，不伪装成 shell。
+        仅创建已安装本地 Shell；tmux/Agent 不作为 Shell。
       </div>
     </div>
   );

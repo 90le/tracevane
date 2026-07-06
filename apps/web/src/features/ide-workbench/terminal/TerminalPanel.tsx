@@ -128,6 +128,7 @@ export function TerminalPanel({
           }
         }}
         onOpenManager={() => setManagerOpen(true)}
+        compact={placement === "right"}
         cwdLabel={placement === "right" ? undefined : cwdAbsolutePath}
         metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}
       />
@@ -158,7 +159,7 @@ export function TerminalPanel({
             <div className="max-w-md rounded-lg border border-dashed border-line bg-canvas px-6 py-5 text-sm text-muted">
               <div className="text-base font-medium text-ink-strong">没有正在运行的终端</div>
               <p className="mt-2 leading-relaxed">
-                已关闭全部终端。点击右上角 New Terminal 创建新的 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
+                已关闭全部终端。点击右上角“新建”创建 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
               </p>
               <button
                 type="button"
@@ -166,7 +167,7 @@ export function TerminalPanel({
                 onClick={() => layoutApi.newTerminal()}
                 data-ide-terminal-empty-new
               >
-                New Terminal
+                新建终端
               </button>
             </div>
           </div>

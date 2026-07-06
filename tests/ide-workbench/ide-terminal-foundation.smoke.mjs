@@ -238,6 +238,10 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-panel-resize-handle]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new-menu]').click();
     await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'visible', timeout: 30_000 });
+    const menuBox = await page.locator('[data-ide-terminal-new-profile-menu]').boundingBox();
+    if (!menuBox || menuBox.x < 0 || menuBox.x + menuBox.width > page.viewportSize().width) {
+      throw new Error(`New Terminal profile menu is clipped or offscreen: ${JSON.stringify(menuBox)}`);
+    }
     const shMenuItem = page.locator('[data-ide-terminal-new-profile="shell-sh"][data-terminal-shell="sh"]');
     await shMenuItem.waitFor({ state: 'visible', timeout: 30_000 });
     await shMenuItem.click();
