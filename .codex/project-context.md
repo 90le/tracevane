@@ -35,8 +35,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M5.y-H IDE Layout Reset / Empty State / Header Actions.
 - Done: M6-A Watcher / Search / Problems / Output research and minimal implementation plan.
 - Done: M6-B Watcher Foundation.
-- Next: M6-C Search Foundation.
-- Later: M6-D Diff / Conflict Flow.
+- Done: M6-C Search Foundation.
+- Next: M6-D Diff / Conflict Flow.
 - Later: M6-E Problems / Output Foundation.
 - Later: M7 LSP / Git / Debug.
 

@@ -30,6 +30,7 @@ import type { ExplorerEntry } from "@/shared/explorer-core";
 import { EditorDock } from "./editor";
 import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
+import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
@@ -49,7 +50,7 @@ const ACTIVITY_ITEMS: Array<{
   disabled?: boolean;
 }> = [
   { id: "explorer", icon: <Files /> },
-  { id: "search", icon: <Search />, disabled: true },
+  { id: "search", icon: <Search /> },
   { id: "git", icon: <GitBranch />, disabled: true },
   { id: "run", icon: <Play />, disabled: true },
   { id: "extensions", icon: <Package />, disabled: true },
@@ -82,17 +83,13 @@ export function IdeWorkbenchPage() {
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
 
-  const openEntry = React.useCallback(
-    (entry: ExplorerEntry, options: { pinned?: boolean } = {}) => {
-      if (entry.kind === "directory") {
-        layoutApi.setExplorerDirectoryPath(entry.path);
-        return;
-      }
+  const openFilePath = React.useCallback(
+    (fileRef: { rootId: string; path: string }, options: { pinned?: boolean } = {}) => {
       const pinned = Boolean(options.pinned);
       const tab: IdeWorkbenchEditorTab = {
-        id: editorDocumentId({ rootId: entry.rootId, path: entry.path }),
-        ref: { rootId: entry.rootId, path: entry.path },
-        title: editorTitleForPath(entry.path),
+        id: editorDocumentId({ rootId: fileRef.rootId, path: fileRef.path }),
+        ref: { rootId: fileRef.rootId, path: fileRef.path },
+        title: editorTitleForPath(fileRef.path),
         preview: !pinned,
         pinned,
         dirty: false,
@@ -136,6 +133,26 @@ export function IdeWorkbenchPage() {
     },
     [layoutApi],
   );
+
+  const openEntry = React.useCallback(
+    (entry: ExplorerEntry, options: { pinned?: boolean } = {}) => {
+      if (entry.kind === "directory") {
+        layoutApi.setExplorerDirectoryPath(entry.path);
+        return;
+      }
+      openFilePath({ rootId: entry.rootId, path: entry.path }, options);
+    },
+    [layoutApi, openFilePath],
+  );
+
+  const openSearchResult = React.useCallback((request: IdeSearchResultOpenRequest) => {
+    if (request.kind === "directory") {
+      layoutApi.setExplorerDirectoryPath(request.path);
+      layoutApi.setActiveActivityId("explorer");
+      return;
+    }
+    openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true });
+  }, [layoutApi, openFilePath]);
 
   const editorGroupsRef = React.useRef(layout.editorGroups);
   React.useEffect(() => {
@@ -412,19 +429,34 @@ export function IdeWorkbenchPage() {
               : `clamp(220px, ${layout.sideBar.width}px, calc(100vw - 44px)) minmax(0,1fr)`,
           }}
         >
-          <IdeExplorerView
-            hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-            rootId={rootId}
-            rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-            rootAbsolutePath={root?.absolutePath}
-            directoryPath={directoryPath}
-            activeRootId={activeTab?.ref.rootId}
-            activePath={activeTab?.ref.path}
-            openTabs={openTabs}
-            onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
-            onOpenEntry={openEntry}
-            onPathEvent={handleExplorerPathEvent}
-          />
+          {layout.activeActivityId === "search" ? (
+            <IdeSearchView
+              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+              rootId={rootId}
+              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+              directoryPath={directoryPath}
+              onOpenResult={openSearchResult}
+            />
+          ) : layout.activeActivityId === "explorer" ? (
+            <IdeExplorerView
+              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+              rootId={rootId}
+              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+              rootAbsolutePath={root?.absolutePath}
+              directoryPath={directoryPath}
+              activeRootId={activeTab?.ref.rootId}
+              activePath={activeTab?.ref.path}
+              openTabs={openTabs}
+              onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
+              onOpenEntry={openEntry}
+              onPathEvent={handleExplorerPathEvent}
+            />
+          ) : (
+            <IdePendingActivityView
+              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+              title={IDE_ACTIVITY_LABELS[layout.activeActivityId]}
+            />
+          )}
           {!layout.sideBar.collapsed && layout.sideBar.visible ? (
             <SidebarResizeHandle
               left={layout.sideBar.width}
@@ -658,6 +690,18 @@ function ActivityBar({
           {item.icon}
         </button>
       ))}
+    </aside>
+  );
+}
+
+function IdePendingActivityView({ hidden, title }: { hidden: boolean; title: string }) {
+  if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
+  return (
+    <aside className="grid min-h-0 min-w-0 place-items-center border-r border-line bg-panel p-4" data-ide-sidebar data-ide-pending-activity>
+      <div className="rounded-lg border border-dashed border-line bg-canvas px-4 py-3 text-center text-sm text-muted">
+        <div className="font-semibold text-ink-strong">{title}</div>
+        <div className="mt-1 text-xs">该视图将在后续阶段接入。</div>
+      </div>
     </aside>
   );
 }

@@ -94,6 +94,7 @@
 | [archive/m5y-h-layout-reset-empty-action-summary.md](./archive/m5y-h-layout-reset-empty-action-summary.md) | M5.y-H IDE Layout Reset / Empty State / Header Actions，Reset layout 只重置布局不清空工作区，EditorDock 空状态和操作菜单稳定化 |
 | [archive/m6-a-watcher-search-problems-output-plan.md](./archive/m6-a-watcher-search-problems-output-plan.md) | M6-A Watcher / Search / Problems / Output 研究与最小实现计划，明确 watcher/search/conflict/problems/output 切片、数据模型和验收路线 |
 | [archive/m6-b-watcher-foundation-summary.md](./archive/m6-b-watcher-foundation-summary.md) | M6-B Watcher Foundation 执行总结，记录 Files watch snapshot、Workbench file event bus 与 opened tab 外部变更保护 |
+| [archive/m6-c-search-foundation-summary.md](./archive/m6-c-search-foundation-summary.md) | M6-C IDE Search Foundation 执行总结，记录 Search Activity/View、Files search 复用和结果打开 IDE Editor |
 
 ## 推荐技术选型
 
@@ -205,8 +206,13 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - opened editor tab 可标记外部 changed/deleted；dirty deleted 不静默关闭或覆盖 Monaco 内容。
 - 验收见 `archive/m6-b-watcher-foundation-summary.md`。
 
-下一步 M6-C：Search Foundation
-- 复用现有 `/api/files/search` 与 content-index，补 Search Activity/View、结果列表和打开/跳转。
+已完成 M6-C：Search Foundation
+- Search Activity 已启用，SideBar 支持 Search View、搜索选项、结果列表和点击打开 IDE Editor tab。
+- 复用现有 `/api/files/search`；精确 range/reveal、Problems/Output 写入和替换后置。
+- 验收见 `archive/m6-c-search-foundation-summary.md`。
+
+下一步 M6-D：Diff / Conflict Flow
+- 基于 watcher external changed/deleted 和 save 409，补 compare / reload / overwrite / cancel。
 
 后续 M7：LSP / Git / Debug
 - 接 LSP、Git、Debug 方向能力；先单语言 LSP diagnostics + Problems，再 Git status/diff，stage/commit 与 Debug 分段后置。
