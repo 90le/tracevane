@@ -102,6 +102,7 @@
 | [archive/m7-b-lsp-diagnostics-summary.md](./archive/m7-b-lsp-diagnostics-summary.md) | M7-B 单语言 JSON diagnostics -> Problems/Output 验收总结 |
 | [archive/m7-c-lsp-interaction-summary.md](./archive/m7-c-lsp-interaction-summary.md) | M7-C LSP hover / completion / definition foundation 验收总结 |
 | [archive/m7-d-git-status-source-control-summary.md](./archive/m7-d-git-status-source-control-summary.md) | M7-D Git status + Explorer decoration + Source Control View 验收总结 |
+| [archive/m7-e-a-git-diff-foundation-summary.md](./archive/m7-e-a-git-diff-foundation-summary.md) | M7-E-A Git Diff Foundation 验收总结 |
 
 ## 推荐技术选型
 

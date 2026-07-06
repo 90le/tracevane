@@ -285,14 +285,15 @@ export function TerminalManagerDialog({
                             </Button>
                           )}
                           <Button
-                            variant="ghost"
+                            variant={attached ? "outline" : "ghost"}
                             size="sm"
                             disabled={closing}
-                            onClick={() => void closeSessions([session], "终端")}
+                            title={attached ? "关闭会结束当前 Panel 布局中的终端 session" : "关闭终端 session"}
+                            onClick={() => void closeSessions([session], attached ? "当前布局终端" : "终端")}
                             data-ide-terminal-manager-close={session.sessionId}
                           >
                             {closing ? <RefreshCw className="animate-spin" /> : <X />}
-                            关闭
+                            {attached ? "强制关闭" : "关闭"}
                           </Button>
                         </div>
                       </article>

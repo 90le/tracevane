@@ -104,9 +104,12 @@ function WorkspaceBrand() {
         collapsed && "justify-center px-0",
       )}
     >
-      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
-        T
-      </div>
+      <img
+        src="/brand/tracevane-mark.svg"
+        alt="Tracevane"
+        className="size-8 shrink-0 rounded-md shadow-sm"
+        draggable={false}
+      />
       {!collapsed && (
         <div className="min-w-0">
           <div className="truncate text-md font-semibold text-ink-strong">
@@ -250,9 +253,12 @@ function ThemeToggle({
 function MobileDrawerBrand() {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
-      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-ink font-semibold">
-        T
-      </div>
+      <img
+        src="/brand/tracevane-mark.svg"
+        alt="Tracevane"
+        className="size-8 shrink-0 rounded-md shadow-sm"
+        draggable={false}
+      />
       <div className="min-w-0">
         <SheetTitle>Tracevane</SheetTitle>
         <div className="truncate text-xs text-subtle">

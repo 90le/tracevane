@@ -40,6 +40,10 @@ function tabSelector(pathValue) {
   return `[data-ide-editor-tab-path="${cssAttr(pathValue)}"]`;
 }
 
+function gitApiRootId(rootId) {
+  return rootId === 'openclaw-root' ? 'system-root' : rootId;
+}
+
 function createDefaultWorkbenchLayout(directoryPath = '') {
   return {
     layoutVersion: 1,
@@ -122,7 +126,7 @@ async function run() {
   });
   await createFile(rootId, gitFilePath, `tracevane git smoke ${suffix}\n`);
 
-  const status = await api(`/api/git/status?${new URLSearchParams({ rootId, path: repoParentRelativePath }).toString()}`);
+  const status = await api(`/api/git/status?${new URLSearchParams({ rootId: gitApiRootId(rootId), path: repoParentRelativePath }).toString()}`);
   const expectedRepoPath = normalizePortablePath(path.relative(process.cwd(), path.resolve(root.absolutePath, gitFilePath)));
   if (!status.available) throw new Error(`Git status unavailable: ${status.message}`);
   if (!status.changes?.some((change) => change.path === expectedRepoPath && change.kind === 'untracked')) {

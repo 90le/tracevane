@@ -143,7 +143,7 @@ function createDashboard() {
           updateAvailable: true,
           source: "https://tracevane.90le.cn/tracevane-latest.json",
           packageUrl: "https://tracevane.90le.cn/tracevane-0.1.21.tar.gz",
-          minOpenClawVersion: "2026.4.8",
+          minOpenClawVersion: "2026.5.28",
           notes: ["gateway reload fix"],
         };
       },

@@ -39,6 +39,7 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
       rootId: url.searchParams.get("rootId") || "",
       path: url.searchParams.get("path") || "",
       file: url.searchParams.get("file") || "",
+      previousFile: url.searchParams.get("previousFile") || "",
       staged: url.searchParams.get("staged") === "true",
       untracked: url.searchParams.get("untracked") === "true",
     };
@@ -51,6 +52,7 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
         payload.file || "",
         payload.staged === true,
         payload.untracked === true,
+        payload.previousFile || "",
       ),
     );
   });

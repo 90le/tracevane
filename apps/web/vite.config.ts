@@ -26,7 +26,7 @@ const tracevaneWebPort = normalizePort(process.env.TRACEVANE_WEB_PORT, 5176);
 const tracevaneBasePath = process.env.TRACEVANE_BASE_PATH || "";
 const webConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const tracevaneRootDir = path.resolve(webConfigDir, "..", "..");
-const TRACEVANE_PACKAGE_VERSION_FALLBACK = "0.1.70";
+const TRACEVANE_PACKAGE_VERSION_FALLBACK = "0.1.71";
 const tracevanePackageVersionOverride =
   process.env.TRACEVANE_BUILD_VERSION?.trim() || "";
 const tracevanePackageVersion = (() => {

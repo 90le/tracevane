@@ -200,6 +200,13 @@ async function run() {
     await page.locator('[data-ide-terminal-manager-dialog]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`, { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
+    const activeCloseButton = page.locator(`[data-ide-terminal-manager-close="${activeTerminalId}"]`);
+    await activeCloseButton.waitFor({ state: 'visible', timeout: 30_000 });
+    await activeCloseButton.getByText('强制关闭').waitFor({ state: 'visible', timeout: 30_000 });
+    const activeCloseTitle = await activeCloseButton.getAttribute('title');
+    if (!String(activeCloseTitle || '').includes('当前 Panel 布局')) {
+      throw new Error(`Attached terminal close button did not expose destructive title: ${activeCloseTitle}`);
+    }
     await page.locator(`[data-ide-terminal-manager-attach="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-terminal-manager-refresh]').click();
     await page.locator(`[data-ide-terminal-manager-session="${activeTerminalId}"]`).waitFor({ state: 'visible', timeout: 30_000 });

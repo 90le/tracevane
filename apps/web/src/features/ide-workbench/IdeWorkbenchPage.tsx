@@ -31,7 +31,7 @@ import { EditorDock } from "./editor";
 import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
-import { IdeSourceControlView, useIdeGitStatus } from "./git";
+import { IdeSourceControlView, type IdeGitDecoratedChange, useIdeGitStatus } from "./git";
 import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { TerminalPanel } from "./terminal";
@@ -160,9 +160,42 @@ export function IdeWorkbenchPage() {
     openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true });
   }, [layoutApi, openFilePath]);
 
-  const openGitChange = React.useCallback((request: { rootId: string; path: string; pinned?: boolean }) => {
-    openFilePath({ rootId: request.rootId, path: request.path }, { pinned: request.pinned ?? true });
-  }, [openFilePath]);
+  const openGitChangeDiff = React.useCallback((request: { rootId: string; change: IdeGitDecoratedChange }) => {
+    const { change } = request;
+    const diffTabId = `${editorDocumentId({ rootId: request.rootId, path: change.rootPath })}::git-diff::${change.staged ? "staged" : "working"}`;
+    const tab: IdeWorkbenchEditorTab = {
+      id: diffTabId,
+      ref: { rootId: request.rootId, path: change.rootPath },
+      title: `${editorTitleForPath(change.rootPath)} (diff)`,
+      mode: "git-diff",
+      gitDiff: {
+        directoryPath,
+        repoPath: change.path,
+        previousPath: change.previousPath,
+        rootPath: change.rootPath,
+        staged: change.staged && !change.unstaged,
+        untracked: change.kind === "untracked",
+      },
+      preview: false,
+      pinned: true,
+      dirty: false,
+    };
+    layoutApi.setLayout((current) => ({
+      ...current,
+      editorGroups: current.editorGroups.map((group) => {
+        if (group.id !== current.activeEditorGroupId) return group;
+        const existing = group.tabs.find((item) => item.id === tab.id);
+        if (existing) {
+          return {
+            ...group,
+            activeTabId: existing.id,
+            tabs: group.tabs.map((item) => item.id === existing.id ? { ...item, gitDiff: tab.gitDiff, title: tab.title } : item),
+          };
+        }
+        return { ...group, activeTabId: tab.id, tabs: [...group.tabs, tab] };
+      }),
+    }));
+  }, [directoryPath, layoutApi]);
 
   const openProblem = React.useCallback((problem: WorkbenchProblem) => {
     if (!problem.path) return;
@@ -481,7 +514,7 @@ export function IdeWorkbenchPage() {
               rootId={rootId}
               rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
               git={gitStatus}
-              onOpenFile={openGitChange}
+              onOpenDiff={openGitChangeDiff}
             />
           ) : layout.activeActivityId === "explorer" ? (
             <IdeExplorerView

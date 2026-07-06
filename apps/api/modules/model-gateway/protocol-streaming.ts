@@ -397,6 +397,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     text: "",
     textBlockIndex: null as number | null,
     textBlockStopped: false,
+    citations: [] as JsonRecord[],
     nextContentIndex: 0,
     tools: new Map<number, ToolStreamBlock>(),
     toolIndexByItemId: new Map<string, number>(),
@@ -439,6 +440,11 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicTextDelta(state, res, delta);
         }
+        return;
+      }
+      if (event.event === "response.output_text.annotation.added" && isRecord(event.json.annotation)) {
+        ensureAnthropicTextMessageStart(state, res);
+        pushAnthropicCitationDelta(state, res, event.json.annotation);
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
@@ -546,6 +552,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     textAdded: false,
     textDone: false,
     textOutputIndex: null as number | null,
+    annotations: [] as JsonRecord[],
     nextOutputIndex: 0,
     tools: new Map<number, ToolStreamBlock>(),
     customToolNames: new Set(options.customToolNames || []),
@@ -603,6 +610,10 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
         if (delta.type === "text_delta") {
           const text = stringOrNull(delta.text);
           if (text) pushResponsesTextDelta(state, res, text);
+          return;
+        }
+        if (delta.type === "citations_delta" && isRecord(delta.citation)) {
+          pushResponsesAnnotationDelta(state, res, delta.citation);
           return;
         }
         if (delta.type === "input_json_delta") {
@@ -673,7 +684,9 @@ export function writeCodexResponsesSseFromResponse(
   const model = stringOrNull(response.model) || fallbackModel;
   const createdAt = numberOrNull(response.created_at) || Math.floor(Date.now() / 1_000);
   const output = Array.isArray(response.output)
-    ? response.output.filter((item): item is JsonRecord => isRecord(item))
+    ? response.output
+      .filter((item): item is JsonRecord => isRecord(item))
+      .map(normalizeResponsesOutputItemAnnotations)
     : [];
   const usage = isRecord(response.usage) ? response.usage : null;
   const status = stringOrNull(response.status) || "completed";
@@ -731,6 +744,18 @@ export function writeCodexResponsesSseFromResponse(
             output_index: outputIndex,
             content_index: contentIndex,
             delta: text,
+          });
+        }
+        if (Array.isArray(part.annotations)) {
+          part.annotations.filter(isRecord).forEach((annotation, annotationIndex) => {
+            writeSseEvent(res, "response.output_text.annotation.added", {
+              type: "response.output_text.annotation.added",
+              item_id: itemId,
+              output_index: outputIndex,
+              content_index: contentIndex,
+              annotation_index: annotationIndex,
+              annotation,
+            });
           });
         }
         writeSseEvent(res, "response.output_text.done", {
@@ -1036,6 +1061,34 @@ function pushAnthropicTextDelta(
     type: "content_block_delta",
     index: state.textBlockIndex,
     delta: { type: "text_delta", text: delta },
+  });
+}
+
+function pushAnthropicCitationDelta(
+  state: {
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    nextContentIndex: number;
+    citations?: JsonRecord[];
+  },
+  res: http.ServerResponse,
+  annotation: JsonRecord,
+): void {
+  if (state.textBlockIndex === null) {
+    state.textBlockIndex = state.nextContentIndex;
+    state.nextContentIndex += 1;
+    writeSseEvent(res, "content_block_start", {
+      type: "content_block_start",
+      index: state.textBlockIndex,
+      content_block: { type: "text", text: "" },
+    });
+  }
+  const citation = mapResponsesAnnotationToAnthropicCitation(annotation);
+  state.citations?.push(citation);
+  writeSseEvent(res, "content_block_delta", {
+    type: "content_block_delta",
+    index: state.textBlockIndex,
+    delta: { type: "citations_delta", citation },
   });
 }
 
@@ -1363,6 +1416,7 @@ function pushResponsesTextDelta(
     textItemId: string;
     textAdded: boolean;
     textOutputIndex: number | null;
+    annotations?: JsonRecord[];
     nextOutputIndex: number;
   },
   res: http.ServerResponse,
@@ -1399,6 +1453,36 @@ function pushResponsesTextDelta(
     output_index: state.textOutputIndex,
     content_index: 0,
     delta,
+  });
+}
+
+function pushResponsesAnnotationDelta(
+  state: {
+    responseStarted: boolean;
+    responseId: string;
+    model: string | null;
+    createdAt: number;
+    outputText: string;
+    textItemId: string;
+    textAdded: boolean;
+    textOutputIndex: number | null;
+    annotations?: JsonRecord[];
+    nextOutputIndex: number;
+  },
+  res: http.ServerResponse,
+  citation: JsonRecord,
+): void {
+  pushResponsesTextDelta(state, res, "");
+  const annotation = mapAnthropicCitationToResponsesAnnotation(citation);
+  const annotationIndex = state.annotations?.length ?? 0;
+  state.annotations?.push(annotation);
+  writeSseEvent(res, "response.output_text.annotation.added", {
+    type: "response.output_text.annotation.added",
+    item_id: state.textItemId,
+    output_index: state.textOutputIndex,
+    content_index: 0,
+    annotation_index: annotationIndex,
+    annotation,
   });
 }
 
@@ -1522,6 +1606,7 @@ function finalizeResponsesStream(
     textAdded: boolean;
     textDone: boolean;
     textOutputIndex: number | null;
+    annotations?: JsonRecord[];
     tools: Map<number, ToolStreamBlock>;
     completedOutput: JsonRecord[];
     usage: JsonRecord | null;
@@ -1539,7 +1624,7 @@ function finalizeResponsesStream(
       type: "message",
       status: "completed",
       role: "assistant",
-      content: [{ type: "output_text", text: state.outputText, annotations: [] }],
+      content: [{ type: "output_text", text: state.outputText, annotations: state.annotations || [] }],
     };
     output.push(item);
     writeSseEvent(res, "response.output_text.done", {
@@ -1937,6 +2022,71 @@ function mapResponsesUsageToChat(usage: JsonRecord): JsonRecord {
     completion_tokens: completionTokens,
     total_tokens: totalTokens,
   };
+}
+
+
+function normalizeResponsesOutputItemAnnotations(item: JsonRecord): JsonRecord {
+  if (!Array.isArray(item.content)) return item;
+  const content = item.content.map((part) => {
+    if (!isRecord(part) || !Array.isArray(part.annotations)) return part;
+    return {
+      ...part,
+      annotations: part.annotations
+        .filter(isRecord)
+        .map(normalizeResponsesAnnotation),
+    };
+  });
+  return { ...item, content };
+}
+
+function normalizeResponsesAnnotation(annotation: JsonRecord): JsonRecord {
+  if (
+    annotation.type === "web_search_result_location"
+    || annotation.type === "page_location"
+    || annotation.type === "char_location"
+    || annotation.type === "content_block_location"
+  ) {
+    return mapAnthropicCitationToResponsesAnnotation(annotation);
+  }
+  return { ...annotation };
+}
+
+function mapResponsesAnnotationToAnthropicCitation(annotation: JsonRecord): JsonRecord {
+  if (annotation.type === "url_citation") {
+    const mapped: JsonRecord = { type: "web_search_result_location" };
+    if (annotation.url !== undefined) mapped.url = annotation.url;
+    if (annotation.title !== undefined) mapped.title = annotation.title;
+    if (annotation.start_index !== undefined) mapped.start_char_index = annotation.start_index;
+    if (annotation.end_index !== undefined) mapped.end_char_index = annotation.end_index;
+    return { ...annotation, ...mapped };
+  }
+  if (annotation.type === "file_citation" || annotation.type === "container_file_citation") {
+    const mapped: JsonRecord = { type: "page_location" };
+    if (annotation.file_id !== undefined) mapped.file_id = annotation.file_id;
+    if (annotation.filename !== undefined) mapped.document_title = annotation.filename;
+    if (annotation.index !== undefined) mapped.document_index = annotation.index;
+    return { ...annotation, ...mapped };
+  }
+  return { ...annotation };
+}
+
+function mapAnthropicCitationToResponsesAnnotation(citation: JsonRecord): JsonRecord {
+  if (citation.type === "web_search_result_location") {
+    const mapped: JsonRecord = { type: "url_citation" };
+    if (citation.url !== undefined) mapped.url = citation.url;
+    if (citation.title !== undefined) mapped.title = citation.title;
+    if (citation.start_char_index !== undefined) mapped.start_index = citation.start_char_index;
+    if (citation.end_char_index !== undefined) mapped.end_index = citation.end_char_index;
+    return mapped;
+  }
+  if (citation.type === "page_location" || citation.type === "char_location" || citation.type === "content_block_location") {
+    const mapped: JsonRecord = { type: "file_citation" };
+    if (citation.file_id !== undefined) mapped.file_id = citation.file_id;
+    if (citation.document_title !== undefined) mapped.filename = citation.document_title;
+    if (citation.document_index !== undefined) mapped.index = citation.document_index;
+    return mapped;
+  }
+  return { ...citation };
 }
 
 function mapResponsesUsageToAnthropic(usage: JsonRecord): JsonRecord {

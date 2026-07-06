@@ -6,11 +6,12 @@ import { cn } from "@/design/lib/utils";
 import type { IdeWorkbenchEditorTab } from "../types";
 import type { EditorSaveState } from "@/shared/editor-core";
 import { IdeEditorFilePanel } from "./IdeEditorFilePanel";
+import { GitDiffEditorPanel } from "../git/GitDiffEditorPanel";
 import type { IdeEditorPreferences } from "./editorPreferences";
 import type { IdeWorkbenchEditorFileMetadata } from "../types";
 
 export interface EditorPlaceholderParams {
-  kind: "file" | "split-placeholder";
+  kind: "file" | "git-diff" | "split-placeholder";
   tab?: IdeWorkbenchEditorTab;
   title: string;
   description: string;
@@ -43,6 +44,9 @@ export function EditorPlaceholderPanel({
         onFileMetadataChange={callbacks.onFileMetadataChange}
       />
     );
+  }
+  if (params.kind === "git-diff" && params.tab) {
+    return <GitDiffEditorPanel tab={params.tab} />;
   }
   return (
     <div className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink" data-ide-editor-panel data-ide-editor-panel-kind={params.kind}>

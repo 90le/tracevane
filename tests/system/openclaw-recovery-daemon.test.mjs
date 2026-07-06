@@ -49,6 +49,9 @@ const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+const CURRENT_TRACEVANE_VERSION = JSON.parse(
+  fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
+).version;
 
 function makeConfig() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-recovery-"));
@@ -109,7 +112,7 @@ function makeConfig() {
   return {
     pluginId: "tracevane",
     pluginName: "Tracevane",
-    version: "0.1.70",
+    version: CURRENT_TRACEVANE_VERSION,
     port: 3760,
     autoStart: false,
     openclawRoot,
@@ -581,9 +584,9 @@ test("recovery repair prunes deprecated OpenClaw plugin residue conservatively",
     path.join(pluginDir, "installs.json"),
     `${JSON.stringify(
       {
-        hostContractVersion: "0.1.70",
+        hostContractVersion: CURRENT_TRACEVANE_VERSION,
         installs: {
-          discord: { version: "0.1.70" },
+          discord: { version: CURRENT_TRACEVANE_VERSION },
           codex: { version: "2026.6.8" },
         },
       },

@@ -85,7 +85,6 @@ export function adaptCodexResponsesRequestToChat(
     "logit_bias",
     "parallel_tool_calls",
     "presence_penalty",
-    "response_format",
     "seed",
     "stop",
     "stream_options",
@@ -106,6 +105,9 @@ export function adaptCodexResponsesRequestToChat(
 
   const toolChoice = mapResponsesToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
+
+  const responseFormat = mapResponsesTextFormatToChatResponseFormat(request.text) ?? request.response_format;
+  if (responseFormat !== undefined) chatRequest.response_format = responseFormat;
 
   applyChatReasoningOptions(chatRequest, request, options.reasoning || null, {
     preserveEffort: options.preserveReasoningEffort,
@@ -149,12 +151,15 @@ export function adaptChatCompletionToCodexResponse(
     });
   }
   if (text || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+    const outputText: JsonRecord = { type: "output_text", text };
+    const annotations = collectChatOutputAnnotations(message);
+    if (annotations.length) outputText.annotations = annotations;
     output.push({
       type: "message",
       id: `msg_${generatedSuffix}`,
       status: "completed",
       role: "assistant",
-      content: [{ type: "output_text", text }],
+      content: [outputText],
     });
   }
 
@@ -173,6 +178,72 @@ export function adaptChatCompletionToCodexResponse(
     output,
     usage: mapChatUsageToResponses(chatCompletion.usage),
   };
+}
+
+function collectChatOutputAnnotations(message: JsonRecord): JsonRecord[] {
+  const annotations: JsonRecord[] = [];
+  if (Array.isArray(message.annotations)) {
+    annotations.push(...message.annotations.filter(isRecord).map(mapChatAnnotationToResponsesAnnotation));
+  }
+  if (Array.isArray(message.content)) {
+    message.content.forEach((part) => {
+      if (!isRecord(part) || !Array.isArray(part.annotations)) return;
+      for (const annotation of part.annotations) {
+        if (isRecord(annotation)) annotations.push(mapChatAnnotationToResponsesAnnotation(annotation));
+      }
+    });
+  }
+  return annotations;
+}
+
+function mapChatAnnotationToResponsesAnnotation(annotation: JsonRecord): JsonRecord {
+  const type = stringOrNull(annotation.type);
+  if (type === "web_search_result_location") {
+    return withoutUndefined({
+      ...stripAnnotationTransportFields(annotation),
+      type: "url_citation",
+      url: stringOrNull(annotation.url) || undefined,
+      title: stringOrNull(annotation.title) || undefined,
+      start_index: numberOrNull(annotation.start_index)
+        ?? numberOrNull(annotation.start_char_index)
+        ?? undefined,
+      end_index: numberOrNull(annotation.end_index)
+        ?? numberOrNull(annotation.end_char_index)
+        ?? undefined,
+    });
+  }
+  if (type === "page_location" || type === "char_location" || type === "content_block_location") {
+    return withoutUndefined({
+      ...stripAnnotationTransportFields(annotation),
+      type: "file_citation",
+      file_id: stringOrNull(annotation.file_id) || undefined,
+      filename: stringOrNull(annotation.filename)
+        || stringOrNull(annotation.document_title)
+        || undefined,
+      index: numberOrNull(annotation.index)
+        ?? numberOrNull(annotation.document_index)
+        ?? undefined,
+    });
+  }
+  return stripAnnotationTransportFields(annotation);
+}
+
+function stripAnnotationTransportFields(annotation: JsonRecord): JsonRecord {
+  const {
+    content_index: _contentIndex,
+    output_index: _outputIndex,
+    annotation_index: _annotationIndex,
+    start_char_index: _startCharIndex,
+    end_char_index: _endCharIndex,
+    document_index: _documentIndex,
+    document_title: _documentTitle,
+    ...rest
+  } = annotation;
+  return { ...rest };
+}
+
+function withoutUndefined(record: JsonRecord): JsonRecord {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
 
 function parseJsonObject(bodyText: string | undefined): JsonRecord {
@@ -378,7 +449,7 @@ function stripTrailingPlaceholderText(value: string): string {
 function contentToChatContent(content: unknown, role: string): string | JsonRecord[] {
   if (role !== "user") return contentToText(content);
   const parts = contentToChatParts(content);
-  if (!parts.some((part) => part.type === "image_url")) return contentToText(content);
+  if (!parts.some((part) => part.type === "image_url" || part.type === "file")) return contentToText(content);
   return parts;
 }
 
@@ -393,7 +464,14 @@ function contentPartToChatParts(part: unknown): JsonRecord[] {
   if (typeof part === "string") return part ? [{ type: "text", text: part }] : [];
   if (!isRecord(part)) return [];
   const imageUrl = imageUrlFromResponsesPart(part);
-  if (imageUrl) return [{ type: "image_url", image_url: { url: imageUrl } }];
+  if (imageUrl) {
+    const image: JsonRecord = { url: imageUrl };
+    const detail = stringOrNull(part.detail);
+    if (detail) image.detail = detail;
+    return [{ type: "image_url", image_url: image }];
+  }
+  const filePart = inputFilePartFromResponsesPart(part);
+  if (filePart) return [filePart];
   const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
   if (text) return [{ type: "text", text }];
   if (Array.isArray(part.content)) return contentToChatParts(part.content);
@@ -408,9 +486,35 @@ function imageUrlFromResponsesPart(part: JsonRecord): string | null {
   return stringOrNull(part.url);
 }
 
+function inputFilePartFromResponsesPart(part: JsonRecord): JsonRecord | null {
+  if (stringOrNull(part.type) !== "input_file") return null;
+  const file: JsonRecord = {};
+  for (const key of ["file_id", "file_url", "filename", "file_data"] as const) {
+    if (part[key] !== undefined) file[key] = part[key];
+  }
+  const text = inputFileReferenceFromResponsesPart(part);
+  if (text) file.text = text;
+  return Object.keys(file).length ? { type: "file", file } : null;
+}
+
+function inputFileReferenceFromResponsesPart(part: JsonRecord): string | null {
+  if (stringOrNull(part.type) !== "input_file") return null;
+  const fields: string[] = [];
+  const fileId = stringOrNull(part.file_id);
+  const fileUrl = stringOrNull(part.file_url);
+  const filename = stringOrNull(part.filename);
+  if (fileId) fields.push(`file_id=${fileId}`);
+  if (fileUrl) fields.push(`file_url=${fileUrl}`);
+  if (filename) fields.push(`filename=${filename}`);
+  if (!fields.length) return "[OpenAI Responses input_file]";
+  return `[OpenAI Responses input_file: ${fields.join(" ")}]`;
+}
+
 function contentPartToText(part: unknown): string {
   if (typeof part === "string") return part;
   if (!isRecord(part)) return "";
+  const fileReference = inputFileReferenceFromResponsesPart(part);
+  if (fileReference) return fileReference;
   const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
   if (text) return text;
   if (Array.isArray(part.content)) return contentToText(part.content);
@@ -435,7 +539,9 @@ function collectResponsesCustomToolNames(tools: unknown): string[] {
 
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
-  if (tool.type !== "function" && tool.type !== "custom") return null;
+  if (tool.type !== "function" && tool.type !== "custom") {
+    return typeof tool.type === "string" ? { ...tool } : null;
+  }
   const source = isRecord(tool.function) ? tool.function : tool;
   const name = stringOrNull(source.name);
   if (!name) return null;
@@ -458,6 +564,20 @@ function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
     type: "function",
     function: fn,
   };
+}
+
+function mapResponsesTextFormatToChatResponseFormat(text: unknown): unknown {
+  if (!isRecord(text) || !isRecord(text.format)) return undefined;
+  const format = text.format;
+  if (format.type === "json_schema") {
+    const jsonSchema: JsonRecord = {};
+    for (const key of ["name", "schema", "strict", "description"] as const) {
+      if (format[key] !== undefined) jsonSchema[key] = format[key];
+    }
+    return { type: "json_schema", json_schema: jsonSchema };
+  }
+  if (format.type === "json_object") return { type: "json_object" };
+  return undefined;
 }
 
 function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {

@@ -137,7 +137,10 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   const tools = mapChatToolsToAnthropic(request.tools);
   if (tools.length) anthropicRequest.tools = tools;
 
-  const toolChoice = mapChatToolChoiceToAnthropic(request.tool_choice);
+  const toolChoice = applyChatParallelToolChoiceToAnthropic(
+    mapChatToolChoiceToAnthropic(request.tool_choice),
+    request.parallel_tool_calls,
+  );
   if (toolChoice !== undefined) anthropicRequest.tool_choice = toolChoice;
 
   applyAnthropicReasoningOptions(anthropicRequest, request);
@@ -181,6 +184,9 @@ export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string |
   const toolChoice = mapAnthropicToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
 
+  const parallelToolCalls = mapAnthropicParallelToolUseToChat(request.tool_choice);
+  if (parallelToolCalls !== undefined) chatRequest.parallel_tool_calls = parallelToolCalls;
+
   const effort = reasoningEffort(request);
   const mappedEffort = effort ? mapReasoningEffort(effort, "passthrough") : null;
   if (mappedEffort) chatRequest.reasoning_effort = mappedEffort;
@@ -213,6 +219,8 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     role: "assistant",
     content: text || (toolCalls.length ? null : ""),
   };
+  const annotations = collectAnthropicTextCitations(content);
+  if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
 
   const created = Math.floor(Date.now() / 1_000);
@@ -249,7 +257,13 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
       .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
     : [];
   const content: JsonRecord[] = [];
-  if (text) content.push({ type: "text", text });
+  if (text) {
+    const textBlock: JsonRecord = { type: "text", text };
+    if (Array.isArray(message.annotations) && message.annotations.length) {
+      textBlock.citations = message.annotations.filter(isRecord);
+    }
+    content.push(textBlock);
+  }
   content.push(...toolUses);
 
   return {
@@ -262,6 +276,15 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
     stop_sequence: null,
     usage: mapChatUsageToAnthropic(response.usage),
   };
+}
+
+function collectAnthropicTextCitations(content: JsonRecord[]): JsonRecord[] {
+  return content.flatMap((part, contentIndex): JsonRecord[] => {
+    if (part.type !== "text" || !Array.isArray(part.citations)) return [];
+    return part.citations
+      .filter(isRecord)
+      .map((citation) => ({ ...citation, content_index: contentIndex }));
+  });
 }
 
 function parseJsonObject(bodyText: string | undefined, codePrefix: string, context: string): JsonRecord {
@@ -366,13 +389,52 @@ function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
       const imageUrl = stringOrNull(part.image_url.url);
       const image = imageUrlToAnthropicBlock(imageUrl);
       if (image) blocks.push(image);
+      continue;
+    }
+    if (type === "file" || type === "input_file") {
+      const document = chatFilePartToAnthropicDocument(part);
+      if (document) blocks.push(document);
     }
   }
   return blocks;
 }
 
+function chatFilePartToAnthropicDocument(part: JsonRecord): JsonRecord | null {
+  const file = isRecord(part.file) ? part.file : part;
+  const fileId = stringOrNull(file.file_id);
+  const fileUrl = stringOrNull(file.file_url) || stringOrNull(file.url);
+  const fileData = stringOrNull(file.file_data) || stringOrNull(file.data);
+  const filename = stringOrNull(file.filename) || stringOrNull(file.name);
+  let source: JsonRecord | null = null;
+  if (fileId) source = { type: "file", file_id: fileId };
+  else if (fileUrl) source = { type: "url", url: fileUrl };
+  else if (fileData) {
+    source = {
+      type: "base64",
+      media_type: stringOrNull(file.media_type) || stringOrNull(file.mime_type) || "application/octet-stream",
+      data: stripDataUrlPrefix(fileData),
+    };
+  }
+  if (!source) return null;
+  const document: JsonRecord = { type: "document", source };
+  if (filename) document.title = filename;
+  return document;
+}
+
+function stripDataUrlPrefix(value: string): string {
+  const match = /^data:[^;,]+;base64,(.+)$/u.exec(value);
+  return match ? match[1] : value;
+}
+
 function imageUrlToAnthropicBlock(url: string | null): JsonRecord | null {
-  if (!url?.startsWith("data:")) return null;
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return {
+      type: "image",
+      source: { type: "url", url },
+    };
+  }
+  if (!url.startsWith("data:")) return null;
   const match = /^data:([^;,]+);base64,(.+)$/u.exec(url);
   if (!match) return null;
   return {
@@ -420,6 +482,24 @@ function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
   return toolChoice;
 }
 
+function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToolCalls: unknown): unknown {
+  if (parallelToolCalls !== false) return toolChoice;
+  const choice = toolChoice === undefined ? { type: "auto" } : toolChoice;
+  if (isRecord(choice)) {
+    return {
+      ...choice,
+      disable_parallel_tool_use: true,
+    };
+  }
+  if (choice === "auto" || choice === "none") {
+    return { type: choice, disable_parallel_tool_use: true };
+  }
+  if (choice === "required") {
+    return { type: "any", disable_parallel_tool_use: true };
+  }
+  return choice;
+}
+
 function mapAnthropicMessagesToChat(request: JsonRecord): JsonRecord[] {
   const messages: JsonRecord[] = [];
   const system = anthropicSystemToText(request.system);
@@ -462,28 +542,39 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
     return [chatMessage];
   }
 
+  const chatMessages = mapAnthropicUserBlocksToChatMessages(blocks);
+  if (!chatMessages.length) chatMessages.push({ role: "user", content: "" });
+  return chatMessages;
+}
+
+function mapAnthropicUserBlocksToChatMessages(blocks: JsonRecord[]): JsonRecord[] {
   const chatMessages: JsonRecord[] = [];
-  const userContentBlocks = blocks.filter((block) => block.type !== "tool_result");
-  if (userContentBlocks.length) {
+  let userContentBlocks: JsonRecord[] = [];
+
+  const flushUserContent = () => {
+    if (!userContentBlocks.length) return;
     chatMessages.push({
       role: "user",
       content: anthropicBlocksToChatContent(userContentBlocks),
     });
-  }
-  const toolMessages = blocks
-    .filter((block) => block.type === "tool_result")
-    .flatMap((block) => {
-      const toolCallId = stringOrNull(block.tool_use_id);
-      return toolCallId
-        ? [{
-          role: "tool",
-          tool_call_id: toolCallId,
-          content: anthropicContentToText(block.content),
-        }]
-        : [];
+    userContentBlocks = [];
+  };
+
+  for (const block of blocks) {
+    if (block.type !== "tool_result") {
+      userContentBlocks.push(block);
+      continue;
+    }
+    flushUserContent();
+    const toolCallId = stringOrNull(block.tool_use_id);
+    if (!toolCallId) continue;
+    chatMessages.push({
+      role: "tool",
+      tool_call_id: toolCallId,
+      content: anthropicContentToText(block.content),
     });
-  chatMessages.push(...toolMessages);
-  if (!chatMessages.length) chatMessages.push({ role: "user", content: "" });
+  }
+  flushUserContent();
   return chatMessages;
 }
 
@@ -508,6 +599,10 @@ function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
       const imageUrl = anthropicImageSourceToChatImageUrl(block.source);
       return imageUrl ? [{ type: "image_url", image_url: { url: imageUrl } }] : [];
     }
+    if (block.type === "document") {
+      const filePart = anthropicDocumentToChatFilePart(block);
+      return filePart ? [filePart] : [];
+    }
     const text = anthropicContentToText(block);
     return text ? [{ type: "text", text }] : [];
   });
@@ -516,6 +611,27 @@ function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
     return parts.map((part) => stringOrNull(part.text) || "").join("");
   }
   return parts;
+}
+
+function anthropicDocumentToChatFilePart(block: JsonRecord): JsonRecord | null {
+  const source = isRecord(block.source) ? block.source : {};
+  const file: JsonRecord = {};
+  if (source.type === "file") {
+    const fileId = stringOrNull(source.file_id);
+    if (fileId) file.file_id = fileId;
+  } else if (source.type === "url") {
+    const url = stringOrNull(source.url);
+    if (url) file.file_url = url;
+  } else if (source.type === "base64") {
+    const data = stringOrNull(source.data);
+    if (data) file.file_data = data;
+    const mediaType = stringOrNull(source.media_type);
+    if (mediaType) file.media_type = mediaType;
+  }
+  const title = stringOrNull(block.title) || stringOrNull(block.name);
+  if (title) file.filename = title;
+  if (!Object.keys(file).length) return null;
+  return { type: "file", file };
 }
 
 function anthropicImageSourceToChatImageUrl(source: unknown): string | null {
@@ -573,6 +689,11 @@ function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
     return name ? { type: "function", function: { name } } : toolChoice;
   }
   return toolChoice;
+}
+
+function mapAnthropicParallelToolUseToChat(toolChoice: unknown): boolean | undefined {
+  if (!isRecord(toolChoice)) return undefined;
+  return toolChoice.disable_parallel_tool_use === true ? false : undefined;
 }
 
 function mapChatToolCallToAnthropicToolUse(toolCall: unknown): JsonRecord | null {

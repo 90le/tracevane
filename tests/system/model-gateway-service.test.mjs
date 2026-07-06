@@ -8497,7 +8497,15 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         output: [{
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "Anthropic through Responses." }],
+          content: [{
+            type: "output_text",
+            text: "Anthropic through Responses.",
+            annotations: [{
+              type: "url_citation",
+              url: "https://example.test/source",
+              title: "Source",
+            }],
+          }],
         }],
         usage: {
           input_tokens: 9,
@@ -8519,6 +8527,9 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         "",
         "event: response.output_text.delta",
         "data: {\"type\":\"response.output_text.delta\",\"delta\":\"stream\"}",
+        "",
+        "event: response.output_text.annotation.added",
+        "data: {\"type\":\"response.output_text.annotation.added\",\"item_id\":\"msg_resp_anthropic_stream\",\"output_index\":0,\"content_index\":0,\"annotation_index\":0,\"annotation\":{\"type\":\"url_citation\",\"url\":\"https://example.test/stream-source\",\"title\":\"Stream Source\"}}",
         "",
         "event: response.completed",
         "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_anthropic_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Anthropic stream\"}]}],\"usage\":{\"input_tokens\":6,\"output_tokens\":2,\"total_tokens\":8}}}",
@@ -8585,7 +8596,13 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           model: "gpt-native-responses",
           messages: [
             { role: "system", content: "Stay concise." },
-            { role: "user", content: "chat please" },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "chat please" },
+                { type: "image_url", image_url: { url: "https://example.test/chart.png", detail: "high" } },
+              ],
+            },
             {
               role: "assistant",
               content: "I will save a note.",
@@ -8611,8 +8628,24 @@ test("model gateway protocol matrix forwards native openai responses and guards 
                 required: ["note"],
               },
             },
+          }, {
+            type: "web_search_preview",
+            search_context_size: "low",
           }],
           tool_choice: { type: "function", function: { name: "save_note" } },
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "note_result",
+              schema: {
+                type: "object",
+                properties: { ok: { type: "boolean" } },
+                required: ["ok"],
+                additionalProperties: false,
+              },
+              strict: true,
+            },
+          },
           max_tokens: 128,
           temperature: 0.3,
         },
@@ -8669,7 +8702,39 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         body: {
           model: "gpt-native-responses",
           max_tokens: 32,
-          messages: [{ role: "user", content: "anthropic please" }],
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "anthropic please" },
+                {
+                  type: "document",
+                  source: { type: "url", url: "https://example.test/spec.pdf" },
+                  title: "spec.pdf",
+                },
+              ],
+            },
+            {
+              role: "assistant",
+              content: [{ type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } }],
+            },
+            {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: "call_lookup", content: "done" },
+                { type: "text", text: "continue after tool result" },
+              ],
+            },
+          ],
+          tools: [{
+            name: "lookup",
+            description: "Lookup docs",
+            input_schema: {
+              type: "object",
+              properties: { query: { type: "string" } },
+            },
+          }],
+          tool_choice: { type: "auto", disable_parallel_tool_use: true },
         },
       });
       assert.equal(messages.status, 200);
@@ -8680,6 +8745,13 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       assert.deepEqual(messages.body.content, [{
         type: "text",
         text: "Anthropic through Responses.",
+        citations: [{
+          type: "url_citation",
+          url: "https://example.test/source",
+          title: "Source",
+          output_index: 0,
+          content_index: 0,
+        }],
       }]);
       assert.equal(messages.body.stop_reason, "end_turn");
       assert.deepEqual(messages.body.usage, {
@@ -8705,6 +8777,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         "content_block_start",
         "content_block_delta",
         "content_block_delta",
+        "content_block_delta",
         "content_block_stop",
         "message_delta",
         "message_stop",
@@ -8712,8 +8785,16 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       assert.equal(messageStreamEvents[0].data.message.id, "msg_resp_anthropic_stream");
       assert.equal(messageStreamEvents[2].data.delta.text, "Anthropic ");
       assert.equal(messageStreamEvents[3].data.delta.text, "stream");
-      assert.equal(messageStreamEvents[5].data.delta.stop_reason, "end_turn");
-      assert.deepEqual(messageStreamEvents[5].data.usage, { output_tokens: 2 });
+      assert.deepEqual(messageStreamEvents[4].data.delta, {
+        type: "citations_delta",
+        citation: {
+          type: "web_search_result_location",
+          url: "https://example.test/stream-source",
+          title: "Stream Source",
+        },
+      });
+      assert.equal(messageStreamEvents[6].data.delta.stop_reason, "end_turn");
+      assert.deepEqual(messageStreamEvents[6].data.usage, { output_tokens: 2 });
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
@@ -8752,7 +8833,13 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
     model: "gpt-native-responses",
     input: [
-      { role: "user", content: [{ type: "input_text", text: "chat please" }] },
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "chat please" },
+          { type: "input_image", image_url: "https://example.test/chart.png", detail: "high" },
+        ],
+      },
       { role: "assistant", content: [{ type: "output_text", text: "I will save a note." }] },
 	      {
 	        type: "function_call",
@@ -8781,8 +8868,24 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         properties: { note: { type: "string" } },
         required: ["note"],
       },
+    }, {
+      type: "web_search_preview",
+      search_context_size: "low",
     }],
     tool_choice: { type: "function", name: "save_note" },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "note_result",
+        schema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
   });
   assert.equal(upstreamCalls[3].url, "https://responses-native.example.test/v1/responses");
   assert.equal(upstreamCalls[3].authorization, "Bearer sk-native-responses-secret");
@@ -8795,9 +8898,42 @@ test("model gateway protocol matrix forwards native openai responses and guards 
   assert.equal(upstreamCalls[4].authorization, "Bearer sk-native-responses-secret");
   assert.deepEqual(JSON.parse(upstreamCalls[4].body), {
     model: "gpt-native-responses",
-    input: [{ role: "user", content: [{ type: "input_text", text: "anthropic please" }] }],
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "anthropic please" },
+          { type: "input_file", file_url: "https://example.test/spec.pdf", filename: "spec.pdf" },
+        ],
+      },
+      {
+        type: "function_call",
+        id: "fc_call_lookup",
+        call_id: "call_lookup",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      },
+      {
+        type: "function_call_output",
+        call_id: "call_lookup",
+        output: "done",
+      },
+      { role: "user", content: [{ type: "input_text", text: "continue after tool result" }] },
+    ],
     stream: false,
     max_output_tokens: 32,
+    tools: [{
+      type: "function",
+      name: "lookup",
+      description: "Lookup docs",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+      },
+    }],
+    tool_choice: "auto",
+    parallel_tool_calls: false,
   });
   assert.equal(upstreamCalls[5].url, "https://responses-native.example.test/v1/responses");
   assert.equal(upstreamCalls[5].authorization, "Bearer sk-native-responses-secret");
@@ -9059,6 +9195,11 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         message: {
           role: "assistant",
           content: "Chat provider answer.",
+          annotations: [{
+            type: "url_citation",
+            url: "https://example.test/chat-source",
+            title: "Chat Source",
+          }],
           tool_calls: [{
             id: "call_save",
             type: "function",
@@ -9102,7 +9243,10 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             },
             {
               role: "user",
-              content: [{ type: "tool_result", tool_use_id: "call_lookup", content: "done" }],
+              content: [
+                { type: "tool_result", tool_use_id: "call_lookup", content: "done" },
+                { type: "text", text: "continue after tool result" },
+              ],
             },
           ],
           tools: [{
@@ -9110,7 +9254,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             description: "Lookup docs",
             input_schema: { type: "object", properties: { query: { type: "string" } } },
           }],
-          tool_choice: { type: "tool", name: "lookup" },
+          tool_choice: { type: "tool", name: "lookup", disable_parallel_tool_use: true },
           temperature: 0.1,
           metadata: {
             user_id: "claude-code-session",
@@ -9124,7 +9268,15 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       assert.equal(messages.body.type, "message");
       assert.equal(messages.body.role, "assistant");
       assert.deepEqual(messages.body.content, [
-        { type: "text", text: "Chat provider answer." },
+        {
+          type: "text",
+          text: "Chat provider answer.",
+          citations: [{
+            type: "url_citation",
+            url: "https://example.test/chat-source",
+            title: "Chat Source",
+          }],
+        },
         { type: "tool_use", id: "call_save", name: "save_note", input: { note: "ok" } },
       ]);
       assert.equal(messages.body.stop_reason, "tool_use");
@@ -9221,6 +9373,10 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         tool_call_id: "call_lookup",
         content: "done",
       },
+      {
+        role: "user",
+        content: "continue after tool result",
+      },
     ],
     stream: false,
     max_tokens: 128,
@@ -9237,6 +9393,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       type: "function",
       function: { name: "lookup" },
     },
+    parallel_tool_calls: false,
   });
   assert.equal(upstreamCalls[1].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-anthropic-chat-secret");
@@ -9352,7 +9509,15 @@ test("model gateway adapts codex responses through native anthropic messages pro
         type: "message",
         role: "assistant",
         model: "claude-native",
-        content: [{ type: "text", text: "Anthropic stream" }],
+        content: [{
+          type: "text",
+          text: "Anthropic stream",
+          citations: [{
+            type: "web_search_result_location",
+            url: "https://example.test/anthropic-stream",
+            title: "Anthropic Stream",
+          }],
+        }],
         stop_reason: "end_turn",
         usage: {
           input_tokens: 6,
@@ -9393,7 +9558,13 @@ test("model gateway adapts codex responses through native anthropic messages pro
         body: {
           model: "claude-native",
           instructions: "Use concise responses.",
-          input: [{ role: "user", content: "Plan the task." }],
+          input: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: "Plan the task.\n" },
+              { type: "input_file", file_url: "https://example.test/brief.pdf", filename: "brief.pdf" },
+            ],
+          }],
           tools: [{
             type: "function",
             name: "lookup",
@@ -9460,6 +9631,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
         "response.output_item.added",
         "response.content_part.added",
         "response.output_text.delta",
+        "response.output_text.annotation.added",
         "response.output_text.done",
         "response.content_part.done",
         "response.output_item.done",
@@ -9467,8 +9639,18 @@ test("model gateway adapts codex responses through native anthropic messages pro
         null,
       ]);
       assert.equal(streamEvents[4].data.delta, "Anthropic stream");
-      assert.equal(streamEvents[8].data.response.output[0].content[0].text, "Anthropic stream");
-      assert.equal(streamEvents[9].data, "[DONE]");
+      assert.deepEqual(streamEvents[5].data.annotation, {
+        type: "url_citation",
+        url: "https://example.test/anthropic-stream",
+        title: "Anthropic Stream",
+      });
+      assert.equal(streamEvents[9].data.response.output[0].content[0].text, "Anthropic stream");
+      assert.deepEqual(streamEvents[9].data.response.output[0].content[0].annotations, [{
+        type: "url_citation",
+        url: "https://example.test/anthropic-stream",
+        title: "Anthropic Stream",
+      }]);
+      assert.equal(streamEvents[10].data, "[DONE]");
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
@@ -9493,7 +9675,17 @@ test("model gateway adapts codex responses through native anthropic messages pro
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "claude-native",
     max_tokens: 256,
-    messages: [{ role: "user", content: "Plan the task." }],
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: "Plan the task.\n" },
+        {
+          type: "document",
+          source: { type: "url", url: "https://example.test/brief.pdf" },
+          title: "brief.pdf",
+        },
+      ],
+    }],
     system: "Use concise responses.",
     temperature: 0.1,
     tools: [{
@@ -9593,7 +9785,18 @@ test("model gateway adapts chat completions through native anthropic messages pr
       role: "assistant",
       model: "claude-native",
       content: [
-        { type: "text", text: "Sunny in Tokyo." },
+        {
+          type: "text",
+          text: "Sunny in Tokyo.",
+          citations: [{
+            type: "char_location",
+            cited_text: "Tokyo is sunny.",
+            document_index: 0,
+            document_title: "Weather Doc",
+            start_char_index: 0,
+            end_char_index: 15,
+          }],
+        },
         { type: "tool_use", id: "call_save", name: "save_weather", input: { city: "Tokyo" } },
       ],
       stop_reason: "tool_use",
@@ -9616,7 +9819,13 @@ test("model gateway adapts chat completions through native anthropic messages pr
           model: "claude-native",
           messages: [
             { role: "system", content: "Use metric units." },
-            { role: "user", content: "Weather?" },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Weather?" },
+                { type: "image_url", image_url: { url: "https://example.test/weather-map.png" } },
+              ],
+            },
             {
               role: "assistant",
               content: "I will check.",
@@ -9648,6 +9857,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             },
           }],
           tool_choice: { type: "function", function: { name: "get_weather" } },
+          parallel_tool_calls: false,
           max_tokens: 128,
           temperature: 0.2,
           top_p: 0.9,
@@ -9664,6 +9874,15 @@ test("model gateway adapts chat completions through native anthropic messages pr
       assert.deepEqual(chat.body.choices[0].message, {
         role: "assistant",
         content: "Sunny in Tokyo.",
+        annotations: [{
+          type: "char_location",
+          cited_text: "Tokyo is sunny.",
+          document_index: 0,
+          document_title: "Weather Doc",
+          start_char_index: 0,
+          end_char_index: 15,
+          content_index: 0,
+        }],
         tool_calls: [{
           id: "call_save",
           type: "function",
@@ -9725,7 +9944,13 @@ test("model gateway adapts chat completions through native anthropic messages pr
     model: "claude-native",
     max_tokens: 128,
     messages: [
-      { role: "user", content: "Weather?" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Weather?" },
+          { type: "image", source: { type: "url", url: "https://example.test/weather-map.png" } },
+        ],
+      },
       {
         role: "assistant",
         content: [
@@ -9751,7 +9976,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         required: ["city"],
       },
     }],
-    tool_choice: { type: "tool", name: "get_weather" },
+    tool_choice: { type: "tool", name: "get_weather", disable_parallel_tool_use: true },
   });
   assert.equal(upstreamCalls[1].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].method, "POST");
@@ -10467,6 +10692,11 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         message: {
           role: "assistant",
           content: "Adapted answer.",
+          annotations: [{
+            type: "url_citation",
+            url: "https://example.test/adapted",
+            title: "Adapted Source",
+          }],
         },
         finish_reason: "stop",
       }],
@@ -10494,7 +10724,8 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
               role: "user",
               content: [
                 { type: "input_text", text: "Hello" },
-                { type: "input_image", image_url: "data:image/png;base64,TEST_IMAGE" },
+                { type: "input_image", image_url: "data:image/png;base64,TEST_IMAGE", detail: "low" },
+                { type: "input_file", file_id: "file_abc123", filename: "notes.md" },
               ],
             },
             { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier" }] },
@@ -10509,10 +10740,26 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
               properties: { query: { type: "string" } },
               required: ["query"],
             },
+          }, {
+            type: "web_search_preview",
+            search_context_size: "low",
           }],
           tool_choice: { type: "function", name: "lookup" },
           stream: false,
           max_output_tokens: 64,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "lookup_result",
+              schema: {
+                type: "object",
+                properties: { answer: { type: "string" } },
+                required: ["answer"],
+                additionalProperties: false,
+              },
+              strict: true,
+            },
+          },
         },
       });
 
@@ -10525,7 +10772,15 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
       assert.equal(responses.body.status, "completed");
       assert.equal(responses.body.output[0].type, "message");
       assert.equal(responses.body.output[0].role, "assistant");
-      assert.deepEqual(responses.body.output[0].content, [{ type: "output_text", text: "Adapted answer." }]);
+      assert.deepEqual(responses.body.output[0].content, [{
+        type: "output_text",
+        text: "Adapted answer.",
+        annotations: [{
+          type: "url_citation",
+          url: "https://example.test/adapted",
+          title: "Adapted Source",
+        }],
+      }]);
       assert.deepEqual(responses.body.usage, {
         input_tokens: 10,
         output_tokens: 4,
@@ -10574,7 +10829,8 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         role: "user",
         content: [
           { type: "text", text: "Hello" },
-          { type: "image_url", image_url: { url: "data:image/png;base64,TEST_IMAGE" } },
+          { type: "image_url", image_url: { url: "data:image/png;base64,TEST_IMAGE", detail: "low" } },
+          { type: "file", file: { file_id: "file_abc123", filename: "notes.md", text: "[OpenAI Responses input_file: file_id=file_abc123 filename=notes.md]" } },
         ],
       },
       { role: "assistant", content: "Earlier" },
@@ -10582,6 +10838,19 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
     ],
     stream: false,
     max_tokens: 64,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "lookup_result",
+        schema: {
+          type: "object",
+          properties: { answer: { type: "string" } },
+          required: ["answer"],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
     tools: [{
       type: "function",
       function: {
@@ -10593,6 +10862,9 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
           required: ["query"],
         },
       },
+    }, {
+      type: "web_search_preview",
+      search_context_size: "low",
     }],
     tool_choice: {
       type: "function",

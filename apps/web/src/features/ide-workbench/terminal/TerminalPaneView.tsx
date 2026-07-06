@@ -491,7 +491,7 @@ export function TerminalPaneView({
               </span>
             ) : null}
           </button>
-          <Button variant="ghost" size="icon" onClick={closePane} aria-label="关闭终端 Pane" title="Close/Kill Pane">
+          <Button variant="ghost" size="icon" onClick={closePane} aria-label="强制关闭终端 Pane" title="强制关闭终端 Pane">
             <X />
           </Button>
         </header>
@@ -537,7 +537,7 @@ export function TerminalPaneView({
           <TerminalPaneMenuButton icon={<Copy />} label="复制终端 ID" onClick={() => { void navigator.clipboard?.writeText?.(terminalId); setMenu(null); }} />
           <TerminalPaneMenuButton icon={<X />} label="清空选区" disabled={!selectedText} onClick={() => { clearSelection(); setMenu(null); }} />
           <div className="my-1 border-t border-line" />
-          <TerminalPaneMenuButton danger icon={<X />} label="关闭终端 Pane" onClick={() => { setMenu(null); void closePane(); }} />
+          <TerminalPaneMenuButton danger icon={<X />} label="强制关闭终端 Pane" onClick={() => { setMenu(null); void closePane(); }} />
         </div>
       ) : null}
     </section>

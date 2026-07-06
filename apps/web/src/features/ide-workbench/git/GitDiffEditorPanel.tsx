@@ -1,0 +1,134 @@
+import * as React from "react";
+import { AlertCircle, FileDiff, Loader2 } from "lucide-react";
+
+import { cn } from "@/design/lib/utils";
+import { CodeBlock, MonacoDiffPanel } from "@/shared/diff";
+import { languageForPath } from "@/shared/editor-core";
+import { getGitDiff } from "@/lib/api/git";
+import { appendWorkbenchOutput } from "../output";
+import type { IdeWorkbenchEditorTab } from "../types";
+import type { GitDiffPayload } from "../../../../../../types/git";
+
+export interface GitDiffEditorPanelProps {
+  tab: IdeWorkbenchEditorTab;
+}
+
+export function GitDiffEditorPanel({ tab }: GitDiffEditorPanelProps) {
+  const request = tab.gitDiff;
+  const [payload, setPayload] = React.useState<GitDiffPayload | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!request) return undefined;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    getGitDiff({
+      rootId: tab.ref.rootId,
+      path: request.directoryPath,
+      file: request.repoPath,
+      previousFile: request.previousPath,
+      staged: request.staged,
+      untracked: request.untracked,
+    }, controller.signal)
+      .then((next) => {
+        setPayload(next);
+        appendWorkbenchOutput({
+          channel: { id: "git", label: "Git", kind: "custom" },
+          level: next.binary ? "warn" : "info",
+          text: `diff ${next.staged ? "staged" : "working"}: ${next.path}${next.binary ? " (binary)" : ""}`,
+        });
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        appendWorkbenchOutput({
+          channel: { id: "git", label: "Git", kind: "custom" },
+          level: "error",
+          text: `diff failed: ${request.repoPath}: ${message}`,
+        });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [request, tab.ref.rootId]);
+
+  if (!request) {
+    return <GitDiffState title="Git diff 请求无效" description="该标签缺少 Git diff metadata。" tone="danger" />;
+  }
+
+  const language = languageForPath(payload?.modifiedPath || payload?.originalPath || request.repoPath || tab.ref.path);
+  const canRenderMonacoDiff = payload && !payload.binary && payload.originalContent !== null && payload.modifiedContent !== null;
+
+  return (
+    <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-canvas" data-ide-git-diff-panel data-ide-git-diff-path={request.rootPath}>
+      <div className="border-b border-line bg-panel px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileDiff className="size-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ink-strong" data-ide-git-diff-title>{tab.title}</div>
+            <div className="truncate font-mono text-2xs text-subtle" data-ide-git-diff-repo-path>
+              {request.staged ? "staged" : "working tree"} · {request.repoPath}
+            </div>
+          </div>
+          {payload?.truncated || payload?.contentTruncated ? (
+            <span className="rounded border border-amber/40 bg-amber-soft px-2 py-0.5 text-2xs font-medium text-amber">已截断</span>
+          ) : null}
+        </div>
+      </div>
+      <div className="min-h-0 min-w-0 p-3">
+        {loading && !payload ? (
+          <GitDiffState title="正在读取 Git diff…" loading />
+        ) : error ? (
+          <GitDiffState title="无法读取 Git diff" description={error} tone="danger" />
+        ) : payload?.binary ? (
+          <GitDiffState title="二进制文件暂不显示 Monaco diff" description={payload.message || "该变更包含二进制内容；M7-E-A 只提供文本 diff 基础。"} tone="muted" />
+        ) : canRenderMonacoDiff ? (
+          <MonacoDiffPanel
+            original={payload.originalContent ?? ""}
+            modified={payload.modifiedContent ?? ""}
+            language={language || "plaintext"}
+            originalLabel={payload.originalPath ? `HEAD / index · ${payload.originalPath}` : "/dev/null"}
+            modifiedLabel={`${payload.staged ? "index" : "working"} · ${payload.modifiedPath || payload.path}`}
+            className="h-full"
+          />
+        ) : payload?.diff ? (
+          <div className="h-full min-h-0" data-ide-git-diff-unified>
+            <CodeBlock content={payload.diff} label="Unified diff" maxHeightClassName="max-h-full h-full" />
+          </div>
+        ) : (
+          <GitDiffState title="没有可显示的差异" description={payload?.message || "Git 未返回该文件的 diff。"} tone="muted" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GitDiffState({
+  title,
+  description,
+  loading = false,
+  tone = "default",
+}: {
+  title: string;
+  description?: string;
+  loading?: boolean;
+  tone?: "default" | "muted" | "danger";
+}) {
+  return (
+    <div className="grid h-full min-h-0 place-items-center rounded-lg border border-dashed border-line bg-panel p-6 text-center text-sm text-muted" data-ide-git-diff-state>
+      <div className="max-w-md">
+        {loading ? (
+          <Loader2 className="mx-auto mb-3 size-6 animate-spin text-primary" />
+        ) : (
+          <AlertCircle className={cn("mx-auto mb-3 size-6", tone === "danger" ? "text-danger" : "text-subtle")} />
+        )}
+        <div className="font-semibold text-ink-strong">{title}</div>
+        {description ? <div className="mt-2 text-xs text-subtle">{description}</div> : null}
+      </div>
+    </div>
+  );
+}

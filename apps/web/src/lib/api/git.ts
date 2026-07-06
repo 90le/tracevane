@@ -33,6 +33,10 @@ import type {
 
 const BASE = "/api/git";
 
+function gitApiRootId(rootId: string): string {
+  return rootId === "openclaw-root" ? "system-root" : rootId;
+}
+
 export interface GitStatusParams {
   rootId: string;
   /** Directory path relative to the root (empty = root). */
@@ -44,7 +48,7 @@ export function getGitStatus(
   params: GitStatusParams,
   signal?: AbortSignal,
 ): Promise<GitStatusPayload> {
-  const search = new URLSearchParams({ rootId: params.rootId });
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId) });
   if (params.path) search.set("path", params.path);
   return apiRequest<GitStatusPayload>(`${BASE}/status?${search.toString()}`, {
     signal,
@@ -56,6 +60,8 @@ export interface GitDiffParams {
   path?: string;
   /** Repo-relative file path to diff. */
   file: string;
+  /** Previous repo-relative path for renamed/copied files. */
+  previousFile?: string | null;
   /** Diff the staged (index) version instead of the working tree. */
   staged?: boolean;
   /** Treat the file as untracked (diff against /dev/null). */
@@ -67,8 +73,9 @@ export function getGitDiff(
   params: GitDiffParams,
   signal?: AbortSignal,
 ): Promise<GitDiffPayload> {
-  const search = new URLSearchParams({ rootId: params.rootId, file: params.file });
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId), file: params.file });
   if (params.path) search.set("path", params.path);
+  if (params.previousFile) search.set("previousFile", params.previousFile);
   if (params.staged) search.set("staged", "true");
   if (params.untracked) search.set("untracked", "true");
   return apiRequest<GitDiffPayload>(`${BASE}/diff?${search.toString()}`, {
@@ -89,7 +96,7 @@ export function getGitCommitDetail(
   params: GitCommitDetailParams,
   signal?: AbortSignal,
 ): Promise<GitCommitDetailPayload> {
-  const search = new URLSearchParams({ rootId: params.rootId, hash: params.hash });
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId), hash: params.hash });
   if (params.path) search.set("path", params.path);
   return apiRequest<GitCommitDetailPayload>(
     `${BASE}/commit-detail?${search.toString()}`,
@@ -119,7 +126,7 @@ export function stageFiles(params: GitStageParams): Promise<GitStatusPayload> {
   const { rootId, path, paths } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/stage`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", paths: paths ?? [] }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", paths: paths ?? [] }),
   });
 }
 
@@ -131,7 +138,7 @@ export function unstageFiles(params: GitUnstageParams): Promise<GitStatusPayload
   const { rootId, path, paths } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/unstage`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", paths: paths ?? [] }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", paths: paths ?? [] }),
   });
 }
 
@@ -143,7 +150,7 @@ export function commitFiles(params: GitCommitParams): Promise<GitStatusPayload> 
   const { rootId, path, message } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/commit`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", message }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", message }),
   });
 }
 
@@ -160,7 +167,7 @@ export function createBranch(params: GitCreateBranchParams): Promise<GitStatusPa
   const { rootId, path, name, checkout, from } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/branches`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", name, checkout, from }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", name, checkout, from }),
   });
 }
 
@@ -175,7 +182,7 @@ export function checkoutBranch(params: GitCheckoutParams): Promise<GitStatusPayl
   const { rootId, path, target, detach } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/checkout`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", target, detach }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", target, detach }),
   });
 }
 
@@ -188,7 +195,7 @@ export function pullBranch(params: GitRemoteActionParams): Promise<GitStatusPayl
   const { rootId, path, remote, branch } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/pull`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", remote, branch }),
   });
 }
 
@@ -196,7 +203,7 @@ export function pushBranch(params: GitRemoteActionParams): Promise<GitStatusPayl
   const { rootId, path, remote, branch } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/push`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", remote, branch }),
   });
 }
 
@@ -204,7 +211,7 @@ export function syncBranch(params: GitRemoteActionParams): Promise<GitStatusPayl
   const { rootId, path, remote, branch } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/sync`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", remote, branch }),
   });
 }
 
@@ -219,7 +226,7 @@ export function publishBranch(
   const { rootId, path, remote, branch } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/publish`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", remote, branch }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", remote, branch }),
   });
 }
 
@@ -228,7 +235,7 @@ export function getGitStashes(
   params: GitStashListParams,
   signal?: AbortSignal,
 ): Promise<GitStashListPayload> {
-  const search = new URLSearchParams({ rootId: params.rootId });
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId) });
   if (params.path) search.set("path", params.path);
   return apiRequest<GitStashListPayload>(`${BASE}/stashes?${search.toString()}`, {
     signal,
@@ -243,7 +250,7 @@ export function saveGitStash(params: GitStashSaveParams): Promise<GitStatusPaylo
   const { rootId, path, message, includeUntracked } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/stashes`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", message, includeUntracked }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", message, includeUntracked }),
   });
 }
 
@@ -254,7 +261,7 @@ export function applyGitStash(params: GitStashActionParams): Promise<GitStatusPa
   const { rootId, path, ref } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/stashes/apply`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", ref }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", ref }),
   });
 }
 
@@ -262,7 +269,7 @@ export function popGitStash(params: GitStashActionParams): Promise<GitStatusPayl
   const { rootId, path, ref } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/stashes/pop`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", ref }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", ref }),
   });
 }
 
@@ -270,6 +277,6 @@ export function dropGitStash(params: GitStashActionParams): Promise<GitStatusPay
   const { rootId, path, ref } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/stashes/drop`, {
     method: "POST",
-    body: JSON.stringify({ rootId, path: path ?? "", ref }),
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", ref }),
   });
 }

@@ -16,14 +16,14 @@ test('parseReleaseMetadata extracts version, package URL, and min host version f
     {
       "version": "0.1.21",
       "packageUrl": "https://tracevane.90le.cn/tracevane-0.1.21.tar.gz",
-      "minOpenClawVersion": "2026.4.8"
+      "minOpenClawVersion": "2026.5.28"
     }
   `);
 
   assert.deepEqual(metadata, {
     version: '0.1.21',
     packageUrl: 'https://tracevane.90le.cn/tracevane-0.1.21.tar.gz',
-    minVersion: '2026.4.8',
+    minVersion: '2026.5.28',
   });
 });
 
@@ -33,40 +33,40 @@ test('parseReleaseMetadata accepts alternate min host version shapes', () => {
       "latestVersion": "0.1.22",
       "packageUrl": "/tracevane-0.1.22.tar.gz",
       "openclaw": {
-        "minHostVersion": "2026.4.9"
+        "minHostVersion": "2026.5.29"
       }
     }
   `), {
     version: '0.1.22',
     packageUrl: '/tracevane-0.1.22.tar.gz',
-    minVersion: '2026.4.9',
+    minVersion: '2026.5.29',
   });
 });
 
 test('injectInstallerDefaultVersion updates installer fallback version to current release', () => {
   const installer = `
 TRACEVANE_DEFAULT_VERSION="\${TRACEVANE_DEFAULT_VERSION:-0.1.20}"
-OPENCLAW_MIN_VERSION="\${OPENCLAW_MIN_VERSION:-2026.4.8}"
+OPENCLAW_MIN_VERSION="\${OPENCLAW_MIN_VERSION:-2026.5.28}"
 TRACEVANE_VERSION="\${TRACEVANE_VERSION:-}"
 `;
 
-  const rewritten = injectInstallerDefaultVersion(installer, '0.1.21', '2026.4.9');
+  const rewritten = injectInstallerDefaultVersion(installer, '0.1.21', '2026.5.29');
 
   assert.match(rewritten, /TRACEVANE_DEFAULT_VERSION="\$\{TRACEVANE_DEFAULT_VERSION:-0\.1\.21\}"/);
-  assert.match(rewritten, /OPENCLAW_MIN_VERSION="\$\{OPENCLAW_MIN_VERSION:-2026\.4\.9\}"/);
+  assert.match(rewritten, /OPENCLAW_MIN_VERSION="\$\{OPENCLAW_MIN_VERSION:-2026\.5\.29\}"/);
   assert.doesNotMatch(rewritten, /0\.1\.20/);
 });
 
 test('injectLandingPageVersion rewrites the landing page fallback constants', () => {
   const html = `
 const TRACEVANE_VERSION = "0.1.20";
-const OPENCLAW_MIN_VERSION = "2026.4.8";
+const OPENCLAW_MIN_VERSION = "2026.5.28";
 `;
 
-  const rewritten = injectLandingPageVersion(html, '0.1.21', '2026.4.9');
+  const rewritten = injectLandingPageVersion(html, '0.1.21', '2026.5.29');
 
   assert.match(rewritten, /const TRACEVANE_VERSION = "0\.1\.21";/);
-  assert.match(rewritten, /const OPENCLAW_MIN_VERSION = "2026\.4\.9";/);
+  assert.match(rewritten, /const OPENCLAW_MIN_VERSION = "2026\.5\.29";/);
 });
 
 test('installer remains self-contained for remote metadata and gateway keeps 3760 enabled', () => {
@@ -81,9 +81,12 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
 test('pack script syncs landing page versions and includes the current React app source snapshot', () => {
   const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
 
+  assert.match(packScript, /VERSION_AUTO=1/);
+  assert.match(packScript, /Number\(patch\) \+ 1/);
   assert.match(packScript, /同步 package\/workspace 版本/);
   assert.match(packScript, /apps\/api\/package\.json/);
   assert.match(packScript, /apps\/web\/package\.json/);
+  assert.match(packScript, /openclaw\.plugin\.json/);
   assert.match(packScript, /package-lock\.json/);
   assert.match(packScript, /TRACEVANE_VERSION_FALLBACK/);
   assert.match(packScript, /TRACEVANE_PACKAGE_VERSION_FALLBACK/);
@@ -148,8 +151,22 @@ test('local source fallback versions stay aligned with package.json for dev debu
   const apiConfig = fs.readFileSync(new URL('../../apps/api/config.ts', import.meta.url), 'utf8');
   const viteConfig = fs.readFileSync(new URL('../../apps/web/vite.config.ts', import.meta.url), 'utf8');
 
-  assert.match(apiConfig, new RegExp(`const TRACEVANE_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));
-  assert.match(viteConfig, new RegExp(`const TRACEVANE_PACKAGE_VERSION_FALLBACK = '${version.replace(/\./g, '\\.')}'`));
+  assert.match(apiConfig, new RegExp(`const TRACEVANE_VERSION_FALLBACK = ["']${version.replace(/\./g, '\\.')}["']`));
+  assert.match(viteConfig, new RegExp(`const TRACEVANE_PACKAGE_VERSION_FALLBACK = ["']${version.replace(/\./g, '\\.')}["']`));
+});
+
+test('release surfaces use the current OpenClaw minimum host version', () => {
+  const rootPackage = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
+  const landingPage = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const deployDoc = fs.readFileSync(new URL('../../DEPLOY.md', import.meta.url), 'utf8');
+  const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
+
+  assert.equal(rootPackage.openclaw.install.minHostVersion, '>=2026.5.28');
+  assert.match(installer, /OPENCLAW_MIN_VERSION="\$\{OPENCLAW_MIN_VERSION:-2026\.5\.28\}"/);
+  assert.match(landingPage, /const OPENCLAW_MIN_VERSION = "2026\.5\.28";/);
+  assert.match(deployDoc, /OpenClaw >= 2026\.5\.28/);
+  assert.doesNotMatch(packScript, /2026\.4\.8/);
 });
 
 function extractConfigWriterScript(installerSource) {

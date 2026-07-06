@@ -322,7 +322,7 @@ M7：LSP / Git / Debug
 - M7-B 单语言 JSON diagnostics 已接入既有 Problems/Output，记录见 [`archive/m7-b-lsp-diagnostics-summary.md`](./archive/m7-b-lsp-diagnostics-summary.md)。
 - M7-C JSON hover/completion/definition foundation 已完成，记录见 [`archive/m7-c-lsp-interaction-summary.md`](./archive/m7-c-lsp-interaction-summary.md)。
 - M7-D Git status + Explorer decoration + Source Control View 已完成，记录见 [`archive/m7-d-git-status-source-control-summary.md`](./archive/m7-d-git-status-source-control-summary.md)。
-- M7-E 继续复用现有 Git API：接入 diff/stage/unstage/commit。
+- M7-E-A 已复用现有 Git API 接入 diff 查看；M7-E-B 继续复用现有 Git API 接入 stage/unstage。
 - Debug 后置到 M7-F/M7.x，不和 LSP/Git 同时追完整。
 ```
 
@@ -513,7 +513,9 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 7. M7-B：单语言 JSON diagnostics -> Problems/Output（已完成）
 8. M7-C：LSP hover / completion / definition（已完成）
 9. M7-D：Git status + Explorer decoration + Source Control View（已完成）
-10. M7-E：Git diff / stage / unstage / commit
+10. M7-E-A：Git Diff Foundation（已完成）
+11. M7-E-B：Git stage / unstage foundation
+12. M7-E-C：Git commit foundation
 11. M7-F/M7.x：Debug Adapter Protocol 研究与最小实现
 ```
 

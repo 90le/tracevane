@@ -110,7 +110,7 @@ function mergeStoredServiceSnapshot(
     ...snapshot,
     activeState: preferKnownState(snapshot.activeState, stored.activeState),
     enabledState: preferKnownState(snapshot.enabledState, stored.enabledState),
-    lastCheckedAt: snapshot.lastCheckedAt || stored.lastCheckedAt,
+    lastCheckedAt: stored.lastCheckedAt || snapshot.lastCheckedAt,
   };
 }
 

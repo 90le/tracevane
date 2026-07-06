@@ -10,10 +10,10 @@ export interface IdeSourceControlViewProps {
   rootId: string;
   rootLabel: string;
   git: IdeGitDecorationSnapshot & { loading: boolean; error: string | null; refresh: () => void };
-  onOpenFile: (request: { rootId: string; path: string; pinned?: boolean }) => void;
+  onOpenDiff: (request: { rootId: string; change: IdeGitDecoratedChange }) => void;
 }
 
-export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenFile }: IdeSourceControlViewProps) {
+export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDiff }: IdeSourceControlViewProps) {
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   const status = git.status;
   return (
@@ -57,7 +57,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenFil
               <SourceControlChangeRow
                 key={`${change.status}:${change.rootPath}:${change.previousPath ?? ""}`}
                 change={change}
-                onOpen={() => onOpenFile({ rootId, path: change.rootPath, pinned: true })}
+                onOpen={() => onOpenDiff({ rootId, change })}
               />
             ))}
           </div>
@@ -68,7 +68,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenFil
 }
 
 function SourceControlChangeRow({ change, onOpen }: { change: IdeGitDecoratedChange; onOpen: () => void }) {
-  const disabled = change.kind === "deleted";
+  const disabled = false;
   return (
     <button
       type="button"

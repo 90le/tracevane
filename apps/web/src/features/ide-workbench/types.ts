@@ -52,6 +52,8 @@ export interface IdeWorkbenchEditorTab {
   id: EditorDocumentId;
   ref: EditorFileRef;
   title: string;
+  mode?: "file" | "git-diff";
+  gitDiff?: IdeWorkbenchGitDiffRequest;
   preview: boolean;
   pinned: boolean;
   dirty: boolean;
@@ -62,6 +64,15 @@ export interface IdeWorkbenchEditorTab {
   externalMessage?: string | null;
   metadata?: IdeWorkbenchEditorFileMetadata;
   reveal?: IdeWorkbenchEditorRevealRange | null;
+}
+
+export interface IdeWorkbenchGitDiffRequest {
+  directoryPath: string;
+  repoPath: string;
+  previousPath?: string | null;
+  rootPath: string;
+  staged: boolean;
+  untracked: boolean;
 }
 
 export interface IdeWorkbenchEditorRevealRange {

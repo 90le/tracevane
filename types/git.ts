@@ -52,11 +52,17 @@ export interface GitDiffPayload {
   directoryPath: string;
   repositoryRoot: string;
   path: string;
+  previousPath: string | null;
+  originalPath: string | null;
+  modifiedPath: string | null;
   staged: boolean;
   untracked: boolean;
   binary: boolean;
   truncated: boolean;
   diff: string;
+  originalContent: string | null;
+  modifiedContent: string | null;
+  contentTruncated: boolean;
   message: string | null;
 }
 
@@ -116,6 +122,7 @@ export interface GitPathActionRequest extends GitRepositoryRequest {
 
 export interface GitDiffRequest extends GitRepositoryRequest {
   file?: string;
+  previousFile?: string;
   staged?: boolean;
   untracked?: boolean;
 }

@@ -1,0 +1,15 @@
+{
+  "name": "Tracevane",
+  "short_name": "Tracevane",
+  "description": "Local AI agent control workbench for Gateway, CLI agents, channels, runtime recovery, and evidence views.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2fff9",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

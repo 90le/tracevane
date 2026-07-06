@@ -95,7 +95,7 @@ export function EditorDock({
     for (const panel of api.panels) {
       const params = panel.params as EditorPlaceholderParams | undefined;
       const panelTabId = editorPanelTabId(panel);
-      if (params?.kind === "file" && (!panelTabId || !tabIds.has(panelTabId))) {
+      if ((params?.kind === "file" || params?.kind === "git-diff") && (!panelTabId || !tabIds.has(panelTabId))) {
         api.removePanel(panel);
       }
     }
@@ -440,6 +440,7 @@ function EditorDockTab({
   onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
 }) {
   const tab = params.tab;
+  const isGitDiff = params.kind === "git-diff" || tab?.mode === "git-diff";
   const title = tabTitle(tab) || params.title || "Editor";
   const tabIndex = tab ? tabs.findIndex((item) => item.id === tab.id) : -1;
   const gitDecoration = tab ? gitDecorations?.get(tab.ref.path) : undefined;
@@ -555,7 +556,7 @@ function EditorDockTab({
                 shortcut="Ctrl S"
                 onClick={() => runMenuAction(() => { void saveIdeEditorTab(tab.id); })}
                 dataAttr="save"
-                disabled={tab.deleted || tab.saveState === "saving" || !tab.dirty}
+                disabled={isGitDiff || tab.deleted || tab.saveState === "saving" || !tab.dirty}
               />
               <EditorTabMenuButton
                 icon={<X />}
@@ -674,6 +675,14 @@ function EditorTabMenuButton({
 function filePanelParams(
   tab: IdeWorkbenchEditorTab,
 ): EditorPlaceholderParams {
+  if (tab.mode === "git-diff") {
+    return {
+      kind: "git-diff",
+      tab,
+      title: tab.title,
+      description: "M7-E-A Git diff panel；复用 Git API 和 Monaco Diff，只展示差异，不执行 stage/commit。",
+    };
+  }
   return {
     kind: "file",
     tab,
@@ -685,8 +694,8 @@ function filePanelParams(
 
 function editorPanelTabId(panel: { id: string; params?: unknown }): string | null {
   const params = panel.params as EditorPlaceholderParams | undefined;
-  if (params?.kind === "file" && params.tab?.id) return params.tab.id;
-  return params?.kind === "file" ? null : panel.id;
+  if ((params?.kind === "file" || params?.kind === "git-diff") && params.tab?.id) return params.tab.id;
+  return params?.kind === "file" || params?.kind === "git-diff" ? null : panel.id;
 }
 
 async function copyText(text: string, successTitle: string): Promise<void> {
@@ -701,5 +710,6 @@ async function copyText(text: string, successTitle: string): Promise<void> {
 function tabTitle(tab?: IdeWorkbenchEditorTab): string {
   if (!tab) return "";
   const external = tab.externalState ? ` (${tab.externalState})` : "";
-  return `${tab.dirty ? "● " : ""}${tab.title}${tab.deleted ? " (deleted)" : external}`;
+  const prefix = tab.mode === "git-diff" ? "⇄ " : "";
+  return `${tab.dirty ? "● " : ""}${prefix}${tab.title}${tab.deleted ? " (deleted)" : external}`;
 }

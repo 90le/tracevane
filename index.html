@@ -3,449 +3,247 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tracevane · 安装指南</title>
+<title>Tracevane · Local AI Agent Control Workbench</title>
+<meta name="description" content="Tracevane 是本地优先的 AI Agent 控制工作台，用于连接、观察、恢复和验证本地项目、Model Gateway、CLI Agent、IM 渠道与 OpenClaw 运行表面。">
+<link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<meta name="theme-color" content="#f3f1e8">
 <style>
   :root{
-    --bg1:#0d1b2a;
-    --bg2:#1b263b;
-    --bg3:#415a77;
-    --mint:#7fffd4;
-    --peach:#ffd6a5;
-    --text:#f4f7fb;
-    --muted:#a8b8cc;
-    --card:rgba(255,255,255,.10);
-    --line:rgba(255,255,255,.18);
-    --shadow:0 20px 60px rgba(0,0,0,.35);
-    --rx:0deg;
-    --ry:0deg;
-    --mx:50%;
-    --my:50%;
+    color-scheme:light;
+    --paper:#f3f1e8;
+    --paper-2:#ebe7d9;
+    --ink:#111820;
+    --ink-2:#26313d;
+    --muted:#68717b;
+    --line:#d5d0c0;
+    --line-strong:#bcb4a0;
+    --panel:#fbfaf4;
+    --teal:#0f8f86;
+    --teal-dark:#07655f;
+    --blue:#3358ff;
+    --amber:#b36b00;
+    --danger:#b94045;
+    --radius:18px;
+    --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:"JetBrains Mono","SFMono-Regular","Cascadia Code",Consolas,monospace;
   }
-
   *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
+  html{scroll-behavior:smooth;background:var(--paper)}
   body{
-    font-family:"Trebuchet MS","Avenir Next","PingFang SC","Microsoft YaHei",sans-serif;
-    color:var(--text);
-    background:
-      radial-gradient(1200px 800px at 20% 20%, #4cc9f0 0%, transparent 45%),
-      radial-gradient(1000px 700px at 80% 10%, #f72585 0%, transparent 42%),
-      linear-gradient(135deg,var(--bg1),var(--bg2),var(--bg3));
-    background-size:140% 140%;
-    background-attachment:fixed;
-    animation:bgShift 14s ease-in-out infinite alternate;
     min-height:100vh;
-    padding:0;
-  }
-
-  /* ---- Hero ---- */
-  .hero{
-    position:relative;
-    min-height:100vh;
-    display:grid;
-    place-items:center;
-    padding:32px 24px;
-    isolation:isolate;
-    overflow:hidden;
-  }
-
-  .hill{
-    position:absolute;
-    bottom:-18vmin;
-    width:70vmax;
-    aspect-ratio:2.6/1;
-    border-radius:100% 100% 0 0;
-    filter:blur(1px);
-    z-index:-1;
-    animation:float 8s ease-in-out infinite;
-  }
-  .hill.h1{left:-8vmax;background:linear-gradient(180deg,#3a5a40,#2d6a4f);opacity:.85}
-  .hill.h2{right:-12vmax;width:74vmax;background:linear-gradient(180deg,#52796f,#354f52);animation-delay:-3s;opacity:.78}
-
-  .hero-card{
-    width:min(780px,92vw);
-    border:1px solid var(--line);
+    color:var(--ink);
+    font-family:var(--sans);
     background:
-      radial-gradient(450px 240px at var(--mx) var(--my), rgba(255,255,255,.22), transparent 60%),
-      var(--card);
-    backdrop-filter:blur(14px);
-    border-radius:24px;
-    box-shadow:var(--shadow);
-    padding:40px 44px;
-    transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
-    transition:transform .25s ease, box-shadow .25s ease;
+      linear-gradient(90deg, rgba(17,24,32,.055) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(17,24,32,.045) 1px, transparent 1px),
+      radial-gradient(900px 620px at 82% 0%, rgba(15,143,134,.13), transparent 58%),
+      var(--paper);
+    background-size:48px 48px,48px 48px,auto,auto;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
   }
-
-  .hero-top{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-  }
-  .tag{
-    padding:6px 14px;
-    border-radius:999px;
-    background:rgba(127,255,212,.14);
-    border:1px solid rgba(127,255,212,.45);
-    font-size:.82rem;
-    letter-spacing:.08em;
-  }
-  .tag-beta{
-    padding:4px 10px;
-    border-radius:999px;
-    background:rgba(255,214,165,.16);
-    border:1px solid rgba(255,214,165,.4);
-    font-size:.72rem;
-    color:var(--peach);
-    letter-spacing:.06em;
-  }
-  .dot{
-    width:10px;height:10px;border-radius:50%;
-    background:var(--mint);
-    box-shadow:0 0 0 0 rgba(127,255,212,.6);
-    animation:pulse 1.8s infinite;
-  }
-
-  .hero h1{
-    margin:20px 0 16px;
-    font-size:clamp(2rem,5vw,3rem);
-    line-height:1.1;
-    letter-spacing:.02em;
-  }
-  .grad{
-    background:linear-gradient(90deg,var(--peach),#f8f9fa,var(--mint));
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
-  }
-
-  .hero-desc{
-    color:var(--muted);
-    font-size:1.02rem;
-    line-height:1.85;
-    max-width:60ch;
-  }
-  .hero-desc + .hero-desc{margin-top:12px}
-
-  .typing{
-    margin-top:16px;
-    min-height:1.7em;
-    color:#e9f8ff;
-    font-weight:600;
-    letter-spacing:.03em;
-  }
-  .typing::after{
-    content:"";
-    display:inline-block;
-    width:1px;height:1em;
-    margin-left:6px;
-    background:#fff;
-    vertical-align:-2px;
-    animation:blink 1s steps(1) infinite;
-  }
-
-  .features{
-    margin-top:22px;
-    display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
-    gap:10px;
-  }
-  .feat{
-    padding:10px 14px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background:rgba(255,255,255,.06);
-    font-size:.88rem;
-    display:flex;
-    align-items:center;
-    gap:8px;
-    transition:background .2s;
-  }
-  .feat:hover{background:rgba(255,255,255,.12)}
-  .feat-icon{font-size:1.1rem;flex-shrink:0}
-
-  .hero-actions{
-    margin-top:26px;
-    display:flex;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-  .btn{
-    border:none;
-    cursor:pointer;
-    border-radius:12px;
-    padding:11px 20px;
-    font-weight:700;
-    font-size:.92rem;
-    transition:.2s ease;
-  }
-  .btn.primary{
-    color:#0b1b1f;
-    background:linear-gradient(135deg,var(--mint),#bde0fe);
-  }
-  .btn.ghost{
-    color:var(--text);
-    background:transparent;
-    border:1px solid var(--line);
-  }
-  .btn:hover{transform:translateY(-2px);filter:brightness(1.05)}
-
-  /* ---- Prompt Section ---- */
-  .prompt-section{
-    padding:56px 24px 72px;
-    display:flex;
-    flex-direction:column;
-    gap:28px;
-    align-items:center;
-  }
-  .prompt-section h2{
-    font-size:1.6rem;
-    text-align:center;
-    margin-bottom:4px;
-  }
-  .prompt-section .section-desc{
-    color:var(--muted);
-    text-align:center;
-    max-width:60ch;
-    font-size:.95rem;
-    line-height:1.6;
-  }
-
-  /* ---- Mode Alert ---- */
-  .mode-alert{
-    width:min(880px,94vw);
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:16px;
-  }
-  .mode-alert-item{
-    padding:16px 20px;
-    border-radius:16px;
-    text-align:center;
-    font-size:.95rem;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    transition:transform .2s, box-shadow .2s;
-  }
-  .mode-alert-item:hover{
-    transform:translateY(-2px);
-    box-shadow:0 8px 24px rgba(0,0,0,.2);
-  }
-  .mode-alert-normal{
-    background:rgba(127,255,212,.16);
-    border:2px solid rgba(127,255,212,.55);
-    color:#7fffd4;
-  }
-  .mode-alert-normal strong{color:#b2ffe8}
-  .mode-alert-corp{
-    background:rgba(100,181,246,.16);
-    border:2px solid rgba(100,181,246,.55);
-    color:#90caf9;
-  }
-  .mode-alert-corp strong{color:#bbdefb}
-  .mode-alert-icon{font-size:1.4rem}
-
-  .prompt-card{
-    width:min(880px,94vw);
-    border:1px solid var(--line);
-    background:var(--card);
-    backdrop-filter:blur(12px);
-    border-radius:20px;
-    box-shadow:0 12px 40px rgba(0,0,0,.25);
-    overflow:hidden;
-  }
-  .prompt-header{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:18px 24px;
+  a{color:inherit;text-decoration:none}
+  button{font:inherit}
+  ::selection{background:rgba(15,143,134,.18)}
+  .wrap{width:min(1180px,calc(100% - 40px));margin:0 auto}
+  .nav{
+    position:sticky;top:0;z-index:20;
     border-bottom:1px solid var(--line);
+    background:color-mix(in srgb,var(--paper) 88%,transparent);
+    backdrop-filter:blur(18px);
   }
-  .prompt-header h3{
-    font-size:1.05rem;
-    display:flex;
-    align-items:center;
-    gap:10px;
-  }
-  .badge{
-    display:inline-block;
-    padding:3px 12px;
-    border-radius:12px;
-    font-size:.75rem;
-    font-weight:700;
-    letter-spacing:.04em;
-  }
-  .badge-standalone{background:rgba(127,255,212,.18);color:#7fffd4;border:1px solid rgba(127,255,212,.35)}
-  .badge-gateway{background:rgba(100,181,246,.18);color:#90caf9;border:1px solid rgba(100,181,246,.35)}
+  .nav-inner{height:68px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:760;letter-spacing:-.02em}
+  .brand img{width:32px;height:32px;border-radius:9px;box-shadow:0 10px 24px rgba(15,143,134,.16)}
+  .nav-center{justify-self:center;display:flex;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px;background:rgba(255,255,255,.35)}
+  .nav-center a{padding:7px 12px;border-radius:999px;color:var(--muted);font-size:13px;transition:.16s ease}
+  .nav-center a:hover{background:var(--panel);color:var(--ink)}
+  .nav-note{justify-self:end;color:var(--muted);font-family:var(--mono);font-size:12px}
 
-  .copy-btn{
-    padding:9px 22px;
-    border:1px solid var(--line);
-    border-radius:10px;
-    background:rgba(255,255,255,.10);
-    color:var(--text);
-    font-size:.88rem;
-    font-weight:600;
-    cursor:pointer;
-    transition:all .2s;
-  }
-  .copy-btn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.3)}
-  .copy-btn:active{transform:scale(.96)}
-  .copy-btn.copied{background:rgba(127,255,212,.2);border-color:rgba(127,255,212,.5);color:var(--mint)}
+  .hero{padding:86px 0 72px;border-bottom:1px solid var(--line)}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 356px;gap:58px;align-items:end}
+  .eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:24px;color:var(--teal-dark);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+  .signal{width:10px;height:10px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 5px rgba(15,143,134,.12)}
+  h1{max-width:860px;font-size:clamp(58px,9vw,126px);line-height:.88;letter-spacing:-.085em;font-weight:860;text-wrap:balance}
+  .hero .lead{max-width:760px;margin-top:30px;color:var(--ink-2);font-size:20px;line-height:1.8;letter-spacing:-.015em}
+  .hero .lead strong{font-weight:780;color:var(--ink)}
+  .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;border:1px solid var(--ink);padding:13px 18px;cursor:pointer;transition:.16s ease;font-weight:720;background:transparent;color:var(--ink)}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 8px 0 rgba(17,24,32,.08)}
+  .btn.primary{background:var(--ink);color:#fff}.btn.secondary{border-color:var(--line-strong);background:rgba(255,255,255,.38)}
+  .hero-panel{border:1px solid var(--ink);border-radius:24px;background:var(--panel);box-shadow:12px 12px 0 rgba(17,24,32,.08);overflow:hidden}
+  .panel-label{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .release{padding:20px 20px 22px}.release strong{display:block;font-size:28px;letter-spacing:-.04em}.release p{margin-top:10px;color:var(--muted);font-size:14px;line-height:1.65}.release dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;margin-top:20px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px}.release dt{color:var(--muted)}.release dd{text-align:right;color:var(--ink)}
 
-  .prompt-body{
-    padding:20px 24px;
-    max-height:480px;
-    overflow-y:auto;
-  }
-  .prompt-body pre{
-    font-family:"Cascadia Code","Fira Code","JetBrains Mono","PingFang SC","Microsoft YaHei",monospace;
-    font-size:.84rem;
-    line-height:1.65;
-    white-space:pre-wrap;
-    word-break:break-word;
-    color:var(--muted);
-    margin:0;
-  }
+  .strip{border-bottom:1px solid var(--line);background:rgba(255,255,255,.22)}
+  .strip-inner{display:grid;grid-template-columns:repeat(4,1fr);gap:0}.strip-item{padding:24px 20px;border-left:1px solid var(--line)}.strip-item:first-child{border-left:0}.strip-item b{display:block;font-family:var(--mono);font-size:12px;color:var(--teal-dark);text-transform:uppercase;letter-spacing:.08em}.strip-item span{display:block;margin-top:10px;font-size:15px;line-height:1.55;color:var(--ink-2)}
 
-  .prompt-body::-webkit-scrollbar{width:6px}
-  .prompt-body::-webkit-scrollbar-track{background:transparent}
-  .prompt-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+  .section{padding:86px 0;border-bottom:1px solid var(--line)}
+  .section-head{display:grid;grid-template-columns:300px minmax(0,1fr);gap:44px;margin-bottom:36px}.kicker{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--teal-dark)}.section h2{font-size:clamp(36px,5vw,68px);line-height:.98;letter-spacing:-.06em;text-wrap:balance}.section-desc{margin-top:18px;max-width:720px;color:var(--muted);font-size:17px;line-height:1.75}
+  .matrix{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line-strong);background:var(--panel)}.cell{min-height:230px;padding:24px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.cell:nth-child(3n){border-right:0}.cell:nth-last-child(-n+3){border-bottom:0}.cell code{font-family:var(--mono);font-size:12px;color:var(--teal-dark)}.cell h3{margin-top:30px;font-size:22px;letter-spacing:-.035em}.cell p{margin-top:12px;color:var(--muted);font-size:14px;line-height:1.75}
 
-  /* ---- Footer ---- */
-  .footer{
-    padding:40px 24px 36px;
-    border-top:1px solid var(--line);
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:16px;
-  }
-  .footer-card{
-    width:min(880px,92vw);
-    border:1px solid var(--line);
-    background:var(--card);
-    backdrop-filter:blur(10px);
-    border-radius:16px;
-    padding:24px 28px;
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:20px;
-  }
-  .footer-block h4{
-    font-size:.92rem;
-    margin-bottom:8px;
-    display:flex;
-    align-items:center;
-    gap:6px;
-  }
-  .footer-block p{
-    color:var(--muted);
-    font-size:.88rem;
-    line-height:1.6;
-  }
-  .footer-bottom{
-    color:rgba(255,255,255,.3);
-    font-size:.78rem;
-    text-align:center;
-  }
+  .system{display:grid;grid-template-columns:1fr 1fr;gap:20px}.system-card{border:1px solid var(--line-strong);background:var(--panel);border-radius:22px;overflow:hidden}.system-card header{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted)}.system-card .body{padding:22px}.route{display:grid;grid-template-columns:92px 1fr;gap:14px;padding:15px 0;border-bottom:1px solid var(--line)}.route:last-child{border-bottom:0}.route b{font-family:var(--mono);font-size:12px;color:var(--teal-dark)}.route span{color:var(--ink-2);line-height:1.55}.note-list{display:grid;gap:12px}.note{padding:16px;border:1px solid var(--line);background:#fffdf7;border-radius:16px}.note b{display:block;font-size:15px}.note p{margin-top:7px;color:var(--muted);font-size:13px;line-height:1.6}
 
-  /* ---- Responsive ---- */
-  @media(max-width:640px){
-    .hero-card{padding:26px 22px;border-radius:18px}
-    .hero h1{font-size:1.7rem}
-    .hero-desc{font-size:.94rem}
-    .features{grid-template-columns:repeat(2,1fr);gap:8px}
-    .feat{padding:8px 10px;font-size:.82rem}
-    .prompt-header{padding:14px 16px;flex-direction:column;gap:12px;align-items:flex-start}
-    .prompt-body{padding:14px 16px}
-    .prompt-body pre{font-size:.8rem}
-    .hero-actions{flex-direction:column}
-    .hero-actions .btn{width:100%;text-align:center}
-    .footer-card{grid-template-columns:1fr;gap:16px}
-    .mode-alert{grid-template-columns:1fr}
-  }
+  .guide{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:22px;align-items:stretch}.video-card{position:relative;border:1px solid var(--ink);border-radius:24px;background:var(--panel);box-shadow:12px 12px 0 rgba(17,24,32,.08);overflow:hidden}.video-poster{display:block;width:100%;height:100%;min-height:380px;object-fit:cover;filter:saturate(.92) contrast(.96)}.video-overlay{position:absolute;inset:auto 18px 18px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;border:1px solid rgba(17,24,32,.16);border-radius:18px;background:rgba(251,250,244,.9);backdrop-filter:blur(10px)}.video-trigger{border:0;background:transparent;color:inherit;display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;padding:0;text-align:left;cursor:pointer}.video-trigger:focus-visible,.copy-btn:focus-visible,.btn:focus-visible,.nav-center a:focus-visible{outline:3px solid rgba(15,143,134,.28);outline-offset:3px}.play-mark{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;font-weight:800;box-shadow:0 8px 0 rgba(17,24,32,.08);transition:.16s ease}.video-trigger:hover .play-mark{transform:translateY(-1px);box-shadow:0 10px 0 rgba(17,24,32,.1)}.video-copy b{display:block;font-size:15px}.video-copy span{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.45}.avatar-card{border:1px solid var(--line-strong);border-radius:24px;background:var(--panel);padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:24px}.avatar-head{display:flex;gap:16px;align-items:flex-start}.avatar-mark{width:66px;height:66px;border:1px solid var(--ink);border-radius:20px;background:linear-gradient(135deg,#e8f4ef,#fffdf7);display:grid;place-items:center;box-shadow:7px 7px 0 rgba(17,24,32,.08)}.avatar-mark img{width:42px;height:42px}.avatar-card h3{font-size:30px;line-height:1;letter-spacing:-.05em}.avatar-card p{margin-top:12px;color:var(--muted);line-height:1.7}.script-box{border-top:1px solid var(--line);padding-top:18px}.script-box b{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-dark)}.script-box ol{margin:14px 0 0 20px;color:var(--ink-2);line-height:1.8}.script-box li+li{margin-top:4px}.integration-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.integration-pill{border:1px solid var(--line);border-radius:16px;padding:13px;background:#fffdf7}.integration-pill b{display:block;font-family:var(--mono);font-size:11px;color:var(--teal-dark)}.integration-pill span{display:block;margin-top:7px;color:var(--muted);font-size:12px;line-height:1.45}
 
-  @media(prefers-reduced-motion:reduce){
-    *{animation:none !important;transition:none !important}
-  }
+.video-dialog{width:min(920px,calc(100% - 28px));border:1px solid var(--ink);border-radius:24px;padding:0;background:var(--panel);color:var(--ink);box-shadow:18px 18px 0 rgba(17,24,32,.16)}.video-dialog::backdrop{background:rgba(17,24,32,.46);backdrop-filter:blur(4px)}.dialog-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:0}.dialog-media{min-height:420px;background:#ede9db;border-right:1px solid var(--line);display:grid;grid-template-rows:minmax(0,1fr) auto}.dialog-media img{width:100%;height:100%;object-fit:cover}.dialog-caption{padding:14px 16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:12px}.dialog-copy{padding:24px;display:flex;flex-direction:column;gap:18px}.dialog-copy h3{font-size:34px;line-height:1;letter-spacing:-.055em}.dialog-copy p{color:var(--muted);line-height:1.7}.dialog-copy ul{display:grid;gap:10px;margin-left:18px;color:var(--ink-2);line-height:1.55}.dialog-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto}.dialog-close{border:1px solid var(--ink);border-radius:999px;background:var(--ink);color:#fff;padding:10px 14px;cursor:pointer;font-weight:720}.dialog-link{border:1px solid var(--line-strong);border-radius:999px;background:transparent;color:var(--ink);padding:10px 14px;cursor:pointer;font-weight:720}.auth-note{border:1px solid var(--line);border-radius:16px;background:#fffdf7;padding:13px;color:var(--muted);font-size:13px;line-height:1.6}.auth-note b{display:block;color:var(--teal-dark);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
 
-  @keyframes bgShift{to{background-position:100% 0}}
-  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
-  @keyframes pulse{70%{box-shadow:0 0 0 10px rgba(127,255,212,0)}100%{box-shadow:0 0 0 0 rgba(127,255,212,0)}}
-  @keyframes blink{50%{opacity:0}}
-  @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+    .install{padding:86px 0}.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px 0}.mode-card{border:1px solid var(--line-strong);border-radius:20px;background:var(--panel);padding:20px}.mode-card b{font-size:18px;letter-spacing:-.02em}.mode-card p{margin-top:8px;color:var(--muted);font-size:14px;line-height:1.7}.prompt-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.prompt-card{border:1px solid var(--ink);border-radius:22px;background:#111820;color:#e9edf1;overflow:hidden;box-shadow:10px 10px 0 rgba(17,24,32,.1)}.prompt-header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:17px 18px;border-bottom:1px solid rgba(255,255,255,.14)}.prompt-header h3{font-size:15px;display:flex;align-items:center;gap:8px}.badge{display:inline-flex;border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:4px 8px;color:#bcece6;font-family:var(--mono);font-size:10px;letter-spacing:.06em}.copy-btn{border:1px solid rgba(255,255,255,.22);border-radius:999px;background:transparent;color:#f6f7f8;padding:9px 12px;cursor:pointer;font-size:12px;font-weight:720}.copy-btn:hover,.copy-btn.copied{background:#f6f7f8;color:#111820}.prompt-body{max-height:520px;overflow:auto;padding:18px}.prompt-body pre{font-family:var(--mono);font-size:12px;line-height:1.72;white-space:pre-wrap;word-break:break-word;color:#c9d1da}.prompt-body::-webkit-scrollbar{width:8px}.prompt-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border-radius:99px}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted)}.footer-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end}.footer-grid b{display:block;color:var(--ink);font-size:15px}.footer-grid p{margin-top:8px;max-width:720px;font-size:13px;line-height:1.7}.footer-meta{font-family:var(--mono);font-size:12px;text-align:right}
+
+  @media(max-width:960px){.hero-grid,.section-head,.system,.guide,.prompt-grid{grid-template-columns:1fr}.hero-grid{align-items:start}.hero-panel{max-width:520px}.strip-inner,.matrix,.mode-grid{grid-template-columns:1fr 1fr}.cell:nth-child(n){border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.cell:nth-child(2n){border-right:0}.cell:nth-last-child(-n+2){border-bottom:0}}
+  @media(max-width:640px){.wrap{width:min(100% - 24px,1180px)}.video-poster{min-height:260px}.video-overlay{position:static;margin:12px}.video-trigger{align-items:flex-start}.dialog-grid{grid-template-columns:1fr}.dialog-media{min-height:260px;border-right:0;border-bottom:1px solid var(--line)}.integration-row{grid-template-columns:1fr}.nav-inner{height:auto;padding:12px 0;grid-template-columns:1fr}.nav-center{justify-self:stretch;overflow:auto}.nav-note{justify-self:start}h1{font-size:54px;letter-spacing:-.07em}.hero{padding:54px 0}.hero .lead{font-size:17px}.strip-inner,.matrix,.mode-grid{grid-template-columns:1fr}.strip-item{border-left:0;border-top:1px solid var(--line)}.strip-item:first-child{border-top:0}.cell:nth-child(n){border-right:0}.cell:nth-last-child(-n+2){border-bottom:1px solid var(--line)}.cell:last-child{border-bottom:0}.footer-grid{grid-template-columns:1fr}.footer-meta{text-align:left}.actions .btn{width:100%}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
+<nav class="nav" aria-label="主导航">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Tracevane 首页"><img src="assets/brand/tracevane-mark.svg" alt=""><span>Tracevane</span></a>
+    <div class="nav-center"><a href="#scope">产品边界</a><a href="#system">系统方式</a><a href="#guide">视频向导</a><a href="#install">安装</a><a href="#contact">反馈</a></div>
+    <div class="nav-note">closed beta / local-first</div>
+  </div>
+</nav>
 
-<!-- ===== Hero ===== -->
-<main class="hero">
-  <div class="hill h1"></div>
-  <div class="hill h2"></div>
-
-  <section class="hero-card" id="heroCard">
-    <div class="hero-top">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="tag">TRACEVANE</span>
-        <span class="tag-beta">CLOSED BETA</span>
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow"><span class="signal"></span> OpenClaw supported · broader than a plugin</div>
+        <h1>本地 AI Agent 的控制工作台。</h1>
+        <p class="lead"><strong>Tracevane</strong> 连接本地项目、Model Gateway、CLI Agent 运行时、IM 渠道、IDE 工作区、终端、恢复守护与证据视图。它不是聊天皮肤，也不是单个安装脚本，而是一层可解释、可恢复、可验证的本地操作平面。</p>
+        <div class="actions"><button class="btn primary" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'})">复制安装 Prompt</button><a class="btn secondary" href="#scope">看产品边界</a></div>
       </div>
-      <span class="dot" aria-label="就绪"></span>
-    </div>
-
-    <h1><span class="grad">Tracevane</span></h1>
-    <p class="hero-desc">
-      Tracevane 是本地 AI Agent 控制工作台。把 Gateway、CLI Agent、IM 渠道、运行态自愈和证据视图放在同一个清晰界面里。
-    </p>
-    <p class="hero-desc">
-      以原生插件运行，支持独立端口或挂载到 Gateway。Vue 3 前端 + 模块化后端，流式输出、历史恢复、工具调用可视化开箱即用。
-    </p>
-    <div class="typing" id="typing"></div>
-
-    <div class="features">
-      <div class="feat"><span class="feat-icon">🔌</span> Agent 管理</div>
-      <div class="feat"><span class="feat-icon">💬</span> 流式对话</div>
-      <div class="feat"><span class="feat-icon">📡</span> 频道路由</div>
-      <div class="feat"><span class="feat-icon">⏰</span> 定时任务</div>
-      <div class="feat"><span class="feat-icon">🖥️</span> Web 终端</div>
-      <div class="feat"><span class="feat-icon">📊</span> 系统监控</div>
-      <div class="feat"><span class="feat-icon">🛠️</span> 技能管理</div>
-      <div class="feat"><span class="feat-icon">⚙️</span> 全局配置</div>
-    </div>
-
-    <div class="hero-actions">
-      <button class="btn primary" onclick="document.getElementById('prompts').scrollIntoView({behavior:'smooth'})">选择安装模式</button>
-      <button class="btn ghost" onclick="document.getElementById('footer').scrollIntoView({behavior:'smooth'})">关于作者</button>
+      <aside class="hero-panel" id="heroPanel" aria-label="Tracevane 发布摘要">
+        <div class="panel-label"><span>TRACEVANE RELEASE</span><span id="releaseVersionLabel">latest</span></div>
+        <div class="release">
+          <strong>Control plane, not another AI dashboard.</strong>
+          <p>发布页保留安装路径，但首屏先说明产品真正承担的事情：连接运行面、控制入口、保留证据、支持恢复。</p>
+          <dl>
+            <dt>Default port</dt><dd>3760</dd>
+            <dt>Gateway mount</dt><dd>/tracevane</dd>
+            <dt>Min OpenClaw</dt><dd id="minVersionLabel">2026.5.28</dd>
+            <dt>Install modes</dt><dd>standalone / gateway</dd>
+          </dl>
+        </div>
+      </aside>
     </div>
   </section>
-</main>
 
-<!-- ===== Prompts ===== -->
-<section class="prompt-section" id="prompts">
-  <h2>安装指南</h2>
-  <p class="section-desc">现在统一提供网站一键安装脚本。为了避免 AI/安全策略拦截，这里不再使用在线脚本直通执行，而是先下载到本地、可选检查内容，再本地运行。请选择非单口或单口模式后再安装。</p>
+  <section class="strip" aria-label="产品摘要">
+    <div class="wrap strip-inner">
+      <div class="strip-item"><b>Workspace</b><span>文件、在线编辑、预览、终端交接和 Git/evidence 工作流。</span></div>
+      <div class="strip-item"><b>Gateway</b><span>Provider 路由、协议适配、账号媒体和活动路由可观察。</span></div>
+      <div class="strip-item"><b>Channels</b><span>Feishu / Octo 私聊连接 Agent 工作流、权限和交付证据。</span></div>
+      <div class="strip-item"><b>Recovery</b><span>服务修复、健康检查、守护状态和运行摘要减少黑盒故障。</span></div>
+    </div>
+  </section>
 
-  <div class="mode-alert">
-    <div class="mode-alert-item mode-alert-normal">
-      <span class="mode-alert-icon">👤</span>
-      <span>模式一：<strong>非单口</strong><br><p style="color: var(--muted);font-size: 12px;">本地访问，或可以直接开放 3760 端口的机器</p></span>
+  <section class="section" id="scope">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Product boundary</div>
+        <div><h2>把 Agent 运行的关键边界放到同一张工作台上。</h2><p class="section-desc">OpenClaw 是当前支持的宿主和运行表面；Tracevane 的范围更大，覆盖本地工作区、模型网关、渠道连接器、CLI Agent、IDE 能力与系统守护。</p></div>
+      </div>
+      <div class="matrix">
+        <article class="cell"><code>01 / Workspace</code><h3>Workspace / Files</h3><p>文件操作、在线编辑、预览、终端交接和 Git/证据导向的项目工作流。</p></article>
+        <article class="cell"><code>02 / Workbench</code><h3>IDE Workbench</h3><p>Explorer、Monaco 编辑器组、终端、Problems/Output、布局持久化与 Git/LSP 基础。</p></article>
+        <article class="cell"><code>03 / Routing</code><h3>Model Gateway</h3><p>Provider 路由、协议适配、端点配置、账号媒体能力和活动路由可视化。</p></article>
+        <article class="cell"><code>04 / Messaging</code><h3>Channel Connectors</h3><p>Feishu / Octo 私聊接入 Agent 工作流，保留权限、文件、进度和交付证据。</p></article>
+        <article class="cell"><code>05 / Runtime</code><h3>CLI Agents</h3><p>Codex、Claude Code、OpenCode 运行准备度和 Agent Runs，而不是把终端管理伪装成 Agent。</p></article>
+        <article class="cell"><code>06 / Guard</code><h3>System Guard</h3><p>OpenClaw 配置兼容、服务修复、守护健康、设备信任、运行摘要和审计事件。</p></article>
+      </div>
     </div>
-    <div class="mode-alert-item mode-alert-corp">
-      <span class="mode-alert-icon">🏢</span>
-      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Tracevane 挂载到 /tracevane，同时保留本机 3760</p></span>
-    </div>
-  </div>
+  </section>
 
-  <!-- Standalone -->
-  <div class="prompt-card">
-    <div class="prompt-header">
-      <h3>模式一：独立端口 <span class="badge badge-standalone">STANDALONE</span></h3>
-      <button class="copy-btn" onclick="copyPrompt('prompt1',this)">复制 Prompt</button>
+  <section class="section" id="system">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Operating model</div>
+        <div><h2>少一点装饰，多一点可执行的系统感。</h2><p class="section-desc">页面不再伪造复杂仪表盘，而是用产品事实组织信息：入口、边界、恢复路径、安装模式和验证结果。</p></div>
+      </div>
+      <div class="system">
+        <article class="system-card">
+          <header><span>ROUTES</span><span>local / gateway</span></header>
+          <div class="body">
+            <div class="route"><b>Standalone</b><span>默认本地 3760 HTTP / WebSocket 入口，适合本地开发、直连和排障。</span></div>
+            <div class="route"><b>Gateway</b><span>挂载到 OpenClaw 统一端口的 /tracevane，适合外网只开放单端口的环境。</span></div>
+            <div class="route"><b>Fallback</b><span>Gateway 模式仍保留本机 3760 回退入口，避免单入口故障导致不可恢复。</span></div>
+          </div>
+        </article>
+        <article class="system-card">
+          <header><span>PROOF</span><span>what install verifies</span></header>
+          <div class="body note-list">
+            <div class="note"><b>版本和元数据</b><p>安装脚本检查最低 OpenClaw 版本，读取站点发布元数据并解析最新 Tracevane 包。</p></div>
+            <div class="note"><b>完整性校验</b><p>下载包 SHA-256 必须匹配，避免损坏包或错误元数据进入安装链路。</p></div>
+            <div class="note"><b>健康检查</b><p>安装完成后验证 standalone 或 gateway health endpoint，给出可复制的结果证据。</p></div>
+          </div>
+        </article>
+      </div>
     </div>
-    <div class="prompt-body">
-      <pre id="prompt1">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
+  </section>
+
+
+  <section class="section" id="guide">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Avatar / video layer</div>
+        <div><h2>让产品自己解释，但不把页面做成 AI 秀场。</h2><p class="section-desc">虚拟形象在这里不是真人噱头，而是 Tracevane 的“Signal Steward”：一个克制的产品向导，用 45 秒讲清安装前最该理解的边界、入口和验证路径。</p></div>
+      </div>
+      <div class="guide">
+        <figure class="video-card">
+          <img class="video-poster" src="assets/landing/tracevane-video-poster.png" alt="Tracevane 视频海报：信号风向标连接 Workspace、Gateway、Channels、CLI 和 Recovery 控制平面">
+          <figcaption class="video-overlay">
+            <button class="video-trigger" type="button" aria-haspopup="dialog" aria-controls="videoPreview" onclick="openVideoPreview()">
+              <span class="video-copy"><b>45 秒产品导览</b><span>Connect · Observe · Recover · Verify · 中文旁白 · landscape</span></span>
+              <span class="play-mark" aria-hidden="true">▶</span>
+            </button>
+          </figcaption>
+        </figure>
+        <aside class="avatar-card">
+          <div>
+            <div class="avatar-head">
+              <div class="avatar-mark"><img src="assets/brand/tracevane-mark.svg" alt=""></div>
+              <div><div class="kicker">Signal Steward</div><h3>克制的虚拟产品向导。</h3></div>
+            </div>
+            <p>遵循 DESIGN.md：本地优先、工业工作室气质、冷静精确、证据导向。头像和视频都避免机器人、霓虹、夸张 AI 话术，只服务于理解产品边界。</p>
+          </div>
+          <div class="script-box">
+            <b>video script structure</b>
+            <ol>
+              <li>Tracevane 不是聊天皮肤，而是本地控制平面。</li>
+              <li>六个边界：Workspace、IDE、Gateway、Channels、CLI、Guard。</li>
+              <li>两种安装入口：Standalone 3760 与 Gateway /tracevane。</li>
+              <li>最后以健康检查和 SHA-256 证据收束。</li>
+            </ol>
+          </div>
+          <div class="integration-row">
+            <div class="integration-pill"><b>IMAGE</b><span>已生成并本地保存产品海报资产。</span></div>
+            <div class="integration-pill"><b>AVATAR</b><span>预留 Signal Steward 身份位。</span></div>
+            <div class="integration-pill"><b>VIDEO</b><span>HeyGen 授权恢复后替换真实视频。</span></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="install" id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Install</div>
+        <div><h2>选择部署入口，复制给你的 Agent 执行。</h2><p class="section-desc">为了避免 AI 或安全策略拦截，安装指令默认先下载脚本、可选审阅，再本地运行。正式发布站点会用 metadata 自动填充最新 Tracevane 版本与最低 OpenClaw 版本。</p></div>
+      </div>
+      <div class="mode-grid">
+        <div class="mode-card"><b>模式一：Standalone 非单口</b><p>适合本地访问，或可以直接开放 3760 端口的机器。路径清晰、排障直接。</p></div>
+        <div class="mode-card"><b>模式二：Gateway 单口</b><p>适合外网只开放 OpenClaw 端口的环境，挂载到 /tracevane，同时保留本机 3760 回退入口。</p></div>
+      </div>
+      <div class="prompt-grid">
+        <div class="prompt-card">
+          <div class="prompt-header"><h3>独立端口 <span class="badge">STANDALONE</span></h3><button class="copy-btn" onclick="copyPrompt('prompt1',this)">复制 Prompt</button></div>
+          <div class="prompt-body"><pre id="prompt1">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
@@ -469,18 +267,11 @@
 - 配置文件路径
 - 安装目录
 - 访问地址
-- 健康检查结果</pre>
-    </div>
-  </div>
-
-  <!-- Gateway -->
-  <div class="prompt-card">
-    <div class="prompt-header">
-      <h3>模式二：单口模式 <span class="badge badge-gateway">GATEWAY /TRACEVANE</span></h3>
-      <button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button>
-    </div>
-    <div class="prompt-body">
-      <pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
+- 健康检查结果</pre></div>
+        </div>
+        <div class="prompt-card">
+          <div class="prompt-header"><h3>单口挂载 <span class="badge">GATEWAY</span></h3><button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button></div>
+          <div class="prompt-body"><pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
@@ -507,48 +298,44 @@
 - Gateway 端口
 - 3760 回退入口健康检查
 - 访问地址
-- 健康检查结果</pre>
+- 健康检查结果</pre></div>
+        </div>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
+</main>
 
-<!-- ===== Footer ===== -->
-<footer class="footer" id="footer">
-  <div class="footer-card">
-    <div class="footer-block" style="grid-column:1/-1;display:flex;flex-direction:column;gap:20px;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--peach));display:grid;place-items:center;font-size:1.4rem;flex-shrink:0;">🏔️</div>
-        <div>
-          <div style="font-size:1.05rem;font-weight:700;">丘彬彬</div>
-          <div style="color:var(--muted);font-size:.88rem;margin-top:2px;">业余爱好者，以兴趣驱动项目开发，不拘泥于技术细节，乐于分享心得，喜欢与积极向上的伙伴为伴。</div>
-        </div>
+<dialog class="video-dialog" id="videoPreview" aria-labelledby="videoPreviewTitle">
+  <div class="dialog-grid">
+    <div class="dialog-media">
+      <img src="assets/landing/tracevane-video-poster.png" alt="Tracevane Signal Steward 视频导览海报">
+      <div class="dialog-caption"><span>Signal Steward preview</span><span>45s · landscape</span></div>
+    </div>
+    <div class="dialog-copy">
+      <div>
+        <div class="kicker">Video preview</div>
+        <h3 id="videoPreviewTitle">导览先讲边界，再讲安装。</h3>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:24px;padding-top:4px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:1.1rem;">💬</span>
-          <div>
-            <div style="font-size:.78rem;color:var(--muted);">TEL</div>
-            <div style="font-size:.95rem;letter-spacing:.02em;">17606600435</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:1.1rem;">📋</span>
-          <div>
-            <div style="font-size:.78rem;color:var(--muted);">状态</div>
-            <div style="font-size:.95rem;">内测阶段 · 后续开源</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:1.1rem;">🐛</span>
-          <div>
-            <div style="font-size:.78rem;color:var(--muted);">问题反馈</div>
-            <div style="font-size:.95rem;">安装遇到问题&BUG请联系作者</div>
-          </div>
-        </div>
+      <p>真实 HeyGen 视频位已经预留；当前连接需要重新授权，所以这里展示可验证的脚本与视觉方向，避免用假视频欺骗用户。</p>
+      <ul>
+        <li>开场：Tracevane 不是聊天皮肤，而是本地控制平面。</li>
+        <li>中段：Workspace、IDE、Gateway、Channels、CLI、Guard 六个边界。</li>
+        <li>收束：Standalone / Gateway 两种入口，以及健康检查和 SHA-256 证据。</li>
+      </ul>
+      <div class="auth-note"><b>HeyGen handoff</b>重新授权后，用同一脚本生成真实 presenter 视频，并替换此海报模块。</div>
+      <div class="dialog-actions">
+        <button class="dialog-close" type="button" onclick="closeVideoPreview()">关闭预览</button>
+        <button class="dialog-link" type="button" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'}); closeVideoPreview();">查看安装 Prompt</button>
       </div>
     </div>
   </div>
-  <p class="footer-bottom">Tracevane · CLOSED BETA · Made with ❤️ by 丘彬彬</p>
+</dialog>
+
+<footer id="contact">
+  <div class="wrap footer-grid">
+    <div><b>Tracevane · Closed Beta</b><p>当前以 OpenClaw UI extension 发布，同时保持内部模块、共享类型和前端表面独立，便于未来支持更完整的本地工作区运行时。安装遇到问题或 BUG 可联系作者：17606600435。</p></div>
+    <div class="footer-meta">Made with care by 丘彬彬<br>Local AI Agent Control Workbench</div>
+  </div>
 </footer>
 
 <script>
@@ -561,9 +348,18 @@ function applyReleasePlaceholders(version, minVersion) {
       .replace(/\{\{TRACEVANE_VERSION\}\}/g, version)
       .replace(/\{\{OPENCLAW_MIN_VERSION\}\}/g, minVersion);
   });
+  const releaseVersionLabel = document.getElementById("releaseVersionLabel");
+  const minVersionLabel = document.getElementById("minVersionLabel");
+  if (releaseVersionLabel) releaseVersionLabel.textContent = version;
+  if (minVersionLabel) minVersionLabel.textContent = minVersion;
 }
 
 async function loadReleaseMetadata() {
+  const localPreviewHosts = new Set(["", "localhost", "127.0.0.1", "::1"]);
+  if (localPreviewHosts.has(window.location.hostname)) {
+    applyReleasePlaceholders(TRACEVANE_VERSION, OPENCLAW_MIN_VERSION);
+    return;
+  }
   try {
     const response = await fetch("./version.json", { cache: "no-store" });
     if (!response.ok) throw new Error("version.json unavailable");
@@ -575,7 +371,6 @@ async function loadReleaseMetadata() {
       ? payload.minOpenClawVersion.trim()
       : OPENCLAW_MIN_VERSION;
     applyReleasePlaceholders(version, minVersion);
-    return;
   } catch {
     applyReleasePlaceholders(TRACEVANE_VERSION, OPENCLAW_MIN_VERSION);
   }
@@ -583,50 +378,44 @@ async function loadReleaseMetadata() {
 
 void loadReleaseMetadata();
 
-// Typing animation
-const lines=[
-  "命令行的全部能力，搬进浏览器。",
-  "单口 / 非单口，两种模式统一一键安装。",
-  "复制命令或 Prompt，三分钟完成部署。"
-];
-const typingEl=document.getElementById("typing");
-let li=0,lj=0,deleting=false;
-function typeLoop(){
-  const t=lines[li];
-  typingEl.textContent=t.slice(0,lj);
-  if(!deleting){lj++;if(lj>t.length){deleting=true;return setTimeout(typeLoop,1400)}}
-  else{lj--;if(lj<0){deleting=false;li=(li+1)%lines.length;lj=0}}
-  setTimeout(typeLoop,deleting?40:75);
+function openVideoPreview(){
+  const dialog = document.getElementById("videoPreview");
+  if (!dialog) return;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
 }
-typeLoop();
-
-// 3D tilt on hero card
-const heroCard=document.getElementById("heroCard");
-window.addEventListener("pointermove",e=>{
-  const r=heroCard.getBoundingClientRect();
-  const x=(e.clientX-r.left)/r.width;
-  const y=(e.clientY-r.top)/r.height;
-  if(x<0||x>1||y<0||y>1)return;
-  heroCard.style.setProperty("--rx",(0.5-y)*8+"deg");
-  heroCard.style.setProperty("--ry",(x-0.5)*10+"deg");
-  heroCard.style.setProperty("--mx",x*100+"%");
-  heroCard.style.setProperty("--my",y*100+"%");
-});
-window.addEventListener("pointerleave",()=>{
-  heroCard.style.setProperty("--rx","0deg");
-  heroCard.style.setProperty("--ry","0deg");
-  heroCard.style.setProperty("--mx","50%");
-  heroCard.style.setProperty("--my","50%");
+function closeVideoPreview(){
+  const dialog = document.getElementById("videoPreview");
+  if (!dialog) return;
+  if (typeof dialog.close === "function") dialog.close();
+  else dialog.removeAttribute("open");
+}
+document.getElementById("videoPreview")?.addEventListener("click", event => {
+  if (event.target === event.currentTarget) closeVideoPreview();
 });
 
-// Copy
 function copyPrompt(id,btn){
   const text=document.getElementById(id).textContent;
-  navigator.clipboard.writeText(text).then(()=>{
-    btn.textContent="已复制 ✓";
+  const done=()=>{
+    btn.textContent="已复制";
     btn.classList.add("copied");
-    setTimeout(()=>{btn.textContent="复制 Prompt";btn.classList.remove("copied")},2200);
-  });
+    setTimeout(()=>{btn.textContent="复制 Prompt";btn.classList.remove("copied")},2000);
+  };
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  }else{
+    fallbackCopy(text,done);
+  }
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text;
+  ta.setAttribute("readonly","");
+  ta.style.position="fixed";
+  ta.style.opacity="0";
+  document.body.appendChild(ta);
+  ta.select();
+  try{document.execCommand("copy");done();}finally{document.body.removeChild(ta);}
 }
 </script>
 </body>

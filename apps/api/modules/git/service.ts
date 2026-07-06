@@ -19,6 +19,7 @@ const GIT_STATUS_CHANGE_LIMIT = 500;
 const GIT_HISTORY_LIMIT = 80;
 const GIT_BRANCH_LIMIT = 120;
 const GIT_DIFF_MAX_CHARS = 220_000;
+const GIT_DIFF_CONTENT_MAX_CHARS = 1_000_000;
 const GIT_DIFF_MAX_BUFFER = 4 * 1024 * 1024;
 
 interface GitRootContext {
@@ -29,7 +30,7 @@ interface GitRootContext {
 
 export interface GitService {
   getStatus(rootId: string, directoryPath?: string): GitStatusPayload;
-  getDiff(rootId: string, directoryPath: string | undefined, filePath?: string, staged?: boolean, untracked?: boolean): GitDiffPayload;
+  getDiff(rootId: string, directoryPath: string | undefined, filePath?: string, staged?: boolean, untracked?: boolean, previousFilePath?: string): GitDiffPayload;
   getCommit(rootId: string, directoryPath: string | undefined, hash?: string): GitCommitDetailPayload;
   initRepository(rootId: string, directoryPath?: string): GitStatusPayload;
   stagePaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
@@ -179,6 +180,107 @@ function truncateGitDiff(diff: string): { diff: string; truncated: boolean } {
 
 function isBinaryDiff(diff: string): boolean {
   return /(?:Binary files .* differ|GIT binary patch)/.test(diff);
+}
+
+function bufferLooksBinary(buffer: Buffer): boolean {
+  return buffer.includes(0);
+}
+
+function contentFromBuffer(buffer: Buffer): { content: string | null; binary: boolean; truncated: boolean } {
+  if (bufferLooksBinary(buffer)) {
+    return { content: null, binary: true, truncated: false };
+  }
+  const content = buffer.toString("utf8");
+  if (content.length <= GIT_DIFF_CONTENT_MAX_CHARS) {
+    return { content, binary: false, truncated: false };
+  }
+  return {
+    content: content.slice(0, GIT_DIFF_CONTENT_MAX_CHARS),
+    binary: false,
+    truncated: true,
+  };
+}
+
+function readWorkingTreeFile(repositoryRoot: string, filePath: string): { content: string | null; binary: boolean; truncated: boolean } {
+  const absolutePath = path.resolve(repositoryRoot, filePath);
+  const realPath = realPathOrSelf(absolutePath);
+  if (!isPathInside(realPathOrSelf(repositoryRoot), realPath)) {
+    throw new Error("Git diff path is outside the repository");
+  }
+  if (!fs.existsSync(absolutePath)) {
+    return { content: "", binary: false, truncated: false };
+  }
+  const stat = fs.statSync(absolutePath);
+  if (!stat.isFile()) {
+    return { content: null, binary: true, truncated: false };
+  }
+  return contentFromBuffer(fs.readFileSync(absolutePath));
+}
+
+function readGitObject(repositoryRoot: string, spec: string): { content: string | null; binary: boolean; truncated: boolean } {
+  try {
+    const buffer = execFileSync("git", ["show", spec], {
+      cwd: repositoryRoot,
+      maxBuffer: GIT_DIFF_MAX_BUFFER,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    return contentFromBuffer(Buffer.isBuffer(buffer) ? buffer : Buffer.from(String(buffer)));
+  } catch {
+    return { content: "", binary: false, truncated: false };
+  }
+}
+
+function buildGitDiffContents(
+  repositoryRoot: string,
+  filePath: string,
+  previousFilePath: string,
+  staged: boolean,
+  untracked: boolean,
+): {
+  originalContent: string | null;
+  modifiedContent: string | null;
+  originalPath: string | null;
+  modifiedPath: string | null;
+  binary: boolean;
+  contentTruncated: boolean;
+} {
+  const originalPath = previousFilePath || filePath;
+  if (untracked) {
+    const modified = readWorkingTreeFile(repositoryRoot, filePath);
+    return {
+      originalContent: "",
+      modifiedContent: modified.content,
+      originalPath: null,
+      modifiedPath: filePath,
+      binary: modified.binary,
+      contentTruncated: modified.truncated,
+    };
+  }
+
+  if (staged) {
+    const original = readGitObject(repositoryRoot, `HEAD:${originalPath}`);
+    const modified = readGitObject(repositoryRoot, `:${filePath}`);
+    return {
+      originalContent: original.content,
+      modifiedContent: modified.content,
+      originalPath,
+      modifiedPath: filePath,
+      binary: original.binary || modified.binary,
+      contentTruncated: original.truncated || modified.truncated,
+    };
+  }
+
+  const original = readGitObject(repositoryRoot, `:${originalPath}`);
+  const modified = readWorkingTreeFile(repositoryRoot, filePath);
+  return {
+    originalContent: original.content,
+    modifiedContent: modified.content,
+    originalPath,
+    modifiedPath: filePath,
+    binary: original.binary || modified.binary,
+    contentTruncated: original.truncated || modified.truncated,
+  };
 }
 
 function normalizeRepositoryPath(value: string): string {
@@ -631,9 +733,10 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       return buildStatus(rootId, directoryPath);
     },
 
-    getDiff(rootId: string, directoryPath = "", filePath = "", staged = false, untracked = false): GitDiffPayload {
+    getDiff(rootId: string, directoryPath = "", filePath = "", staged = false, untracked = false, previousFilePath = ""): GitDiffPayload {
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       const normalizedFilePath = normalizeRepositoryPath(filePath);
+      const normalizedPreviousFilePath = previousFilePath ? normalizeRepositoryPath(previousFilePath) : "";
       if (!normalizedFilePath) {
         throw new Error("Git diff file path is required");
       }
@@ -643,7 +746,14 @@ export function createGitService(config: TracevaneServerConfig): GitService {
         : ["diff", ...(staged ? ["--cached"] : []), "--no-color", "--", normalizedFilePath];
       const output = runGitForDiff(repositoryRoot, diffArgs);
       const truncated = truncateGitDiff(output);
-      const binary = isBinaryDiff(output);
+      const contents = buildGitDiffContents(
+        repositoryRoot,
+        normalizedFilePath,
+        normalizedPreviousFilePath,
+        staged === true,
+        untracked === true,
+      );
+      const binary = isBinaryDiff(output) || contents.binary;
 
       return {
         checkedAt: toIsoNow(),
@@ -651,12 +761,18 @@ export function createGitService(config: TracevaneServerConfig): GitService {
         directoryPath: resolved.relativePath,
         repositoryRoot,
         path: normalizedFilePath,
+        previousPath: normalizedPreviousFilePath || null,
+        originalPath: contents.originalPath,
+        modifiedPath: contents.modifiedPath,
         staged: staged === true,
         untracked: untracked === true,
         binary,
         truncated: truncated.truncated,
         diff: truncated.diff,
-        message: output.trim() ? null : "No diff is available for this file",
+        originalContent: contents.originalContent,
+        modifiedContent: contents.modifiedContent,
+        contentTruncated: contents.contentTruncated,
+        message: output.trim() || contents.originalContent !== contents.modifiedContent ? null : "No diff is available for this file",
       };
     },
 
