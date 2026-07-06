@@ -9757,6 +9757,150 @@ test("model gateway preserves modern responses request controls through chat ada
   });
 });
 
+test("model gateway applies responses adapter stop sequences locally without forwarding unsupported stop", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-local-stop",
+      name: "Responses Local Stop Provider",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-local-stop.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-local-stop-secret" },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    if (body.stream) {
+      const response = {
+        id: `resp_local_stop_stream_${upstreamCalls.length}`,
+        object: "response",
+        status: "completed",
+        model: body.model,
+        output: [{
+          id: "msg_local_stop_stream",
+          type: "message",
+          status: "completed",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Hello STOP hidden" }],
+        }],
+        usage: { input_tokens: 3, output_tokens: 4, total_tokens: 7 },
+      };
+      const upstreamSse = [
+        `event: response.created\ndata: ${JSON.stringify({ response: { ...response, status: "in_progress", output: [] } })}`,
+        `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: "Hello ST" })}`,
+        `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: "OP hidden" })}`,
+        `event: response.completed\ndata: ${JSON.stringify({ response })}`,
+        "data: [DONE]",
+        "",
+      ].join("\n\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: `resp_local_stop_${upstreamCalls.length}`,
+      object: "response",
+      status: "completed",
+      model: body.model,
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Hello STOP hidden" }],
+      }],
+      usage: { input_tokens: 3, output_tokens: 4, total_tokens: 7 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "stop locally" }],
+          stop: ["STOP"],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Hello ");
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+
+      const chatStream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "stream stop locally" }],
+          stream: true,
+          stop: ["STOP"],
+        },
+      });
+      assert.equal(chatStream.status, 200, chatStream.body);
+      const chatEvents = parseSseEvents(chatStream.body);
+      const chatStreamText = chatEvents
+        .filter((event) => event.data !== "[DONE]")
+        .map((event) => event.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(chatStreamText, "Hello ");
+      assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "anthropic stop locally" }],
+          stop_sequences: ["STOP"],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: "Hello " }]);
+      assert.equal(messages.body.stop_reason, "stop_sequence");
+      assert.equal(messages.body.stop_sequence, "STOP");
+
+      const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "stream anthropic stop locally" }],
+          stream: true,
+          stop_sequences: ["STOP"],
+        },
+      });
+      assert.equal(messageStream.status, 200, messageStream.body);
+      const messageEvents = parseSseEvents(messageStream.body);
+      const messageStreamText = messageEvents
+        .filter((event) => event.event === "content_block_delta")
+        .map((event) => event.data.delta.text || "")
+        .join("");
+      assert.equal(messageStreamText, "Hello ");
+      const messageDelta = messageEvents.find((event) => event.event === "message_delta");
+      assert.equal(messageDelta.data.delta.stop_reason, "stop_sequence");
+      assert.equal(messageDelta.data.delta.stop_sequence, "STOP");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 4);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-local-stop.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => !("stop" in call.body)));
+});
+
 test("model gateway protocol matrix forwards native anthropic messages", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

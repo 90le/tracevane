@@ -18,6 +18,7 @@ interface StreamResult {
 
 export interface StreamAdapterOptions {
   customToolNames?: Iterable<string>;
+  stopSequences?: Iterable<string>;
 }
 
 export interface StreamErrorEnvelope {
@@ -53,6 +54,12 @@ interface PendingToolDelta {
   id?: string;
   name?: string;
   arguments: string;
+}
+
+interface StopSequenceFilter {
+  sequences: string[];
+  pending: string;
+  matched: string | null;
 }
 
 export async function writeAnthropicMessagesSseFromChatSse(
@@ -252,11 +259,13 @@ export async function writeChatCompletionsSseFromResponsesSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
   fallbackModel: string | null,
+  options: StreamAdapterOptions = {},
 ): Promise<StreamResult> {
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
   const toolIndexByItemId = new Map<string, number>();
   const emittedMcpItemKeys = new Set<string>();
+  const stopFilter = createStopSequenceFilter(options.stopSequences);
   let sawCompleted = false;
 
   try {
@@ -291,8 +300,12 @@ export async function writeChatCompletionsSseFromResponsesSse(
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
-          ensureChatStreamStart(state, res);
-          writeChatTextDelta(state, res, delta);
+          const filtered = applyStopSequenceFilter(stopFilter, delta);
+          if (filtered.delta) {
+            ensureChatStreamStart(state, res);
+            writeChatTextDelta(state, res, filtered.delta);
+          }
+          if (filtered.stopSequence) state.finishReason = "stop";
         }
         return;
       }
@@ -367,7 +380,12 @@ export async function writeChatCompletionsSseFromResponsesSse(
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
         emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
         emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
-        state.finishReason = response.status === "incomplete" ? "length" : "stop";
+        const pending = flushStopSequenceFilter(stopFilter);
+        if (pending) {
+          ensureChatStreamStart(state, res);
+          writeChatTextDelta(state, res, pending);
+        }
+        if (!stopFilter?.matched) state.finishReason = response.status === "incomplete" ? "length" : "stop";
         if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
         finalizeChatStream(state, res);
       }
@@ -398,6 +416,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
   fallbackModel: string | null,
+  options: StreamAdapterOptions = {},
 ): Promise<StreamResult> {
   const state = {
     started: false,
@@ -413,8 +432,10 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     tools: new Map<number, ToolStreamBlock>(),
     toolIndexByItemId: new Map<string, number>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
+    stopSequence: null as string | null,
   };
   const emittedMcpItemKeys = new Set<string>();
+  const stopFilter = createStopSequenceFilter(options.stopSequences);
   let sawCompleted = false;
 
   try {
@@ -449,8 +470,15 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
-          ensureAnthropicTextMessageStart(state, res);
-          pushAnthropicTextDelta(state, res, delta);
+          const filtered = applyStopSequenceFilter(stopFilter, delta);
+          if (filtered.delta) {
+            ensureAnthropicTextMessageStart(state, res);
+            pushAnthropicTextDelta(state, res, filtered.delta);
+          }
+          if (filtered.stopSequence) {
+            state.stopReason = "stop_sequence";
+            state.stopSequence = filtered.stopSequence;
+          }
         }
         return;
       }
@@ -530,7 +558,12 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
-        state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
+        const pending = flushStopSequenceFilter(stopFilter);
+        if (pending) {
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicTextDelta(state, res, pending);
+        }
+        if (!state.stopSequence) state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
         if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
         finalizeAnthropicTextStream(state, res);
       }
@@ -1188,6 +1221,7 @@ function finalizeAnthropicFromChat(
     messageId: string;
     model: string | null;
     stopReason: string;
+    stopSequence?: string | null;
     textBlockIndex: number | null;
     textBlockStopped: boolean;
     tools: Map<number, ToolStreamBlock>;
@@ -1217,7 +1251,7 @@ function finalizeAnthropicFromChat(
     type: "message_delta",
     delta: {
       stop_reason: state.stopReason,
-      stop_sequence: null,
+      stop_sequence: state.stopSequence || null,
     },
     usage: {
       output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
@@ -1251,6 +1285,7 @@ function finalizeAnthropicTextStream(
     messageId: string;
     model: string | null;
     stopReason: string;
+    stopSequence?: string | null;
     textBlockIndex: number | null;
     textBlockStopped: boolean;
     usage: JsonRecord;
@@ -1270,7 +1305,7 @@ function finalizeAnthropicTextStream(
     type: "message_delta",
     delta: {
       stop_reason: state.stopReason,
-      stop_sequence: null,
+      stop_sequence: state.stopSequence || null,
     },
     usage: {
       output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
@@ -2030,6 +2065,66 @@ function stringifyCompact(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function createStopSequenceFilter(stopSequences: Iterable<string> | undefined): StopSequenceFilter | null {
+  const sequences = Array.from(stopSequences || [])
+    .filter((sequence): sequence is string => typeof sequence === "string" && sequence.length > 0);
+  return sequences.length ? { sequences, pending: "", matched: null } : null;
+}
+
+function applyStopSequenceFilter(filter: StopSequenceFilter | null, delta: string): {
+  delta: string;
+  stopSequence: string | null;
+} {
+  if (!filter) return { delta, stopSequence: null };
+  if (filter.matched) return { delta: "", stopSequence: filter.matched };
+
+  const combined = filter.pending + delta;
+  const stop = findEarliestStopSequence(combined, filter.sequences);
+  if (stop) {
+    filter.pending = "";
+    filter.matched = stop.sequence;
+    return { delta: combined.slice(0, stop.index), stopSequence: stop.sequence };
+  }
+
+  const keep = longestStopSequencePrefixSuffixLength(combined, filter.sequences);
+  filter.pending = keep > 0 ? combined.slice(-keep) : "";
+  return {
+    delta: keep > 0 ? combined.slice(0, -keep) : combined,
+    stopSequence: null,
+  };
+}
+
+function flushStopSequenceFilter(filter: StopSequenceFilter | null): string {
+  if (!filter || filter.matched) return "";
+  const pending = filter.pending;
+  filter.pending = "";
+  return pending;
+}
+
+function findEarliestStopSequence(text: string, stopSequences: string[]): { index: number; sequence: string } | null {
+  let best: { index: number; sequence: string } | null = null;
+  for (const sequence of stopSequences) {
+    const index = text.indexOf(sequence);
+    if (index === -1) continue;
+    if (!best || index < best.index) best = { index, sequence };
+  }
+  return best;
+}
+
+function longestStopSequencePrefixSuffixLength(text: string, stopSequences: string[]): number {
+  let best = 0;
+  for (const sequence of stopSequences) {
+    const maxLength = Math.min(sequence.length - 1, text.length);
+    for (let length = maxLength; length > best; length -= 1) {
+      if (text.endsWith(sequence.slice(0, length))) {
+        best = length;
+        break;
+      }
+    }
+  }
+  return best;
 }
 
 function pushAnthropicToolDeltaFromResponses(

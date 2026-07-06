@@ -41,6 +41,10 @@ export interface AnthropicChatRequestAdapterOptions {
   preserveServiceTier?: boolean;
 }
 
+export interface ChatAnthropicResponseAdapterOptions {
+  stopSequences?: Iterable<string>;
+}
+
 export function isChatToAnthropicMessagesAdapterTarget(decision: {
   routeId: string | null;
   provider: { apiFormat: string } | null;
@@ -254,7 +258,11 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
   };
 }
 
-export function adaptChatCompletionResponseToAnthropicMessages(response: unknown, fallbackModel: string | null): JsonRecord {
+export function adaptChatCompletionResponseToAnthropicMessages(
+  response: unknown,
+  fallbackModel: string | null,
+  options: ChatAnthropicResponseAdapterOptions = {},
+): JsonRecord {
   if (!isRecord(response)) {
     throw new AnthropicMessagesChatAdapterError(
       "model_gateway_chat_anthropic_response_invalid",
@@ -265,7 +273,8 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
 
   const choice = firstChoice(response);
   const message = isRecord(choice?.message) ? choice.message : {};
-  const text = chatMessageText(message);
+  const stopResult = truncateAtStopSequence(chatMessageText(message), options.stopSequences);
+  const text = stopResult.text;
   const toolUses = Array.isArray(message.tool_calls)
     ? message.tool_calls
       .map(mapChatToolCallToAnthropicToolUse)
@@ -287,8 +296,10 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
     role: "assistant",
     model: stringOrNull(response.model) || fallbackModel,
     content,
-    stop_reason: mapChatFinishReasonToAnthropic(choice?.finish_reason, toolUses.length > 0),
-    stop_sequence: null,
+    stop_reason: stopResult.stopSequence
+      ? "stop_sequence"
+      : mapChatFinishReasonToAnthropic(choice?.finish_reason, toolUses.length > 0),
+    stop_sequence: stopResult.stopSequence,
     usage: mapChatUsageToAnthropic(response.usage),
   };
 }
@@ -859,6 +870,26 @@ function chatContentPartToText(part: unknown): string {
     || stringOrNull(part.output_text)
     || stringOrNull(part.refusal)
     || "";
+}
+
+function truncateAtStopSequence(text: string, stopSequences: Iterable<string> | undefined): {
+  text: string;
+  stopSequence: string | null;
+} {
+  let earliestIndex = -1;
+  let matched: string | null = null;
+  for (const stop of stopSequences || []) {
+    if (!stop) continue;
+    const index = text.indexOf(stop);
+    if (index === -1) continue;
+    if (earliestIndex === -1 || index < earliestIndex) {
+      earliestIndex = index;
+      matched = stop;
+    }
+  }
+  return earliestIndex === -1
+    ? { text, stopSequence: null }
+    : { text: text.slice(0, earliestIndex), stopSequence: matched };
 }
 
 function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string[]): void {

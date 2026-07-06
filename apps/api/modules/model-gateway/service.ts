@@ -10543,6 +10543,7 @@ export function createModelGatewayService(
     let codexHistoryRecordBodyText = bodyText;
     let requestModelForLog = resolvedModel || requestModel;
     let codexResponsesChatCustomToolNames: string[] = [];
+    let responsesAdapterStopSequences: string[] = [];
     let codexImageGenerationRequest: CodexAccountImageGenerationPreparedRequest | null = null;
     if (useCodexAccountImageGenerationAdapter) {
       try {
@@ -10580,6 +10581,7 @@ export function createModelGatewayService(
     } else if (useChatResponsesAdapter) {
       try {
         const adapted = adaptChatCompletionRequestToResponses(bodyText, { allowStreaming: true });
+        responsesAdapterStopSequences = adapted.stopSequences;
         upstreamBodyText = JSON.stringify(adapted.responsesRequest);
         requestModelForLog = adapted.model || requestModel;
         useChatResponsesStreamingAdapter = adapted.stream;
@@ -10717,6 +10719,7 @@ export function createModelGatewayService(
         const responsesAdapted = adaptChatCompletionRequestToResponses(JSON.stringify(chatAdapted.chatRequest), {
           allowStreaming: true,
         });
+        responsesAdapterStopSequences = responsesAdapted.stopSequences;
         upstreamBodyText = JSON.stringify(responsesAdapted.responsesRequest);
         requestModelForLog = responsesAdapted.model || chatAdapted.model || requestModel;
         useAnthropicMessagesResponsesProviderStreamingAdapter = responsesAdapted.stream;
@@ -10917,6 +10920,7 @@ export function createModelGatewayService(
           const streamingBody = observeReadableStreamFirstChunk(upstream.body, markFirstByte);
           const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog, {
             customToolNames: codexResponsesChatCustomToolNames,
+            stopSequences: responsesAdapterStopSequences,
           });
           if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
             const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
@@ -11288,6 +11292,7 @@ export function createModelGatewayService(
           adaptedResponse = adaptResponsesToChatCompletion(
             parseOpenAIResponsesUpstreamBody(responseText, { codexAccountSse: useCodexAccountResponsesUpstream }),
             requestModelForLog,
+            { stopSequences: responsesAdapterStopSequences },
           );
         } catch (error) {
           const adapterError = error instanceof OpenAIResponsesChatAdapterError
@@ -11418,7 +11423,9 @@ export function createModelGatewayService(
           const chatCompletion = useAnthropicMessagesResponsesProviderAdapter
             ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog)
             : upstreamJson;
-          adaptedResponse = adaptChatCompletionResponseToAnthropicMessages(chatCompletion, requestModelForLog);
+          adaptedResponse = adaptChatCompletionResponseToAnthropicMessages(chatCompletion, requestModelForLog, {
+            stopSequences: responsesAdapterStopSequences,
+          });
         } catch (error) {
           const adapterError = error instanceof AnthropicMessagesChatAdapterError || error instanceof OpenAIResponsesChatAdapterError
             ? error

@@ -17,10 +17,15 @@ export interface ChatResponsesRequestAdapterResult {
   responsesRequest: JsonRecord;
   model: string | null;
   stream: boolean;
+  stopSequences: string[];
 }
 
 export interface ChatResponsesRequestAdapterOptions {
   allowStreaming?: boolean;
+}
+
+export interface ResponsesChatResponseAdapterOptions {
+  stopSequences?: Iterable<string>;
 }
 
 export function isChatToOpenAIResponsesAdapterTarget(decision: {
@@ -109,10 +114,14 @@ export function adaptChatCompletionRequestToResponses(
 
   applyResponsesReasoningOptions(responsesRequest, request);
 
-  return { responsesRequest, model, stream };
+  return { responsesRequest, model, stream, stopSequences: normalizeStopSequences(request.stop) };
 }
 
-export function adaptResponsesToChatCompletion(response: unknown, fallbackModel: string | null): JsonRecord {
+export function adaptResponsesToChatCompletion(
+  response: unknown,
+  fallbackModel: string | null,
+  options: ResponsesChatResponseAdapterOptions = {},
+): JsonRecord {
   if (!isRecord(response)) {
     throw new OpenAIResponsesChatAdapterError(
       "model_gateway_responses_chat_response_invalid",
@@ -122,7 +131,10 @@ export function adaptResponsesToChatCompletion(response: unknown, fallbackModel:
   }
 
   const output = Array.isArray(response.output) ? response.output : [];
-  const text = collectResponseOutputText(response, output);
+  const text = truncateAtStopSequence(
+    collectResponseOutputText(response, output),
+    options.stopSequences,
+  ).text;
   const toolCalls = output
     .map(mapResponsesFunctionCallToChatToolCall)
     .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall));
@@ -421,6 +433,32 @@ function stringifyCompact(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function normalizeStopSequences(value: unknown): string[] {
+  if (typeof value === "string" && value.length) return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function truncateAtStopSequence(text: string, stopSequences: Iterable<string> | undefined): {
+  text: string;
+  stopSequence: string | null;
+} {
+  let earliestIndex = -1;
+  let matched: string | null = null;
+  for (const stop of stopSequences || []) {
+    if (!stop) continue;
+    const index = text.indexOf(stop);
+    if (index === -1) continue;
+    if (earliestIndex === -1 || index < earliestIndex) {
+      earliestIndex = index;
+      matched = stop;
+    }
+  }
+  return earliestIndex === -1
+    ? { text, stopSequence: null }
+    : { text: text.slice(0, earliestIndex), stopSequence: matched };
 }
 
 function collectResponseOutputAnnotations(output: unknown[]): JsonRecord[] {
