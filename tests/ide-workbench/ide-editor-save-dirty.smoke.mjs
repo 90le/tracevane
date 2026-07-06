@@ -169,8 +169,11 @@ async function waitForTabDirty(page, targetPath, dirty) {
 async function focusMonaco(page, targetPath) {
   const panel = page.locator('[data-ide-monaco-editor-panel][data-ide-editor-file-path="' + cssAttr(targetPath) + '"]').first();
   await panel.waitFor({ state: 'visible', timeout: 30_000 });
-  await panel.locator('.monaco-editor').first().click();
+  const viewLines = panel.locator('.monaco-editor .view-lines').first();
+  await viewLines.waitFor({ state: 'visible', timeout: 30_000 });
+  await viewLines.click({ position: { x: 24, y: 12 } });
 }
+
 
 
 async function waitPanelVisible(page, targetPath) {

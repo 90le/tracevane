@@ -223,7 +223,7 @@ async function run() {
     if (bouncedClosedSessions !== 0) {
       throw new Error(`Closed sessions bounced back into Terminal Manager after close-all: ${bouncedClosedSessions}`);
     }
-    await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-terminal-manager-dialog]', { hasText: '没有仍在运行或可恢复的终端' }).waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

@@ -98,3 +98,41 @@ M5.y 明确没有做：
 - 明确 Problems 数据模型与 Output channel/log 模型。
 - 保持 M6 边界：不做 LSP/Git/Debug；Problems 可以先承载结构化问题数据，真实 LSP diagnostics 到 M7。
 
+
+
+## M5.y-F 补充：Shared File Surface + IDE Editor Preferences
+
+M5.y-F 已在 M6 前完成共享预览和 IDE Monaco 偏好补齐：
+
+- 新增 `apps/web/src/shared/file-surface`，抽出 File Surface 预览分类与 image/video/audio/pdf/binary renderer。
+- File Manager Online Editor 改为复用共享 File Surface renderer，原有媒体预览行为保持。
+- IDE Editor 打开非文本/code 文件时复用共享 File Surface 只读预览，不再只显示“后续 IDE Preview”占位。
+- IDE Editor 操作菜单新增“小地图”开关，偏好持久化到 `tracevane:ide-workbench:editor-preferences:v1`，split panel 共享同一 Monaco option。
+
+详细记录见 [`m5y-f-shared-file-surface-summary.md`](./m5y-f-shared-file-surface-summary.md)。
+
+
+## M5.y-G 补充：IDE Preview StatusBar + Hex Editor Foundation
+
+M5.y-G 已在 M6 前完成 IDE 预览布局、Workbench StatusBar 和二进制查看基础收口：
+
+- IDE Editor 的非文本预览继续复用 `apps/web/src/shared/file-surface`，但在 Workbench 内使用 embedded chrome，避免图片/视频/PDF/Hex 预览再叠加完整 File Surface 标题栏和底部状态栏。
+- 活动文件信息从单个 Monaco panel 底部迁移到 Workbench StatusBar，展示 path、save state、language/mime、size、readonly、preview 等 metadata。
+- Workbench Panel 完全收起后不再占用底部一行；恢复入口在顶部 header 右侧，旧 `M4 Workbench foundation` 状态栏文案已删除。
+- 二进制文件进入共享 Hex Editor 只读基础：通过 `/api/files/download` 的 Range 读取限定字节，展示 offset/hex/ascii，支持 Hex/Text 搜索、复制 Hex 和下载文件。
+- 二进制写回暂不做：现有 `/api/files/content` 是 UTF-8 文本写入语义；可编辑 Hex 保存必须先新增/确认 binary read/write API、mtime/version/hash 冲突校验、分段/最大文件边界，不能把未知二进制内容经文本 API 写回。
+
+详细记录见 [`m5y-g-editor-preview-statusbar-hex-summary.md`](./m5y-g-editor-preview-statusbar-hex-summary.md)。
+
+
+## M5.y-H 补充：IDE Layout Reset / Empty State / Header Actions
+
+M5.y-H 已在 M6 前完成 IDE Workbench editor 可用性收口：
+
+- `workbench.resetLayout` 语义收窄为“只重置布局”：恢复 sidebar/panel 几何状态和清理 Dockview split metadata，但保留 Explorer 上下文、已打开 editor tabs、active group 和终端 session。
+- EditorDock 未打开文件时显示面向用户的“未打开文件”空状态，不再暴露阶段实现说明。
+- Panel 完全收起后不再占据底部一行，顶部右侧只显示图标恢复入口。
+- Dockview header 的右侧“操作”菜单通过稳定 adapter/context 注入，避免按钮闪烁、失焦或不可点击。
+- `smoke:ide:workbench-layout` 覆盖 Reset layout 后已打开/重命名的 tab 仍保留，防止 layout reset 退化为 workspace reset。
+
+详细记录见 [`m5y-h-layout-reset-empty-action-summary.md`](./m5y-h-layout-reset-empty-action-summary.md)。

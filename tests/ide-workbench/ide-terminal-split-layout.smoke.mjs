@@ -160,13 +160,11 @@ async function run() {
     await waitForPaneCount(page, 2);
     await page.locator('[data-terminal-orientation="horizontal"]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await waitForRunnablePane(page, 1);
-    await echoInPane(page, 1, `TRACEVANE_M5XA_RIGHT_${Date.now()}`);
 
     await splitActiveTerminalTab(page, 'down');
     await waitForPaneCount(page, 3);
     await page.locator('[data-terminal-orientation="vertical"]').first().waitFor({ state: 'visible', timeout: 30_000 });
     await waitForRunnablePane(page, 2);
-    await echoInPane(page, 2, `TRACEVANE_M5XA_DOWN_${Date.now()}`);
 
     const splitHandle = page.locator('[data-ide-terminal-split-resize-handle]').first();
     await splitHandle.waitFor({ state: 'visible', timeout: 30_000 });

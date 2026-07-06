@@ -89,6 +89,9 @@
 | [archive/m5x-execution-summary.md](./archive/m5x-execution-summary.md) | M5.x Terminal Split / Group / Panel Placement 总体验收、完成边界和 M5.y 入口 |
 | [archive/m5y-a-ide-editor-foundation-plan.md](./archive/m5y-a-ide-editor-foundation-plan.md) | M5.y-A IDE Editor Foundation 技术探查、复用边界和后续切片计划 |
 | [archive/m5y-execution-summary.md](./archive/m5y-execution-summary.md) | M5.y / M5.5 IDE Editor Foundation 总体验收、完成边界和 M6 入口 |
+| [archive/m5y-f-shared-file-surface-summary.md](./archive/m5y-f-shared-file-surface-summary.md) | M5.y-F Shared File Surface + IDE Editor Preferences，共享预览层和 IDE 小地图偏好收口 |
+| [archive/m5y-g-editor-preview-statusbar-hex-summary.md](./archive/m5y-g-editor-preview-statusbar-hex-summary.md) | M5.y-G IDE Preview StatusBar + Hex Editor Foundation，IDE embedded 预览、全局 StatusBar 文件信息和二进制 Hex 只读基础 |
+| [archive/m5y-h-layout-reset-empty-action-summary.md](./archive/m5y-h-layout-reset-empty-action-summary.md) | M5.y-H IDE Layout Reset / Empty State / Header Actions，Reset layout 只重置布局不清空工作区，EditorDock 空状态和操作菜单稳定化 |
 
 ## 推荐技术选型
 
@@ -170,6 +173,25 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已完成真实 Monaco panel、read/loading/error/unsupported/deleted 状态、dirty/save、Ctrl/Cmd+S、关闭确认、preview/pinned、多标签、tab 右键菜单和操作菜单。
 - 已完成向右/向下拆分真实 file panel：同一 document 可在多个 Dockview panel 实例显示；Explorer rename/move/delete 会同步 primary/split panel 的 path/title/tab params。
 - 验收见 `archive/m5y-execution-summary.md`。
+
+已完成 M5.y-F：Shared File Surface + IDE Editor Preferences
+- 已抽出 `shared/file-surface`，File Manager Online Editor 与 IDE Editor 共享 image/video/audio/pdf/binary 预览 renderer。
+- IDE Editor 打开非文本/code 文件时复用 File Surface 只读预览，不再只显示“后续 IDE Preview”占位；文本截断/不完整读取仍保持 unsupported 安全边界。
+- IDE Monaco 支持从编辑器操作菜单开启/关闭小地图，并通过 Workbench editor preferences 持久化。
+- 验收见 `archive/m5y-f-shared-file-surface-summary.md`。
+
+已完成 M5.y-G：IDE Preview StatusBar + Hex Editor Foundation
+- IDE 非文本预览使用 File Surface embedded chrome，减少额外标题栏/状态栏占用，图片/视频/PDF/Hex 等在 EditorDock 内尽量铺满可用空间。
+- Monaco 文件信息从单个 editor panel 底部迁移到 Workbench 全局 StatusBar；旧 `M4 Workbench foundation` 文案已移除。
+- Panel 完全收起时不再保留底部占位行，恢复入口移动到顶部右侧 header。
+- 二进制文件进入共享 Hex Editor 只读基础：Range 读取、offset/hex/ascii、搜索、复制 Hex、下载；安全写回 API 后置。
+- 验收见 `archive/m5y-g-editor-preview-statusbar-hex-summary.md`。
+
+已完成 M5.y-H：IDE Layout Reset / Empty State / Header Actions
+- Reset layout 现在只重置布局几何、panel/sidebar 状态和 Dockview split metadata，不再清空已打开 editor tabs、Explorer 上下文或终端会话。
+- EditorDock 空状态改为用户可理解的“未打开文件”，不再展示实现阶段说明。
+- Panel 收起后的恢复入口为顶部右侧图标按钮；Dockview header 的“操作”菜单通过稳定 adapter 注入，避免闪烁和不可点击。
+- 验收见 `archive/m5y-h-layout-reset-empty-action-summary.md`。
 
 下一步 M6：Watcher / Search / Problems / Output
 - 在真实 IDE Editor 基础可承载后，做文件 watcher、全局搜索、Problems 数据模型和 Output channel/log 基础；Problems 可先展示结构化问题数据，但真实 LSP diagnostics 到 M7。

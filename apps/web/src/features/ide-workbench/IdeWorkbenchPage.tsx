@@ -34,6 +34,7 @@ import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import type {
+  IdeWorkbenchEditorFileMetadata,
   IdeWorkbenchEditorTab,
   WorkbenchActivityId,
   WorkbenchPanelId,
@@ -218,6 +219,25 @@ export function IdeWorkbenchPage() {
     [layoutApi],
   );
 
+  const updateEditorTabMetadata = React.useCallback(
+    (tabId: string, metadata: IdeWorkbenchEditorFileMetadata) => {
+      layoutApi.setLayout((current) => {
+        let changed = false;
+        const editorGroups = current.editorGroups.map((group) => {
+          const tabs = group.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab;
+            if (sameEditorFileMetadata(tab.metadata, metadata)) return tab;
+            changed = true;
+            return { ...tab, metadata };
+          });
+          return changed ? { ...group, tabs } : group;
+        });
+        return changed ? { ...current, editorGroups } : current;
+      });
+    },
+    [layoutApi],
+  );
+
   const closeEditorTabsNow = React.useCallback((tabIds: string[]) => {
     const targets = new Set(tabIds);
     if (!targets.size) return;
@@ -319,6 +339,9 @@ export function IdeWorkbenchPage() {
         rootLabel={(root?.labelZh ?? root?.labelEn ?? rootId) || "未选择工作区"}
         rootPath={root?.absolutePath ?? "等待文件根目录加载"}
         onResetLayout={layoutApi.resetLayout}
+        panelCollapsed={layout.panel.collapsed}
+        panelPlacement={layout.panel.placement}
+        onTogglePanel={layoutApi.togglePanel}
       />
       <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] border-b border-line" data-ide-main-area>
         <ActivityBar
@@ -362,7 +385,7 @@ export function IdeWorkbenchPage() {
           <div
             className={cn(
               "grid min-h-0 min-w-0",
-              layout.panel.maximized
+              layout.panel.collapsed || layout.panel.maximized
                 ? "grid-rows-[minmax(0,1fr)]"
                 : layout.panel.placement === "right"
                   ? "grid-cols-[minmax(0,1fr)_minmax(0,var(--ide-panel-right-width))]"
@@ -384,6 +407,7 @@ export function IdeWorkbenchPage() {
                 onPinTab={pinEditorTab}
                 onDirtyChange={updateEditorTabDirty}
                 onSaveStateChange={updateEditorTabSaveState}
+                onFileMetadataChange={updateEditorTabMetadata}
                 onRequestCloseTabs={requestCloseEditorTabs}
               />
             )}
@@ -412,6 +436,7 @@ export function IdeWorkbenchPage() {
         sideBarCollapsed={layout.sideBar.collapsed}
         panelCollapsed={layout.panel.collapsed}
         activePanelId={layout.panel.activePanelId}
+        activeTab={activeTab}
       />
     </div>
   );
@@ -467,10 +492,16 @@ function WorkbenchHeader({
   rootLabel,
   rootPath,
   onResetLayout,
+  panelCollapsed,
+  panelPlacement,
+  onTogglePanel,
 }: {
   rootLabel: string;
   rootPath: string;
   onResetLayout: () => void;
+  panelCollapsed: boolean;
+  panelPlacement: WorkbenchPanelPlacement;
+  onTogglePanel: () => void;
 }) {
   return (
     <header className="flex min-h-[50px] min-w-0 items-center gap-3 border-b border-line bg-panel px-3" data-ide-header>
@@ -485,6 +516,18 @@ function WorkbenchHeader({
           {rootLabel} · {rootPath}
         </div>
       </div>
+      {panelCollapsed ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onTogglePanel}
+          aria-label="展开底部/右侧面板"
+          title={panelPlacement === "right" ? "展开右侧面板" : "展开底部面板"}
+          data-ide-panel-restore-button
+        >
+          {panelPlacement === "right" ? <PanelRightOpen /> : <PanelBottomOpen />}
+        </Button>
+      ) : null}
       <Button variant="ghost" size="sm" onClick={onResetLayout}>
         <RotateCcw />
         <span className="hidden sm:inline">重置布局</span>
@@ -608,22 +651,7 @@ function PanelArea({
       : { height: panel.bottomSize, maxHeight: "100%" };
 
   if (panel.collapsed) {
-    return (
-      <div
-        className={cn(
-          "bg-panel px-2 py-1",
-          isRight ? "border-l border-line" : "border-t border-line",
-          className,
-        )}
-        data-ide-panel-collapsed
-        data-ide-panel-placement={panel.placement}
-      >
-        <Button variant="ghost" size="sm" onClick={onTogglePanel}>
-          {isRight ? <PanelRightOpen /> : <PanelBottomOpen />}
-          展开 Panel
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -797,6 +825,21 @@ function syncTabForPathEvent(
   };
 }
 
+function sameEditorFileMetadata(
+  left: IdeWorkbenchEditorFileMetadata | undefined,
+  right: IdeWorkbenchEditorFileMetadata | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.language === right.language &&
+    left.mimeType === right.mimeType &&
+    left.size === right.size &&
+    left.readonly === right.readonly &&
+    left.previewKind === right.previewKind
+  );
+}
+
 function pathTouchesTarget(
   targetPath: string,
   targetKind: IdeExplorerPathEvent["targetKind"],
@@ -922,6 +965,7 @@ function WorkbenchStatusBar({
   sideBarCollapsed,
   panelCollapsed,
   activePanelId,
+  activeTab,
 }: {
   rootId: string;
   rootAbsolutePath?: string;
@@ -929,14 +973,44 @@ function WorkbenchStatusBar({
   sideBarCollapsed: boolean;
   panelCollapsed: boolean;
   activePanelId: WorkbenchPanelId;
+  activeTab: IdeWorkbenchEditorTab | null;
 }) {
+  const fileState = activeTab?.deleted
+    ? "deleted"
+    : activeTab?.saveState ?? (activeTab?.dirty ? "dirty" : "clean");
+  const metadata = activeTab?.metadata;
   return (
-    <footer className="flex min-h-6 items-center gap-3 border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
+    <footer className="flex min-h-6 items-center gap-3 overflow-hidden border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
       <span className="truncate">root: {rootId || "pending"}</span>
       <span className="truncate">path: /{directoryPath}</span>
-      <span>sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
-      <span>panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
-      <span className="ml-auto">M4 Workbench foundation</span>
+      <span className="shrink-0">sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
+      <span className="shrink-0">panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
+      {activeTab ? (
+        <span className="ml-auto inline-flex min-w-0 items-center gap-2" data-ide-status-active-file>
+          <span className="truncate" data-ide-status-active-file-path>{activeTab.ref.path}</span>
+          <span className="shrink-0" data-ide-editor-save-state>{fileState}</span>
+          {metadata?.language ? <span className="shrink-0">{metadata.language}</span> : null}
+          {metadata?.mimeType && metadata.previewKind !== "text" ? <span className="shrink-0">{metadata.mimeType}</span> : null}
+          {typeof metadata?.size === "number" ? <span className="shrink-0">{formatStatusBytes(metadata.size)}</span> : null}
+          {metadata?.readonly ? <span className="shrink-0 text-amber">readonly</span> : null}
+          {activeTab.preview && !activeTab.pinned ? <span className="shrink-0">preview</span> : null}
+        </span>
+      ) : (
+        <span className="ml-auto">IDE Workbench</span>
+      )}
     </footer>
   );
+}
+
+function formatStatusBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "--";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }

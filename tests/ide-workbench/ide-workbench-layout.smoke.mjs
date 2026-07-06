@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
@@ -49,13 +50,13 @@ async function createDirectory(rootId, path) {
 }
 
 
-function createDefaultWorkbenchLayout() {
+function createDefaultWorkbenchLayout(directoryPath = '') {
   return {
     layoutVersion: 1,
     activeActivityId: 'explorer',
     sideBar: { placement: 'left', visible: true, collapsed: false, width: 288 },
     secondarySideBar: { placement: 'right', visible: false, collapsed: true, width: 280 },
-    explorer: { directoryPath: '' },
+    explorer: { directoryPath },
     panel: {
       placement: 'bottom',
       visible: true,
@@ -113,12 +114,15 @@ async function expandDirectory(page, path) {
   );
 }
 
-async function revealPath(page, path) {
-  const parts = String(path).split('/').filter(Boolean);
-  for (let index = 1; index < parts.length; index += 1) {
+async function revealPath(page, targetPath, basePath = '') {
+  const parts = normalizePortablePath(targetPath).split('/').filter(Boolean);
+  const baseParts = normalizePortablePath(basePath).split('/').filter(Boolean);
+  const baseMatches = baseParts.length > 0 && baseParts.every((part, index) => parts[index] === part);
+  const startIndex = baseMatches ? baseParts.length + 1 : 1;
+  for (let index = startIndex; index < parts.length; index += 1) {
     await expandDirectory(page, parts.slice(0, index).join('/'));
   }
-  await waitForNode(page, path);
+  await waitForNode(page, targetPath);
 }
 
 async function assertNoHorizontalOverflow(page, label) {
@@ -133,11 +137,12 @@ async function assertNoHorizontalOverflow(page, label) {
   }
 }
 
-async function openFileFromExplorer(page, path) {
-  await revealPath(page, path);
+async function openFileFromExplorer(page, path, basePath = '') {
+  await revealPath(page, path, basePath);
   await page.locator(nodeSelector(path)).first().click();
   await page.locator(tabSelector(path)).first().waitFor({ state: 'visible', timeout: 30_000 });
-  await page.locator(`[data-ide-editor-panel-path]`, { hasText: `path: ${path}` }).first().waitFor({ state: 'visible', timeout: 30_000 });
+  await page.locator(`[data-ide-monaco-editor-panel][data-ide-editor-file-path="${cssAttr(path)}"]`).first().waitFor({ state: 'visible', timeout: 30_000 });
+  await page.locator('[data-ide-status-active-file-path]', { hasText: path }).first().waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 async function waitForEditorFilePanelCount(page, path, minimumCount) {
@@ -148,8 +153,8 @@ async function waitForEditorFilePanelCount(page, path, minimumCount) {
   );
 }
 
-async function openContextMenu(page, path) {
-  await revealPath(page, path);
+async function openContextMenu(page, path, basePath = '') {
+  await revealPath(page, path, basePath);
   await page.locator(nodeSelector(path)).first().evaluate((node) => {
     const rect = node.getBoundingClientRect();
     node.dispatchEvent(new MouseEvent('contextmenu', {
@@ -162,8 +167,8 @@ async function openContextMenu(page, path) {
   await page.getByRole('menu').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
-async function renameViaExplorer(page, path, nextName, nextPath) {
-  await openContextMenu(page, path);
+async function renameViaExplorer(page, path, nextName, nextPath, basePath = '') {
+  await openContextMenu(page, path, basePath);
   await page.getByRole('menuitem', { name: '重命名' }).click();
   const dialog = page.getByRole('dialog', { name: '重命名' });
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
@@ -173,38 +178,62 @@ async function renameViaExplorer(page, path, nextName, nextPath) {
   await waitForNode(page, nextPath);
 }
 
-async function moveViaExplorer(page, path, destinationDirectoryPath, nextPath) {
-  await openContextMenu(page, path);
+async function moveViaExplorer(page, path, destinationDirectoryPath, nextPath, basePath = '') {
+  await openContextMenu(page, path, basePath);
   await page.getByRole('menuitem', { name: '剪切' }).click();
-  await openContextMenu(page, destinationDirectoryPath);
+  await openContextMenu(page, destinationDirectoryPath, basePath);
   await page.getByRole('menuitem', { name: '粘贴到此处' }).click();
   await page.locator(tabSelector(nextPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
 }
 
-async function deleteViaExplorer(page, path) {
-  await openContextMenu(page, path);
+async function deleteViaExplorer(page, path, basePath = '') {
+  await openContextMenu(page, path, basePath);
   await page.getByRole('menuitem', { name: '删除…' }).click();
   const dialog = page.getByRole('dialog', { name: '删除项目' });
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-  await dialog.locator('[data-ide-explorer-delete-confirm-input]').fill('DELETE');
-  await dialog.getByRole('button', { name: '移入回收站' }).click();
+  const confirmInput = dialog.locator('[data-ide-explorer-delete-confirm-input]');
+  await confirmInput.evaluate((input) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, 'DELETE');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const deleteButton = dialog.getByRole('button', { name: '移入回收站' });
+  await deleteButton.waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForFunction(
-    (targetPath) => [...document.querySelectorAll('[data-ide-editor-panel-path]')].some((node) => {
+    () => !document.querySelector('[data-ide-explorer-delete-dialog] button:last-child')?.hasAttribute('disabled'),
+    null,
+    { timeout: 10_000 },
+  );
+  await deleteButton.click();
+  await page.waitForFunction(
+    ({ targetPath, nodeSelector }) => !document.querySelector(nodeSelector) || [...document.querySelectorAll('[data-ide-editor-panel-path]')].some((node) => {
       const card = node.closest('[data-ide-editor-panel]');
       return (node.textContent || '').includes(`path: ${targetPath}`) && (card?.textContent || '').includes('deleted');
     }),
-    path,
+    { targetPath: path, nodeSelector: nodeSelector(path) },
     { timeout: 30_000 },
   );
 }
 
+function normalizePortablePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function relativePathFromRoot(rootAbsolutePath, targetAbsolutePath) {
+  const relative = normalizePortablePath(path.relative(rootAbsolutePath, targetAbsolutePath));
+  return relative && !relative.startsWith('..') ? relative : '';
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file root is available for IDE smoke');
+  const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
+  const rootId = root?.id;
+  if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE smoke');
+  const explorerDirectoryPath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
 
   const prefix = `tracevane-ide-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const smokeDir = `tmp/.${prefix}`;
+  const smokeParent = explorerDirectoryPath ? `${explorerDirectoryPath}/tmp` : 'tmp';
+  const smokeDir = `${smokeParent}/.${prefix}`;
   const firstPath = `${smokeDir}/${prefix}-a.txt`;
   const renamedPath = `${smokeDir}/${prefix}-a-renamed.txt`;
   const secondPath = `${smokeDir}/${prefix}-b.txt`;
@@ -215,7 +244,7 @@ async function run() {
   await cleanup(rootId, cleanupPaths);
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
     method: 'PUT',
-    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(), terminalLayouts: {} }),
+    body: JSON.stringify({ layout: createDefaultWorkbenchLayout(explorerDirectoryPath), terminalLayouts: {} }),
   });
   await createDirectory(rootId, smokeDir);
   await createFile(rootId, firstPath, 'ide smoke first\n');
@@ -224,6 +253,9 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.addInitScript(({ key, layout }) => {
+    try { window.localStorage.setItem(key, JSON.stringify(layout)); } catch { /* ignore */ }
+  }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(explorerDirectoryPath) });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
@@ -245,13 +277,13 @@ async function run() {
     await explorerActivity.click();
     await page.locator('[data-ide-sidebar]').waitFor({ state: 'visible', timeout: 30_000 });
 
-    await openFileFromExplorer(page, firstPath);
-    await renameViaExplorer(page, firstPath, `${prefix}-a-renamed.txt`, renamedPath);
+    await openFileFromExplorer(page, firstPath, explorerDirectoryPath);
+    await renameViaExplorer(page, firstPath, `${prefix}-a-renamed.txt`, renamedPath, explorerDirectoryPath);
 
-    await openFileFromExplorer(page, secondPath);
-    await moveViaExplorer(page, secondPath, moveDir, movedPath);
-    await deleteViaExplorer(page, movedPath);
-    await openFileFromExplorer(page, renamedPath);
+    await openFileFromExplorer(page, secondPath, explorerDirectoryPath);
+    await moveViaExplorer(page, secondPath, moveDir, movedPath, explorerDirectoryPath);
+    await deleteViaExplorer(page, movedPath, explorerDirectoryPath);
+    await openFileFromExplorer(page, renamedPath, explorerDirectoryPath);
 
     const editorTab = page.locator(tabSelector(renamedPath)).first();
     await editorTab.click();
@@ -266,7 +298,9 @@ async function run() {
     await page.getByRole('button', { name: '重置布局' }).click();
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-editor-dock]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-editor-watermark]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(tabSelector(renamedPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await waitForEditorFilePanelCount(page, renamedPath, 1);
+    await page.locator('[data-ide-panel][data-ide-panel-placement="bottom"]').waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });

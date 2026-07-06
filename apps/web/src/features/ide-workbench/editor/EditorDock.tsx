@@ -14,11 +14,13 @@ import type {
 import { DockviewReact } from "dockview-react";
 import { CheckCheck, Copy, Eye, MoreHorizontal, Pin, Save, SplitSquareHorizontal, SplitSquareVertical, X } from "lucide-react";
 
+import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
 import type { EditorSaveState } from "@/shared/editor-core";
-import type { IdeWorkbenchEditorTab } from "../types";
+import type { IdeWorkbenchEditorFileMetadata, IdeWorkbenchEditorTab } from "../types";
 import { saveIdeEditorTab } from "./ideEditorRuntime";
 import { EditorDockCallbacksContext, EditorPlaceholderPanel, type EditorPlaceholderParams } from "./EditorPlaceholderPanel";
+import { useIdeEditorPreferences, type IdeEditorPreferences } from "./editorPreferences";
 
 export interface EditorDockProps {
   tabs: readonly IdeWorkbenchEditorTab[];
@@ -29,10 +31,19 @@ export interface EditorDockProps {
   onPinTab: (tabId: string) => void;
   onDirtyChange: (tabId: string, dirty: boolean) => void;
   onSaveStateChange: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
+  onFileMetadataChange: (tabId: string, metadata: IdeWorkbenchEditorFileMetadata) => void;
   onRequestCloseTabs: (tabIds: string[]) => void;
 }
 
 const EDITOR_COMPONENT = "tracevane.editor.placeholder";
+
+const EditorDockHeaderActionsContext = React.createContext<{
+  tabs: readonly IdeWorkbenchEditorTab[];
+  onRequestCloseTabs: (tabIds: string[]) => void;
+  onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
+  preferences: IdeEditorPreferences;
+  onPreferencesChange: (patch: Partial<IdeEditorPreferences>) => void;
+} | null>(null);
 
 export function EditorDock({
   tabs,
@@ -43,6 +54,7 @@ export function EditorDock({
   onPinTab,
   onDirtyChange,
   onSaveStateChange,
+  onFileMetadataChange,
   onRequestCloseTabs,
 }: EditorDockProps) {
   const apiRef = React.useRef<DockviewApi | null>(null);
@@ -50,6 +62,7 @@ export function EditorDock({
   const restoredRef = React.useRef(false);
   const saveLayoutRef = React.useRef(onDockviewLayoutChange);
   const tabsRef = React.useRef(tabs);
+  const [preferences, updatePreferences] = useIdeEditorPreferences();
 
   React.useEffect(() => {
     saveLayoutRef.current = onDockviewLayoutChange;
@@ -192,10 +205,19 @@ export function EditorDock({
     saveCurrentLayout();
   }, [saveCurrentLayout]);
 
+  const headerActions = React.useMemo(() => ({
+    tabs,
+    onRequestCloseTabs,
+    onSplitEditor: splitEditor,
+    preferences,
+    onPreferencesChange: updatePreferences,
+  }), [onRequestCloseTabs, preferences, splitEditor, tabs, updatePreferences]);
+
   return (
     <section className="grid min-h-0 min-w-0 bg-canvas" data-ide-editor-dock>
       <div className="tracevane-dockview min-h-0 min-w-0 bg-canvas" data-ide-dockview-host>
-        <EditorDockCallbacksContext.Provider value={{ onDirtyChange, onSaveStateChange }}>
+        <EditorDockCallbacksContext.Provider value={{ onDirtyChange, onSaveStateChange, onFileMetadataChange, preferences }}>
+        <EditorDockHeaderActionsContext.Provider value={headerActions}>
         <DockviewReact
           className="dockview-theme-light tracevane-dockview-instance h-full w-full"
           components={{ [EDITOR_COMPONENT]: EditorPlaceholderPanel }}
@@ -203,29 +225,29 @@ export function EditorDock({
           defaultTabComponent={(props) => (
             <EditorDockTab {...props} tabs={tabs} onPinTab={onPinTab} onRequestCloseTabs={onRequestCloseTabs} onSplitEditor={splitEditor} />
           )}
-          rightHeaderActionsComponent={(props) => (
-            <EditorDockHeaderActions
-              {...props}
-              tabs={tabs}
-              onRequestCloseTabs={onRequestCloseTabs}
-              onSplitEditor={splitEditor}
-            />
-          )}
+          rightHeaderActionsComponent={EditorDockHeaderActionsAdapter}
           onReady={handleReady}
         />
+        </EditorDockHeaderActionsContext.Provider>
         </EditorDockCallbacksContext.Provider>
       </div>
     </section>
   );
 }
 
+function EditorDockHeaderActionsAdapter(props: IDockviewHeaderActionsProps) {
+  const context = React.useContext(EditorDockHeaderActionsContext);
+  if (!context) return null;
+  return <EditorDockHeaderActions {...props} {...context} />;
+}
+
 function EditorDockWatermark(_props: IWatermarkPanelProps) {
   return (
     <div className="grid h-full place-items-center bg-canvas p-6 text-center text-sm text-muted" data-ide-editor-watermark>
       <div className="max-w-md rounded-lg border border-dashed border-line bg-panel px-5 py-4">
-        <div className="font-semibold text-ink-strong">IDE Editor Dock</div>
+        <div className="font-semibold text-ink-strong">未打开文件</div>
         <div className="mt-2">
-          从左侧 Explorer 打开文件。编辑器组拆分入口位于标签页右键菜单；M5.y-C 支持 Monaco dirty/save 与关闭保护。
+          从左侧资源管理器选择一个文件开始编辑或预览。已打开文件会保留在上方标签页，并随工作区布局一起恢复。
         </div>
       </div>
     </div>
@@ -238,10 +260,14 @@ function EditorDockHeaderActions({
   tabs,
   onRequestCloseTabs,
   onSplitEditor,
+  preferences,
+  onPreferencesChange,
 }: IDockviewHeaderActionsProps & {
   tabs: readonly IdeWorkbenchEditorTab[];
   onRequestCloseTabs: (tabIds: string[]) => void;
   onSplitEditor: (direction: "right" | "below", referencePanelId?: string) => void;
+  preferences: IdeEditorPreferences;
+  onPreferencesChange: (patch: Partial<IdeEditorPreferences>) => void;
 }) {
   const triggerRef = React.useRef<HTMLButtonElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -357,6 +383,22 @@ function EditorDockHeaderActions({
             dataAttr="action-close-all"
             disabled={tabs.length === 0}
           />
+          <div className="my-1 border-t border-line" />
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={preferences.minimapEnabled ? "true" : "false"}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onPreferencesChange({ minimapEnabled: !preferences.minimapEnabled });
+            }}
+            data-ide-editor-action-minimap
+          >
+            <span className={cn("grid size-3.5 place-items-center rounded border border-line", preferences.minimapEnabled ? "bg-primary text-primary-contrast" : "bg-panel-2 text-transparent")}>✓</span>
+            <span className="min-w-0 flex-1 truncate">小地图</span>
+          </button>
           <div className="my-1 border-t border-line" />
           <EditorTabMenuButton
             icon={<SplitSquareHorizontal />}

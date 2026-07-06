@@ -1,4 +1,4 @@
-import { Download, File, FileText, FolderTree, ImageIcon, Maximize2, Minimize2, Minus, MoreHorizontal, Music, PanelLeftClose, RefreshCw, RotateCcw, Video, X, ZoomIn, ZoomOut } from "lucide-react";
+import { FolderTree, Maximize2, Minimize2, Minus, MoreHorizontal, PanelLeftClose, X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -7,6 +7,7 @@ import { CodeEditor } from "@/features/file-manager/code-editor/CodeEditor";
 import type { CodeEditorCursorPosition, CodeEditorHandle, CodeEditorThemeMode, CodeEditorViewState, CodeEditorWordWrap } from "@/features/file-manager/code-editor/CodeEditor";
 import { isApiError } from "@/lib/api/errors";
 import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files";
+import { FileSurfacePreviewPanel } from "@/shared/file-surface";
 import { editorDocumentId, editorTitleForPath, languageForPath } from "@/shared/editor-core";
 import { toast } from "@/design/ui/sonner";
 import type { FileEntrySummary } from "@/features/file-manager/file-tools/types";
@@ -64,6 +65,11 @@ interface FileOnlineEditorPreferences {
   stickyScrollEnabled: boolean;
   themeMode: CodeEditorThemeMode;
   wordWrap: CodeEditorWordWrap;
+}
+
+interface Point {
+  x: number;
+  y: number;
 }
 
 export function FileOnlineEditorDialog({
@@ -948,11 +954,13 @@ function OnlineEditorTabPanel({
   if (!deletedWithDraft && (!read?.textLike || read.content == null)) {
     return (
       <FileSurfacePreviewPanel
+        rootId={tab.rootId}
+        entry={tab.entry}
         read={read}
-        tab={tab}
         loading={readQuery.isFetching}
         error={readQuery.error?.message}
         onReload={() => void readQuery.refetch()}
+        statusNote="同一 File Surface · 非文本只读预览"
       />
     );
   }
@@ -1396,325 +1404,6 @@ function MenuButton({
       {shortcut ? <span className="shrink-0 rounded border border-line bg-panel px-1.5 py-0.5 text-[10px] text-muted">{shortcut}</span> : null}
     </button>
   );
-}
-
-function FileSurfacePreviewPanel({
-  read,
-  tab,
-  loading,
-  error,
-  onReload,
-}: {
-  read: ReturnType<typeof useFileReadQuery>["data"] | undefined;
-  tab: FileOnlineEditorTab;
-  loading: boolean;
-  error?: string;
-  onReload: () => void;
-}) {
-  const previewKind = classifyFileSurfacePreview(read, tab.entry);
-  const downloadUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, false);
-  const attachmentUrl = buildFileDownloadUrl(tab.rootId, tab.entry.path, true);
-  const size = formatFileSize(read?.size ?? tab.entry.size);
-  const modified = formatModifiedAt(read?.modifiedAt ?? tab.entry.modifiedAt);
-  const mimeType = read?.mimeType || "application/octet-stream";
-  const PreviewIcon = previewKind === "image"
-    ? ImageIcon
-    : previewKind === "video"
-      ? Video
-      : previewKind === "audio"
-        ? Music
-        : previewKind === "pdf"
-          ? FileText
-          : File;
-
-  return (
-    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-panel" data-file-surface-panel data-file-surface-kind={previewKind}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
-        <span className="inline-flex items-center gap-1 font-medium text-ink-strong">
-          <PreviewIcon className="size-3.5" />
-          {previewKindLabel(previewKind)}
-        </span>
-        <span className="text-muted">{tab.entry.path}</span>
-        {error ? <span className="text-danger" data-file-surface-read-error>{error}</span> : null}
-        <Button variant="ghost" size="sm" onClick={onReload} disabled={loading} data-file-surface-reload>
-          <RefreshCw className="size-3.5" />
-          {loading ? "读取中…" : "刷新"}
-        </Button>
-        <Button asChild variant="outline" size="sm" data-file-surface-open-inline>
-          <a href={downloadUrl} target="_blank" rel="noreferrer">打开</a>
-        </Button>
-        <Button asChild variant="primary" size="sm" data-file-surface-download>
-          <a href={attachmentUrl} download>
-            <Download className="size-3.5" />
-            下载
-          </a>
-        </Button>
-      </div>
-      <div
-        className={cn(
-          "min-h-0 p-4",
-          previewKind === "image" || previewKind === "video" || previewKind === "pdf" ? "overflow-hidden" : "overflow-auto",
-        )}
-        data-file-surface-preview
-      >
-        {previewKind === "image" ? (
-          <ImagePreviewCanvas src={downloadUrl} alt={tab.entry.name} />
-        ) : previewKind === "video" ? (
-          <VideoPreviewPlayer src={downloadUrl} name={tab.entry.name} />
-        ) : previewKind === "audio" ? (
-          <AudioPreviewPlayer src={downloadUrl} name={tab.entry.name} />
-        ) : previewKind === "pdf" ? (
-          <PdfPreviewFrame src={downloadUrl} title={tab.entry.name} />
-        ) : (
-          <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6 text-center" data-file-surface-binary>
-            <div className="max-w-lg">
-              <File className="mx-auto mb-3 size-10 text-subtle" />
-              <div className="text-sm font-semibold text-ink-strong">此文件不能作为文本编辑</div>
-              <p className="mt-2 text-xs text-muted">
-                已在同一个文件窗口中提供安全检查信息。可下载或用系统应用打开，避免把未知二进制内容误当文本写回。
-              </p>
-              <div className="mt-4 flex justify-center gap-2">
-                <Button asChild variant="outline" size="sm">
-                  <a href={downloadUrl} target="_blank" rel="noreferrer">浏览器打开</a>
-                </Button>
-                <Button asChild variant="primary" size="sm">
-                  <a href={attachmentUrl} download>下载文件</a>
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-3 border-t border-line bg-panel px-3 py-2 text-xs text-muted" data-file-surface-statusbar>
-        <span>{mimeType}</span>
-        <span>{size}</span>
-        <span>{read?.permissions ?? tab.entry.permissions ?? "权限未知"}</span>
-        <span>{modified}</span>
-        <span className="ml-auto">同一 File Surface · 非文本只读预览</span>
-      </div>
-    </div>
-  );
-}
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-const IMAGE_PREVIEW_MIN_ZOOM = 0.1;
-const IMAGE_PREVIEW_MAX_ZOOM = 12;
-const IMAGE_PREVIEW_ZOOM_STEP = 1.2;
-
-function ImagePreviewCanvas({ src, alt }: { src: string; alt: string }) {
-  const [zoom, setZoom] = React.useState(1);
-  const [pan, setPan] = React.useState<Point>({ x: 0, y: 0 });
-  const [rotation, setRotation] = React.useState(0);
-  const dragStartRef = React.useRef<{ pointerId: number; pointer: Point; pan: Point } | null>(null);
-
-  const zoomLabel = `${Math.round(zoom * 100)}%`;
-  const resetView = React.useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setRotation(0);
-  }, []);
-  const updateZoom = React.useCallback((nextZoom: number) => {
-    setZoom(clampNumber(nextZoom, IMAGE_PREVIEW_MIN_ZOOM, IMAGE_PREVIEW_MAX_ZOOM));
-  }, []);
-
-  return (
-    <div className="grid min-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-image-viewer>
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
-        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom / IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-out>
-          <ZoomOut className="size-3.5" />
-          缩小
-        </Button>
-        <span className="min-w-14 text-center font-mono text-muted" data-file-surface-image-zoom-label>{zoomLabel}</span>
-        <Button variant="ghost" size="sm" onClick={() => updateZoom(zoom * IMAGE_PREVIEW_ZOOM_STEP)} data-file-surface-image-zoom-in>
-          <ZoomIn className="size-3.5" />
-          放大
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setRotation((value) => (value + 90) % 360)} data-file-surface-image-rotate>
-          <RotateCcw className="size-3.5" />
-          旋转
-        </Button>
-        <Button variant="outline" size="sm" onClick={resetView} data-file-surface-image-reset>
-          适应窗口
-        </Button>
-        <span className="ml-auto text-muted">滚轮缩放 · 拖动画布 · 双击复位</span>
-      </div>
-      <div
-        className="relative min-h-0 cursor-grab touch-none select-none overflow-hidden bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.18)_1px,transparent_1px)] [background-size:18px_18px] active:cursor-grabbing"
-        data-file-surface-image-canvas
-        onDoubleClick={resetView}
-        onWheel={(event) => {
-          event.preventDefault();
-          const direction = event.deltaY < 0 ? 1 : -1;
-          const factor = direction > 0 ? IMAGE_PREVIEW_ZOOM_STEP : 1 / IMAGE_PREVIEW_ZOOM_STEP;
-          updateZoom(zoom * factor);
-        }}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          event.currentTarget.setPointerCapture(event.pointerId);
-          dragStartRef.current = {
-            pointerId: event.pointerId,
-            pointer: { x: event.clientX, y: event.clientY },
-            pan,
-          };
-        }}
-        onPointerMove={(event) => {
-          const dragStart = dragStartRef.current;
-          if (!dragStart || dragStart.pointerId !== event.pointerId) return;
-          setPan({
-            x: dragStart.pan.x + event.clientX - dragStart.pointer.x,
-            y: dragStart.pan.y + event.clientY - dragStart.pointer.y,
-          });
-        }}
-        onPointerUp={(event) => {
-          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-        onPointerCancel={(event) => {
-          if (dragStartRef.current?.pointerId === event.pointerId) dragStartRef.current = null;
-        }}
-      >
-        <div className="absolute inset-0 grid place-items-center p-6">
-          <img
-            src={src}
-            alt={alt}
-            draggable={false}
-            className="max-h-full max-w-full rounded border border-line bg-panel object-contain shadow-lg will-change-transform"
-            data-file-surface-image
-            style={{
-              transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom}) rotate(${rotation}deg)`,
-              transformOrigin: "center center",
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VideoPreviewPlayer({ src, name }: { src: string; name: string }) {
-  const videoRef = React.useRef<HTMLVideoElement | null>(null);
-  return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-video-viewer>
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
-        <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{name}</span>
-        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} data-file-surface-video-backward>后退 10s</Button>
-        <Button variant="ghost" size="sm" onClick={() => { if (videoRef.current) videoRef.current.currentTime += 10; }} data-file-surface-video-forward>前进 10s</Button>
-        <label className="flex items-center gap-1 text-muted">
-          速度
-          <select
-            className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-            defaultValue="1"
-            onChange={(event) => { if (videoRef.current) videoRef.current.playbackRate = Number(event.target.value); }}
-            data-file-surface-video-speed
-          >
-            <option value="0.5">0.5x</option>
-            <option value="1">1x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2">2x</option>
-          </select>
-        </label>
-      </div>
-      <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-black p-3">
-        <video ref={videoRef} src={src} controls playsInline preload="metadata" className="h-full min-h-0 max-h-full w-full max-w-full rounded border border-line bg-black object-contain" data-file-surface-video>
-          当前浏览器无法播放该视频。
-        </video>
-      </div>
-    </div>
-  );
-}
-
-function AudioPreviewPlayer({ src, name }: { src: string; name: string }) {
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  return (
-    <div className="grid min-h-full place-items-center rounded-md border border-line bg-panel-2 p-6" data-file-surface-audio-viewer>
-      <div className="w-full max-w-2xl rounded-md border border-line bg-panel p-4 text-center shadow-sm">
-        <Music className="mx-auto mb-3 size-10 text-primary" />
-        <div className="mb-3 text-sm font-medium text-ink-strong">{name}</div>
-        <audio ref={audioRef} src={src} controls preload="metadata" className="w-full" data-file-surface-audio>
-          当前浏览器无法播放该音频。
-        </audio>
-        <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
-          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} data-file-surface-audio-backward>后退 10s</Button>
-          <Button variant="ghost" size="sm" onClick={() => { if (audioRef.current) audioRef.current.currentTime += 10; }} data-file-surface-audio-forward>前进 10s</Button>
-          <label className="flex items-center gap-1 text-muted">
-            速度
-            <select
-              className="h-8 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
-              defaultValue="1"
-              onChange={(event) => { if (audioRef.current) audioRef.current.playbackRate = Number(event.target.value); }}
-              data-file-surface-audio-speed
-            >
-              <option value="0.5">0.5x</option>
-              <option value="1">1x</option>
-              <option value="1.25">1.25x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2">2x</option>
-            </select>
-          </label>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PdfPreviewFrame({ src, title }: { src: string; title: string }) {
-  return (
-    <div className="grid h-full min-h-[520px] overflow-hidden rounded-md border border-line bg-panel-2" data-file-surface-pdf-viewer>
-      <object data={src} type="application/pdf" className="h-full min-h-[520px] w-full" data-file-surface-pdf>
-        <iframe title={title} src={src} className="h-full min-h-[520px] w-full" />
-      </object>
-    </div>
-  );
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-
-type FileSurfacePreviewKind = "image" | "video" | "audio" | "pdf" | "binary";
-
-function classifyFileSurfacePreview(
-  read: ReturnType<typeof useFileReadQuery>["data"] | undefined,
-  entry: FileEntrySummary,
-): FileSurfacePreviewKind {
-  const mimeType = (read?.mimeType ?? "").toLowerCase();
-  const ext = (read?.ext ?? entry.ext ?? "").toLowerCase();
-  if (read?.imageLike || mimeType.startsWith("image/") || IMAGE_FILE_EXTENSIONS.has(ext)) return "image";
-  if (mimeType.startsWith("video/") || VIDEO_FILE_EXTENSIONS.has(ext)) return "video";
-  if (mimeType.startsWith("audio/") || AUDIO_FILE_EXTENSIONS.has(ext)) return "audio";
-  if (mimeType === "application/pdf" || ext === ".pdf") return "pdf";
-  return "binary";
-}
-
-const IMAGE_FILE_EXTENSIONS = new Set([".apng", ".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
-const VIDEO_FILE_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogg", ".ogv", ".webm"]);
-const AUDIO_FILE_EXTENSIONS = new Set([".aac", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav", ".weba"]);
-
-function previewKindLabel(kind: FileSurfacePreviewKind): string {
-  switch (kind) {
-    case "image":
-      return "图片预览";
-    case "video":
-      return "视频预览";
-    case "audio":
-      return "音频预览";
-    case "pdf":
-      return "PDF 预览";
-    case "binary":
-      return "二进制检查";
-  }
-}
-
-function buildFileDownloadUrl(rootId: string, path: string, attachment = false): string {
-  const search = new URLSearchParams({ rootId, path });
-  if (attachment) search.set("download", "1");
-  return `/api/files/download?${search.toString()}`;
 }
 
 export function createFileOnlineEditorTab(rootId: string, entry: FileEntrySummary): FileOnlineEditorTab {

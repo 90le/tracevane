@@ -102,7 +102,19 @@ export function useIdeWorkbenchLayoutState(workspaceKey: string) {
   }, [layout, normalizedWorkspaceKey, remoteReady, storageKey]);
 
   const resetLayout = React.useCallback(() => {
-    setLayout(createDefaultIdeWorkbenchLayoutState());
+    setLayout((current) => {
+      const defaults = createDefaultIdeWorkbenchLayoutState();
+      return {
+        ...defaults,
+        explorer: current.explorer,
+        editorGroups: current.editorGroups,
+        activeEditorGroupId: current.activeEditorGroupId,
+        // Reset the Dockview split/layout geometry, but keep the open editor tabs
+        // above. Dockview will recreate one tab per open document instead of
+        // treating "reset layout" as "close workspace".
+        dockviewLayout: null,
+      };
+    });
   }, []);
 
   const toggleSidebar = React.useCallback(() => {

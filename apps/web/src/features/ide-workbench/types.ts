@@ -58,6 +58,15 @@ export interface IdeWorkbenchEditorTab {
   saveState?: EditorSaveState;
   saveError?: string | null;
   deleted?: boolean;
+  metadata?: IdeWorkbenchEditorFileMetadata;
+}
+
+export interface IdeWorkbenchEditorFileMetadata {
+  language?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
+  readonly?: boolean;
+  previewKind?: "text" | "image" | "video" | "audio" | "pdf" | "binary";
 }
 
 export interface IdeWorkbenchEditorGroup {

@@ -184,7 +184,10 @@ async function run() {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.addInitScript(({ key, layout }) => {
-    try { window.localStorage.setItem(key, JSON.stringify(layout)); } catch { /* ignore */ }
+    try {
+      window.localStorage.setItem(key, JSON.stringify(layout));
+      window.localStorage.removeItem('tracevane:ide-workbench:editor-preferences:v1');
+    } catch { /* ignore */ }
   }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(explorerDirectoryPath) });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
@@ -199,14 +202,22 @@ async function run() {
     await page.locator('[data-ide-monaco-editor-panel][data-ide-editor-file-path="' + cssAttr(textPath) + '"]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('.monaco-editor').first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('.view-line', { hasText: 'ide editor foundation' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-code-editor-minimap="disabled"]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-editor-action-menu-trigger]').click();
+    await page.locator('[data-ide-editor-action-minimap]').click();
+    await page.locator('[data-code-editor-minimap="enabled"]').first().waitFor({ state: 'visible', timeout: 30_000 });
     const modelUri = await page.locator('[data-ide-monaco-editor-panel]').first().getAttribute('data-ide-editor-model-uri');
     if (!modelUri || !modelUri.startsWith('file:///workspace/')) throw new Error(`unexpected Monaco model uri: ${modelUri}`);
 
     await openPinnedFromExplorer(page, binaryPath, explorerDirectoryPath);
     await page.locator(tabSelector(textPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(tabSelector(binaryPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-editor-panel-state="unsupported"]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-editor-panel-title]', { hasText: '暂不在 IDE Editor 中编辑此文件' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-editor-panel-kind="preview"][data-ide-editor-file-path="' + cssAttr(binaryPath) + '"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-file-surface-panel][data-file-surface-kind="binary"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-file-surface-binary]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-file-surface-hex-editor][data-file-surface-hex-readonly="true"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-file-surface-hex-row]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-status-active-file-path]', { hasText: binaryPath }).waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

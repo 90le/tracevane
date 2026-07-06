@@ -5,23 +5,30 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import { CodeEditor } from "@/features/file-manager/code-editor/CodeEditor";
+import { FileSurfacePreviewPanel } from "@/shared/file-surface";
 import type { CodeEditorHandle } from "@/features/file-manager/code-editor/CodeEditor";
 import { editorModelUriString, saveEditorFile } from "@/shared/editor-core";
 import type { EditorReadResult, EditorSaveState } from "@/shared/editor-core";
-import type { IdeWorkbenchEditorTab } from "../types";
+import type { IdeWorkbenchEditorFileMetadata, IdeWorkbenchEditorTab } from "../types";
 import { useIdeEditorFile } from "./useIdeEditorFile";
 import { registerIdeEditorRuntimeHandle } from "./ideEditorRuntime";
+import type { IdeEditorPreferences } from "./editorPreferences";
+import { classifyFileSurfacePreview } from "@/shared/file-surface";
 
 const IDE_EDITOR_SOFT_LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export function IdeEditorFilePanel({
   tab,
+  preferences,
   onDirtyChange,
   onSaveStateChange,
+  onFileMetadataChange,
 }: {
   tab: IdeWorkbenchEditorTab;
+  preferences: IdeEditorPreferences;
   onDirtyChange?: (tabId: string, dirty: boolean) => void;
   onSaveStateChange?: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
+  onFileMetadataChange?: (tabId: string, metadata: IdeWorkbenchEditorFileMetadata) => void;
 }) {
   const editorRef = React.useRef<CodeEditorHandle | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
@@ -32,6 +39,17 @@ export function IdeEditorFilePanel({
   const read = query.data;
   const metadata = read?.snapshot.metadata;
   const unsupportedReason = read ? unsupportedReasonForRead(read) : null;
+
+  React.useEffect(() => {
+    if (!read || !metadata) return;
+    onFileMetadataChange?.(tab.id, {
+      language: metadata.language || "plaintext",
+      mimeType: metadata.mimeType || read.raw.mimeType || null,
+      size: metadata.size,
+      readonly: metadata.readonly,
+      previewKind: metadata.textLike ? "text" : classifyFileSurfacePreview(read.raw, fileSurfaceEntryForRead(read)),
+    });
+  }, [metadata, onFileMetadataChange, read, tab.id]);
 
   React.useEffect(() => {
     dirtyRef.current = Boolean(tab.dirty);
@@ -165,6 +183,28 @@ export function IdeEditorFilePanel({
     );
   }
 
+  if (!metadata.textLike) {
+    return (
+      <div
+        ref={panelRef}
+        className="grid h-full min-h-0 min-w-0 bg-canvas"
+        data-ide-editor-panel
+        data-ide-editor-panel-kind="preview"
+        data-ide-editor-file-path={tab.ref.path}
+      >
+        <FileSurfacePreviewPanel
+          rootId={tab.ref.rootId}
+          entry={fileSurfaceEntryForRead(read)}
+          read={read.raw}
+          loading={query.isFetching}
+          onReload={() => void query.refetch()}
+          statusNote="IDE Editor · 共享 File Surface 只读预览"
+          chrome="embedded"
+        />
+      </div>
+    );
+  }
+
   if (unsupportedReason) {
     return (
       <IdeEditorStatePanel
@@ -188,13 +228,14 @@ export function IdeEditorFilePanel({
   return (
     <div
       ref={panelRef}
-      className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] bg-canvas"
+      className="grid h-full min-h-0 min-w-0 bg-canvas"
       data-ide-monaco-editor-panel
       data-ide-editor-panel
       data-ide-editor-panel-kind="file"
       data-ide-editor-file-path={tab.ref.path}
       data-ide-editor-model-uri={editorModelUriString(tab.ref)}
       data-ide-editor-readonly={metadata.readonly ? "true" : "false"}
+      onPointerDown={() => editorRef.current?.focus()}
     >
       <CodeEditor
         ref={editorRef}
@@ -204,30 +245,33 @@ export function IdeEditorFilePanel({
         initialContent={read.snapshot.content}
         readOnly={metadata.readonly}
         profile={metadata.size > IDE_EDITOR_SOFT_LARGE_FILE_BYTES ? "large-readonly" : "normal"}
-        minimapEnabled={false}
+        minimapEnabled={preferences.minimapEnabled}
         stickyScrollEnabled
         wordWrap="on"
         onChange={markDirtyFromContent}
         onSaveShortcut={() => { void saveCurrent(); }}
         className="h-full min-h-0 min-w-0"
       />
-      <div className="flex min-h-7 min-w-0 items-center gap-2 border-t border-line bg-panel px-3 text-2xs text-subtle" data-ide-editor-file-status>
-        <span className="truncate font-mono" data-ide-editor-panel-path>path: {tab.ref.path}</span>
-        <span className="ml-auto shrink-0" data-ide-editor-save-state>{tab.saveState ?? (tab.dirty ? "dirty" : "clean")}</span>
-        <span className="shrink-0">{metadata.language || "plaintext"}</span>
-        <span className="shrink-0">{formatBytes(metadata.size)}</span>
-        {metadata.readonly ? <span className="shrink-0 text-amber">只读</span> : null}
-      </div>
     </div>
   );
+}
+
+function fileSurfaceEntryForRead(read: EditorReadResult) {
+  const { raw, snapshot } = read;
+  return {
+    path: snapshot.ref.path,
+    name: snapshot.metadata.name || raw.name || snapshot.ref.path.split("/").filter(Boolean).pop() || snapshot.ref.path,
+    ext: raw.ext ?? null,
+    size: snapshot.metadata.size,
+    modifiedAt: snapshot.metadata.modifiedAt,
+    permissions: snapshot.metadata.permissions,
+    imageLike: raw.imageLike,
+  };
 }
 
 function unsupportedReasonForRead(read: EditorReadResult): string | null {
   const { snapshot, raw } = read;
   const metadata = snapshot.metadata;
-  if (!metadata.textLike) {
-    return "该文件不是文本/code 类型。图片、视频、音频、PDF、二进制和其它媒体预览仍由 File Surface 或后续 IDE Preview 承载，M5.y-B 不强塞 Monaco。";
-  }
   if (metadata.truncated || raw.truncated) {
     return "该文件读取结果已被截断，M5.y-B 暂不在 IDE 中编辑截断内容，避免误保存不完整文件。大文件/分段读取策略将在后续阶段补齐。";
   }

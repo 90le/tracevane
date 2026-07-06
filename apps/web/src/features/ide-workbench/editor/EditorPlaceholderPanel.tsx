@@ -6,6 +6,8 @@ import { cn } from "@/design/lib/utils";
 import type { IdeWorkbenchEditorTab } from "../types";
 import type { EditorSaveState } from "@/shared/editor-core";
 import { IdeEditorFilePanel } from "./IdeEditorFilePanel";
+import type { IdeEditorPreferences } from "./editorPreferences";
+import type { IdeWorkbenchEditorFileMetadata } from "../types";
 
 export interface EditorPlaceholderParams {
   kind: "file" | "split-placeholder";
@@ -17,9 +19,13 @@ export interface EditorPlaceholderParams {
 export const EditorDockCallbacksContext = React.createContext<{
   onDirtyChange: (tabId: string, dirty: boolean) => void;
   onSaveStateChange: (tabId: string, saveState: EditorSaveState, message?: string | null) => void;
+  onFileMetadataChange: (tabId: string, metadata: IdeWorkbenchEditorFileMetadata) => void;
+  preferences: IdeEditorPreferences;
 }>({
   onDirtyChange: () => undefined,
   onSaveStateChange: () => undefined,
+  onFileMetadataChange: () => undefined,
+  preferences: { minimapEnabled: false },
 });
 
 export function EditorPlaceholderPanel({
@@ -28,7 +34,15 @@ export function EditorPlaceholderPanel({
   const isFile = params.kind === "file";
   const callbacks = React.useContext(EditorDockCallbacksContext);
   if (isFile && params.tab) {
-    return <IdeEditorFilePanel tab={params.tab} onDirtyChange={callbacks.onDirtyChange} onSaveStateChange={callbacks.onSaveStateChange} />;
+    return (
+      <IdeEditorFilePanel
+        tab={params.tab}
+        preferences={callbacks.preferences}
+        onDirtyChange={callbacks.onDirtyChange}
+        onSaveStateChange={callbacks.onSaveStateChange}
+        onFileMetadataChange={callbacks.onFileMetadataChange}
+      />
+    );
   }
   return (
     <div className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink" data-ide-editor-panel data-ide-editor-panel-kind={params.kind}>
@@ -63,7 +77,7 @@ export function EditorPlaceholderPanel({
             "inline-flex items-center justify-center",
           )}
         >
-          M4-B placeholder · Monaco/save 后置
+          IDE editor placeholder
         </div>
       </div>
     </div>
