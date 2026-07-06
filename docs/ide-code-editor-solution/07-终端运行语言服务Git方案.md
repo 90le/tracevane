@@ -320,8 +320,8 @@ M6：Watcher / Search / Problems / Output（已完成）
 M7：LSP / Git / Debug
 - M7-A 研究与最小实现计划已完成，记录见 [`archive/m7-a-lsp-git-debug-plan.md`](./archive/m7-a-lsp-git-debug-plan.md)。
 - M7-B 单语言 JSON diagnostics 已接入既有 Problems/Output，记录见 [`archive/m7-b-lsp-diagnostics-summary.md`](./archive/m7-b-lsp-diagnostics-summary.md)。
-- M7-C 再补 hover/completion/definition。
-- M7-D/M7-E 接现有 Git API：先 status/diff，再 stage/commit。
+- M7-C JSON hover/completion/definition foundation 已完成，记录见 [`archive/m7-c-lsp-interaction-summary.md`](./archive/m7-c-lsp-interaction-summary.md)。
+- M7-D/M7-E 接现有 Git API：先 status/Explorer decoration/Source Control，再 diff/stage/commit。
 - Debug 后置到 M7-F/M7.x，不和 LSP/Git 同时追完整。
 ```
 
@@ -510,7 +510,7 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 5. M6：Diff / Search / Watcher / Problems 数据基础 / Output channel（已完成）
 6. M7-A：LSP / Git / Debug 研究与最小实现计划（已完成）
 7. M7-B：单语言 JSON diagnostics -> Problems/Output（已完成）
-8. M7-C：LSP hover / completion / definition
+8. M7-C：LSP hover / completion / definition（已完成）
 9. M7-D：Git status + Explorer decoration + Source Control View
 10. M7-E：Git diff / stage / unstage / commit
 11. M7-F/M7.x：Debug Adapter Protocol 研究与最小实现

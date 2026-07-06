@@ -4,10 +4,16 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
+  LspCompletionItem,
+  LspCompletionRequest,
+  LspCompletionResponse,
+  LspDefinitionResponse,
   LspDiagnostic,
   LspDiagnosticsRequest,
   LspDiagnosticsResponse,
   LspGatewayServerEvent,
+  LspHoverResponse,
+  LspPositionRequest,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceExistingFilePath } from "../files/service.js";
 
@@ -15,8 +21,11 @@ const LSP_WS_PATH = "/ws/lsp";
 const JSON_PROVIDER_SOURCE = "json-lsp";
 
 export interface LspService {
-  getStatus(): { ok: true; provider: "json"; websocketPath: string; supportedLanguages: string[] };
+  getStatus(): { ok: true; provider: "json"; websocketPath: string; supportedLanguages: string[]; features: string[] };
   diagnoseDocument(request: LspDiagnosticsRequest): LspDiagnosticsResponse;
+  hoverDocument(request: LspPositionRequest): LspHoverResponse;
+  completeDocument(request: LspCompletionRequest): LspCompletionResponse;
+  defineDocument(request: LspPositionRequest): LspDefinitionResponse;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
 }
 
@@ -39,14 +48,30 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         return;
       }
 
-      const request = parsed as Partial<LspDiagnosticsRequest>;
-      if (request?.type !== "diagnose") {
+      const request = parsed as Partial<LspDiagnosticsRequest & LspPositionRequest & LspCompletionRequest>;
+      if (!request?.type) {
         send(socket, { type: "error", id: request?.id ?? null, message: "Unsupported LSP gateway message type" });
         return;
       }
 
       try {
-        send(socket, diagnoseDocument(config, request as LspDiagnosticsRequest));
+        if (request.type === "diagnose") {
+          send(socket, diagnoseDocument(config, request as LspDiagnosticsRequest));
+          return;
+        }
+        if (request.type === "hover") {
+          send(socket, hoverDocument(config, request as LspPositionRequest));
+          return;
+        }
+        if (request.type === "completion") {
+          send(socket, completeDocument(config, request as LspCompletionRequest));
+          return;
+        }
+        if (request.type === "definition") {
+          send(socket, defineDocument(config, request as LspPositionRequest));
+          return;
+        }
+        send(socket, { type: "error", id: request.id ?? null, message: "Unsupported LSP gateway message type" });
       } catch (error) {
         send(socket, {
           type: "error",
@@ -59,10 +84,19 @@ export function createLspService(config: TracevaneServerConfig): LspService {
 
   return {
     getStatus() {
-      return { ok: true, provider: "json", websocketPath: LSP_WS_PATH, supportedLanguages: ["json"] };
+      return { ok: true, provider: "json", websocketPath: LSP_WS_PATH, supportedLanguages: ["json"], features: ["diagnostics", "hover", "completion", "definition"] };
     },
     diagnoseDocument(request) {
       return diagnoseDocument(config, request);
+    },
+    hoverDocument(request) {
+      return hoverDocument(config, request);
+    },
+    completeDocument(request) {
+      return completeDocument(config, request);
+    },
+    defineDocument(request) {
+      return defineDocument(config, request);
     },
     handleUpgrade(req, socket, head) {
       const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -73,6 +107,164 @@ export function createLspService(config: TracevaneServerConfig): LspService {
       return true;
     },
   };
+}
+
+
+function hoverDocument(
+  config: TracevaneServerConfig,
+  request: LspPositionRequest,
+): LspHoverResponse {
+  const validated = validateJsonInteractionRequest(config, request);
+  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
+  const contents = symbol
+    ? [
+        `JSON ${symbol.kind}: ${symbol.label}`,
+        `Path: ${symbol.path || "$"}`,
+      ]
+    : ["JSON document", "Tracevane JSON LSP provider foundation"];
+  return {
+    type: "hover",
+    id: request.id ?? null,
+    provider: "json",
+    rootId: validated.rootId,
+    path: validated.path,
+    language: "json",
+    version: request.version ?? null,
+    contents,
+    range: symbol?.range ?? null,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function completeDocument(
+  config: TracevaneServerConfig,
+  request: LspCompletionRequest,
+): LspCompletionResponse {
+  const validated = validateJsonInteractionRequest(config, request);
+  return {
+    type: "completion",
+    id: request.id ?? null,
+    provider: "json",
+    rootId: validated.rootId,
+    path: validated.path,
+    language: "json",
+    version: request.version ?? null,
+    items: jsonCompletionItems(validated.content, request.line, request.column),
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function defineDocument(
+  config: TracevaneServerConfig,
+  request: LspPositionRequest,
+): LspDefinitionResponse {
+  const validated = validateJsonInteractionRequest(config, request);
+  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
+  return {
+    type: "definition",
+    id: request.id ?? null,
+    provider: "json",
+    rootId: validated.rootId,
+    path: validated.path,
+    language: "json",
+    version: request.version ?? null,
+    locations: symbol ? [{
+      rootId: validated.rootId,
+      path: validated.path,
+      startLine: symbol.range.startLine,
+      startColumn: symbol.range.startColumn,
+      endLine: symbol.range.endLine,
+      endColumn: symbol.range.endColumn,
+    }] : [],
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function validateJsonInteractionRequest(
+  config: TracevaneServerConfig,
+  request: LspPositionRequest | LspCompletionRequest,
+): { rootId: string; path: string; content: string } {
+  const rootId = normalizeRequired(request.rootId, "rootId");
+  const targetPath = normalizePath(request.path);
+  const content = typeof request.content === "string" ? request.content : "";
+  const resolved = resolveFilesServiceExistingFilePath(config, rootId, targetPath);
+  const language = normalizeLanguage(request.language, resolved.relativePath, content);
+  if (language !== "json") throw new Error("Only JSON LSP interactions are supported in M7-C");
+  return { rootId: resolved.root.id, path: resolved.relativePath, content };
+}
+
+interface JsonSymbolInfo {
+  kind: "property" | "value";
+  label: string;
+  path: string;
+  range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+}
+
+function jsonSymbolAtPosition(content: string, line: number, column: number): JsonSymbolInfo | null {
+  const lines = content.split(/\r?\n/);
+  const safeLine = Math.max(1, Math.min(Math.floor(line || 1), Math.max(1, lines.length)));
+  const lineText = lines[safeLine - 1] ?? "";
+  const propertyMatch = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/.exec(lineText);
+  if (propertyMatch?.index != null) {
+    const startColumn = propertyMatch.index + 1;
+    const endColumn = startColumn + propertyMatch[0].length;
+    return {
+      kind: "property",
+      label: propertyMatch[1] || "property",
+      path: approximateJsonPath(lines, safeLine, propertyMatch[1] || "property"),
+      range: { startLine: safeLine, startColumn, endLine: safeLine, endColumn },
+    };
+  }
+  const token = tokenAtColumn(lineText, column);
+  if (!token) return null;
+  return {
+    kind: "value",
+    label: token.text,
+    path: approximateJsonPath(lines, safeLine, token.text),
+    range: { startLine: safeLine, startColumn: token.startColumn, endLine: safeLine, endColumn: token.endColumn },
+  };
+}
+
+function tokenAtColumn(lineText: string, column: number): { text: string; startColumn: number; endColumn: number } | null {
+  const target = Math.max(1, Math.floor(column || 1)) - 1;
+  const tokenRegex = /"([^"\\]*(?:\\.[^"\\]*)*)"|\b(true|false|null|-?\d+(?:\.\d+)?)\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(lineText))) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (target >= start && target <= end) {
+      return { text: match[1] ?? match[2] ?? match[0], startColumn: start + 1, endColumn: end + 1 };
+    }
+  }
+  return null;
+}
+
+function approximateJsonPath(lines: string[], line: number, current: string): string {
+  const keys: string[] = [];
+  for (let index = 0; index < line; index += 1) {
+    const match = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/.exec(lines[index] ?? "");
+    if (!match) continue;
+    const indent = (lines[index] ?? "").match(/^\s*/)?.[0].length ?? 0;
+    const depth = Math.floor(indent / 2);
+    keys[depth] = match[1] || "property";
+    keys.length = depth + 1;
+  }
+  if (!keys.length && current) keys.push(current);
+  return `$${keys.map((key) => `.${key}`).join("")}`;
+}
+
+function jsonCompletionItems(content: string, line: number, column: number): LspCompletionItem[] {
+  void content;
+  void line;
+  void column;
+  return [
+    { label: "property", detail: "JSON property", documentation: "Insert a JSON property snippet.", insertText: '"${1:key}": ${2:value}', kind: "snippet" },
+    { label: "true", detail: "JSON boolean", insertText: "true", kind: "value" },
+    { label: "false", detail: "JSON boolean", insertText: "false", kind: "value" },
+    { label: "null", detail: "JSON null", insertText: "null", kind: "value" },
+    { label: "object", detail: "JSON object", insertText: "{\n  $1\n}", kind: "snippet" },
+    { label: "array", detail: "JSON array", insertText: "[\n  $1\n]", kind: "snippet" },
+  ];
 }
 
 function diagnoseDocument(

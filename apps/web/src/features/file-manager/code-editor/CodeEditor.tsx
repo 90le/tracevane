@@ -13,8 +13,10 @@ import { cn } from "@/design/lib/utils";
 import { MONACO_LANGUAGE_LOADERS } from "@/features/file-manager/code-editor/monacoLanguageLoaders";
 import { editorModelUriPath } from "@/shared/editor-core/identity";
 import { detectLanguageForFile, languageForPath } from "@/shared/editor-core/language";
+import { registerTracevaneLspMonacoProviders } from "@/features/ide-workbench/lsp";
 
 configureMonacoWorkers();
+registerTracevaneLspMonacoProviders(monaco);
 
 const MONACO_KEYBOARD_CARET_GAP = 24;
 const MONACO_KEYBOARD_MIN_OVERLAP = 8;

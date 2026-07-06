@@ -41,8 +41,9 @@ Both products share lower-level core services, not full product shells.
 - Done: M6-F M6 watcher/search/diff/problems/output acceptance/docs closeout.
 - Done: M7-A LSP / Git / Debug research and minimal implementation plan.
 - Done: M7-B single-language JSON diagnostics to existing Problems/Output.
-- Next: M7-C LSP hover/completion/definition foundation.
-- Later: M7-D/M7-E Git status/diff/stage/commit; M7-F/M7.x Debug Adapter Protocol.
+- Done: M7-C LSP hover/completion/definition foundation.
+- Next: M7-D Git status + Explorer decoration + Source Control View.
+- Later: M7-E Git diff/stage/commit; M7-F/M7.x Debug Adapter Protocol.
 
 ## Required reading by task
 
@@ -53,7 +54,7 @@ Always read these before changing matching scope:
 - Completed Mini Explorer / Shared Explorer Core record: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
 - IDE Workbench layout / IDE Editor Foundation: `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, `09-IDE参考行为与术语对照.md`, `archive/m5y-a-ide-editor-foundation-plan.md`, `archive/m5y-execution-summary.md`, `archive/m5y-g-editor-preview-statusbar-hex-summary.md`, and `archive/m5y-h-layout-reset-empty-action-summary.md`.
 - Completed Watcher / Search / Problems / Output: `06-后端服务与接口方案.md`, `07-终端运行语言服务Git方案.md`, `08`, `archive/m6-a-watcher-search-problems-output-plan.md`, and `archive/m6-execution-summary.md`.
-- Terminal / LSP / Git / Debug: `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, `08`, and `archive/m7-a-lsp-git-debug-plan.md` / `archive/m7-b-lsp-diagnostics-summary.md`.
+- Terminal / LSP / Git / Debug: `07-终端运行语言服务Git方案.md`, `06-后端服务与接口方案.md`, `08`, and `archive/m7-a-lsp-git-debug-plan.md` / `archive/m7-b-lsp-diagnostics-summary.md` / `archive/m7-c-lsp-interaction-summary.md`.
 - Visual/theme work: `14-视觉主题与设计系统适配.md`, `DESIGN.md`, `docs/界面设计守则.md`, `apps/web/src/design/theme.css`.
 
 ## Non-negotiable implementation rules

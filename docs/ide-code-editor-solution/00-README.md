@@ -100,6 +100,7 @@
 | [archive/m6-execution-summary.md](./archive/m6-execution-summary.md) | M6 Watcher / Search / Diff / Problems / Output 总体验收、完成边界和 M7 入口 |
 | [archive/m7-a-lsp-git-debug-plan.md](./archive/m7-a-lsp-git-debug-plan.md) | M7-A LSP / Git / Debug 研究、边界与最小实现计划，明确 M7-B+ 分阶段路线 |
 | [archive/m7-b-lsp-diagnostics-summary.md](./archive/m7-b-lsp-diagnostics-summary.md) | M7-B 单语言 JSON diagnostics -> Problems/Output 验收总结 |
+| [archive/m7-c-lsp-interaction-summary.md](./archive/m7-c-lsp-interaction-summary.md) | M7-C LSP hover / completion / definition foundation 验收总结 |
 
 ## 推荐技术选型
 
@@ -235,8 +236,9 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - 已探查 apps/api 与 IDE Workbench 现状：后端已有 Git service/API，暂无 LSP/DAP service；前端已有 Problems/Output/editor reveal 和 Git API hooks。
 - 已查证 LSP、DAP、Git porcelain 与 monaco-languageclient 方向，明确 M7 不一次性追完整 VS Code。
 - M7-B 单语言 JSON diagnostics 已接入 Problems/Output。
-- 下一步进入 M7-C：LSP hover / completion / definition foundation。
-- 验收见 `archive/m7-a-lsp-git-debug-plan.md` 与 `archive/m7-b-lsp-diagnostics-summary.md`。
+- M7-C 已接入 JSON hover / completion / definition foundation。
+- 下一步进入 M7-D：Git status + Explorer decoration + Source Control View。
+- 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md` 与 `archive/m7-c-lsp-interaction-summary.md`。
 ```
 
 ## 重要原则

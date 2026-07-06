@@ -91,7 +91,8 @@
     "smoke:ide:search-foundation": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-search-foundation.smoke.mjs",
     "smoke:ide:editor-conflict-diff": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-conflict-diff.smoke.mjs",
     "smoke:ide:problems-output": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-problems-output.smoke.mjs",
-    "smoke:ide:lsp-diagnostics": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-lsp-diagnostics.smoke.mjs"
+    "smoke:ide:lsp-diagnostics": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-lsp-diagnostics.smoke.mjs",
+    "smoke:ide:lsp-interaction": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-lsp-interaction.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",
