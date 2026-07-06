@@ -137,7 +137,7 @@ export function TerminalManagerDialog({
   }, [onClosedSessions, refresh]);
 
   const groups = React.useMemo(() => groupSessions(sessions, currentRootId), [currentRootId, sessions]);
-  const detachedSessions = sessions.filter((session) => session.status === "detached");
+  const detachedSessions = sessions.filter((session) => session.status === "detached" && !activeIdSet.has(session.sessionId));
   const otherWorkspaceSessions = sessions.filter((session) => normalizeRootId(session) !== currentRootId);
 
   if (!open) return null;
