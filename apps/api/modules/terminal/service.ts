@@ -1869,6 +1869,7 @@ export function createTerminalService(
     let ended = existed;
     if (existed) {
       destroySession(sid);
+      markPersistedSessionEnded(sid);
     } else {
       ended = Boolean(markPersistedSessionEnded(sid));
     }
@@ -1885,6 +1886,9 @@ export function createTerminalService(
   ): TerminalSessionDescriptor | null {
     const persisted = descriptorStore.get(sessionId);
     if (!persisted) return null;
+    if (persisted.status === "completed" && persisted.canResume === false) {
+      return persisted;
+    }
 
     if (persisted.durableBackend === "tmux") {
       forceKillPersistedTmuxSession(

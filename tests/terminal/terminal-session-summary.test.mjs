@@ -422,7 +422,7 @@ test("terminal service batch end marks sessions non-recoverable", async () => {
     assert.equal(endedDescriptors.length, 2);
     for (const descriptor of endedDescriptors) {
       assert.equal(descriptor.canResume, false);
-      assert.equal(descriptor.status, "lost");
+      assert.equal(descriptor.status, "completed");
     }
   } finally {
     service.dispose();
