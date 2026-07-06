@@ -138,7 +138,7 @@ export function TerminalPanel({
               if (!failed.length) return;
               const first = failed[0];
               const reason = first.status === "rejected" ? first.reason : null;
-              toast.warning("终端标签已重命名，但 session 标题同步失败", {
+              toast.warning("终端标签已重命名，但终端会话标题同步失败", {
                 description: reason instanceof Error ? reason.message : String(reason || "unknown error"),
               });
             });
@@ -147,7 +147,7 @@ export function TerminalPanel({
         onOpenManager={() => setManagerOpen(true)}
         compact={placement === "right"}
         cwdLabel={placement === "right" ? undefined : cwdAbsolutePath}
-        metaLabel={placement === "right" ? undefined : `${layout.tabs.length} tab${layout.tabs.length > 1 ? "s" : ""} · ${activePaneCount} pane${activePaneCount > 1 ? "s" : ""}`}
+        metaLabel={placement === "right" ? undefined : `${layout.tabs.length} 个标签 · ${activePaneCount} 个窗格`}
       />
       <div className="min-h-0 min-w-0" data-ide-terminal-layout data-terminal-tab-count={layout.tabs.length} data-terminal-pane-count={activePaneCount} data-terminal-active-tab-id={layout.activeTabId} data-terminal-active-pane-id={layout.activePaneId} data-terminal-active-terminal-id={activeTab?.activeTerminalId ?? undefined}>
         {!layoutReady ? (
@@ -176,7 +176,7 @@ export function TerminalPanel({
             <div className="max-w-md rounded-lg border border-dashed border-line bg-canvas px-6 py-5 text-sm text-muted">
               <div className="text-base font-medium text-ink-strong">没有正在运行的终端</div>
               <p className="mt-2 leading-relaxed">
-                尚未创建或恢复终端。点击“新建终端”创建 workspace 终端，或打开终端管理器恢复仍可恢复的 session。
+                尚未创建或恢复终端。点击“新建终端”创建当前工作区终端，或打开终端管理器恢复仍可恢复的终端会话。
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <button
@@ -245,7 +245,7 @@ function saveDefaultTerminalProfileId(profileId: string): void {
   try {
     localStorage.setItem(TERMINAL_DEFAULT_PROFILE_KEY, profileId);
   } catch {
-    // Ignore storage failures; the current session still uses React state.
+    // Ignore storage failures; the current browser session still uses React state.
   }
 }
 

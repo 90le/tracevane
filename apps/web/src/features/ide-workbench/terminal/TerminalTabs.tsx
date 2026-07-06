@@ -278,8 +278,8 @@ export function TerminalTabs({
           <button
             type="button"
             className="grid h-8 w-7 place-items-center border-l border-line text-subtle outline-none hover:bg-panel-3 hover:text-ink focus-visible:shadow-[var(--ring)]"
-            aria-label="选择终端 Shell/Profile"
-            title="选择终端 Shell/Profile"
+            aria-label="选择终端配置"
+            title="选择终端配置"
             data-ide-terminal-new-menu
             onPointerDown={(event) => {
               event.stopPropagation();
@@ -503,7 +503,7 @@ function TerminalNewProfileMenu({
       ) : null}
       <div className="my-1 border-t border-line" />
       <div className="px-2 py-1 text-2xs leading-relaxed text-muted">
-        仅创建已安装本地 Shell；tmux/Agent 不作为 Shell。
+        仅创建已安装的本地 Shell；tmux/Agent 是持久化或代理能力，不作为可直接启动的 Shell。
       </div>
     </div>
   );

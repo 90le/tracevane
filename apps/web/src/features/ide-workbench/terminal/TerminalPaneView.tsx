@@ -213,15 +213,15 @@ export function TerminalPaneView({
     if (!rootId) return;
     setStatus(createMode === "create" ? "creating" : "connecting");
     setMessage(createMode === "create"
-      ? "正在创建受 workspace 限制的 PTY session…"
-      : "正在恢复已存在的终端 session…");
+      ? "正在创建受工作区限制的 PTY 终端会话…"
+      : "正在恢复已存在的终端会话…");
     try {
       if (createMode !== "create") {
         const persisted = await getTerminalSession(terminalId);
         if (disposedRef.current || userClosedRef.current) return;
         if (!persisted?.canResume || (persisted.status !== "running" && persisted.status !== "detached")) {
           setStatus("closed");
-          setMessage("终端 session 已结束，已从布局移除");
+          setMessage("终端会话已结束，已从布局移除");
           window.setTimeout(() => onClose(paneId), 0);
           return;
         }
@@ -247,7 +247,7 @@ export function TerminalPaneView({
     } catch (error) {
       if (createMode !== "create") {
         setStatus("closed");
-        setMessage("终端 session 不可恢复，已从布局移除");
+        setMessage("终端会话不可恢复，已从布局移除");
         window.setTimeout(() => onClose(paneId), 0);
         return;
       }

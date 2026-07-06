@@ -330,6 +330,13 @@ async function runUiSmoke(rootId) {
     await page.locator('[data-ide-terminal-tabs]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') === 0, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-empty]').waitFor({ state: 'visible', timeout: 30_000 });
+    const emptyCopy = await page.locator('[data-ide-terminal-empty]').innerText();
+    if (/\b(workspace|session)\b/.test(emptyCopy)) {
+      throw new Error(`Terminal empty state leaked internal wording: ${emptyCopy}`);
+    }
+    if (!emptyCopy.includes('当前工作区终端') || !emptyCopy.includes('终端会话')) {
+      throw new Error(`Terminal empty state did not explain user-facing create/recover behavior: ${emptyCopy}`);
+    }
     if (await page.locator('[data-ide-terminal-xterm]').count()) {
       throw new Error('Terminal was auto-created before the user requested a new terminal');
     }
