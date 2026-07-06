@@ -272,10 +272,10 @@ export function TerminalManagerDialog({
                             {session.durableBackend ? <span className="rounded bg-panel-3 px-1.5 py-0.5 font-mono text-2xs text-muted">{session.durableBackend}</span> : null}
                           </div>
                           <div className="grid gap-1 font-mono text-2xs text-muted md:grid-cols-2">
-                            <span className="truncate" title={session.sessionId}>id: {session.sessionId}</span>
-                            <span className="truncate" title={formatWorkspaceTitle(session)}>工作区: {formatWorkspaceLabel(session)}</span>
-                            <span className="truncate" title={formatCwdTitle(session.cwd)}>目录: {formatCwd(session.cwd)}</span>
-                            <span className="truncate">Shell: {session.shell || "bash"} · 更新: {formatTime(session.updatedAt)}</span>
+                            <span className="truncate" title={session.sessionId}>会话 ID：{session.sessionId}</span>
+                            <span className="truncate" title={formatWorkspaceTitle(session)}>工作区：{formatWorkspaceLabel(session)}</span>
+                            <span className="truncate" title={formatCwdTitle(session.cwd)}>目录：{formatCwd(session.cwd)}</span>
+                            <span className="truncate">终端配置：{session.shell || "bash"} · 更新：{formatTime(session.updatedAt)}</span>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-1">
