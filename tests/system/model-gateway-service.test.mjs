@@ -12845,6 +12845,116 @@ test("model gateway adapts chat completions through native anthropic messages pr
   });
 });
 
+
+test("model gateway streams Anthropic tool_use start input through Chat adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-start-input-chat-stream",
+      name: "Anthropic Start Input Chat Stream",
+      appScopes: ["opencode", "openclaw"],
+      baseUrl: "https://anthropic-start-input-chat-stream.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-anthropic-start-input-chat-stream" },
+    setActiveScopes: ["opencode", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    const messageId = upstreamCalls.length === 1 ? "msg_start_input_modern" : "msg_start_input_legacy";
+    const upstreamSse = [
+      "event: message_start",
+      `data: {"type":"message_start","message":{"id":"${messageId}","type":"message","role":"assistant","model":"claude-native","content":[],"usage":{"input_tokens":7,"output_tokens":0}}}`,
+      "",
+      "event: content_block_start",
+      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_lookup\",\"name\":\"lookup\",\"input\":{\"query\":\"docs\"}}}",
+      "",
+      "event: content_block_stop",
+      "data: {\"type\":\"content_block_stop\",\"index\":0}",
+      "",
+      "event: message_delta",
+      "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const modern = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "Use lookup" }],
+          tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+        },
+      });
+      assert.equal(modern.status, 200, modern.body);
+      const modernEvents = parseSseEvents(modern.body);
+      assert.equal(modernEvents[0].data.choices[0].delta.role, "assistant");
+      assert.deepEqual(modernEvents[1].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        id: "call_lookup",
+        type: "function",
+        function: { name: "lookup", arguments: "" },
+      }]);
+      assert.deepEqual(modernEvents[2].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        function: { arguments: "{\"query\":\"docs\"}" },
+      }]);
+      assert.equal(modernEvents[3].data.choices[0].finish_reason, "tool_calls");
+      assert.equal(modernEvents[4].data, "[DONE]");
+
+      const legacy = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "Use lookup" }],
+          functions: [{ name: "lookup", parameters: { type: "object" } }],
+          function_call: { name: "lookup" },
+        },
+      });
+      assert.equal(legacy.status, 200, legacy.body);
+      const legacyEvents = parseSseEvents(legacy.body);
+      assert.equal(legacyEvents[0].data.choices[0].delta.role, "assistant");
+      assert.deepEqual(legacyEvents[1].data.choices[0].delta.function_call, { name: "lookup", arguments: "" });
+      assert.deepEqual(legacyEvents[2].data.choices[0].delta.function_call, { arguments: "{\"query\":\"docs\"}" });
+      assert.equal(legacyEvents[3].data.choices[0].finish_reason, "function_call");
+      assert.equal(JSON.stringify(legacyEvents).includes("tool_calls"), false);
+      assert.equal(legacyEvents[4].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-start-input-chat-stream.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-anthropic-start-input-chat-stream");
+  assert.equal(upstreamCalls[0].body.stream, true);
+  assert.deepEqual(upstreamCalls[0].body.tools, [{ name: "lookup", input_schema: { type: "object" } }]);
+  assert.equal(upstreamCalls[1].url, "https://anthropic-start-input-chat-stream.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].body.stream, true);
+  assert.deepEqual(upstreamCalls[1].body.tools, [{ name: "lookup", input_schema: { type: "object" } }]);
+});
+
 test("model gateway ignores empty streaming anthropic tool blocks for chat sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

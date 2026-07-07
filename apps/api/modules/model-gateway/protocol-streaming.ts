@@ -206,6 +206,11 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
           });
           if (!tool) return;
           writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
+          const inputJson = serializeToolInput(block.input);
+          if (inputJson) {
+            tool.inputJson += inputJson;
+            writeChatToolCallArguments(state, res, tool, inputJson, legacyFunctionCalls);
+          }
         }
         return;
       }
