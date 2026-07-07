@@ -948,7 +948,6 @@ function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): str
     "frequency_penalty",
     "logit_bias",
     "logprobs",
-    "modalities",
     "n",
     "prediction",
     "presence_penalty",
@@ -962,9 +961,18 @@ function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): str
   const notes = unsupportedFields
     .filter((field) => request[field] !== undefined)
     .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  if (request.modalities !== undefined && !chatModalitiesAreTextOnly(request.modalities)) {
+    notes.push(`modalities=${stringifyCompact(request.modalities)}`);
+  }
   return notes.length
     ? `OpenAI Chat request controls preserved for Anthropic Messages: ${notes.join(" ")}`
     : "";
+}
+
+
+function chatModalitiesAreTextOnly(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.every((item) => stringOrNull(item)?.toLowerCase() === "text");
 }
 
 function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown }): number {

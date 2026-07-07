@@ -14146,6 +14146,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
           seed: 456,
           store: false,
           stream_options: { include_usage: true },
+          modalities: ["text"],
           top_logprobs: 2,
           max_tokens: 128,
           verbosity: "high",
@@ -14243,6 +14244,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             type: "yaml_schema",
             schema: { type: "object", additionalProperties: false },
           },
+          modalities: ["text", "audio"],
           max_tokens: 64,
         },
       });
@@ -14362,6 +14364,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     messages: [
       { role: "user", content: "preserve unsupported chat response format" },
       { role: "user", content: 'OpenAI Chat unsupported response_format for Anthropic Messages: {"type":"yaml_schema","schema":{"type":"object","additionalProperties":false}}' },
+      { role: "user", content: 'OpenAI Chat request controls preserved for Anthropic Messages: modalities=["text","audio"]' },
     ],
   });
 });
