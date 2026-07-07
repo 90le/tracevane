@@ -972,6 +972,10 @@ function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
       const filePart = anthropicDocumentToChatFilePart(block);
       return filePart ? [filePart] : [];
     }
+    if (block.type === "container_upload") {
+      const filePart = anthropicContainerUploadToChatFilePart(block);
+      return filePart ? [filePart] : [];
+    }
     const text = anthropicContentToText(block);
     return text ? [{ type: "text", text }] : [];
   });
@@ -1000,6 +1004,15 @@ function anthropicDocumentToChatFilePart(block: JsonRecord): JsonRecord | null {
   const title = stringOrNull(block.title) || stringOrNull(block.name);
   if (title) file.filename = title;
   if (!Object.keys(file).length) return null;
+  return { type: "file", file };
+}
+
+function anthropicContainerUploadToChatFilePart(block: JsonRecord): JsonRecord | null {
+  const fileId = stringOrNull(block.file_id);
+  if (!fileId) return null;
+  const file: JsonRecord = { file_id: fileId };
+  const filename = stringOrNull(block.filename) || stringOrNull(block.name) || stringOrNull(block.title);
+  if (filename) file.filename = filename;
   return { type: "file", file };
 }
 

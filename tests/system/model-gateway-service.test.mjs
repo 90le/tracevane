@@ -15225,7 +15225,13 @@ test("model gateway carries reasoning effort across responses chat and anthropic
         body: {
           model: "gpt-reasoner",
           max_tokens: 1024,
-          messages: [{ role: "user", content: "Think." }],
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "Think." },
+              { type: "container_upload", file_id: "file_container_upload_123", filename: "artifact.txt" },
+            ],
+          }],
           metadata: { trace_id: "chat-strict-should-strip", user_id: "claude-chat-user" },
           thinking: { type: "enabled", budget_tokens: 9000 },
           service_tier: "standard_only",
@@ -15251,7 +15257,13 @@ test("model gateway carries reasoning effort across responses chat and anthropic
         body: {
           model: "gpt-reasoner",
           max_tokens: 1024,
-          messages: [{ role: "user", content: "Think." }],
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "Think." },
+              { type: "container_upload", file_id: "file_container_upload_456", filename: "artifact-responses.txt" },
+            ],
+          }],
           metadata: { trace_id: "responses-should-strip", user_id: "claude-responses-user", session_id: "claude-code-session" },
           service_tier: "standard_only",
           stop_sequences: ["STOP"],
@@ -15325,6 +15337,10 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   assert.equal(upstreamCalls[3].url, "https://anthropic-to-chat-reasoning.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[3].body.reasoning_effort, "high");
   assert.equal(upstreamCalls[3].body.user, "claude-chat-user");
+  assert.deepEqual(upstreamCalls[3].body.messages[0].content, [
+    { type: "text", text: "Think." },
+    { type: "file", file: { file_id: "file_container_upload_123", filename: "artifact.txt" } },
+  ]);
   assert.equal("metadata" in upstreamCalls[3].body, false);
   assert.equal("service_tier" in upstreamCalls[3].body, false);
   assert.equal("thinking" in upstreamCalls[3].body, false);
@@ -15333,6 +15349,10 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
   assert.equal("metadata" in upstreamCalls[4].body, false);
   assert.equal(upstreamCalls[4].body.user, "claude-responses-user");
+  assert.deepEqual(upstreamCalls[4].body.input[0].content, [
+    { type: "input_text", text: "Think." },
+    { type: "input_file", file_id: "file_container_upload_456", filename: "artifact-responses.txt" },
+  ]);
   assert.equal("stop" in upstreamCalls[4].body, false);
   assert.equal(upstreamCalls[4].body.service_tier, "default");
   assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });
