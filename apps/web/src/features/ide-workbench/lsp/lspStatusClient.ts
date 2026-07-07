@@ -94,6 +94,7 @@ export interface ToolchainLspProviderPolicy {
   readOnly: boolean;
   probesRuntimePath: boolean;
   startsLanguageServers: boolean;
+  runtimeProofProviderIds?: string[];
   acceptsFrontendCommandOverrides: boolean;
   acceptsOnlyAllowlistedProfiles?: boolean;
   configSource?: string;

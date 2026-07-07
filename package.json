@@ -137,7 +137,8 @@
     "test:system:lsp-eslint-provider": "npm run build:api && node --test tests/system/lsp-eslint-provider.test.mjs",
     "test:system:lsp-vue-provider": "npm run build:api && node --test tests/system/lsp-vue-provider.test.mjs",
     "test:system:lsp-svelte-provider": "npm run build:api && node --test tests/system/lsp-svelte-provider.test.mjs",
-    "test:system:lsp-toolchain-provider-status": "npm run build:api && node --test tests/system/lsp-toolchain-provider-status.test.mjs"
+    "test:system:lsp-toolchain-provider-status": "npm run build:api && node --test tests/system/lsp-toolchain-provider-status.test.mjs",
+    "test:system:lsp-go-gopls-provider": "npm run build:api && node --test tests/system/lsp-go-gopls-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",

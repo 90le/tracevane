@@ -42,6 +42,7 @@ import { createExternalLanguageServerGateway } from "./external/externalLanguage
 import { findExternalLanguageServerProfile } from "./external/externalProviderProfiles.js";
 import { externalProviderMetadataForProfile } from "./external/externalProviderMetadata.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
+import { diagnoseWithGoGopls, goExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/goGoplsProvider.js";
 import { toolchainProviderStatusSnapshot } from "./toolchain/toolchainProviderStatus.js";
 
 const LSP_WS_PATH = "/ws/lsp";
@@ -1801,6 +1802,16 @@ async function diagnoseDocument(
       content,
       version: request.version ?? 1,
     }));
+  }
+  if (provider?.id === "go") {
+    const result = await diagnoseWithGoGopls({
+      config,
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    });
+    return responseFor(request, resolved.root.id, resolved.relativePath, "go", language, result.diagnostics.map((diagnostic) => goExternalDiagnosticToTracevaneDiagnostic(diagnostic)));
   }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }

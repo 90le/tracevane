@@ -49,7 +49,8 @@ test("LSP status exposes guarded toolchain provider candidates without runtime p
 
   assert.equal(status.toolchainProviders?.policy?.readOnly, true);
   assert.equal(status.toolchainProviders?.policy?.probesRuntimePath, false);
-  assert.equal(status.toolchainProviders?.policy?.startsLanguageServers, false);
+  assert.equal(status.toolchainProviders?.policy?.startsLanguageServers, true);
+  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go"]);
   assert.equal(status.toolchainProviders?.policy?.acceptsFrontendCommandOverrides, false);
   assert.equal(status.toolchainProviders?.policy?.acceptsOnlyAllowlistedProfiles, true);
   assert.equal(status.toolchainProviders?.policy?.configSource, "openclaw-config");
@@ -99,7 +100,7 @@ test("LSP toolchain status accepts only trusted allowlisted profile config", () 
   assert.equal(go.config.enabled, true);
   assert.equal(go.config.trusted, true);
   assert.equal(go.config.profileId, "workspace");
-  assert.match(go.nextAction, /Runtime startup remains gated/i);
+  assert.match(go.nextAction, /guarded diagnostics proof/i);
 
   const rust = byId.get("rust");
   assert.equal(rust.status, "disabledByTrust");

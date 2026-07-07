@@ -51,7 +51,8 @@ export interface ToolchainProviderStatusSnapshot {
   policy: {
     readOnly: true;
     probesRuntimePath: false;
-    startsLanguageServers: false;
+    startsLanguageServers: boolean;
+    runtimeProofProviderIds: ToolchainProviderId[];
     acceptsFrontendCommandOverrides: false;
     acceptsOnlyAllowlistedProfiles: true;
     configSource: "openclaw-config";
@@ -88,8 +89,9 @@ const TOOLCHAIN_PROVIDER_TEMPLATES: ToolchainProviderTemplate[] = [
     allowedProfiles: [{ profileId: "workspace", label: "Workspace gopls", binary: "gopls", description: "Use a trusted workspace gopls profile after explicit configuration." }],
     defaultNextAction: "Configure a trusted workspace gopls profile before enabling Go language service runtime.",
     defaultNotes: [
-      "M12-I reads config state only; it does not inspect PATH or launch gopls.",
-      "Future enablement must pass cwd/root guard and version checks before diagnostics routing.",
+      "M12-K enables only a guarded Go/gopls diagnostics proof for trusted workspace profiles.",
+      "Status reporting does not inspect PATH; diagnostics runtime probes only after explicit trusted configuration.",
+      "Runtime startup must pass cwd/root guard, Go workspace marker, and bounded version checks before diagnostics routing.",
     ],
   },
   {
@@ -146,7 +148,8 @@ export function toolchainProviderStatusSnapshot(config: TracevaneServerConfig): 
     policy: {
       readOnly: true,
       probesRuntimePath: false,
-      startsLanguageServers: false,
+      startsLanguageServers: true,
+      runtimeProofProviderIds: ["go"],
       acceptsFrontendCommandOverrides: false,
       acceptsOnlyAllowlistedProfiles: true,
       configSource: "openclaw-config",
@@ -220,6 +223,7 @@ function statusFromConfig(config: ToolchainProviderConfigState): ToolchainProvid
 }
 
 function nextActionFromConfig(template: ToolchainProviderTemplate, config: ToolchainProviderConfigState, status: ToolchainProviderStatus): string {
+  if (status === "configured" && template.providerId === "go") return `${template.label} has a trusted allowlisted profile. M12-K permits guarded diagnostics proof for Go files with go.work/go.mod markers.`;
   if (status === "configured") return `${template.label} has a trusted allowlisted profile. Runtime startup remains gated until provider-specific proof is implemented.`;
   if (status === "disabledByTrust") return `Mark ${template.configurationKey}.trusted=true only after the workspace is explicitly trusted.`;
   if (status === "unavailable") return config.rejectedReason ?? `Fix ${template.configurationKey} before enabling this provider.`;

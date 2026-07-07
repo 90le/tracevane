@@ -1,5 +1,5 @@
 export type LspDiagnosticSeverity = "error" | "warning" | "info" | "hint";
-export type LspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte";
+export type LspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte" | "go";
 
 export interface LspDocumentRef {
   rootId: string;

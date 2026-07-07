@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte" | "go";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -35,6 +35,7 @@ export const MARKDOWN_PROVIDER_SOURCE = "vscode-langservers-extracted";
 export const ESLINT_PROVIDER_SOURCE = "vscode-langservers-extracted";
 export const VUE_PROVIDER_SOURCE = "@vue/language-server";
 export const SVELTE_PROVIDER_SOURCE = "svelte-language-server";
+export const GO_PROVIDER_SOURCE = "gopls";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 export const CSS_LANGUAGES = new Set(["css", "scss", "less"]);
@@ -46,6 +47,7 @@ export const MARKDOWN_LANGUAGES = new Set(["markdown", "md", "mdx"]);
 export const ESLINT_LANGUAGES = new Set(["javascript", "javascriptreact", "typescript", "typescriptreact"]);
 export const VUE_LANGUAGES = new Set(["vue"]);
 export const SVELTE_LANGUAGES = new Set(["svelte"]);
+export const GO_LANGUAGES = new Set(["go"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
   {
@@ -181,6 +183,17 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
     mode: "external",
     status: "available",
     languages: [...SVELTE_LANGUAGES],
+    capabilities: {
+      diagnostics: true,
+    },
+  },
+
+  {
+    id: "go",
+    source: GO_PROVIDER_SOURCE,
+    mode: "external",
+    status: "available",
+    languages: [...GO_LANGUAGES],
     capabilities: {
       diagnostics: true,
     },
