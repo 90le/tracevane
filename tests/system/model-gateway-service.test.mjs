@@ -9871,7 +9871,7 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
         },
       });
       assert.equal(responses.status, 200, responses.body);
-      assert.equal(responses.body.output[0].content[0].text, "Non-stream chat refusal.");
+      assert.deepEqual(responses.body.output[0].content, [{ type: "refusal", refusal: "Non-stream chat refusal." }]);
 
       const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -9913,6 +9913,80 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
   assert.ok(upstreamCalls.every((call) => call.url === "https://chat-refusal.example.test/v1/chat/completions"));
   assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-chat-refusal-secret"));
   assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream === true), [false, false, true, true]);
+});
+
+test("model gateway preserves Chat refusal content parts in Codex responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-refusal-content-part",
+      name: "Chat Refusal Content Part Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-refusal-content-part.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-refusal-content-part-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_refusal_part",
+      object: "chat.completion",
+      created: 1_710_000_043,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: [
+            { type: "output_text", text: "Allowed context. " },
+            { type: "refusal", refusal: "I cannot help with that." },
+          ],
+        },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "Return a structured refusal part.",
+        },
+      });
+
+      assert.equal(responses.status, 200, responses.body);
+      assert.deepEqual(responses.body.output[0].content, [
+        { type: "output_text", text: "Allowed context. " },
+        { type: "refusal", refusal: "I cannot help with that." },
+      ]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-refusal-content-part.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-refusal-content-part-secret");
 });
 
 test("model gateway maps non-streaming responses incomplete status to client stop reasons", async () => {

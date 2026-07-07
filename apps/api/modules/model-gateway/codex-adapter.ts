@@ -144,7 +144,7 @@ export function adaptChatCompletionToCodexResponse(
 
   const choice = firstChoice(chatCompletion);
   const message = isRecord(choice?.message) ? choice.message : {};
-  const text = stripTrailingPlaceholderText(contentToText(message.content) || stringOrNull(message.refusal) || "");
+  const messageContent = chatMessageToResponsesOutputContent(message);
   const reasoningText = extractReasoningText(message);
   const generatedSuffix = Date.now().toString(36);
   const output: JsonRecord[] = [];
@@ -159,16 +159,13 @@ export function adaptChatCompletionToCodexResponse(
       summary: [{ type: "summary_text", text: reasoningText }],
     });
   }
-  if (text || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
-    const outputText: JsonRecord = { type: "output_text", text };
-    const annotations = collectChatOutputAnnotations(message);
-    if (annotations.length) outputText.annotations = annotations;
+  if (messageContent.length || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
     output.push({
       type: "message",
       id: `msg_${generatedSuffix}`,
       status: "completed",
       role: "assistant",
-      content: [outputText],
+      content: messageContent.length ? messageContent : [{ type: "output_text", text: "" }],
     });
   }
 
@@ -191,20 +188,65 @@ export function adaptChatCompletionToCodexResponse(
   return response;
 }
 
-function collectChatOutputAnnotations(message: JsonRecord): JsonRecord[] {
-  const annotations: JsonRecord[] = [];
-  if (Array.isArray(message.annotations)) {
-    annotations.push(...message.annotations.filter(isRecord).map(mapChatAnnotationToResponsesAnnotation));
-  }
-  if (Array.isArray(message.content)) {
-    message.content.forEach((part) => {
-      if (!isRecord(part) || !Array.isArray(part.annotations)) return;
-      for (const annotation of part.annotations) {
-        if (isRecord(annotation)) annotations.push(mapChatAnnotationToResponsesAnnotation(annotation));
+function chatMessageToResponsesOutputContent(message: JsonRecord): JsonRecord[] {
+  const content = message.content;
+  if (Array.isArray(content)) {
+    const parts: JsonRecord[] = [];
+    for (const part of content) {
+      const mapped = chatContentPartToResponsesOutputPart(part);
+      if (mapped) parts.push(mapped);
+    }
+    const messageAnnotations = chatAnnotationsToResponsesAnnotations(message.annotations);
+    if (messageAnnotations.length) {
+      const outputText = parts.find((part): part is JsonRecord => part.type === "output_text");
+      if (outputText) {
+        outputText.annotations = [
+          ...messageAnnotations,
+          ...(Array.isArray(outputText.annotations) ? outputText.annotations.filter(isRecord) : []),
+        ];
       }
-    });
+    }
+    return parts;
   }
-  return annotations;
+
+  const text = stripTrailingPlaceholderText(contentToText(content));
+  if (text) {
+    const outputText: JsonRecord = { type: "output_text", text };
+    const annotations = chatAnnotationsToResponsesAnnotations(message.annotations);
+    if (annotations.length) outputText.annotations = annotations;
+    return [outputText];
+  }
+
+  const refusal = stringOrNull(message.refusal);
+  return refusal ? [{ type: "refusal", refusal }] : [];
+}
+
+function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null {
+  if (typeof part === "string") {
+    const text = stripTrailingPlaceholderText(part);
+    return text ? { type: "output_text", text } : null;
+  }
+  if (!isRecord(part)) return null;
+  if (part.type === "refusal") {
+    const refusal = stringOrNull(part.refusal) || stringOrNull(part.text);
+    return refusal ? { type: "refusal", refusal } : null;
+  }
+  const text = stripTrailingPlaceholderText(
+    stringOrNull(part.text)
+      || stringOrNull(part.output_text)
+      || stringOrNull(part.input_text)
+      || "",
+  );
+  if (!text) return null;
+  const outputText: JsonRecord = { type: "output_text", text };
+  const annotations = chatAnnotationsToResponsesAnnotations(part.annotations);
+  if (annotations.length) outputText.annotations = annotations;
+  return outputText;
+}
+
+function chatAnnotationsToResponsesAnnotations(annotations: unknown): JsonRecord[] {
+  if (!Array.isArray(annotations)) return [];
+  return annotations.filter(isRecord).map(mapChatAnnotationToResponsesAnnotation);
 }
 
 function mapChatAnnotationToResponsesAnnotation(annotation: JsonRecord): JsonRecord {
@@ -565,8 +607,7 @@ function stripTrailingPlaceholderText(value: string): string {
   if (!value) return value;
   if (isPlaceholderText(value)) return "";
   return value
-    .replace(/(?:\r?\n){2,}[ \t]*(?:[.\u2026]+[ \t]*(?:\r?\n[ \t]*)*)+$/u, "")
-    .trimEnd();
+    .replace(/(?:\r?\n){2,}[ \t]*(?:[.\u2026]+[ \t]*(?:\r?\n[ \t]*)*)+$/u, "");
 }
 
 function contentToChatContent(content: unknown, role: string): string | JsonRecord[] {
