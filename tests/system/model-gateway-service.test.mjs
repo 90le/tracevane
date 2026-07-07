@@ -11664,6 +11664,139 @@ test("model gateway adapts legacy Chat functions through Responses and Anthropic
   ]);
 });
 
+test("model gateway preserves malformed Chat tool history through Responses and Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "malformed-chat-tool-history-responses",
+      name: "Malformed Chat Tool History Responses",
+      appScopes: ["opencode"],
+      baseUrl: "https://malformed-chat-tool-history-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-malformed-chat-tool-history-responses" },
+    setActiveScopes: ["opencode"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "malformed-chat-tool-history-anthropic",
+      name: "Malformed Chat Tool History Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://malformed-chat-tool-history-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-malformed-chat-tool-history-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const upstreamUrl = String(url);
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({
+      url: upstreamUrl,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body,
+    });
+    if (upstreamUrl.includes("malformed-chat-tool-history-anthropic")) {
+      return new Response(JSON.stringify({
+        id: "msg_malformed_chat_tool_history",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "malformed anthropic ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 8, output_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_malformed_chat_tool_history",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{ id: "msg_malformed_chat_tool_history", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "malformed responses ok" }] }],
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const malformedBody = {
+    model: "gpt-tool-history",
+    messages: [
+      { role: "user", content: "Continue after tool history." },
+      {
+        role: "assistant",
+        content: "I attempted tool calls.",
+        function_call: { arguments: "{\"query\":\"docs\"}" },
+        tool_calls: [
+          { id: "call_missing_name", type: "function", function: { arguments: "{\"query\":\"docs\"}" } },
+          { type: "function", function: { name: "lookup", arguments: "{\"query\":\"docs\"}" } },
+        ],
+      },
+      { role: "tool", content: "orphan tool result" },
+      { role: "function", content: "orphan function result" },
+    ],
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: malformedBody,
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.choices[0].message.content, "malformed responses ok");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: malformedBody,
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.choices[0].message.content, "malformed anthropic ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://malformed-chat-tool-history-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-malformed-chat-tool-history-responses");
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "Continue after tool history." }] },
+    { role: "assistant", content: [{ type: "output_text", text: "I attempted tool calls." }] },
+    { role: "assistant", content: [{ type: "output_text", text: 'OpenAI Chat malformed function_call for Responses: {"arguments":"{\\"query\\":\\"docs\\"}"}' }] },
+    { role: "assistant", content: [{ type: "output_text", text: 'OpenAI Chat malformed tool_call for Responses: {"id":"call_missing_name","type":"function","function":{"arguments":"{\\"query\\":\\"docs\\"}"}}' }] },
+    { role: "assistant", content: [{ type: "output_text", text: 'OpenAI Chat malformed tool_call for Responses: {"type":"function","function":{"name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}}' }] },
+    { role: "user", content: [{ type: "input_text", text: 'OpenAI Chat tool message missing tool_call_id for Responses: {"role":"tool","content":"orphan tool result"}' }] },
+    { role: "user", content: [{ type: "input_text", text: 'OpenAI Chat function message missing name for Responses: {"role":"function","content":"orphan function result"}' }] },
+  ]);
+
+  assert.equal(upstreamCalls[1].url, "https://malformed-chat-tool-history-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-malformed-chat-tool-history-anthropic");
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "Continue after tool history." },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "I attempted tool calls." },
+        { type: "text", text: 'OpenAI Chat malformed tool_call for Anthropic Messages: {"id":"call_missing_name","type":"function","function":{"arguments":"{\\"query\\":\\"docs\\"}"}}' },
+        { type: "text", text: 'OpenAI Chat malformed tool_call for Anthropic Messages: {"type":"function","function":{"name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}}' },
+        { type: "text", text: 'OpenAI Chat malformed function_call for Anthropic Messages: {"arguments":"{\\"query\\":\\"docs\\"}"}' },
+      ],
+    },
+    { role: "user", content: 'OpenAI Chat tool message missing tool_call_id for Anthropic Messages: {"role":"tool","content":"orphan tool result"}' },
+    { role: "user", content: 'OpenAI Chat function message missing name for Anthropic Messages: {"role":"function","content":"orphan function result"}' },
+  ]);
+});
+
 test("model gateway returns legacy Chat function_call for legacy functions clients", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

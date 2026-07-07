@@ -309,12 +309,18 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
 
   if (message.role === "tool") {
     const callId = stringOrNull(message.tool_call_id) || stringOrNull(message.id);
-    if (!callId) return [];
+    if (!callId) return [chatMessageContextToResponsesInput(
+      "OpenAI Chat tool message missing tool_call_id for Responses",
+      message,
+    )];
     return [chatToolOutputMessageToResponsesItem(callId, message)];
   }
   if (message.role === "function") {
     const name = stringOrNull(message.name);
-    if (!name) return [];
+    if (!name) return [chatMessageContextToResponsesInput(
+      "OpenAI Chat function message missing name for Responses",
+      message,
+    )];
     return [chatToolOutputMessageToResponsesItem(legacyFunctionCallId(name), message)];
   }
 
@@ -335,14 +341,40 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
   }
 
   if (legacyFunctionCall) items.push(legacyFunctionCall);
+  else if (message.function_call !== undefined) {
+    items.push(chatMessageContextToResponsesInput(
+      "OpenAI Chat malformed function_call for Responses",
+      message.function_call,
+      role,
+    ));
+  }
 
   if (Array.isArray(message.tool_calls)) {
     for (const toolCall of message.tool_calls) {
       const mapped = mapChatToolCallToResponsesFunctionCall(toolCall);
-      if (mapped) items.push(mapped);
+      if (mapped) {
+        items.push(mapped);
+      } else {
+        items.push(chatMessageContextToResponsesInput(
+          "OpenAI Chat malformed tool_call for Responses",
+          toolCall,
+          role,
+        ));
+      }
     }
   }
   return items;
+}
+
+function chatMessageContextToResponsesInput(label: string, value: unknown, role = "user"): JsonRecord {
+  const mappedRole = role === "assistant" ? "assistant" : "user";
+  return {
+    role: mappedRole,
+    content: [{
+      type: mappedRole === "assistant" ? "output_text" : "input_text",
+      text: `${label}: ${stringifyCompact(value)}`,
+    }],
+  };
 }
 
 function chatToolOutputMessageToResponsesItem(callId: string, message: JsonRecord): JsonRecord {

@@ -603,7 +603,10 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
 
   if (message.role === "tool") {
     const toolUseId = stringOrNull(message.tool_call_id) || stringOrNull(message.id);
-    if (!toolUseId) return [];
+    if (!toolUseId) return [chatMessageContextToAnthropic(
+      "OpenAI Chat tool message missing tool_call_id for Anthropic Messages",
+      message,
+    )];
     return [{
       role: "user",
       content: [chatToolResultMessageToAnthropicBlock(toolUseId, message)],
@@ -611,7 +614,10 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
   }
   if (message.role === "function") {
     const name = stringOrNull(message.name);
-    if (!name) return [];
+    if (!name) return [chatMessageContextToAnthropic(
+      "OpenAI Chat function message missing name for Anthropic Messages",
+      message,
+    )];
     return [{
       role: "user",
       content: [chatToolResultMessageToAnthropicBlock(legacyFunctionCallId(name), message)],
@@ -621,6 +627,14 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
   const role = message.role === "assistant" ? "assistant" : "user";
   const content = chatMessageContentToAnthropicBlocks(message);
   return [{ role, content: content.length === 1 && content[0]?.type === "text" ? content[0].text : content }];
+}
+
+function chatMessageContextToAnthropic(label: string, value: unknown, role = "user"): JsonRecord {
+  const mappedRole = role === "assistant" ? "assistant" : "user";
+  return {
+    role: mappedRole,
+    content: `${label}: ${stringifyCompact(value)}`,
+  };
 }
 
 function chatToolResultMessageToAnthropicBlock(toolUseId: string, message: JsonRecord): JsonRecord {
@@ -641,11 +655,24 @@ function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] 
   if (Array.isArray(message.tool_calls)) {
     for (const toolCall of message.tool_calls) {
       const mapped = mapChatToolCallToAnthropicToolUse(toolCall);
-      if (mapped) blocks.push(mapped);
+      if (mapped) {
+        blocks.push(mapped);
+      } else {
+        blocks.push({
+          type: "text",
+          text: `OpenAI Chat malformed tool_call for Anthropic Messages: ${stringifyCompact(toolCall)}`,
+        });
+      }
     }
   }
   const legacyFunctionCall = mapLegacyChatFunctionCallMessageToAnthropic(message.function_call);
   if (legacyFunctionCall) blocks.push(legacyFunctionCall);
+  else if (message.function_call !== undefined) {
+    blocks.push({
+      type: "text",
+      text: `OpenAI Chat malformed function_call for Anthropic Messages: ${stringifyCompact(message.function_call)}`,
+    });
+  }
   return blocks.length ? blocks : [{ type: "text", text: "" }];
 }
 
