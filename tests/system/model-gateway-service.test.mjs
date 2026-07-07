@@ -11363,7 +11363,17 @@ test("model gateway preserves Responses built-in web search choices through Chat
         body: {
           model: "gpt-chat",
           input: "Search the current docs.",
-          tools: [{ type: "web_search_preview", search_context_size: "low" }],
+          tools: [{
+            type: "web_search_preview",
+            search_context_size: "low",
+            user_location: {
+              type: "approximate",
+              country: "US",
+              region: "CA",
+              city: "San Francisco",
+              timezone: "America/Los_Angeles",
+            },
+          }],
           tool_choice: { type: "web_search_preview" },
         },
       });
@@ -11398,14 +11408,40 @@ test("model gateway preserves Responses built-in web search choices through Chat
     { role: "user", content: "Search the current docs." },
   ]);
   assert.deepEqual(upstreamCalls[0].body.tools, [
-    { type: "web_search_preview", search_context_size: "low" },
+    {
+      type: "web_search_preview",
+      search_context_size: "low",
+      user_location: {
+        type: "approximate",
+        country: "US",
+        region: "CA",
+        city: "San Francisco",
+        timezone: "America/Los_Angeles",
+      },
+    },
   ]);
+  assert.deepEqual(upstreamCalls[0].body.web_search_options, {
+    search_context_size: "low",
+    user_location: {
+      type: "approximate",
+      approximate: {
+        country: "US",
+        region: "CA",
+        city: "San Francisco",
+        timezone: "America/Los_Angeles",
+      },
+    },
+  });
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "web_search_preview" });
 
   assert.equal(upstreamCalls[1].url, "https://anthropic-builtin-tool-choice.example.test/v1/messages");
   assert.equal(upstreamCalls[1].xApiKey, "sk-anthropic-builtin-tool-choice-secret");
   assert.deepEqual(upstreamCalls[1].body.messages, [
     { role: "user", content: "Search current docs with Claude." },
+    {
+      role: "user",
+      content: 'OpenAI Chat request controls preserved for Anthropic Messages: web_search_options={"search_context_size":"low"}',
+    },
   ]);
   assert.deepEqual(upstreamCalls[1].body.tools, [
     {
@@ -11581,6 +11617,7 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
       },
     },
   ]);
+  assert.deepEqual(upstreamCalls[0].body.web_search_options, { search_context_size: "low" });
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", function: { name: "file_search" } });
   assert.deepEqual(upstreamCalls[0].body.messages, [
     { role: "user", content: "Use the available tools if possible." },
@@ -11615,6 +11652,10 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
   assert.deepEqual(upstreamCalls[1].body.messages, [
     { role: "user", content: "Use the available tools if possible." },
     { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
+    {
+      role: "user",
+      content: 'OpenAI Chat request controls preserved for Anthropic Messages: web_search_options={"search_context_size":"low"}',
+    },
   ]);
 
   assert.equal(upstreamCalls[2].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");
@@ -14647,7 +14688,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
       {
         role: "user",
-        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false stream_options={"include_usage":true} tool_resources={"file_search":{"vector_store_ids":["vs_anthropic"]}} web_search_options={"search_context_size":"medium","user_location":{"type":"approximate","approximate":{"country":"JP","city":"Tokyo","timezone":"Asia/Tokyo"}}} extra_body={"provider_hint":"anthropic-chat"} top_logprobs=2',
+        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false stream_options={"include_usage":true} tool_resources={"file_search":{"vector_store_ids":["vs_anthropic"]}} extra_body={"provider_hint":"anthropic-chat"} top_logprobs=2 web_search_options={"search_context_size":"medium"}',
       },
       {
         role: "user",
@@ -16854,6 +16895,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
     ],
     stream: false,
     max_tokens: 64,
+    web_search_options: { search_context_size: "low" },
     response_format: {
       type: "json_schema",
       json_schema: {

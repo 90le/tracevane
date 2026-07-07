@@ -1068,13 +1068,16 @@ function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): str
     "store",
     "stream_options",
     "tool_resources",
-    "web_search_options",
     "extra_body",
     "top_logprobs",
   ];
   const notes = unsupportedFields
     .filter((field) => request[field] !== undefined)
     .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  const unsupportedWebSearchOptions = chatWebSearchOptionsUnsupportedForAnthropic(request.web_search_options);
+  if (unsupportedWebSearchOptions !== undefined) {
+    notes.push(`web_search_options=${stringifyCompact(unsupportedWebSearchOptions)}`);
+  }
   if (request.modalities !== undefined && !chatModalitiesAreTextOnly(request.modalities)) {
     notes.push(`modalities=${stringifyCompact(request.modalities)}`);
   }
@@ -1083,6 +1086,16 @@ function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): str
     : "";
 }
 
+function chatWebSearchOptionsUnsupportedForAnthropic(webSearchOptions: unknown): unknown {
+  if (webSearchOptions === undefined) return undefined;
+  if (!isRecord(webSearchOptions)) return webSearchOptions;
+  const unsupported: JsonRecord = {};
+  for (const [key, value] of Object.entries(webSearchOptions)) {
+    if (key === "user_location") continue;
+    unsupported[key] = value;
+  }
+  return Object.keys(unsupported).length ? unsupported : undefined;
+}
 
 function chatModalitiesAreTextOnly(value: unknown): boolean {
   if (!Array.isArray(value) || value.length === 0) return false;

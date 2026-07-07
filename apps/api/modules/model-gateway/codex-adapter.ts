@@ -130,6 +130,7 @@ export function adaptCodexResponsesRequestToChat(
   applyResponsesLogprobControlsToChat(chatRequest, request);
 
   const tools = mapResponsesToolsToChat(request.tools);
+  applyResponsesWebSearchOptionsToChat(chatRequest, request.tools);
   if (tools.length) chatRequest.tools = tools;
   const customToolNames = collectResponsesCustomToolNames(request.tools);
 
@@ -832,6 +833,37 @@ function collectResponsesCustomToolNames(tools: unknown): string[] {
     .filter((tool): tool is JsonRecord => isRecord(tool) && tool.type === "custom")
     .map((tool) => stringOrNull(tool.name) || (isRecord(tool.function) ? stringOrNull(tool.function.name) : null))
     .filter((name): name is string => Boolean(name));
+}
+
+function applyResponsesWebSearchOptionsToChat(chatRequest: JsonRecord, tools: unknown): void {
+  const webSearchTool = firstResponsesWebSearchTool(tools);
+  if (!webSearchTool) return;
+  const webSearchOptions: JsonRecord = {};
+  if (webSearchTool.search_context_size !== undefined) {
+    webSearchOptions.search_context_size = webSearchTool.search_context_size;
+  }
+  const userLocation = mapResponsesWebSearchLocationToChat(webSearchTool.user_location);
+  if (userLocation !== undefined) webSearchOptions.user_location = userLocation;
+  if (Object.keys(webSearchOptions).length) chatRequest.web_search_options = webSearchOptions;
+}
+
+function firstResponsesWebSearchTool(tools: unknown): JsonRecord | null {
+  if (!Array.isArray(tools)) return null;
+  return tools.find((tool): tool is JsonRecord => isRecord(tool) && isOpenAIWebSearchToolType(tool.type)) ?? null;
+}
+
+function mapResponsesWebSearchLocationToChat(userLocation: unknown): unknown {
+  if (!isRecord(userLocation)) return userLocation;
+  if (userLocation.type === "approximate" && !isRecord(userLocation.approximate)) {
+    const approximate: JsonRecord = {};
+    for (const key of ["country", "region", "city", "timezone"] as const) {
+      if (userLocation[key] !== undefined) approximate[key] = userLocation[key];
+    }
+    return Object.keys(approximate).length
+      ? { type: "approximate", approximate }
+      : { type: "approximate" };
+  }
+  return userLocation;
 }
 
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
