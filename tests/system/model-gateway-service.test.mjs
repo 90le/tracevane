@@ -14414,7 +14414,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             },
           },
           user: "chat-user-456",
-          metadata: { trace_id: "chat-trace-should-drop", session_id: "chat-session-should-drop" },
+          metadata: { trace_id: "chat-trace-should-drop", session_id: "chat-session-should-drop", api_key: "metadata-key-should-not-leak" },
           frequency_penalty: 0.1,
           logit_bias: { "123": -5 },
           logprobs: true,
@@ -14551,6 +14551,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
   assert.equal(upstreamCalls[0].xApiKey, "sk-chat-anthropic-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
   assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.equal(JSON.stringify(JSON.parse(upstreamCalls[0].body)).includes("metadata-key-should-not-leak"), false);
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "claude-native",
     max_tokens: 256,
@@ -14589,6 +14590,10 @@ test("model gateway adapts chat completions through native anthropic messages pr
       {
         role: "user",
         content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false top_logprobs=2',
+      },
+      {
+        role: "user",
+        content: "OpenAI Chat metadata preserved for Anthropic Messages: trace_id=chat-trace-should-drop session_id=chat-session-should-drop",
       },
     ],
     system: "Use metric units.",
@@ -21964,7 +21969,7 @@ test("model gateway strips Claude Code metadata from strict Anthropic Messages p
         body: {
           model: "gpt-5.4",
           max_tokens: 64,
-          metadata: { user_id: "chat-user", trace_id: "strict-anthropic-chat" },
+          metadata: { user_id: "chat-user", trace_id: "strict-anthropic-chat", session_id: "strict-chat-session", secret: "metadata-secret-should-not-leak" },
           messages: [{ role: "user", content: "hello from chat" }],
         },
       });
@@ -21979,7 +21984,13 @@ test("model gateway strips Claude Code metadata from strict Anthropic Messages p
   assert.equal(upstreamCalls[0].url, "https://strict-anthropic.example.test/v1/messages");
   assert.equal("metadata" in JSON.parse(upstreamCalls[0].body), false);
   assert.equal(upstreamCalls[1].url, "https://strict-anthropic.example.test/v1/messages");
-  assert.equal("metadata" in JSON.parse(upstreamCalls[1].body), false);
+  const chatToAnthropicBody = JSON.parse(upstreamCalls[1].body);
+  assert.equal("metadata" in chatToAnthropicBody, false);
+  assert.deepEqual(chatToAnthropicBody.messages, [
+    { role: "user", content: "hello from chat" },
+    { role: "user", content: "OpenAI Chat metadata preserved for Anthropic Messages: trace_id=strict-anthropic-chat session_id=strict-chat-session" },
+  ]);
+  assert.equal(JSON.stringify(chatToAnthropicBody).includes("metadata-secret-should-not-leak"), false);
 });
 
 test("model gateway can opt into Anthropic Messages metadata passthrough for compatible providers", async () => {

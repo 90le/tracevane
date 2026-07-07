@@ -148,6 +148,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   if (unsupportedResponseFormatText) anthropicMessages.push({ role: "user", content: unsupportedResponseFormatText });
   const unsupportedRequestControlsText = chatUnsupportedRequestControlsToAnthropicText(request);
   if (unsupportedRequestControlsText) anthropicMessages.push({ role: "user", content: unsupportedRequestControlsText });
+  const metadataContextText = chatMetadataContextToAnthropicText(request.metadata);
+  if (metadataContextText) anthropicMessages.push({ role: "user", content: metadataContextText });
 
   const anthropicRequest: JsonRecord = {
     model,
@@ -995,6 +997,21 @@ function chatUnsupportedResponseFormatToAnthropicText(responseFormat: unknown): 
   if (responseFormat === undefined) return "";
   if (mapChatResponseFormatToAnthropicOutputFormat(responseFormat) !== undefined) return "";
   return `OpenAI Chat unsupported response_format for Anthropic Messages: ${stringifyCompact(responseFormat)}`;
+}
+
+function chatMetadataContextToAnthropicText(metadata: unknown): string {
+  if (!isRecord(metadata)) return "";
+  const notes = Object.keys(metadata)
+    .filter((field) => field !== "user_id")
+    .filter((field) => !isSensitiveMetadataField(field))
+    .map((field) => `${field}=${stringifyCompact(metadata[field])}`);
+  return notes.length
+    ? `OpenAI Chat metadata preserved for Anthropic Messages: ${notes.join(" ")}`
+    : "";
+}
+
+function isSensitiveMetadataField(field: string): boolean {
+  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
 }
 
 function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): string {
