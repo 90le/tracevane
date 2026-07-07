@@ -12957,6 +12957,173 @@ test("model gateway preserves supported responses controls and strips rejected c
   ]);
 });
 
+test("model gateway preserves direct json_schema response formats across protocol adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    const target = String(url);
+    if (target.endsWith("/responses")) {
+      return new Response(JSON.stringify({
+        id: "resp_direct_schema",
+        object: "response",
+        status: "completed",
+        model: body.model,
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "schema ok" }],
+        }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target.endsWith("/messages")) {
+      return new Response(JSON.stringify({
+        id: "msg_direct_schema",
+        type: "message",
+        role: "assistant",
+        model: body.model,
+        content: [{ type: "text", text: "schema ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_direct_schema",
+      created: 1_710_000_056,
+      model: body.model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "schema ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const directSchemaFormat = {
+    type: "json_schema",
+    name: "direct_schema_result",
+    description: "Direct Responses-style schema used by a Chat-compatible client.",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { summary: { type: "string" } },
+      required: ["summary"],
+    },
+    strict: true,
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "direct-schema-chat-to-responses",
+          name: "Direct Schema Chat To Responses",
+          appScopes: ["openclaw"],
+          baseUrl: "https://direct-schema-responses.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-direct-schema-responses" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToResponses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "return direct schema" }],
+          response_format: directSchemaFormat,
+        },
+      });
+      assert.equal(chatToResponses.status, 200, chatToResponses.body);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "direct-schema-chat-to-anthropic",
+          name: "Direct Schema Chat To Anthropic",
+          appScopes: ["openclaw"],
+          baseUrl: "https://direct-schema-anthropic.example.test/v1",
+          apiFormat: "anthropic_messages",
+          authStrategy: "anthropic_api_key",
+        },
+        secret: { apiKey: "sk-direct-schema-anthropic" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToAnthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "return direct schema" }],
+          response_format: directSchemaFormat,
+          max_tokens: 128,
+        },
+      });
+      assert.equal(chatToAnthropic.status, 200, chatToAnthropic.body);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "direct-schema-responses-to-chat",
+          name: "Direct Schema Responses To Chat",
+          appScopes: ["codex"],
+          baseUrl: "https://direct-schema-chat.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-direct-schema-chat" },
+        setActiveScopes: ["codex"],
+      });
+      const responsesToChat = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          input: "return direct schema",
+          response_format: directSchemaFormat,
+          stream: false,
+        },
+      });
+      assert.equal(responsesToChat.status, 200, responsesToChat.body);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls[0].url, "https://direct-schema-responses.example.test/v1/responses");
+  assert.deepEqual(upstreamCalls[0].body.text, { format: directSchemaFormat });
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "return direct schema" }] },
+  ]);
+
+  assert.equal(upstreamCalls[1].url, "https://direct-schema-anthropic.example.test/v1/messages");
+  assert.deepEqual(upstreamCalls[1].body.output_config, { format: directSchemaFormat });
+  assert.deepEqual(upstreamCalls[1].body.messages, [{ role: "user", content: "return direct schema" }]);
+
+  assert.equal(upstreamCalls[2].url, "https://direct-schema-chat.example.test/v1/chat/completions");
+  assert.deepEqual(upstreamCalls[2].body.response_format, {
+    type: "json_schema",
+    json_schema: {
+      name: "direct_schema_result",
+      description: "Direct Responses-style schema used by a Chat-compatible client.",
+      schema: directSchemaFormat.schema,
+      strict: true,
+    },
+  });
+  assert.deepEqual(upstreamCalls[2].body.messages, [{ role: "user", content: "return direct schema" }]);
+});
+
 test("model gateway maps modern Chat token limits for GPT-5 adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

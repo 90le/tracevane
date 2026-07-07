@@ -1621,16 +1621,29 @@ function collectCacheControlNotesAt(value: unknown, path: string): string[] {
 
 function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): unknown {
   if (!isRecord(responseFormat)) return undefined;
-  if (responseFormat.type === "json_schema" && isRecord(responseFormat.json_schema)) {
-    return {
-      type: "json_schema",
-      ...responseFormat.json_schema,
-    };
+  if (responseFormat.type === "json_schema") {
+    const direct = chatDirectJsonSchemaFormat(responseFormat);
+    if (direct) return direct;
+    if (isRecord(responseFormat.json_schema)) {
+      return {
+        type: "json_schema",
+        ...responseFormat.json_schema,
+      };
+    }
   }
   if (responseFormat.type === "json_object" || responseFormat.type === "text") {
     return { type: responseFormat.type };
   }
   return undefined;
+}
+
+function chatDirectJsonSchemaFormat(responseFormat: JsonRecord): JsonRecord | null {
+  if (!isRecord(responseFormat.schema)) return null;
+  const mapped: JsonRecord = { type: "json_schema" };
+  for (const key of ["name", "schema", "strict", "description"] as const) {
+    if (responseFormat[key] !== undefined) mapped[key] = responseFormat[key];
+  }
+  return mapped;
 }
 
 function mapOpenAIChatMetadataToAnthropicMetadata(metadata: unknown, user: unknown): JsonRecord | null {
