@@ -96,6 +96,31 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
     upsertSession(event.session);
     return;
   }
+  if (event.type === "lifecycle") {
+    snapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === event.sessionId
+          ? {
+              ...session,
+              state: event.state,
+              lifecycleEvent: event.event,
+              updatedAt: event.timestamp,
+              message: event.message ?? session.message ?? null,
+              terminationReason: event.event === "terminated" ? event.reason ?? session.terminationReason ?? null : session.terminationReason ?? null,
+              lastError: event.event === "error" ? event.message ?? event.reason ?? session.lastError ?? null : session.lastError ?? null,
+            }
+          : session,
+      ),
+    };
+    appendConsoleEvent({
+      sessionId: event.sessionId,
+      level: event.event === "error" ? "error" : event.event === "disconnected" ? "warn" : "debug",
+      timestamp: event.timestamp,
+      text: `Debug lifecycle ${event.event}: ${event.message ?? event.reason ?? event.state}`,
+    });
+    return;
+  }
   if (event.type === "output") {
     appendConsoleEvent({
       sessionId: event.sessionId,
@@ -182,7 +207,17 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
     });
     return;
   }
-  appendConsoleEvent({ level: "error", text: event.message });
+  if (event.sessionId) {
+    snapshot = {
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === event.sessionId
+          ? { ...session, state: "error", lastError: event.message, lifecycleEvent: "error", message: event.message }
+          : session,
+      ),
+    };
+  }
+  appendConsoleEvent({ sessionId: event.sessionId ?? undefined, level: "error", text: event.message });
 }
 
 export function upsertDebugSession(session: DebugSessionDescriptor): void {

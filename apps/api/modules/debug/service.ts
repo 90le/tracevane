@@ -9,6 +9,7 @@ import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   DebugBreakpointLocation,
   DebugCreateSessionRequest,
+  DebugLifecycleEventKind,
   DebugGatewayClientEvent,
   DebugGatewayServerEvent,
   DebugProfileDescriptor,
@@ -81,6 +82,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "adapter-proof-profile",
         "stack-trace-events",
         "variables-events",
+        "lifecycle-events",
+        "session-state-machine",
       ],
     };
   }
@@ -108,24 +111,31 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     const message = activeLocation
       ? `${validated.profile.label} stopped at ${activeLocation.path}:${activeLocation.lineNumber}.`
       : `${validated.profile.label} stopped on entry.`;
-    const session: DebugSessionDescriptor = {
+    let session: DebugSessionDescriptor = {
       id,
       rootId: validated.rootId,
       workspaceId: validated.workspaceId,
       cwd: validated.cwd,
       profileId: validated.profileId,
       name: validated.name,
-      state: "stopped",
+      state: "created",
       adapterKind: validated.profile.kind,
       program: validated.program?.relativePath ?? null,
       createdAt: now,
       updatedAt: now,
-      stoppedReason,
-      message,
       activeLocation,
+      lifecycleEvent: "created",
+      stoppedReason: null,
+      terminationReason: null,
+      lastError: null,
+      message: `${validated.profile.label} session created.`,
     };
     sessions.set(id, session);
-    emit({ type: "session", session });
+    emitSessionLifecycle(session, "created", session.message);
+    session = transitionSession(session, "initializing", "initialized", `${validated.profile.label} initialized.`);
+    session = transitionSession(session, "configured", "configured", `${validated.profile.label} configured.`);
+    session = transitionSession(session, "running", "running", `${validated.profile.label} running.`);
+    session = transitionSession(session, "stopped", "stopped", message, { stoppedReason });
     emit({
       type: "output",
       sessionId: id,
@@ -172,22 +182,28 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     const now = new Date().toISOString();
     const session: DebugSessionDescriptor = {
       ...existing,
-      state: "terminated",
+      state: "terminating",
       updatedAt: now,
-      stoppedReason: "terminated",
-      message: "Mock debug session terminated.",
+      lifecycleEvent: "terminating",
+      stoppedReason: existing.stoppedReason ?? null,
+      message: "Mock debug session terminating.",
     };
     sessions.set(sessionId, session);
-    emit({ type: "session", session });
+    emitSessionLifecycle(session, "terminating", session.message);
+    const terminated = transitionSession(session, "terminated", "terminated", "Mock debug session terminated.", {
+      stoppedReason: "terminated",
+      terminationReason: "terminated",
+      activeLocation: null,
+    });
     emit({
       type: "output",
       sessionId,
       category: "console",
-      text: `Mock debug session ${session.name} terminated`,
+      text: `Mock debug session ${terminated.name} terminated`,
       timestamp: now,
     });
     emit({ type: "terminated", sessionId, reason: "terminated", timestamp: now });
-    return { session };
+    return { session: terminated };
   }
 
   wss.on("connection", (socket: DebugSocket) => {
@@ -261,6 +277,45 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       wss.close();
     },
   };
+
+  function transitionSession(
+    current: DebugSessionDescriptor,
+    state: DebugSessionDescriptor["state"],
+    event: DebugLifecycleEventKind,
+    message: string,
+    patch: Partial<Pick<DebugSessionDescriptor, "activeLocation" | "lastError" | "stoppedReason" | "terminationReason">> = {},
+  ): DebugSessionDescriptor {
+    const next: DebugSessionDescriptor = {
+      ...current,
+      ...patch,
+      state,
+      lifecycleEvent: event,
+      message,
+      updatedAt: new Date().toISOString(),
+    };
+    sessions.set(next.id, next);
+    emitSessionLifecycle(next, event, message, patch.terminationReason ?? patch.lastError ?? patch.stoppedReason ?? null);
+    return next;
+  }
+
+  function emitSessionLifecycle(
+    session: DebugSessionDescriptor,
+    event: DebugLifecycleEventKind,
+    message: string | null | undefined,
+    reason: string | null = null,
+  ): void {
+    const timestamp = session.updatedAt || new Date().toISOString();
+    emit({ type: "session", session });
+    emit({
+      type: "lifecycle",
+      sessionId: session.id,
+      state: session.state,
+      event,
+      message: message ?? null,
+      reason,
+      timestamp,
+    });
+  }
 }
 
 function validateCreateRequest(

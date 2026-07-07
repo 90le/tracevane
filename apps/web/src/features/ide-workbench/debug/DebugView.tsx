@@ -29,7 +29,7 @@ export function IdeDebugView({
 }) {
   const snapshot = useIdeDebugSnapshot();
   const [busy, setBusy] = React.useState(false);
-  const activeSession = snapshot.sessions.find((session) => session.state !== "terminated") ?? snapshot.sessions[0] ?? null;
+  const activeSession = snapshot.sessions.find((session) => !["terminated", "disconnected"].includes(session.state)) ?? snapshot.sessions[0] ?? null;
   const stackFrames = activeSession ? snapshot.stackFramesBySessionId[activeSession.id] ?? [] : [];
   const variables = activeSession ? snapshot.variablesBySessionId[activeSession.id] ?? [] : [];
 
@@ -70,7 +70,7 @@ export function IdeDebugView({
   }, [activeFile, busy, cwd, onOpenLocation, rootId, snapshot.breakpoints, snapshot.sessions.length]);
 
   const handleStop = React.useCallback(async () => {
-    if (!activeSession || activeSession.state === "terminated" || busy) return;
+    if (!activeSession || ["terminating", "terminated", "disconnected"].includes(activeSession.state) || busy) return;
     setBusy(true);
     try {
       const payload = await stopIdeDebugSession(activeSession.id);
@@ -79,6 +79,8 @@ export function IdeDebugView({
       setBusy(false);
     }
   }, [activeSession, busy]);
+
+  const canStopActiveSession = Boolean(activeSession && !["terminating", "terminated", "disconnected"].includes(activeSession.state));
 
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
 
@@ -109,7 +111,7 @@ export function IdeDebugView({
             <Play />
             Node Lite
           </Button>
-          <Button className="w-full min-w-0 justify-start" size="sm" variant="outline" onClick={handleStop} disabled={!activeSession || activeSession.state === "terminated" || busy} data-ide-debug-stop>
+          <Button className="w-full min-w-0 justify-start" size="sm" variant="outline" onClick={handleStop} disabled={!canStopActiveSession || busy} data-ide-debug-stop>
             <CircleStop />
             停止
           </Button>
@@ -198,15 +200,17 @@ export function IdeDebugView({
                 data-ide-debug-session-profile={session.profileId}
               >
                 <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "size-2 rounded-full",
-                    session.state === "terminated" ? "bg-muted" : session.state === "error" ? "bg-danger" : "bg-primary",
-                  )} />
+                  <span className={cn("size-2 rounded-full", debugStateDotClass(session.state))} />
                   <span className="min-w-0 flex-1 truncate font-medium text-ink-strong">{session.name}</span>
                   <span className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-muted">{session.state}</span>
                 </div>
+                <div className="mt-1 truncate text-xs text-subtle" data-ide-debug-session-lifecycle>
+                  lifecycle: {session.lifecycleEvent ?? session.state}
+                  {session.terminationReason ? ` · reason: ${session.terminationReason}` : ""}
+                </div>
                 <div className="mt-1 truncate font-mono text-xs text-muted">cwd: {session.cwd || "."}</div>
                 {session.program ? <div className="mt-1 truncate font-mono text-xs text-muted">program: {session.program}</div> : null}
+                {session.lastError ? <div className="mt-1 text-xs text-red" data-ide-debug-session-error>{session.lastError}</div> : null}
                 {session.message ? <div className="mt-1 text-xs text-subtle">{session.message}</div> : null}
               </div>
             ))}
@@ -260,4 +264,13 @@ export function IdeDebugView({
       </div>
     </aside>
   );
+}
+
+function debugStateDotClass(state: string): string {
+  if (state === "terminated" || state === "disconnected") return "bg-muted";
+  if (state === "error") return "bg-danger";
+  if (state === "stopped") return "bg-warning";
+  if (state === "terminating") return "bg-subtle";
+  if (state === "initializing" || state === "configured") return "bg-info";
+  return "bg-primary";
 }

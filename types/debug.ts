@@ -1,4 +1,24 @@
-export type DebugSessionState = "created" | "running" | "stopped" | "terminated" | "error";
+export type DebugSessionState =
+  | "created"
+  | "initializing"
+  | "configured"
+  | "running"
+  | "stopped"
+  | "terminating"
+  | "terminated"
+  | "disconnected"
+  | "error";
+
+export type DebugLifecycleEventKind =
+  | "created"
+  | "initialized"
+  | "configured"
+  | "running"
+  | "stopped"
+  | "terminating"
+  | "terminated"
+  | "disconnected"
+  | "error";
 
 export interface DebugProfileDescriptor {
   id: string;
@@ -39,9 +59,22 @@ export interface DebugSessionDescriptor {
   updatedAt: string;
   stoppedReason?: string | null;
   message?: string | null;
+  lifecycleEvent?: DebugLifecycleEventKind | null;
+  terminationReason?: string | null;
+  lastError?: string | null;
   activeLocation?: DebugSourceLocation | null;
   adapterKind?: DebugProfileDescriptor["kind"];
   program?: string | null;
+}
+
+export interface DebugLifecycleEvent {
+  type: "lifecycle";
+  sessionId: string;
+  state: DebugSessionState;
+  event: DebugLifecycleEventKind;
+  message?: string | null;
+  reason?: string | null;
+  timestamp: string;
 }
 
 export interface DebugStackFrame {
@@ -89,6 +122,7 @@ export type DebugGatewayServerEvent =
   | ({ type: "status" } & DebugStatusPayload)
   | { type: "sessions"; sessions: DebugSessionDescriptor[] }
   | { type: "session"; session: DebugSessionDescriptor }
+  | DebugLifecycleEvent
   | { type: "output"; sessionId: string; category: "console" | "stdout" | "stderr" | "telemetry"; text: string; timestamp: string }
   | ({ type: "stopped"; sessionId: string; reason: string; threadId?: number | null; timestamp: string } & Partial<DebugSourceLocation>)
   | { type: "stackTrace"; sessionId: string; threadId: number; frames: DebugStackFrame[]; timestamp: string }

@@ -113,6 +113,7 @@
 | [archive/m7-f-d-debug-adapter-proof-summary.md](./archive/m7-f-d-debug-adapter-proof-summary.md) | M7-F-D 最小真实 adapter proof 验收总结 |
 | [archive/m7-f-debug-execution-summary.md](./archive/m7-f-debug-execution-summary.md) | M7-F Debug foundation 总体验收、完成边界和 M7.x 入口 |
 | [archive/m7x-a-debug-hardening-plan.md](./archive/m7x-a-debug-hardening-plan.md) | M7.x-A Debug hardening 计划、lifecycle/profile/adapter 后续切片和 M7.x-B 入口 |
+| [archive/m7x-b-debug-lifecycle-summary.md](./archive/m7x-b-debug-lifecycle-summary.md) | M7.x-B Debug lifecycle foundation 验收总结和 M7.x-C 入口 |
 
 ## 推荐技术选型
 
@@ -250,8 +251,8 @@ npm i monaco-languageclient vscode-ws-jsonrpc
 - M7-B 单语言 JSON diagnostics 已接入 Problems/Output。
 - M7-C 已接入 JSON hover / completion / definition foundation。
 - M7-D 已接入 Git status + Explorer decoration + Source Control View。
-- M7-E-D 已完成 Git branch / upstream status foundation；M7 Git Source Control 总体验收已完成；M7-F-A Debug Adapter Protocol 研究与最小实现计划已完成；M7-F-B Debug Gateway skeleton + Debug View shell、M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof、M7-F-E Debug acceptance closeout 与 M7.x-A Debug hardening plan 已完成，下一步进入 M7.x-B Debug lifecycle foundation。
-- 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md`、`archive/m7-c-lsp-interaction-summary.md`、`archive/m7-d-git-status-source-control-summary.md`、`archive/m7-e-a-git-diff-foundation-summary.md`、`archive/m7-e-b-git-stage-unstage-summary.md`、`archive/m7-e-c-git-commit-foundation-summary.md`、`archive/m7-e-d-git-branch-upstream-summary.md`、`archive/m7-git-execution-summary.md`、`archive/m7-f-a-debug-adapter-plan.md`、`archive/m7-f-b-debug-foundation-summary.md`、`archive/m7-f-c-debug-breakpoints-summary.md`、`archive/m7-f-d-debug-adapter-proof-summary.md` 与 `archive/m7-f-debug-execution-summary.md`、`archive/m7x-a-debug-hardening-plan.md`。
+- M7-E-D 已完成 Git branch / upstream status foundation；M7 Git Source Control 总体验收已完成；M7-F-A Debug Adapter Protocol 研究与最小实现计划已完成；M7-F-B Debug Gateway skeleton + Debug View shell、M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof、M7-F-E Debug acceptance closeout、M7.x-A Debug hardening plan 与 M7.x-B Debug lifecycle foundation 已完成，下一步进入 M7.x-C Launch profile / config foundation。
+- 验收见 `archive/m7-a-lsp-git-debug-plan.md`、`archive/m7-b-lsp-diagnostics-summary.md`、`archive/m7-c-lsp-interaction-summary.md`、`archive/m7-d-git-status-source-control-summary.md`、`archive/m7-e-a-git-diff-foundation-summary.md`、`archive/m7-e-b-git-stage-unstage-summary.md`、`archive/m7-e-c-git-commit-foundation-summary.md`、`archive/m7-e-d-git-branch-upstream-summary.md`、`archive/m7-git-execution-summary.md`、`archive/m7-f-a-debug-adapter-plan.md`、`archive/m7-f-b-debug-foundation-summary.md`、`archive/m7-f-c-debug-breakpoints-summary.md`、`archive/m7-f-d-debug-adapter-proof-summary.md` 与 `archive/m7-f-debug-execution-summary.md`、`archive/m7x-a-debug-hardening-plan.md`、`archive/m7x-b-debug-lifecycle-summary.md`。
 ```
 
 ## 重要原则
