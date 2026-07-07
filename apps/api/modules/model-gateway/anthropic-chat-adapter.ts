@@ -1030,6 +1030,10 @@ function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): str
     "safety_identifier",
     "seed",
     "store",
+    "stream_options",
+    "tool_resources",
+    "web_search_options",
+    "extra_body",
     "top_logprobs",
   ];
   const notes = unsupportedFields

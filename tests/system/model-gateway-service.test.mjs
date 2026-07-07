@@ -14251,7 +14251,10 @@ test("model gateway adapts codex responses through native anthropic messages pro
   assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
     model: "claude-native",
     max_tokens: 1024,
-    messages: [{ role: "user", content: "stream please" }],
+    messages: [
+      { role: "user", content: "stream please" },
+      { role: "user", content: 'OpenAI Chat request controls preserved for Anthropic Messages: stream_options={"include_usage":true}' },
+    ],
     stream: false,
   });
 });
@@ -14441,6 +14444,9 @@ test("model gateway adapts chat completions through native anthropic messages pr
           seed: 456,
           store: false,
           stream_options: { include_usage: true },
+          tool_resources: { file_search: { vector_store_ids: ["vs_anthropic"] } },
+          web_search_options: { search_context_size: "medium" },
+          extra_body: { provider_hint: "anthropic-chat" },
           modalities: ["text"],
           top_logprobs: 2,
           max_tokens: 128,
@@ -14570,6 +14576,10 @@ test("model gateway adapts chat completions through native anthropic messages pr
   assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
   assert.equal(upstreamCalls[0].contentType, "application/json");
   assert.equal(JSON.stringify(JSON.parse(upstreamCalls[0].body)).includes("metadata-key-should-not-leak"), false);
+  assert.equal("tool_resources" in JSON.parse(upstreamCalls[0].body), false);
+  assert.equal("web_search_options" in JSON.parse(upstreamCalls[0].body), false);
+  assert.equal("extra_body" in JSON.parse(upstreamCalls[0].body), false);
+  assert.equal("stream_options" in JSON.parse(upstreamCalls[0].body), false);
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "claude-native",
     max_tokens: 256,
@@ -14607,7 +14617,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
       {
         role: "user",
-        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false top_logprobs=2',
+        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false stream_options={"include_usage":true} tool_resources={"file_search":{"vector_store_ids":["vs_anthropic"]}} web_search_options={"search_context_size":"medium"} extra_body={"provider_hint":"anthropic-chat"} top_logprobs=2',
       },
       {
         role: "user",
