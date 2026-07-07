@@ -9945,7 +9945,9 @@ export function createModelGatewayService(
     model: string,
     input: string,
     stream = false,
+    toolSmoke = false,
   ): Record<string, unknown> {
+    if (toolSmoke) return buildGatewayRouteToolSmokePayload(scope, routeId, model, input, stream);
     const prompt = `${input}\nDo not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
     if (routeId === "anthropic_messages") {
       return {
@@ -9996,6 +9998,63 @@ export function createModelGatewayService(
     };
   }
 
+  function buildGatewayRouteToolSmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+    stream = false,
+  ): Record<string, unknown> {
+    const prompt = `${input}\nCall gateway_smoke_tool with value ${JSON.stringify(MODEL_GATEWAY_SMOKE_SENTINEL)}. Do not answer in text.`;
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-tool-smoke",
+        },
+        messages: [{ role: "user", content: prompt }],
+        tools: [gatewaySmokeToolForAnthropic()],
+        tool_choice: { type: "tool", name: "gateway_smoke_tool" },
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        messages: [{ role: "user", content: prompt }],
+        tools: [gatewaySmokeToolForChat()],
+        tool_choice: { type: "function", function: { name: "gateway_smoke_tool" } },
+      };
+    }
+    const responsesInput = routeId === "openai_responses_compact"
+      ? [{ role: "user", content: [{ type: "input_text", text: prompt }] }]
+      : prompt;
+    return {
+      model,
+      input: responsesInput,
+      stream,
+      max_output_tokens: 256,
+      tools: [{
+        type: "function",
+        name: "gateway_smoke_tool",
+        description: "A no-op tool used only to verify Responses tool schema compatibility.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      }],
+      tool_choice: { type: "function", name: "gateway_smoke_tool" },
+    };
+  }
+
   function extractTextFromGatewayRouteSmokeSse(responseText: string): string {
     return extractJsonPayloadsFromSseText(responseText)
       .flatMap((payload) => {
@@ -10031,6 +10090,70 @@ export function createModelGatewayService(
       .join("\n");
   }
 
+  function gatewayRouteSmokeHasToolCall(routeId: ModelGatewayRouteId, responseText: string): boolean {
+    if (responseText.includes("gateway_smoke_tool")) {
+      const parsed = parseJsonObjectOrNull(responseText);
+      if (!parsed) return gatewayRouteSmokeSseHasToolCall(routeId, responseText) || responseText.includes('"name":"gateway_smoke_tool"');
+      return gatewayRouteSmokeJsonHasToolCall(routeId, parsed) || responseText.includes('"name":"gateway_smoke_tool"');
+    }
+    return false;
+  }
+
+  function gatewayRouteSmokeJsonHasToolCall(routeId: ModelGatewayRouteId, parsed: Record<string, unknown>): boolean {
+    if (routeId === "anthropic_messages") {
+      const content = Array.isArray(parsed.content) ? parsed.content : [];
+      return content.some((part) => isRecord(part) && part.type === "tool_use" && part.name === "gateway_smoke_tool");
+    }
+    if (routeId === "openai_chat_completions") {
+      const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+      return choices.some((choice) => {
+        if (!isRecord(choice)) return false;
+        const message = isRecord(choice.message) ? choice.message : {};
+        const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+        return toolCalls.some((toolCall) => isRecord(toolCall)
+          && isRecord(toolCall.function)
+          && toolCall.function.name === "gateway_smoke_tool");
+      });
+    }
+    const output = Array.isArray(parsed.output) ? parsed.output : [];
+    return output.some((item) => isRecord(item)
+      && (item.type === "function_call" || item.type === "custom_tool_call")
+      && item.name === "gateway_smoke_tool");
+  }
+
+  function gatewayRouteSmokeSseHasToolCall(routeId: ModelGatewayRouteId, responseText: string): boolean {
+    return extractJsonPayloadsFromSseText(responseText).some((payload) => {
+      if (!isRecord(payload)) return false;
+      if (routeId === "anthropic_messages") {
+        const contentBlock = isRecord(payload.content_block) ? payload.content_block : {};
+        return payload.type === "content_block_start"
+          && contentBlock.type === "tool_use"
+          && contentBlock.name === "gateway_smoke_tool";
+      }
+      if (routeId === "openai_chat_completions") {
+        if (!Array.isArray(payload.choices)) return false;
+        return payload.choices.some((choice) => {
+          if (!isRecord(choice)) return false;
+          const delta = isRecord(choice.delta) ? choice.delta : {};
+          const message = isRecord(choice.message) ? choice.message : {};
+          return chatLikeToolCallsContainGatewaySmoke(delta.tool_calls)
+            || chatLikeToolCallsContainGatewaySmoke(message.tool_calls);
+        });
+      }
+      const item = isRecord(payload.item) ? payload.item : null;
+      if (item && (item.type === "function_call" || item.type === "custom_tool_call") && item.name === "gateway_smoke_tool") return true;
+      const response = isRecord(payload.response) ? payload.response : null;
+      if (!response) return false;
+      return gatewayRouteSmokeJsonHasToolCall(routeId, response);
+    });
+  }
+
+  function chatLikeToolCallsContainGatewaySmoke(value: unknown): boolean {
+    if (!Array.isArray(value)) return false;
+    return value.some((toolCall) => isRecord(toolCall)
+      && isRecord(toolCall.function)
+      && toolCall.function.name === "gateway_smoke_tool");
+  }
   function extractGatewayRouteSmokeText(routeId: ModelGatewayRouteId, responseText: string): string {
     const parsed = parseJsonObjectOrNull(responseText);
     if (!parsed) return extractTextFromGatewayRouteSmokeSse(responseText) || previewText(responseText) || "";
@@ -10121,9 +10244,10 @@ export function createModelGatewayService(
     }
     const startedAt = nowIso();
     const controller = new AbortController();
+    const toolSmoke = payload.toolSmoke === true;
     const stream = typeof payload.stream === "boolean"
       ? payload.stream
-      : scope === "claude-code";
+      : toolSmoke ? false : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -10138,6 +10262,7 @@ export function createModelGatewayService(
           effectiveModel,
           normalizeString(payload.input, `Reply with ${MODEL_GATEWAY_SMOKE_SENTINEL}`),
           stream,
+          toolSmoke,
         )),
         signal: controller.signal,
       });
@@ -10146,7 +10271,8 @@ export function createModelGatewayService(
       const responseTextContent = extractGatewayRouteSmokeText(routeId, responseText);
       const contentMatched = new RegExp(`\\b${MODEL_GATEWAY_SMOKE_SENTINEL}\\b`).test(responseTextContent)
         || responseTextContent.replace(/\s+/g, "").includes(MODEL_GATEWAY_SMOKE_SENTINEL);
-      const success = response.status >= 200 && response.status < 300 && contentMatched;
+      const toolMatched = gatewayRouteSmokeHasToolCall(routeId, responseText);
+      const success = response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
       const responsePreview = previewText(responseText);
       return {
@@ -10160,8 +10286,10 @@ export function createModelGatewayService(
         error: success ? null : {
           code: "model_gateway_active_route_smoke_failed",
           message: response.status >= 200 && response.status < 300
-            ? `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
-            : `${stream ? "Streaming " : ""}Active route smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
+            ? toolSmoke
+              ? `${stream ? "Streaming " : ""}Active route tool smoke did not return gateway_smoke_tool in the client protocol response.`
+              : `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
+            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
         },
       };
     } catch (error) {

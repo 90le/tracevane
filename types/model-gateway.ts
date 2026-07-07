@@ -997,6 +997,7 @@ export interface ModelGatewayActiveRouteSmokeRequest {
   model?: string;
   input?: string;
   stream?: boolean;
+  toolSmoke?: boolean;
   timeoutMs?: number;
 }
 

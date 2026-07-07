@@ -31,6 +31,7 @@ function parseArgs(argv) {
     temporaryEnable: false,
     lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
     smokeRetries: DEFAULT_SMOKE_RETRIES,
+    toolSmoke: false,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -55,6 +56,7 @@ function parseArgs(argv) {
     else if (arg.startsWith("--lock-timeout-ms=")) options.lockTimeoutMs = nonNegativeInt(arg.slice("--lock-timeout-ms=".length), DEFAULT_LOCK_TIMEOUT_MS);
     else if (arg === "--smoke-retries") options.smokeRetries = nonNegativeInt(argv[++index], DEFAULT_SMOKE_RETRIES);
     else if (arg.startsWith("--smoke-retries=")) options.smokeRetries = nonNegativeInt(arg.slice("--smoke-retries=".length), DEFAULT_SMOKE_RETRIES);
+    else if (arg === "--tool-smoke") options.toolSmoke = true;
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
     else if (arg === "--expect-routes") options.expectRoutes = parseScopeMap(argv[++index] || "");
@@ -123,6 +125,7 @@ Options:
                     wait this long for the local active-route smoke lock
   --smoke-retries <n>
                     retry transient active-route smoke fetch failures; default: ${DEFAULT_SMOKE_RETRIES}
+  --tool-smoke     additionally force a real gateway_smoke_tool call per scope
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -240,6 +243,7 @@ function createResult(options, provider, originalActiveProviders) {
     preflightFailures: [],
     preflightWarnings: [],
     routeSmokes: [],
+    toolSmokes: [],
     expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
@@ -645,6 +649,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         model: options.model,
         timeoutMs: options.timeoutMs,
         input: options.input,
+        toolSmoke: Boolean(options.toolSmokeRequest),
       }),
       timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
     });
@@ -726,6 +731,10 @@ function printResult(result, json) {
   }
   for (const smoke of result.routeSmokes) {
     console.log(`- ${smoke.scope}: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.toolSmokes || []) {
+    console.log(`- ${smoke.scope} tool: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
   }
   if (result.setupFailures.length) {
@@ -925,6 +934,12 @@ async function main() {
           for (const scope of options.scopes) {
             result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
           }
+          if (options.toolSmoke) {
+            const toolOptions = { ...options, toolSmokeRequest: true };
+            for (const scope of options.scopes) {
+              result.toolSmokes.push(await runActiveRouteSmoke(toolOptions, key, scope));
+            }
+          }
           addExpectationFailures(result, options);
         }
       }
@@ -933,8 +948,10 @@ async function main() {
     }
 
     result.ok = result.routeSmokes.length === options.scopes.length
+      && (!options.toolSmoke || result.toolSmokes.length === options.scopes.length)
       && result.preflightFailures.length === 0
       && result.routeSmokes.every((item) => item.ok)
+      && (!options.toolSmoke || result.toolSmokes.every((item) => item.ok))
       && result.expectationFailures.length === 0
       && result.setupFailures.length === 0
       && result.restoreFailures.length === 0
