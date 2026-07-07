@@ -20690,6 +20690,7 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
       body: String(init.body || ""),
     });
     const responseId = upstreamCalls.length === 1 ? "resp_tool_chat" : "resp_tool_anthropic";
+    const toolStatus = upstreamCalls.length === 1 ? "incomplete" : "completed";
     const upstreamSse = [
       "event: response.created",
       `data: {"type":"response.created","response":{"id":"${responseId}","object":"response","status":"in_progress","model":"gpt-responses","output":[],"usage":{"input_tokens":6,"output_tokens":0}}}`,
@@ -20707,10 +20708,10 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
       "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}",
       "",
       "event: response.output_item.done",
-      "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}}",
+      `data: {"type":"response.output_item.done","output_index":0,"item":{"id":"fc_call_lookup","type":"function_call","status":"${toolStatus}","call_id":"call_lookup","name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}}`,
       "",
       "event: response.completed",
-      `data: {"type":"response.completed","response":{"id":"${responseId}","object":"response","status":"completed","model":"gpt-responses","output":[{"id":"fc_call_lookup","type":"function_call","status":"completed","call_id":"call_lookup","name":"lookup","arguments":"{\\\"query\\\":\\\"docs\\\"}"}],"usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8,"input_tokens_details":{"cached_tokens":1}}}}`,
+      `data: {"type":"response.completed","response":{"id":"${responseId}","object":"response","status":"completed","model":"gpt-responses","output":[{"id":"fc_call_lookup","type":"function_call","status":"${toolStatus}","call_id":"call_lookup","name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}],"usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8,"input_tokens_details":{"cached_tokens":1}}}}`,
       "",
       "data: [DONE]",
       "",
@@ -20755,13 +20756,17 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
         index: 0,
         function: { arguments: "\"docs\"}" },
       }]);
-      assert.equal(chatEvents[4].data.choices[0].finish_reason, "tool_calls");
-      assert.deepEqual(chatEvents[4].data.usage, {
+      assert.deepEqual(chatEvents[4].data.choices[0].delta.tool_calls, [{
+        index: 0,
+        status: "incomplete",
+      }]);
+      assert.equal(chatEvents[5].data.choices[0].finish_reason, "tool_calls");
+      assert.deepEqual(chatEvents[5].data.usage, {
         prompt_tokens: 6,
         completion_tokens: 2,
         total_tokens: 8,
       });
-      assert.equal(chatEvents[5].data, "[DONE]");
+      assert.equal(chatEvents[6].data, "[DONE]");
 
       const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
         method: "POST",

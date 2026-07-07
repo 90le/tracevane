@@ -58,6 +58,7 @@ interface ToolStreamBlock {
   started: boolean;
   stopped: boolean;
   sentChatStart: boolean;
+  sentChatStatus: string | null;
   chatIndex: number;
   outputIndex: number | null;
 }
@@ -428,12 +429,14 @@ export async function writeChatCompletionsSseFromResponsesSse(
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
           const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(event.json.item));
+          const status = responsesToolStatus(event.json.item);
           ensureChatStreamStart(state, res);
           writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
           if (remaining) {
             tool.inputJson += remaining;
             writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
           }
+          if (status) writeChatToolCallStatus(state, res, tool, status, legacyFunctionCalls);
           state.finishReason = chatToolFinishReason(legacyFunctionCalls);
           return;
         }
@@ -1665,6 +1668,25 @@ function writeChatToolCallArguments(
   }, null);
 }
 
+function writeChatToolCallStatus(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  tool: ToolStreamBlock,
+  status: string,
+  legacyFunctionCalls = false,
+): void {
+  writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
+  if (legacyFunctionCalls) return;
+  if (tool.sentChatStatus === status) return;
+  tool.sentChatStatus = status;
+  writeChatChunk(state, res, {
+    tool_calls: [{
+      index: tool.chatIndex,
+      status,
+    }],
+  }, null);
+}
+
 function finalizeChatStream(state: ReturnType<typeof createChatStreamState>, res: http.ServerResponse): void {
   if (state.completed) return;
   ensureChatStreamStart(state, res);
@@ -2110,6 +2132,7 @@ function ensureToolBlock(
       started: false,
       stopped: false,
       sentChatStart: false,
+      sentChatStatus: null,
       chatIndex: blocks.size,
       outputIndex: null,
     };
@@ -2210,6 +2233,11 @@ function responsesToolArguments(item: JsonRecord): string {
   return typeof item.arguments === "string" ? item.arguments : "";
 }
 
+function responsesToolStatus(item: JsonRecord): string | null {
+  const status = stringOrNull(item.status);
+  return status && status !== "completed" ? status : null;
+}
+
 function remainingToolArgumentsDelta(tool: ToolStreamBlock, argumentsValue: unknown): string {
   if (typeof argumentsValue !== "string" || !argumentsValue) return "";
   if (!tool.inputJson) return argumentsValue;
@@ -2233,12 +2261,14 @@ function emitMissingChatToolCallsFromResponsesOutput(
     const tool = ensureResponsesToolBlock({ output_index: index }, item, blocks, itemIdToIndex);
     if (!tool) continue;
     const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(item));
+    const status = responsesToolStatus(item);
     ensureChatStreamStart(state, res);
     writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
     if (remaining) {
       tool.inputJson += remaining;
       writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
     }
+    if (status) writeChatToolCallStatus(state, res, tool, status, legacyFunctionCalls);
   }
 }
 
