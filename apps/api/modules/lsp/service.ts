@@ -222,7 +222,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         features: supportedFeaturesFromRegistry(),
         providers: providerCapabilityMatrix(),
         externalProviders: externalLanguageServerStatusSnapshot(config),
-        toolchainProviders: toolchainProviderStatusSnapshot(),
+        toolchainProviders: toolchainProviderStatusSnapshot(config),
       };
     },
     diagnoseDocument(request) {

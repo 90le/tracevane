@@ -958,7 +958,13 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
         <div className="grid gap-1 text-right font-mono text-2xs text-subtle">
           <span data-ide-lsp-toolchain-provider-binary>{candidate.requiredBinary}</span>
           <span data-ide-lsp-toolchain-provider-config-key>{candidate.configurationKey}</span>
+          <span data-ide-lsp-toolchain-provider-profile>{candidate.config?.profileId ?? "no profile"}</span>
         </div>
+      </div>
+      <div className="grid gap-1 rounded border border-line bg-panel-2 p-2 text-xs text-muted" data-ide-lsp-toolchain-provider-config>
+        <div>enabled: <span className="font-mono" data-ide-lsp-toolchain-provider-enabled>{String(candidate.config?.enabled ?? false)}</span> · trusted: <span className="font-mono" data-ide-lsp-toolchain-provider-trusted>{String(candidate.config?.trusted ?? false)}</span> · source: <span className="font-mono">{candidate.config?.configSource ?? "none"}</span></div>
+        <div>allowed profiles: <span className="font-mono">{candidate.config?.acceptedProfileIds?.join(", ") || candidate.allowedProfiles?.map((profile) => profile.profileId).join(", ") || "--"}</span></div>
+        {candidate.config?.rejectedReason ? <div className="text-danger" data-ide-lsp-toolchain-provider-rejected>{candidate.config.rejectedReason}</div> : null}
       </div>
       <div className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-muted" data-ide-lsp-toolchain-provider-next-action>
         {candidate.nextAction}

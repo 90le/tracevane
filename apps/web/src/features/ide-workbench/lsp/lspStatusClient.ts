@@ -57,6 +57,24 @@ export type ToolchainLspProviderStatus =
   | "disabledByTrust"
   | "unavailable";
 
+export interface ToolchainLspProviderAllowedProfile {
+  profileId: string;
+  label: string;
+  binary: string;
+  description: string;
+}
+
+export interface ToolchainLspProviderConfigState {
+  configurationKey: string;
+  configured: boolean;
+  trusted: boolean;
+  enabled: boolean;
+  profileId: string | null;
+  configSource: "openclaw-config" | "none" | string;
+  acceptedProfileIds: string[];
+  rejectedReason: string | null;
+}
+
 export interface ToolchainLspProviderCandidate {
   providerId: string;
   label: string;
@@ -68,6 +86,8 @@ export interface ToolchainLspProviderCandidate {
   capabilities: string[];
   nextAction: string;
   notes: string[];
+  allowedProfiles?: ToolchainLspProviderAllowedProfile[];
+  config?: ToolchainLspProviderConfigState;
 }
 
 export interface ToolchainLspProviderPolicy {
@@ -75,6 +95,8 @@ export interface ToolchainLspProviderPolicy {
   probesRuntimePath: boolean;
   startsLanguageServers: boolean;
   acceptsFrontendCommandOverrides: boolean;
+  acceptsOnlyAllowlistedProfiles?: boolean;
+  configSource?: string;
 }
 
 export interface ExternalLspProviderStatus {

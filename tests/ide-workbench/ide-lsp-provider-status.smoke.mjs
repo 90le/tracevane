@@ -155,6 +155,9 @@ async function run() {
       await page.locator(`[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="${providerId}"] [data-ide-lsp-toolchain-provider-status-chip]`).filter({ hasText: 'notConfigured' }).waitFor({ state: 'visible', timeout: 10_000 });
     }
     await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="go"] [data-ide-lsp-toolchain-provider-binary]').filter({ hasText: 'gopls' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="go"] [data-ide-lsp-toolchain-provider-enabled]').filter({ hasText: 'false' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="go"] [data-ide-lsp-toolchain-provider-trusted]').filter({ hasText: 'false' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="go"] [data-ide-lsp-toolchain-provider-profile]').filter({ hasText: 'no profile' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-source]').filter({ hasText: 'npm:yaml-language-server' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-audit-note]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-install-status]').filter({ hasText: 'installed' }).waitFor({ state: 'visible', timeout: 10_000 });
