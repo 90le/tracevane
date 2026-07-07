@@ -1227,39 +1227,55 @@ function chatToolOutputToResponsesOutput(content: unknown): string | JsonRecord[
   if (typeof content === "string") return content;
   if (content === null || content === undefined) return "";
   if (Array.isArray(content)) {
-    const outputParts = content
-      .map(chatToolOutputPartToResponsesOutputPart)
-      .filter((part): part is JsonRecord => Boolean(part));
-    if (outputParts.length === content.length) return outputParts;
+    const outputPartsByInput = content.map(chatToolOutputPartToResponsesOutputParts);
+    if (outputPartsByInput.every((parts) => parts.length > 0)) return outputPartsByInput.flat();
     const text = content.map(chatContentPartToText).filter(Boolean).join("");
     return content.every(chatContentPartIsTextLike) ? text : stringifyCompact(content);
   }
-  const outputPart = chatToolOutputPartToResponsesOutputPart(content);
-  if (outputPart) return [outputPart];
+  const outputParts = chatToolOutputPartToResponsesOutputParts(content);
+  if (outputParts.length) return outputParts;
   const text = chatContentPartToText(content);
   return text || stringifyCompact(content);
 }
 
-function chatToolOutputPartToResponsesOutputPart(part: unknown): JsonRecord | null {
-  if (typeof part === "string") return part ? { type: "input_text", text: part } : null;
-  if (!isRecord(part)) return null;
+function chatToolOutputPartToResponsesOutputParts(part: unknown): JsonRecord[] {
+  if (typeof part === "string") return part ? [{ type: "input_text", text: part }] : [];
+  if (!isRecord(part)) return [];
   const type = stringOrNull(part.type);
   if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
     const text = chatContentPartToText(part);
-    return text ? { type: "input_text", text } : null;
+    return text ? [{ type: "input_text", text }] : [];
   }
   if (type === "image_url" && isRecord(part.image_url)) {
     const imageUrl = stringOrNull(part.image_url.url);
-    if (!imageUrl) return null;
+    if (!imageUrl) return [];
     const imagePart: JsonRecord = { type: "input_image", image_url: imageUrl };
     const detail = stringOrNull(part.image_url.detail) || stringOrNull(part.detail);
     if (detail) imagePart.detail = detail;
-    return imagePart;
+    return [imagePart];
   }
-  if (type === "input_image") return chatInputImagePartToResponsesInputImage(part);
-  if (type === "file" || type === "input_file") return chatFilePartToResponsesInputFile(part);
+  if (type === "input_image") {
+    const imagePart = chatInputImagePartToResponsesInputImage(part);
+    return imagePart ? [imagePart] : [];
+  }
+  if (type === "file" || type === "input_file") return chatToolOutputFilePartToResponsesOutputParts(part);
   const text = chatContentPartToText(part);
-  return text ? { type: "input_text", text } : null;
+  return text ? [{ type: "input_text", text }] : [];
+}
+
+function chatToolOutputFilePartToResponsesOutputParts(part: JsonRecord): JsonRecord[] {
+  const filePart = chatFilePartToResponsesInputFile(part);
+  if (!filePart) return [];
+  const file = isRecord(part.file) ? part.file : part;
+  const mediaType = stringOrNull(file.media_type) || stringOrNull(file.mime_type);
+  if (!mediaType) return [filePart];
+  return [
+    filePart,
+    {
+      type: "input_text",
+      text: `OpenAI Chat file media_type preserved for Responses tool output: ${mediaType}`,
+    },
+  ];
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {

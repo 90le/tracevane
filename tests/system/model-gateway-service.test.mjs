@@ -17113,6 +17113,7 @@ test("model gateway preserves structured tool result content through OpenAI Resp
   const anthropicToolContent = [
     { type: "text", text: "weather:" },
     { type: "image", source: { type: "url", url: "https://example.test/weather.png" } },
+    { type: "document", title: "weather.pdf", source: { type: "base64", media_type: "application/pdf", data: "JVBERi0x" } },
   ];
 
   try {
@@ -17206,6 +17207,8 @@ test("model gateway preserves structured tool result content through OpenAI Resp
     output: [
       { type: "input_text", text: "weather:" },
       { type: "input_image", image_url: "https://example.test/weather.png" },
+      { type: "input_file", file_data: "JVBERi0x", filename: "weather.pdf" },
+      { type: "input_text", text: "OpenAI Chat file media_type preserved for Responses tool output: application/pdf" },
     ],
   });
 });
