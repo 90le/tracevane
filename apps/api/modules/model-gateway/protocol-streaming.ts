@@ -245,6 +245,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
             ...state.usage,
             completion_tokens: numberOrNull(event.json.usage.output_tokens) ?? numberOrNull(state.usage.completion_tokens) ?? 0,
           };
+          copyServerToolUse(event.json.usage, state.usage);
           state.usage.total_tokens = (numberOrNull(state.usage.prompt_tokens) ?? 0)
             + (numberOrNull(state.usage.completion_tokens) ?? 0);
         }
@@ -774,6 +775,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
             ...(state.usage || {}),
             output_tokens: numberOrNull(event.json.usage.output_tokens) ?? 0,
           };
+          copyServerToolUse(event.json.usage, state.usage);
         }
         return;
       }
@@ -1132,6 +1134,11 @@ function ensureAnthropicMessageStart(
 ): void {
   if (state.started) return;
   state.started = true;
+  const usage: JsonRecord = {
+    input_tokens: numberOrNull(state.usage.input_tokens) ?? 0,
+    output_tokens: 0,
+  };
+  copyServerToolUse(state.usage, usage);
   writeSseEvent(res, "message_start", {
     type: "message_start",
     message: {
@@ -1142,10 +1149,7 @@ function ensureAnthropicMessageStart(
       content: [],
       stop_reason: null,
       stop_sequence: null,
-      usage: {
-        input_tokens: numberOrNull(state.usage.input_tokens) ?? 0,
-        output_tokens: 0,
-      },
+      usage,
     },
   });
 }
@@ -1374,15 +1378,17 @@ function finalizeAnthropicFromChat(
       tool.stopped = true;
     }
   }
+  const usage: JsonRecord = {
+    output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
+  };
+  copyServerToolUse(state.usage, usage);
   writeSseEvent(res, "message_delta", {
     type: "message_delta",
     delta: {
       stop_reason: state.stopReason,
       stop_sequence: state.stopSequence || null,
     },
-    usage: {
-      output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
-    },
+    usage,
   });
   writeSseEvent(res, "message_stop", { type: "message_stop" });
   state.completed = true;
@@ -1431,15 +1437,17 @@ function finalizeAnthropicTextStream(
     });
     state.textBlockStopped = true;
   }
+  const usage: JsonRecord = {
+    output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
+  };
+  copyServerToolUse(state.usage, usage);
   writeSseEvent(res, "message_delta", {
     type: "message_delta",
     delta: {
       stop_reason: state.stopReason,
       stop_sequence: state.stopSequence || null,
     },
-    usage: {
-      output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
-    },
+    usage,
   });
   writeSseEvent(res, "message_stop", { type: "message_stop" });
   state.completed = true;
@@ -2486,31 +2494,37 @@ function chatToolFinishReason(legacyFunctionCalls: boolean): string {
 }
 
 function mapChatUsageToAnthropic(usage: JsonRecord): JsonRecord {
-  return {
+  const mapped: JsonRecord = {
     input_tokens: numberOrNull(usage.prompt_tokens) ?? 0,
     output_tokens: numberOrNull(usage.completion_tokens) ?? 0,
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function mapAnthropicUsageToChat(usage: JsonRecord): JsonRecord {
   const promptTokens = numberOrNull(usage.input_tokens) ?? 0;
   const completionTokens = numberOrNull(usage.output_tokens) ?? 0;
-  return {
+  const mapped: JsonRecord = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: promptTokens + completionTokens,
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function mapResponsesUsageToChat(usage: JsonRecord): JsonRecord {
   const promptTokens = numberOrNull(usage.input_tokens) ?? numberOrNull(usage.prompt_tokens) ?? 0;
   const completionTokens = numberOrNull(usage.output_tokens) ?? numberOrNull(usage.completion_tokens) ?? 0;
   const totalTokens = numberOrNull(usage.total_tokens) ?? promptTokens + completionTokens;
-  return {
+  const mapped: JsonRecord = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: totalTokens,
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 
@@ -2579,28 +2593,36 @@ function mapAnthropicCitationToResponsesAnnotation(citation: JsonRecord): JsonRe
 }
 
 function mapResponsesUsageToAnthropic(usage: JsonRecord): JsonRecord {
-  return {
+  const mapped: JsonRecord = {
     input_tokens: numberOrNull(usage.input_tokens) ?? numberOrNull(usage.prompt_tokens) ?? 0,
     output_tokens: numberOrNull(usage.output_tokens) ?? numberOrNull(usage.completion_tokens) ?? 0,
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function mapAnthropicUsageToResponses(usage: JsonRecord): JsonRecord {
   const inputTokens = numberOrNull(usage.input_tokens) ?? 0;
   const outputTokens = numberOrNull(usage.output_tokens) ?? 0;
-  return {
+  const mapped: JsonRecord = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: inputTokens + outputTokens,
     input_tokens_details: { cached_tokens: numberOrNull(usage.cache_read_input_tokens) || 0 },
     output_tokens_details: { reasoning_tokens: 0 },
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
+}
+
+function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
+  if (isRecord(source.server_tool_use)) target.server_tool_use = { ...source.server_tool_use };
 }
 
 function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
   const inputTokens = numberOrNull(usage?.input_tokens) ?? 0;
   const outputTokens = numberOrNull(usage?.output_tokens) ?? 0;
-  return {
+  const mapped: JsonRecord = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: numberOrNull(usage?.total_tokens) ?? inputTokens + outputTokens,
@@ -2611,6 +2633,8 @@ function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
       ? usage?.output_tokens_details
       : { reasoning_tokens: 0 },
   };
+  if (usage) copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function stringOrNull(value: unknown): string | null {

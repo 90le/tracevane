@@ -1295,6 +1295,7 @@ function mapChatUsageToAnthropic(usage: unknown): JsonRecord {
   };
   const cachedTokens = numberOrNull(promptDetails.cached_tokens);
   if (cachedTokens !== null) mapped.cache_read_input_tokens = cachedTokens;
+  copyServerToolUse(usage, mapped);
   return mapped;
 }
 
@@ -1305,7 +1306,7 @@ function mapAnthropicUsageToChat(usage: unknown): JsonRecord | null {
   const cachedTokens = numberOrNull(usage.cache_read_input_tokens)
     ?? numberOrNull(usage.cache_creation_input_tokens)
     ?? 0;
-  return {
+  const mapped: JsonRecord = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: promptTokens + completionTokens,
@@ -1313,6 +1314,12 @@ function mapAnthropicUsageToChat(usage: unknown): JsonRecord | null {
       cached_tokens: cachedTokens,
     },
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
+}
+
+function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
+  if (isRecord(source.server_tool_use)) target.server_tool_use = { ...source.server_tool_use };
 }
 
 function parseToolArguments(value: unknown): unknown {

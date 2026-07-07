@@ -820,33 +820,41 @@ function mapChatUsageToResponses(usage: JsonRecord): JsonRecord {
     ?? (inputTokens !== null && outputTokens !== null ? inputTokens + outputTokens : null);
   const promptDetails = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
   const completionDetails = isRecord(usage.completion_tokens_details) ? usage.completion_tokens_details : {};
-  return {
+  const mapped: JsonRecord = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: totalTokens,
     input_tokens_details: isRecord(usage.input_tokens_details)
-      ? usage.input_tokens_details
+      ? usage?.input_tokens_details
       : { cached_tokens: numberOrNull(promptDetails.cached_tokens) || 0 },
     output_tokens_details: isRecord(usage.output_tokens_details)
-      ? usage.output_tokens_details
+      ? usage?.output_tokens_details
       : { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 },
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
+}
+
+function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
+  if (isRecord(source.server_tool_use)) target.server_tool_use = { ...source.server_tool_use };
 }
 
 function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
   const inputTokens = numberOrNull(usage?.input_tokens) ?? 0;
   const outputTokens = numberOrNull(usage?.output_tokens) ?? 0;
-  return {
+  const mapped: JsonRecord = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: numberOrNull(usage?.total_tokens) ?? inputTokens + outputTokens,
     input_tokens_details: isRecord(usage?.input_tokens_details)
-      ? usage.input_tokens_details
+      ? usage?.input_tokens_details
       : { cached_tokens: 0 },
     output_tokens_details: isRecord(usage?.output_tokens_details)
-      ? usage.output_tokens_details
+      ? usage?.output_tokens_details
       : { reasoning_tokens: 0 },
   };
+  if (usage) copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function stringOrNull(value: unknown): string | null {

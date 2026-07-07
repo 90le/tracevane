@@ -832,7 +832,12 @@ function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {
     prompt_tokens_details: promptDetails,
   };
   if (Object.keys(completionDetails).length) mapped.completion_tokens_details = completionDetails;
+  copyServerToolUse(usage, mapped);
   return mapped;
+}
+
+function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
+  if (isRecord(source.server_tool_use)) target.server_tool_use = { ...source.server_tool_use };
 }
 
 function numericFields(source: JsonRecord, fields: string[]): JsonRecord {

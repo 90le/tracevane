@@ -861,7 +861,7 @@ function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
   const promptDetails = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
   const completionDetails = isRecord(usage.completion_tokens_details) ? usage.completion_tokens_details : {};
 
-  return {
+  const mapped: JsonRecord = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: totalTokens,
@@ -872,6 +872,8 @@ function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
       ? usage.output_tokens_details
       : chatCompletionDetailsToResponsesOutputDetails(completionDetails),
   };
+  copyServerToolUse(usage, mapped);
+  return mapped;
 }
 
 function chatPromptDetailsToResponsesInputDetails(promptDetails: JsonRecord): JsonRecord {
@@ -886,6 +888,10 @@ function chatCompletionDetailsToResponsesOutputDetails(completionDetails: JsonRe
     copyNumericField(completionDetails, mapped, field);
   }
   return mapped;
+}
+
+function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
+  if (isRecord(source.server_tool_use)) target.server_tool_use = { ...source.server_tool_use };
 }
 
 function copyNumericField(source: JsonRecord, target: JsonRecord, field: string): void {
