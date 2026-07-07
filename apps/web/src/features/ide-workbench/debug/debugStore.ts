@@ -3,6 +3,7 @@ import * as React from "react";
 import { appendWorkbenchOutput } from "../output";
 import type {
   DebugBreakpointLocation,
+  DebugEvaluateResult,
   DebugGatewayServerEvent,
   DebugScope,
   DebugSourceLocation,
@@ -27,6 +28,8 @@ export interface IdeDebugSnapshot {
   status: DebugStatusPayload | null;
   sessions: DebugSessionDescriptor[];
   events: IdeDebugConsoleEvent[];
+  evaluations: DebugEvaluateResult[];
+  watches: DebugEvaluateResult[];
   breakpoints: DebugBreakpointLocation[];
   activeStoppedLocation: (DebugSourceLocation & { sessionId: string; reason: string }) | null;
   stackFramesBySessionId: Record<string, DebugStackFrame[]>;
@@ -44,6 +47,8 @@ let snapshot: IdeDebugSnapshot = {
   status: null,
   sessions: [],
   events: [],
+  evaluations: [],
+  watches: [],
   breakpoints: [],
   activeStoppedLocation: null,
   stackFramesBySessionId: {},
@@ -203,6 +208,26 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
     });
     return;
   }
+  if (event.type === "evaluation") {
+    const result = event.result;
+    const watches = result.mode === "watch"
+      ? upsertDebugWatch(snapshot.watches, result)
+      : snapshot.watches;
+    snapshot = {
+      ...snapshot,
+      evaluations: result.mode === "evaluate"
+        ? [...snapshot.evaluations, result].slice(-100)
+        : snapshot.evaluations,
+      watches,
+    };
+    appendConsoleEvent({
+      sessionId: result.sessionId,
+      level: "info",
+      timestamp: result.timestamp,
+      text: `Debug ${result.mode}: ${result.expression} = ${result.value}`,
+    });
+    return;
+  }
   if (event.type === "terminated") {
     const terminatedSession = snapshot.sessions.find((session) => session.id === event.sessionId);
     snapshot = {
@@ -290,6 +315,12 @@ function upsertSession(session: DebugSessionDescriptor): void {
     : [session, ...snapshot.sessions];
   snapshot = { ...snapshot, sessions };
   emitChanged();
+}
+
+function upsertDebugWatch(watches: DebugEvaluateResult[], result: DebugEvaluateResult): DebugEvaluateResult[] {
+  const next = watches.filter((item) => !(item.sessionId === result.sessionId && item.expression === result.expression));
+  next.push(result);
+  return next.slice(-100);
 }
 
 function appendConsoleEvent(input: Omit<IdeDebugConsoleEvent, "id" | "timestamp"> & { timestamp?: string }): void {

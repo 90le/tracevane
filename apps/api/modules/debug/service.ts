@@ -13,6 +13,9 @@ import type {
   DebugControlAction,
   DebugControlSessionRequest,
   DebugCreateSessionRequest,
+  DebugEvaluateMode,
+  DebugEvaluatePayload,
+  DebugEvaluateRequest,
   DebugLaunchProfile,
   DebugLifecycleEventKind,
   DebugGatewayClientEvent,
@@ -80,6 +83,7 @@ export interface DebugService {
   listSessions(): DebugSessionsPayload;
   createSession(request: DebugCreateSessionRequest): Promise<DebugSessionPayload>;
   controlSession(request: DebugControlSessionRequest): DebugSessionPayload;
+  evaluateSession(request: DebugEvaluateRequest): DebugEvaluatePayload;
   stopSession(request: DebugStopSessionRequest): DebugSessionPayload;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
   dispose(): void;
@@ -120,6 +124,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "node-inspector-launch-proof",
         "debug-control-commands",
         "debug-scopes",
+        "debug-console-evaluate-proof",
+        "debug-watch-expressions-proof",
       ],
     };
   }
@@ -265,6 +271,28 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     return { session: stepped };
   }
 
+  function evaluateSession(request: DebugEvaluateRequest): DebugEvaluatePayload {
+    const sessionId = String(request?.sessionId || "").trim();
+    if (!sessionId) throw new Error("Debug session id is required");
+    const session = sessions.get(sessionId);
+    if (!session) throw new Error("Debug session not found");
+    if (["terminated", "terminating", "disconnected", "error"].includes(session.state)) {
+      throw new Error(`Debug session cannot evaluate from ${session.state}`);
+    }
+    const expression = normalizeDebugEvaluateExpression(request?.expression);
+    const mode = normalizeDebugEvaluateMode(request?.mode);
+    const result = createDebugEvaluateResult(session, expression, mode);
+    emit({ type: "evaluation", result });
+    emit({
+      type: "output",
+      sessionId,
+      category: "console",
+      text: `Debug ${mode} proof: ${expression} => ${result.value}`,
+      timestamp: result.timestamp,
+    });
+    return { result };
+  }
+
   function stopSession(request: DebugStopSessionRequest): DebugSessionPayload {
     const sessionId = String(request?.sessionId || "").trim();
     if (!sessionId) throw new Error("Debug session id is required");
@@ -336,6 +364,10 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
           controlSession(parsed);
           return;
         }
+        if (parsed.type === "evaluate") {
+          evaluateSession(parsed);
+          return;
+        }
         if (parsed.type === "list") {
           send(socket, { type: "sessions", sessions: [...sessions.values()] });
           return;
@@ -358,6 +390,7 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     },
     createSession,
     controlSession,
+    evaluateSession,
     stopSession,
     handleUpgrade(req, socket, head) {
       const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -465,6 +498,73 @@ function normalizeDebugControlAction(input: unknown): DebugControlAction {
     return input;
   }
   throw new Error("Unsupported debug control action");
+}
+
+function normalizeDebugEvaluateMode(input: unknown): DebugEvaluateMode {
+  if (input === "watch") return "watch";
+  return "evaluate";
+}
+
+function normalizeDebugEvaluateExpression(input: unknown): string {
+  const expression = String(input ?? "").trim();
+  if (!expression) throw new Error("Debug evaluate expression is required");
+  if (expression.length > 256) throw new Error("Debug evaluate expression is too long");
+  if (!/^[A-Za-z0-9_.$[\] '\"/:,+\-]+$/.test(expression)) {
+    throw new Error("Debug evaluate expression contains unsupported characters");
+  }
+  return expression;
+}
+
+function createDebugEvaluateResult(
+  session: DebugSessionDescriptor,
+  expression: string,
+  mode: DebugEvaluateMode,
+): DebugEvaluatePayload["result"] {
+  const timestamp = new Date().toISOString();
+  const value = readDebugExpressionValue(session, expression);
+  return {
+    id: `eval-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`,
+    sessionId: session.id,
+    expression,
+    mode,
+    value: value.value,
+    type: value.type,
+    variablesReference: 0,
+    timestamp,
+  };
+}
+
+function readDebugExpressionValue(
+  session: DebugSessionDescriptor,
+  expression: string,
+): { value: string; type: string } {
+  const normalized = expression.replace(/^["']|["']$/g, "").trim();
+  const values: Record<string, { value: string; type: string }> = {
+    "session.id": { value: session.id, type: "string" },
+    id: { value: session.id, type: "string" },
+    "session.name": { value: session.name, type: "string" },
+    name: { value: session.name, type: "string" },
+    "session.state": { value: session.state, type: "string" },
+    state: { value: session.state, type: "string" },
+    cwd: { value: session.cwd || ".", type: "string" },
+    "session.cwd": { value: session.cwd || ".", type: "string" },
+    program: { value: session.program ?? "(none)", type: session.program ? "string" : "null" },
+    "session.program": { value: session.program ?? "(none)", type: session.program ? "string" : "null" },
+    profileId: { value: session.profileId, type: "string" },
+    "session.profileId": { value: session.profileId, type: "string" },
+    adapter: { value: session.adapterKind ?? "mock", type: "string" },
+    "session.adapterKind": { value: session.adapterKind ?? "mock", type: "string" },
+    "args.length": { value: String(session.launchArgs?.length ?? 0), type: "number" },
+    args: { value: String(session.launchArgs?.length ?? 0), type: "number" },
+    envKeys: { value: session.launchEnvKeys?.join(",") || "(none)", type: "string" },
+    "env.keys": { value: session.launchEnvKeys?.join(",") || "(none)", type: "string" },
+    lineNumber: { value: String(session.activeLocation?.lineNumber ?? 0), type: "number" },
+    "activeLocation.lineNumber": { value: String(session.activeLocation?.lineNumber ?? 0), type: "number" },
+    path: { value: session.activeLocation?.path ?? "(none)", type: session.activeLocation?.path ? "string" : "null" },
+    "activeLocation.path": { value: session.activeLocation?.path ?? "(none)", type: session.activeLocation?.path ? "string" : "null" },
+    stoppedReason: { value: session.stoppedReason ?? "(none)", type: session.stoppedReason ? "string" : "null" },
+  };
+  return values[normalized] ?? { value: "(not available in safe debug proof)", type: "unavailable" };
 }
 
 function stepDebugLocation(
