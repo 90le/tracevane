@@ -66,6 +66,10 @@ export function adaptCodexResponsesRequestToChat(
     messages.push({ role: "system", content: instructions });
   }
   appendResponsesInputMessages(request.input ?? request.messages, messages);
+  const unsupportedToolChoiceText = responsesUnsupportedToolChoiceToText(request.tool_choice);
+  if (unsupportedToolChoiceText) {
+    messages.push({ role: "user", content: unsupportedToolChoiceText });
+  }
   if (!messages.length) {
     messages.push({ role: "user", content: "" });
   }
@@ -702,16 +706,24 @@ function mapResponsesTextFormatToChatResponseFormat(text: unknown): unknown {
 function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
-  if (!isRecord(toolChoice)) return toolChoice;
+  if (!isRecord(toolChoice)) return undefined;
   if (toolChoice.type === "function") {
     const name = stringOrNull(toolChoice.name) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null);
-    return name ? { type: "function", function: { name } } : toolChoice;
+    return name ? { type: "function", function: { name } } : undefined;
   }
   if (toolChoice.type === "custom") {
     const name = stringOrNull(toolChoice.name);
-    return name ? { type: "function", function: { name } } : toolChoice;
+    return name ? { type: "function", function: { name } } : undefined;
   }
-  return toolChoice;
+  return undefined;
+}
+
+function responsesUnsupportedToolChoiceToText(toolChoice: unknown): string {
+  if (toolChoice === undefined) return "";
+  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return "";
+  if (!isRecord(toolChoice)) return "";
+  if (toolChoice.type === "function" || toolChoice.type === "custom") return "";
+  return `[OpenAI Responses tool_choice ${stringifyCompact(toolChoice)}]`;
 }
 
 function mapChatToolCallToResponses(

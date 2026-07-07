@@ -10097,6 +10097,80 @@ test("model gateway preserves Responses built-in tool output input when degradin
   ]);
 });
 
+test("model gateway degrades Responses built-in tool choices safely for chat providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-builtin-tool-choice",
+      name: "Chat Builtin Tool Choice Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-builtin-tool-choice.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-builtin-tool-choice-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_builtin_tool_choice",
+      object: "chat.completion",
+      created: 1_710_000_045,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Builtin choice fallback accepted." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "Search the current docs.",
+          tools: [{ type: "web_search_preview", search_context_size: "low" }],
+          tool_choice: { type: "web_search_preview" },
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.output[0].content[0].text, "Builtin choice fallback accepted.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-builtin-tool-choice.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-builtin-tool-choice-secret");
+  assert.deepEqual(upstreamCalls[0].body.messages, [
+    { role: "user", content: "Search the current docs." },
+    { role: "user", content: "[OpenAI Responses tool_choice {\"type\":\"web_search_preview\"}]" },
+  ]);
+  assert.deepEqual(upstreamCalls[0].body.tools, [
+    { type: "web_search_preview", search_context_size: "low" },
+  ]);
+  assert.equal("tool_choice" in upstreamCalls[0].body, false);
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
