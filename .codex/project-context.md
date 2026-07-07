@@ -120,7 +120,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-T ESLint external provider guarded diagnostics implementation.
 - Done: M11-U ESLint monorepo / workingDirectories hardening plan.
 - Done: M11-V ESLint guarded workingDirectories implementation.
-- Next: M11-W External provider acceptance / next provider decision.
+- Done: M11-W External provider acceptance / next provider decision.
+- Next: M12-A Framework / heavy language provider research plan.
 
 ## Required reading by task
 
