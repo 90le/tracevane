@@ -133,7 +133,8 @@
     "test:system:lsp-provider-hygiene": "npm run build:api && node --test tests/system/lsp-external-provider-hygiene.test.mjs",
     "test:system:lsp-pyright-provider": "npm run build:api && node --test tests/system/lsp-pyright-provider.test.mjs",
     "test:system:lsp-dockerfile-provider": "npm run build:api && node --test tests/system/lsp-dockerfile-provider.test.mjs",
-    "test:system:lsp-markdown-provider": "npm run build:api && node --test tests/system/lsp-markdown-provider.test.mjs"
+    "test:system:lsp-markdown-provider": "npm run build:api && node --test tests/system/lsp-markdown-provider.test.mjs",
+    "test:system:lsp-eslint-provider": "npm run build:api && node --test tests/system/lsp-eslint-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",

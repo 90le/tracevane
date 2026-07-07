@@ -16,6 +16,7 @@ export const BASH_LANGUAGE_SERVER_BIN = require.resolve("bash-language-server/ou
 export const PYRIGHT_LANGUAGE_SERVER_BIN = require.resolve("pyright/langserver.index.js");
 export const DOCKERFILE_LANGUAGE_SERVER_BIN = require.resolve("dockerfile-language-server-nodejs/bin/docker-langserver");
 export const MARKDOWN_LANGUAGE_SERVER_BIN = require.resolve("vscode-langservers-extracted/bin/vscode-markdown-language-server");
+export const ESLINT_LANGUAGE_SERVER_BIN = require.resolve("vscode-langservers-extracted/bin/vscode-eslint-language-server");
 
 /**
  * External language servers are server-side allowlisted. The frontend never
@@ -72,6 +73,31 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
     budgets: { initializeMs: 5_000, requestMs: 3_000, shutdownMs: 1_000 },
     env: { NODE_ENV: "production" },
   },
+  {
+    id: "eslint",
+    label: "ESLint Language Server",
+    command: process.execPath,
+    args: [ESLINT_LANGUAGE_SERVER_BIN, "--stdio"],
+    languages: ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 10_000, requestMs: 5_000, shutdownMs: 1_500 },
+    env: { NODE_ENV: "production" },
+    settings: {
+      validate: "on",
+      packageManager: "npm",
+      codeAction: { disableRuleComment: { enable: false }, showDocumentation: { enable: false } },
+      codeActionOnSave: { enable: false, mode: "problems" },
+      format: false,
+      run: "onType",
+      workingDirectory: { mode: "location" },
+      nodePath: null,
+      options: {},
+      rulesCustomizations: [],
+      problems: { shortenToSingleLine: false },
+      experimental: { useFlatConfig: false },
+      useESLintClass: true,
+    },
+  },
 ];
 
 export function getExternalLanguageServerProfiles(): ExternalLanguageServerProfile[] {
@@ -113,5 +139,6 @@ function cloneProfile(profile: ExternalLanguageServerProfile): ExternalLanguageS
     capabilities: { ...profile.capabilities },
     budgets: profile.budgets ? { ...profile.budgets } : undefined,
     env: profile.env ? { ...profile.env } : undefined,
+    settings: profile.settings ? JSON.parse(JSON.stringify(profile.settings)) as Record<string, unknown> : undefined,
   };
 }

@@ -88,6 +88,19 @@ const WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES = new Set([
   ".vite",
 ]);
 const WORKSPACE_SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
+const ESLINT_LANGUAGES = new Set(["javascript", "javascriptreact", "typescript", "typescriptreact"]);
+const ESLINT_ROOT_CONFIG_FILES = [
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.ts",
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  ".eslintrc.yaml",
+  ".eslintrc.yml",
+];
 
 export interface LspService {
   getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix>; externalProviders: ReturnType<typeof externalLanguageServerStatusSnapshot> };
@@ -1659,6 +1672,20 @@ async function diagnoseDocument(
   // the path still has to resolve to an existing workspace file.
   const resolved = resolveFilesServiceExistingFilePath(config, rootId, targetPath);
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
+  const eslintActivationRoot = isEslintLanguage(language)
+    ? findEslintActivationRoot(resolved.root.realPath, resolved.absolutePath)
+    : null;
+  if (eslintActivationRoot) {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "eslint", language, await diagnoseWithExternalLanguageServer({
+      providerId: "eslint",
+      languageId: eslintLanguageId(language),
+      sourceFallback: "eslint",
+      rootRealPath: eslintActivationRoot,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
   const provider = providerForLanguage(language);
   if (provider?.id === "json") {
     return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, await diagnoseJsonWithLanguageService({ uri: pathToFileUri(resolved.absolutePath), content, version: request.version ?? 1 }));
@@ -1746,7 +1773,7 @@ async function diagnoseWithExternalLanguageServer({
   content,
   version,
 }: {
-  providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown";
+  providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint";
   languageId: string;
   sourceFallback: string;
   rootRealPath: string;
@@ -1761,15 +1788,29 @@ async function diagnoseWithExternalLanguageServer({
     gateway.notify(providerId, "textDocument/didOpen", {
       textDocument: { uri, languageId, version, text: content },
     });
+    if (providerId === "eslint") {
+      const report = await gateway.request(providerId, "textDocument/diagnostic", {
+        textDocument: { uri },
+        identifier: "eslint",
+      }, 5_000);
+      return diagnosticsFromDocumentReport(report).map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
+    }
     const diagnostics = await gateway.waitForDiagnostics(providerId, uri, 3_000);
     return diagnostics.map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
   } catch (error) {
     const reason = (error as { reason?: unknown } | null)?.reason;
-    if ((providerId === "bash" || providerId === "markdown") && reason === "request_timeout") return [];
+    if ((providerId === "bash" || providerId === "markdown" || providerId === "eslint") && reason === "request_timeout") return [];
     throw error;
   } finally {
     await gateway.stop(providerId).catch(() => undefined);
   }
+}
+
+
+function diagnosticsFromDocumentReport(report: unknown): unknown[] {
+  if (!isRecord(report)) return [];
+  const items = report.items;
+  return Array.isArray(items) ? items : [];
 }
 
 function externalLanguageServerStatusSnapshot(config: TracevaneServerConfig) {
@@ -1978,8 +2019,69 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   return raw || "plaintext";
 }
 
+function isEslintLanguage(language: string): boolean {
+  return ESLINT_LANGUAGES.has(language);
+}
+
+function eslintLanguageId(language: string): string {
+  return language === "typescriptreact" || language === "javascriptreact" ? language : language;
+}
+
+function findEslintActivationRoot(rootRealPath: string, absolutePath: string): string | null {
+  const boundary = path.resolve(rootRealPath);
+  let current = path.dirname(path.resolve(absolutePath));
+  while (isPathInsideBoundary(boundary, current)) {
+    if (hasEslintActivationMarker(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+function isPathInsideBoundary(boundary: string, target: string): boolean {
+  const relative = path.relative(boundary, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function hasEslintActivationMarker(candidateRoot: string): boolean {
+  for (const fileName of ESLINT_ROOT_CONFIG_FILES) {
+    if (fs.existsSync(path.join(candidateRoot, fileName))) return true;
+  }
+  const packageJsonPath = path.join(candidateRoot, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return false;
+  try {
+    const raw = fs.readFileSync(packageJsonPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (isRecord(parsed.eslintConfig)) return true;
+    if (hasEslintDependency(parsed)) return true;
+    if (hasEslintScript(parsed)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function hasEslintDependency(packageJson: Record<string, unknown>): boolean {
+  for (const key of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+    const dependencies = packageJson[key];
+    if (!isRecord(dependencies)) continue;
+    if (typeof dependencies.eslint === "string" || typeof dependencies["@eslint/js"] === "string") return true;
+  }
+  return false;
+}
+
+function hasEslintScript(packageJson: Record<string, unknown>): boolean {
+  const scripts = packageJson.scripts;
+  if (!isRecord(scripts)) return false;
+  return Object.entries(scripts).some(([name, value]) => {
+    const script = typeof value === "string" ? value : "";
+    return /(^|[:_-])lint($|[:_-])/.test(name) || /(^|\s)eslint(\s|$)/.test(script);
+  });
+}
+
 function responseProviderId(id: string | null | undefined): LspProviderId {
-  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" || id === "markdown" ? id : "json";
+  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" || id === "markdown" || id === "eslint" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {

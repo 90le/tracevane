@@ -100,10 +100,25 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
     pinnedVersion: "4.10.0",
     license: "MIT",
     optional: false,
-    auditSummary: "Bundled multi-bin provider package accepted only for the Markdown language server proof; JSON/HTML/CSS/ESLint bins remain disabled by Tracevane policy.",
+    auditSummary: "Bundled multi-bin provider package accepted only for the Markdown language server proof; JSON/HTML/CSS/ESLint bins are enabled only through separate provider-specific safety gates.",
     notes: [
       "Started only through server-side allowlisted process.execPath + require.resolve command.",
-      "M11-R exposes Markdown diagnostics/status only; JSON/HTML/CSS/ESLint bins from this package are intentionally not enabled.",
+      "M11-R exposes Markdown diagnostics/status only; JSON/HTML/CSS bins from this package remain intentionally disabled.",
+    ],
+  },
+  eslint: {
+    packageName: "vscode-langservers-extracted",
+    source: "npm:vscode-langservers-extracted",
+    installMode: "bundled-npm",
+    pinnedVersion: "4.10.0",
+    license: "MIT",
+    optional: false,
+    auditSummary: "ESLint provider is accepted as diagnostics-only behind a root-level config gate; workspace ESLint configs/plugins may execute project-controlled code, so fix/format/code actions and monorepo workingDirectories stay disabled/deferred.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M11-T exposes ESLint diagnostics/status only for JS/TS documents when the selected workspace root has an ESLint config marker.",
+      "Frontend cannot provide command, args, env, cwd, ESLint options, or workingDirectories.",
+      "JSON/HTML/CSS bins from vscode-langservers-extracted remain disabled by Tracevane policy.",
     ],
   },
 };

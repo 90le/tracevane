@@ -54,6 +54,7 @@ export class ExternalLanguageServerGateway {
       capabilities: { ...profile.capabilities },
       budgets: profile.budgets ? { ...profile.budgets } : undefined,
       env: profile.env ? { ...profile.env } : undefined,
+      settings: profile.settings ? cloneSettings(profile.settings) : undefined,
     }));
   }
 
@@ -141,7 +142,10 @@ export class ExternalLanguageServerGateway {
       await this.request(profile.id, "initialize", {
         processId: process.pid,
         rootUri: `file://${cwd}`,
-        capabilities: {},
+        capabilities: {
+          workspace: { configuration: true },
+          textDocument: { diagnostic: { dynamicRegistration: false } },
+        },
       }, budgets.initializeMs, "initialize_timeout");
       this.notify(profile.id, "initialized", {});
       this.transition(running, "available", "not_started");
@@ -262,7 +266,7 @@ export class ExternalLanguageServerGateway {
       const items = Array.isArray((request.params as { items?: unknown[] } | undefined)?.items)
         ? (request.params as { items: unknown[] }).items
         : [];
-      result = items.map(() => ({ yaml: { validate: true, schemaStore: { enable: false } } }));
+      result = items.map((item) => configurationForItem(running.profile.settings, item));
     }
     try {
       running.transport.send({ jsonrpc: "2.0", id: request.id, result });
@@ -383,3 +387,27 @@ function cloneState(state: ExternalLanguageServerState): ExternalLanguageServerS
 }
 
 export type { ChildProcessWithoutNullStreams };
+
+
+function cloneSettings(settings: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(settings)) as Record<string, unknown>;
+}
+
+function configurationForItem(settings: Record<string, unknown> | undefined, item: unknown): unknown {
+  if (!settings) return null;
+  const section = typeof (item as { section?: unknown } | null)?.section === "string"
+    ? (item as { section: string }).section
+    : "";
+  if (!section) return cloneSettings(settings);
+  return dottedLookup(settings, section) ?? null;
+}
+
+function dottedLookup(record: Record<string, unknown>, section: string): unknown {
+  let value: unknown = record;
+  for (const part of section.split(".")) {
+    if (!part) continue;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    value = (value as Record<string, unknown>)[part];
+  }
+  return typeof value === "object" && value !== null ? JSON.parse(JSON.stringify(value)) : value;
+}

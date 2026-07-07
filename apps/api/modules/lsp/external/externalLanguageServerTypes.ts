@@ -38,6 +38,7 @@ export interface ExternalLanguageServerProfile {
   capabilities: Partial<Record<TracevaneLspProviderFeature, boolean>>;
   budgets?: Partial<ExternalLanguageServerBudgets>;
   env?: Record<string, string>;
+  settings?: Record<string, unknown>;
 }
 
 export interface ExternalLanguageServerState {

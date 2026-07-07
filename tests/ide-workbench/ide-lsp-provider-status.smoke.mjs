@@ -85,6 +85,8 @@ async function run() {
   const dockerfileMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'dockerfile');
   const markdownProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'markdown');
   const markdownMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'markdown');
+  const eslintProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'eslint');
+  const eslintMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'eslint');
   if (yamlProfile.install?.status !== 'installed' || yamlMetadata?.installStatus !== 'installed' || !yamlMetadata.version) {
     throw new Error(`Expected installed yaml provider metadata: ${JSON.stringify(status.externalProviders)}`);
   }
@@ -100,7 +102,10 @@ async function run() {
   if (markdownProfile?.install?.status !== 'installed' || markdownMetadata?.installStatus !== 'installed' || markdownMetadata.version !== '4.10.0') {
     throw new Error(`Expected installed markdown provider metadata: ${JSON.stringify(status.externalProviders)}`);
   }
-  if (yamlMetadata.policy?.autoInstall !== false || bashMetadata.policy?.frontendCanProvideCommand !== false || pyrightMetadata.policy?.frontendCanProvideCommand !== false || dockerfileMetadata.policy?.frontendCanProvideCommand !== false || markdownMetadata.policy?.frontendCanProvideCommand !== false) {
+  if (eslintProfile?.install?.status !== 'installed' || eslintMetadata?.installStatus !== 'installed' || eslintMetadata.version !== '4.10.0') {
+    throw new Error(`Expected installed eslint provider metadata: ${JSON.stringify(status.externalProviders)}`);
+  }
+  if (yamlMetadata.policy?.autoInstall !== false || bashMetadata.policy?.frontendCanProvideCommand !== false || pyrightMetadata.policy?.frontendCanProvideCommand !== false || dockerfileMetadata.policy?.frontendCanProvideCommand !== false || markdownMetadata.policy?.frontendCanProvideCommand !== false || eslintMetadata.policy?.frontendCanProvideCommand !== false) {
     throw new Error(`Expected read-only provider policy metadata: ${JSON.stringify(status.externalProviders)}`);
   }
 
@@ -132,6 +137,7 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="markdown"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="eslint"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-source]').filter({ hasText: 'npm:yaml-language-server' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-audit-note]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-install-status]').filter({ hasText: 'installed' }).waitFor({ state: 'visible', timeout: 10_000 });
@@ -139,6 +145,7 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"] [data-ide-lsp-provider-version]').filter({ hasText: '1.1.411' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"] [data-ide-lsp-provider-version]').filter({ hasText: '0.15.0' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="markdown"] [data-ide-lsp-provider-version]').filter({ hasText: '4.10.0' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="eslint"] [data-ide-lsp-provider-version]').filter({ hasText: '4.10.0' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-close]').click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'detached', timeout: 10_000 });
 
@@ -152,6 +159,7 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="markdown"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="eslint"]').waitFor({ state: 'visible', timeout: 10_000 });
   } finally {
     await browser.close().catch(() => undefined);
     const severe = logs.filter((line) => line.includes('[pageerror]'));
