@@ -35,7 +35,8 @@ import type {
   LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
-import { JSON_PROVIDER_SOURCE, TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
+import { completeJsonWithLanguageService, defineJsonWithLanguageService, diagnoseJsonWithLanguageService, formatJsonWithLanguageService, hoverJsonWithLanguageService, referenceJsonWithLanguageService } from "./providers/jsonLanguageService.js";
+import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
 const LSP_WS_PATH = "/ws/lsp";
 const SEMANTIC_TOKEN_TYPES = [
@@ -86,16 +87,16 @@ const WORKSPACE_SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts
 
 export interface LspService {
   getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix> };
-  diagnoseDocument(request: LspDiagnosticsRequest): LspDiagnosticsResponse;
-  hoverDocument(request: LspPositionRequest): LspHoverResponse;
-  completeDocument(request: LspCompletionRequest): LspCompletionResponse;
-  defineDocument(request: LspPositionRequest): LspDefinitionResponse;
-  referenceDocument(request: LspPositionRequest): LspReferencesResponse;
+  diagnoseDocument(request: LspDiagnosticsRequest): Promise<LspDiagnosticsResponse>;
+  hoverDocument(request: LspPositionRequest): Promise<LspHoverResponse>;
+  completeDocument(request: LspCompletionRequest): Promise<LspCompletionResponse>;
+  defineDocument(request: LspPositionRequest): Promise<LspDefinitionResponse>;
+  referenceDocument(request: LspPositionRequest): Promise<LspReferencesResponse>;
   semanticTokens(request: LspSemanticTokensRequest): LspSemanticTokensResponse;
   workspaceSymbols(request: LspWorkspaceSymbolsRequest): LspWorkspaceSymbolsResponse;
   renameDocument(request: LspRenameRequest): LspRenameResponse;
-  formatDocument(request: LspFormattingRequest): LspFormattingResponse;
-  codeActions(request: LspCodeActionRequest): LspCodeActionResponse;
+  formatDocument(request: LspFormattingRequest): Promise<LspFormattingResponse>;
+  codeActions(request: LspCodeActionRequest): Promise<LspCodeActionResponse>;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
 }
 
@@ -110,7 +111,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
       message: "Tracevane LSP diagnostics provider ready",
     });
 
-    socket.on("message", (data) => {
+    socket.on("message", async (data) => {
       let parsed: unknown;
       try {
         parsed = JSON.parse(String(data));
@@ -127,23 +128,23 @@ export function createLspService(config: TracevaneServerConfig): LspService {
 
       try {
         if (request.type === "diagnose") {
-          send(socket, diagnoseDocument(config, request as LspDiagnosticsRequest));
+          send(socket, await diagnoseDocument(config, request as LspDiagnosticsRequest));
           return;
         }
         if (request.type === "hover") {
-          send(socket, hoverDocument(config, request as LspPositionRequest));
+          send(socket, await hoverDocument(config, request as LspPositionRequest));
           return;
         }
         if (request.type === "completion") {
-          send(socket, completeDocument(config, request as LspCompletionRequest));
+          send(socket, await completeDocument(config, request as LspCompletionRequest));
           return;
         }
         if (request.type === "definition") {
-          send(socket, defineDocument(config, request as LspPositionRequest));
+          send(socket, await defineDocument(config, request as LspPositionRequest));
           return;
         }
         if (request.type === "references") {
-          send(socket, referenceDocument(config, request as LspPositionRequest));
+          send(socket, await referenceDocument(config, request as LspPositionRequest));
           return;
         }
         if (request.type === "semanticTokens") {
@@ -159,11 +160,11 @@ export function createLspService(config: TracevaneServerConfig): LspService {
           return;
         }
         if (request.type === "formatting") {
-          send(socket, formatDocument(config, request as LspFormattingRequest));
+          send(socket, await formatDocument(config, request as LspFormattingRequest));
           return;
         }
         if (request.type === "codeAction") {
-          send(socket, codeActions(config, request as LspCodeActionRequest));
+          send(socket, await codeActions(config, request as LspCodeActionRequest));
           return;
         }
         send(socket, { type: "error", id: request.id ?? null, message: "Unsupported LSP gateway message type" });
@@ -230,23 +231,17 @@ export function createLspService(config: TracevaneServerConfig): LspService {
 }
 
 
-function hoverDocument(
+async function hoverDocument(
   config: TracevaneServerConfig,
   request: LspPositionRequest,
-): LspHoverResponse {
+): Promise<LspHoverResponse> {
   const validated = validateInteractionRequest(config, request);
   const provider = providerForLanguage(validated.language);
   if (provider?.id === "typescript") {
     return hoverTypeScriptLike(request, validated);
   }
   if (provider?.id !== "json") throw unsupportedLspFeatureError("hover", validated.language);
-  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
-  const contents = symbol
-    ? [
-        `JSON ${symbol.kind}: ${symbol.label}`,
-        `Path: ${symbol.path || "$"}`,
-      ]
-    : ["JSON document", "Tracevane JSON LSP provider foundation"];
+  const hover = await hoverJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
   return {
     type: "hover",
     id: request.id ?? null,
@@ -255,16 +250,16 @@ function hoverDocument(
     path: validated.path,
     language: "json",
     version: request.version ?? null,
-    contents,
-    range: symbol?.range ?? null,
+    contents: hover.contents,
+    range: hover.range,
     checkedAt: new Date().toISOString(),
   };
 }
 
-function completeDocument(
+async function completeDocument(
   config: TracevaneServerConfig,
   request: LspCompletionRequest,
-): LspCompletionResponse {
+): Promise<LspCompletionResponse> {
   const validated = validateInteractionRequest(config, request);
   const provider = providerForLanguage(validated.language);
   if (provider?.id === "typescript") {
@@ -279,22 +274,21 @@ function completeDocument(
     path: validated.path,
     language: "json",
     version: request.version ?? null,
-    items: jsonCompletionItems(validated.content, request.line, request.column),
+    items: await completeJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
     checkedAt: new Date().toISOString(),
   };
 }
 
-function defineDocument(
+async function defineDocument(
   config: TracevaneServerConfig,
   request: LspPositionRequest,
-): LspDefinitionResponse {
+): Promise<LspDefinitionResponse> {
   const validated = validateInteractionRequest(config, request);
   const provider = providerForLanguage(validated.language);
   if (provider?.id === "typescript") {
     return defineTypeScriptLike(request, validated);
   }
   if (provider?.id !== "json") throw unsupportedLspFeatureError("definition", validated.language);
-  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "definition",
     id: request.id ?? null,
@@ -303,29 +297,21 @@ function defineDocument(
     path: validated.path,
     language: "json",
     version: request.version ?? null,
-    locations: symbol ? [{
-      rootId: validated.rootId,
-      path: validated.path,
-      startLine: symbol.range.startLine,
-      startColumn: symbol.range.startColumn,
-      endLine: symbol.range.endLine,
-      endColumn: symbol.range.endColumn,
-    }] : [],
+    locations: defineJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
     checkedAt: new Date().toISOString(),
   };
 }
 
-function referenceDocument(
+async function referenceDocument(
   config: TracevaneServerConfig,
   request: LspPositionRequest,
-): LspReferencesResponse {
+): Promise<LspReferencesResponse> {
   const validated = validateInteractionRequest(config, request);
   const provider = providerForLanguage(validated.language);
   if (provider?.id === "typescript") {
     return referenceTypeScriptLike(request, validated);
   }
   if (provider?.id !== "json") throw unsupportedLspFeatureError("references", validated.language);
-  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "references",
     id: request.id ?? null,
@@ -334,14 +320,7 @@ function referenceDocument(
     path: validated.path,
     language: "json",
     version: request.version ?? null,
-    locations: symbol ? [{
-      rootId: validated.rootId,
-      path: validated.path,
-      startLine: symbol.range.startLine,
-      startColumn: symbol.range.startColumn,
-      endLine: symbol.range.endLine,
-      endColumn: symbol.range.endColumn,
-    }] : [],
+    locations: referenceJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
     checkedAt: new Date().toISOString(),
   };
 }
@@ -757,81 +736,6 @@ function validateInteractionRequest(
   };
 }
 
-interface JsonSymbolInfo {
-  kind: "property" | "value";
-  label: string;
-  path: string;
-  range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
-}
-
-function jsonSymbolAtPosition(content: string, line: number, column: number): JsonSymbolInfo | null {
-  const lines = content.split(/\r?\n/);
-  const safeLine = Math.max(1, Math.min(Math.floor(line || 1), Math.max(1, lines.length)));
-  const lineText = lines[safeLine - 1] ?? "";
-  const propertyMatch = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/.exec(lineText);
-  if (propertyMatch?.index != null) {
-    const startColumn = propertyMatch.index + 1;
-    const endColumn = startColumn + propertyMatch[0].length;
-    return {
-      kind: "property",
-      label: propertyMatch[1] || "property",
-      path: approximateJsonPath(lines, safeLine, propertyMatch[1] || "property"),
-      range: { startLine: safeLine, startColumn, endLine: safeLine, endColumn },
-    };
-  }
-  const token = tokenAtColumn(lineText, column);
-  if (!token) return null;
-  return {
-    kind: "value",
-    label: token.text,
-    path: approximateJsonPath(lines, safeLine, token.text),
-    range: { startLine: safeLine, startColumn: token.startColumn, endLine: safeLine, endColumn: token.endColumn },
-  };
-}
-
-function tokenAtColumn(lineText: string, column: number): { text: string; startColumn: number; endColumn: number } | null {
-  const target = Math.max(1, Math.floor(column || 1)) - 1;
-  const tokenRegex = /"([^"\\]*(?:\\.[^"\\]*)*)"|\b(true|false|null|-?\d+(?:\.\d+)?)\b/g;
-  let match: RegExpExecArray | null;
-  while ((match = tokenRegex.exec(lineText))) {
-    const start = match.index;
-    const end = start + match[0].length;
-    if (target >= start && target <= end) {
-      return { text: match[1] ?? match[2] ?? match[0], startColumn: start + 1, endColumn: end + 1 };
-    }
-  }
-  return null;
-}
-
-function approximateJsonPath(lines: string[], line: number, current: string): string {
-  const keys: string[] = [];
-  for (let index = 0; index < line; index += 1) {
-    const match = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/.exec(lines[index] ?? "");
-    if (!match) continue;
-    const indent = (lines[index] ?? "").match(/^\s*/)?.[0].length ?? 0;
-    const depth = Math.floor(indent / 2);
-    keys[depth] = match[1] || "property";
-    keys.length = depth + 1;
-  }
-  if (!keys.length && current) keys.push(current);
-  return `$${keys.map((key) => `.${key}`).join("")}`;
-}
-
-function jsonCompletionItems(content: string, line: number, column: number): LspCompletionItem[] {
-  void content;
-  void line;
-  void column;
-  return [
-    { label: "property", detail: "JSON property", documentation: "Insert a JSON property snippet.", insertText: '"${1:key}": ${2:value}', kind: "snippet" },
-    { label: "true", detail: "JSON boolean", insertText: "true", kind: "value" },
-    { label: "false", detail: "JSON boolean", insertText: "false", kind: "value" },
-    { label: "null", detail: "JSON null", insertText: "null", kind: "value" },
-    { label: "object", detail: "JSON object", insertText: "{\n  $1\n}", kind: "snippet" },
-    { label: "array", detail: "JSON array", insertText: "[\n  $1\n]", kind: "snippet" },
-  ];
-}
-
-
 function hoverTypeScriptLike(
   request: LspPositionRequest,
   validated: ValidatedInteractionRequest,
@@ -1215,10 +1119,10 @@ function renameDocument(
   };
 }
 
-function formatDocument(
+async function formatDocument(
   config: TracevaneServerConfig,
   request: LspFormattingRequest,
-): LspFormattingResponse {
+): Promise<LspFormattingResponse> {
   const validated = validateInteractionRequest(config, request);
   const options = { tabSize: Math.max(1, Math.floor(request.tabSize ?? 2)), insertSpaces: request.insertSpaces !== false };
   let textEdits: LspWorkspaceTextEdit[] = [];
@@ -1227,7 +1131,7 @@ function formatDocument(
   if (descriptor?.id === "typescript") {
     textEdits = formatTypeScriptLike(validated, options);
   } else if (descriptor?.id === "json") {
-    textEdits = formatJsonLike(validated.content, options);
+    textEdits = formatJsonWithLanguageService(jsonProviderInput(validated, request.version), options);
   } else {
     textEdits = [];
   }
@@ -1244,14 +1148,14 @@ function formatDocument(
   };
 }
 
-function codeActions(
+async function codeActions(
   config: TracevaneServerConfig,
   request: LspCodeActionRequest,
-): LspCodeActionResponse {
+): Promise<LspCodeActionResponse> {
   const validated = validateInteractionRequest(config, request);
   const descriptor = providerForLanguage(validated.language);
   const provider: "json" | "typescript" = descriptor?.id === "typescript" ? "typescript" : "json";
-  const formatting = formatDocument(config, {
+  const formatting = await formatDocument(config, {
     type: "formatting",
     id: request.id ?? null,
     rootId: validated.rootId,
@@ -1368,24 +1272,6 @@ function formatTypeScriptLike(
   } finally {
     languageService.service.dispose();
   }
-}
-
-function formatJsonLike(content: string, options: { tabSize: number; insertSpaces: boolean }): LspWorkspaceTextEdit[] {
-  try {
-    const formatted = `${JSON.stringify(JSON.parse(content), null, options.insertSpaces ? options.tabSize : "\t")}\n`;
-    if (formatted === content) return [];
-    return [{ range: fullContentWorkspaceRange(content), newText: formatted }];
-  } catch {
-    return [];
-  }
-}
-
-function fullContentWorkspaceRange(content: string): LspWorkspaceTextEdit["range"] {
-  const lines = content.split("\n");
-  return {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines.length ? lines[lines.length - 1].length : 0 },
-  };
 }
 
 function textSpanToWorkspaceRange(sourceFile: ts.SourceFile, textSpan: ts.TextSpan): LspWorkspaceTextEdit["range"] {
@@ -1696,14 +1582,22 @@ function relativePathInsideRoot(rootRealPath: string, fileName: string): string 
   return relative;
 }
 
+function jsonProviderInput(validated: ValidatedInteractionRequest, version?: number | null): { uri: string; content: string; version?: number | null } {
+  return {
+    uri: pathToFileUri(validated.absolutePath),
+    content: validated.content,
+    version: version ?? null,
+  };
+}
+
 function unsupportedLspFeatureError(feature: string, language: string): Error {
   return new Error(`Tracevane LSP ${feature} is not supported for ${language || "unknown"} by the current provider registry`);
 }
 
-function diagnoseDocument(
+async function diagnoseDocument(
   config: TracevaneServerConfig,
   request: LspDiagnosticsRequest,
-): LspDiagnosticsResponse {
+): Promise<LspDiagnosticsResponse> {
   const rootId = normalizeRequired(request.rootId, "rootId");
   const targetPath = normalizePath(request.path);
   const content = typeof request.content === "string" ? request.content : "";
@@ -1714,7 +1608,7 @@ function diagnoseDocument(
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
   const provider = providerForLanguage(language);
   if (provider?.id === "json") {
-    return responseFor(request, resolved.root.id, resolved.relativePath, "json", "json", diagnoseJson(content));
+    return responseFor(request, resolved.root.id, resolved.relativePath, "json", "json", await diagnoseJsonWithLanguageService({ uri: pathToFileUri(resolved.absolutePath), content, version: request.version ?? 1 }));
   }
   if (provider?.id === "typescript") {
     return responseFor(
@@ -1748,28 +1642,6 @@ function responseFor(
     diagnostics,
     checkedAt: new Date().toISOString(),
   };
-}
-
-function diagnoseJson(content: string): LspDiagnostic[] {
-  if (!content.trim()) return [];
-  try {
-    JSON.parse(content);
-    return [];
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const offset = extractJsonErrorOffset(message, content);
-    const position = offsetToPosition(content, offset);
-    return [{
-      severity: "error",
-      message,
-      startLine: position.line,
-      startColumn: position.column,
-      endLine: position.line,
-      endColumn: position.column + 1,
-      code: "JSON_PARSE",
-      source: JSON_PROVIDER_SOURCE,
-    }];
-  }
 }
 
 function diagnoseTypeScriptLike(content: string, absolutePath: string, language: string): LspDiagnostic[] {
@@ -1840,29 +1712,6 @@ function scriptKindForLanguage(language: string): ts.ScriptKind {
 
 function sameTsFile(left: string, right: string): boolean {
   return left.replace(/\\/g, "/") === right.replace(/\\/g, "/");
-}
-
-function extractJsonErrorOffset(message: string, content: string): number {
-  const match = /position\s+(\d+)/i.exec(message);
-  if (match) return clampOffset(Number(match[1]), content.length);
-  const lineColumn = /line\s+(\d+)\s+column\s+(\d+)/i.exec(message);
-  if (lineColumn) return positionToOffset(content, Number(lineColumn[1]), Number(lineColumn[2]));
-  return 0;
-}
-
-function offsetToPosition(content: string, offset: number): { line: number; column: number } {
-  const safeOffset = clampOffset(offset, content.length);
-  let line = 1;
-  let column = 1;
-  for (let index = 0; index < safeOffset; index += 1) {
-    if (content.charCodeAt(index) === 10) {
-      line += 1;
-      column = 1;
-    } else {
-      column += 1;
-    }
-  }
-  return { line, column };
 }
 
 function positionToOffset(content: string, line: number, column: number): number {

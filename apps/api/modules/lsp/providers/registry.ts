@@ -23,7 +23,7 @@ export interface TracevaneLspProviderDescriptor {
   capabilities: Partial<Record<TracevaneLspProviderFeature, boolean>>;
 }
 
-export const JSON_PROVIDER_SOURCE = "json-lsp";
+export const JSON_PROVIDER_SOURCE = "vscode-json-languageservice";
 export const TS_PROVIDER_SOURCE = "typescript-lsp";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);

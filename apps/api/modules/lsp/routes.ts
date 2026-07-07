@@ -23,7 +23,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/diagnostics", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspDiagnosticsRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.diagnoseDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.diagnoseDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_diagnostics_failed",
@@ -35,7 +35,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/hover", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspPositionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.hoverDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.hoverDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_hover_failed",
@@ -47,7 +47,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/completion", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspCompletionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.completeDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.completeDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_completion_failed",
@@ -59,7 +59,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/definition", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspPositionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.defineDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.defineDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_definition_failed",
@@ -110,7 +110,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/formatting", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspFormattingRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.formatDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.formatDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_formatting_failed",
@@ -122,7 +122,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/code-actions", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspCodeActionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.codeActions(body));
+      sendJson(res, 200, await routeCtx.services.lsp.codeActions(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_code_actions_failed",
@@ -161,7 +161,7 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
   router.post("/api/lsp/references", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspPositionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.lsp.referenceDocument(body));
+      sendJson(res, 200, await routeCtx.services.lsp.referenceDocument(body));
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_references_failed",
