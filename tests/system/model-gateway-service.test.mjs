@@ -17067,6 +17067,118 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
 });
 
 
+test("model gateway preserves Chat cache controls and annotations through Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-cache-citation-to-anthropic",
+      name: "Chat Cache Citation To Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://chat-cache-citation-to-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-chat-cache-citation-to-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_chat_cache_citation_to_anthropic",
+      type: "message",
+      role: "assistant",
+      model: "claude-test",
+      content: [{ type: "text", text: "accepted" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-test",
+          messages: [{
+            role: "user",
+            content: [{
+              type: "text",
+              text: "Use cited cache context.",
+              cache_control: { type: "ephemeral" },
+              annotations: [{
+                type: "url_citation",
+                url: "https://example.test/context",
+                title: "Context",
+                start_index: 0,
+                end_index: 24,
+              }],
+            }],
+          }, {
+            role: "assistant",
+            content: "Prior cited answer.",
+            annotations: [{
+              type: "file_citation",
+              file_id: "file_123",
+              filename: "prior.md",
+              index: 0,
+            }],
+          }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.content, "accepted");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-cache-citation-to-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-chat-cache-citation-to-anthropic");
+  assert.deepEqual(upstreamCalls[0].body.messages, [{
+    role: "user",
+    content: [{
+      type: "text",
+      text: "Use cited cache context.",
+      cache_control: { type: "ephemeral" },
+      citations: [{
+        type: "web_search_result_location",
+        url: "https://example.test/context",
+        title: "Context",
+        start_index: 0,
+        end_index: 24,
+        start_char_index: 0,
+        end_char_index: 24,
+      }],
+    }],
+  }, {
+    role: "assistant",
+    content: [{
+      type: "text",
+      text: "Prior cited answer.",
+      citations: [{
+        type: "page_location",
+        file_id: "file_123",
+        filename: "prior.md",
+        document_title: "prior.md",
+        index: 0,
+        document_index: 0,
+      }],
+    }],
+  }]);
+});
+
 test("model gateway preserves Chat tool-result cache controls through Anthropic providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

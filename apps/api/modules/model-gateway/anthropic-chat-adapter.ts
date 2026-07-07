@@ -660,7 +660,14 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
 
   const role = message.role === "assistant" ? "assistant" : "user";
   const content = chatMessageContentToAnthropicBlocks(message);
-  return [{ role, content: content.length === 1 && content[0]?.type === "text" ? content[0].text : content }];
+  return [{ role, content: shouldCollapseAnthropicTextContent(content) ? content[0].text : content }];
+}
+
+function shouldCollapseAnthropicTextContent(content: JsonRecord[]): boolean {
+  if (content.length !== 1) return false;
+  const block = content[0];
+  if (!block || block.type !== "text") return false;
+  return Object.keys(block).every((key) => key === "type" || key === "text");
 }
 
 function chatMessageContextToAnthropic(label: string, value: unknown, role = "user"): JsonRecord {
@@ -686,6 +693,7 @@ function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] 
     ...chatReasoningDetailsToAnthropicBlocks(message.reasoning_details),
     ...chatContentToAnthropicBlocks(message.content),
   ];
+  copyChatMessageAnnotationsToFirstAnthropicTextBlock(message, blocks);
   if (Array.isArray(message.tool_calls)) {
     for (const toolCall of message.tool_calls) {
       const mapped = mapChatToolCallToAnthropicToolUse(toolCall);
@@ -728,7 +736,7 @@ function chatToolResultContentToAnthropicContent(content: unknown): string | Jso
       .map(chatContentPartToAnthropicToolResultBlock)
       .filter((block): block is JsonRecord => Boolean(block));
     if (blocks.length !== content.length) return stringifyCompact(content);
-    if (content.every(chatContentPartIsTextLike) && !blocks.some((block) => block.cache_control !== undefined)) {
+    if (content.every(chatContentPartIsTextLike) && blocks.every((block) => shouldCollapseAnthropicTextContent([block]))) {
       return blocks.map((block) => stringOrNull(block.text) || "").join("");
     }
     return blocks;
@@ -754,6 +762,7 @@ function chatContentPartToAnthropicToolResultBlock(part: unknown): JsonRecord | 
     block = text ? { type: "text", text } : null;
   }
   if (block && part.cache_control !== undefined) block.cache_control = part.cache_control;
+  if (block?.type === "text") copyChatAnnotationsToAnthropicTextBlock(part.annotations, block);
   return block;
 }
 
@@ -789,6 +798,7 @@ function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
       const text = chatContentPartToText(part);
       const block: JsonRecord = { type: "text", text: text || chatContentPartFallbackToAnthropicText(part) };
       copyChatCacheControlToAnthropicBlock(part, block);
+      copyChatAnnotationsToAnthropicTextBlock(part.annotations, block);
       blocks.push(block);
       continue;
     }
@@ -817,6 +827,7 @@ function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
       const text = chatContentPartToText(part);
       const block: JsonRecord = { type: "text", text: text || chatContentPartFallbackToAnthropicText(part) };
       copyChatCacheControlToAnthropicBlock(part, block);
+      copyChatAnnotationsToAnthropicTextBlock(part.annotations, block);
       blocks.push(block);
     }
   }
@@ -829,6 +840,23 @@ function chatContentPartFallbackToAnthropicText(part: JsonRecord): string {
 
 function copyChatCacheControlToAnthropicBlock(part: JsonRecord, block: JsonRecord): void {
   if (part.cache_control !== undefined) block.cache_control = part.cache_control;
+}
+
+function copyChatMessageAnnotationsToFirstAnthropicTextBlock(message: JsonRecord, blocks: JsonRecord[]): void {
+  if (!Array.isArray(message.annotations) || !message.annotations.length) return;
+  const textBlock = blocks.find((block) => block.type === "text");
+  if (!textBlock) return;
+  copyChatAnnotationsToAnthropicTextBlock(message.annotations, textBlock);
+}
+
+function copyChatAnnotationsToAnthropicTextBlock(annotations: unknown, block: JsonRecord): void {
+  if (block.type !== "text" || !Array.isArray(annotations) || !annotations.length) return;
+  const citations = annotations.filter(isRecord).map(mapChatAnnotationToAnthropicCitation);
+  if (!citations.length) return;
+  block.citations = [
+    ...(Array.isArray(block.citations) ? block.citations.filter(isRecord) : []),
+    ...citations,
+  ];
 }
 
 function chatFilePartToAnthropicDocument(part: JsonRecord): JsonRecord | null {
