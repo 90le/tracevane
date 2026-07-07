@@ -75,6 +75,16 @@ export function adaptChatCompletionRequestToResponses(
   if (unsupportedToolsText) {
     responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedToolsText }] });
   }
+  const rawToolChoice = request.tool_choice !== undefined
+    ? request.tool_choice
+    : mapLegacyChatFunctionCallToToolChoice(request.function_call);
+  const unsupportedToolChoiceText = chatUnsupportedToolChoiceToResponsesText(rawToolChoice, {
+    tools: request.tools,
+    functions: request.functions,
+  });
+  if (unsupportedToolChoiceText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedToolChoiceText }] });
+  }
 
   const responsesRequest: JsonRecord = {
     model,
@@ -129,10 +139,10 @@ export function adaptChatCompletionRequestToResponses(
   ];
   if (tools.length) responsesRequest.tools = tools;
 
-  const toolChoice = mapChatToolChoiceToResponses(
-    request.tool_choice !== undefined ? request.tool_choice : mapLegacyChatFunctionCallToToolChoice(request.function_call),
-    request.tools,
-  );
+  const toolChoice = mapChatToolChoiceToResponses(rawToolChoice, {
+    tools: request.tools,
+    functions: request.functions,
+  });
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
   if (responsesRequest.parallel_tool_calls === undefined) {
     const parallelToolCalls = mapChatToolChoiceParallelToolUseToResponses(request.tool_choice);
@@ -604,27 +614,35 @@ function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
   return name ? { type: "function", name } : functionCall;
 }
 
-function mapChatToolChoiceToResponses(toolChoice: unknown, tools?: unknown): unknown {
+function mapChatToolChoiceToResponses(
+  toolChoice: unknown,
+  context: { tools?: unknown; functions?: unknown } = {},
+): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
-  if (!isRecord(toolChoice)) return toolChoice;
+  if (!isRecord(toolChoice)) return undefined;
   if (toolChoice.type === "any") return "required";
   if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: toolChoice.type };
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);
-    return name ? { type: "function", name } : toolChoice;
+    return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "function", name } : undefined;
   }
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
-    if (name === "web_search" && chatToolsIncludeWebSearch(tools)) return { type: "web_search_preview" };
-    return name ? { type: "function", name } : toolChoice;
+    if (name === "web_search" && chatToolsIncludeWebSearch(context.tools)) return { type: "web_search_preview" };
+    return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "function", name } : undefined;
   }
   if (toolChoice.type === "custom") {
     const name = stringOrNull(toolChoice.name);
-    return name ? { type: "custom", name } : toolChoice;
+    return name && chatToolChoiceCustomNameAvailable(name, context.tools) ? { type: "custom", name } : undefined;
   }
-  return toolChoice;
+  if (toolChoice.type === "mcp") {
+    const serverLabel = stringOrNull(toolChoice.server_label);
+    const name = stringOrNull(toolChoice.name);
+    return serverLabel && name ? { type: "mcp", server_label: serverLabel, name } : undefined;
+  }
+  return undefined;
 }
 
 function chatUnsupportedToolsToResponsesText(tools: unknown): string {
@@ -634,9 +652,48 @@ function chatUnsupportedToolsToResponsesText(tools: unknown): string {
   return `OpenAI Chat unsupported tools for Responses: ${stringifyCompact(unsupported)}`;
 }
 
+function chatUnsupportedToolChoiceToResponsesText(
+  toolChoice: unknown,
+  context: { tools?: unknown; functions?: unknown } = {},
+): string {
+  if (toolChoice === undefined) return "";
+  if (mapChatToolChoiceToResponses(toolChoice, context) !== undefined) return "";
+  return `OpenAI Chat unsupported tool_choice for Responses: ${stringifyCompact(toolChoice)}`;
+}
+
 function chatToolsIncludeWebSearch(tools: unknown): boolean {
   return Array.isArray(tools)
     && tools.some((tool) => isRecord(tool) && (isOpenAIWebSearchToolType(tool.type) || isAnthropicWebSearchTool(tool)));
+}
+
+function chatToolChoiceFunctionNameAvailable(
+  name: string,
+  context: { tools?: unknown; functions?: unknown },
+): boolean {
+  return chatToolsIncludeFunction(context.tools, name) || chatFunctionsIncludeName(context.functions, name);
+}
+
+function chatToolsIncludeFunction(tools: unknown, name: string): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => {
+      if (!isRecord(tool) || tool.type !== "function") return false;
+      const fn = isRecord(tool.function) ? tool.function : null;
+      return stringOrNull(fn?.name) === name;
+    });
+}
+
+function chatFunctionsIncludeName(functions: unknown, name: string): boolean {
+  return Array.isArray(functions)
+    && functions.some((fn) => isRecord(fn) && stringOrNull(fn.name) === name);
+}
+
+function chatToolChoiceCustomNameAvailable(name: string, tools: unknown): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => {
+      if (!isRecord(tool) || tool.type !== "custom") return false;
+      const source = isRecord(tool.function) ? tool.function : tool;
+      return stringOrNull(source.name) === name;
+    });
 }
 
 function isOpenAIWebSearchToolType(type: unknown): boolean {

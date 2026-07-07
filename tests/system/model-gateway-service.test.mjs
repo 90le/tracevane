@@ -11432,12 +11432,26 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
         },
       });
       assert.equal(webSearchResponse.status, 200, webSearchResponse.body);
+
+      const unsupportedChoiceResponse = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{ role: "user", content: "Use the native-only tool if possible." }],
+          tools: [
+            { type: "unsupported_native_tool", name: "bad_tool", config: { mode: "x" } },
+          ],
+          tool_choice: { type: "tool", name: "bad_tool" },
+        },
+      });
+      assert.equal(unsupportedChoiceResponse.status, 200, unsupportedChoiceResponse.body);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", name: "lookup" });
@@ -11460,6 +11474,26 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
       text: 'OpenAI Chat unsupported tools for Responses: [{"type":"unsupported_native_tool","name":"bad_tool","config":{"mode":"x"}}]',
     }],
   });
+  assert.equal(upstreamCalls[3].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[3].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
+  assert.equal(upstreamCalls[3].body.tools, undefined);
+  assert.equal(upstreamCalls[3].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[3].body.input.slice(-2), [
+    {
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: 'OpenAI Chat unsupported tools for Responses: [{"type":"unsupported_native_tool","name":"bad_tool","config":{"mode":"x"}}]',
+      }],
+    },
+    {
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: 'OpenAI Chat unsupported tool_choice for Responses: {"type":"tool","name":"bad_tool"}',
+      }],
+    },
+  ]);
 });
 
 test("model gateway adapts legacy Chat functions through Responses and Anthropic providers", async () => {
