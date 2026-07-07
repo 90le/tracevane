@@ -466,6 +466,7 @@ function ensureFunctionCallAdded(tool: FunctionCallState, res: http.ServerRespon
 function finalizeResponse(state: StreamingState, res: http.ServerResponse): void {
   if (state.completed) return;
   ensureResponseStarted(state, res);
+  flushPendingFunctionCallDeltasAsText(state, res);
   flushPendingText(state, res);
   const output: JsonRecord[] = [];
 
@@ -568,6 +569,25 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
   });
   res.write("data: [DONE]\n\n");
   state.completed = true;
+}
+
+function flushPendingFunctionCallDeltasAsText(state: StreamingState, res: http.ServerResponse): void {
+  const pendingText = [...state.pendingFunctionCallDeltas.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, pending]) => pendingFunctionCallDeltaToText(index, pending))
+    .filter(Boolean)
+    .join("\n");
+  state.pendingFunctionCallDeltas.clear();
+  if (pendingText) pushTextDelta(pendingText, state, res);
+}
+
+function pendingFunctionCallDeltaToText(index: number, pending: PendingFunctionCallDelta): string {
+  if (!pending.id && !pending.name && !pending.arguments) return "";
+  return `OpenAI Chat streaming orphan tool_call delta for Responses at index ${index}: ${stringifyCompact({
+    id: pending.id,
+    name: pending.name,
+    arguments: pending.arguments,
+  })}`;
 }
 
 function failResponse(
@@ -872,6 +892,14 @@ function stringOrNull(value: unknown): string | null {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringifyCompact(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function isRecord(value: unknown): value is JsonRecord {

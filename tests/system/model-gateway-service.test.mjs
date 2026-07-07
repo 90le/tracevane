@@ -16716,8 +16716,18 @@ test("model gateway buffers streaming chat tool arguments until codex tool ident
       assert.equal(orphan.status, 200);
       const orphanEvents = parseSseEvents(orphan.body);
       assert.equal(JSON.stringify(orphanEvents).includes("function_call"), false);
-      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), false);
-      assert.deepEqual(orphanEvents.find((item) => item.event === "response.completed").data.response.output, []);
+      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), true);
+      assert.deepEqual(orphanEvents.find((item) => item.event === "response.completed").data.response.output, [{
+        id: "chatcmpl_orphan_tool_args_msg",
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          text: 'OpenAI Chat streaming orphan tool_call delta for Responses at index 0: {"arguments":"call call call"}',
+          annotations: [],
+        }],
+      }]);
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -16817,8 +16827,15 @@ test("model gateway buffers streaming chat tool arguments until anthropic tool i
       });
       assert.equal(orphan.status, 200);
       const orphanEvents = parseSseEvents(orphan.body);
-      assert.equal(orphanEvents.some((item) => item.event === "content_block_start"), false);
-      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), false);
+      const orphanBlockStart = orphanEvents.find((item) => item.event === "content_block_start");
+      assert.deepEqual(orphanBlockStart.data.content_block, { type: "text", text: "" });
+      assert.deepEqual(
+        orphanEvents
+          .filter((item) => item.event === "content_block_delta")
+          .map((item) => item.data.delta.text),
+        ['OpenAI Chat streaming orphan tool_call delta for Anthropic Messages at index 0: {"arguments":"call call call"}'],
+      );
+      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), true);
       assert.equal(orphanEvents.find((item) => item.event === "message_delta").data.delta.stop_reason, "end_turn");
     });
   } finally {

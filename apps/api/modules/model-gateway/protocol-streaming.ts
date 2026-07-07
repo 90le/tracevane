@@ -1360,15 +1360,19 @@ function finalizeAnthropicFromChat(
     model: string | null;
     stopReason: string;
     stopSequence?: string | null;
+    text: string;
     textBlockIndex: number | null;
     textBlockStopped: boolean;
+    nextContentIndex: number;
     tools: Map<number, ToolStreamBlock>;
+    pendingToolDeltas: Map<number, PendingToolDelta>;
     usage: JsonRecord;
   },
   res: http.ServerResponse,
 ): void {
   if (state.completed) return;
   ensureAnthropicMessageStart(state, res);
+  flushPendingAnthropicToolDeltasAsText(state, res);
   if (state.textBlockIndex !== null && !state.textBlockStopped) {
     writeSseEvent(res, "content_block_stop", {
       type: "content_block_stop",
@@ -1400,6 +1404,33 @@ function finalizeAnthropicFromChat(
   });
   writeSseEvent(res, "message_stop", { type: "message_stop" });
   state.completed = true;
+}
+
+function flushPendingAnthropicToolDeltasAsText(
+  state: {
+    textBlockIndex: number | null;
+    nextContentIndex: number;
+    text: string;
+    pendingToolDeltas: Map<number, PendingToolDelta>;
+  },
+  res: http.ServerResponse,
+): void {
+  const pendingText = [...state.pendingToolDeltas.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, pending]) => pendingToolDeltaToText(index, pending))
+    .filter(Boolean)
+    .join("\n");
+  state.pendingToolDeltas.clear();
+  if (pendingText) pushAnthropicTextDelta(state, res, pendingText);
+}
+
+function pendingToolDeltaToText(index: number, pending: PendingToolDelta): string {
+  if (!pending.id && !pending.name && !pending.arguments) return "";
+  return `OpenAI Chat streaming orphan tool_call delta for Anthropic Messages at index ${index}: ${stringifyCompact({
+    id: pending.id,
+    name: pending.name,
+    arguments: pending.arguments,
+  })}`;
 }
 
 function failAnthropicStream(
@@ -2665,6 +2696,14 @@ function stringOrNull(value: unknown): string | null {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringifyCompact(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function isRecord(value: unknown): value is JsonRecord {
