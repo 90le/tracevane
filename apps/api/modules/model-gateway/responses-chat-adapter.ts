@@ -82,9 +82,10 @@ export function adaptChatCompletionRequestToResponses(
   // Do not forward Chat/Claude metadata through adapter-generated Responses
   // requests. The Codex account Responses endpoint rejects it as an unsupported
   // parameter, which breaks Claude Code CLI compatibility.
-  // Also strip Chat-only sampling/logprob controls rejected by the Codex
-  // account Responses endpoint: frequency_penalty, presence_penalty, seed and
-  // top_logprobs.
+  // Also strip Chat-only sampling controls rejected by the Codex account
+  // Responses endpoint: frequency_penalty, presence_penalty and seed. Keep
+  // top_logprobs for generic Responses providers because the Responses API
+  // supports it; Codex account request normalization strips it later.
   copyScalarFields(request, responsesRequest, [
     "background",
     "context_management",
@@ -101,6 +102,7 @@ export function adaptChatCompletionRequestToResponses(
     "store",
     "stream_options",
     "temperature",
+    "top_logprobs",
     "top_p",
     "truncation",
     "user",

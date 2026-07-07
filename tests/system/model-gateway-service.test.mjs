@@ -12036,6 +12036,7 @@ test("model gateway preserves supported responses controls and strips rejected c
     safety_identifier: "user-hash-123",
     store: false,
     stream_options: { include_usage: true },
+    top_logprobs: 3,
     truncation: "auto",
   });
   assert.equal("metadata" in upstreamCalls[0].body, false);
@@ -12043,7 +12044,6 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
-  assert.equal("top_logprobs" in upstreamCalls[0].body, false);
 });
 
 test("model gateway preserves Responses cache and safety controls for Chat providers", async () => {
