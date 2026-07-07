@@ -845,15 +845,42 @@ function copyNumericField(source: JsonRecord, target: JsonRecord, field: string)
   if (value !== null) target[field] = value;
 }
 
-function chatToolOutputToResponsesOutput(content: unknown): string {
+function chatToolOutputToResponsesOutput(content: unknown): string | JsonRecord[] {
   if (typeof content === "string") return content;
   if (content === null || content === undefined) return "";
   if (Array.isArray(content)) {
+    const outputParts = content
+      .map(chatToolOutputPartToResponsesOutputPart)
+      .filter((part): part is JsonRecord => Boolean(part));
+    if (outputParts.length === content.length) return outputParts;
     const text = content.map(chatContentPartToText).filter(Boolean).join("");
     return content.every(chatContentPartIsTextLike) ? text : stringifyCompact(content);
   }
+  const outputPart = chatToolOutputPartToResponsesOutputPart(content);
+  if (outputPart) return [outputPart];
   const text = chatContentPartToText(content);
   return text || stringifyCompact(content);
+}
+
+function chatToolOutputPartToResponsesOutputPart(part: unknown): JsonRecord | null {
+  if (typeof part === "string") return part ? { type: "input_text", text: part } : null;
+  if (!isRecord(part)) return null;
+  const type = stringOrNull(part.type);
+  if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
+    const text = chatContentPartToText(part);
+    return text ? { type: "input_text", text } : null;
+  }
+  if (type === "image_url" && isRecord(part.image_url)) {
+    const imageUrl = stringOrNull(part.image_url.url);
+    if (!imageUrl) return null;
+    const imagePart: JsonRecord = { type: "input_image", image_url: imageUrl };
+    const detail = stringOrNull(part.image_url.detail) || stringOrNull(part.detail);
+    if (detail) imagePart.detail = detail;
+    return imagePart;
+  }
+  if (type === "input_image") return chatInputImagePartToResponsesInputImage(part);
+  if (type === "file" || type === "input_file") return chatFilePartToResponsesInputFile(part);
+  return null;
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {

@@ -40,6 +40,7 @@ export interface AnthropicChatRequestAdapterOptions {
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
   preserveServiceTier?: boolean;
+  preserveToolResultContent?: boolean;
   preserveToolResultError?: boolean;
 }
 
@@ -904,7 +905,9 @@ function mapAnthropicUserBlocksToChatMessages(
     const chatMessage: JsonRecord = {
       role: "tool",
       tool_call_id: toolCallId,
-      content: anthropicToolResultContentToChatContent(block.content),
+      content: options.preserveToolResultContent
+        ? anthropicToolResultContentToChatContent(block.content, { preserveStructuredContent: true })
+        : anthropicToolResultContentToChatContent(block.content),
     };
     if (options.preserveToolResultError && block.is_error === true) chatMessage.is_error = true;
     chatMessages.push(chatMessage);
@@ -980,9 +983,13 @@ function anthropicImageSourceToChatImageUrl(source: unknown): string | null {
   return null;
 }
 
-function anthropicToolResultContentToChatContent(content: unknown): string {
+function anthropicToolResultContentToChatContent(
+  content: unknown,
+  options: { preserveStructuredContent?: boolean } = {},
+): unknown {
   if (typeof content === "string") return content;
   if (content === null || content === undefined) return "";
+  if (options.preserveStructuredContent && Array.isArray(content)) return anthropicBlocksToChatContent(content.filter(isRecord));
   if (Array.isArray(content)) {
     const text = content.map(anthropicContentPartToText).filter(Boolean).join("");
     return content.every(anthropicContentPartIsTextLike) ? text : stringifyCompact(content);

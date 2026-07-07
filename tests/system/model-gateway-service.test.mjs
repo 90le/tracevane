@@ -13878,14 +13878,20 @@ test("model gateway preserves structured tool result content through OpenAI Resp
   assert.deepEqual(chatResponsesBody.input[2], {
     type: "function_call_output",
     call_id: "call_lookup",
-    output: JSON.stringify(chatToolContent),
+    output: [
+      { type: "input_text", text: "weather:" },
+      { type: "input_image", image_url: "data:image/png;base64,abc123" },
+    ],
   });
 
   const anthropicResponsesBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(anthropicResponsesBody.input[2], {
     type: "function_call_output",
     call_id: "call_lookup",
-    output: JSON.stringify(anthropicToolContent),
+    output: [
+      { type: "input_text", text: "weather:" },
+      { type: "input_image", image_url: "https://example.test/weather.png" },
+    ],
   });
 });
 
