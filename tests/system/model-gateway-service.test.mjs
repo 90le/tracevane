@@ -19463,6 +19463,10 @@ test("model gateway routes expose status/providers and forward chat passthrough"
       baseUrl: "https://upstream.example.test/v1",
       apiFormat: "openai_chat",
       authStrategy: "bearer",
+      models: {
+        defaultModel: "route-test-model",
+        models: [{ id: "route-test-model", label: "Route Test Model", aliases: ["route-alias"] }],
+      },
     },
     secret: {
       apiKey: "sk-route-secret-abcdef",
@@ -19520,6 +19524,34 @@ test("model gateway routes expose status/providers and forward chat passthrough"
       assert.equal(providers.body.providers[0].id, "route-chat");
       assert.equal(providers.body.providers[0].secret.masked, "sk-r...cdef");
       assert.ok(!JSON.stringify(providers.body).includes("sk-route-secret-abcdef"));
+
+      const models = await requestJson(`${baseUrl}/v1/models`);
+      assert.equal(models.status, 200);
+      assert.equal(models.body.object, "list");
+      assert.equal(models.body.data[0].id, "route-test-model");
+
+      const openAiModel = await requestJson(`${baseUrl}/v1/models/route-alias`);
+      assert.equal(openAiModel.status, 200);
+      assert.equal(openAiModel.body.id, "route-test-model");
+      assert.equal(openAiModel.body.object, "model");
+
+      const anthropicModels = await requestJson(`${baseUrl}/claude/v1/models`, {
+        headers: { "anthropic-version": "2023-06-01", "x-tracevane-app-scope": "claude-code" },
+      });
+      assert.equal(anthropicModels.status, 200);
+      assert.equal(anthropicModels.body.data[0].id, "route-test-model");
+      assert.equal(anthropicModels.body.data[0].type, "model");
+      assert.equal(anthropicModels.body.data[0].display_name, "Route Test Model");
+      assert.equal(typeof anthropicModels.body.data[0].created_at, "string");
+      assert.equal(anthropicModels.body.first_id, "route-test-model");
+      assert.equal(anthropicModels.body.last_id, "route-test-model");
+      assert.equal(anthropicModels.body.has_more, false);
+
+      const anthropicModel = await requestJson(`${baseUrl}/v1/models/route-test-model`, {
+        headers: { "anthropic-version": "2023-06-01", "x-tracevane-app-scope": "claude-code" },
+      });
+      assert.equal(anthropicModel.status, 200);
+      assert.deepEqual(anthropicModel.body, anthropicModels.body.data[0]);
 
       const providerTest = await requestJson(`${baseUrl}/api/model-gateway/providers/route-chat/test`, {
         method: "POST",
@@ -19695,7 +19727,6 @@ test("model gateway returns structured unsupported for unimplemented OpenAI endp
     { path: "/v1/chat/completions/chatcmpl_1", method: "POST", body: { metadata: { trace: "test" } } },
     { path: "/v1/chat/completions/chatcmpl_1", method: "DELETE" },
     { path: "/v1/chat/completions/chatcmpl_1/messages", method: "GET" },
-    { path: "/v1/models/gpt-5.5", method: "GET" },
     { path: "/v1/models/ft:gpt-5.5:org:suffix:model_1", method: "DELETE" },
     { path: "/v1/containers", method: "GET" },
     { path: "/v1/containers", method: "POST", body: { name: "test container" } },

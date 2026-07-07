@@ -263,13 +263,12 @@ const OPENAI_UNSUPPORTED_ENDPOINTS: ModelGatewayUnsupportedEndpointDefinition[] 
     httpRoutes: [{ method: "GET", path: "/v1/chat/completions/:completionId/messages", endpoint: "/v1/chat/completions/{completion_id}/messages" }],
   },
   {
-    method: "GET/DELETE",
+    method: "DELETE",
     path: "/v1/models/{model}",
     endpoint: "/v1/models/{model}",
     code: MODEL_GATEWAY_ENDPOINT_UNSUPPORTED_CODE,
     reason: OPENAI_ENDPOINT_UNSUPPORTED_REASON,
     httpRoutes: [
-      { method: "GET", path: "/v1/models/:model", endpoint: "/v1/models/{model}" },
       { method: "DELETE", path: "/v1/models/:model", endpoint: "/v1/models/{model}" },
     ],
   },

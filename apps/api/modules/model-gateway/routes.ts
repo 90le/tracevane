@@ -26,6 +26,14 @@ import {
   modelGatewayEndpointUnsupportedPayload,
 } from "./unsupported-endpoints.js";
 
+function requestWantsAnthropicModelShape(req: { headers?: Record<string, string | string[] | undefined>; url?: string }): boolean {
+  const headers = req.headers || {};
+  const scope = String(headers["x-tracevane-app-scope"] || headers["X-Tracevane-App-Scope"] || "").toLowerCase();
+  return scope === "claude-code"
+    || Boolean(headers["anthropic-version"] || headers["Anthropic-Version"])
+    || String(req.url || "").startsWith("/claude/");
+}
+
 function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isModelGatewayServiceError(error)) {
     const shape = error.toShape();
@@ -394,7 +402,35 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
 
   router.get("/v1/models", (req, res, routeCtx) => {
     try {
-      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayModels(req));
+      sendJson(res, 200, requestWantsAnthropicModelShape(req)
+        ? routeCtx.services.modelGateway.listGatewayAnthropicModels(req)
+        : routeCtx.services.modelGateway.listGatewayModels(req));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/v1/models/:modelId", (req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, requestWantsAnthropicModelShape(req)
+        ? routeCtx.services.modelGateway.getGatewayAnthropicModel(req, params.modelId)
+        : routeCtx.services.modelGateway.getGatewayModel(req, params.modelId));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/claude/v1/models", (req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.listGatewayAnthropicModels(req));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.get("/claude/v1/models/:modelId", (req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getGatewayAnthropicModel(req, params.modelId));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

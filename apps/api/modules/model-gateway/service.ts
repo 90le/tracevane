@@ -5823,6 +5823,20 @@ function modelGatewayModelSupportsAgentConnection(model: Pick<ModelGatewayModelL
     || supported.has("anthropic_messages");
 }
 
+interface AnthropicModelInfo {
+  id: string;
+  type: "model";
+  display_name: string;
+  created_at: string;
+}
+
+interface AnthropicModelListResponse {
+  data: AnthropicModelInfo[];
+  first_id: string | null;
+  has_more: boolean;
+  last_id: string | null;
+}
+
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
@@ -5836,6 +5850,9 @@ export interface ModelGatewayService {
   listAppConnectionBackups(appId: ModelGatewayAppConnectionId): ModelGatewayAppConnectionBackupsResponse;
   readAppConnectionBackup(appId: ModelGatewayAppConnectionId, backupId: string): ModelGatewayAppConnectionBackupContentResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
+  getGatewayModel(req: http.IncomingMessage | undefined, modelId: string): ModelGatewayModelListItem;
+  listGatewayAnthropicModels(req?: http.IncomingMessage): AnthropicModelListResponse;
+  getGatewayAnthropicModel(req: http.IncomingMessage | undefined, modelId: string): AnthropicModelInfo;
   getRuntime(): ModelGatewayRuntimeResponse;
   getUsageLedger(): ModelGatewayUsageLedgerResponse;
   getDaemonService(): Promise<ModelGatewayDaemonServiceResponse>;
@@ -7739,7 +7756,7 @@ export function createModelGatewayService(
       capabilities: {
         status: ["/gateway/status", "/api/model-gateway/status"],
         providers: ["/gateway/providers", "/api/model-gateway/providers"],
-        models: ["/v1/models"],
+        models: ["/v1/models", "/v1/models/{model}", "/claude/v1/models", "/claude/v1/models/{model}"],
         openaiChatCompletions: ROUTES.openai_chat_completions.paths,
         openaiResponses: ROUTES.openai_responses.paths,
         openaiResponsesCompact: ROUTES.openai_responses_compact.paths,
@@ -8898,6 +8915,55 @@ export function createModelGatewayService(
       data,
       models: data,
     };
+  }
+
+  function getGatewayModel(req: http.IncomingMessage | undefined, modelId: string): ModelGatewayModelListItem {
+    const normalized = normalizeModelLookupKey(modelId);
+    const model = listGatewayModels(req).data.find((item) => (
+      normalizeModelLookupKey(item.id) === normalized
+      || item.aliases.some((alias) => normalizeModelLookupKey(alias) === normalized)
+    ));
+    if (!model) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_model_not_found",
+        `Model Gateway model '${modelId}' was not found.`,
+        404,
+      );
+    }
+    return model;
+  }
+
+  function toAnthropicModelInfo(model: ModelGatewayModelListItem): AnthropicModelInfo {
+    return {
+      id: model.id,
+      type: "model",
+      display_name: model.display_name || model.label || model.id,
+      created_at: new Date((model.created || 0) * 1000).toISOString(),
+    };
+  }
+
+  function listGatewayAnthropicModels(req?: http.IncomingMessage): AnthropicModelListResponse {
+    const data = listGatewayModels(req).data
+      .filter((model) => model.supportedGatewayRoutes?.includes("anthropic_messages"))
+      .map(toAnthropicModelInfo);
+    return {
+      data,
+      first_id: data[0]?.id || null,
+      has_more: false,
+      last_id: data[data.length - 1]?.id || null,
+    };
+  }
+
+  function getGatewayAnthropicModel(req: http.IncomingMessage | undefined, modelId: string): AnthropicModelInfo {
+    const model = getGatewayModel(req, modelId);
+    if (!model.supportedGatewayRoutes?.includes("anthropic_messages")) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_model_not_found",
+        `Model Gateway model '${modelId}' is not available through the Anthropic Messages route.`,
+        404,
+      );
+    }
+    return toAnthropicModelInfo(model);
   }
 
   function readGatewayClientSecret(): string | null {
@@ -11895,6 +11961,9 @@ export function createModelGatewayService(
     listAppConnectionBackups,
     readAppConnectionBackup,
     listGatewayModels,
+    getGatewayModel,
+    listGatewayAnthropicModels,
+    getGatewayAnthropicModel,
     getRuntime,
     getUsageLedger,
     getDaemonService,
