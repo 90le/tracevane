@@ -217,6 +217,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   if (!options.preserveMcpServers) {
     messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers, request.tools));
   }
+  const unsupportedToolContextText = anthropicUnsupportedToolContextToChatText(request.tools);
+  if (unsupportedToolContextText) messages.push({ role: "user", content: unsupportedToolContextText });
   const unsupportedRequestContextText = anthropicUnsupportedRequestContextToChatText(request, options);
   if (unsupportedRequestContextText) messages.push({ role: "user", content: unsupportedRequestContextText });
   const unsupportedOutputFormatText = anthropicUnsupportedOutputFormatToChatText(request.output_config);
@@ -1396,6 +1398,46 @@ function anthropicUnsupportedOutputFormatToChatText(outputConfig: unknown): stri
   if (!isRecord(outputConfig) || outputConfig.format === undefined) return "";
   if (mapAnthropicOutputConfigToChatResponseFormat(outputConfig) !== undefined) return "";
   return `Anthropic Messages unsupported output_config.format for Chat: ${stringifyCompact(outputConfig.format)}`;
+}
+
+function anthropicUnsupportedToolContextToChatText(tools: unknown): string {
+  if (!Array.isArray(tools)) return "";
+  const notes = tools.flatMap((tool, index): string[] => {
+    if (!isRecord(tool)) return [];
+    if (stringOrNull(tool.type) === "mcp_toolset") return [];
+    const supported = anthropicSupportedToolFields(tool);
+    const fields = Object.keys(tool)
+      .filter((field) => !supported.has(field))
+      .filter((field) => !isSensitiveAnthropicToolField(field))
+      .map((field) => `${field}=${stringifyCompact(tool[field])}`);
+    if (!fields.length) return [];
+    const name = stringOrNull(tool.name) || `tools[${index}]`;
+    return [`${name} ${fields.join(" ")}`];
+  });
+  return notes.length
+    ? `Anthropic Messages tool fields preserved for Chat adapters: ${notes.join("; ")}`
+    : "";
+}
+
+function anthropicSupportedToolFields(tool: JsonRecord): Set<string> {
+  if (isAnthropicWebSearchTool(tool)) {
+    return new Set([
+      "type",
+      "name",
+      "allowed_callers",
+      "allowed_domains",
+      "blocked_domains",
+      "defer_loading",
+      "max_uses",
+      "strict",
+      "user_location",
+    ]);
+  }
+  return new Set(["name", "description", "input_schema"]);
+}
+
+function isSensitiveAnthropicToolField(field: string): boolean {
+  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
 }
 
 function anthropicUnsupportedRequestContextToChatText(

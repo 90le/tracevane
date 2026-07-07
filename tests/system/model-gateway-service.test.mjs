@@ -9881,6 +9881,96 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
   });
 });
 
+test("model gateway preserves Anthropic-only tool fields through Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-responses-tool-fields",
+      name: "Anthropic Responses Tool Fields",
+      appScopes: ["claude-code"],
+      baseUrl: "https://responses-tool-fields.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-tool-fields-secret" },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_tool_fields",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Tool fields preserved." }],
+      }],
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 128,
+          messages: [{ role: "user", content: "call lookup if needed" }],
+          tools: [{
+            name: "lookup",
+            description: "Lookup docs",
+            input_schema: { type: "object", properties: { query: { type: "string" } } },
+            input_examples: [{ query: "docs" }],
+            cache_control: { type: "ephemeral" },
+            api_key: "tool-key-should-not-leak",
+          }],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.deepEqual(response.body.content, [{ type: "text", text: "Tool fields preserved." }]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://responses-tool-fields.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-tool-fields-secret");
+  assert.deepEqual(upstreamCalls[0].body.tools, [{
+    type: "function",
+    name: "lookup",
+    description: "Lookup docs",
+    parameters: { type: "object", properties: { query: { type: "string" } } },
+  }]);
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "call lookup if needed" }] },
+    {
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: 'Anthropic Messages tool fields preserved for Chat adapters: lookup input_examples=[{"query":"docs"}] cache_control={"type":"ephemeral"}',
+      }],
+    },
+  ]);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("tool-key-should-not-leak"), false);
+});
+
 test("model gateway maps Anthropic MCP toolsets and forced tool choice to Responses MCP", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -13486,9 +13576,13 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             name: "lookup",
             description: "Lookup docs",
             input_schema: { type: "object", properties: { query: { type: "string" } } },
+            input_examples: [{ query: "docs" }],
+            cache_control: { type: "ephemeral" },
+            authorization_token: "tool-token-should-not-leak",
           }, {
             type: "web_search_20250305",
             name: "web_search",
+            input_examples: [{ query: "latest docs" }],
           }],
           tool_choice: { type: "tool", name: "web_search", disable_parallel_tool_use: true },
           output_config: {
@@ -13644,6 +13738,10 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         role: "user",
         content: "continue after tool result",
       },
+      {
+        role: "user",
+        content: 'Anthropic Messages tool fields preserved for Chat adapters: lookup input_examples=[{"query":"docs"}] cache_control={"type":"ephemeral"}; web_search input_examples=[{"query":"latest docs"}]',
+      },
     ],
     stream: false,
     max_tokens: 128,
@@ -13670,6 +13768,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     tool_choice: { type: "web_search_preview" },
     parallel_tool_calls: false,
   });
+  assert.equal(JSON.stringify(JSON.parse(upstreamCalls[0].body)).includes("tool-token-should-not-leak"), false);
   assert.equal(upstreamCalls[1].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-anthropic-chat-secret");
   assert.equal(upstreamCalls[1].anthropicVersion, null);
