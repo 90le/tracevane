@@ -751,23 +751,29 @@ function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
     }
     if (!isRecord(part)) continue;
     const type = stringOrNull(part.type);
-    if (type === "text" || type === "input_text") {
-      const text = stringOrNull(part.text);
-      if (text) blocks.push({ type: "text", text });
+    if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
+      const text = chatContentPartToText(part);
+      blocks.push({ type: "text", text: text || chatContentPartFallbackToAnthropicText(part) });
       continue;
     }
-    if (type === "image_url" && isRecord(part.image_url)) {
-      const imageUrl = stringOrNull(part.image_url.url);
+    if (type === "image_url") {
+      const imageUrl = isRecord(part.image_url) ? stringOrNull(part.image_url.url) : null;
       const image = imageUrlToAnthropicBlock(imageUrl);
-      if (image) blocks.push(image);
+      blocks.push(image || { type: "text", text: chatContentPartFallbackToAnthropicText(part) });
       continue;
     }
     if (type === "file" || type === "input_file") {
       const document = chatFilePartToAnthropicDocument(part);
-      if (document) blocks.push(document);
+      blocks.push(document || { type: "text", text: chatContentPartFallbackToAnthropicText(part) });
+      continue;
     }
+    if (type) blocks.push({ type: "text", text: chatContentPartFallbackToAnthropicText(part) });
   }
   return blocks;
+}
+
+function chatContentPartFallbackToAnthropicText(part: JsonRecord): string {
+  return `OpenAI Chat unrecognized content part for Anthropic Messages: ${stringifyCompact(part)}`;
 }
 
 function chatFilePartToAnthropicDocument(part: JsonRecord): JsonRecord | null {

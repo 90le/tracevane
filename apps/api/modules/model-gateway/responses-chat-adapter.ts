@@ -489,38 +489,47 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
     }
     if (!isRecord(part)) continue;
     const type = stringOrNull(part.type);
-    if (type === "image_url" && role !== "assistant" && isRecord(part.image_url)) {
-      const imageUrl = stringOrNull(part.image_url.url);
+    if (type === "image_url" && role !== "assistant") {
+      const image = isRecord(part.image_url) ? part.image_url : null;
+      const imageUrl = image ? stringOrNull(image.url) : null;
       if (imageUrl) {
         const imagePart: JsonRecord = { type: "input_image", image_url: imageUrl };
-        const detail = stringOrNull(part.image_url.detail) || stringOrNull(part.detail);
+        const detail = stringOrNull(image?.detail) || stringOrNull(part.detail);
         if (detail) imagePart.detail = detail;
         parts.push(imagePart);
+      } else {
+        parts.push(chatContentPartFallbackToResponsesText(part, textType));
       }
       continue;
     }
     if (type === "input_image" && role !== "assistant") {
       const imagePart = chatInputImagePartToResponsesInputImage(part);
-      if (imagePart) parts.push(imagePart);
+      parts.push(imagePart || chatContentPartFallbackToResponsesText(part, textType));
       continue;
     }
     if ((type === "file" || type === "input_file") && role !== "assistant") {
       const filePart = chatFilePartToResponsesInputFile(part);
-      if (filePart) parts.push(filePart);
+      parts.push(filePart || chatContentPartFallbackToResponsesText(part, textType));
       continue;
     }
     if (type === "refusal" && role === "assistant") {
       const refusal = stringOrNull(part.refusal) || stringOrNull(part.text);
       if (refusal) parts.push({ type: "refusal", refusal });
+      else parts.push(chatContentPartFallbackToResponsesText(part, textType));
       continue;
     }
-    const text = stringOrNull(part.text)
-      || stringOrNull(part.input_text)
-      || stringOrNull(part.output_text)
-      || stringOrNull(part.refusal);
+    const text = chatContentPartToText(part);
     if (text) parts.push({ type: textType, text });
+    else if (type) parts.push(chatContentPartFallbackToResponsesText(part, textType));
   }
   return parts;
+}
+
+function chatContentPartFallbackToResponsesText(part: JsonRecord, textType: string): JsonRecord {
+  return {
+    type: textType,
+    text: `OpenAI Chat unrecognized content part for Responses: ${stringifyCompact(part)}`,
+  };
 }
 
 function chatInputImagePartToResponsesInputImage(part: JsonRecord): JsonRecord | null {
