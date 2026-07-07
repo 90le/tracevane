@@ -11767,6 +11767,156 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
   ]);
 });
 
+test("model gateway preserves structured tool result content through OpenAI Responses adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "structured-tool-results",
+      name: "Structured Tool Results",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://structured-tool-results.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-structured-tool-results-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: `resp_structured_tool_${upstreamCalls.length}`,
+      object: "response",
+      created_at: 1_710_000_112,
+      status: "completed",
+      model: "gpt-5.4",
+      output: [{
+        id: `msg_structured_tool_${upstreamCalls.length}`,
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{ type: "output_text", text: "accepted" }],
+      }],
+      usage: {
+        input_tokens: 3,
+        output_tokens: 1,
+        total_tokens: 4,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const chatToolContent = [
+    { type: "text", text: "weather:" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,abc123" } },
+  ];
+  const anthropicToolContent = [
+    { type: "text", text: "weather:" },
+    { type: "image", source: { type: "url", url: "https://example.test/weather.png" } },
+  ];
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{
+            role: "user",
+            content: "Call lookup.",
+          }, {
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: "call_lookup",
+              type: "function",
+              function: {
+                name: "lookup",
+                arguments: "{\"query\":\"weather\"}",
+              },
+            }],
+          }, {
+            role: "tool",
+            tool_call_id: "call_lookup",
+            content: chatToolContent,
+          }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.content, "accepted");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          messages: [{
+            role: "user",
+            content: "Call lookup.",
+          }, {
+            role: "assistant",
+            content: [{
+              type: "tool_use",
+              id: "call_lookup",
+              name: "lookup",
+              input: { query: "weather" },
+            }],
+          }, {
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: "call_lookup",
+              content: anthropicToolContent,
+            }],
+          }],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      assert.equal(anthropic.body.content[0].text, "accepted");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://structured-tool-results.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-structured-tool-results-secret");
+  assert.equal(upstreamCalls[1].url, "https://structured-tool-results.example.test/v1/responses");
+
+  const chatResponsesBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(chatResponsesBody.input[2], {
+    type: "function_call_output",
+    call_id: "call_lookup",
+    output: JSON.stringify(chatToolContent),
+  });
+
+  const anthropicResponsesBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(anthropicResponsesBody.input[2], {
+    type: "function_call_output",
+    call_id: "call_lookup",
+    output: JSON.stringify(anthropicToolContent),
+  });
+});
+
 test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

@@ -223,7 +223,7 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     return [{
       type: "function_call_output",
       call_id: callId,
-      output: chatContentToText(message.content),
+      output: chatToolOutputToResponsesOutput(message.content),
     }];
   }
 
@@ -549,6 +549,25 @@ function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {
     mapped.completion_tokens_details = { reasoning_tokens: reasoningTokens };
   }
   return mapped;
+}
+
+function chatToolOutputToResponsesOutput(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    const text = content.map(chatContentPartToText).filter(Boolean).join("");
+    return content.every(chatContentPartIsTextLike) ? text : stringifyCompact(content);
+  }
+  const text = chatContentPartToText(content);
+  return text || stringifyCompact(content);
+}
+
+function chatContentPartIsTextLike(part: unknown): boolean {
+  if (typeof part === "string") return true;
+  if (!isRecord(part)) return false;
+  const type = stringOrNull(part.type);
+  if (type === null) return Boolean(chatContentPartToText(part));
+  return type === "text" || type === "input_text" || type === "output_text" || type === "refusal";
 }
 
 function chatContentToText(content: unknown): string {

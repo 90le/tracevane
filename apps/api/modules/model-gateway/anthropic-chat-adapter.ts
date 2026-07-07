@@ -606,7 +606,7 @@ function mapAnthropicUserBlocksToChatMessages(blocks: JsonRecord[]): JsonRecord[
     chatMessages.push({
       role: "tool",
       tool_call_id: toolCallId,
-      content: anthropicContentToText(block.content),
+      content: anthropicToolResultContentToChatContent(block.content),
     });
   }
   flushUserContent();
@@ -678,6 +678,25 @@ function anthropicImageSourceToChatImageUrl(source: unknown): string | null {
     return mediaType && data ? `data:${mediaType};base64,${data}` : null;
   }
   return null;
+}
+
+function anthropicToolResultContentToChatContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    const text = content.map(anthropicContentPartToText).filter(Boolean).join("");
+    return content.every(anthropicContentPartIsTextLike) ? text : stringifyCompact(content);
+  }
+  const text = anthropicContentPartToText(content);
+  return text || stringifyCompact(content);
+}
+
+function anthropicContentPartIsTextLike(part: unknown): boolean {
+  if (typeof part === "string") return true;
+  if (!isRecord(part)) return false;
+  const type = stringOrNull(part.type);
+  if (type === null) return Boolean(anthropicContentPartToText(part));
+  return type === "text";
 }
 
 function anthropicContentToText(content: unknown): string {
@@ -923,6 +942,15 @@ function truncateAtStopSequence(text: string, stopSequences: Iterable<string> | 
   return earliestIndex === -1
     ? { text, stopSequence: null }
     : { text: text.slice(0, earliestIndex), stopSequence: matched };
+}
+
+function stringifyCompact(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string[]): void {
