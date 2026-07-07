@@ -1,10 +1,16 @@
 import type {
+  LspCodeActionRequest,
+  LspCodeActionResponse,
   LspCompletionRequest,
   LspCompletionResponse,
   LspDefinitionResponse,
   LspHoverResponse,
+  LspFormattingRequest,
+  LspFormattingResponse,
   LspPositionRequest,
   LspReferencesResponse,
+  LspRenameRequest,
+  LspRenameResponse,
   LspWorkspaceEditApplyRequest,
   LspWorkspaceEditApplyResponse,
   LspWorkspaceEditPreviewRequest,
@@ -39,6 +45,28 @@ export async function requestLspReferences(
   return requestLspFeature<LspReferencesResponse>("/api/lsp/references", request, options);
 }
 
+
+
+export async function requestLspRename(
+  request: LspRenameRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspRenameResponse> {
+  return requestLspFeature<LspRenameResponse>("/api/lsp/rename", request, options);
+}
+
+export async function requestLspFormatting(
+  request: LspFormattingRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspFormattingResponse> {
+  return requestLspFeature<LspFormattingResponse>("/api/lsp/formatting", request, options);
+}
+
+export async function requestLspCodeActions(
+  request: LspCodeActionRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspCodeActionResponse> {
+  return requestLspFeature<LspCodeActionResponse>("/api/lsp/code-actions", request, options);
+}
 
 export async function previewLspWorkspaceEdit(
   request: LspWorkspaceEditPreviewRequest,

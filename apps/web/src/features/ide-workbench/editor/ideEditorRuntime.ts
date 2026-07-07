@@ -1,6 +1,7 @@
 export interface IdeEditorRuntimeHandle {
   save: () => Promise<boolean>;
   focus: () => void;
+  runAction?: (actionId: string) => void;
 }
 
 const runtimeHandles = new Map<string, IdeEditorRuntimeHandle>();
@@ -23,4 +24,10 @@ export async function saveIdeEditorTab(tabId: string): Promise<boolean> {
 
 export function focusIdeEditorTab(tabId: string): void {
   runtimeHandles.get(tabId)?.focus();
+}
+
+export function runIdeEditorAction(tabId: string, actionId: string): void {
+  const handle = runtimeHandles.get(tabId);
+  if (!handle?.runAction) return;
+  handle.runAction(actionId);
 }

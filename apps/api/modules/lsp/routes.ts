@@ -2,9 +2,12 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
+  LspCodeActionRequest,
   LspCompletionRequest,
   LspDiagnosticsRequest,
+  LspFormattingRequest,
   LspPositionRequest,
+  LspRenameRequest,
   LspWorkspaceEditApplyRequest,
   LspWorkspaceEditPreviewRequest,
 } from "../../../../types/lsp.js";
@@ -63,6 +66,43 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     }
   });
 
+
+
+  router.post("/api/lsp/rename", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspRenameRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.renameDocument(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_rename_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.post("/api/lsp/formatting", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspFormattingRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.formatDocument(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_formatting_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.post("/api/lsp/code-actions", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspCodeActionRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.codeActions(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_code_actions_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 
   router.post("/api/lsp/workspace-edit/preview", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspWorkspaceEditPreviewRequest>(req);

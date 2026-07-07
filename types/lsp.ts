@@ -140,7 +140,10 @@ export type LspGatewayServerEvent =
   | LspHoverResponse
   | LspCompletionResponse
   | LspDefinitionResponse
-  | LspReferencesResponse;
+  | LspReferencesResponse
+  | LspRenameResponse
+  | LspFormattingResponse
+  | LspCodeActionResponse;
 
 export interface LspWorkspaceEditPosition {
   line: number;
@@ -250,4 +253,62 @@ export interface LspWorkspaceEditApplyResponse {
   summary: LspWorkspaceEditPreviewResponse["summary"];
   applied: Array<{ path: string; editCount: number; modifiedAt?: string | null; size?: number | null }>;
   skipped: LspWorkspaceEditRejectedItem[];
+}
+
+export interface LspRenameRequest extends LspDocumentRef {
+  type?: "rename";
+  id?: string | null;
+  content: string;
+  line: number;
+  column: number;
+  newName: string;
+}
+
+export interface LspRenameResponse extends LspDocumentRef {
+  type: "rename";
+  id?: string | null;
+  provider: "json" | "typescript";
+  workspaceEdit: LspWorkspaceEdit | null;
+  rejected?: LspWorkspaceEditRejectedItem[];
+  checkedAt: string;
+}
+
+export interface LspFormattingRequest extends LspDocumentRef {
+  type?: "formatting";
+  id?: string | null;
+  content: string;
+  tabSize?: number | null;
+  insertSpaces?: boolean | null;
+}
+
+export interface LspFormattingResponse extends LspDocumentRef {
+  type: "formatting";
+  id?: string | null;
+  provider: "json" | "typescript";
+  textEdits: LspWorkspaceTextEdit[];
+  checkedAt: string;
+}
+
+export interface LspCodeActionRequest extends LspDocumentRef {
+  type?: "codeAction";
+  id?: string | null;
+  content: string;
+  range?: LspWorkspaceEditRange | null;
+}
+
+export interface LspCodeActionItem {
+  title: string;
+  kind?: string | null;
+  isPreferred?: boolean;
+  disabledReason?: string | null;
+  workspaceEdit?: LspWorkspaceEdit | null;
+  command?: string | null;
+}
+
+export interface LspCodeActionResponse extends LspDocumentRef {
+  type: "codeAction";
+  id?: string | null;
+  provider: "json" | "typescript";
+  actions: LspCodeActionItem[];
+  checkedAt: string;
 }

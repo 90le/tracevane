@@ -9,6 +9,8 @@ import type {
   LspCompletionItem,
   LspCompletionRequest,
   LspCompletionResponse,
+  LspCodeActionRequest,
+  LspCodeActionResponse,
   LspDefinitionResponse,
   LspDiagnostic,
   LspDiagnosticsRequest,
@@ -16,7 +18,13 @@ import type {
   LspGatewayServerEvent,
   LspHoverResponse,
   LspPositionRequest,
+  LspFormattingRequest,
+  LspFormattingResponse,
   LspReferencesResponse,
+  LspRenameRequest,
+  LspRenameResponse,
+  LspWorkspaceEditRejectedItem,
+  LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceExistingFilePath } from "../files/service.js";
 
@@ -32,6 +40,9 @@ export interface LspService {
   completeDocument(request: LspCompletionRequest): LspCompletionResponse;
   defineDocument(request: LspPositionRequest): LspDefinitionResponse;
   referenceDocument(request: LspPositionRequest): LspReferencesResponse;
+  renameDocument(request: LspRenameRequest): LspRenameResponse;
+  formatDocument(request: LspFormattingRequest): LspFormattingResponse;
+  codeActions(request: LspCodeActionRequest): LspCodeActionResponse;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
 }
 
@@ -81,6 +92,18 @@ export function createLspService(config: TracevaneServerConfig): LspService {
           send(socket, referenceDocument(config, request as LspPositionRequest));
           return;
         }
+        if (request.type === "rename") {
+          send(socket, renameDocument(config, request as LspRenameRequest));
+          return;
+        }
+        if (request.type === "formatting") {
+          send(socket, formatDocument(config, request as LspFormattingRequest));
+          return;
+        }
+        if (request.type === "codeAction") {
+          send(socket, codeActions(config, request as LspCodeActionRequest));
+          return;
+        }
         send(socket, { type: "error", id: request.id ?? null, message: "Unsupported LSP gateway message type" });
       } catch (error) {
         send(socket, {
@@ -99,7 +122,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         provider: "tracevane-lsp",
         websocketPath: LSP_WS_PATH,
         supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
-        features: ["diagnostics", "hover", "completion", "definition", "references"],
+        features: ["diagnostics", "hover", "completion", "definition", "references", "rename", "formatting", "codeAction"],
       };
     },
     diagnoseDocument(request) {
@@ -116,6 +139,15 @@ export function createLspService(config: TracevaneServerConfig): LspService {
     },
     referenceDocument(request) {
       return referenceDocument(config, request);
+    },
+    renameDocument(request) {
+      return renameDocument(config, request);
+    },
+    formatDocument(request) {
+      return formatDocument(config, request);
+    },
+    codeActions(request) {
+      return codeActions(config, request);
     },
     handleUpgrade(req, socket, head) {
       const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -250,9 +282,16 @@ interface ValidatedInteractionRequest {
   language: string;
 }
 
+type LspContentDocumentRequest = {
+  rootId?: string;
+  path?: string;
+  language?: string | null;
+  content?: string;
+};
+
 function validateInteractionRequest(
   config: TracevaneServerConfig,
-  request: LspPositionRequest | LspCompletionRequest,
+  request: LspContentDocumentRequest,
 ): ValidatedInteractionRequest {
   const rootId = normalizeRequired(request.rootId, "rootId");
   const targetPath = normalizePath(request.path);
@@ -525,6 +564,221 @@ function referenceTypeScriptLike(
   } finally {
     languageService.service.dispose();
   }
+}
+
+
+function renameDocument(
+  config: TracevaneServerConfig,
+  request: LspRenameRequest,
+): LspRenameResponse {
+  const validated = validateInteractionRequest(config, request);
+  const newName = String(request.newName || "").trim();
+  if (!newName) throw new Error("newName is required");
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    return renameTypeScriptLike(request, validated, newName);
+  }
+  return {
+    type: "rename",
+    id: request.id ?? null,
+    provider: validated.language === "json" ? "json" : "typescript",
+    rootId: validated.rootId,
+    path: validated.path,
+    language: validated.language,
+    version: request.version ?? null,
+    workspaceEdit: null,
+    rejected: [{ kind: "unknown", path: validated.path, reason: "Rename is currently supported for TypeScript/JavaScript symbols only" }],
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function formatDocument(
+  config: TracevaneServerConfig,
+  request: LspFormattingRequest,
+): LspFormattingResponse {
+  const validated = validateInteractionRequest(config, request);
+  const options = { tabSize: Math.max(1, Math.floor(request.tabSize ?? 2)), insertSpaces: request.insertSpaces !== false };
+  let textEdits: LspWorkspaceTextEdit[] = [];
+  let provider: "json" | "typescript" = "json";
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    provider = "typescript";
+    textEdits = formatTypeScriptLike(validated, options);
+  } else if (validated.language === "json") {
+    textEdits = formatJsonLike(validated.content, options);
+  } else {
+    textEdits = [];
+  }
+  return {
+    type: "formatting",
+    id: request.id ?? null,
+    provider,
+    rootId: validated.rootId,
+    path: validated.path,
+    language: validated.language,
+    version: request.version ?? null,
+    textEdits,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function codeActions(
+  config: TracevaneServerConfig,
+  request: LspCodeActionRequest,
+): LspCodeActionResponse {
+  const validated = validateInteractionRequest(config, request);
+  const provider: "json" | "typescript" = TYPESCRIPT_LANGUAGES.has(validated.language) ? "typescript" : "json";
+  const formatting = formatDocument(config, {
+    type: "formatting",
+    id: request.id ?? null,
+    rootId: validated.rootId,
+    path: validated.path,
+    language: validated.language,
+    version: request.version ?? null,
+    content: validated.content,
+  });
+  const actions = formatting.textEdits.length > 0
+    ? [{
+        title: "Format document with Tracevane LSP",
+        kind: "source.format",
+        isPreferred: true,
+        workspaceEdit: { changes: { [fileUriForValidated(validated)]: formatting.textEdits } },
+        command: null,
+      }]
+    : [{
+        title: "No safe Tracevane code action available",
+        kind: "quickfix.empty",
+        isPreferred: false,
+        disabledReason: "M7.z-G exposes the code action surface; provider-specific quick fixes are deferred.",
+        workspaceEdit: null,
+        command: null,
+      }];
+  return {
+    type: "codeAction",
+    id: request.id ?? null,
+    provider,
+    rootId: validated.rootId,
+    path: validated.path,
+    language: validated.language,
+    version: request.version ?? null,
+    actions,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function renameTypeScriptLike(
+  request: LspRenameRequest,
+  validated: ValidatedInteractionRequest,
+  newName: string,
+): LspRenameResponse {
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const offset = positionToOffset(validated.content, request.line, request.column);
+    const renameInfo = languageService.service.getRenameInfo(languageService.fileName, offset, { allowRenameOfImportPath: false });
+    if (!renameInfo.canRename) {
+      return {
+        type: "rename",
+        id: request.id ?? null,
+        provider: "typescript",
+        rootId: validated.rootId,
+        path: validated.path,
+        language: validated.language,
+        version: request.version ?? null,
+        workspaceEdit: null,
+        rejected: [{ kind: "text", path: validated.path, reason: renameInfo.localizedErrorMessage || "Symbol cannot be renamed" }],
+        checkedAt: new Date().toISOString(),
+      };
+    }
+    const locations = languageService.service.findRenameLocations(languageService.fileName, offset, false, false, true) ?? [];
+    const changes: Record<string, LspWorkspaceTextEdit[]> = {};
+    const rejected: LspWorkspaceEditRejectedItem[] = [];
+    for (const location of locations) {
+      const relativePath = relativePathInsideRoot(validated.rootRealPath, location.fileName);
+      if (!relativePath) {
+        rejected.push({ kind: "text", uri: pathToFileUri(location.fileName), reason: "Rename location is outside the selected root" });
+        continue;
+      }
+      const sourceText = sameTsFile(location.fileName, languageService.fileName)
+        ? validated.content
+        : ts.sys.readFile(location.fileName);
+      if (typeof sourceText !== "string") {
+        rejected.push({ kind: "text", path: relativePath, reason: "Unable to read rename target file" });
+        continue;
+      }
+      const sourceFile = ts.createSourceFile(location.fileName, sourceText, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(validated.language));
+      const uri = pathToFileUri(location.fileName);
+      const list = changes[uri] ?? [];
+      list.push({ range: textSpanToWorkspaceRange(sourceFile, location.textSpan), newText: newName });
+      changes[uri] = list;
+    }
+    return {
+      type: "rename",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      workspaceEdit: { changes },
+      rejected,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function formatTypeScriptLike(
+  validated: ValidatedInteractionRequest,
+  options: { tabSize: number; insertSpaces: boolean },
+): LspWorkspaceTextEdit[] {
+  const languageService = createTypeScriptLanguageService(validated, 1);
+  try {
+    const sourceFile = languageService.sourceFile();
+    const edits = languageService.service.getFormattingEditsForDocument(languageService.fileName, {
+      tabSize: options.tabSize,
+      indentSize: options.tabSize,
+      convertTabsToSpaces: options.insertSpaces,
+      newLineCharacter: "\n",
+    });
+    return edits.map((edit) => ({ range: textSpanToWorkspaceRange(sourceFile, edit.span), newText: edit.newText }));
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function formatJsonLike(content: string, options: { tabSize: number; insertSpaces: boolean }): LspWorkspaceTextEdit[] {
+  try {
+    const formatted = `${JSON.stringify(JSON.parse(content), null, options.insertSpaces ? options.tabSize : "\t")}\n`;
+    if (formatted === content) return [];
+    return [{ range: fullContentWorkspaceRange(content), newText: formatted }];
+  } catch {
+    return [];
+  }
+}
+
+function fullContentWorkspaceRange(content: string): LspWorkspaceTextEdit["range"] {
+  const lines = content.split("\n");
+  return {
+    start: { line: 0, character: 0 },
+    end: { line: Math.max(0, lines.length - 1), character: lines.length ? lines[lines.length - 1].length : 0 },
+  };
+}
+
+function textSpanToWorkspaceRange(sourceFile: ts.SourceFile, textSpan: ts.TextSpan): LspWorkspaceTextEdit["range"] {
+  const start = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start, sourceFile.text.length));
+  const end = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start + textSpan.length, sourceFile.text.length));
+  return {
+    start: { line: start.line, character: start.character },
+    end: { line: end.line, character: end.character },
+  };
+}
+
+function fileUriForValidated(validated: ValidatedInteractionRequest): string {
+  return pathToFileUri(validated.absolutePath);
+}
+
+function pathToFileUri(fileName: string): string {
+  const normalized = path.resolve(fileName).replace(/\\/g, "/");
+  return `file://${normalized.startsWith("/") ? "" : "/"}${normalized}`;
 }
 
 function createTypeScriptLanguageService(

@@ -12,14 +12,14 @@ import type {
   SerializedDockview,
 } from "dockview-react";
 import { DockviewReact } from "dockview-react";
-import { CheckCheck, Copy, Eye, MoreHorizontal, Pin, Save, SplitSquareHorizontal, SplitSquareVertical, X } from "lucide-react";
+import { CheckCheck, Code2, Copy, Eye, MoreHorizontal, Pin, Save, Sparkles, SplitSquareHorizontal, SplitSquareVertical, TextCursorInput, X } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
 import type { EditorSaveState } from "@/shared/editor-core";
 import type { IdeGitDecoration } from "../git";
 import type { IdeWorkbenchEditorFileMetadata, IdeWorkbenchEditorTab } from "../types";
-import { saveIdeEditorTab } from "./ideEditorRuntime";
+import { runIdeEditorAction, saveIdeEditorTab } from "./ideEditorRuntime";
 import { EditorDockCallbacksContext, EditorPlaceholderPanel, type EditorPlaceholderParams } from "./EditorPlaceholderPanel";
 import { useIdeEditorPreferences, type IdeEditorPreferences } from "./editorPreferences";
 
@@ -385,6 +385,32 @@ function EditorDockHeaderActions({
             onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.map((item) => item.id)))}
             dataAttr="action-close-all"
             disabled={tabs.length === 0}
+          />
+
+          <div className="my-1 border-t border-line" />
+          <EditorTabMenuButton
+            icon={<TextCursorInput />}
+            label="重命名符号"
+            shortcut="F2"
+            onClick={() => activeTab && runMenuAction(() => runIdeEditorAction(activeTab.id, "editor.action.rename"))}
+            dataAttr="action-lsp-rename"
+            disabled={!activeTab || activeTab.deleted}
+          />
+          <EditorTabMenuButton
+            icon={<Sparkles />}
+            label="格式化文档"
+            shortcut="Shift Alt F"
+            onClick={() => activeTab && runMenuAction(() => runIdeEditorAction(activeTab.id, "editor.action.formatDocument"))}
+            dataAttr="action-lsp-format"
+            disabled={!activeTab || activeTab.deleted}
+          />
+          <EditorTabMenuButton
+            icon={<Code2 />}
+            label="代码操作"
+            shortcut="Ctrl ."
+            onClick={() => activeTab && runMenuAction(() => runIdeEditorAction(activeTab.id, "editor.action.quickFix"))}
+            dataAttr="action-lsp-code-action"
+            disabled={!activeTab || activeTab.deleted}
           />
           <div className="my-1 border-t border-line" />
           <button

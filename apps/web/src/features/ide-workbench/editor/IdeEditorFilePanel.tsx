@@ -273,6 +273,7 @@ export function IdeEditorFilePanel({
   React.useEffect(() => registerIdeEditorRuntimeHandle(tab.id, {
     save: saveCurrent,
     focus: () => editorRef.current?.focus(),
+    runAction: (actionId: string) => editorRef.current?.runAction(actionId),
   }), [saveCurrent, tab.id]);
 
   useLspDiagnostics({

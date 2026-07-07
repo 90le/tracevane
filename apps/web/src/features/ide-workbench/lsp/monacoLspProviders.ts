@@ -1,10 +1,10 @@
 import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
-import type { LspCompletionItem } from "../../../../../../types/lsp";
+import type { LspCompletionItem, LspWorkspaceTextEdit } from "../../../../../../types/lsp";
 
 import { editorModelUriString } from "@/shared/editor-core";
 import { appendWorkbenchOutput } from "../output/outputStore";
-import { requestLspCompletion, requestLspDefinition, requestLspHover, requestLspReferences } from "./lspInteractionClient";
+import { requestLspCodeActions, requestLspCompletion, requestLspDefinition, requestLspFormatting, requestLspHover, requestLspReferences, requestLspRename } from "./lspInteractionClient";
 
 let registered = false;
 
@@ -119,6 +119,53 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
     },
   });
 
+
+  monacoApi.languages.registerDocumentFormattingEditProvider("json", {
+    provideDocumentFormattingEdits: async (model, options) => {
+      const ref = editorRefFromModelUri(model.uri.toString());
+      if (!ref) return [];
+      const response = await requestLspFormatting({
+        type: "formatting",
+        rootId: ref.rootId,
+        path: ref.path,
+        language: "json",
+        content: model.getValue(),
+        tabSize: options.tabSize,
+        insertSpaces: options.insertSpaces,
+      });
+      return response.textEdits.map((edit) => workspaceTextEditToMonaco(monacoApi, edit));
+    },
+  });
+
+  monacoApi.languages.registerCodeActionProvider("json", {
+    provideCodeActions: async (model, range) => {
+      const ref = editorRefFromModelUri(model.uri.toString());
+      if (!ref) return { actions: [], dispose: () => undefined };
+      const response = await requestLspCodeActions({
+        type: "codeAction",
+        rootId: ref.rootId,
+        path: ref.path,
+        language: "json",
+        content: model.getValue(),
+        range: {
+          start: { line: Math.max(0, range.startLineNumber - 1), character: Math.max(0, range.startColumn - 1) },
+          end: { line: Math.max(0, range.endLineNumber - 1), character: Math.max(0, range.endColumn - 1) },
+        },
+      });
+      return {
+        actions: response.actions
+          .filter((action) => !action.disabledReason && action.workspaceEdit?.changes)
+          .map((action) => ({
+            title: action.title,
+            kind: action.kind || "quickfix",
+            isPreferred: Boolean(action.isPreferred),
+            edit: { edits: workspaceEditToMonacoResourceEdits(monacoApi, model.uri, action.workspaceEdit?.changes) },
+          })),
+        dispose: () => undefined,
+      };
+    },
+  });
+
   for (const language of TYPESCRIPT_INTERACTION_LANGUAGES) {
     monacoApi.languages.registerHoverProvider(language, {
       provideHover: async (model, position) => {
@@ -216,6 +263,73 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
         return response.locations.map((location) => lspLocationToMonaco(monacoApi, location));
       },
     });
+
+    monacoApi.languages.registerRenameProvider(language, {
+      provideRenameEdits: async (model, position, newName) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return { edits: [], rejectReason: "Tracevane workspace model URI is missing" };
+        const response = await requestLspRename({
+          type: "rename",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          line: position.lineNumber,
+          column: position.column,
+          newName,
+        });
+        if (!response.workspaceEdit) {
+          return { edits: [], rejectReason: response.rejected?.[0]?.reason || "Symbol cannot be renamed" };
+        }
+        return { edits: workspaceEditToMonacoResourceEdits(monacoApi, model.uri, response.workspaceEdit.changes) };
+      },
+    });
+
+    monacoApi.languages.registerDocumentFormattingEditProvider(language, {
+      provideDocumentFormattingEdits: async (model, options) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return [];
+        const response = await requestLspFormatting({
+          type: "formatting",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          tabSize: options.tabSize,
+          insertSpaces: options.insertSpaces,
+        });
+        return response.textEdits.map((edit) => workspaceTextEditToMonaco(monacoApi, edit));
+      },
+    });
+
+    monacoApi.languages.registerCodeActionProvider(language, {
+      provideCodeActions: async (model, range) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return { actions: [], dispose: () => undefined };
+        const response = await requestLspCodeActions({
+          type: "codeAction",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          range: {
+            start: { line: Math.max(0, range.startLineNumber - 1), character: Math.max(0, range.startColumn - 1) },
+            end: { line: Math.max(0, range.endLineNumber - 1), character: Math.max(0, range.endColumn - 1) },
+          },
+        });
+        return {
+          actions: response.actions
+            .filter((action) => !action.disabledReason && action.workspaceEdit?.changes)
+            .map((action) => ({
+              title: action.title,
+              kind: action.kind || "quickfix",
+              isPreferred: Boolean(action.isPreferred),
+              edit: { edits: workspaceEditToMonacoResourceEdits(monacoApi, model.uri, action.workspaceEdit?.changes) },
+            })),
+          dispose: () => undefined,
+        };
+      },
+    });
   }
 }
 
@@ -260,6 +374,37 @@ function toMonacoCompletionKind(monacoApi: typeof monaco, item: LspCompletionIte
     default:
       return monacoApi.languages.CompletionItemKind.Value;
   }
+}
+
+function workspaceEditToMonacoResourceEdits(
+  monacoApi: typeof monaco,
+  fallbackUri: monaco.Uri,
+  changes: Record<string, LspWorkspaceTextEdit[]> | undefined | null,
+): monaco.languages.IWorkspaceTextEdit[] {
+  if (!changes) return [];
+  const edits: monaco.languages.IWorkspaceTextEdit[] = [];
+  for (const list of Object.values(changes)) {
+    for (const edit of list) {
+      edits.push({
+        resource: fallbackUri,
+        textEdit: workspaceTextEditToMonaco(monacoApi, edit),
+        versionId: undefined,
+      });
+    }
+  }
+  return edits;
+}
+
+function workspaceTextEditToMonaco(monacoApi: typeof monaco, edit: LspWorkspaceTextEdit): monaco.languages.TextEdit {
+  return {
+    range: new monacoApi.Range(
+      edit.range.start.line + 1,
+      edit.range.start.character + 1,
+      edit.range.end.line + 1,
+      edit.range.end.character + 1,
+    ),
+    text: edit.newText,
+  };
 }
 
 function editorRefFromModelUri(uri: string): { rootId: string; path: string } | null {
