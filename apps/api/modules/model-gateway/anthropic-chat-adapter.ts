@@ -227,6 +227,10 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
   }
 
   const content = Array.isArray(response.content) ? response.content : [];
+  const reasoningText = content
+    .map((part) => isRecord(part) && part.type === "thinking" ? stringOrNull(part.thinking) : null)
+    .filter((part): part is string => Boolean(part))
+    .join("");
   const text = content
     .map((part) => isRecord(part) && part.type === "text" ? stringOrNull(part.text) : null)
     .filter((part): part is string => Boolean(part))
@@ -238,6 +242,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     role: "assistant",
     content: text || (toolCalls.length ? null : ""),
   };
+  if (reasoningText) message.reasoning_content = reasoningText;
   const annotations = collectAnthropicTextCitations(content);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -281,6 +286,10 @@ export function adaptChatCompletionResponseToAnthropicMessages(
       .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
     : [];
   const content: JsonRecord[] = [];
+  const reasoningText = extractChatReasoningText(message);
+  if (reasoningText) {
+    content.push({ type: "thinking", thinking: reasoningText });
+  }
   if (text) {
     const textBlock: JsonRecord = { type: "text", text };
     if (Array.isArray(message.annotations) && message.annotations.length) {
@@ -851,6 +860,30 @@ function parseToolArguments(value: unknown): unknown {
 
 function chatMessageText(message: JsonRecord): string {
   return chatContentToText(message.content) || stringOrNull(message.refusal) || "";
+}
+
+function extractChatReasoningText(message: JsonRecord): string {
+  const direct = stringOrNull(message.reasoning_content);
+  if (direct) return direct;
+  const reasoning = isRecord(message.reasoning) ? message.reasoning : null;
+  if (reasoning) {
+    for (const key of ["content", "text", "summary"] as const) {
+      const value = stringOrNull(reasoning[key]);
+      if (value) return value;
+    }
+  }
+  const details = Array.isArray(message.reasoning_details) ? message.reasoning_details : [];
+  return details
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (!isRecord(part)) return "";
+      return stringOrNull(part.text)
+        || stringOrNull(part.content)
+        || stringOrNull(part.summary)
+        || "";
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 function chatContentToText(content: unknown): string {

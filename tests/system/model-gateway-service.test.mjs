@@ -14714,6 +14714,125 @@ test("model gateway preserves streaming responses reasoning summaries through ch
   assert.equal(upstreamCalls[1].url, "https://responses-reasoning-stream.example.test/v1/responses");
 });
 
+test("model gateway preserves non-streaming responses reasoning summaries through chat and anthropic", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-reasoning-json-adapter",
+      name: "Responses Reasoning JSON Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-reasoning-json.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-reasoning-json-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const responseId = upstreamCalls.length === 1 ? "resp_reason_chat_json" : "resp_reason_anthropic_json";
+    return new Response(JSON.stringify({
+      id: responseId,
+      object: "response",
+      created_at: 1_710_000_110,
+      status: "completed",
+      model: "gpt-reasoning",
+      output: [{
+        id: "rs_1",
+        type: "reasoning",
+        status: "completed",
+        summary: [
+          { type: "summary_text", text: "Need context. " },
+          { type: "summary_text", text: "Then answer." },
+        ],
+      }, {
+        id: "msg_1",
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Done" }],
+      }],
+      usage: {
+        input_tokens: 6,
+        output_tokens: 4,
+        total_tokens: 10,
+        input_tokens_details: { cached_tokens: 1 },
+        output_tokens_details: { reasoning_tokens: 2 },
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoning",
+          stream: false,
+          messages: [{ role: "user", content: "reason please" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.reasoning_content, "Need context. Then answer.");
+      assert.equal(chat.body.choices[0].message.content, "Done");
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+      assert.deepEqual(chat.body.usage, {
+        prompt_tokens: 6,
+        completion_tokens: 4,
+        total_tokens: 10,
+        prompt_tokens_details: { cached_tokens: 1 },
+        completion_tokens_details: { reasoning_tokens: 2 },
+      });
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-reasoning",
+          max_tokens: 64,
+          stream: false,
+          messages: [{ role: "user", content: "reason please" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      assert.deepEqual(anthropic.body.content, [
+        { type: "thinking", thinking: "Need context. Then answer." },
+        { type: "text", text: "Done" },
+      ]);
+      assert.equal(anthropic.body.stop_reason, "end_turn");
+      assert.deepEqual(anthropic.body.usage, {
+        input_tokens: 6,
+        output_tokens: 4,
+        cache_read_input_tokens: 1,
+      });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-reasoning-json.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-reasoning-json-secret");
+  assert.equal(upstreamCalls[1].url, "https://responses-reasoning-json.example.test/v1/responses");
+});
+
 test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

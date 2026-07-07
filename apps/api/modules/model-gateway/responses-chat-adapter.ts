@@ -141,6 +141,8 @@ export function adaptResponsesToChatCompletion(
     role: "assistant",
     content: text || (toolCalls.length ? null : ""),
   };
+  const reasoningText = collectResponseReasoningText(output);
+  if (reasoningText) message.reasoning_content = reasoningText;
   const annotations = collectResponseOutputAnnotations(output);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -400,6 +402,30 @@ function responseOutputItemToText(item: unknown): string {
   return "";
 }
 
+function collectResponseReasoningText(output: unknown[]): string {
+  return output
+    .map(responseOutputItemToReasoningText)
+    .filter(Boolean)
+    .join("");
+}
+
+function responseOutputItemToReasoningText(item: unknown): string {
+  if (!isRecord(item) || item.type !== "reasoning") return "";
+  const summary = Array.isArray(item.summary) ? item.summary : [];
+  const summaryText = summary
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (!isRecord(part)) return "";
+      return stringOrNull(part.text)
+        || stringOrNull(part.summary_text)
+        || stringOrNull(part.output_text)
+        || "";
+    })
+    .filter(Boolean)
+    .join("");
+  return summaryText || stringOrNull(item.text) || "";
+}
+
 function mcpCallOutputToText(item: JsonRecord): string {
   const output = item.output ?? item.result ?? item.content;
   const error = item.error;
@@ -502,7 +528,8 @@ function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {
   const completionTokens = numberOrNull(usage.output_tokens) ?? 0;
   const totalTokens = numberOrNull(usage.total_tokens) ?? promptTokens + completionTokens;
   const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : {};
-  return {
+  const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : {};
+  const mapped: JsonRecord = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: totalTokens,
@@ -510,6 +537,11 @@ function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {
       cached_tokens: numberOrNull(inputDetails.cached_tokens) || 0,
     },
   };
+  const reasoningTokens = numberOrNull(outputDetails.reasoning_tokens);
+  if (reasoningTokens !== null) {
+    mapped.completion_tokens_details = { reasoning_tokens: reasoningTokens };
+  }
+  return mapped;
 }
 
 function chatContentToText(content: unknown): string {
