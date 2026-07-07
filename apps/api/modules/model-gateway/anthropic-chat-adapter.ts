@@ -231,6 +231,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     .map((part) => isRecord(part) && part.type === "thinking" ? stringOrNull(part.thinking) : null)
     .filter((part): part is string => Boolean(part))
     .join("");
+  const reasoningDetails = anthropicThinkingBlocksToChatReasoningDetails(content);
   const text = content
     .map((part) => isRecord(part) && part.type === "text" ? stringOrNull(part.text) : null)
     .filter((part): part is string => Boolean(part))
@@ -243,6 +244,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     content: text || (toolCalls.length ? null : ""),
   };
   if (reasoningText) message.reasoning_content = reasoningText;
+  if (reasoningDetails.length) message.reasoning_details = reasoningDetails;
   const annotations = collectAnthropicTextCitations(content);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -286,9 +288,12 @@ export function adaptChatCompletionResponseToAnthropicMessages(
       .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
     : [];
   const content: JsonRecord[] = [];
-  const reasoningText = extractChatReasoningText(message);
-  if (reasoningText) {
-    content.push({ type: "thinking", thinking: reasoningText });
+  const reasoningBlocks = chatReasoningDetailsToAnthropicBlocks(message.reasoning_details);
+  if (reasoningBlocks.length) {
+    content.push(...reasoningBlocks);
+  } else {
+    const reasoningText = extractChatReasoningText(message);
+    if (reasoningText) content.push({ type: "thinking", thinking: reasoningText });
   }
   if (text) {
     const textBlock: JsonRecord = { type: "text", text };
@@ -314,11 +319,23 @@ export function adaptChatCompletionResponseToAnthropicMessages(
 }
 
 function collectAnthropicTextCitations(content: JsonRecord[]): JsonRecord[] {
-  return content.flatMap((part, contentIndex): JsonRecord[] => {
-    if (part.type !== "text" || !Array.isArray(part.citations)) return [];
+  let textIndex = 0;
+  return content.flatMap((part): JsonRecord[] => {
+    if (part.type !== "text") return [];
+    const contentIndex = textIndex;
+    textIndex += 1;
+    if (!Array.isArray(part.citations)) return [];
     return part.citations
       .filter(isRecord)
       .map((citation) => ({ ...citation, content_index: contentIndex }));
+  });
+}
+
+function anthropicThinkingBlocksToChatReasoningDetails(content: JsonRecord[]): JsonRecord[] {
+  return content.flatMap((part): JsonRecord[] => {
+    if (part.type === "thinking" && stringOrNull(part.thinking) && stringOrNull(part.signature)) return [{ ...part }];
+    if (part.type === "redacted_thinking" && stringOrNull(part.data)) return [{ ...part }];
+    return [];
   });
 }
 
@@ -389,7 +406,10 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
 }
 
 function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] {
-  const blocks = chatContentToAnthropicBlocks(message.content);
+  const blocks = [
+    ...chatReasoningDetailsToAnthropicBlocks(message.reasoning_details),
+    ...chatContentToAnthropicBlocks(message.content),
+  ];
   if (Array.isArray(message.tool_calls)) {
     for (const toolCall of message.tool_calls) {
       const mapped = mapChatToolCallToAnthropicToolUse(toolCall);
@@ -397,6 +417,16 @@ function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] 
     }
   }
   return blocks.length ? blocks : [{ type: "text", text: "" }];
+}
+
+function chatReasoningDetailsToAnthropicBlocks(details: unknown): JsonRecord[] {
+  if (!Array.isArray(details)) return [];
+  return details.flatMap((detail): JsonRecord[] => {
+    if (!isRecord(detail)) return [];
+    if (detail.type === "thinking" && stringOrNull(detail.thinking) && stringOrNull(detail.signature)) return [{ ...detail }];
+    if (detail.type === "redacted_thinking" && stringOrNull(detail.data)) return [{ ...detail }];
+    return [];
+  });
 }
 
 function chatToolResultContentToAnthropicContent(content: unknown): string | JsonRecord[] {
@@ -610,6 +640,7 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
       .map((block) => stringOrNull(block.thinking) || "")
       .filter(Boolean)
       .join("");
+    const reasoningDetails = anthropicThinkingBlocksToChatReasoningDetails(blocks);
     const toolCalls = blocks
       .filter((block) => block.type === "tool_use")
       .map(mapAnthropicToolUseToChatToolCall)
@@ -619,6 +650,7 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
       content: text || (toolCalls.length ? null : ""),
     };
     if (reasoningText) chatMessage.reasoning_content = reasoningText;
+    if (reasoningDetails.length) chatMessage.reasoning_details = reasoningDetails;
     if (toolCalls.length) chatMessage.tool_calls = toolCalls;
     return [chatMessage];
   }

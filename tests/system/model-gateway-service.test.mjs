@@ -10476,6 +10476,9 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         role: "assistant",
         content: "I will call.",
         reasoning_content: "Need lookup before answering.",
+        reasoning_details: [
+          { type: "thinking", thinking: "Need lookup before answering.", signature: "sig_lookup" },
+        ],
         tool_calls: [{
           id: "call_lookup",
           type: "function",
@@ -10902,6 +10905,8 @@ test("model gateway adapts chat completions through native anthropic messages pr
       role: "assistant",
       model: "claude-native",
       content: [
+        { type: "thinking", thinking: "Need signed context.", signature: "sig_chat_adapter" },
+        { type: "redacted_thinking", data: "opaque_redacted_chat_adapter" },
         {
           type: "text",
           text: "Sunny in Tokyo.",
@@ -10946,6 +10951,10 @@ test("model gateway adapts chat completions through native anthropic messages pr
             {
               role: "assistant",
               content: "I will check.",
+              reasoning_details: [
+                { type: "thinking", thinking: "Need previous weather context.", signature: "sig_previous_weather" },
+                { type: "redacted_thinking", data: "opaque_previous_weather" },
+              ],
               tool_calls: [{
                 id: "call_weather",
                 type: "function",
@@ -10994,6 +11003,11 @@ test("model gateway adapts chat completions through native anthropic messages pr
       assert.deepEqual(chat.body.choices[0].message, {
         role: "assistant",
         content: "Sunny in Tokyo.",
+        reasoning_content: "Need signed context.",
+        reasoning_details: [
+          { type: "thinking", thinking: "Need signed context.", signature: "sig_chat_adapter" },
+          { type: "redacted_thinking", data: "opaque_redacted_chat_adapter" },
+        ],
         annotations: [{
           type: "char_location",
           cited_text: "Tokyo is sunny.",
@@ -11074,6 +11088,8 @@ test("model gateway adapts chat completions through native anthropic messages pr
       {
         role: "assistant",
         content: [
+          { type: "thinking", thinking: "Need previous weather context.", signature: "sig_previous_weather" },
+          { type: "redacted_thinking", data: "opaque_previous_weather" },
           { type: "text", text: "I will check." },
           { type: "tool_use", id: "call_weather", name: "get_weather", input: { city: "Tokyo" } },
         ],
