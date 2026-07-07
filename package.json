@@ -131,7 +131,8 @@
     "smoke:ide:lsp-provider-status": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3906} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5215} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5215} -- node tests/ide-workbench/ide-lsp-provider-status.smoke.mjs",
     "test:system:lsp-bash-provider": "npm run build:api && node --test tests/system/lsp-bash-provider.test.mjs",
     "test:system:lsp-provider-hygiene": "npm run build:api && node --test tests/system/lsp-external-provider-hygiene.test.mjs",
-    "test:system:lsp-pyright-provider": "npm run build:api && node --test tests/system/lsp-pyright-provider.test.mjs"
+    "test:system:lsp-pyright-provider": "npm run build:api && node --test tests/system/lsp-pyright-provider.test.mjs",
+    "test:system:lsp-dockerfile-provider": "npm run build:api && node --test tests/system/lsp-dockerfile-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",
@@ -143,6 +144,7 @@
     "@larksuiteoapi/node-sdk": "^1.66.1",
     "bash-language-server": "5.6.0",
     "bcryptjs": "^2.4.3",
+    "dockerfile-language-server-nodejs": "0.15.0",
     "pyright": "1.1.411",
     "vscode-css-languageservice": "^6.3.10",
     "vscode-html-languageservice": "^5.6.2",

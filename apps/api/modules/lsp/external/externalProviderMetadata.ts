@@ -80,6 +80,19 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
       "M11-N exposes diagnostics/status only; Python hover/completion/definition and interpreter discovery remain deferred.",
     ],
   },
+  dockerfile: {
+    packageName: "dockerfile-language-server-nodejs",
+    source: "npm:dockerfile-language-server-nodejs",
+    installMode: "bundled-npm",
+    pinnedVersion: "0.15.0",
+    license: "MIT",
+    optional: false,
+    auditSummary: "Bundled npm provider added as a small Dockerfile diagnostics-only proof; no Docker daemon or container runtime is required.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M11-P exposes diagnostics/status only; Dockerfile hover/completion/formatting remain deferred.",
+    ],
+  },
 };
 
 export function externalProviderMetadataForProfile(profile: ExternalLanguageServerProfile): ExternalLanguageServerProviderMetadata {

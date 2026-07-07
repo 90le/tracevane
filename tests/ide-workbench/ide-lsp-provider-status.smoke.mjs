@@ -81,6 +81,8 @@ async function run() {
   const bashMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'bash');
   const pyrightProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'pyright');
   const pyrightMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'pyright');
+  const dockerfileProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'dockerfile');
+  const dockerfileMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'dockerfile');
   if (yamlProfile.install?.status !== 'installed' || yamlMetadata?.installStatus !== 'installed' || !yamlMetadata.version) {
     throw new Error(`Expected installed yaml provider metadata: ${JSON.stringify(status.externalProviders)}`);
   }
@@ -90,7 +92,10 @@ async function run() {
   if (pyrightProfile?.install?.status !== 'installed' || pyrightMetadata?.installStatus !== 'installed' || pyrightMetadata.version !== '1.1.411') {
     throw new Error(`Expected installed pyright provider metadata: ${JSON.stringify(status.externalProviders)}`);
   }
-  if (yamlMetadata.policy?.autoInstall !== false || bashMetadata.policy?.frontendCanProvideCommand !== false || pyrightMetadata.policy?.frontendCanProvideCommand !== false) {
+  if (dockerfileProfile?.install?.status !== 'installed' || dockerfileMetadata?.installStatus !== 'installed' || dockerfileMetadata.version !== '0.15.0') {
+    throw new Error(`Expected installed dockerfile provider metadata: ${JSON.stringify(status.externalProviders)}`);
+  }
+  if (yamlMetadata.policy?.autoInstall !== false || bashMetadata.policy?.frontendCanProvideCommand !== false || pyrightMetadata.policy?.frontendCanProvideCommand !== false || dockerfileMetadata.policy?.frontendCanProvideCommand !== false) {
     throw new Error(`Expected read-only provider policy metadata: ${JSON.stringify(status.externalProviders)}`);
   }
 
@@ -120,11 +125,13 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-source]').filter({ hasText: 'npm:yaml-language-server' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-audit-note]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-install-status]').filter({ hasText: 'installed' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-version]').filter({ hasText: '5.6.0' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"] [data-ide-lsp-provider-version]').filter({ hasText: '1.1.411' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"] [data-ide-lsp-provider-version]').filter({ hasText: '0.15.0' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-close]').click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'detached', timeout: 10_000 });
 
@@ -136,6 +143,7 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="pyright"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
   } finally {
     await browser.close().catch(() => undefined);
     const severe = logs.filter((line) => line.includes('[pageerror]'));

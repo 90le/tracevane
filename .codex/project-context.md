@@ -113,7 +113,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-M Pyright external provider guarded implementation plan.
 - Done: M11-N Pyright external provider guarded implementation.
 - Done: M11-O External provider acceptance / heavy provider expansion decision.
-- Next: M11-P Dockerfile external provider guarded proof.
+- Done: M11-P Dockerfile external provider guarded proof.
+- Next: M11-Q Markdown / vscode-langservers-extracted provider plan.
 
 ## Required reading by task
 

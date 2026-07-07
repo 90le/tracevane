@@ -14,6 +14,7 @@ export const DEFAULT_EXTERNAL_LSP_BUDGETS: ExternalLanguageServerBudgets = {
 export const YAML_LANGUAGE_SERVER_BIN = require.resolve("yaml-language-server/bin/yaml-language-server");
 export const BASH_LANGUAGE_SERVER_BIN = require.resolve("bash-language-server/out/cli.js");
 export const PYRIGHT_LANGUAGE_SERVER_BIN = require.resolve("pyright/langserver.index.js");
+export const DOCKERFILE_LANGUAGE_SERVER_BIN = require.resolve("dockerfile-language-server-nodejs/bin/docker-langserver");
 
 /**
  * External language servers are server-side allowlisted. The frontend never
@@ -48,6 +49,16 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
     languages: ["python", "py", "python3", "pyi"],
     capabilities: { diagnostics: true },
     budgets: { initializeMs: 10_000, requestMs: 5_000, shutdownMs: 1_500 },
+    env: { NODE_ENV: "production" },
+  },
+  {
+    id: "dockerfile",
+    label: "Dockerfile Language Server",
+    command: process.execPath,
+    args: [DOCKERFILE_LANGUAGE_SERVER_BIN, "--stdio"],
+    languages: ["dockerfile", "docker"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 5_000, requestMs: 3_000, shutdownMs: 1_000 },
     env: { NODE_ENV: "production" },
   },
 ];

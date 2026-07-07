@@ -1712,6 +1712,17 @@ async function diagnoseDocument(
       version: request.version ?? 1,
     }));
   }
+  if (provider?.id === "dockerfile") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "dockerfile", language, await diagnoseWithExternalLanguageServer({
+      providerId: "dockerfile",
+      languageId: "dockerfile",
+      sourceFallback: "dockerfile-language-server",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -1724,7 +1735,7 @@ async function diagnoseWithExternalLanguageServer({
   content,
   version,
 }: {
-  providerId: "yaml" | "bash" | "pyright";
+  providerId: "yaml" | "bash" | "pyright" | "dockerfile";
   languageId: string;
   sourceFallback: string;
   rootRealPath: string;
@@ -1944,6 +1955,8 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.css$/i.test(targetPath)) return "css";
   if (raw === "shell" || raw === "shellscript" || raw === "bash" || raw === "sh") return "shell";
   if (/\.(?:ba)?sh$/i.test(targetPath) || /\.bashrc$/i.test(targetPath) || /(^|\/)bashrc$/i.test(targetPath)) return "shell";
+  if (raw === "docker" || raw === "dockerfile") return "dockerfile";
+  if (/\/?Dockerfile(?:$|[.\-_])/i.test(targetPath) || /\.(?:dockerfile|containerfile)$/i.test(targetPath)) return "dockerfile";
   if (/(^|\.)json($|[.\-_])/i.test(targetPath)) return "json";
   const trimmed = content.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
@@ -1952,7 +1965,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
 }
 
 function responseProviderId(id: string | null | undefined): LspProviderId {
-  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" ? id : "json";
+  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {
