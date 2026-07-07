@@ -260,6 +260,7 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   const tools = mapAnthropicToolsToChat(request.tools);
   if (options.preserveMcpServers) tools.push(...mapAnthropicMcpServersToResponsesTools(request.mcp_servers, request.tools));
   if (tools.length) chatRequest.tools = tools;
+  applyAnthropicWebSearchOptionsToChat(chatRequest, request.tools);
 
   const toolChoice = mapAnthropicToolChoiceToChat(
     request.tool_choice,
@@ -1447,6 +1448,40 @@ function mapAnthropicWebSearchToolToChat(tool: JsonRecord): JsonRecord {
     "user_location",
   ]);
   return mapped;
+}
+
+function applyAnthropicWebSearchOptionsToChat(chatRequest: JsonRecord, tools: unknown): void {
+  const webSearchTool = firstAnthropicWebSearchTool(tools);
+  if (!webSearchTool) return;
+  const userLocation = mapAnthropicWebSearchLocationToChat(webSearchTool.user_location);
+  if (userLocation === undefined) return;
+  const webSearchOptions: JsonRecord = isRecord(chatRequest.web_search_options)
+    ? { ...chatRequest.web_search_options }
+    : {};
+  webSearchOptions.user_location = userLocation;
+  chatRequest.web_search_options = webSearchOptions;
+}
+
+function firstAnthropicWebSearchTool(tools: unknown): JsonRecord | null {
+  if (!Array.isArray(tools)) return null;
+  for (const tool of tools) {
+    if (isRecord(tool) && isAnthropicWebSearchTool(tool)) return tool;
+  }
+  return null;
+}
+
+function mapAnthropicWebSearchLocationToChat(userLocation: unknown): unknown {
+  if (!isRecord(userLocation)) return userLocation;
+  if (userLocation.type === "approximate" && !isRecord(userLocation.approximate)) {
+    const approximate: JsonRecord = {};
+    for (const key of ["country", "region", "city", "timezone"] as const) {
+      if (userLocation[key] !== undefined) approximate[key] = userLocation[key];
+    }
+    return Object.keys(approximate).length
+      ? { type: "approximate", approximate }
+      : { type: "approximate" };
+  }
+  return userLocation;
 }
 
 function isAnthropicWebSearchTool(tool: JsonRecord): boolean {

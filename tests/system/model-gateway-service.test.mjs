@@ -13666,6 +13666,13 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             type: "web_search_20250305",
             name: "web_search",
             input_examples: [{ query: "latest docs" }],
+            user_location: {
+              type: "approximate",
+              country: "US",
+              region: "CA",
+              city: "San Francisco",
+              timezone: "America/Los_Angeles",
+            },
           }],
           tool_choice: { type: "tool", name: "web_search", disable_parallel_tool_use: true },
           output_config: {
@@ -13852,7 +13859,25 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       },
     }, {
       type: "web_search_preview",
+      user_location: {
+        type: "approximate",
+        country: "US",
+        region: "CA",
+        city: "San Francisco",
+        timezone: "America/Los_Angeles",
+      },
     }],
+    web_search_options: {
+      user_location: {
+        type: "approximate",
+        approximate: {
+          country: "US",
+          region: "CA",
+          city: "San Francisco",
+          timezone: "America/Los_Angeles",
+        },
+      },
+    },
     tool_choice: { type: "web_search_preview" },
     parallel_tool_calls: false,
   });
