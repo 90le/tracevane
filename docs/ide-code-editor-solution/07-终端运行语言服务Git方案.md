@@ -777,7 +777,8 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 91. M12-D：Svelte dependency compatibility / TypeScript peer policy plan（已完成）
 92. M12-E：Svelte external provider guarded diagnostics proof（已完成）
 93. M12-F：Framework provider acceptance / heavy toolchain policy decision（已完成）
-94. M12-G：Toolchain provider status / configuration foundation plan（下一步）
+94. M12-G：Toolchain provider status / configuration foundation plan（已完成）
+95. M12-H：Toolchain provider status skeleton guarded implementation（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -1041,4 +1042,19 @@ M12-F 已完成，记录见 [`archive/m12-f-framework-provider-acceptance-toolch
   - C/C++ `clangd` 需要 clangd binary、compile_commands.json / compile_flags.txt 与 compiler/toolchain 语义。
 - 定义 M12-G 先做 toolchain provider status / configuration foundation，不直接启动 heavy runtime server。
 
-M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-G 进入 Toolchain provider status / configuration foundation plan。
+M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan；下一步 M12-H 进入 Toolchain provider status skeleton guarded implementation。
+
+
+### M12-G 已完成：Toolchain Provider Status / Configuration Foundation Plan
+
+M12-G 已完成，记录见 [`archive/m12-g-toolchain-provider-status-configuration-plan.md`](./archive/m12-g-toolchain-provider-status-configuration-plan.md)。本阶段不新增 runtime provider，而是定义 Go/Rust/Java/C/C++ toolchain-backed provider 的 read-only status model、严格 configuration schema、IDE Provider Status UI 呈现和后续 runtime proof 前置条件。
+
+完成口径：
+
+- 定义 `go`、`rust`、`java`、`clangd` 四类 toolchain provider candidates。
+- 定义 `notConfigured`、`configured`、`missingBinary`、`unsupportedVersion`、`missingWorkspaceConfig`、`disabledByTrust`、`unavailable` 状态语义。
+- 定义未来配置 schema 只能包含 provider id、enabled、executable path/profile id、JDT LS workspace data path、version probe policy；禁止 arbitrary command/env/args。
+- 定义 IDE Provider Status UI 的 Toolchain section：默认只展示候选、状态、原因和下一步，不自动发现、不自动安装。
+- 定义 M12-H 最小实现：只增加 read-only candidate/status skeleton，全部默认 `notConfigured`，不读取 PATH、不启动 server、不接 diagnostics。
+
+M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-H 进入 Toolchain provider status skeleton guarded implementation。
