@@ -12561,6 +12561,14 @@ test("model gateway adapts codex responses through native anthropic messages pro
             },
           }],
           tool_choice: { type: "function", name: "lookup" },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "plan_result",
+              schema: { type: "object", additionalProperties: false, properties: { plan: { type: "string" } }, required: ["plan"] },
+              strict: true,
+            },
+          },
           max_output_tokens: 256,
           temperature: 0.1,
         },
@@ -12683,6 +12691,14 @@ test("model gateway adapts codex responses through native anthropic messages pro
       },
     }],
     tool_choice: { type: "tool", name: "lookup" },
+    output_config: {
+      format: {
+        type: "json_schema",
+        name: "plan_result",
+        schema: { type: "object", additionalProperties: false, properties: { plan: { type: "string" } }, required: ["plan"] },
+        strict: true,
+      },
+    },
   });
   assert.equal(upstreamCalls[1].url, "https://responses-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].xApiKey, "sk-responses-anthropic-secret");
@@ -12853,6 +12869,14 @@ test("model gateway adapts chat completions through native anthropic messages pr
           }],
           tool_choice: { type: "function", function: { name: "get_weather" } },
           parallel_tool_calls: false,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "weather_result",
+              schema: { type: "object", additionalProperties: false, properties: { summary: { type: "string" } }, required: ["summary"] },
+              strict: true,
+            },
+          },
           max_tokens: 128,
           temperature: 0.2,
           top_p: 0.9,
@@ -12990,6 +13014,14 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
     }],
     tool_choice: { type: "tool", name: "get_weather", disable_parallel_tool_use: true },
+    output_config: {
+      format: {
+        type: "json_schema",
+        name: "weather_result",
+        schema: { type: "object", additionalProperties: false, properties: { summary: { type: "string" } }, required: ["summary"] },
+        strict: true,
+      },
+    },
   });
   assert.equal(upstreamCalls[1].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].method, "POST");

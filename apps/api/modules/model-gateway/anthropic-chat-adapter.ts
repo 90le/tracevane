@@ -151,6 +151,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   ]);
 
   if (request.stop !== undefined) anthropicRequest.stop_sequences = request.stop;
+  const outputFormat = mapChatResponseFormatToAnthropicOutputFormat(request.response_format);
+  if (outputFormat !== undefined) anthropicRequest.output_config = { format: outputFormat };
 
   const tools = [
     ...mapChatToolsToAnthropic(request.tools),
@@ -1057,6 +1059,17 @@ function mapAnthropicOutputConfigToChatResponseFormat(outputConfig: unknown): un
   }
   if (format.type === "json_object" || format.type === "text") {
     return { type: format.type };
+  }
+  return undefined;
+}
+
+function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): unknown {
+  if (!isRecord(responseFormat)) return undefined;
+  if (responseFormat.type === "json_schema" && isRecord(responseFormat.json_schema)) {
+    return {
+      type: "json_schema",
+      ...responseFormat.json_schema,
+    };
   }
   return undefined;
 }
