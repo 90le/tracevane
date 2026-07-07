@@ -767,7 +767,7 @@ function mapResponsesTextFormatToChatResponseFormat(text: unknown): unknown {
     }
     return { type: "json_schema", json_schema: jsonSchema };
   }
-  if (format.type === "json_object") return { type: "json_object" };
+  if (format.type === "json_object" || format.type === "text") return { type: format.type };
   return undefined;
 }
 

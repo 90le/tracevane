@@ -14670,12 +14670,24 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         audioOutputRequests: 0,
       });
       assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-adapter-secret"));
+
+      const textFormatResponses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "Return plain text.",
+          text: { format: { type: "text" } },
+          stream: false,
+        },
+      });
+      assert.equal(textFormatResponses.status, 200);
+      assert.equal(textFormatResponses.body.output[0].content[0].text, "Adapted answer.");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://codex-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-adapter-secret");
@@ -14741,6 +14753,8 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
       function: { name: "lookup" },
     },
   });
+  assert.equal(upstreamCalls[1].url, "https://codex-chat.example.test/v1/chat/completions");
+  assert.deepEqual(JSON.parse(upstreamCalls[1].body).response_format, { type: "text" });
 });
 
 test("model gateway preserves structured responses tool outputs through Chat and Anthropic providers", async () => {
