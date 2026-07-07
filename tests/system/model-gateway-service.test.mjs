@@ -12793,6 +12793,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             {
               role: "tool",
               tool_call_id: "call_weather",
+              is_error: true,
               content: [
                 { type: "text", text: "Sunny" },
                 { type: "image_url", image_url: { url: "data:image/png;base64,TOOL_IMAGE" } },
@@ -12925,6 +12926,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         content: [{
           type: "tool_result",
           tool_use_id: "call_weather",
+          is_error: true,
           content: [
             { type: "text", text: "Sunny" },
             {

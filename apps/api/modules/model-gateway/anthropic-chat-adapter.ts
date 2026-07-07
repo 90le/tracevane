@@ -566,11 +566,7 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
     if (!toolUseId) return [];
     return [{
       role: "user",
-      content: [{
-        type: "tool_result",
-        tool_use_id: toolUseId,
-        content: chatToolResultContentToAnthropicContent(message.content),
-      }],
+      content: [chatToolResultMessageToAnthropicBlock(toolUseId, message)],
     }];
   }
   if (message.role === "function") {
@@ -578,17 +574,23 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
     if (!name) return [];
     return [{
       role: "user",
-      content: [{
-        type: "tool_result",
-        tool_use_id: legacyFunctionCallId(name),
-        content: chatToolResultContentToAnthropicContent(message.content),
-      }],
+      content: [chatToolResultMessageToAnthropicBlock(legacyFunctionCallId(name), message)],
     }];
   }
 
   const role = message.role === "assistant" ? "assistant" : "user";
   const content = chatMessageContentToAnthropicBlocks(message);
   return [{ role, content: content.length === 1 && content[0]?.type === "text" ? content[0].text : content }];
+}
+
+function chatToolResultMessageToAnthropicBlock(toolUseId: string, message: JsonRecord): JsonRecord {
+  const block: JsonRecord = {
+    type: "tool_result",
+    tool_use_id: toolUseId,
+    content: chatToolResultContentToAnthropicContent(message.content),
+  };
+  if (message.is_error === true) block.is_error = true;
+  return block;
 }
 
 function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] {
