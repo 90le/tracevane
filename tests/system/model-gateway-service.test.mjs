@@ -23,6 +23,7 @@ import {
   MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
   MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES,
 } from "../../dist/apps/api/modules/model-gateway/unsupported-endpoints.js";
+import { writeCodexResponsesSseFromAnthropicMessagesSse } from "../../dist/apps/api/modules/model-gateway/protocol-streaming.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-model-gateway-"));
@@ -14369,6 +14370,156 @@ test("model gateway ignores empty streaming anthropic tool blocks for chat sse",
   assert.equal(upstreamCalls[0].url, "https://anthropic-empty-tool-stream.example.test/v1/messages");
 });
 
+test("model gateway preserves unsupported Anthropic streaming content blocks through Chat and Responses adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-unsupported-block-stream",
+      name: "Anthropic Unsupported Block Stream",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-unsupported-block-stream.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-anthropic-unsupported-block-stream" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const malformedToolUse = { type: "tool_use", name: "lookup", input: { query: "docs" } };
+  const mcpToolUse = {
+    type: "mcp_tool_use",
+    id: "mcp_read_1",
+    name: "read_file",
+    server_name: "repo-tools",
+    input: { path: "README.md" },
+  };
+  const mcpToolResult = {
+    type: "mcp_tool_result",
+    tool_use_id: "mcp_read_1",
+    is_error: false,
+    content: [{ type: "text", text: "README contents" }],
+  };
+  const serverToolUse = { type: "server_tool_use", id: "srv_search_1", name: "web_search", input: { query: "tracevane" } };
+  const buildUpstreamSse = (messageId) => [
+    `event: message_start\ndata: ${JSON.stringify({
+      type: "message_start",
+      message: {
+        id: messageId,
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [],
+        usage: { input_tokens: 8, output_tokens: 0 },
+      },
+    })}`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: malformedToolUse })}`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 1, content_block: mcpToolUse })}`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 2, content_block: mcpToolResult })}`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 3, content_block: serverToolUse })}`,
+    `event: message_delta\ndata: ${JSON.stringify({
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      usage: { output_tokens: 4 },
+    })}`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+    "",
+  ].join("\n\n");
+
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(buildUpstreamSse(`msg_unsupported_blocks_${upstreamCalls.length}`), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const expectedChatText = [
+    `Anthropic Messages malformed tool_use for Chat: ${JSON.stringify(malformedToolUse)}`,
+    `Anthropic Messages mcp_tool_use preserved for Chat: ${JSON.stringify(mcpToolUse)}`,
+    `Anthropic Messages mcp_tool_result preserved for Chat: ${JSON.stringify(mcpToolResult)}`,
+    `Anthropic Messages unrecognized content block for Chat: ${JSON.stringify(serverToolUse)}`,
+  ].join("");
+  const expectedResponsesText = [
+    `Anthropic Messages malformed tool_use for OpenAI Responses: ${JSON.stringify(malformedToolUse)}`,
+    `Anthropic Messages mcp_tool_use preserved for OpenAI Responses: ${JSON.stringify(mcpToolUse)}`,
+    `Anthropic Messages mcp_tool_result preserved for OpenAI Responses: ${JSON.stringify(mcpToolResult)}`,
+    `Anthropic Messages unrecognized content block for OpenAI Responses: ${JSON.stringify(serverToolUse)}`,
+  ].join("");
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "stream unsupported anthropic blocks via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      const chatEvents = parseSseEvents(chat.body);
+      const chatText = chatEvents
+        .filter((item) => item.data !== "[DONE]")
+        .map((item) => item.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(chatText, expectedChatText);
+      assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+
+      const adapterServer = http.createServer(async (_req, adapterRes) => {
+        adapterRes.statusCode = 200;
+        adapterRes.setHeader("content-type", "text/event-stream; charset=utf-8");
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(buildUpstreamSse("msg_direct_responses_adapter")));
+            controller.close();
+          },
+        });
+        await writeCodexResponsesSseFromAnthropicMessagesSse(body, adapterRes, "claude-native");
+        adapterRes.end();
+      });
+      await new Promise((resolve, reject) => {
+        adapterServer.once("error", reject);
+        adapterServer.listen(0, "127.0.0.1", resolve);
+      });
+      try {
+        const address = adapterServer.address();
+        assert.ok(address && typeof address === "object");
+        const responses = await requestRaw(`http://127.0.0.1:${address.port}/responses-adapter`, { method: "GET" });
+        assert.equal(responses.status, 200, responses.body);
+        const responseEvents = parseSseEvents(responses.body);
+        const responseText = responseEvents
+          .filter((item) => item.event === "response.output_text.delta")
+          .map((item) => item.data.delta || "")
+          .join("");
+        assert.equal(responseText, expectedResponsesText);
+        const completed = responseEvents.find((item) => item.event === "response.completed");
+        assert.equal(completed.data.response.status, "completed");
+        assert.equal(completed.data.response.output[0].content[0].text, expectedResponsesText);
+        assert.equal(responseEvents.at(-1).data, "[DONE]");
+      } finally {
+        await new Promise((resolve) => adapterServer.close(resolve));
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-unsupported-block-stream.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-anthropic-unsupported-block-stream");
+  assert.equal(upstreamCalls[0].body.stream, true);
+});
+
 test("model gateway ignores anthropic tool stop reason without tool uses for chat completions", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -14523,8 +14674,16 @@ test("model gateway preserves incomplete anthropic tool identities for chat comp
       assert.equal(stream.status, 200);
       const events = parseSseEvents(stream.body);
       assert.equal(events.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
-      assert.equal(events[1].data.choices[0].finish_reason, "stop");
-      assert.equal(events[2].data, "[DONE]");
+      const streamText = events
+        .filter((item) => item.data !== "[DONE]")
+        .map((item) => item.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(streamText, [
+        'Anthropic Messages malformed tool_use for Chat: {"type":"tool_use","name":"lookup","input":{}}',
+        'Anthropic Messages input_json_delta without usable tool_use for Chat at index 0: {"query":"docs"}',
+      ].join(""));
+      assert.equal(events.at(-2).data.choices[0].finish_reason, "stop");
+      assert.equal(events.at(-1).data, "[DONE]");
     });
   } finally {
     globalThis.fetch = originalFetch;

@@ -214,7 +214,10 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
             tool.inputJson += inputJson;
             writeChatToolCallArguments(state, res, tool, inputJson, legacyFunctionCalls);
           }
+          return;
         }
+        const fallbackText = anthropicStreamingContentBlockToText(block, "Chat");
+        if (fallbackText) writeChatTextDelta(state, res, fallbackText);
         return;
       }
       if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
@@ -227,7 +230,17 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
         }
         if (delta.type === "input_json_delta") {
           const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
-          if (!toolBlocks.has(sourceIndex)) return;
+          if (!toolBlocks.has(sourceIndex)) {
+            const partialJson = stringOrNull(delta.partial_json) || "";
+            if (partialJson) {
+              writeChatTextDelta(
+                state,
+                res,
+                `Anthropic Messages input_json_delta without usable tool_use for Chat at index ${sourceIndex}: ${partialJson}`,
+              );
+            }
+            return;
+          }
           const tool = ensureToolBlock(toolBlocks, sourceIndex, {});
           if (!tool) return;
           const partialJson = stringOrNull(delta.partial_json) || "";
@@ -763,7 +776,10 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
           ensureResponsesToolAdded(state, res, tool);
           const inputJson = serializeToolInput(block.input);
           if (inputJson) pushResponsesToolArgumentsDelta(res, tool, inputJson);
+          return;
         }
+        const fallbackText = anthropicStreamingContentBlockToText(block, "OpenAI Responses");
+        if (fallbackText) pushResponsesTextDelta(state, res, fallbackText);
         return;
       }
       if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
@@ -779,7 +795,17 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
         }
         if (delta.type === "input_json_delta") {
           const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
-          if (!state.tools.has(sourceIndex)) return;
+          if (!state.tools.has(sourceIndex)) {
+            const partialJson = stringOrNull(delta.partial_json) || "";
+            if (partialJson) {
+              pushResponsesTextDelta(
+                state,
+                res,
+                `Anthropic Messages input_json_delta without usable tool_use for OpenAI Responses at index ${sourceIndex}: ${partialJson}`,
+              );
+            }
+            return;
+          }
           const tool = ensureToolBlock(state.tools, sourceIndex, {});
           if (!tool) return;
           ensureResponsesToolAdded(state, res, tool);
@@ -2103,6 +2129,34 @@ function ensureResponsesToolBlock(
   if (!tool) return null;
   if (itemId) itemIdToIndex.set(itemId, sourceIndex);
   return tool;
+}
+
+
+function anthropicStreamingContentBlockToText(block: JsonRecord, target: "Chat" | "OpenAI Responses"): string {
+  const type = stringOrNull(block.type);
+  if (!type) return "";
+  if (type === "text") return stringOrNull(block.text) || "";
+  if (type === "thinking" || type === "redacted_thinking") return "";
+  if (type === "tool_use") {
+    if (!stringOrNull(block.id) && !stringOrNull(block.name) && !serializeToolInput(block.input)) return "";
+    return `Anthropic Messages malformed tool_use for ${target}: ${stringifyCompact(block)}`;
+  }
+  if (type === "mcp_tool_use") {
+    return isUsableAnthropicMcpToolUseBlock(block)
+      ? `Anthropic Messages mcp_tool_use preserved for ${target}: ${stringifyCompact(block)}`
+      : `Anthropic Messages malformed mcp_tool_use for ${target}: ${stringifyCompact(block)}`;
+  }
+  if (type === "mcp_tool_result") {
+    return stringOrNull(block.tool_use_id)
+      ? `Anthropic Messages mcp_tool_result preserved for ${target}: ${stringifyCompact(block)}`
+      : `Anthropic Messages malformed mcp_tool_result for ${target}: ${stringifyCompact(block)}`;
+  }
+  return `Anthropic Messages unrecognized content block for ${target}: ${stringifyCompact(block)}`;
+}
+
+function isUsableAnthropicMcpToolUseBlock(block: JsonRecord): boolean {
+  return block.type === "mcp_tool_use"
+    && Boolean(stringOrNull(block.id) && stringOrNull(block.name) && (stringOrNull(block.server_name) || stringOrNull(block.server_label)));
 }
 
 function isResponsesToolCallItem(item: JsonRecord): boolean {
