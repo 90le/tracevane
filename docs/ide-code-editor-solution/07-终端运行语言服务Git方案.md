@@ -492,7 +492,7 @@ M11-C 已完成，记录见 [`archive/m11-c-watcher-backed-symbol-index-plan.md`
 - 定义 M11-C-B watcher-backed symbol index guarded implementation 的最小切片与验证。
 ```
 
-M11-C 不做 runtime index、独立 symbol daemon、第二套 Files/Search/LSP API、完整源码持久化、多语言 LSP、完整 tsserver/typescript-language-server 长驻进程、AI semantic search、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-C-B 已完成受控实现；M11-D 已完成 multi-language LSP provider research plan；M11-E-A 已完成 provider registry extraction；M11-E-B 已完成 JSON official language service migration；M11-E-C 已完成 HTML/CSS lightweight language services guarded implementation；M11-E-D 已完成 multi-language provider acceptance closeout；M11-F-A 已完成 external language server gateway research plan；M11-F-B 已完成 external language server gateway skeleton guarded implementation；M11-F-C 已完成 first real external language server provider proof；M11-F-D 已完成 external provider lifecycle/status hardening and acceptance closeout；M11-G 已完成 external provider expansion and IDE status UI plan；M11-H 已完成 IDE external provider status UI foundation；M11-I 已完成 Bash external provider proof；M11-J 已完成 External provider installer/version policy plan；M11-K 已完成 External provider optional installer/status implementation；M11-L 已完成 External provider dependency hygiene / exact pin readiness；M11-M 已完成 Pyright external provider guarded implementation plan；M11-N 已完成 Pyright external provider guarded implementation；M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-C 不做 runtime index、独立 symbol daemon、第二套 Files/Search/LSP API、完整源码持久化、多语言 LSP、完整 tsserver/typescript-language-server 长驻进程、AI semantic search、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-C-B 已完成受控实现；M11-D 已完成 multi-language LSP provider research plan；M11-E-A 已完成 provider registry extraction；M11-E-B 已完成 JSON official language service migration；M11-E-C 已完成 HTML/CSS lightweight language services guarded implementation；M11-E-D 已完成 multi-language provider acceptance closeout；M11-F-A 已完成 external language server gateway research plan；M11-F-B 已完成 external language server gateway skeleton guarded implementation；M11-F-C 已完成 first real external language server provider proof；M11-F-D 已完成 external provider lifecycle/status hardening and acceptance closeout；M11-G 已完成 external provider expansion and IDE status UI plan；M11-H 已完成 IDE external provider status UI foundation；M11-I 已完成 Bash external provider proof；M11-J 已完成 External provider installer/version policy plan；M11-K 已完成 External provider optional installer/status implementation；M11-L 已完成 External provider dependency hygiene / exact pin readiness；M11-M 已完成 Pyright external provider guarded implementation plan；M11-N 已完成 Pyright external provider guarded implementation；M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan；下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ## 5. Problems 面板
 
@@ -753,7 +753,7 @@ M11-K 已完成，记录见 [`archive/m11-k-external-provider-optional-status-su
 - smoke:ide:lsp-provider-status 校验 YAML/Bash metadata 与 UI 展示。
 ```
 
-M11-K 明确不做 Pyright/tsserver/gopls/rust-analyzer/Vue/Svelte runtime provider、自动安装、前端安装按钮、用户自定义 command/args、system binary discovery、external gateway 生命周期改写、第二套 LSP API 或 File Manager Online Editor 产品壳变更。M11-L 已完成 dependency hygiene / exact pin readiness；M11-M 已完成 Pyright guarded implementation plan；M11-N 已完成 Pyright guarded implementation；M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation，下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-K 明确不做 Pyright/tsserver/gopls/rust-analyzer/Vue/Svelte runtime provider、自动安装、前端安装按钮、用户自定义 command/args、system binary discovery、external gateway 生命周期改写、第二套 LSP API 或 File Manager Online Editor 产品壳变更。M11-L 已完成 dependency hygiene / exact pin readiness；M11-M 已完成 Pyright guarded implementation plan；M11-N 已完成 Pyright guarded implementation；M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan，下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ### M11-N 已完成：Pyright External Provider Guarded Implementation
 
@@ -770,7 +770,7 @@ M11-N 已完成，记录见 [`archive/m11-n-pyright-external-provider-summary.md
 - 新增 `test:system:lsp-pyright-provider`，同时扩展 provider hygiene、external gateway 与 status smoke 验证。
 ```
 
-M11-N 明确不做：Python hover/completion/definition/references/rename/format/code action、virtualenv/interpreter discovery、Pylance 私有能力、用户自定义 provider command/env、system binary discovery、auto install、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-N 明确不做：Python hover/completion/definition/references/rename/format/code action、virtualenv/interpreter discovery、Pylance 私有能力、用户自定义 provider command/env、system binary discovery、auto install、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-O 已完成 external provider acceptance / heavy provider expansion decision；M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan；下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ### M11-O 已完成：External Provider Acceptance / Heavy Provider Expansion Decision
 
@@ -785,7 +785,7 @@ M11-O 已完成，记录见 [`archive/m11-o-external-provider-acceptance-expansi
 - 暂缓 TypeScript Language Server migration、Pyright advanced features、vscode-langservers-extracted 替换、Vue/Svelte framework providers、Go/Rust/Java/C/C++ toolchain providers。
 ```
 
-M11-O 明确不做：Dockerfile runtime provider、任何新依赖安装、YAML upgrade、TS/JS external migration、Python advanced LSP、auto install、system binary discovery、用户自定义 command/env、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-O 明确不做：Dockerfile runtime provider、任何新依赖安装、YAML upgrade、TS/JS external migration、Python advanced LSP、auto install、system binary discovery、用户自定义 command/env、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-P 已完成 Dockerfile external provider guarded proof；M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan；下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ### M11-P 已完成：Dockerfile External Provider Guarded Proof
 
@@ -803,7 +803,7 @@ M11-P 已完成，记录见 [`archive/m11-p-dockerfile-external-provider-summary
 - 新增 `test:system:lsp-dockerfile-provider` 覆盖 profile/lifecycle 与 diagnostics。
 ```
 
-M11-P 明确不做：Dockerfile hover/completion/definition/references/formatting/code action、Docker daemon/container runtime discovery、auto install、system binary discovery、前端 provider command/env、YAML upgrade、TS/JS external migration、Python advanced features、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation，下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-P 明确不做：Dockerfile hover/completion/definition/references/formatting/code action、Docker daemon/container runtime discovery、auto install、system binary discovery、前端 provider command/env、YAML upgrade、TS/JS external migration、Python advanced features、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-Q 已完成 Markdown / vscode-langservers-extracted provider plan；M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan，下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ### M11-Q 已完成：Markdown / vscode-langservers-extracted Provider Plan
 
@@ -819,7 +819,7 @@ M11-Q 已完成，记录见 [`archive/m11-q-markdown-vscode-langservers-extracte
 - 明确 Markdown server 可能对普通文本返回空 diagnostics；验收允许 bounded empty diagnostics，但必须证明 lifecycle/status/route 不崩。
 ```
 
-M11-Q 明确不做：安装 `vscode-langservers-extracted`、启用 Markdown runtime provider、启用 JSON/HTML/CSS/ESLint bins、替换现有 in-process provider、Markdown hover/completion/definition/references/formatting/code action、Markdown preview/render、MDX JSX semantics、link validation、auto install、system binary discovery、前端 provider command/env、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-R 已完成 Markdown external provider guarded implementation；下一步 M11-S 进入 ESLint external provider project-config/runtime safety plan。
+M11-Q 明确不做：安装 `vscode-langservers-extracted`、启用 Markdown runtime provider、启用 JSON/HTML/CSS/ESLint bins、替换现有 in-process provider、Markdown hover/completion/definition/references/formatting/code action、Markdown preview/render、MDX JSX semantics、link validation、auto install、system binary discovery、前端 provider command/env、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M11-R 已完成 Markdown external provider guarded implementation；M11-S 已完成 ESLint external provider project-config/runtime safety plan；下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
 
 ## 9. 验收标准
 
@@ -866,3 +866,18 @@ Git：
 - tmux 不是 shell/profile 候选。tmux 只作为 pinned terminal 的可选 durable backend；不可用时仍使用 PTY，并在 pane 状态中显示 backend 边界。
 - New Terminal 可以选择新的 shell/profile；Split Right / Split Down 继承被拆分 pane 的 shell/profile，避免同一个 tab 内的分屏意外切换 shell。
 - layout persistence 只保存 terminalId、profileId、shell、title、split metadata 等 UI/session metadata，不保存完整终端输出。
+
+### M11-S 已完成：ESLint External Provider Project-Config / Runtime Safety Plan
+
+M11-S 已完成，记录见 [`archive/m11-s-eslint-external-provider-safety-plan.md`](./archive/m11-s-eslint-external-provider-safety-plan.md)。本阶段只做 ESLint external provider 的项目配置、cwd/root guard、workspace trust、runtime budget 和验收切片计划，不启用 `vscode-eslint-language-server` runtime provider。
+
+验收与风险收口：
+
+```txt
+- `vscode-langservers-extracted@4.10.0` already contains `vscode-eslint-language-server`, but M11-R intentionally left it disabled.
+- ESLint differs from Markdown/Dockerfile: it resolves project config/plugins/parsers from cwd and may execute project-controlled code paths.
+- M11-T must use root-level config activation gate, existing external gateway cwd/root guard, server-side command allowlist, bounded request budgets, metadata/status UI and provider-specific tests.
+- M11-T diagnostics-only proof must not enable fix/format/code actions or user-provided command/env/runtime settings.
+```
+
+M11-S 明确不做：启用 ESLint runtime provider、ESLint auto-fix、formatting、code actions、fix on save、monorepo glob workingDirectories、用户自定义 `eslint.runtime` / `eslint.nodePath` / `eslint.execArgv` / provider command/env、auto install、system binary discovery、JSON/HTML/CSS bins、替换现有 TS/JS/JSON/HTML/CSS provider、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M11-T 进入 ESLint external provider guarded diagnostics implementation。
