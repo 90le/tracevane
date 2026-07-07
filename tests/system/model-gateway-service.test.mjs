@@ -15830,9 +15830,7 @@ test("model gateway preserves unknown Chat upstream content parts through Respon
       });
       assert.equal(responses.status, 200, JSON.stringify(responses.body));
       assert.equal(responses.body.output[0].content[0].text, "visible");
-      assert.match(responses.body.output[0].content[1].text, /OpenAI Chat unrecognized message content part for Responses/);
-      assert.match(responses.body.output[0].content[1].text, /output_audio/);
-      assert.match(responses.body.output[0].content[1].text, /chat audio transcript/);
+      assert.equal(responses.body.output[0].content[1].text, "chat audio transcript");
 
       const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -15840,7 +15838,7 @@ test("model gateway preserves unknown Chat upstream content parts through Respon
         body: { model: "gpt-chat", max_tokens: 64, messages: [{ role: "user", content: "hello" }], stream: false },
       });
       assert.equal(anthropic.status, 200, JSON.stringify(anthropic.body));
-      assert.equal(anthropic.body.content[0].text, "visibleOpenAI Chat unrecognized message content part for Anthropic Messages: " + JSON.stringify(unknownPart));
+      assert.equal(anthropic.body.content[0].text, "visiblechat audio transcript");
     });
   } finally {
     globalThis.fetch = originalFetch;

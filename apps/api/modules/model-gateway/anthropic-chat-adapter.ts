@@ -1812,6 +1812,7 @@ function chatContentPartToText(part: unknown): string {
     || stringOrNull(part.input_text)
     || stringOrNull(part.output_text)
     || stringOrNull(part.refusal)
+    || stringOrNull(part.transcript)
     || "";
 }
 

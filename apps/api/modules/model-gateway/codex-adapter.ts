@@ -277,6 +277,7 @@ function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null 
     stringOrNull(part.text)
       || stringOrNull(part.output_text)
       || stringOrNull(part.input_text)
+      || stringOrNull(part.transcript)
       || "",
   );
   if (!text) {
@@ -711,7 +712,10 @@ function contentPartToChatParts(part: unknown): JsonRecord[] {
   }
   const filePart = inputFilePartFromResponsesPart(part);
   if (filePart) return [filePart];
-  const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
+  const text = stringOrNull(part.text)
+    || stringOrNull(part.output_text)
+    || stringOrNull(part.input_text)
+    || stringOrNull(part.transcript);
   if (text) return [{ type: "text", text }];
   if (Array.isArray(part.content)) {
     const nested = contentToChatParts(part.content);
@@ -758,7 +762,10 @@ function contentPartToText(part: unknown): string {
   if (!isRecord(part)) return "";
   const fileReference = inputFileReferenceFromResponsesPart(part);
   if (fileReference) return fileReference;
-  const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
+  const text = stringOrNull(part.text)
+    || stringOrNull(part.output_text)
+    || stringOrNull(part.input_text)
+    || stringOrNull(part.transcript);
   if (text) return text;
   if (Array.isArray(part.content)) {
     const nested = contentToText(part.content);
