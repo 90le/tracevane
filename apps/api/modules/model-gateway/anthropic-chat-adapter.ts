@@ -208,6 +208,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   ]);
   const verbosity = verbosityOrNull(request.verbosity);
   if (verbosity) chatRequest.verbosity = verbosity;
+  const responseFormat = mapAnthropicOutputConfigToChatResponseFormat(request.output_config);
+  if (responseFormat !== undefined) chatRequest.response_format = responseFormat;
   if (options.preserveMetadata && request.metadata !== undefined) chatRequest.metadata = request.metadata;
   const metadataUserId = anthropicMetadataUserId(request.metadata);
   if (metadataUserId && chatRequest.user === undefined) chatRequest.user = metadataUserId;
@@ -1041,6 +1043,22 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
     if (typeof tool.description === "string") fn.description = tool.description;
     return [{ type: "function", function: fn }];
   });
+}
+
+function mapAnthropicOutputConfigToChatResponseFormat(outputConfig: unknown): unknown {
+  if (!isRecord(outputConfig) || !isRecord(outputConfig.format)) return undefined;
+  const format = outputConfig.format;
+  if (format.type === "json_schema") {
+    const jsonSchema: JsonRecord = {};
+    for (const key of ["name", "schema", "strict", "description"] as const) {
+      if (format[key] !== undefined) jsonSchema[key] = format[key];
+    }
+    return { type: "json_schema", json_schema: jsonSchema };
+  }
+  if (format.type === "json_object" || format.type === "text") {
+    return { type: format.type };
+  }
+  return undefined;
 }
 
 function anthropicMetadataUserId(metadata: unknown): string | null {

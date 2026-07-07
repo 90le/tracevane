@@ -10319,6 +10319,14 @@ test("model gateway maps GPT-5 verbosity across Chat, Anthropic, and Responses a
           model: "gpt-native-responses",
           max_tokens: 32,
           verbosity: "low",
+          output_config: {
+            format: {
+              type: "json_schema",
+              name: "anthropic_schema",
+              schema: { type: "object", additionalProperties: false, properties: { answer: { type: "string" } }, required: ["answer"] },
+              strict: true,
+            },
+          },
           messages: [{ role: "user", content: "anthropic verbosity" }],
         },
       });
@@ -10354,7 +10362,15 @@ test("model gateway maps GPT-5 verbosity across Chat, Anthropic, and Responses a
   assert.deepEqual(upstreamCalls[0].body.text, { format: { type: "json_object" }, verbosity: "high" });
   assert.equal(upstreamCalls[1].url, "https://responses-verbosity.example.test/v1/responses");
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-responses-verbosity-secret");
-  assert.equal(upstreamCalls[1].body.text.verbosity, "low");
+  assert.deepEqual(upstreamCalls[1].body.text, {
+    format: {
+      type: "json_schema",
+      name: "anthropic_schema",
+      schema: { type: "object", additionalProperties: false, properties: { answer: { type: "string" } }, required: ["answer"] },
+      strict: true,
+    },
+    verbosity: "low",
+  });
   assert.equal(upstreamCalls[2].url, "https://chat-verbosity.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[2].authorization, "Bearer sk-chat-verbosity-secret");
   assert.equal(upstreamCalls[2].body.verbosity, "medium");
@@ -12108,6 +12124,14 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             input_schema: { type: "object", properties: { query: { type: "string" } } },
           }],
           tool_choice: { type: "tool", name: "lookup", disable_parallel_tool_use: true },
+          output_config: {
+            format: {
+              type: "json_schema",
+              name: "lookup_result",
+              schema: { type: "object", additionalProperties: false, properties: { ok: { type: "boolean" } }, required: ["ok"] },
+              strict: true,
+            },
+          },
           temperature: 0.1,
           metadata: {
             user_id: "claude-code-session",
@@ -12238,6 +12262,14 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     stream: false,
     max_tokens: 128,
     temperature: 0.1,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "lookup_result",
+        schema: { type: "object", additionalProperties: false, properties: { ok: { type: "boolean" } }, required: ["ok"] },
+        strict: true,
+      },
+    },
     user: "claude-code-session",
     tools: [{
       type: "function",
