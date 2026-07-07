@@ -9611,7 +9611,15 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         .filter((item) => item.event === "content_block_delta")
         .map((item) => item.data.delta.text || "")
         .join("");
-      assert.equal(messageText, expectedListText + expectedCallText);
+      assert.equal(messageText, expectedListText);
+      const contentBlocks = messageEvents
+        .filter((item) => item.event === "content_block_start")
+        .map((item) => item.data.content_block);
+      assert.deepEqual(contentBlocks, [
+        { type: "text", text: "" },
+        { type: "mcp_tool_use", id: "mcp_call_1", name: "read_file", server_name: "repo-tools", input: { path: "README.md" } },
+        { type: "mcp_tool_result", tool_use_id: "mcp_call_1", is_error: false, content: [{ type: "text", text: JSON.stringify({ path: "README.md", text: "Hello from MCP" }) }] },
+      ]);
       const messageDelta = messageEvents.find((item) => item.event === "message_delta");
       assert.equal(messageDelta.data.delta.stop_reason, "end_turn");
       assert.equal(messageEvents.at(-1).event, "message_stop");

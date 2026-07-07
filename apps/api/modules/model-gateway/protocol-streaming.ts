@@ -558,13 +558,8 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
         if (isResponsesMcpOutputItem(event.json.item)) {
-          const text = responsesMcpOutputItemToText(event.json.item);
-          if (text) {
-            emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
-            closeAnthropicThinkingBlock(state, res);
-            ensureAnthropicTextMessageStart(state, res);
-            pushAnthropicTextDelta(state, res, text);
-          }
+          const emitted = emitAnthropicMcpOutputFromResponsesItem(state, res, event.json.item);
+          if (emitted) emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
           return;
         }
         if (isUsableResponsesToolCallItem(event.json.item)) {
@@ -2065,6 +2060,9 @@ function emitMissingAnthropicMcpOutputsFromResponsesOutput(
     model: string | null;
     usage: JsonRecord;
     textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
     nextContentIndex: number;
     text: string;
   },
@@ -2078,12 +2076,109 @@ function emitMissingAnthropicMcpOutputsFromResponsesOutput(
     if (!isRecord(item) || !isResponsesMcpOutputItem(item)) continue;
     const key = responsesMcpOutputItemKey({ output_index: index }, item);
     if (emittedKeys.has(key)) continue;
-    const text = responsesMcpOutputItemToText(item);
-    if (!text) continue;
-    emittedKeys.add(key);
-    ensureAnthropicTextMessageStart(state, res);
-    pushAnthropicTextDelta(state, res, text);
+    if (emitAnthropicMcpOutputFromResponsesItem(state, res, item)) emittedKeys.add(key);
   }
+}
+
+function emitAnthropicMcpOutputFromResponsesItem(
+  state: {
+    started: boolean;
+    messageId: string;
+    model: string | null;
+    usage: JsonRecord;
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+    nextContentIndex: number;
+    text: string;
+  },
+  res: http.ServerResponse,
+  item: JsonRecord,
+): boolean {
+  if (item.type === "mcp_call") {
+    closeAnthropicThinkingBlock(state, res);
+    closeAnthropicTextBlock(state, res);
+    ensureAnthropicTextMessageStart(state, res);
+    return emitAnthropicMcpToolBlocksFromResponsesCall(state, res, item);
+  }
+
+  const text = responsesMcpOutputItemToText(item);
+  if (!text) return false;
+  closeAnthropicThinkingBlock(state, res);
+  ensureAnthropicTextMessageStart(state, res);
+  pushAnthropicTextDelta(state, res, text);
+  return true;
+}
+
+function emitAnthropicMcpToolBlocksFromResponsesCall(
+  state: { nextContentIndex: number },
+  res: http.ServerResponse,
+  item: JsonRecord,
+): boolean {
+  const id = stringOrNull(item.id) || stringOrNull(item.call_id);
+  const name = stringOrNull(item.name) || stringOrNull(item.tool_name);
+  const serverName = stringOrNull(item.server_label) || stringOrNull(item.server_name);
+  if (!id || !name || !serverName) return false;
+
+  const useIndex = state.nextContentIndex;
+  state.nextContentIndex += 1;
+  writeSseEvent(res, "content_block_start", {
+    type: "content_block_start",
+    index: useIndex,
+    content_block: {
+      type: "mcp_tool_use",
+      id,
+      name,
+      server_name: serverName,
+      input: parseResponsesToolArguments(item.arguments ?? item.input),
+    },
+  });
+  writeSseEvent(res, "content_block_stop", {
+    type: "content_block_stop",
+    index: useIndex,
+  });
+
+  const outputValue = item.output ?? item.result ?? item.content;
+  if (outputValue !== undefined || item.error !== undefined) {
+    const resultIndex = state.nextContentIndex;
+    state.nextContentIndex += 1;
+    writeSseEvent(res, "content_block_start", {
+      type: "content_block_start",
+      index: resultIndex,
+      content_block: {
+        type: "mcp_tool_result",
+        tool_use_id: id,
+        is_error: item.error !== undefined && item.error !== null,
+        content: responsesMcpResultContentToAnthropicContent(item.error ?? outputValue),
+      },
+    });
+    writeSseEvent(res, "content_block_stop", {
+      type: "content_block_stop",
+      index: resultIndex,
+    });
+  }
+  return true;
+}
+
+function parseResponsesToolArguments(value: unknown): unknown {
+  if (isRecord(value) || Array.isArray(value)) return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) || Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function responsesMcpResultContentToAnthropicContent(value: unknown): JsonRecord[] {
+  if (Array.isArray(value)) {
+    const blocks = value.filter(isRecord);
+    if (blocks.length) return blocks;
+  }
+  if (isRecord(value) && typeof value.type === "string") return [value];
+  return [{ type: "text", text: stringifyCompact(value ?? "") }];
 }
 
 function isResponsesMcpOutputItem(item: JsonRecord): boolean {
