@@ -39,6 +39,7 @@ import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath }
 import { completeCssWithLanguageService, completeHtmlWithLanguageService, defineCssWithLanguageService, diagnoseCssWithLanguageService, formatCssWithLanguageService, formatHtmlWithLanguageService, hoverCssWithLanguageService, hoverHtmlWithLanguageService, referenceCssWithLanguageService } from "./providers/htmlCssLanguageService.js";
 import { completeJsonWithLanguageService, defineJsonWithLanguageService, diagnoseJsonWithLanguageService, formatJsonWithLanguageService, hoverJsonWithLanguageService, referenceJsonWithLanguageService } from "./providers/jsonLanguageService.js";
 import { createExternalLanguageServerGateway } from "./external/externalLanguageServerGateway.js";
+import { findExternalLanguageServerProfile } from "./external/externalProviderProfiles.js";
 import { externalProviderMetadataForProfile } from "./external/externalProviderMetadata.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
@@ -94,13 +95,28 @@ const ESLINT_ROOT_CONFIG_FILES = [
   "eslint.config.mjs",
   "eslint.config.cjs",
   "eslint.config.ts",
+  "eslint.config.mts",
+  "eslint.config.cts",
   ".eslintrc",
   ".eslintrc.js",
   ".eslintrc.cjs",
+  ".eslintrc.mjs",
   ".eslintrc.json",
   ".eslintrc.yaml",
   ".eslintrc.yml",
 ];
+const ESLINT_MARKER_DISCOVERY_EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vite",
+  ".tracevane-trash",
+]);
 
 export interface LspService {
   getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix>; externalProviders: ReturnType<typeof externalLanguageServerStatusSnapshot> };
@@ -1682,6 +1698,7 @@ async function diagnoseDocument(
       sourceFallback: "eslint",
       rootRealPath: eslintActivationRoot,
       absolutePath: resolved.absolutePath,
+      settings: eslintSettingsForWorkingDirectory(eslintActivationRoot),
       content,
       version: request.version ?? 1,
     }));
@@ -1772,6 +1789,7 @@ async function diagnoseWithExternalLanguageServer({
   absolutePath,
   content,
   version,
+  settings,
 }: {
   providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint";
   languageId: string;
@@ -1780,9 +1798,10 @@ async function diagnoseWithExternalLanguageServer({
   absolutePath: string;
   content: string;
   version: number;
+  settings?: Record<string, unknown>;
 }): Promise<LspDiagnostic[]> {
   const uri = pathToFileUri(absolutePath);
-  const gateway = createExternalLanguageServerGateway({ rootPath: rootRealPath });
+  const gateway = createExternalLanguageServerGateway({ rootPath: rootRealPath, profiles: settings ? [externalProfileWithSettings(providerId, settings)] : undefined });
   await gateway.start(providerId);
   try {
     gateway.notify(providerId, "textDocument/didOpen", {
@@ -2028,10 +2047,15 @@ function eslintLanguageId(language: string): string {
 }
 
 function findEslintActivationRoot(rootRealPath: string, absolutePath: string): string | null {
-  const boundary = path.resolve(rootRealPath);
-  let current = path.dirname(path.resolve(absolutePath));
+  const boundary = safeRealPath(rootRealPath);
+  const target = safeRealPath(absolutePath);
+  if (!isPathInsideBoundary(boundary, target)) return null;
+
+  let current = path.dirname(target);
+  if (hasIgnoredEslintDiscoverySegment(boundary, current)) return null;
+
   while (isPathInsideBoundary(boundary, current)) {
-    if (hasEslintActivationMarker(current)) return current;
+    if (!hasIgnoredEslintDiscoverySegment(boundary, current) && hasEslintActivationMarker(current)) return current;
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
@@ -2042,6 +2066,44 @@ function findEslintActivationRoot(rootRealPath: string, absolutePath: string): s
 function isPathInsideBoundary(boundary: string, target: string): boolean {
   const relative = path.relative(boundary, target);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function safeRealPath(targetPath: string): string {
+  try {
+    return fs.realpathSync.native(path.resolve(targetPath));
+  } catch {
+    return path.resolve(targetPath);
+  }
+}
+
+function hasIgnoredEslintDiscoverySegment(boundary: string, targetDirectory: string): boolean {
+  const relative = path.relative(boundary, targetDirectory);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return false;
+  return relative.split(path.sep).some((segment) => ESLINT_MARKER_DISCOVERY_EXCLUDED_DIRECTORIES.has(segment));
+}
+
+function eslintSettingsForWorkingDirectory(activationRoot: string): Record<string, unknown> {
+  return {
+    validate: "on",
+    packageManager: "npm",
+    codeAction: { disableRuleComment: { enable: false }, showDocumentation: { enable: false } },
+    codeActionOnSave: { enable: false, mode: "problems" },
+    format: false,
+    run: "onType",
+    workingDirectory: { directory: activationRoot, changeProcessCWD: false },
+    nodePath: null,
+    options: {},
+    rulesCustomizations: [],
+    problems: { shortenToSingleLine: false },
+    experimental: { useFlatConfig: false },
+    useESLintClass: true,
+  };
+}
+
+function externalProfileWithSettings(providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint", settings: Record<string, unknown>) {
+  const profile = findExternalLanguageServerProfile(providerId);
+  if (!profile) throw new Error(`Unknown external LSP profile: ${providerId}`);
+  return { ...profile, settings };
 }
 
 function hasEslintActivationMarker(candidateRoot: string): boolean {

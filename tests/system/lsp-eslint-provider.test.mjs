@@ -50,7 +50,7 @@ class ESLint {
   async calculateConfigForFile() { return { rules: { 'no-alert': 'error' }, parserOptions: {} }; }
   async lintText(content) {
     const index = content.indexOf('alert(');
-    return [{ messages: index === -1 ? [] : [{ ruleId: 'no-alert', severity: 2, message: 'Unexpected alert.', line: 1, column: index + 1, endLine: 1, endColumn: index + 6 }] }];
+    return [{ messages: index === -1 ? [] : [{ ruleId: 'no-alert', severity: 2, message: 'Unexpected alert from ' + process.cwd() + '.', line: 1, column: index + 1, endLine: 1, endColumn: index + 6 }] }];
   }
   getRulesMetaForResults() { return { 'no-alert': { type: 'problem', docs: { url: 'https://eslint.org/docs/latest/rules/no-alert' } } }; }
 }
@@ -122,4 +122,81 @@ test("LSP service routes JS diagnostics through ESLint when root config is prese
   assert.equal(response.provider, "eslint");
   assert.equal(response.language, "javascript");
   assert.ok(response.diagnostics.some((diagnostic) => diagnostic.source === "eslint" && /Unexpected alert/.test(diagnostic.message)), "ESLint diagnostics should flow through the external provider");
+});
+
+
+test("LSP service uses the nearest ESLint marker root for nested monorepo files", async () => {
+  const root = makeTempRoot();
+  installFakeEslint(root);
+  fs.writeFileSync(path.join(root, ".eslintrc.json"), JSON.stringify({ rules: { "no-alert": "error" } }), "utf8");
+  const packageRoot = path.join(root, "packages", "web");
+  fs.mkdirSync(packageRoot, { recursive: true });
+  fs.writeFileSync(path.join(packageRoot, ".eslintrc.json"), JSON.stringify({ rules: { "no-alert": "error" } }), "utf8");
+  const file = path.join(packageRoot, "sample.js");
+  const content = "alert('tracevane nested');\n";
+  fs.writeFileSync(file, content, "utf8");
+
+  const service = createLspService(createTracevaneConfig(root));
+  const response = await service.diagnoseDocument({
+    id: "eslint-nearest-marker",
+    rootId: "openclaw-root",
+    path: rootPathFor(file),
+    language: "javascript",
+    version: 1,
+    content,
+  });
+
+  assert.equal(response.provider, "eslint");
+  assert.ok(
+    response.diagnostics.some((diagnostic) => diagnostic.source === "eslint" && diagnostic.message.includes(path.join("packages", "web"))),
+    `ESLint diagnostics should run with the nearest package marker cwd: ${JSON.stringify(response.diagnostics)}`,
+  );
+});
+
+test("LSP service does not let sibling ESLint package markers activate unrelated files", async () => {
+  const root = makeTempRoot();
+  installFakeEslint(root);
+  const packageA = path.join(root, "packages", "a");
+  const packageB = path.join(root, "packages", "b");
+  fs.mkdirSync(packageA, { recursive: true });
+  fs.mkdirSync(packageB, { recursive: true });
+  fs.writeFileSync(path.join(packageA, ".eslintrc.json"), JSON.stringify({ rules: { "no-alert": "error" } }), "utf8");
+  const file = path.join(packageB, "sample.js");
+  const content = "const value = ;\n";
+  fs.writeFileSync(file, content, "utf8");
+
+  const service = createLspService(createTracevaneConfig(root));
+  const response = await service.diagnoseDocument({
+    id: "eslint-sibling-marker",
+    rootId: "openclaw-root",
+    path: rootPathFor(file),
+    language: "javascript",
+    version: 1,
+    content,
+  });
+
+  assert.equal(response.provider, "typescript");
+});
+
+test("LSP service ignores ESLint markers inside dependency/build discovery directories", async () => {
+  const root = makeTempRoot();
+  installFakeEslint(root);
+  const packageRoot = path.join(root, "node_modules", "example-package");
+  fs.mkdirSync(packageRoot, { recursive: true });
+  fs.writeFileSync(path.join(packageRoot, ".eslintrc.json"), JSON.stringify({ rules: { "no-alert": "error" } }), "utf8");
+  const file = path.join(packageRoot, "sample.js");
+  const content = "const value = ;\n";
+  fs.writeFileSync(file, content, "utf8");
+
+  const service = createLspService(createTracevaneConfig(root));
+  const response = await service.diagnoseDocument({
+    id: "eslint-ignored-marker",
+    rootId: "openclaw-root",
+    path: rootPathFor(file),
+    language: "javascript",
+    version: 1,
+    content,
+  });
+
+  assert.equal(response.provider, "typescript");
 });

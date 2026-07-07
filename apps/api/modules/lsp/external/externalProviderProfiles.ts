@@ -89,7 +89,10 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
       codeActionOnSave: { enable: false, mode: "problems" },
       format: false,
       run: "onType",
-      workingDirectory: { mode: "location" },
+      // M11-V: the runtime workingDirectory is injected by the backend per diagnostics
+      // request from the nearest root-guarded ESLint activation marker. The frontend
+      // never provides workingDirectories/cwd/runtime/options.
+      workingDirectory: null,
       nodePath: null,
       options: {},
       rulesCustomizations: [],
