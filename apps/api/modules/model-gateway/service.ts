@@ -4323,6 +4323,97 @@ function normalizeCodexAccountBuiltinToolAtPath(source: unknown): unknown {
   };
 }
 
+function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unknown>): void {
+  const supportedToolNames = new Set<string>();
+  const supportedToolTypes = new Set<string>();
+  const omittedTools: unknown[] = [];
+
+  if (Array.isArray(value.tools)) {
+    const tools: unknown[] = [];
+    for (const tool of value.tools) {
+      const normalized = normalizeCodexAccountBuiltinToolAtPath(tool);
+      if (!isRecord(normalized)) {
+        omittedTools.push(tool);
+        continue;
+      }
+      const type = normalizeString(normalized.type);
+      if (!isCodexAccountSupportedResponsesToolType(type)) {
+        omittedTools.push(tool);
+        continue;
+      }
+      tools.push(normalized);
+      supportedToolTypes.add(type);
+      const name = normalizeString(normalized.name);
+      if (name) supportedToolNames.add(name);
+    }
+    if (tools.length) value.tools = tools;
+    else delete value.tools;
+  }
+
+  if (omittedTools.length) appendCodexAccountCompatibilityNote(value, "tools", omittedTools);
+
+  if (isRecord(value.tool_choice)) {
+    const toolChoice: Record<string, unknown> = { ...value.tool_choice };
+    const normalizedType = normalizeCodexAccountBuiltinToolType(toolChoice.type);
+    if (normalizedType) toolChoice.type = normalizedType;
+    if (Array.isArray(toolChoice.tools)) {
+      toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountBuiltinToolAtPath);
+    }
+    if (isCodexAccountSupportedToolChoice(toolChoice, supportedToolTypes, supportedToolNames)) {
+      value.tool_choice = toolChoice;
+    } else {
+      appendCodexAccountCompatibilityNote(value, "tool_choice", [value.tool_choice]);
+      delete value.tool_choice;
+    }
+  } else if (value.tool_choice === "required" && !Array.isArray(value.tools)) {
+    appendCodexAccountCompatibilityNote(value, "tool_choice", [value.tool_choice]);
+    delete value.tool_choice;
+  }
+}
+
+function isCodexAccountSupportedResponsesToolType(type: string): boolean {
+  return type === "function"
+    || type === "custom"
+    || type === "web_search"
+    || type === "image_generation"
+    || type === "mcp";
+}
+
+function isCodexAccountSupportedToolChoice(
+  toolChoice: Record<string, unknown>,
+  supportedToolTypes: Set<string>,
+  supportedToolNames: Set<string>,
+): boolean {
+  const type = normalizeString(toolChoice.type);
+  if (!type || !isCodexAccountSupportedResponsesToolType(type)) return false;
+  if (type === "function" || type === "custom") {
+    const name = normalizeString(toolChoice.name) || (isRecord(toolChoice.function) ? normalizeString(toolChoice.function.name) : "");
+    return Boolean(name && supportedToolNames.has(name));
+  }
+  return supportedToolTypes.has(type);
+}
+
+function appendCodexAccountCompatibilityNote(value: Record<string, unknown>, label: string, omitted: unknown[]): void {
+  const input = Array.isArray(value.input) ? [...value.input] : [];
+  input.push({
+    type: "message",
+    role: "developer",
+    content: [{
+      type: "input_text",
+      text: `[OpenAI Responses ${label} omitted for Codex account compatibility: ${omitted.map(stringifyCompact).join("; ")}]`,
+    }],
+  });
+  value.input = input;
+}
+
+function stringifyCompact(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefined): string | undefined {
   if (!value) return value;
   try {
@@ -4377,18 +4468,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     }
     if (normalizeString(next.service_tier) !== "priority") delete next.service_tier;
 
-    if (Array.isArray(next.tools)) {
-      next.tools = next.tools.map(normalizeCodexAccountBuiltinToolAtPath);
-    }
-    if (isRecord(next.tool_choice)) {
-      const toolChoice: Record<string, unknown> = { ...next.tool_choice };
-      const normalizedType = normalizeCodexAccountBuiltinToolType(toolChoice.type);
-      if (normalizedType) toolChoice.type = normalizedType;
-      if (Array.isArray(toolChoice.tools)) {
-        toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountBuiltinToolAtPath);
-      }
-      next.tool_choice = toolChoice;
-    }
+    normalizeCodexAccountResponsesToolsAndChoice(next);
 
     stripCodexAccountResponsesUnsupportedFields(next);
 

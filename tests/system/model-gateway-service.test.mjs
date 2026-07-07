@@ -1630,6 +1630,23 @@ test("model gateway strips Codex account Responses unsupported request parameter
           },
           seed: 123,
           stream: false,
+          tools: [
+            {
+              type: "function",
+              name: "echo_probe",
+              description: "Echo probe",
+              parameters: {
+                type: "object",
+                properties: { value: { type: "string" } },
+                required: ["value"],
+                additionalProperties: false,
+              },
+            },
+            { type: "file_search", vector_store_ids: ["vs_unsupported"] },
+            { type: "code_interpreter", container: { type: "auto" } },
+            { type: "computer_use_preview", display_width: 1024, display_height: 768, environment: "browser" },
+          ],
+          tool_choice: { type: "file_search" },
           top_logprobs: 1,
         },
       });
@@ -1689,6 +1706,22 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.store, false);
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
+  const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(directUpstreamBody.tools, [{
+    type: "function",
+    name: "echo_probe",
+    description: "Echo probe",
+    parameters: {
+      type: "object",
+      properties: { value: { type: "string" } },
+      required: ["value"],
+      additionalProperties: false,
+    },
+  }]);
+  assert.equal(directUpstreamBody.tool_choice, undefined);
+  assert.equal(JSON.stringify(directUpstreamBody).includes("file_search"), true);
+  assert.equal(JSON.stringify(directUpstreamBody).includes("code_interpreter"), true);
+  assert.equal(JSON.stringify(directUpstreamBody).includes("computer_use_preview"), true);
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {
