@@ -142,7 +142,9 @@ export function adaptResponsesToChatCompletion(
     content: text || (toolCalls.length ? null : ""),
   };
   const reasoningText = collectResponseReasoningText(output);
+  const reasoningDetails = collectResponseReasoningDetails(output);
   if (reasoningText) message.reasoning_content = reasoningText;
+  if (reasoningDetails.length) message.reasoning_details = reasoningDetails;
   const annotations = collectResponseOutputAnnotations(output);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -229,6 +231,7 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
 
   const items: JsonRecord[] = [];
   const role = message.role === "assistant" ? "assistant" : "user";
+  if (role === "assistant") items.push(...chatMessageReasoningToResponsesItems(message));
   const content = chatContentToResponsesContent(message.content, role);
   if (content.length || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
     items.push({
@@ -244,6 +247,86 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     }
   }
   return items;
+}
+
+function chatMessageReasoningToResponsesItems(message: JsonRecord): JsonRecord[] {
+  const detailItems = chatReasoningDetailsToResponsesItems(message.reasoning_details);
+  if (detailItems.length) return detailItems;
+  const reasoningText = extractChatReasoningText(message);
+  return reasoningText ? [responsesReasoningTextItem(reasoningText)] : [];
+}
+
+function chatReasoningDetailsToResponsesItems(details: unknown): JsonRecord[] {
+  if (!Array.isArray(details)) return [];
+  const items: JsonRecord[] = [];
+  const textParts: string[] = [];
+  for (const detail of details) {
+    if (typeof detail === "string") {
+      if (detail) textParts.push(detail);
+      continue;
+    }
+    if (!isRecord(detail)) continue;
+    if (detail.type === "reasoning") {
+      items.push(stripReasoningTransportFields(detail));
+      continue;
+    }
+    const encryptedContent = stringOrNull(detail.encrypted_content);
+    if (encryptedContent) {
+      items.push({ type: "reasoning", encrypted_content: encryptedContent });
+      continue;
+    }
+    const text = reasoningDetailToText(detail);
+    if (text) textParts.push(text);
+  }
+  if (textParts.length) items.push(responsesReasoningTextItem(textParts.join("")));
+  return items;
+}
+
+function stripReasoningTransportFields(detail: JsonRecord): JsonRecord {
+  const { output_index: _outputIndex, content_index: _contentIndex, annotation_index: _annotationIndex, ...rest } = detail;
+  return { ...rest, type: "reasoning" };
+}
+
+function responsesReasoningTextItem(text: string): JsonRecord {
+  return {
+    type: "reasoning",
+    summary: [{ type: "summary_text", text }],
+  };
+}
+
+function extractChatReasoningText(message: JsonRecord): string {
+  const direct = stringOrNull(message.reasoning_content);
+  if (direct) return direct;
+  const reasoning = isRecord(message.reasoning) ? message.reasoning : null;
+  if (reasoning) {
+    for (const key of ["content", "text", "summary"] as const) {
+      const value = stringOrNull(reasoning[key]);
+      if (value) return value;
+    }
+  }
+  const details = Array.isArray(message.reasoning_details) ? message.reasoning_details : [];
+  return details.map((part) => typeof part === "string" ? part : isRecord(part) ? reasoningDetailToText(part) : "").filter(Boolean).join("");
+}
+
+function reasoningDetailToText(detail: JsonRecord): string {
+  const summary = Array.isArray(detail.summary) ? detail.summary : [];
+  const summaryText = summary
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (!isRecord(part)) return "";
+      return stringOrNull(part.text)
+        || stringOrNull(part.summary_text)
+        || stringOrNull(part.output_text)
+        || "";
+    })
+    .filter(Boolean)
+    .join("");
+  return summaryText
+    || stringOrNull(detail.text)
+    || stringOrNull(detail.content)
+    || stringOrNull(detail.summary_text)
+    || stringOrNull(detail.thinking)
+    || "";
 }
 
 function chatContentToResponsesContent(content: unknown, role: string): JsonRecord[] {
@@ -407,6 +490,13 @@ function responseOutputItemToText(item: unknown): string {
   if (item.type === "mcp_call") return mcpCallOutputToText(item);
   if (item.type === "mcp_list_tools") return mcpListToolsOutputToText(item);
   return "";
+}
+
+function collectResponseReasoningDetails(output: unknown[]): JsonRecord[] {
+  return output.flatMap((item): JsonRecord[] => {
+    if (!isRecord(item) || item.type !== "reasoning") return [];
+    return [{ ...item }];
+  });
 }
 
 function collectResponseReasoningText(output: unknown[]): string {

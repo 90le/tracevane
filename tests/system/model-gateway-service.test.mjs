@@ -8757,6 +8757,13 @@ test("model gateway protocol matrix forwards native openai responses and guards 
             {
               role: "assistant",
               content: "I will save a note.",
+              reasoning_details: [{
+                id: "rs_chat_history",
+                type: "reasoning",
+                status: "completed",
+                summary: [{ type: "summary_text", text: "Need to save a durable note." }],
+                encrypted_content: "encrypted-chat-history-reasoning",
+              }],
               tool_calls: [{
                 id: "call_note",
                 type: "function",
@@ -8991,11 +8998,18 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           { type: "input_image", image_url: "https://example.test/chart.png", detail: "high" },
         ],
       },
+      {
+        id: "rs_chat_history",
+        type: "reasoning",
+        status: "completed",
+        summary: [{ type: "summary_text", text: "Need to save a durable note." }],
+        encrypted_content: "encrypted-chat-history-reasoning",
+      },
       { role: "assistant", content: [{ type: "output_text", text: "I will save a note." }] },
-	      {
-	        type: "function_call",
-	        id: "fc_call_note",
-	        call_id: "call_note",
+      {
+        type: "function_call",
+        id: "fc_call_note",
+        call_id: "call_note",
         status: "completed",
         name: "save_note",
         arguments: "{\"note\":\"draft\"}",
@@ -15140,6 +15154,15 @@ test("model gateway preserves non-streaming responses reasoning summaries throug
       });
       assert.equal(chat.status, 200);
       assert.equal(chat.body.choices[0].message.reasoning_content, "Need context. Then answer.");
+      assert.deepEqual(chat.body.choices[0].message.reasoning_details, [{
+        id: "rs_1",
+        type: "reasoning",
+        status: "completed",
+        summary: [
+          { type: "summary_text", text: "Need context. " },
+          { type: "summary_text", text: "Then answer." },
+        ],
+      }]);
       assert.equal(chat.body.choices[0].message.content, "Done");
       assert.equal(chat.body.choices[0].finish_reason, "stop");
       assert.deepEqual(chat.body.usage, {
