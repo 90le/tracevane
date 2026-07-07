@@ -326,14 +326,14 @@ M7：LSP / Git / Debug
 - M7 Git Source Control 总体验收已完成，记录见 [`archive/m7-git-execution-summary.md`](./archive/m7-git-execution-summary.md)。
 - M7-F-A Debug Adapter Protocol 研究与最小实现计划已完成，记录见 [`archive/m7-f-a-debug-adapter-plan.md`](./archive/m7-f-a-debug-adapter-plan.md)。
 - M7-F-B Debug Gateway skeleton + Debug View shell 已完成，记录见 [`archive/m7-f-b-debug-foundation-summary.md`](./archive/m7-f-b-debug-foundation-summary.md)。
-- M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof 与 M7-F-E Debug acceptance closeout 已完成，记录见 [`archive/m7-f-debug-execution-summary.md`](./archive/m7-f-debug-execution-summary.md)。M7.x-A Debug hardening plan 已完成，记录见 [`archive/m7x-a-debug-hardening-plan.md`](./archive/m7x-a-debug-hardening-plan.md)。M7.x-B Debug lifecycle foundation 已完成，记录见 [`archive/m7x-b-debug-lifecycle-summary.md`](./archive/m7x-b-debug-lifecycle-summary.md)。M7.x-C Launch profile / config foundation 已完成，记录见 [`archive/m7x-c-debug-launch-profile-summary.md`](./archive/m7x-c-debug-launch-profile-summary.md)。M7.x-D Real Node inspector adapter minimal 已完成，记录见 [`archive/m7x-d-debug-node-inspector-summary.md`](./archive/m7x-d-debug-node-inspector-summary.md)。M7.x-E Debug controls / scopes foundation 已完成，记录见 [`archive/m7x-e-debug-controls-scopes-summary.md`](./archive/m7x-e-debug-controls-scopes-summary.md)。M7.x-F Debug Console watch / evaluate foundation 已完成，记录见 [`archive/m7x-f-debug-watch-evaluate-summary.md`](./archive/m7x-f-debug-watch-evaluate-summary.md)。M7.x-G Debug hardening acceptance closeout 已完成，记录见 [`archive/m7x-debug-hardening-execution-summary.md`](./archive/m7x-debug-hardening-execution-summary.md)。M7.y-A LSP / Git / Debug integration hardening plan 已完成，记录见 [`archive/m7y-a-lsp-git-debug-integration-plan.md`](./archive/m7y-a-lsp-git-debug-integration-plan.md)。下一步进入 M7.y-B TypeScript / JavaScript LSP diagnostics foundation；Debug、Git remote 与多语言 LSP 仍不同时追完整。
+- M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof 与 M7-F-E Debug acceptance closeout 已完成，记录见 [`archive/m7-f-debug-execution-summary.md`](./archive/m7-f-debug-execution-summary.md)。M7.x-A Debug hardening plan 已完成，记录见 [`archive/m7x-a-debug-hardening-plan.md`](./archive/m7x-a-debug-hardening-plan.md)。M7.x-B Debug lifecycle foundation 已完成，记录见 [`archive/m7x-b-debug-lifecycle-summary.md`](./archive/m7x-b-debug-lifecycle-summary.md)。M7.x-C Launch profile / config foundation 已完成，记录见 [`archive/m7x-c-debug-launch-profile-summary.md`](./archive/m7x-c-debug-launch-profile-summary.md)。M7.x-D Real Node inspector adapter minimal 已完成，记录见 [`archive/m7x-d-debug-node-inspector-summary.md`](./archive/m7x-d-debug-node-inspector-summary.md)。M7.x-E Debug controls / scopes foundation 已完成，记录见 [`archive/m7x-e-debug-controls-scopes-summary.md`](./archive/m7x-e-debug-controls-scopes-summary.md)。M7.x-F Debug Console watch / evaluate foundation 已完成，记录见 [`archive/m7x-f-debug-watch-evaluate-summary.md`](./archive/m7x-f-debug-watch-evaluate-summary.md)。M7.x-G Debug hardening acceptance closeout 已完成，记录见 [`archive/m7x-debug-hardening-execution-summary.md`](./archive/m7x-debug-hardening-execution-summary.md)。M7.y-A LSP / Git / Debug integration hardening plan 已完成，记录见 [`archive/m7y-a-lsp-git-debug-integration-plan.md`](./archive/m7y-a-lsp-git-debug-integration-plan.md)。M7.y-B TypeScript / JavaScript LSP diagnostics foundation 已完成，记录见 [`archive/m7y-b-typescript-javascript-lsp-diagnostics-summary.md`](./archive/m7y-b-typescript-javascript-lsp-diagnostics-summary.md)。下一步进入 M7.y-C TypeScript / JavaScript LSP interaction expansion plan；Debug、Git remote 与多语言 LSP 仍不同时追完整。
 ```
 
 ## 4. LSP 语言服务方案
 
 Monaco 提供编辑器能力，但完整 IDE 体验需要 LSP。
 
-M7.y-A 已完成 LSP / Git / Debug integration hardening plan，记录见 [`archive/m7y-a-lsp-git-debug-integration-plan.md`](./archive/m7y-a-lsp-git-debug-integration-plan.md)。当前结论是：下一步优先进入 M7.y-B TypeScript / JavaScript LSP diagnostics foundation，先把项目主语言的 diagnostics 稳定接入 Problems / Output / editor reveal 链路；Git remote/branch/stash UI 与真实 DAP/attach/launch.json 继续后置，不和 TS/JS diagnostics 同时扩张。
+M7.y-A 已完成 LSP / Git / Debug integration hardening plan，记录见 [`archive/m7y-a-lsp-git-debug-integration-plan.md`](./archive/m7y-a-lsp-git-debug-integration-plan.md)。M7.y-B 已完成 TypeScript / JavaScript LSP diagnostics foundation，记录见 [`archive/m7y-b-typescript-javascript-lsp-diagnostics-summary.md`](./archive/m7y-b-typescript-javascript-lsp-diagnostics-summary.md)。当前 TS/JS diagnostics 复用既有 `/api/lsp/diagnostics`、`/ws/lsp`、Problems、Output 和 editor reveal 链路；下一步优先进入 M7.y-C TypeScript / JavaScript LSP interaction expansion plan。Git remote/branch/stash UI 与真实 DAP/attach/launch.json 继续后置，不和 TS/JS interaction 同时扩张。
 
 LSP 能力：
 
@@ -511,7 +511,8 @@ M7.x-E：Debug controls / scopes foundation（已完成）。
 M7.x-F：Debug Console watch / evaluate foundation（已完成）。
 M7.x-G：Debug hardening acceptance closeout（已完成）。
 M7.y-A：LSP / Git / Debug integration hardening plan（已完成）。
-M7.y-B：TypeScript / JavaScript LSP diagnostics foundation（下一步）。
+M7.y-B：TypeScript / JavaScript LSP diagnostics foundation（已完成）。
+M7.y-C：TypeScript / JavaScript LSP interaction expansion plan（下一步）。
 ```
 
 ## 8. 能力建设优先级
@@ -546,7 +547,8 @@ M7.y-B：TypeScript / JavaScript LSP diagnostics foundation（下一步）。
 25. M7.x-F：Debug Console watch / evaluate foundation（已完成）
 26. M7.x-G：Debug hardening acceptance closeout（已完成）
 27. M7.y-A：LSP / Git / Debug integration hardening plan（已完成）
-28. M7.y-B：TypeScript / JavaScript LSP diagnostics foundation（下一步）
+28. M7.y-B：TypeScript / JavaScript LSP diagnostics foundation（已完成）
+29. M7.y-C：TypeScript / JavaScript LSP interaction expansion plan（下一步）
 ```
 
 ## 9. 验收标准

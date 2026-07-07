@@ -51,7 +51,7 @@ export function useLspDiagnostics({
           appendWorkbenchOutput({
             channel: { id: "lsp", label: "LSP", kind: "lsp" },
             level: "info",
-            text: `JSON diagnostics active: ${response.path}`,
+            text: `${lspDiagnosticsLabel(response.language, response.provider)} diagnostics active: ${response.path}`,
           });
         }
       }).catch((error) => {
@@ -69,6 +69,13 @@ export function useLspDiagnostics({
       controller.abort();
     };
   }, [content, enabled, language, path, rootId, version]);
+}
+
+function lspDiagnosticsLabel(language: string | null | undefined, provider: string | null | undefined): string {
+  if (language === "typescript" || language === "typescriptreact") return "TypeScript";
+  if (language === "javascript" || language === "javascriptreact") return "JavaScript";
+  if (language === "json") return "JSON";
+  return provider || "LSP";
 }
 
 function problemFromDiagnostic(rootId: string, path: string, diagnostic: LspDiagnostic, index: number) {

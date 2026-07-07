@@ -85,14 +85,14 @@ export interface LspDefinitionResponse extends LspDocumentRef {
 export interface LspDiagnosticsResponse extends LspDocumentRef {
   type: "diagnostics";
   id?: string | null;
-  provider: "json";
+  provider: "json" | "typescript";
   diagnostics: LspDiagnostic[];
   checkedAt: string;
 }
 
 export interface LspGatewayReadyEvent {
   type: "ready";
-  provider: "json";
+  provider: "tracevane-lsp";
   message: string;
 }
 

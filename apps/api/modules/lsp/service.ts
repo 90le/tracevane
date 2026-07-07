@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { Duplex } from "node:stream";
+import ts from "typescript";
 import { WebSocket, WebSocketServer } from "ws";
 
 import type { TracevaneServerConfig } from "../../../../types/api.js";
@@ -19,9 +20,11 @@ import { resolveFilesServiceExistingFilePath } from "../files/service.js";
 
 const LSP_WS_PATH = "/ws/lsp";
 const JSON_PROVIDER_SOURCE = "json-lsp";
+const TS_PROVIDER_SOURCE = "typescript-lsp";
+const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 
 export interface LspService {
-  getStatus(): { ok: true; provider: "json"; websocketPath: string; supportedLanguages: string[]; features: string[] };
+  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[] };
   diagnoseDocument(request: LspDiagnosticsRequest): LspDiagnosticsResponse;
   hoverDocument(request: LspPositionRequest): LspHoverResponse;
   completeDocument(request: LspCompletionRequest): LspCompletionResponse;
@@ -35,8 +38,8 @@ export function createLspService(config: TracevaneServerConfig): LspService {
   wss.on("connection", (socket) => {
     send(socket, {
       type: "ready",
-      provider: "json",
-      message: "Tracevane JSON diagnostics provider ready",
+      provider: "tracevane-lsp",
+      message: "Tracevane LSP diagnostics provider ready",
     });
 
     socket.on("message", (data) => {
@@ -84,7 +87,13 @@ export function createLspService(config: TracevaneServerConfig): LspService {
 
   return {
     getStatus() {
-      return { ok: true, provider: "json", websocketPath: LSP_WS_PATH, supportedLanguages: ["json"], features: ["diagnostics", "hover", "completion", "definition"] };
+      return {
+        ok: true,
+        provider: "tracevane-lsp",
+        websocketPath: LSP_WS_PATH,
+        supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
+        features: ["diagnostics", "hover", "completion", "definition"],
+      };
     },
     diagnoseDocument(request) {
       return diagnoseDocument(config, request);
@@ -279,25 +288,37 @@ function diagnoseDocument(
   // the path still has to resolve to an existing workspace file.
   const resolved = resolveFilesServiceExistingFilePath(config, rootId, targetPath);
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
-  if (language !== "json") {
-    return responseFor(request, resolved.root.id, resolved.relativePath, []);
+  if (language === "json") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "json", "json", diagnoseJson(content));
   }
-  return responseFor(request, resolved.root.id, resolved.relativePath, diagnoseJson(content));
+  if (TYPESCRIPT_LANGUAGES.has(language)) {
+    return responseFor(
+      request,
+      resolved.root.id,
+      resolved.relativePath,
+      "typescript",
+      language,
+      diagnoseTypeScriptLike(content, resolved.absolutePath, language),
+    );
+  }
+  return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
 function responseFor(
   request: LspDiagnosticsRequest,
   rootId: string,
   targetPath: string,
+  provider: "json" | "typescript",
+  language: string,
   diagnostics: LspDiagnostic[],
 ): LspDiagnosticsResponse {
   return {
     type: "diagnostics",
     id: request.id ?? null,
-    provider: "json",
+    provider,
     rootId,
     path: targetPath,
-    language: "json",
+    language,
     version: request.version ?? null,
     diagnostics,
     checkedAt: new Date().toISOString(),
@@ -324,6 +345,76 @@ function diagnoseJson(content: string): LspDiagnostic[] {
       source: JSON_PROVIDER_SOURCE,
     }];
   }
+}
+
+function diagnoseTypeScriptLike(content: string, absolutePath: string, language: string): LspDiagnostic[] {
+  if (!content.trim()) return [];
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: language === "javascript" || language === "javascriptreact",
+    checkJs: language === "javascript" || language === "javascriptreact",
+    jsx: language === "typescriptreact" || language === "javascriptreact" ? ts.JsxEmit.ReactJSX : ts.JsxEmit.Preserve,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    noEmit: true,
+    skipLibCheck: true,
+    strict: false,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const normalizedFileName = absolutePath.replace(/\\/g, "/");
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  const originalReadFile = host.readFile?.bind(host);
+  const originalFileExists = host.fileExists?.bind(host);
+  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
+    if (sameTsFile(fileName, normalizedFileName)) {
+      return ts.createSourceFile(fileName, content, languageVersion, true, scriptKindForLanguage(language));
+    }
+    return originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+  };
+  host.readFile = (fileName) => sameTsFile(fileName, normalizedFileName) ? content : originalReadFile?.(fileName);
+  host.fileExists = (fileName) => sameTsFile(fileName, normalizedFileName) || Boolean(originalFileExists?.(fileName));
+
+  const program = ts.createProgram([normalizedFileName], compilerOptions, host);
+  const sourceFile = program.getSourceFile(normalizedFileName);
+  if (!sourceFile) return [];
+  return ts.getPreEmitDiagnostics(program, sourceFile)
+    .filter((diagnostic) => diagnostic.file && sameTsFile(diagnostic.file.fileName, normalizedFileName))
+    .map((diagnostic) => tsDiagnosticToLspDiagnostic(diagnostic, sourceFile));
+}
+
+function tsDiagnosticToLspDiagnostic(diagnostic: ts.Diagnostic, sourceFile: ts.SourceFile): LspDiagnostic {
+  const start = typeof diagnostic.start === "number" ? diagnostic.start : 0;
+  const length = typeof diagnostic.length === "number" ? Math.max(1, diagnostic.length) : 1;
+  const startPosition = sourceFile.getLineAndCharacterOfPosition(clampOffset(start, sourceFile.text.length));
+  const endPosition = sourceFile.getLineAndCharacterOfPosition(clampOffset(start + length, sourceFile.text.length));
+  return {
+    severity: tsDiagnosticCategoryToSeverity(diagnostic.category),
+    message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+    startLine: startPosition.line + 1,
+    startColumn: startPosition.character + 1,
+    endLine: endPosition.line + 1,
+    endColumn: endPosition.character + 1,
+    code: `TS${diagnostic.code}`,
+    source: TS_PROVIDER_SOURCE,
+  };
+}
+
+function tsDiagnosticCategoryToSeverity(category: ts.DiagnosticCategory): LspDiagnostic["severity"] {
+  if (category === ts.DiagnosticCategory.Error) return "error";
+  if (category === ts.DiagnosticCategory.Warning) return "warning";
+  if (category === ts.DiagnosticCategory.Suggestion) return "hint";
+  return "info";
+}
+
+function scriptKindForLanguage(language: string): ts.ScriptKind {
+  if (language === "typescriptreact") return ts.ScriptKind.TSX;
+  if (language === "javascript") return ts.ScriptKind.JS;
+  if (language === "javascriptreact") return ts.ScriptKind.JSX;
+  return ts.ScriptKind.TS;
+}
+
+function sameTsFile(left: string, right: string): boolean {
+  return left.replace(/\\/g, "/") === right.replace(/\\/g, "/");
 }
 
 function extractJsonErrorOffset(message: string, content: string): number {
@@ -374,6 +465,15 @@ function clampOffset(value: number, length: number): number {
 function normalizeLanguage(language: string | null | undefined, targetPath: string, content: string): string {
   const raw = String(language || "").trim().toLowerCase();
   if (raw === "json") return "json";
+  if (raw === "ts" || raw === "typescript") return "typescript";
+  if (raw === "tsx" || raw === "typescriptreact") return "typescriptreact";
+  if (raw === "js" || raw === "javascript") return "javascript";
+  if (raw === "jsx" || raw === "javascriptreact") return "javascriptreact";
+  if (/\.tsx$/i.test(targetPath)) return "typescriptreact";
+  if (/\.ts$/i.test(targetPath) && !/\.d\.ts$/i.test(targetPath)) return "typescript";
+  if (/\.d\.ts$/i.test(targetPath)) return "typescript";
+  if (/\.jsx$/i.test(targetPath)) return "javascriptreact";
+  if (/\.m?js$/i.test(targetPath) || /\.cjs$/i.test(targetPath)) return "javascript";
   if (/(^|\.)json($|[.\-_])/i.test(targetPath)) return "json";
   const trimmed = content.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
