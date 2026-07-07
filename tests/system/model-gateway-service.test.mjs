@@ -12536,9 +12536,10 @@ test("model gateway preserves supported responses controls and strips rejected c
           messages: [{ role: "user", content: "preserve modern responses controls" }],
           background: true,
           conversation: "conv_123",
-          include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+          include: ["reasoning.encrypted_content"],
           max_tool_calls: 7,
           frequency_penalty: 0,
+          logprobs: true,
           metadata: { trace_id: "strip-for-codex-responses" },
           presence_penalty: 0,
           previous_response_id: "resp_previous",
@@ -12614,6 +12615,7 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("metadata" in upstreamCalls[0].body, false);
   assert.equal("stop" in upstreamCalls[0].body, false);
   assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
+  assert.equal("logprobs" in upstreamCalls[0].body, false);
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
 

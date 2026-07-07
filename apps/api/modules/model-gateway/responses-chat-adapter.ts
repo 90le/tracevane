@@ -133,6 +133,7 @@ export function adaptChatCompletionRequestToResponses(
   } else if (request.max_completion_tokens !== undefined) {
     responsesRequest.max_output_tokens = request.max_completion_tokens;
   }
+  applyChatLogprobControlsToResponses(responsesRequest, request);
   // Do not forward Chat/Claude stop sequences through adapter-generated
   // Responses requests. The Codex account Responses endpoint rejects `stop` as
   // unsupported, which breaks Claude Code CLI compatibility.
@@ -630,6 +631,15 @@ function copyResponsesMcpTool(tool: JsonRecord): JsonRecord | null {
     if (tool[key] !== undefined) mapped[key] = tool[key];
   }
   return mapped;
+}
+
+function applyChatLogprobControlsToResponses(responsesRequest: JsonRecord, request: JsonRecord): void {
+  if (request.logprobs !== true && request.top_logprobs === undefined) return;
+  const include = Array.isArray(responsesRequest.include)
+    ? responsesRequest.include.map((item) => stringOrNull(item)).filter(Boolean)
+    : [];
+  if (!include.includes("message.output_text.logprobs")) include.push("message.output_text.logprobs");
+  responsesRequest.include = include;
 }
 
 function mapChatResponseFormatToResponsesText(responseFormat: unknown): unknown {
