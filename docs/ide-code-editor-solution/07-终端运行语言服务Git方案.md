@@ -775,7 +775,9 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 89. M12-B：Vue / Svelte framework provider guarded proof plan（已完成）
 90. M12-C：Vue external provider guarded diagnostics proof（已完成）
 91. M12-D：Svelte dependency compatibility / TypeScript peer policy plan（已完成）
-92. M12-E：Svelte external provider guarded diagnostics proof（下一步）
+92. M12-E：Svelte external provider guarded diagnostics proof（已完成）
+93. M12-F：Framework provider acceptance / heavy toolchain policy decision（已完成）
+94. M12-G：Toolchain provider status / configuration foundation plan（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -1020,4 +1022,23 @@ M12-E 已完成，记录见 [`archive/m12-e-svelte-external-provider-summary.md`
 - `/api/lsp/diagnostics` 对 `.svelte` / `svelte` 请求路由到 Svelte external provider，并保持标准 diagnostics response shape；timeout 退化为空 diagnostics，避免无项目 Svelte 依赖时悬挂。
 - `tests/system/lsp-svelte-provider.test.mjs` 覆盖 gateway lifecycle、profile allowlist、status metadata 与 diagnostics route。
 
-M12-E 仍不做：Svelte hover/completion/definition/references/semantic tokens/formatting/code action、Svelte project config parity、完整 SvelteKit/Vite workspace semantics、TypeScript 升级、TS/JS provider 替换、Go/Rust/Java/C/C++ heavy toolchain provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-F 进入 framework provider acceptance / heavy toolchain policy decision。
+M12-E 仍不做：Svelte hover/completion/definition/references/semantic tokens/formatting/code action、Svelte project config parity、完整 SvelteKit/Vite workspace semantics、TypeScript 升级、TS/JS provider 替换、Go/Rust/Java/C/C++ heavy toolchain provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-F 已完成 framework provider acceptance / heavy toolchain policy decision；下一步 M12-G 进入 Toolchain provider status / configuration foundation plan。
+
+
+### M12-F 已完成：Framework Provider Acceptance / Heavy Toolchain Policy Decision
+
+M12-F 已完成，记录见 [`archive/m12-f-framework-provider-acceptance-toolchain-policy.md`](./archive/m12-f-framework-provider-acceptance-toolchain-policy.md)。本阶段不新增 runtime provider，而是验收 Vue/Svelte framework provider proof，并把 Go/Rust/Java/C/C++ 从 npm exact-pin provider 轨道切到 toolchain-backed provider 策略轨道。
+
+完成口径：
+
+- 接受当前 provider matrix：in-process JSON/HTML/CSS/TypeScript/JavaScript，加 external diagnostics-first YAML/Bash/Pyright/Dockerfile/Markdown/ESLint/Vue/Svelte。
+- 冻结 npm-first external provider gate：server-side allowlist profile、exact pin、metadata/status、root/cwd guard、provider-specific test、IDE provider status smoke。
+- 确认 Vue/Svelte 仍只承诺 diagnostics/status proof；rich interactions 需要单独 safety gate。
+- 确认 Go/Rust/Java/C/C++ 不按 bundled npm exact-pin 接入：
+  - Go `gopls` 运行时依赖 workspace `go` command 与 Go release support。
+  - Rust `rust-analyzer` 需要 rust-analyzer binary 与 rust-src/toolchain。
+  - Java Eclipse JDT LS 需要 Java 21+ runtime、JDT LS distribution、workspace data 目录与 Maven/Gradle 项目模型。
+  - C/C++ `clangd` 需要 clangd binary、compile_commands.json / compile_flags.txt 与 compiler/toolchain 语义。
+- 定义 M12-G 先做 toolchain provider status / configuration foundation，不直接启动 heavy runtime server。
+
+M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-G 进入 Toolchain provider status / configuration foundation plan。
