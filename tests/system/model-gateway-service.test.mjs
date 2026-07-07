@@ -14304,7 +14304,7 @@ test("model gateway ignores anthropic tool stop reason without tool uses for cha
   }
 });
 
-test("model gateway ignores incomplete anthropic tool identities for chat completions", async () => {
+test("model gateway preserves incomplete anthropic tool identities for chat completions", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const ctx = createTracevaneContext({ config, logger: createLogger() });
@@ -14382,7 +14382,7 @@ test("model gateway ignores incomplete anthropic tool identities for chat comple
       assert.equal(chat.body.choices[0].finish_reason, "stop");
       assert.deepEqual(chat.body.choices[0].message, {
         role: "assistant",
-        content: "",
+        content: 'Anthropic Messages malformed tool_use for Chat: {"type":"tool_use","name":"lookup","input":{"query":"docs"}}',
       });
       assert.equal(JSON.stringify(chat.body).includes("tool_calls"), false);
 
@@ -14406,7 +14406,7 @@ test("model gateway ignores incomplete anthropic tool identities for chat comple
   }
 });
 
-test("model gateway ignores incomplete responses function calls for chat completions", async () => {
+test("model gateway preserves incomplete responses function calls for chat completions", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const ctx = createTracevaneContext({ config, logger: createLogger() });
@@ -14491,7 +14491,7 @@ test("model gateway ignores incomplete responses function calls for chat complet
       assert.equal(chat.body.choices[0].finish_reason, "stop");
       assert.deepEqual(chat.body.choices[0].message, {
         role: "assistant",
-        content: "",
+        content: 'OpenAI Responses function_call omitted for Chat: {"id":"fc_incomplete","type":"function_call","status":"completed","name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}',
       });
       assert.equal(JSON.stringify(chat.body).includes("tool_calls"), false);
 

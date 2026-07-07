@@ -298,9 +298,14 @@ export function adaptAnthropicMessagesResponseToChatCompletion(
   const toolCalls = content
     .map(mapAnthropicToolUseToChatToolCall)
     .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall));
+  const malformedToolUseText = content
+    .map(anthropicMalformedToolUseToChatText)
+    .filter(Boolean)
+    .join("\n");
+  const messageText = [text, malformedToolUseText].filter(Boolean).join("\n");
   const message: JsonRecord = {
     role: "assistant",
-    content: text || (toolCalls.length ? null : ""),
+    content: messageText || (toolCalls.length ? null : ""),
   };
   if (response.stop_reason === "refusal") message.refusal = text || "";
   if (reasoningText) message.reasoning_content = reasoningText;
@@ -1011,9 +1016,14 @@ function mapAnthropicMessageToChat(message: unknown, options: AnthropicChatReque
       .filter((block) => block.type === "tool_use")
       .map(mapAnthropicToolUseToChatToolCall)
       .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall));
+    const malformedToolUseText = blocks
+      .map(anthropicMalformedToolUseToChatText)
+      .filter(Boolean)
+      .join("\n");
+    const messageText = [text, malformedToolUseText].filter(Boolean).join("\n");
     const chatMessage: JsonRecord = {
       role,
-      content: text || (toolCalls.length ? null : ""),
+      content: messageText || (toolCalls.length ? null : ""),
     };
     if (reasoningText) chatMessage.reasoning_content = reasoningText;
     if (reasoningDetails.length) chatMessage.reasoning_details = reasoningDetails;
@@ -1509,6 +1519,13 @@ function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
       arguments: JSON.stringify(part.input ?? {}),
     },
   };
+}
+
+function anthropicMalformedToolUseToChatText(part: unknown): string {
+  if (!isRecord(part) || part.type !== "tool_use") return "";
+  return mapAnthropicToolUseToChatToolCall(part)
+    ? ""
+    : `Anthropic Messages malformed tool_use for Chat: ${stringifyCompact(part)}`;
 }
 
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {

@@ -197,9 +197,14 @@ export function adaptResponsesToChatCompletion(
       .map(mapResponsesFunctionCallToChatToolCall)
       .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall))
     : [];
+  const malformedToolCallText = output
+    .map((item) => responsesFunctionCallFallbackToChatText(item, allowToolCalls))
+    .filter(Boolean)
+    .join("\n");
+  const messageText = [text, malformedToolCallText].filter(Boolean).join("\n");
   const message: JsonRecord = {
     role: "assistant",
-    content: text || (toolCalls.length ? null : ""),
+    content: messageText || (toolCalls.length ? null : ""),
   };
   const reasoningText = collectResponseReasoningText(output);
   const reasoningDetails = collectResponseReasoningDetails(output);
@@ -807,6 +812,12 @@ function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | nul
         : typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
     },
   };
+}
+
+function responsesFunctionCallFallbackToChatText(item: unknown, allowToolCalls: boolean): string {
+  if (!isRecord(item) || (item.type !== "function_call" && item.type !== "custom_tool_call")) return "";
+  if (!allowToolCalls) return `OpenAI Responses ${item.type} omitted for Chat: ${stringifyCompact(item)}`;
+  return mapResponsesFunctionCallToChatToolCall(item) ? "" : `OpenAI Responses malformed ${item.type} for Chat: ${stringifyCompact(item)}`;
 }
 
 function customToolArgumentsFromResponsesInput(input: unknown): string {
