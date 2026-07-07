@@ -148,12 +148,12 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   copyScalarFields(request, anthropicRequest, [
     "temperature",
     "top_p",
-    "metadata",
     "service_tier",
   ]);
+  const metadata = mapOpenAIChatMetadataToAnthropicMetadata(request.metadata, request.user);
+  if (metadata) anthropicRequest.metadata = metadata;
   const verbosity = verbosityOrNull(request.verbosity);
   if (verbosity) anthropicRequest.verbosity = verbosity;
-  applyOpenAIUserToAnthropicMetadata(anthropicRequest, request.user);
 
   if (request.stop !== undefined) anthropicRequest.stop_sequences = request.stop;
   const outputFormat = mapChatResponseFormatToAnthropicOutputFormat(request.response_format);
@@ -1123,14 +1123,11 @@ function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): 
   return undefined;
 }
 
-function applyOpenAIUserToAnthropicMetadata(anthropicRequest: JsonRecord, user: unknown): void {
-  const userId = stringOrNull(user);
-  if (!userId) return;
-  const existing = anthropicRequest.metadata;
-  if (existing !== undefined && !isRecord(existing)) return;
-  const metadata: JsonRecord = isRecord(existing) ? { ...existing } : {};
-  if (metadata.user_id === undefined) metadata.user_id = userId;
-  anthropicRequest.metadata = metadata;
+function mapOpenAIChatMetadataToAnthropicMetadata(metadata: unknown, user: unknown): JsonRecord | null {
+  const userId = isRecord(metadata)
+    ? stringOrNull(metadata.user_id) || stringOrNull(user)
+    : stringOrNull(user);
+  return userId ? { user_id: userId } : null;
 }
 
 function anthropicMetadataUserId(metadata: unknown): string | null {

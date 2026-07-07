@@ -13371,6 +13371,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             },
           },
           user: "chat-user-456",
+          metadata: { trace_id: "chat-trace-should-drop", session_id: "chat-session-should-drop" },
           max_tokens: 128,
           verbosity: "high",
           service_tier: "priority",
