@@ -22,9 +22,50 @@ export interface OpenAIResponsesCompatibilityResult {
   removedFields: string[];
 }
 
+export interface AnthropicMessagesCompatibilityOptions {
+  allowMetadata?: boolean;
+}
+
+export interface AnthropicMessagesCompatibilityResult {
+  bodyText: string | undefined;
+  removedFields: string[];
+}
+
 const STRICT_CHAT_INCOMPATIBLE_FIELDS = ["metadata"] as const;
 const STRICT_RESPONSES_INCOMPATIBLE_FIELDS = ["metadata"] as const;
+const STRICT_ANTHROPIC_MESSAGES_INCOMPATIBLE_FIELDS = ["metadata"] as const;
 const TOOL_REASONING_INCOMPATIBLE_FIELDS = ["reasoning_effort", "reasoningEffort"] as const;
+
+export function sanitizeAnthropicMessagesUpstreamBody(
+  bodyText: string | undefined,
+  options: AnthropicMessagesCompatibilityOptions = {},
+): AnthropicMessagesCompatibilityResult {
+  if (!bodyText) return { bodyText, removedFields: [] };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { bodyText, removedFields: [] };
+  }
+  if (!isRecord(parsed)) return { bodyText, removedFields: [] };
+
+  const sanitized: JsonRecord = { ...parsed };
+  const removedFields: string[] = [];
+  for (const field of STRICT_ANTHROPIC_MESSAGES_INCOMPATIBLE_FIELDS) {
+    if (field === "metadata" && options.allowMetadata) continue;
+    if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+      delete sanitized[field];
+      removedFields.push(field);
+    }
+  }
+
+  const nextBodyText = JSON.stringify(sanitized);
+  return {
+    bodyText: nextBodyText !== bodyText ? nextBodyText : bodyText,
+    removedFields,
+  };
+}
 
 export function sanitizeOpenAIResponsesUpstreamBody(
   bodyText: string | undefined,

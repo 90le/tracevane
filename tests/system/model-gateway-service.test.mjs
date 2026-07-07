@@ -13959,7 +13959,6 @@ test("model gateway adapts codex responses through native anthropic messages pro
         strict: true,
       },
     },
-    metadata: { user_id: "responses-user-123" },
   });
   assert.equal(upstreamCalls[1].url, "https://responses-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].xApiKey, "sk-responses-anthropic-secret");
@@ -14355,7 +14354,6 @@ test("model gateway adapts chat completions through native anthropic messages pr
         strict: true,
       },
     },
-    metadata: { user_id: "chat-user-456" },
   });
   assert.equal(upstreamCalls[1].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].method, "POST");
@@ -21471,6 +21469,165 @@ test("model gateway can opt into openai chat metadata passthrough for compatible
     model: "route-test-model",
     messages: [{ role: "user", content: "hello" }],
     metadata: { trace: "trusted-provider" },
+  });
+});
+
+test("model gateway strips Claude Code metadata from strict Anthropic Messages providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "strict-anthropic-metadata",
+      name: "Strict Anthropic Metadata Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://strict-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "bearer",
+      models: { defaultModel: "gpt-5.4", models: [{ id: "gpt-5.4" }] },
+    },
+    secret: {
+      apiKey: "sk-strict-anthropic-metadata",
+    },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_strict_metadata",
+      type: "message",
+      role: "assistant",
+      model: "gpt-5.4",
+      content: [{ type: "text", text: "metadata stripped" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          metadata: { user_id: "claude-code-cli", session_id: "strict-anthropic-metadata" },
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(claudeCode.status, 200);
+      assert.equal(claudeCode.body.content[0].text, "metadata stripped");
+
+      const chatToAnthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          metadata: { user_id: "chat-user", trace_id: "strict-anthropic-chat" },
+          messages: [{ role: "user", content: "hello from chat" }],
+        },
+      });
+      assert.equal(chatToAnthropic.status, 200);
+      assert.equal(chatToAnthropic.body.choices[0].message.content, "metadata stripped");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://strict-anthropic.example.test/v1/messages");
+  assert.equal("metadata" in JSON.parse(upstreamCalls[0].body), false);
+  assert.equal(upstreamCalls[1].url, "https://strict-anthropic.example.test/v1/messages");
+  assert.equal("metadata" in JSON.parse(upstreamCalls[1].body), false);
+});
+
+test("model gateway can opt into Anthropic Messages metadata passthrough for compatible providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-metadata",
+      name: "Anthropic Metadata Provider",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-metadata.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "bearer",
+      metadata: {
+        anthropicMessagesMetadataPassthrough: true,
+      },
+      models: { defaultModel: "gpt-5.4", models: [{ id: "gpt-5.4" }] },
+    },
+    secret: {
+      apiKey: "sk-anthropic-metadata",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_anthropic_metadata",
+      type: "message",
+      role: "assistant",
+      model: "gpt-5.4",
+      content: [{ type: "text", text: "metadata preserved" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          metadata: { user_id: "claude-code-cli" },
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(claudeCode.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-5.4",
+    max_tokens: 64,
+    metadata: { user_id: "claude-code-cli" },
+    messages: [{ role: "user", content: "hello" }],
   });
 });
 

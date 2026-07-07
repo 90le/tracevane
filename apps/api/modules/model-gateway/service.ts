@@ -164,7 +164,7 @@ import {
   isChatToOpenAIResponsesAdapterTarget,
 } from "./responses-chat-adapter.js";
 import { normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
-import { sanitizeOpenAIChatUpstreamBody, sanitizeOpenAIResponsesUpstreamBody } from "./openai-chat-compatibility.js";
+import { sanitizeAnthropicMessagesUpstreamBody, sanitizeOpenAIChatUpstreamBody, sanitizeOpenAIResponsesUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 import { MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS } from "./unsupported-endpoints.js";
 
@@ -11163,6 +11163,13 @@ export function createModelGatewayService(
       headers.set("content-type", "application/json");
     }
     if (provider.apiFormat === "anthropic_messages") {
+      const sanitizedAnthropicMessages = sanitizeAnthropicMessagesUpstreamBody(upstreamBodyText, {
+        allowMetadata: metadataBoolean(provider.metadata, ["anthropicMessagesMetadataPassthrough", "anthropic_messages_metadata_passthrough"], false),
+      });
+      upstreamBodyText = sanitizedAnthropicMessages.bodyText ?? upstreamBodyText;
+      if (sanitizedAnthropicMessages.removedFields.length) {
+        headers.set("content-type", "application/json");
+      }
       const normalizedAnthropicBody = normalizeAnthropicReasoningInJsonText(upstreamBodyText);
       if (normalizedAnthropicBody !== upstreamBodyText) {
         upstreamBodyText = normalizedAnthropicBody;
