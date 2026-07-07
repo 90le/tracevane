@@ -1679,27 +1679,60 @@ async function diagnoseDocument(
     return responseFor(request, resolved.root.id, resolved.relativePath, "html", language, []);
   }
   if (provider?.id === "yaml") {
-    return responseFor(request, resolved.root.id, resolved.relativePath, "yaml", language, await diagnoseYamlWithExternalLanguageServer(resolved.root.realPath, resolved.absolutePath, content, request.version ?? 1));
+    return responseFor(request, resolved.root.id, resolved.relativePath, "yaml", language, await diagnoseWithExternalLanguageServer({
+      providerId: "yaml",
+      languageId: "yaml",
+      sourceFallback: "yaml-language-server",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
+  if (provider?.id === "bash") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "bash", language, await diagnoseWithExternalLanguageServer({
+      providerId: "bash",
+      languageId: "shellscript",
+      sourceFallback: "bash-language-server",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
   }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
-async function diagnoseYamlWithExternalLanguageServer(
-  rootRealPath: string,
-  absolutePath: string,
-  content: string,
-  version: number,
-): Promise<LspDiagnostic[]> {
-  const providerId = "yaml";
+async function diagnoseWithExternalLanguageServer({
+  providerId,
+  languageId,
+  sourceFallback,
+  rootRealPath,
+  absolutePath,
+  content,
+  version,
+}: {
+  providerId: "yaml" | "bash";
+  languageId: string;
+  sourceFallback: string;
+  rootRealPath: string;
+  absolutePath: string;
+  content: string;
+  version: number;
+}): Promise<LspDiagnostic[]> {
   const uri = pathToFileUri(absolutePath);
   const gateway = createExternalLanguageServerGateway({ rootPath: rootRealPath });
   await gateway.start(providerId);
   try {
     gateway.notify(providerId, "textDocument/didOpen", {
-      textDocument: { uri, languageId: "yaml", version, text: content },
+      textDocument: { uri, languageId, version, text: content },
     });
     const diagnostics = await gateway.waitForDiagnostics(providerId, uri, 3_000);
-    return diagnostics.map(yamlDiagnosticToTracevaneDiagnostic);
+    return diagnostics.map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
+  } catch (error) {
+    const reason = (error as { reason?: unknown } | null)?.reason;
+    if (providerId === "bash" && reason === "request_timeout") return [];
+    throw error;
   } finally {
     await gateway.stop(providerId).catch(() => undefined);
   }
@@ -1720,20 +1753,20 @@ function externalLanguageServerStatusSnapshot(config: TracevaneServerConfig) {
   };
 }
 
-function yamlDiagnosticToTracevaneDiagnostic(diagnostic: unknown): LspDiagnostic {
+function externalDiagnosticToTracevaneDiagnostic(diagnostic: unknown, sourceFallback: string): LspDiagnostic {
   const record = isRecord(diagnostic) ? diagnostic : {};
   const range = isRecord(record.range) ? record.range : {};
   const start = isRecord(range.start) ? range.start : {};
   const end = isRecord(range.end) ? range.end : {};
   return {
     severity: lspNumericSeverityToTracevane(record.severity),
-    message: typeof record.message === "string" ? record.message : "YAML diagnostic",
+    message: typeof record.message === "string" ? record.message : "External LSP diagnostic",
     startLine: safeNumber(start.line),
     startColumn: safeNumber(start.character),
     endLine: typeof end.line === "number" ? end.line : undefined,
     endColumn: typeof end.character === "number" ? end.character : undefined,
     code: typeof record.code === "string" || typeof record.code === "number" ? String(record.code) : null,
-    source: typeof record.source === "string" ? record.source : "yaml-language-server",
+    source: typeof record.source === "string" ? record.source : sourceFallback,
   };
 }
 
@@ -1885,6 +1918,8 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.scss$/i.test(targetPath)) return "scss";
   if (/\.less$/i.test(targetPath)) return "less";
   if (/\.css$/i.test(targetPath)) return "css";
+  if (raw === "shell" || raw === "shellscript" || raw === "bash" || raw === "sh") return "shell";
+  if (/\.(?:ba)?sh$/i.test(targetPath) || /\.bashrc$/i.test(targetPath) || /(^|\/)bashrc$/i.test(targetPath)) return "shell";
   if (/(^|\.)json($|[.\-_])/i.test(targetPath)) return "json";
   const trimmed = content.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
@@ -1893,7 +1928,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
 }
 
 function responseProviderId(id: string | null | undefined): LspProviderId {
-  return id === "typescript" || id === "html" || id === "css" ? id : "json";
+  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {

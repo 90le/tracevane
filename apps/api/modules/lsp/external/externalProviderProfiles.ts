@@ -12,6 +12,7 @@ export const DEFAULT_EXTERNAL_LSP_BUDGETS: ExternalLanguageServerBudgets = {
 };
 
 export const YAML_LANGUAGE_SERVER_BIN = require.resolve("yaml-language-server/bin/yaml-language-server");
+export const BASH_LANGUAGE_SERVER_BIN = require.resolve("bash-language-server/out/cli.js");
 
 /**
  * External language servers are server-side allowlisted. The frontend never
@@ -27,6 +28,16 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
     languages: ["yaml", "yml"],
     capabilities: { diagnostics: true },
     budgets: { initializeMs: 3_000, requestMs: 3_000, shutdownMs: 1_000 },
+  },
+  {
+    id: "bash",
+    label: "Bash Language Server",
+    command: process.execPath,
+    args: [BASH_LANGUAGE_SERVER_BIN, "start"],
+    languages: ["shell", "shellscript", "bash", "sh"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 10_000, requestMs: 3_000, shutdownMs: 1_000 },
+    env: { BASH_IDE_LOG_LEVEL: "error", PATH: `${path.dirname(process.execPath)}${path.delimiter}/usr/bin${path.delimiter}/bin` },
   },
 ];
 

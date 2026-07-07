@@ -73,6 +73,10 @@ async function run() {
   if (!yamlProfile?.enabled) {
     throw new Error(`Expected enabled yaml external provider profile: ${JSON.stringify(status.externalProviders)}`);
   }
+  const bashProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'bash');
+  if (!bashProfile?.enabled) {
+    throw new Error(`Expected enabled bash external provider profile: ${JSON.stringify(status.externalProviders)}`);
+  }
 
   const layout = createDefaultWorkbenchLayout('');
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
@@ -98,6 +102,7 @@ async function run() {
     await statusButton.click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-close]').click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'detached', timeout: 10_000 });
 
@@ -107,6 +112,7 @@ async function run() {
     await page.locator('[data-ide-command-palette-command-id="workbench.action.lsp.showExternalProviderStatus"]').click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"]').waitFor({ state: 'visible', timeout: 10_000 });
   } finally {
     await browser.close().catch(() => undefined);
     const severe = logs.filter((line) => line.includes('[pageerror]'));
