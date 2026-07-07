@@ -114,7 +114,12 @@
     "smoke:ide:lsp-workspace-edit-foundation": "TRACEVANE_API_PORT=3900 TRACEVANE_WEB_PORT=5200 python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port 5200 -- node tests/ide-workbench/ide-lsp-workspace-edit-foundation.smoke.mjs",
     "smoke:ide:lsp-rename-format-code-actions": "TRACEVANE_API_PORT=3901 TRACEVANE_WEB_PORT=5201 python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port 5201 -- node tests/ide-workbench/ide-lsp-rename-format-code-actions.smoke.mjs",
     "smoke:ide:git-branch-stash-foundation": "TRACEVANE_WEB_PORT=5202 python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5202 -- node tests/ide-workbench/ide-git-branch-stash-foundation.smoke.mjs",
-    "smoke:ide:git-branch-stash-hardening": "TRACEVANE_WEB_PORT=5204 python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5204 -- node tests/ide-workbench/ide-git-branch-stash-hardening.smoke.mjs"
+    "smoke:ide:git-branch-stash-hardening": "TRACEVANE_WEB_PORT=5204 python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port 5204 -- node tests/ide-workbench/ide-git-branch-stash-hardening.smoke.mjs",
+    "ide:rc:list": "node scripts/ide-rc-matrix.mjs --list --full",
+    "ide:rc:quick": "node scripts/ide-rc-matrix.mjs --quick",
+    "ide:rc:quick:dry": "node scripts/ide-rc-matrix.mjs --quick --dry-run",
+    "ide:rc:full": "node scripts/ide-rc-matrix.mjs --full",
+    "ide:rc:full:dry": "node scripts/ide-rc-matrix.mjs --full --dry-run"
   },
   "author": "binbin",
   "license": "MIT",
