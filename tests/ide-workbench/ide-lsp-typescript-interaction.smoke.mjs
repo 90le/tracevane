@@ -29,12 +29,12 @@ function wsUrl(pathname) {
   return url.toString();
 }
 
-async function requestGatewayDiagnostics(payload) {
+async function requestGatewayEvent(payload) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(wsUrl('/ws/lsp'));
     const timeout = setTimeout(() => {
       socket.close();
-      reject(new Error('LSP WebSocket diagnostics timeout'));
+      reject(new Error('LSP WebSocket interaction timeout'));
     }, 10_000);
     socket.on('error', reject);
     socket.on('message', (data) => {
@@ -43,7 +43,7 @@ async function requestGatewayDiagnostics(payload) {
         socket.send(JSON.stringify(payload));
         return;
       }
-      if (event.type === 'diagnostics' || event.type === 'hover' || event.type === 'completion' || event.type === 'definition') {
+      if (event.type === 'diagnostics' || event.type === 'hover' || event.type === 'definition') {
         clearTimeout(timeout);
         socket.close();
         resolve(event);
@@ -172,12 +172,12 @@ async function run() {
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE LSP smoke');
 
-  const prefix = `tracevane-ide-lsp-interaction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const prefix = `tracevane-ide-lsp-ts-interaction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
   const explorerDirectoryPath = repoParentRelativePath;
   const smokeParent = explorerDirectoryPath ? `${explorerDirectoryPath}/tmp` : 'tmp';
   const smokeDir = `${smokeParent}/.${prefix}`;
-  const jsonPath = `${smokeDir}/interaction.json`;
+  const tsPath = `${smokeDir}/interaction.ts`;
 
   await cleanup(rootId, [smokeDir]);
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
@@ -185,35 +185,32 @@ async function run() {
     body: JSON.stringify({ layout: createDefaultWorkbenchLayout(explorerDirectoryPath), terminalLayouts: {} }),
   });
   await ensureDirectory(rootId, smokeDir);
-  await createFile(rootId, jsonPath, '{\n  "name": "tracevane",\n  "enabled": true\n}\n');
+  const tsContent = 'function tracevaneAnswer(value: number): number {\n  return value + 1;\n}\nconst result = tracevaneAnswer(41);\nexport { result };\n';
+  await createFile(rootId, tsPath, tsContent);
 
-  const content = '{\n  "name": "tracevane",\n  "enabled": true\n}\n';
+  const hoverPayload = { type: 'hover', rootId, path: tsPath, language: 'typescript', content: tsContent, line: 1, column: 10 };
   const hover = await api('/api/lsp/hover', {
     method: 'POST',
-    body: JSON.stringify({ type: 'hover', rootId, path: jsonPath, language: 'json', content, line: 2, column: 4 }),
+    body: JSON.stringify(hoverPayload),
   });
-  if (!hover.contents?.join(' ').includes('JSON property: name')) throw new Error(`hover response mismatch: ${JSON.stringify(hover)}`);
-  const completion = await api('/api/lsp/completion', {
-    method: 'POST',
-    body: JSON.stringify({ type: 'completion', rootId, path: jsonPath, language: 'json', content, line: 3, column: 14 }),
-  });
-  if (!completion.items?.some((item) => item.label === 'property')) throw new Error(`completion response missing property snippet: ${JSON.stringify(completion)}`);
+  if (hover.provider !== 'typescript' || !hover.contents?.join(' ').includes('tracevaneAnswer')) throw new Error(`direct TypeScript hover mismatch: ${JSON.stringify(hover)}`);
+
+  const definitionPayload = { type: 'definition', rootId, path: tsPath, language: 'typescript', content: tsContent, line: 4, column: 17 };
   const definition = await api('/api/lsp/definition', {
     method: 'POST',
-    body: JSON.stringify({ type: 'definition', rootId, path: jsonPath, language: 'json', content, line: 2, column: 4 }),
+    body: JSON.stringify(definitionPayload),
   });
-  if (!definition.locations?.length || definition.locations[0].startLine !== 2) throw new Error(`definition response mismatch: ${JSON.stringify(definition)}`);
-  const gateway = await requestGatewayDiagnostics({ type: 'hover', rootId, path: jsonPath, language: 'json', content, line: 2, column: 4 });
-  if (!gateway.contents?.join(' ').includes('JSON property: name')) throw new Error('LSP WebSocket gateway hover returned unexpected contents');
+  if (definition.provider !== 'typescript' || !definition.locations?.some((location) => location.path === tsPath && location.startLine === 1)) throw new Error(`direct TypeScript definition mismatch: ${JSON.stringify(definition)}`);
+
+  const gatewayHover = await requestGatewayEvent(hoverPayload);
+  if (gatewayHover.provider !== 'typescript' || !gatewayHover.contents?.join(' ').includes('tracevaneAnswer')) throw new Error(`LSP WebSocket TypeScript hover mismatch: ${JSON.stringify(gatewayHover)}`);
+
+  const gatewayDefinition = await requestGatewayEvent(definitionPayload);
+  if (!gatewayDefinition.locations?.some((location) => location.path === tsPath && location.startLine === 1)) throw new Error(`LSP WebSocket TypeScript definition mismatch: ${JSON.stringify(gatewayDefinition)}`);
+
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.addInitScript(({ key, layout }) => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(layout));
-      window.localStorage.removeItem('tracevane:ide-workbench:editor-preferences:v1');
-    } catch { /* ignore */ }
-  }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(explorerDirectoryPath) });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
@@ -223,13 +220,12 @@ async function run() {
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-problems-panel]').waitFor({ state: 'visible', timeout: 30_000 });
 
-    await openFromExplorer(page, jsonPath, explorerDirectoryPath);
-    await page.locator(`[data-ide-monaco-editor-panel][data-ide-editor-file-path="${cssAttr(jsonPath)}"]`).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-editor-language="json"]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await openFromExplorer(page, tsPath, explorerDirectoryPath);
+    await page.locator(`[data-ide-monaco-editor-panel][data-ide-editor-file-path="${cssAttr(tsPath)}"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('button', { name: 'Output', exact: true }).click();
     await page.locator('[data-ide-output-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-output-channel-select]').selectOption('lsp');
-    await page.locator('[data-ide-output-event]', { hasText: 'LSP interaction providers registered' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-output-event]', { hasText: 'TypeScript/JavaScript hover/definition' }).waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

@@ -43,7 +43,7 @@ export interface LspCompletionRequest extends LspDocumentRef {
 export interface LspHoverResponse extends LspDocumentRef {
   type: "hover";
   id?: string | null;
-  provider: "json";
+  provider: "json" | "typescript";
   contents: string[];
   range?: { startLine: number; startColumn: number; endLine: number; endColumn: number } | null;
   checkedAt: string;
@@ -77,7 +77,7 @@ export interface LspDefinitionLocation {
 export interface LspDefinitionResponse extends LspDocumentRef {
   type: "definition";
   id?: string | null;
-  provider: "json";
+  provider: "json" | "typescript";
   locations: LspDefinitionLocation[];
   checkedAt: string;
 }

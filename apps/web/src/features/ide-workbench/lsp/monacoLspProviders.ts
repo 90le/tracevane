@@ -6,13 +6,15 @@ import { requestLspCompletion, requestLspDefinition, requestLspHover } from "./l
 
 let registered = false;
 
+const TYPESCRIPT_INTERACTION_LANGUAGES = ["typescript", "typescriptreact", "javascript", "javascriptreact"] as const;
+
 export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): void {
   if (registered || typeof window === "undefined") return;
   registered = true;
   appendWorkbenchOutput({
     channel: { id: "lsp", label: "LSP", kind: "lsp" },
     level: "info",
-    text: "JSON LSP interaction providers registered: hover, completion, definition",
+    text: "LSP interaction providers registered: JSON hover/completion/definition; TypeScript/JavaScript hover/definition",
   });
 
   monacoApi.languages.registerHoverProvider("json", {
@@ -97,6 +99,56 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
       }));
     },
   });
+
+  for (const language of TYPESCRIPT_INTERACTION_LANGUAGES) {
+    monacoApi.languages.registerHoverProvider(language, {
+      provideHover: async (model, position) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return null;
+        const response = await requestLspHover({
+          type: "hover",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          line: position.lineNumber,
+          column: position.column,
+        });
+        if (!response.contents.length) return null;
+        return {
+          contents: response.contents.map((value) => ({ value })),
+          range: response.range
+            ? new monacoApi.Range(response.range.startLine, response.range.startColumn, response.range.endLine, response.range.endColumn)
+            : undefined,
+        };
+      },
+    });
+
+    monacoApi.languages.registerDefinitionProvider(language, {
+      provideDefinition: async (model, position) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return [];
+        const response = await requestLspDefinition({
+          type: "definition",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          line: position.lineNumber,
+          column: position.column,
+        });
+        return response.locations.map((location) => ({
+          uri: monacoApi.Uri.parse(editorModelUriString({ rootId: location.rootId, path: location.path })),
+          range: new monacoApi.Range(
+            location.startLine,
+            location.startColumn,
+            location.endLine ?? location.startLine,
+            location.endColumn ?? location.startColumn + 1,
+          ),
+        }));
+      },
+    });
+  }
 }
 
 function editorRefFromModelUri(uri: string): { rootId: string; path: string } | null {

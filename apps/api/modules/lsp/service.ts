@@ -1,4 +1,5 @@
 import type http from "node:http";
+import path from "node:path";
 import type { Duplex } from "node:stream";
 import ts from "typescript";
 import { WebSocket, WebSocketServer } from "ws";
@@ -123,7 +124,11 @@ function hoverDocument(
   config: TracevaneServerConfig,
   request: LspPositionRequest,
 ): LspHoverResponse {
-  const validated = validateJsonInteractionRequest(config, request);
+  const validated = validateInteractionRequest(config, request);
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    return hoverTypeScriptLike(request, validated);
+  }
+  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP hover are supported in M7.y-D");
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   const contents = symbol
     ? [
@@ -149,7 +154,8 @@ function completeDocument(
   config: TracevaneServerConfig,
   request: LspCompletionRequest,
 ): LspCompletionResponse {
-  const validated = validateJsonInteractionRequest(config, request);
+  const validated = validateInteractionRequest(config, request);
+  if (validated.language !== "json") throw new Error("Only JSON LSP completion is supported in M7.y-D; TypeScript/JavaScript completion is planned for M7.y-E");
   return {
     type: "completion",
     id: request.id ?? null,
@@ -167,7 +173,11 @@ function defineDocument(
   config: TracevaneServerConfig,
   request: LspPositionRequest,
 ): LspDefinitionResponse {
-  const validated = validateJsonInteractionRequest(config, request);
+  const validated = validateInteractionRequest(config, request);
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    return defineTypeScriptLike(request, validated);
+  }
+  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP definition are supported in M7.y-D");
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "definition",
@@ -189,17 +199,32 @@ function defineDocument(
   };
 }
 
-function validateJsonInteractionRequest(
+interface ValidatedInteractionRequest {
+  rootId: string;
+  rootRealPath: string;
+  path: string;
+  absolutePath: string;
+  content: string;
+  language: string;
+}
+
+function validateInteractionRequest(
   config: TracevaneServerConfig,
   request: LspPositionRequest | LspCompletionRequest,
-): { rootId: string; path: string; content: string } {
+): ValidatedInteractionRequest {
   const rootId = normalizeRequired(request.rootId, "rootId");
   const targetPath = normalizePath(request.path);
   const content = typeof request.content === "string" ? request.content : "";
   const resolved = resolveFilesServiceExistingFilePath(config, rootId, targetPath);
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
-  if (language !== "json") throw new Error("Only JSON LSP interactions are supported in M7-C");
-  return { rootId: resolved.root.id, path: resolved.relativePath, content };
+  return {
+    rootId: resolved.root.id,
+    rootRealPath: resolved.root.realPath,
+    path: resolved.relativePath,
+    absolutePath: resolved.absolutePath,
+    content,
+    language,
+  };
 }
 
 interface JsonSymbolInfo {
@@ -274,6 +299,149 @@ function jsonCompletionItems(content: string, line: number, column: number): Lsp
     { label: "object", detail: "JSON object", insertText: "{\n  $1\n}", kind: "snippet" },
     { label: "array", detail: "JSON array", insertText: "[\n  $1\n]", kind: "snippet" },
   ];
+}
+
+
+function hoverTypeScriptLike(
+  request: LspPositionRequest,
+  validated: ValidatedInteractionRequest,
+): LspHoverResponse {
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const sourceFile = languageService.sourceFile();
+    const offset = positionToOffset(validated.content, request.line, request.column);
+    const info = languageService.service.getQuickInfoAtPosition(languageService.fileName, offset);
+    const documentation = info ? ts.displayPartsToString(info.documentation) : "";
+    const display = info ? ts.displayPartsToString(info.displayParts) : "";
+    const contents = [display, documentation].filter(Boolean);
+    return {
+      type: "hover",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      contents,
+      range: info?.textSpan ? textSpanToRange(sourceFile, info.textSpan) : null,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function defineTypeScriptLike(
+  request: LspPositionRequest,
+  validated: ValidatedInteractionRequest,
+): LspDefinitionResponse {
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const offset = positionToOffset(validated.content, request.line, request.column);
+    const definitions = languageService.service.getDefinitionAtPosition(languageService.fileName, offset) ?? [];
+    const locations = definitions.flatMap((definition) => {
+      const relativePath = relativePathInsideRoot(validated.rootRealPath, definition.fileName);
+      if (!relativePath) return [];
+      const sourceText = sameTsFile(definition.fileName, languageService.fileName)
+        ? validated.content
+        : ts.sys.readFile(definition.fileName);
+      if (typeof sourceText !== "string") return [];
+      const sourceFile = ts.createSourceFile(definition.fileName, sourceText, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(validated.language));
+      const range = textSpanToRange(sourceFile, definition.textSpan);
+      return [{
+        rootId: validated.rootId,
+        path: relativePath,
+        startLine: range.startLine,
+        startColumn: range.startColumn,
+        endLine: range.endLine,
+        endColumn: range.endColumn,
+      }];
+    });
+    return {
+      type: "definition",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      locations,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function createTypeScriptLanguageService(
+  validated: ValidatedInteractionRequest,
+  version: number | null | undefined,
+): { service: ts.LanguageService; fileName: string; sourceFile: () => ts.SourceFile } {
+  const fileName = validated.absolutePath.replace(/\\/g, "/");
+  const scriptVersion = String(version ?? 1);
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: validated.language === "javascript" || validated.language === "javascriptreact",
+    checkJs: validated.language === "javascript" || validated.language === "javascriptreact",
+    jsx: validated.language === "typescriptreact" || validated.language === "javascriptreact" ? ts.JsxEmit.ReactJSX : ts.JsxEmit.Preserve,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    noEmit: true,
+    skipLibCheck: true,
+    strict: false,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const sourceFile = () => ts.createSourceFile(fileName, validated.content, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(validated.language));
+  const host: ts.LanguageServiceHost = {
+    getCompilationSettings: () => compilerOptions,
+    getCurrentDirectory: () => validated.rootRealPath,
+    getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+    getScriptFileNames: () => [fileName],
+    getScriptVersion: (name) => sameTsFile(name, fileName) ? scriptVersion : "0",
+    getScriptSnapshot: (name) => {
+      if (sameTsFile(name, fileName)) return ts.ScriptSnapshot.fromString(validated.content);
+      if (!isAllowedTypeScriptLibraryFile(name)) return undefined;
+      const text = ts.sys.readFile(name);
+      return typeof text === "string" ? ts.ScriptSnapshot.fromString(text) : undefined;
+    },
+    fileExists: (name) => sameTsFile(name, fileName) || (isAllowedTypeScriptLibraryFile(name) && Boolean(ts.sys.fileExists(name))),
+    readFile: (name) => {
+      if (sameTsFile(name, fileName)) return validated.content;
+      return isAllowedTypeScriptLibraryFile(name) ? ts.sys.readFile(name) : undefined;
+    },
+    readDirectory: () => [],
+    directoryExists: (directoryName) => ts.sys.directoryExists?.(directoryName) ?? false,
+    getDirectories: (directoryName) => ts.sys.getDirectories?.(directoryName) ?? [],
+    useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
+  };
+  return {
+    service: ts.createLanguageService(host, ts.createDocumentRegistry()),
+    fileName,
+    sourceFile,
+  };
+}
+
+function textSpanToRange(sourceFile: ts.SourceFile, textSpan: ts.TextSpan): { startLine: number; startColumn: number; endLine: number; endColumn: number } {
+  const start = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start, sourceFile.text.length));
+  const end = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start + Math.max(1, textSpan.length), sourceFile.text.length));
+  return {
+    startLine: start.line + 1,
+    startColumn: start.character + 1,
+    endLine: end.line + 1,
+    endColumn: end.character + 1,
+  };
+}
+
+function isAllowedTypeScriptLibraryFile(fileName: string): boolean {
+  const normalized = fileName.replace(/\\/g, "/");
+  return /\/node_modules\/typescript\/lib\/lib\..+\.d\.ts$/i.test(normalized);
+}
+
+function relativePathInsideRoot(rootRealPath: string, fileName: string): string | null {
+  const normalizedRoot = rootRealPath.replace(/\\/g, "/");
+  const normalizedFileName = path.resolve(fileName).replace(/\\/g, "/");
+  const relative = path.relative(normalizedRoot, normalizedFileName).replace(/\\/g, "/");
+  if (!relative || relative.startsWith("../") || relative === ".." || path.isAbsolute(relative)) return null;
+  return relative;
 }
 
 function diagnoseDocument(

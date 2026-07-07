@@ -106,7 +106,8 @@
     "smoke:ide:debug-node-inspector": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5191} node tests/ide-workbench/ide-debug-node-inspector.smoke.mjs",
     "smoke:ide:debug-controls-scopes": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5192} node tests/ide-workbench/ide-debug-controls-scopes.smoke.mjs",
     "smoke:ide:debug-watch-evaluate": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5193} node tests/ide-workbench/ide-debug-watch-evaluate.smoke.mjs",
-    "smoke:ide:lsp-typescript-diagnostics": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5196} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5196} -- node tests/ide-workbench/ide-lsp-typescript-diagnostics.smoke.mjs"
+    "smoke:ide:lsp-typescript-diagnostics": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5196} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5196} -- node tests/ide-workbench/ide-lsp-typescript-diagnostics.smoke.mjs",
+    "smoke:ide:lsp-typescript-interaction": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3897} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5197} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5197} -- node tests/ide-workbench/ide-lsp-typescript-interaction.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",
