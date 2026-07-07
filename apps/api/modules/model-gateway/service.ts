@@ -4354,6 +4354,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       "top_p",
       "truncation",
       "context_management",
+      "conversation",
       "metadata",
       "user",
       "previous_response_id",
