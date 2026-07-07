@@ -12947,11 +12947,27 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       assert.equal(emptyToolDeltaEvents[1].data.delta.stop_reason, "end_turn");
       assert.equal(JSON.stringify(emptyToolDeltaEvents).includes("tool_use"), false);
 
+      const unsupportedOutputFormat = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "preserve unsupported anthropic output format" }],
+          output_config: {
+            format: { type: "grammar", syntax: "lark", definition: "start: WORD" },
+          },
+        },
+      });
+      assert.equal(unsupportedOutputFormat.status, 200, unsupportedOutputFormat.body);
+      assert.equal(unsupportedOutputFormat.body.content[0].text, "Chat provider answer.");
+
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["anthropic_messages", "/v1/messages", "success"],
         ["anthropic_messages", "/claude/v1/messages", "success"],
+        ["anthropic_messages", "/v1/messages", "success"],
         ["anthropic_messages", "/v1/messages", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-anthropic-chat-secret"));
@@ -12960,7 +12976,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, null);
@@ -13029,6 +13045,16 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     model: "gpt-chat",
     messages: [{ role: "user", content: "stream please" }],
     stream: true,
+    max_tokens: 64,
+  });
+  assert.equal(upstreamCalls[3].url, "https://anthropic-chat.example.test/v1/chat/completions");
+  assert.deepEqual(JSON.parse(upstreamCalls[3].body), {
+    model: "gpt-chat",
+    messages: [
+      { role: "user", content: "preserve unsupported anthropic output format" },
+      { role: "user", content: 'Anthropic Messages unsupported output_config.format for Chat: {"type":"grammar","syntax":"lark","definition":"start: WORD"}' },
+    ],
+    stream: false,
     max_tokens: 64,
   });
 });
@@ -13729,9 +13755,25 @@ test("model gateway adapts chat completions through native anthropic messages pr
       });
       assert.equal(streamEvents[4].data, "[DONE]");
 
+      const unsupportedFormatChat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "preserve unsupported chat response format" }],
+          response_format: {
+            type: "yaml_schema",
+            schema: { type: "object", additionalProperties: false },
+          },
+          max_tokens: 64,
+        },
+      });
+      assert.equal(unsupportedFormatChat.status, 200, unsupportedFormatChat.body);
+      assert.equal(unsupportedFormatChat.body.choices[0].message.content, "Sunny in Tokyo.");
+
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
+        ["openai_chat_completions", "/v1/chat/completions", "success"],
         ["openai_chat_completions", "/v1/chat/completions", "success"],
         ["openai_chat_completions", "/v1/chat/completions", "success"],
         ["openai_chat_completions", "/v1/chat/completions", "success"],
@@ -13742,7 +13784,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, null);
@@ -13830,6 +13872,14 @@ test("model gateway adapts chat completions through native anthropic messages pr
     max_tokens: 1024,
     messages: [{ role: "user", content: "stream please" }],
     stream: true,
+  });
+  assert.deepEqual(JSON.parse(upstreamCalls[3].body), {
+    model: "claude-native",
+    max_tokens: 64,
+    messages: [
+      { role: "user", content: "preserve unsupported chat response format" },
+      { role: "user", content: 'OpenAI Chat unsupported response_format for Anthropic Messages: {"type":"yaml_schema","schema":{"type":"object","additionalProperties":false}}' },
+    ],
   });
 });
 

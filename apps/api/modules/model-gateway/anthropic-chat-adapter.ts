@@ -144,6 +144,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     functions: request.functions,
   });
   if (unsupportedToolChoiceText) anthropicMessages.push({ role: "user", content: unsupportedToolChoiceText });
+  const unsupportedResponseFormatText = chatUnsupportedResponseFormatToAnthropicText(request.response_format);
+  if (unsupportedResponseFormatText) anthropicMessages.push({ role: "user", content: unsupportedResponseFormatText });
 
   const anthropicRequest: JsonRecord = {
     model,
@@ -213,6 +215,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   if (!options.preserveMcpServers) {
     messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers, request.tools));
   }
+  const unsupportedOutputFormatText = anthropicUnsupportedOutputFormatToChatText(request.output_config);
+  if (unsupportedOutputFormatText) messages.push({ role: "user", content: unsupportedOutputFormatText });
   const chatRequest: JsonRecord = {
     model,
     messages,
@@ -876,6 +880,12 @@ function chatUnsupportedToolChoiceToAnthropicText(
   return `OpenAI Chat unsupported tool_choice for Anthropic Messages: ${stringifyCompact(toolChoice)}`;
 }
 
+function chatUnsupportedResponseFormatToAnthropicText(responseFormat: unknown): string {
+  if (responseFormat === undefined) return "";
+  if (mapChatResponseFormatToAnthropicOutputFormat(responseFormat) !== undefined) return "";
+  return `OpenAI Chat unsupported response_format for Anthropic Messages: ${stringifyCompact(responseFormat)}`;
+}
+
 function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown }): number {
   const toolsCount = Array.isArray(context.tools)
     ? context.tools.filter((tool) => mapChatToolToAnthropic(tool)).length
@@ -1185,6 +1195,12 @@ function mapAnthropicOutputConfigToChatResponseFormat(outputConfig: unknown): un
     return { type: format.type };
   }
   return undefined;
+}
+
+function anthropicUnsupportedOutputFormatToChatText(outputConfig: unknown): string {
+  if (!isRecord(outputConfig) || outputConfig.format === undefined) return "";
+  if (mapAnthropicOutputConfigToChatResponseFormat(outputConfig) !== undefined) return "";
+  return `Anthropic Messages unsupported output_config.format for Chat: ${stringifyCompact(outputConfig.format)}`;
 }
 
 function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): unknown {
