@@ -289,6 +289,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const toolIndexByItemId = new Map<string, number>();
   const emittedMcpItemKeys = new Set<string>();
   const emittedBuiltinToolItemKeys = new Set<string>();
+  const emittedUnknownItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
   const allowToolCalls = options.allowToolCalls !== false;
   const legacyFunctionCalls = Boolean(options.legacyFunctionCalls);
@@ -421,6 +422,13 @@ export async function writeChatCompletionsSseFromResponsesSse(
             writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
           }
           state.finishReason = chatToolFinishReason(legacyFunctionCalls);
+          return;
+        }
+        const unknownText = responsesUnknownOutputItemToText(event.json.item, { target: "Chat", allowToolCalls });
+        if (unknownText) {
+          emittedUnknownItemKeys.add(responsesOutputItemKey(event.json, event.json.item));
+          ensureChatStreamStart(state, res);
+          writeChatTextDelta(state, res, unknownText);
         }
         return;
       }
@@ -435,6 +443,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         }
         emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         emitMissingChatBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
+        emitMissingChatUnknownResponsesOutput(state, res, response.output, emittedUnknownItemKeys, allowToolCalls);
         const pending = flushStopSequenceFilter(stopFilter);
         if (pending) {
           ensureChatStreamStart(state, res);
@@ -496,6 +505,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
   };
   const emittedMcpItemKeys = new Set<string>();
   const emittedBuiltinToolItemKeys = new Set<string>();
+  const emittedUnknownItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
   let sawCompleted = false;
 
@@ -629,6 +639,14 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
           stopAnthropicToolBlock(res, tool);
           state.stopReason = "tool_use";
+          return;
+        }
+        const unknownText = responsesUnknownOutputItemToText(event.json.item, { target: "Anthropic Messages", allowToolCalls: true });
+        if (unknownText) {
+          emittedUnknownItemKeys.add(responsesOutputItemKey(event.json, event.json.item));
+          closeAnthropicThinkingBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicTextDelta(state, res, unknownText);
         }
         return;
       }
@@ -642,6 +660,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         emitMissingAnthropicBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
+        emitMissingAnthropicUnknownResponsesOutput(state, res, response.output, emittedUnknownItemKeys);
         const pending = flushStopSequenceFilter(stopFilter);
         if (pending) {
           closeAnthropicThinkingBlock(state, res);
@@ -2196,6 +2215,28 @@ function emitMissingChatBuiltinToolOutputsFromResponsesOutput(
   }
 }
 
+
+function emitMissingChatUnknownResponsesOutput(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+  allowToolCalls: boolean,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item)) continue;
+    const key = responsesOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const text = responsesUnknownOutputItemToText(item, { target: "Chat", allowToolCalls });
+    if (!text) continue;
+    emittedKeys.add(key);
+    ensureChatStreamStart(state, res);
+    writeChatTextDelta(state, res, text);
+  }
+}
+
 function emitMissingAnthropicToolUsesFromResponsesOutput(
   state: {
     nextContentIndex: number;
@@ -2275,6 +2316,66 @@ function emitMissingAnthropicMcpOutputsFromResponsesOutput(
     if (emittedKeys.has(key)) continue;
     if (emitAnthropicMcpOutputFromResponsesItem(state, res, item)) emittedKeys.add(key);
   }
+}
+
+
+function emitMissingAnthropicUnknownResponsesOutput(
+  state: {
+    started: boolean;
+    messageId: string;
+    model: string | null;
+    usage: JsonRecord;
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+    nextContentIndex: number;
+    text: string;
+  },
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item)) continue;
+    const key = responsesOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const text = responsesUnknownOutputItemToText(item, { target: "Anthropic Messages", allowToolCalls: true });
+    if (!text) continue;
+    emittedKeys.add(key);
+    closeAnthropicThinkingBlock(state, res);
+    ensureAnthropicTextMessageStart(state, res);
+    pushAnthropicTextDelta(state, res, text);
+  }
+}
+
+function responsesUnknownOutputItemToText(
+  item: JsonRecord,
+  options: { target: "Chat" | "Anthropic Messages"; allowToolCalls: boolean },
+): string {
+  if (item.type === "message") return responsesUnknownMessageContentToText(item.content, options.target);
+  if (item.type === "function_call" || item.type === "custom_tool_call") {
+    if (!options.allowToolCalls) return `OpenAI Responses ${item.type} omitted for ${options.target}: ${stringifyCompact(item)}`;
+    return isUsableResponsesToolCallItem(item) ? "" : `OpenAI Responses malformed ${item.type} for ${options.target}: ${stringifyCompact(item)}`;
+  }
+  if (!stringOrNull(item.type)) return "";
+  if (item.type === "output_text" || item.type === "refusal" || item.type === "reasoning") return "";
+  if (isResponsesMcpOutputItem(item) || isResponsesBuiltinToolOutputItem(item)) return "";
+  return `OpenAI Responses unrecognized output item for ${options.target}: ${stringifyCompact(item)}`;
+}
+
+function responsesUnknownMessageContentToText(content: unknown, target: "Chat" | "Anthropic Messages"): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!isRecord(part) || !stringOrNull(part.type)) return "";
+      if (part.type === "output_text" || part.type === "refusal") return "";
+      return `OpenAI Responses unrecognized message content part for ${target}: ${stringifyCompact(part)}`;
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 function emitAnthropicBuiltinToolOutputFromResponsesItem(

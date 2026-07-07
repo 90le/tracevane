@@ -10261,6 +10261,131 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
   assert.ok(upstreamCalls.every((call) => call.body.stream === true));
 });
 
+test("model gateway preserves unknown streaming Responses output through Chat and Anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-unknown-output-stream",
+      name: "Responses Unknown Output Stream Provider",
+      appScopes: ["claude-code", "openclaw"],
+      baseUrl: "https://responses-unknown-output-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-unknown-output-stream-secret" },
+    setActiveScopes: ["claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const unknownMessage = {
+    id: "msg_unknown_stream_part",
+    type: "message",
+    status: "completed",
+    role: "assistant",
+    content: [{ type: "output_audio", id: "aud_stream", transcript: "hello audio" }],
+  };
+  const malformedToolCall = {
+    id: "fc_stream_malformed",
+    type: "function_call",
+    status: "completed",
+    arguments: "{\"query\":\"docs\"}",
+  };
+  const futureOutput = {
+    type: "future_tool_call",
+    status: "completed",
+    payload: { value: 42 },
+  };
+
+  globalThis.fetch = async (url, init = {}) => {
+    const requestBody = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body: requestBody });
+    const response = {
+      id: `resp_unknown_output_stream_${upstreamCalls.length}`,
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [unknownMessage, malformedToolCall, futureOutput],
+      usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+    };
+    const upstreamSse = [
+      `event: response.created\ndata: ${JSON.stringify({ response: { ...response, status: "in_progress", output: [] } })}`,
+      `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 0, item: unknownMessage })}`,
+      `event: response.completed\ndata: ${JSON.stringify({ response })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  const expectedChatText = [
+    'OpenAI Responses unrecognized message content part for Chat: {"type":"output_audio","id":"aud_stream","transcript":"hello audio"}',
+    'OpenAI Responses function_call omitted for Chat: {"id":"fc_stream_malformed","type":"function_call","status":"completed","arguments":"{\\"query\\":\\"docs\\"}"}',
+    'OpenAI Responses unrecognized output item for Chat: {"type":"future_tool_call","status":"completed","payload":{"value":42}}',
+  ].join("");
+  const expectedAnthropicText = [
+    'OpenAI Responses unrecognized message content part for Anthropic Messages: {"type":"output_audio","id":"aud_stream","transcript":"hello audio"}',
+    'OpenAI Responses malformed function_call for Anthropic Messages: {"id":"fc_stream_malformed","type":"function_call","status":"completed","arguments":"{\\"query\\":\\"docs\\"}"}',
+    'OpenAI Responses unrecognized output item for Anthropic Messages: {"type":"future_tool_call","status":"completed","payload":{"value":42}}',
+  ].join("");
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          stream: true,
+          messages: [{ role: "user", content: "stream unknown outputs via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      const chatEvents = parseSseEvents(chat.body);
+      const chatText = chatEvents
+        .filter((item) => item.data !== "[DONE]")
+        .map((item) => item.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(chatText, expectedChatText);
+      assert.equal(JSON.stringify(chatEvents).includes("tool_calls"), false);
+      assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+
+      const messages = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 128,
+          stream: true,
+          messages: [{ role: "user", content: "stream unknown outputs via anthropic" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      const messageEvents = parseSseEvents(messages.body);
+      const messageText = messageEvents
+        .filter((item) => item.event === "content_block_delta")
+        .map((item) => item.data.delta.text || "")
+        .join("");
+      assert.equal(messageText, expectedAnthropicText);
+      assert.equal(JSON.stringify(messageEvents).includes("tool_use"), false);
+      const messageDelta = messageEvents.find((item) => item.event === "message_delta");
+      assert.equal(messageDelta.data.delta.stop_reason, "end_turn");
+      assert.equal(messageEvents.at(-1).event, "message_stop");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.ok(upstreamCalls.every((call) => call.url === "https://responses-unknown-output-stream.example.test/v1/responses"));
+  assert.ok(upstreamCalls.every((call) => call.body.stream === true));
+});
+
 test("model gateway maps chat refusal output through anthropic and codex adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -14507,8 +14632,13 @@ test("model gateway preserves incomplete responses function calls for chat compl
       assert.equal(stream.status, 200);
       const events = parseSseEvents(stream.body);
       assert.equal(events.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
-      assert.equal(events[1].data.choices[0].finish_reason, "stop");
-      assert.equal(events[2].data, "[DONE]");
+      const streamText = events
+        .filter((item) => item.data !== "[DONE]")
+        .map((item) => item.data.choices?.[0]?.delta?.content || "")
+        .join("");
+      assert.equal(streamText, 'OpenAI Responses function_call omitted for Chat: {"id":"fc_incomplete","type":"function_call","status":"completed","name":"lookup","arguments":"{\\"query\\":\\"docs\\"}"}');
+      assert.equal(events.at(-2).data.choices[0].finish_reason, "stop");
+      assert.equal(events.at(-1).data, "[DONE]");
     });
   } finally {
     globalThis.fetch = originalFetch;
