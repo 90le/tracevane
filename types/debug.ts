@@ -23,7 +23,7 @@ export type DebugLifecycleEventKind =
 export interface DebugProfileDescriptor {
   id: string;
   label: string;
-  kind: "mock" | "adapter-proof";
+  kind: "mock" | "adapter-proof" | "node-inspector";
   description: string;
   requiresProgram?: boolean;
 }

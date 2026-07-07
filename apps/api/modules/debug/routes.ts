@@ -15,7 +15,7 @@ export function registerDebugRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
   router.post("/api/debug/sessions", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<DebugCreateSessionRequest>(req);
     try {
-      sendJson(res, 200, routeCtx.services.debug.createSession(payload));
+      sendJson(res, 200, await routeCtx.services.debug.createSession(payload));
     } catch (error) {
       sendJson(res, 400, {
         error: "debug_create_session_failed",

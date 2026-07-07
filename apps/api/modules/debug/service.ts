@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import type { TracevaneServerConfig } from "../../../../types/api.js";
@@ -30,6 +32,7 @@ import {
 const DEBUG_WS_PATH = "/ws/debug";
 const MOCK_PROFILE_ID = "mock-node";
 const NODE_LITE_PROFILE_ID = "node-lite";
+const NODE_INSPECTOR_PROFILE_ID = "node-inspector-lite";
 const NODE_LITE_PROGRAM_EXTENSIONS = [".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx"];
 
 const DEBUG_PROFILES: DebugLaunchProfile[] = [
@@ -55,12 +58,24 @@ const DEBUG_PROFILES: DebugLaunchProfile[] = [
     maxEnv: 32,
     programExtensions: NODE_LITE_PROGRAM_EXTENSIONS,
   },
+  {
+    id: NODE_INSPECTOR_PROFILE_ID,
+    label: "Node Inspector Lite",
+    kind: "node-inspector",
+    description: "Minimal real Node inspector protocol profile that launches a guarded local Node program and captures paused stack proof.",
+    requiresProgram: true,
+    allowArgs: true,
+    allowEnv: true,
+    maxArgs: 16,
+    maxEnv: 32,
+    programExtensions: [".js", ".cjs", ".mjs"],
+  },
 ];
 
 export interface DebugService {
   getStatus(): DebugStatusPayload;
   listSessions(): DebugSessionsPayload;
-  createSession(request: DebugCreateSessionRequest): DebugSessionPayload;
+  createSession(request: DebugCreateSessionRequest): Promise<DebugSessionPayload>;
   stopSession(request: DebugStopSessionRequest): DebugSessionPayload;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
   dispose(): void;
@@ -97,6 +112,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "launch-profiles",
         "launch-config-validation",
         "launch-args-env-guard",
+        "node-inspector-lite-profile",
+        "node-inspector-launch-proof",
       ],
     };
   }
@@ -114,11 +131,13 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     socket.send(JSON.stringify(event));
   }
 
-  function createSession(request: DebugCreateSessionRequest): DebugSessionPayload {
+  async function createSession(request: DebugCreateSessionRequest): Promise<DebugSessionPayload> {
     const validated = validateCreateRequest(config, request);
     const now = new Date().toISOString();
     const id = `debug-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
-    const adapterResult = createAdapterProofResult(validated);
+    const adapterResult = validated.profile.id === NODE_INSPECTOR_PROFILE_ID
+      ? await createNodeInspectorProofResult(validated)
+      : createAdapterProofResult(validated);
     const activeLocation = adapterResult.activeLocation;
     const stoppedReason = activeLocation ? "breakpoint" : "entry";
     const message = activeLocation
@@ -248,7 +267,9 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       }
       try {
         if (parsed.type === "create") {
-          createSession(parsed);
+          void createSession(parsed).catch((error) => {
+            send(socket, { type: "error", message: error instanceof Error ? error.message : String(error) });
+          });
           return;
         }
         if (parsed.type === "stop") {
@@ -346,7 +367,9 @@ function validateCreateRequest(
   name: string;
   breakpoints: DebugBreakpointLocation[];
   program: { relativePath: string; absolutePath: string } | null;
+  cwdAbsolutePath: string;
   args: string[];
+  env: Record<string, string>;
   envKeys: string[];
 } {
   const rootId = String(request?.rootId || "").trim();
@@ -362,7 +385,8 @@ function validateCreateRequest(
   const name = String(request?.name || profile.label).trim() || profile.label;
   const breakpoints = normalizeBreakpointLocations(config, resolved.root.id, request?.breakpoints);
   const args = normalizeLaunchArgs(profile, launch?.args ?? request?.args);
-  const envKeys = normalizeLaunchEnv(profile, launch?.env ?? request?.env);
+  const env = normalizeLaunchEnv(profile, launch?.env ?? request?.env);
+  const envKeys = Object.keys(env).sort((a, b) => a.localeCompare(b));
   return {
     rootId: resolved.root.id,
     workspaceId: String(request?.workspaceId || rootId || "").trim() || null,
@@ -372,7 +396,9 @@ function validateCreateRequest(
     name,
     breakpoints,
     program,
+    cwdAbsolutePath: resolved.absolutePath,
     args,
+    env,
     envKeys,
   };
 }
@@ -410,25 +436,25 @@ function normalizeLaunchArgs(profile: DebugLaunchProfile, input: unknown): strin
   });
 }
 
-function normalizeLaunchEnv(profile: DebugLaunchProfile, input: unknown): string[] {
-  if (input == null) return [];
+function normalizeLaunchEnv(profile: DebugLaunchProfile, input: unknown): Record<string, string> {
+  if (input == null) return {};
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Debug launch env must be an object of string values");
   }
   const entries = Object.entries(input as Record<string, unknown>);
-  if (entries.length === 0) return [];
+  if (entries.length === 0) return {};
   if (!profile.allowEnv) throw new Error(`${profile.label} does not allow launch env`);
   const maxEnv = profile.maxEnv ?? 32;
   if (entries.length > maxEnv) throw new Error(`Debug launch env exceeds max ${maxEnv}`);
-  const keys: string[] = [];
+  const result: Record<string, string> = {};
   for (const [rawKey, rawValue] of entries) {
     const key = rawKey.trim();
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error(`Invalid debug launch env key: ${rawKey}`);
     if (typeof rawValue !== "string") throw new Error(`Debug launch env ${key} must be a string`);
     if (rawValue.length > 2048) throw new Error(`Debug launch env ${key} is too long`);
-    keys.push(key);
+    result[key] = rawValue;
   }
-  return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
+  return result;
 }
 
 function createAdapterProofResult(validated: {
@@ -438,6 +464,7 @@ function createAdapterProofResult(validated: {
   breakpoints: DebugBreakpointLocation[];
   program: { relativePath: string; absolutePath: string } | null;
   args: string[];
+  env?: Record<string, string>;
   envKeys: string[];
 }): { activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] } {
   if (validated.profile.id !== NODE_LITE_PROFILE_ID || !validated.program) {
@@ -472,6 +499,280 @@ function createAdapterProofResult(validated: {
     { name: "adapter", value: NODE_LITE_PROFILE_ID, type: "string", variablesReference: 0 },
   ];
   return { activeLocation, frames: [frame], variables };
+}
+
+async function createNodeInspectorProofResult(validated: {
+  rootId: string;
+  cwd: string;
+  cwdAbsolutePath: string;
+  profile: DebugLaunchProfile;
+  breakpoints: DebugBreakpointLocation[];
+  program: { relativePath: string; absolutePath: string } | null;
+  args: string[];
+  env: Record<string, string>;
+  envKeys: string[];
+}): Promise<{ activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] }> {
+  if (!validated.program) throw new Error("Node inspector program is required");
+  const launchInput = { ...validated, program: validated.program };
+  const inspectorUrl = await launchNodeInspectorAndCaptureUrl(launchInput);
+  const proof = await runNodeInspectorProof(launchInput, inspectorUrl.url).finally(() => {
+    inspectorUrl.cleanup();
+  });
+  return proof;
+}
+
+function launchNodeInspectorAndCaptureUrl(validated: {
+  cwdAbsolutePath: string;
+  program: { absolutePath: string };
+  args: string[];
+  env: Record<string, string>;
+}): Promise<{ url: string; cleanup: () => void }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      "--inspect-brk=127.0.0.1:0",
+      validated.program.absolutePath,
+      ...validated.args,
+    ], {
+      cwd: validated.cwdAbsolutePath,
+      env: { ...process.env, ...validated.env },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let settled = false;
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`Node inspector did not publish a websocket URL in time: ${stderr.slice(-800)}`));
+    }, 10_000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (!child.killed) {
+        try { child.kill("SIGKILL"); } catch {}
+      }
+    };
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+      const match = stderr.match(/ws:\/\/127\.0\.0\.1:\d+\/[^\s]+/);
+      if (!match || settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ url: match[0], cleanup });
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(new Error(`Node inspector process exited before attach: code=${code ?? "null"} signal=${signal ?? "null"} stderr=${stderr.slice(-800)}`));
+    });
+  });
+}
+
+async function runNodeInspectorProof(
+  validated: {
+    rootId: string;
+    cwd: string;
+    program: { relativePath: string; absolutePath: string };
+    breakpoints: DebugBreakpointLocation[];
+    args: string[];
+    envKeys: string[];
+  },
+  inspectorUrl: string,
+): Promise<{ activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] }> {
+  const socket = new WebSocket(inspectorUrl);
+  let nextId = 1;
+  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  const pausedEvents: JsonRecord[] = [];
+  const waiters: Array<() => void> = [];
+
+  const waitForPaused = (timeoutMs: number): Promise<JsonRecord> => new Promise((resolve, reject) => {
+    const existing = pausedEvents.shift();
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      const index = waiters.indexOf(check);
+      if (index >= 0) waiters.splice(index, 1);
+      reject(new Error("Node inspector did not pause in time"));
+    }, timeoutMs);
+    const check = () => {
+      const event = pausedEvents.shift();
+      if (!event) return;
+      const index = waiters.indexOf(check);
+      if (index >= 0) waiters.splice(index, 1);
+      clearTimeout(timeout);
+      resolve(event);
+    };
+    waiters.push(check);
+  });
+
+  const sendProtocol = (method: string, params: JsonRecord = {}): Promise<unknown> => {
+    const id = nextId++;
+    const payload = JSON.stringify({ id, method, params });
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      socket.send(payload, (error) => {
+        if (!error) return;
+        pending.delete(id);
+        reject(error);
+      });
+    });
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Node inspector websocket did not open in time")), 10_000);
+    socket.once("open", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+
+  socket.on("message", (data) => {
+    let parsed: JsonRecord | null = null;
+    try {
+      parsed = JSON.parse(String(data)) as JsonRecord;
+    } catch {
+      return;
+    }
+    const id = typeof parsed.id === "number" ? parsed.id : null;
+    if (id !== null && pending.has(id)) {
+      const entry = pending.get(id)!;
+      pending.delete(id);
+      if (parsed.error) {
+        entry.reject(new Error(String((parsed.error as JsonRecord).message || "Node inspector protocol error")));
+      } else {
+        entry.resolve(parsed.result);
+      }
+      return;
+    }
+    if (parsed.method === "Debugger.paused") {
+      pausedEvents.push((parsed.params && typeof parsed.params === "object" ? parsed.params : {}) as JsonRecord);
+      for (const waiter of [...waiters]) waiter();
+    }
+  });
+
+  try {
+    await sendProtocol("Runtime.enable");
+    await sendProtocol("Debugger.enable");
+    for (const breakpoint of validated.breakpoints) {
+      if (breakpoint.enabled === false || breakpoint.path !== validated.program.relativePath) continue;
+      await sendProtocol("Debugger.setBreakpointByUrl", {
+        url: pathToFileURL(validated.program.absolutePath).href,
+        lineNumber: Math.max(0, breakpoint.lineNumber - 1),
+        columnNumber: Math.max(0, (breakpoint.column ?? 1) - 1),
+      }).catch(() => undefined);
+    }
+    await sendProtocol("Runtime.runIfWaitingForDebugger");
+    let paused = await waitForPaused(10_000);
+    if (hasProgramBreakpoint(validated) && !pausedMatchesProgramBreakpoint(validated, paused)) {
+      await sendProtocol("Debugger.resume").catch(() => undefined);
+      paused = await waitForPaused(10_000);
+    }
+    const frames = nodeInspectorFramesToDebugFrames(validated.rootId, validated.program, paused);
+    const activeLocation = frames[0]?.source ?? {
+      rootId: validated.rootId,
+      path: validated.program.relativePath,
+      lineNumber: 1,
+      column: 1,
+    };
+    const variables: DebugVariable[] = [
+      { name: "adapter", value: NODE_INSPECTOR_PROFILE_ID, type: "string", variablesReference: 0 },
+      { name: "inspector", value: "connected", type: "string", variablesReference: 0 },
+      { name: "pauseReason", value: String(paused.reason || "unknown"), type: "string", variablesReference: 0 },
+      { name: "program", value: validated.program.relativePath, type: "string", variablesReference: 0 },
+      { name: "args", value: String(validated.args.length), type: "number", variablesReference: 0 },
+      { name: "envKeys", value: validated.envKeys.join(",") || "(none)", type: "string", variablesReference: 0 },
+    ];
+    return { activeLocation, frames, variables };
+  } finally {
+    for (const entry of pending.values()) entry.reject(new Error("Node inspector websocket closed"));
+    pending.clear();
+    try { socket.close(); } catch {}
+  }
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function hasProgramBreakpoint(validated: {
+  program: { relativePath: string };
+  breakpoints: DebugBreakpointLocation[];
+}): boolean {
+  return validated.breakpoints.some((breakpoint) =>
+    breakpoint.enabled !== false && breakpoint.path === validated.program.relativePath,
+  );
+}
+
+function pausedMatchesProgramBreakpoint(
+  validated: {
+    program: { relativePath: string };
+    breakpoints: DebugBreakpointLocation[];
+  },
+  paused: JsonRecord,
+): boolean {
+  const topFrame = Array.isArray(paused.callFrames) ? paused.callFrames[0] : null;
+  if (!topFrame || typeof topFrame !== "object") return false;
+  const location = (topFrame as JsonRecord).location && typeof (topFrame as JsonRecord).location === "object"
+    ? (topFrame as JsonRecord).location as JsonRecord
+    : {};
+  const pausedLine = Math.max(1, Number(location.lineNumber ?? 0) + 1);
+  return validated.breakpoints.some((breakpoint) =>
+    breakpoint.enabled !== false
+    && breakpoint.path === validated.program.relativePath
+    && breakpoint.lineNumber === pausedLine,
+  );
+}
+
+function nodeInspectorFramesToDebugFrames(
+  rootId: string,
+  program: { relativePath: string; absolutePath: string },
+  paused: JsonRecord,
+): DebugStackFrame[] {
+  const callFrames = Array.isArray(paused.callFrames) ? paused.callFrames : [];
+  const frames = callFrames.slice(0, 10).map((rawFrame, index): DebugStackFrame | null => {
+    if (!rawFrame || typeof rawFrame !== "object") return null;
+    const frame = rawFrame as JsonRecord;
+    const location = frame.location && typeof frame.location === "object" ? frame.location as JsonRecord : {};
+    const scriptUrl = String((frame as { url?: unknown }).url || "");
+    const sourcePath = nodeInspectorUrlToRelativePath(scriptUrl, program);
+    return {
+      id: index + 1,
+      name: String(frame.functionName || "(anonymous)"),
+      source: {
+        rootId,
+        path: sourcePath,
+        lineNumber: Math.max(1, Number(location.lineNumber ?? 0) + 1),
+        column: Math.max(1, Number(location.columnNumber ?? 0) + 1),
+      },
+    };
+  }).filter((frame): frame is DebugStackFrame => Boolean(frame));
+  return frames.length ? frames : [{
+    id: 1,
+    name: `node-inspector:${path.basename(program.relativePath)}`,
+    source: { rootId, path: program.relativePath, lineNumber: 1, column: 1 },
+  }];
+}
+
+function nodeInspectorUrlToRelativePath(url: string, program: { relativePath: string; absolutePath: string }): string {
+  if (!url) return program.relativePath;
+  try {
+    const filePath = fileURLToPath(url);
+    return path.resolve(filePath) === path.resolve(program.absolutePath)
+      ? program.relativePath
+      : program.relativePath;
+  } catch {
+    return program.relativePath;
+  }
 }
 
 function safeReadLineCount(absolutePath: string): number {
