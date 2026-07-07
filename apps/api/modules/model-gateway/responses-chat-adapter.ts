@@ -1,6 +1,7 @@
 import {
   chatMcpToolBlocksToResponsesItems,
   responsesMcpCallToAnthropicToolBlocks,
+  responsesMcpOutputItemToText,
 } from "./mcp-translation.js";
 import { applyResponsesReasoningOptions } from "./reasoning-options.js";
 
@@ -503,8 +504,9 @@ function responseOutputItemToText(item: unknown, options: { skipMcpToolCalls?: b
   if (item.type === "message") return responseContentToText(item.content);
   if (item.type === "output_text") return stringOrNull(item.text) || "";
   if (item.type === "refusal") return stringOrNull(item.refusal) || "";
-  if (item.type === "mcp_call") return options.skipMcpToolCalls ? "" : mcpCallOutputToText(item);
-  if (item.type === "mcp_list_tools") return mcpListToolsOutputToText(item);
+  if (item.type === "mcp_call" && options.skipMcpToolCalls) return "";
+  const mcpText = responsesMcpOutputItemToText(item);
+  if (mcpText) return mcpText;
   return "";
 }
 
@@ -543,31 +545,6 @@ function responseOutputItemToReasoningText(item: unknown): string {
     .filter(Boolean)
     .join("");
   return summaryText || stringOrNull(item.text) || "";
-}
-
-function mcpCallOutputToText(item: JsonRecord): string {
-  const output = item.output ?? item.result ?? item.content;
-  const error = item.error;
-  const body = output !== undefined
-    ? ` output: ${stringifyCompact(output)}`
-    : error !== undefined
-      ? ` error: ${stringifyCompact(error)}`
-      : "";
-  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
-  const name = stringOrNull(item.name) || stringOrNull(item.tool_name) || stringOrNull(item.call_id) || "tool";
-  return `[OpenAI Responses mcp_call ${server}.${name}${body}]`;
-}
-
-function mcpListToolsOutputToText(item: JsonRecord): string {
-  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
-  const tools = Array.isArray(item.tools)
-    ? item.tools
-      .map((tool) => isRecord(tool) ? stringOrNull(tool.name) : null)
-      .filter((name): name is string => Boolean(name))
-    : [];
-  return tools.length
-    ? `[OpenAI Responses mcp_list_tools ${server}: ${tools.join(", ")}]`
-    : `[OpenAI Responses mcp_list_tools ${server}]`;
 }
 
 function stringifyCompact(value: unknown): string {

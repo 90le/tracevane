@@ -9341,6 +9341,13 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
           output: { path: "README.md", text: "Hello from MCP" },
           status: "completed",
         },
+        {
+          id: "mcpr_delete_1",
+          type: "mcp_approval_request",
+          server_label: "repo-tools",
+          name: "delete_file",
+          arguments: "{\"path\":\"danger.txt\"}",
+        },
       ],
       usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
     }), {
@@ -9350,7 +9357,8 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
   };
 
   const expectedText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]"
-    + "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
+    + "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]"
+    + "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_delete_1 arguments: {\"path\":\"danger.txt\"}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -9454,7 +9462,12 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
               name: "repo-tools",
               url: "https://mcp.example.test/sse",
               authorization_token: "mcp-token",
-              tool_configuration: { enabled: true, allowed_tools: ["read_file"] },
+              tool_configuration: {
+                enabled: true,
+                allowed_tools: ["read_file"],
+                require_approval: "always",
+                defer_loading: true,
+              },
             },
           ],
           messages: [
@@ -9492,6 +9505,8 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
     server_url: "https://mcp.example.test/sse",
     authorization: "mcp-token",
     allowed_tools: ["read_file"],
+    require_approval: "always",
+    defer_loading: true,
   }]);
   assert.deepEqual(upstreamCalls[0].body.input[0], {
     type: "mcp_call",
@@ -9542,6 +9557,13 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
     output: { path: "README.md", text: "Hello from MCP" },
     status: "completed",
   };
+  const mcpApprovalItem = {
+    id: "mcpr_stream_delete_1",
+    type: "mcp_approval_request",
+    server_label: "repo-tools",
+    name: "delete_file",
+    arguments: "{\"path\":\"danger.txt\"}",
+  };
   globalThis.fetch = async (url, init = {}) => {
     const requestBody = JSON.parse(String(init.body || "{}"));
     upstreamCalls.push({
@@ -9554,7 +9576,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
       object: "response",
       status: "completed",
       model: "gpt-5.4",
-      output: [mcpListItem, mcpCallItem],
+      output: [mcpListItem, mcpCallItem, mcpApprovalItem],
       usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
     };
     const upstreamSse = [
@@ -9563,6 +9585,8 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
       `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 0, item: mcpListItem })}`,
       `event: response.output_item.added\ndata: ${JSON.stringify({ output_index: 1, item: { ...mcpCallItem, output: undefined } })}`,
       `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 1, item: mcpCallItem })}`,
+      `event: response.output_item.added\ndata: ${JSON.stringify({ output_index: 2, item: mcpApprovalItem })}`,
+      `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 2, item: mcpApprovalItem })}`,
       `event: response.completed\ndata: ${JSON.stringify({ response })}`,
       "data: [DONE]",
       "",
@@ -9575,6 +9599,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
 
   const expectedListText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]";
   const expectedCallText = "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
+  const expectedApprovalText = "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_stream_delete_1 arguments: {\"path\":\"danger.txt\"}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -9592,7 +9617,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         .filter((item) => item.data !== "[DONE]")
         .map((item) => item.data.choices?.[0]?.delta?.content || "")
         .join("");
-      assert.equal(chatText, expectedListText + expectedCallText);
+      assert.equal(chatText, expectedListText + expectedCallText + expectedApprovalText);
       assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
       assert.equal(chatEvents.at(-1).data, "[DONE]");
 
@@ -9611,7 +9636,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         .filter((item) => item.event === "content_block_delta")
         .map((item) => item.data.delta.text || "")
         .join("");
-      assert.equal(messageText, expectedListText);
+      assert.equal(messageText, expectedListText + expectedApprovalText);
       const contentBlocks = messageEvents
         .filter((item) => item.event === "content_block_start")
         .map((item) => item.data.content_block);
@@ -9619,6 +9644,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         { type: "text", text: "" },
         { type: "mcp_tool_use", id: "mcp_call_1", name: "read_file", server_name: "repo-tools", input: { path: "README.md" } },
         { type: "mcp_tool_result", tool_use_id: "mcp_call_1", is_error: false, content: [{ type: "text", text: JSON.stringify({ path: "README.md", text: "Hello from MCP" }) }] },
+        { type: "text", text: "" },
       ]);
       const messageDelta = messageEvents.find((item) => item.event === "message_delta");
       assert.equal(messageDelta.data.delta.stop_reason, "end_turn");

@@ -911,10 +911,23 @@ function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown): JsonRecord
     if (description) tool.server_description = description;
     const authorization = stringOrNull(server.authorization_token) || stringOrNull(server.authorization);
     if (authorization) tool.authorization = authorization;
-    if (Array.isArray(toolConfiguration?.allowed_tools)) {
-      const allowedTools = toolConfiguration.allowed_tools.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-      if (allowedTools.length) tool.allowed_tools = allowedTools;
-    }
+    const allowedToolsSource = Array.isArray(toolConfiguration?.allowed_tools)
+      ? toolConfiguration.allowed_tools
+      : Array.isArray(server.allowed_tools)
+        ? server.allowed_tools
+        : [];
+    const allowedTools = allowedToolsSource.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (allowedTools.length) tool.allowed_tools = allowedTools;
+
+    const requireApproval = server.require_approval ?? toolConfiguration?.require_approval;
+    if (requireApproval !== undefined) tool.require_approval = requireApproval;
+
+    const deferLoading = typeof server.defer_loading === "boolean"
+      ? server.defer_loading
+      : typeof toolConfiguration?.defer_loading === "boolean"
+        ? toolConfiguration.defer_loading
+        : undefined;
+    if (deferLoading !== undefined) tool.defer_loading = deferLoading;
     return [tool];
   });
 }

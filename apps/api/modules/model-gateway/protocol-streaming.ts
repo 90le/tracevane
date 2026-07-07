@@ -1,6 +1,10 @@
 import type http from "node:http";
 
-import { responsesMcpCallToAnthropicToolBlocks } from "./mcp-translation.js";
+import {
+  isResponsesMcpOutputItem,
+  responsesMcpCallToAnthropicToolBlocks,
+  responsesMcpOutputItemToText,
+} from "./mcp-translation.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -2137,54 +2141,10 @@ function emitAnthropicMcpToolBlocksFromResponsesCall(
 }
 
 
-function isResponsesMcpOutputItem(item: JsonRecord): boolean {
-  return item.type === "mcp_call" || item.type === "mcp_list_tools";
-}
-
 function responsesMcpOutputItemKey(payload: JsonRecord, item: JsonRecord): string {
   return stringOrNull(item.id)
     || stringOrNull(payload.item_id)
     || `${String(item.type || "mcp")}:${numberOrNull(payload.output_index) ?? "?"}`;
-}
-
-function responsesMcpOutputItemToText(item: JsonRecord): string {
-  if (item.type === "mcp_call") return responsesMcpCallOutputToText(item);
-  if (item.type === "mcp_list_tools") return responsesMcpListToolsOutputToText(item);
-  return "";
-}
-
-function responsesMcpCallOutputToText(item: JsonRecord): string {
-  const output = item.output ?? item.result ?? item.content;
-  const error = item.error;
-  const body = output !== undefined
-    ? ` output: ${stringifyCompact(output)}`
-    : error !== undefined
-      ? ` error: ${stringifyCompact(error)}`
-      : "";
-  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
-  const name = stringOrNull(item.name) || stringOrNull(item.tool_name) || stringOrNull(item.call_id) || "tool";
-  return `[OpenAI Responses mcp_call ${server}.${name}${body}]`;
-}
-
-function responsesMcpListToolsOutputToText(item: JsonRecord): string {
-  const server = stringOrNull(item.server_label) || stringOrNull(item.server_name) || "mcp";
-  const tools = Array.isArray(item.tools)
-    ? item.tools
-      .map((tool) => isRecord(tool) ? stringOrNull(tool.name) : null)
-      .filter((name): name is string => Boolean(name))
-    : [];
-  return tools.length
-    ? `[OpenAI Responses mcp_list_tools ${server}: ${tools.join(", ")}]`
-    : `[OpenAI Responses mcp_list_tools ${server}]`;
-}
-
-function stringifyCompact(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 function createStopSequenceFilter(stopSequences: Iterable<string> | undefined): StopSequenceFilter | null {
