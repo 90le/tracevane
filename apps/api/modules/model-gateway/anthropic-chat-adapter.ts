@@ -1060,7 +1060,13 @@ function mapAnthropicUserBlocksToChatMessages(
     }
     flushUserContent();
     const toolCallId = stringOrNull(block.tool_use_id);
-    if (!toolCallId) continue;
+    if (!toolCallId) {
+      chatMessages.push({
+        role: "user",
+        content: `Anthropic Messages tool_result missing tool_use_id for Chat Completions: ${stringifyCompact(block)}`,
+      });
+      continue;
+    }
     const chatMessage: JsonRecord = {
       role: "tool",
       tool_call_id: toolCallId,

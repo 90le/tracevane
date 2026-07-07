@@ -14517,7 +14517,7 @@ test("model gateway preserves incomplete responses function calls for chat compl
   assert.equal(upstreamCalls.length, 2);
 });
 
-test("model gateway drops orphan tool results before provider adapters", async () => {
+test("model gateway preserves orphan tool result context before provider adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const ctx = createTracevaneContext({ config, logger: createLogger() });
@@ -14682,12 +14682,16 @@ test("model gateway drops orphan tool results before provider adapters", async (
   assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://chat-to-responses-orphan-tool-result.example.test/v1/responses");
   assert.equal(JSON.stringify(upstreamCalls[0].body).includes("function_call_output"), false);
+  assert.match(JSON.stringify(upstreamCalls[0].body), /OpenAI Chat tool message missing tool_call_id for Responses/);
   assert.equal(upstreamCalls[1].url, "https://chat-to-anthropic-orphan-tool-result.example.test/v1/messages");
   assert.equal(JSON.stringify(upstreamCalls[1].body).includes("tool_result"), false);
+  assert.match(JSON.stringify(upstreamCalls[1].body), /OpenAI Chat tool message missing tool_call_id for Anthropic Messages/);
   assert.equal(upstreamCalls[2].url, "https://anthropic-to-chat-orphan-tool-result.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[2].body.messages.some((message) => message.role === "tool"), false);
+  assert.match(JSON.stringify(upstreamCalls[2].body), /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.equal(upstreamCalls[3].url, "https://responses-to-chat-orphan-tool-result.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[3].body.messages.some((message) => message.role === "tool"), false);
+  assert.match(JSON.stringify(upstreamCalls[3].body), /OpenAI Responses tool output missing call_id for Chat Completions/);
 });
 
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {

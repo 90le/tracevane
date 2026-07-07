@@ -409,7 +409,10 @@ function mapResponsesInputItemToChatMessage(
 
   if (isResponsesToolOutputItem(item)) {
     const toolCallId = stringOrNull(item.call_id) || stringOrNull(item.id);
-    if (!toolCallId) return null;
+    if (!toolCallId) return {
+      role: "user",
+      content: `OpenAI Responses tool output missing call_id for Chat Completions: ${stringifyCompact(item)}`,
+    };
     const output = options.preserveToolOutputContent
       ? contentToChatContent(item.output, "user")
       : canonicalizeJsonStringIfParseable(responsesToolOutputToChatContent(item.output));
