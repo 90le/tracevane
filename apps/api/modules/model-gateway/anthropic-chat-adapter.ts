@@ -865,7 +865,8 @@ function mapChatFunctionsToAnthropic(functions: unknown): JsonRecord[] {
       name,
       input_schema: isRecord(fn.parameters) ? fn.parameters : {},
     };
-    if (typeof fn.description === "string") mapped.description = fn.description;
+    const description = descriptionWithOpenAIStrictMode(fn.description, fn.strict);
+    if (description) mapped.description = description;
     return [mapped];
   });
 }
@@ -898,7 +899,8 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
     name,
     input_schema: isRecord(fn.parameters) ? fn.parameters : {},
   };
-  if (typeof fn.description === "string") mapped.description = fn.description;
+  const description = descriptionWithOpenAIStrictMode(fn.description, fn.strict);
+  if (description) mapped.description = description;
   return mapped;
 }
 
@@ -916,8 +918,18 @@ function mapChatCustomToolToAnthropic(tool: JsonRecord): JsonRecord | null {
       required: ["input"],
     },
   };
-  if (typeof source.description === "string") mapped.description = source.description;
+  const description = descriptionWithOpenAIStrictMode(source.description, source.strict);
+  if (description) mapped.description = description;
   return mapped;
+}
+
+function descriptionWithOpenAIStrictMode(description: unknown, strict: unknown): string | null {
+  const parts: string[] = [];
+  if (typeof description === "string" && description.trim()) parts.push(description);
+  if (typeof strict === "boolean") {
+    parts.push(`OpenAI strict function-calling mode requested: ${strict}.`);
+  }
+  return parts.length ? parts.join(" ") : null;
 }
 
 function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {

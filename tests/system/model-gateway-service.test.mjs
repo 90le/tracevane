@@ -11387,6 +11387,18 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
     tools: [
       { type: "web_search_preview", search_context_size: "low" },
       { type: "file_search", vector_store_ids: ["vs_unsupported"], max_num_results: 3 },
+      {
+        type: "function",
+        name: "strict_lookup",
+        description: "Lookup with strict schema",
+        strict: true,
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      },
       { type: "code_interpreter", container: { type: "auto" } },
       { type: "image_generation", size: "1024x1024" },
     ],
@@ -11454,6 +11466,20 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "strict_lookup",
+        description: "Lookup with strict schema",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
   ]);
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", function: { name: "file_search" } });
   assert.deepEqual(upstreamCalls[0].body.messages, [
@@ -11470,6 +11496,16 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
       input_schema: {
         type: "object",
         properties: { query: { type: "string", description: "Search query for the available files." } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "strict_lookup",
+      description: "Lookup with strict schema OpenAI strict function-calling mode requested: true.",
+      input_schema: {
+        type: "object",
+        properties: { query: { type: "string" } },
         required: ["query"],
         additionalProperties: false,
       },
@@ -14241,6 +14277,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             function: {
               name: "get_weather",
               description: "Get weather info",
+              strict: true,
               parameters: {
                 type: "object",
                 properties: { city: { type: "string" } },
@@ -14444,7 +14481,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     stop_sequences: ["END"],
     tools: [{
       name: "get_weather",
-      description: "Get weather info",
+      description: "Get weather info OpenAI strict function-calling mode requested: true.",
       input_schema: {
         type: "object",
         properties: { city: { type: "string" } },
