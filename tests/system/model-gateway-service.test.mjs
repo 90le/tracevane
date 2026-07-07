@@ -11094,6 +11094,127 @@ test("model gateway preserves Responses built-in web search choices through Chat
   assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "tool", name: "web_search" });
 });
 
+test("model gateway degrades unsupported Responses built-in tools before Chat and Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-unsupported-responses-tools",
+      name: "Chat Unsupported Responses Tools Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-unsupported-responses-tools.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-unsupported-responses-tools-secret" },
+    setActiveScopes: ["codex"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-unsupported-responses-tools",
+      name: "Anthropic Unsupported Responses Tools Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-unsupported-responses-tools.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-anthropic-unsupported-responses-tools-secret" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    if (String(url).includes("anthropic-unsupported-responses-tools")) {
+      return new Response(JSON.stringify({
+        id: "msg_unsupported_responses_tools",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "Anthropic fallback kept context." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 9, output_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_unsupported_responses_tools",
+      object: "chat.completion",
+      created: 1_710_000_047,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Chat fallback kept context." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const responsesBody = {
+    model: "gpt-chat",
+    input: "Use the available tools if possible.",
+    tools: [
+      { type: "web_search_preview", search_context_size: "low" },
+      { type: "file_search", vector_store_ids: ["vs_unsupported"], max_num_results: 3 },
+      { type: "code_interpreter", container: { type: "auto" } },
+      { type: "image_generation", size: "1024x1024" },
+    ],
+    tool_choice: { type: "file_search" },
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: responsesBody,
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.output[0].content[0].text, "Chat fallback kept context.");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: { ...responsesBody, model: "claude-native" },
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.output[0].content[0].text, "Anthropic fallback kept context.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");
+  assert.deepEqual(upstreamCalls[0].body.tools, [
+    { type: "web_search_preview", search_context_size: "low" },
+  ]);
+  assert.equal(upstreamCalls[0].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[0].body.messages, [
+    { role: "user", content: "Use the available tools if possible." },
+    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"file_search","vector_store_ids":["vs_unsupported"],"max_num_results":3},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
+    { role: "user", content: '[OpenAI Responses tool_choice {"type":"file_search"}]' },
+  ]);
+
+  assert.equal(upstreamCalls[1].url, "https://anthropic-unsupported-responses-tools.example.test/v1/messages");
+  assert.deepEqual(upstreamCalls[1].body.tools, [
+    { type: "web_search_20250305", name: "web_search" },
+  ]);
+  assert.equal(upstreamCalls[1].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "Use the available tools if possible." },
+    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"file_search","vector_store_ids":["vs_unsupported"],"max_num_results":3},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
+    { role: "user", content: '[OpenAI Responses tool_choice {"type":"file_search"}]' },
+  ]);
+});
+
 test("model gateway accepts direct-name Chat function tool choices across native adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

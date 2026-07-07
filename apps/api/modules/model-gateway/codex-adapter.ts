@@ -67,6 +67,10 @@ export function adaptCodexResponsesRequestToChat(
     messages.push({ role: "system", content: instructions });
   }
   appendResponsesInputMessages(request.input ?? request.messages, messages, options);
+  const unsupportedToolsText = responsesUnsupportedToolsToText(request.tools);
+  if (unsupportedToolsText) {
+    messages.push({ role: "user", content: unsupportedToolsText });
+  }
   const unsupportedToolChoiceText = responsesUnsupportedToolChoiceToText(request.tool_choice);
   if (unsupportedToolChoiceText) {
     messages.push({ role: "user", content: unsupportedToolChoiceText });
@@ -730,9 +734,8 @@ function collectResponsesCustomToolNames(tools: unknown): string[] {
 
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
-  if (tool.type !== "function" && tool.type !== "custom") {
-    return typeof tool.type === "string" ? { ...tool } : null;
-  }
+  if (isOpenAIWebSearchToolType(tool.type)) return { ...tool };
+  if (tool.type !== "function" && tool.type !== "custom") return null;
   const source = isRecord(tool.function) ? tool.function : tool;
   const name = stringOrNull(source.name);
   if (!name) return null;
@@ -789,6 +792,13 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
     return name ? { type: "function", function: { name } } : undefined;
   }
   return undefined;
+}
+
+function responsesUnsupportedToolsToText(tools: unknown): string {
+  if (!Array.isArray(tools)) return "";
+  const unsupported = tools.filter((tool) => isRecord(tool) && !mapResponsesToolToChat(tool));
+  if (!unsupported.length) return "";
+  return `OpenAI Responses unsupported tools: ${stringifyCompact(unsupported)}`;
 }
 
 function responsesUnsupportedToolChoiceToText(toolChoice: unknown): string {
