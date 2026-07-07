@@ -3913,27 +3913,41 @@ function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   });
 }
 
+function copyHeaderValue(headers: Headers, key: string, value: string | string[] | undefined): void {
+  if (Array.isArray(value)) {
+    if (value[0]) headers.set(key, value[0]);
+  } else if (typeof value === "string" && value.trim()) {
+    headers.set(key, value);
+  }
+}
+
 function copyUpstreamRequestHeaders(req: http.IncomingMessage): Headers {
   const headers = new Headers();
   const passthrough = [
     "accept",
     "content-type",
-    "anthropic-version",
-    "anthropic-beta",
     "openai-beta",
     "user-agent",
   ];
 
   for (const key of passthrough) {
-    const value = req.headers[key];
-    if (Array.isArray(value)) {
-      if (value[0]) headers.set(key, value[0]);
-    } else if (typeof value === "string" && value.trim()) {
-      headers.set(key, value);
-    }
+    copyHeaderValue(headers, key, req.headers[key]);
+  }
+
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (!key.toLowerCase().startsWith("anthropic-")) continue;
+    copyHeaderValue(headers, key, value);
   }
 
   return headers;
+}
+
+function stripAnthropicRequestHeaders(headers: Headers): void {
+  const keys: string[] = [];
+  headers.forEach((_value, key) => {
+    if (key.toLowerCase().startsWith("anthropic-")) keys.push(key);
+  });
+  for (const key of keys) headers.delete(key);
 }
 
 function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, secret: string | null): void {
@@ -11013,8 +11027,7 @@ export function createModelGatewayService(
         requestModelForLog = adapted.model || requestModel;
         useAnthropicMessagesChatProviderStreamingAdapter = adapted.stream;
         headers.set("content-type", "application/json");
-        headers.delete("anthropic-version");
-        headers.delete("anthropic-beta");
+        stripAnthropicRequestHeaders(headers);
       } catch (error) {
         const adapterError = error instanceof AnthropicMessagesChatAdapterError
           ? error
@@ -11060,8 +11073,7 @@ export function createModelGatewayService(
         requestModelForLog = responsesAdapted.model || chatAdapted.model || requestModel;
         useAnthropicMessagesResponsesProviderStreamingAdapter = responsesAdapted.stream;
         headers.set("content-type", "application/json");
-        headers.delete("anthropic-version");
-        headers.delete("anthropic-beta");
+        stripAnthropicRequestHeaders(headers);
       } catch (error) {
         const adapterError = error instanceof AnthropicMessagesChatAdapterError || error instanceof OpenAIResponsesChatAdapterError
           ? error

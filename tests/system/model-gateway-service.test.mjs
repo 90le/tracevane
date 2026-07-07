@@ -9635,6 +9635,9 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
     upstreamCalls.push({
       url: String(url),
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      anthropicWorkspaceId: init.headers instanceof Headers ? init.headers.get("anthropic-workspace-id") : null,
+      anthropicFutureCapability: init.headers instanceof Headers ? init.headers.get("anthropic-future-capability") : null,
       body: JSON.parse(String(init.body || "{}")),
     });
     return new Response(JSON.stringify({
@@ -9670,6 +9673,11 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
     await withServer(handler, async (baseUrl) => {
       const response = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
+        headers: {
+          "anthropic-version": "2023-06-01",
+          "anthropic-workspace-id": "workspace_must_not_reach_responses",
+          "anthropic-future-capability": "future-must-not-reach-responses",
+        },
         body: {
           model: "gpt-5.4",
           max_tokens: 256,
@@ -9719,6 +9727,9 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
   assert.equal(upstreamCalls.length, 1);
   assert.equal(upstreamCalls[0].url, "https://responses-mcp-bridge.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-mcp-bridge-secret");
+  assert.equal(upstreamCalls[0].anthropicVersion, null);
+  assert.equal(upstreamCalls[0].anthropicWorkspaceId, null);
+  assert.equal(upstreamCalls[0].anthropicFutureCapability, null);
   assert.deepEqual(upstreamCalls[0].body.context_management, {
     edits: [{ type: "clear_tool_uses_20250919" }],
   });
@@ -12252,6 +12263,9 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
       xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
       anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      anthropicBeta: init.headers instanceof Headers ? init.headers.get("anthropic-beta") : null,
+      anthropicWorkspaceId: init.headers instanceof Headers ? init.headers.get("anthropic-workspace-id") : null,
+      anthropicFutureCapability: init.headers instanceof Headers ? init.headers.get("anthropic-future-capability") : null,
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
       body: String(init.body || ""),
     });
@@ -12270,7 +12284,12 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
     await withServer(handler, async (baseUrl) => {
       const messages = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
-        headers: { "anthropic-version": "2023-06-01" },
+        headers: {
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "context-management-2025-06-27",
+          "anthropic-workspace-id": "workspace_native",
+          "anthropic-future-capability": "future-native",
+        },
         body: {
           model: "claude-native",
           max_tokens: 64,
@@ -12313,6 +12332,9 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
   assert.equal(upstreamCalls[0].authorization, null);
   assert.equal(upstreamCalls[0].xApiKey, "sk-native-anthropic-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, "2023-06-01");
+  assert.equal(upstreamCalls[0].anthropicBeta, "context-management-2025-06-27");
+  assert.equal(upstreamCalls[0].anthropicWorkspaceId, "workspace_native");
+  assert.equal(upstreamCalls[0].anthropicFutureCapability, "future-native");
   assert.equal(upstreamCalls[0].contentType, "application/json");
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "claude-native",
@@ -12429,6 +12451,8 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       method: init.method,
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
       anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      anthropicWorkspaceId: init.headers instanceof Headers ? init.headers.get("anthropic-workspace-id") : null,
+      anthropicFutureCapability: init.headers instanceof Headers ? init.headers.get("anthropic-future-capability") : null,
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
       body: String(init.body || ""),
     });
@@ -12505,7 +12529,11 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     await withServer(handler, async (baseUrl) => {
       const messages = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
-        headers: { "anthropic-version": "2023-06-01" },
+        headers: {
+          "anthropic-version": "2023-06-01",
+          "anthropic-workspace-id": "workspace_must_not_reach_chat",
+          "anthropic-future-capability": "future-must-not-reach-chat",
+        },
         body: {
           model: "gpt-chat",
           system: "Be direct.",
@@ -12641,6 +12669,8 @@ test("model gateway adapts anthropic messages through openai chat providers", as
   assert.equal(upstreamCalls[0].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, null);
+  assert.equal(upstreamCalls[0].anthropicWorkspaceId, null);
+  assert.equal(upstreamCalls[0].anthropicFutureCapability, null);
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "gpt-chat",
     messages: [
