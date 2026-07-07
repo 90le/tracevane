@@ -318,14 +318,20 @@ export async function writeChatCompletionsSseFromResponsesSse(
       }
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
+        const isRefusal = event.event === "response.refusal.delta";
         if (delta) {
           const filtered = applyStopSequenceFilter(stopFilter, delta);
           if (filtered.delta) {
             ensureChatStreamStart(state, res);
-            writeChatTextDelta(state, res, filtered.delta);
+            if (isRefusal) {
+              writeChatRefusalDelta(state, res, filtered.delta);
+            } else {
+              writeChatTextDelta(state, res, filtered.delta);
+            }
           }
           if (filtered.stopSequence) state.finishReason = "stop";
         }
+        if (isRefusal && !stopFilter?.matched) state.finishReason = "content_filter";
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
@@ -414,7 +420,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
           ensureChatStreamStart(state, res);
           writeChatTextDelta(state, res, pending);
         }
-        if (!stopFilter?.matched) state.finishReason = response.status === "incomplete" ? "length" : "stop";
+        if (!stopFilter?.matched && state.finishReason !== "content_filter") {
+          state.finishReason = response.status === "incomplete" ? "length" : "stop";
+        }
         if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
         finalizeChatStream(state, res);
       }
@@ -511,6 +519,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       }
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
+        const isRefusal = event.event === "response.refusal.delta";
         if (delta) {
           const filtered = applyStopSequenceFilter(stopFilter, delta);
           if (filtered.delta) {
@@ -523,6 +532,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
             state.stopSequence = filtered.stopSequence;
           }
         }
+        if (isRefusal && !state.stopSequence) state.stopReason = "refusal";
         return;
       }
       if (event.event === "response.output_text.annotation.added" && isRecord(event.json.annotation)) {
@@ -615,7 +625,9 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicTextDelta(state, res, pending);
         }
-        if (!state.stopSequence) state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
+        if (!state.stopSequence && state.stopReason !== "refusal") {
+          state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
+        }
         if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
         finalizeAnthropicTextStream(state, res);
       }
@@ -1441,6 +1453,15 @@ function writeChatTextDelta(
 ): void {
   state.outputText += delta;
   writeChatChunk(state, res, { content: delta }, null);
+}
+
+function writeChatRefusalDelta(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  delta: string,
+): void {
+  state.outputText += delta;
+  writeChatChunk(state, res, { refusal: delta }, null);
 }
 
 function writeChatReasoningDelta(
@@ -2397,12 +2418,14 @@ function firstChoice(payload: JsonRecord): JsonRecord | null {
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
   if (hasToolUses) return "tool_use";
   if (finishReason === "length") return "max_tokens";
+  if (finishReason === "content_filter") return "refusal";
   return "end_turn";
 }
 
 function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
   if (hasToolCalls) return "tool_calls";
   if (stopReason === "max_tokens") return "length";
+  if (stopReason === "refusal") return "content_filter";
   return "stop";
 }
 

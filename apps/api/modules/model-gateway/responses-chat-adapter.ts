@@ -141,6 +141,7 @@ export function adaptResponsesToChatCompletion(
   }
 
   const output = Array.isArray(response.output) ? response.output : [];
+  const refusal = collectResponseRefusalText(output);
   const mcpToolBlocks = options.preserveMcpToolCalls
     ? collectResponseMcpToolBlocks(output)
     : [];
@@ -162,12 +163,13 @@ export function adaptResponsesToChatCompletion(
   if (mcpToolBlocks.length) message.mcp_tool_blocks = mcpToolBlocks;
   const annotations = collectResponseOutputAnnotations(output);
   if (annotations.length) message.annotations = annotations;
+  if (refusal) message.refusal = refusal;
   if (toolCalls.length) message.tool_calls = toolCalls;
 
   const choice: JsonRecord = {
     index: 0,
     message,
-    finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0),
+    finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0, Boolean(refusal)),
   };
   const logprobs = collectResponseOutputLogprobs(output);
   if (logprobs.length) choice.logprobs = { content: logprobs };
@@ -184,9 +186,10 @@ export function adaptResponsesToChatCompletion(
   return chatCompletion;
 }
 
-function mapResponsesFinishReasonToChat(response: JsonRecord, hasToolCalls: boolean): string {
+function mapResponsesFinishReasonToChat(response: JsonRecord, hasToolCalls: boolean, hasRefusal: boolean): string {
   if (hasToolCalls) return "tool_calls";
   if (response.status === "incomplete") return "length";
+  if (hasRefusal) return "content_filter";
   return "stop";
 }
 
@@ -521,6 +524,31 @@ function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | nul
 function customToolArgumentsFromResponsesInput(input: unknown): string {
   if (isRecord(input)) return JSON.stringify(input);
   return JSON.stringify({ input: typeof input === "string" ? input : stringifyCompact(input ?? "") });
+}
+
+function collectResponseRefusalText(output: unknown[]): string {
+  return output
+    .map(responseOutputItemToRefusalText)
+    .filter(Boolean)
+    .join("");
+}
+
+function responseOutputItemToRefusalText(item: unknown): string {
+  if (!isRecord(item)) return "";
+  if (item.type === "message") return responseContentToRefusalText(item.content);
+  if (item.type === "refusal") return stringOrNull(item.refusal) || "";
+  return "";
+}
+
+function responseContentToRefusalText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!isRecord(part)) return "";
+      return part.type === "refusal" ? stringOrNull(part.refusal) || "" : "";
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 function collectResponseOutputText(

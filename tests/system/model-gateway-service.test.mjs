@@ -9242,6 +9242,8 @@ test("model gateway maps responses refusal output through chat and anthropic ada
       });
       assert.equal(chat.status, 200, chat.body);
       assert.equal(chat.body.choices[0].message.content, "Non-stream refusal.");
+      assert.equal(chat.body.choices[0].message.refusal, "Non-stream refusal.");
+      assert.equal(chat.body.choices[0].finish_reason, "content_filter");
 
       const messages = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -9253,6 +9255,7 @@ test("model gateway maps responses refusal output through chat and anthropic ada
       });
       assert.equal(messages.status, 200, messages.body);
       assert.deepEqual(messages.body.content, [{ type: "text", text: "Non-stream refusal." }]);
+      assert.equal(messages.body.stop_reason, "refusal");
 
       const chatStream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -9264,9 +9267,9 @@ test("model gateway maps responses refusal output through chat and anthropic ada
       });
       assert.equal(chatStream.status, 200);
       const chatEvents = parseSseEvents(chatStream.body);
-      assert.equal(chatEvents[1].data.choices[0].delta.content, "Streamed ");
-      assert.equal(chatEvents[2].data.choices[0].delta.content, "refusal.");
-      assert.equal(chatEvents[3].data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents[1].data.choices[0].delta.refusal, "Streamed ");
+      assert.equal(chatEvents[2].data.choices[0].delta.refusal, "refusal.");
+      assert.equal(chatEvents[3].data.choices[0].finish_reason, "content_filter");
       assert.equal(chatEvents[4].data, "[DONE]");
 
       const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
@@ -9291,7 +9294,7 @@ test("model gateway maps responses refusal output through chat and anthropic ada
       ]);
       assert.equal(messageEvents[2].data.delta.text, "Streamed ");
       assert.equal(messageEvents[3].data.delta.text, "refusal.");
-      assert.equal(messageEvents[5].data.delta.stop_reason, "end_turn");
+      assert.equal(messageEvents[5].data.delta.stop_reason, "refusal");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -9823,7 +9826,7 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
         "",
         "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"chat refusal.\"},\"finish_reason\":null}]}",
         "",
-        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}",
+        "data: {\"id\":\"chatcmpl_refusal_stream\",\"object\":\"chat.completion.chunk\",\"created\":1710000042,\"model\":\"gpt-chat\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}",
         "",
         "data: [DONE]",
         "",
@@ -9845,7 +9848,7 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
           content: null,
           refusal: "Non-stream chat refusal.",
         },
-        finish_reason: "stop",
+        finish_reason: "content_filter",
       }],
       usage: {
         prompt_tokens: 7,
@@ -9870,6 +9873,7 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
       });
       assert.equal(messages.status, 200, messages.body);
       assert.deepEqual(messages.body.content, [{ type: "text", text: "Non-stream chat refusal." }]);
+      assert.equal(messages.body.stop_reason, "refusal");
 
       const responses = await requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
@@ -9894,7 +9898,7 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
       const messageEvents = parseSseEvents(messageStream.body);
       assert.equal(messageEvents[2].data.delta.text, "Streamed ");
       assert.equal(messageEvents[3].data.delta.text, "chat refusal.");
-      assert.equal(messageEvents[5].data.delta.stop_reason, "end_turn");
+      assert.equal(messageEvents[5].data.delta.stop_reason, "refusal");
 
       const responsesStream = await requestRaw(`${baseUrl}/v1/responses`, {
         method: "POST",
@@ -9906,12 +9910,12 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
       });
       assert.equal(responsesStream.status, 200);
       const responseEvents = parseSseEvents(responsesStream.body);
-      assert.equal(responseEvents[4].event, "response.output_text.delta");
+      assert.equal(responseEvents[4].event, "response.refusal.delta");
       assert.equal(responseEvents[4].data.delta, "Streamed ");
-      assert.equal(responseEvents[5].event, "response.output_text.delta");
+      assert.equal(responseEvents[5].event, "response.refusal.delta");
       assert.equal(responseEvents[5].data.delta, "chat refusal.");
       assert.equal(responseEvents[9].event, "response.completed");
-      assert.equal(responseEvents[9].data.response.output[0].content[0].text, "Streamed chat refusal.");
+      assert.equal(responseEvents[9].data.response.output[0].content[0].refusal, "Streamed chat refusal.");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -9921,6 +9925,69 @@ test("model gateway maps chat refusal output through anthropic and codex adapter
   assert.ok(upstreamCalls.every((call) => call.url === "https://chat-refusal.example.test/v1/chat/completions"));
   assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-chat-refusal-secret"));
   assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream === true), [false, false, true, true]);
+});
+
+
+
+test("model gateway maps Anthropic refusal stop reason to Chat content_filter", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-refusal",
+      name: "Anthropic Refusal Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-refusal.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-anthropic-refusal-secret" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_anthropic_refusal",
+      type: "message",
+      role: "assistant",
+      model: "claude-refusal",
+      content: [{ type: "text", text: "Anthropic refusal." }],
+      stop_reason: "refusal",
+      stop_sequence: null,
+      usage: { input_tokens: 3, output_tokens: 2 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-refusal",
+          messages: [{ role: "user", content: "refuse via chat" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Anthropic refusal.");
+      assert.equal(chat.body.choices[0].message.refusal, "Anthropic refusal.");
+      assert.equal(chat.body.choices[0].finish_reason, "content_filter");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-refusal.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-refusal-secret");
 });
 
 test("model gateway preserves Chat refusal content parts in Codex responses", async () => {

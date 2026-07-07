@@ -249,6 +249,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     role: "assistant",
     content: text || (toolCalls.length ? null : ""),
   };
+  if (response.stop_reason === "refusal") message.refusal = text || "";
   if (reasoningText) message.reasoning_content = reasoningText;
   if (reasoningDetails.length) message.reasoning_details = reasoningDetails;
   if (mcpToolBlocks.length) message.mcp_tool_blocks = mcpToolBlocks;
@@ -1097,13 +1098,15 @@ function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
   if (hasToolUses) return "tool_use";
   if (finishReason === "length") return "max_tokens";
-  if (finishReason === "stop" || finishReason === "content_filter") return "end_turn";
+  if (finishReason === "content_filter") return "refusal";
+  if (finishReason === "stop") return "end_turn";
   return "end_turn";
 }
 
 function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
   if (hasToolCalls) return "tool_calls";
   if (stopReason === "max_tokens") return "length";
+  if (stopReason === "refusal") return "content_filter";
   if (stopReason === "end_turn" || stopReason === "stop_sequence") return "stop";
   return "stop";
 }

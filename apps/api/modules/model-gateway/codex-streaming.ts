@@ -37,6 +37,7 @@ interface TextState {
   outputIndex: number | null;
   pending: string;
   text: string;
+  refusal: boolean;
 }
 
 interface FunctionCallState {
@@ -156,6 +157,7 @@ function createStreamingState(fallbackModel: string | null, options: CodexStream
       outputIndex: null,
       pending: "",
       text: "",
+      refusal: false,
     },
     functionCalls: new Map(),
     pendingFunctionCallDeltas: new Map(),
@@ -232,11 +234,12 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   const delta = isRecord(choice.delta) ? choice.delta : {};
   const reasoningDelta = extractReasoningDelta(delta);
   if (reasoningDelta) pushReasoningDelta(reasoningDelta, state, res);
-  const content = stringOrNull(delta.content) || stringOrNull(delta.refusal);
+  const refusal = stringOrNull(delta.refusal);
+  const content = refusal || stringOrNull(delta.content);
   if (content) {
     const parts = splitContentAndInlineReasoning(content, state);
     if (parts.reasoning) pushReasoningDelta(parts.reasoning, state, res);
-    if (parts.text) pushFilteredTextDelta(parts.text, state, res);
+    if (parts.text) pushFilteredTextDelta(parts.text, state, res, Boolean(refusal));
   }
   if (Array.isArray(delta.tool_calls)) {
     for (const toolCallDelta of delta.tool_calls) {
@@ -293,22 +296,29 @@ function pushReasoningDelta(delta: string, state: StreamingState, res: http.Serv
   });
 }
 
-function pushFilteredTextDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
+function pushFilteredTextDelta(
+  delta: string,
+  state: StreamingState,
+  res: http.ServerResponse,
+  refusal = false,
+): void {
+  if (refusal && !state.text.added) state.text.refusal = true;
   const next = splitPlaceholderTextSuffix(state.text.pending + delta);
   state.text.pending = next.pending;
-  if (next.emit) pushTextDelta(next.emit, state, res);
+  if (next.emit) pushTextDelta(next.emit, state, res, refusal);
 }
 
 function flushPendingText(state: StreamingState, res: http.ServerResponse): void {
   const pending = state.text.pending;
   state.text.pending = "";
   if (!pending || isPlaceholderText(pending)) return;
-  pushTextDelta(pending, state, res);
+  pushTextDelta(pending, state, res, state.text.refusal);
 }
 
-function pushTextDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
+function pushTextDelta(delta: string, state: StreamingState, res: http.ServerResponse, refusal = false): void {
   if (!state.text.added) {
     state.text.added = true;
+    state.text.refusal = refusal;
     state.text.outputIndex = state.nextOutputIndex;
     state.nextOutputIndex += 1;
     writeSseEvent(res, "response.output_item.added", {
@@ -327,17 +337,15 @@ function pushTextDelta(delta: string, state: StreamingState, res: http.ServerRes
       item_id: state.text.itemId,
       output_index: state.text.outputIndex,
       content_index: 0,
-      part: {
-        type: "output_text",
-        text: "",
-        annotations: [],
-      },
+      part: state.text.refusal
+        ? { type: "refusal", refusal: "" }
+        : { type: "output_text", text: "", annotations: [] },
     });
   }
 
   state.text.text += delta;
-  writeSseEvent(res, "response.output_text.delta", {
-    type: "response.output_text.delta",
+  writeSseEvent(res, state.text.refusal ? "response.refusal.delta" : "response.output_text.delta", {
+    type: state.text.refusal ? "response.refusal.delta" : "response.output_text.delta",
     item_id: state.text.itemId,
     output_index: state.text.outputIndex,
     content_index: 0,
@@ -478,20 +486,18 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
       type: "message",
       status: "completed",
       role: "assistant",
-      content: [{
-        type: "output_text",
-        text: state.text.text,
-        annotations: [],
-      }],
+      content: [state.text.refusal
+        ? { type: "refusal", refusal: state.text.text }
+        : { type: "output_text", text: state.text.text, annotations: [] }],
     };
     output.push(item);
     state.text.done = true;
-    writeSseEvent(res, "response.output_text.done", {
-      type: "response.output_text.done",
+    writeSseEvent(res, state.text.refusal ? "response.refusal.done" : "response.output_text.done", {
+      type: state.text.refusal ? "response.refusal.done" : "response.output_text.done",
       item_id: state.text.itemId,
       output_index: outputIndex,
       content_index: 0,
-      text: state.text.text,
+      ...(state.text.refusal ? { refusal: state.text.text } : { text: state.text.text }),
     });
     writeSseEvent(res, "response.content_part.done", {
       type: "response.content_part.done",
@@ -590,11 +596,9 @@ function currentOutputItems(state: StreamingState): JsonRecord[] {
       type: "message",
       status: state.text.done ? "completed" : "in_progress",
       role: "assistant",
-      content: [{
-        type: "output_text",
-        text: state.text.text,
-        annotations: [],
-      }],
+      content: [state.text.refusal
+        ? { type: "refusal", refusal: state.text.text }
+        : { type: "output_text", text: state.text.text, annotations: [] }],
     });
   }
   for (const tool of [...state.functionCalls.values()].sort((a, b) => a.outputIndex - b.outputIndex)) {
