@@ -4,8 +4,10 @@ import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
   GitCheckoutRequest,
+  GitBlameRequest,
   GitCommitDetailRequest,
   GitDeleteBranchRequest,
+  GitGraphRequest,
   GitCommitRequest,
   GitCreateBranchRequest,
   GitDiffRequest,
@@ -78,6 +80,47 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     );
   });
 
+
+  router.get("/api/git/graph", (req, res, routeCtx) => {
+    const url = readUrl(req);
+    const payload: GitGraphRequest = {
+      rootId: url.searchParams.get("rootId") || "",
+      path: url.searchParams.get("path") || "",
+      limit: Number(url.searchParams.get("limit") || 0) || undefined,
+      all: url.searchParams.get("all") === "true",
+      file: url.searchParams.get("file") || "",
+    };
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.getGraph(
+        payload.rootId || "",
+        payload.path || "",
+        payload.limit,
+        payload.all === true,
+        payload.file || "",
+      ),
+    );
+  });
+
+  router.get("/api/git/blame", (req, res, routeCtx) => {
+    const url = readUrl(req);
+    const payload: GitBlameRequest = {
+      rootId: url.searchParams.get("rootId") || "",
+      path: url.searchParams.get("path") || "",
+      file: url.searchParams.get("file") || "",
+    };
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.getBlame(
+        payload.rootId || "",
+        payload.path || "",
+        payload.file || "",
+      ),
+    );
+  });
+
   router.get("/api/git/stashes", (req, res, routeCtx) => {
     const url = readUrl(req);
     sendJson(
@@ -138,7 +181,6 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
       ),
     );
   });
-
 
   router.post("/api/git/branches/delete", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<GitDeleteBranchRequest>(req);

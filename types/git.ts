@@ -35,6 +35,45 @@ export interface GitCommitSummary {
   refs: string;
 }
 
+
+export interface GitGraphCommit extends GitCommitSummary {
+  parents: string[];
+}
+
+export interface GitGraphPayload {
+  checkedAt: string;
+  rootId: string;
+  directoryPath: string;
+  repositoryRoot: string | null;
+  available: boolean;
+  message: string | null;
+  commits: GitGraphCommit[];
+}
+
+export interface GitBlameLine {
+  lineNumber: number;
+  originalLineNumber: number;
+  hash: string;
+  shortHash: string;
+  authorName: string;
+  authorEmail: string;
+  authorTime: string;
+  summary: string;
+  content: string;
+}
+
+export interface GitBlamePayload {
+  checkedAt: string;
+  rootId: string;
+  directoryPath: string;
+  repositoryRoot: string | null;
+  available: boolean;
+  message: string | null;
+  path: string;
+  lines: GitBlameLine[];
+  truncated: boolean;
+}
+
 export interface GitCommitDetailPayload extends GitCommitSummary {
   checkedAt: string;
   body: string;
@@ -129,6 +168,16 @@ export interface GitDiffRequest extends GitRepositoryRequest {
 
 export interface GitCommitDetailRequest extends GitRepositoryRequest {
   hash?: string;
+}
+
+export interface GitGraphRequest extends GitRepositoryRequest {
+  limit?: number;
+  all?: boolean;
+  file?: string;
+}
+
+export interface GitBlameRequest extends GitRepositoryRequest {
+  file?: string;
 }
 
 export interface GitCommitRequest extends GitRepositoryRequest {

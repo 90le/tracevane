@@ -1,12 +1,12 @@
 import * as React from "react";
-import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, Copy, FileDiff, GitBranch, Link2, Loader2, MoreHorizontal, MinusSquare, Pencil, PlusSquare, RefreshCcw, Trash2, Unlink, UploadCloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, Copy, FileDiff, FileSearch, GitBranch, History, Link2, Loader2, MoreHorizontal, MinusSquare, Pencil, PlusSquare, RefreshCcw, Trash2, Unlink, UploadCloud } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
-import { applyGitStash, checkoutBranch, commitFiles, createBranch, deleteBranch, dropGitStash, fetchBranch, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, renameBranch, saveGitStash, setBranchUpstream, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
+import { applyGitStash, checkoutBranch, commitFiles, createBranch, deleteBranch, dropGitStash, fetchBranch, getGitBlame, getGitGraph, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, renameBranch, saveGitStash, setBranchUpstream, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
 import { appendWorkbenchOutput } from "../output";
-import type { GitStashEntry } from "../../../../../../types/git";
+import type { GitBlamePayload, GitGraphPayload, GitStashEntry } from "../../../../../../types/git";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
 
 export interface IdeSourceControlViewProps {
@@ -27,6 +27,13 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   const [stashError, setStashError] = React.useState<string | null>(null);
   const [stashRefreshTick, setStashRefreshTick] = React.useState(0);
   const [openBranchMenu, setOpenBranchMenu] = React.useState<string | null>(null);
+  const [history, setHistory] = React.useState<GitGraphPayload | null>(null);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyError, setHistoryError] = React.useState<string | null>(null);
+  const [historyRefreshTick, setHistoryRefreshTick] = React.useState(0);
+  const [blameFile, setBlameFile] = React.useState("");
+  const [blame, setBlame] = React.useState<GitBlamePayload | null>(null);
+  const [blameLoading, setBlameLoading] = React.useState(false);
   React.useEffect(() => {
     const status = git.status;
     if (!rootId || !status?.available) {
@@ -52,6 +59,31 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       });
     return () => controller.abort();
   }, [git.status?.available, git.status?.checkedAt, git.status?.directoryPath, rootId, stashRefreshTick]);
+
+  React.useEffect(() => {
+    const status = git.status;
+    if (!rootId || !status?.available) {
+      setHistory(null);
+      setHistoryError(null);
+      setHistoryLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setHistoryLoading(true);
+    getGitGraph({ rootId, path: status.directoryPath, limit: 12, all: true }, controller.signal)
+      .then((payload) => {
+        setHistory(payload);
+        setHistoryError(payload.available ? null : payload.message || "Git history is unavailable");
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        setHistoryError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false);
+      });
+    return () => controller.abort();
+  }, [git.status?.available, git.status?.checkedAt, git.status?.directoryPath, historyRefreshTick, rootId]);
 
   const refreshGitAndStashes = React.useCallback(() => {
     git.refresh();
@@ -321,6 +353,25 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       setBusyKey(null);
     }
   }, [busyKey, git, refreshGitAndStashes, rootId, stashMessage]);
+
+  const runBlameAction = React.useCallback(async () => {
+    const status = git.status;
+    const file = blameFile.trim();
+    if (!status?.available || !file || blameLoading) return;
+    setBlameLoading(true);
+    try {
+      const payload = await getGitBlame({ rootId, path: status.directoryPath, file });
+      setBlame(payload);
+      if (!payload.available) {
+        toast.error("读取 blame 失败", { description: payload.message || "Git blame unavailable" });
+      }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      toast.error("读取 blame 失败", { description: message });
+    } finally {
+      setBlameLoading(false);
+    }
+  }, [blameFile, blameLoading, git.status, rootId]);
 
   const runCommit = React.useCallback(async () => {
     const status = git.status;
@@ -592,6 +643,58 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : null}
+
+        {status?.available ? (
+          <div className="mt-2 grid gap-2 rounded-md border border-line bg-panel-2 p-2" data-ide-source-control-history>
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold text-ink-strong">
+              <span className="inline-flex items-center gap-1"><History className="size-3.5" />历史</span>
+              <button type="button" className="text-2xs text-subtle hover:text-primary" onClick={() => setHistoryRefreshTick((value) => value + 1)} disabled={historyLoading} data-ide-source-control-refresh-history>{historyLoading ? "读取中" : `${history?.commits.length ?? 0} 条`}</button>
+            </div>
+            {historyError ? <div className="text-2xs text-danger" data-ide-source-control-history-error>{historyError}</div> : null}
+            <div className="grid max-h-40 gap-1 overflow-auto pr-1 [scrollbar-width:thin]" data-ide-source-control-graph-list>
+              {historyLoading && !history?.commits.length ? <span className="text-xs text-muted">正在读取提交历史…</span> : null}
+              {!historyLoading && !history?.commits.length ? <span className="text-xs text-muted">暂无提交历史。</span> : null}
+              {history?.commits.map((commit) => (
+                <div key={commit.hash} className="rounded border border-line bg-canvas px-2 py-1 text-xs" data-ide-source-control-graph-row data-ide-source-control-graph-hash={commit.hash}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="font-mono text-2xs text-primary">{commit.shortHash}</span>
+                    <span className="truncate font-medium text-ink-strong">{commit.subject || "No subject"}</span>
+                  </div>
+                  <div className="truncate text-2xs text-subtle">{commit.authorName || "unknown"} · {commit.parents.length} parent{commit.parents.length === 1 ? "" : "s"}{commit.refs ? ` · ${commit.refs}` : ""}</div>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-1 border-t border-line pt-2" data-ide-source-control-blame>
+              <div className="flex min-w-0 items-center gap-1">
+                <input
+                  className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                  value={blameFile}
+                  onChange={(event) => setBlameFile(event.target.value)}
+                  placeholder="Blame 文件路径，如 README.md"
+                  aria-label="Git blame file"
+                  disabled={blameLoading}
+                  data-ide-source-control-blame-file
+                />
+                <Button variant="outline" size="sm" className="h-7 shrink-0 justify-center text-xs" disabled={blameLoading || !blameFile.trim()} onClick={() => void runBlameAction()} data-ide-source-control-blame-run>
+                  {blameLoading ? <Loader2 className="size-3.5 animate-spin" /> : <FileSearch className="size-3.5" />}
+                  Blame
+                </Button>
+              </div>
+              {blame ? (
+                <div className="max-h-28 overflow-auto rounded border border-line bg-canvas p-1 font-mono text-2xs [scrollbar-width:thin]" data-ide-source-control-blame-result>
+                  {blame.available ? blame.lines.slice(0, 8).map((line) => (
+                    <div key={`${line.hash}:${line.lineNumber}`} className="grid grid-cols-[3rem_4rem_minmax(0,1fr)] gap-1 text-muted">
+                      <span>{line.lineNumber}</span>
+                      <span className="text-primary">{line.shortHash}</span>
+                      <span className="truncate">{line.content}</span>
+                    </div>
+                  )) : <span className="text-danger">{blame.message || "Git blame unavailable"}</span>}
+                  {blame.truncated ? <div className="text-subtle">结果已截断。</div> : null}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

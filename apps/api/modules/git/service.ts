@@ -6,8 +6,11 @@ import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   GitBranchSummary,
   GitCommitDetailPayload,
+  GitBlamePayload,
   GitCommitSummary,
   GitDiffPayload,
+  GitGraphCommit,
+  GitGraphPayload,
   GitFileChange,
   GitStashEntry,
   GitStashListPayload,
@@ -17,6 +20,8 @@ import type {
 
 const GIT_STATUS_CHANGE_LIMIT = 500;
 const GIT_HISTORY_LIMIT = 80;
+const GIT_GRAPH_LIMIT = 120;
+const GIT_BLAME_LINE_LIMIT = 2000;
 const GIT_BRANCH_LIMIT = 120;
 const GIT_DIFF_MAX_CHARS = 220_000;
 const GIT_DIFF_CONTENT_MAX_CHARS = 1_000_000;
@@ -32,6 +37,8 @@ export interface GitService {
   getStatus(rootId: string, directoryPath?: string): GitStatusPayload;
   getDiff(rootId: string, directoryPath: string | undefined, filePath?: string, staged?: boolean, untracked?: boolean, previousFilePath?: string): GitDiffPayload;
   getCommit(rootId: string, directoryPath: string | undefined, hash?: string): GitCommitDetailPayload;
+  getGraph(rootId: string, directoryPath: string | undefined, limit?: number, includeAll?: boolean, filePath?: string): GitGraphPayload;
+  getBlame(rootId: string, directoryPath: string | undefined, filePath?: string): GitBlamePayload;
   initRepository(rootId: string, directoryPath?: string): GitStatusPayload;
   stagePaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
   unstagePaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
@@ -575,6 +582,80 @@ function assertRemoteTrackingBranch(repositoryRoot: string, upstream: string): s
   return upstreamName;
 }
 
+
+function clampGitLimit(value: number | undefined, fallback: number, maximum: number): number {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(maximum, Math.floor(parsed)));
+}
+
+function parseGraphCommitLine(line: string): GitGraphCommit | null {
+  const [hash = "", shortHash = "", parents = "", authorName = "", authorEmail = "", date = "", refs = "", subject = ""] = line.split("\0");
+  if (!hash.trim()) return null;
+  return {
+    hash: hash.trim(),
+    shortHash: shortHash.trim(),
+    parents: parents.trim().split(/\s+/).filter(Boolean),
+    authorName: authorName.trim(),
+    authorEmail: authorEmail.trim(),
+    date: date.trim(),
+    refs: refs.trim(),
+    subject: subject.trim(),
+  };
+}
+
+function parseGitBlame(repositoryRoot: string, filePath: string): GitBlamePayload["lines"] {
+  const output = runGit(repositoryRoot, ["blame", "--line-porcelain", "--", filePath]);
+  const lines = output.split(/\r?\n/);
+  const parsed: GitBlamePayload["lines"] = [];
+  let current: {
+    hash: string;
+    originalLineNumber: number;
+    lineNumber: number;
+    authorName: string;
+    authorEmail: string;
+    authorTime: string;
+    summary: string;
+  } | null = null;
+  for (const raw of lines) {
+    if (!raw) continue;
+    const header = raw.match(/^([0-9a-f]{40}) (\d+) (\d+)(?: \d+)?$/);
+    if (header) {
+      current = {
+        hash: header[1],
+        originalLineNumber: Number(header[2]),
+        lineNumber: Number(header[3]),
+        authorName: "",
+        authorEmail: "",
+        authorTime: "",
+        summary: "",
+      };
+      continue;
+    }
+    if (!current) continue;
+    if (raw.startsWith("author ")) current.authorName = raw.slice("author ".length).trim();
+    else if (raw.startsWith("author-mail ")) current.authorEmail = raw.slice("author-mail ".length).replace(/^<|>$/g, "").trim();
+    else if (raw.startsWith("author-time ")) current.authorTime = new Date(Number(raw.slice("author-time ".length).trim()) * 1000).toISOString();
+    else if (raw.startsWith("summary ")) current.summary = raw.slice("summary ".length).trim();
+    else if (raw.startsWith("\t")) {
+      parsed.push({
+        lineNumber: current.lineNumber,
+        originalLineNumber: current.originalLineNumber,
+        hash: current.hash,
+        shortHash: current.hash.slice(0, 7),
+        authorName: current.authorName,
+        authorEmail: current.authorEmail,
+        authorTime: current.authorTime,
+        summary: current.summary,
+        content: raw.slice(1),
+      });
+      current = null;
+      if (parsed.length >= GIT_BLAME_LINE_LIMIT) break;
+    }
+  }
+  return parsed;
+}
+
 function parseCommitLine(line: string): GitCommitSummary | null {
   const [hash = "", shortHash = "", authorName = "", authorEmail = "", date = "", refs = "", subject = ""] = line.split("\0");
   if (!hash.trim()) return null;
@@ -833,6 +914,78 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       const files = listCommitFiles(repositoryRoot, normalizedHash);
       const diffInfo = getCommitDiff(repositoryRoot, normalizedHash);
       return parseCommitDetail(output, normalizedHash, files, diffInfo);
+    },
+
+
+    getGraph(rootId: string, directoryPath = "", limit = GIT_HISTORY_LIMIT, includeAll = false, filePath = ""): GitGraphPayload {
+      const resolved = resolveGitDirectory(config, rootId, directoryPath);
+      try {
+        const repositoryRoot = runGit(resolved.absolutePath, ["rev-parse", "--show-toplevel"]).trim();
+        const normalizedFilePath = filePath ? normalizeRepositoryPath(filePath) : "";
+        const args = [
+          "log",
+          `-${clampGitLimit(limit, GIT_HISTORY_LIMIT, GIT_GRAPH_LIMIT)}`,
+          "--date=iso-strict",
+          "--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%ad%x00%D%x00%s",
+          ...(includeAll ? ["--all"] : []),
+          ...(normalizedFilePath ? ["--", normalizedFilePath] : []),
+        ];
+        const output = runGit(repositoryRoot, args);
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot,
+          available: true,
+          message: null,
+          commits: output.split(/\r?\n/).map(parseGraphCommitLine).filter((commit): commit is GitGraphCommit => Boolean(commit)),
+        };
+      } catch (error) {
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot: null,
+          available: false,
+          message: error instanceof Error ? error.message : "Git graph is unavailable",
+          commits: [],
+        };
+      }
+    },
+
+    getBlame(rootId: string, directoryPath = "", filePath = ""): GitBlamePayload {
+      const resolved = resolveGitDirectory(config, rootId, directoryPath);
+      const normalizedFilePath = normalizeRepositoryPath(filePath);
+      if (!normalizedFilePath) {
+        throw new Error("Git blame file path is required");
+      }
+      try {
+        const repositoryRoot = runGit(resolved.absolutePath, ["rev-parse", "--show-toplevel"]).trim();
+        const lines = parseGitBlame(repositoryRoot, normalizedFilePath);
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot,
+          available: true,
+          message: null,
+          path: normalizedFilePath,
+          lines,
+          truncated: lines.length >= GIT_BLAME_LINE_LIMIT,
+        };
+      } catch (error) {
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot: null,
+          available: false,
+          message: error instanceof Error ? error.message : "Git blame is unavailable",
+          path: normalizedFilePath,
+          lines: [],
+          truncated: false,
+        };
+      }
     },
 
     initRepository(rootId: string, directoryPath = ""): GitStatusPayload {

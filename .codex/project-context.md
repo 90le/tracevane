@@ -86,7 +86,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M9-A post-M8 roadmap prioritization and branch-hygiene / release packaging decision.
 - Done: M9-B Git branch management safety plan.
 - Done: M9-C Git branch management guarded implementation.
-- Next: M9-D Git graph / blame read-only foundation.
+- Done: M9-D Git graph / blame read-only foundation.
+- Next: M10-A LSP semantic tokens / workspace symbols foundation plan.
 
 ## Required reading by task
 

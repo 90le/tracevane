@@ -12,8 +12,10 @@ import {
   commitFiles,
   createBranch,
   deleteBranch,
+  getGitBlame,
   getGitCommitDetail,
   getGitDiff,
+  getGitGraph,
   getGitStashes,
   getGitStatus,
   publishBranch,
@@ -29,12 +31,14 @@ import {
   unstageFiles,
 } from "../api/git";
 import type {
+  GitBlameParams,
   GitCheckoutParams,
   GitCommitDetailParams,
   GitCommitParams,
   GitCreateBranchParams,
   GitDeleteBranchParams,
   GitDiffParams,
+  GitGraphParams,
   GitPublishBranchParams,
   GitRemoteActionParams,
   GitRenameBranchParams,
@@ -48,8 +52,10 @@ import type {
 } from "../api/git";
 import type { ApiError } from "../api/errors";
 import type {
+  GitBlamePayload,
   GitCommitDetailPayload,
   GitDiffPayload,
+  GitGraphPayload,
   GitStashListPayload,
   GitStatusPayload,
 } from "../../../../../types/git";
@@ -73,6 +79,10 @@ export const gitKeys = {
     ["ide", "git", "commit-detail", rootId, path, hash] as const,
   stashes: (rootId: string, path: string) =>
     ["ide", "git", "stashes", rootId, path] as const,
+  graph: (rootId: string, path: string, limit: number, all: boolean, file: string) =>
+    ["ide", "git", "graph", rootId, path, limit, all, file] as const,
+  blame: (rootId: string, path: string, file: string) =>
+    ["ide", "git", "blame", rootId, path, file] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -153,6 +163,39 @@ export function useGitStashesQuery(
     queryKey: gitKeys.stashes(params?.rootId ?? "", params?.path ?? ""),
     queryFn: ({ signal }) => getGitStashes(params as GitStashListParams, signal),
     enabled: Boolean(params?.rootId) && (options?.enabled ?? true),
+    ...options,
+  });
+}
+
+
+/** Read-only commit graph/log list. */
+export function useGitGraphQuery(
+  params: GitGraphParams | null,
+  options?: QueryOpts<GitGraphPayload>,
+) {
+  return useQuery<GitGraphPayload, ApiError>({
+    queryKey: gitKeys.graph(
+      params?.rootId ?? "",
+      params?.path ?? "",
+      params?.limit ?? 0,
+      params?.all ?? false,
+      params?.file ?? "",
+    ),
+    queryFn: ({ signal }) => getGitGraph(params as GitGraphParams, signal),
+    enabled: Boolean(params?.rootId) && (options?.enabled ?? true),
+    ...options,
+  });
+}
+
+/** Read-only line blame for one file. */
+export function useGitBlameQuery(
+  params: GitBlameParams | null,
+  options?: QueryOpts<GitBlamePayload>,
+) {
+  return useQuery<GitBlamePayload, ApiError>({
+    queryKey: gitKeys.blame(params?.rootId ?? "", params?.path ?? "", params?.file ?? ""),
+    queryFn: ({ signal }) => getGitBlame(params as GitBlameParams, signal),
+    enabled: Boolean(params?.rootId && params?.file) && (options?.enabled ?? true),
     ...options,
   });
 }

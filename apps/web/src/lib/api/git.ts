@@ -1,7 +1,9 @@
 import { apiRequest } from "./client";
 import type {
   GitCommitDetailPayload,
+  GitBlamePayload,
   GitDiffPayload,
+  GitGraphPayload,
   GitStashListPayload,
   GitStatusPayload,
 } from "../../../../../types/git";
@@ -14,6 +16,8 @@ import type {
  *  - GET /api/git/status  → branch / changes / commits roll-up for a root
  *  - GET /api/git/diff    → unified diff for one file (working tree or staged)
  *  - GET /api/git/commit-detail → metadata/body/parents for a commit
+ *  - GET /api/git/graph  → read-only commit graph/log list
+ *  - GET /api/git/blame  → read-only line blame for one file
  *
  * Bound here (write POST — all return the refreshed `GitStatusPayload`):
  *  - POST /api/git/stage     → stage paths (empty `paths` = `git add -A`)
@@ -103,6 +107,44 @@ export function getGitCommitDetail(
     `${BASE}/commit-detail?${search.toString()}`,
     { signal },
   );
+}
+
+
+export interface GitGraphParams {
+  rootId: string;
+  path?: string;
+  limit?: number;
+  all?: boolean;
+  file?: string;
+}
+
+/** GET /api/git/graph — read-only commit graph/log list. */
+export function getGitGraph(
+  params: GitGraphParams,
+  signal?: AbortSignal,
+): Promise<GitGraphPayload> {
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId) });
+  if (params.path) search.set("path", params.path);
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.all) search.set("all", "true");
+  if (params.file) search.set("file", params.file);
+  return apiRequest<GitGraphPayload>(`${BASE}/graph?${search.toString()}`, { signal });
+}
+
+export interface GitBlameParams {
+  rootId: string;
+  path?: string;
+  file: string;
+}
+
+/** GET /api/git/blame — read-only line blame for one file. */
+export function getGitBlame(
+  params: GitBlameParams,
+  signal?: AbortSignal,
+): Promise<GitBlamePayload> {
+  const search = new URLSearchParams({ rootId: gitApiRootId(params.rootId), file: params.file });
+  if (params.path) search.set("path", params.path);
+  return apiRequest<GitBlamePayload>(`${BASE}/blame?${search.toString()}`, { signal });
 }
 
 // ---------------------------------------------------------------------------
