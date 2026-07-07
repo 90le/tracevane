@@ -111,7 +111,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-K External provider optional installer/status implementation.
 - Done: M11-L External provider dependency hygiene / exact pin readiness.
 - Done: M11-M Pyright external provider guarded implementation plan.
-- Next: M11-N Pyright external provider guarded implementation.
+- Done: M11-N Pyright external provider guarded implementation.
+- Next: M11-O External provider acceptance / heavy provider expansion decision.
 
 ## Required reading by task
 

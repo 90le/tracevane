@@ -1701,6 +1701,17 @@ async function diagnoseDocument(
       version: request.version ?? 1,
     }));
   }
+  if (provider?.id === "pyright") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "pyright", language, await diagnoseWithExternalLanguageServer({
+      providerId: "pyright",
+      languageId: "python",
+      sourceFallback: "pyright",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -1713,7 +1724,7 @@ async function diagnoseWithExternalLanguageServer({
   content,
   version,
 }: {
-  providerId: "yaml" | "bash";
+  providerId: "yaml" | "bash" | "pyright";
   languageId: string;
   sourceFallback: string;
   rootRealPath: string;

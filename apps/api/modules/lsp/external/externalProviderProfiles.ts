@@ -13,11 +13,12 @@ export const DEFAULT_EXTERNAL_LSP_BUDGETS: ExternalLanguageServerBudgets = {
 
 export const YAML_LANGUAGE_SERVER_BIN = require.resolve("yaml-language-server/bin/yaml-language-server");
 export const BASH_LANGUAGE_SERVER_BIN = require.resolve("bash-language-server/out/cli.js");
+export const PYRIGHT_LANGUAGE_SERVER_BIN = require.resolve("pyright/langserver.index.js");
 
 /**
  * External language servers are server-side allowlisted. The frontend never
- * provides commands or arguments. M11-F-C enables only YAML as the first
- * real provider proof.
+ * provides commands or arguments. providers are added only after exact-pin metadata, status UI, and
+ * provider-specific smoke coverage.
  */
 export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] = [
   {
@@ -38,6 +39,16 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
     capabilities: { diagnostics: true },
     budgets: { initializeMs: 10_000, requestMs: 3_000, shutdownMs: 1_000 },
     env: { BASH_IDE_LOG_LEVEL: "error", PATH: `${path.dirname(process.execPath)}${path.delimiter}/usr/bin${path.delimiter}/bin` },
+  },
+  {
+    id: "pyright",
+    label: "Pyright Language Server",
+    command: process.execPath,
+    args: [PYRIGHT_LANGUAGE_SERVER_BIN, "--stdio"],
+    languages: ["python", "py", "python3", "pyi"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 10_000, requestMs: 5_000, shutdownMs: 1_500 },
+    env: { NODE_ENV: "production" },
   },
 ];
 

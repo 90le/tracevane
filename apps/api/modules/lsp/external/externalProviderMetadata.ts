@@ -67,6 +67,19 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
       "Profile uses scoped PATH because bash-language-server scans PATH during initialize.",
     ],
   },
+  pyright: {
+    packageName: "pyright",
+    source: "npm:pyright",
+    installMode: "bundled-npm",
+    pinnedVersion: "1.1.411",
+    license: "MIT",
+    optional: false,
+    auditSummary: "Bundled npm provider added as a diagnostics-only Python proof; package is larger than YAML/Bash and future upgrades require provider-specific smoke evidence.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M11-N exposes diagnostics/status only; Python hover/completion/definition and interpreter discovery remain deferred.",
+    ],
+  },
 };
 
 export function externalProviderMetadataForProfile(profile: ExternalLanguageServerProfile): ExternalLanguageServerProviderMetadata {

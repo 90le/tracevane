@@ -787,14 +787,14 @@ function LspExternalProviderStatusDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent className="max-w-3xl" data-ide-lsp-provider-status-dialog>
+      <DialogContent className="flex max-h-[min(760px,88vh)] max-w-3xl flex-col" data-ide-lsp-provider-status-dialog>
         <DialogHeader>
           <DialogTitle>外部 LSP Provider 状态</DialogTitle>
           <DialogDescription>
             只读展示 server-side allowlist provider 状态；本入口不安装、不启动、不停止 provider，也不暴露 command/args。
           </DialogDescription>
         </DialogHeader>
-        <DialogBody>
+        <DialogBody className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel-2 p-3 text-xs text-muted">
               <div className="min-w-0">
