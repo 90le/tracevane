@@ -10564,6 +10564,7 @@ export function createModelGatewayService(
     let codexResponsesChatCustomToolNames: string[] = [];
     let responsesAdapterStopSequences: string[] = [];
     let responsesAdapterAllowToolCalls = true;
+    let chatAdapterLegacyFunctionCalls = false;
     let codexImageGenerationRequest: CodexAccountImageGenerationPreparedRequest | null = null;
     if (useCodexAccountImageGenerationAdapter) {
       try {
@@ -10603,6 +10604,7 @@ export function createModelGatewayService(
         const adapted = adaptChatCompletionRequestToResponses(bodyText, { allowStreaming: true });
         responsesAdapterStopSequences = adapted.stopSequences;
         responsesAdapterAllowToolCalls = adapted.allowToolCalls;
+        chatAdapterLegacyFunctionCalls = adapted.legacyFunctionCalls;
         upstreamBodyText = JSON.stringify(adapted.responsesRequest);
         requestModelForLog = adapted.model || requestModel;
         useChatResponsesStreamingAdapter = adapted.stream;
@@ -10655,6 +10657,7 @@ export function createModelGatewayService(
         useCodexResponsesAnthropicSyntheticStreamingAdapter = useCodexResponsesAnthropicAdapter && adapted.stream;
         if (useCodexResponsesAnthropicSyntheticStreamingAdapter) adapted.anthropicRequest.stream = false;
         upstreamBodyText = JSON.stringify(adapted.anthropicRequest);
+        chatAdapterLegacyFunctionCalls = useAnthropicMessagesChatAdapter && adapted.legacyFunctionCalls;
         requestModelForLog = adapted.model || requestModel;
         useAnthropicMessagesChatStreamingAdapter = useAnthropicMessagesChatAdapter && adapted.stream;
         useCodexResponsesAnthropicStreamingAdapter = useCodexResponsesAnthropicAdapter
@@ -11327,6 +11330,7 @@ export function createModelGatewayService(
             {
               stopSequences: responsesAdapterStopSequences,
               allowToolCalls: responsesAdapterAllowToolCalls,
+              legacyFunctionCalls: chatAdapterLegacyFunctionCalls,
             },
           );
         } catch (error) {
@@ -11378,7 +11382,11 @@ export function createModelGatewayService(
       if ((useAnthropicMessagesChatAdapter || useCodexResponsesAnthropicAdapter) && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {
-          const chatCompletion = adaptAnthropicMessagesResponseToChatCompletion(JSON.parse(responseText) as unknown, requestModelForLog);
+          const chatCompletion = adaptAnthropicMessagesResponseToChatCompletion(
+            JSON.parse(responseText) as unknown,
+            requestModelForLog,
+            { legacyFunctionCalls: chatAdapterLegacyFunctionCalls },
+          );
           adaptedResponse = useCodexResponsesAnthropicAdapter
             ? adaptChatCompletionToCodexResponse(chatCompletion, requestModelForLog, {
               customToolNames: codexResponsesChatCustomToolNames,

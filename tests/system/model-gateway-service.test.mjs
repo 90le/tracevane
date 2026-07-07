@@ -10923,6 +10923,109 @@ test("model gateway adapts legacy Chat functions through Responses and Anthropic
   ]);
 });
 
+test("model gateway returns legacy Chat function_call for legacy functions clients", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-function-response-responses",
+      name: "Legacy Function Response Responses",
+      appScopes: ["opencode"],
+      baseUrl: "https://legacy-function-response-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-legacy-function-response-responses" },
+    setActiveScopes: ["opencode"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-function-response-anthropic",
+      name: "Legacy Function Response Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://legacy-function-response-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-legacy-function-response-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const upstreamUrl = String(url);
+    if (upstreamUrl.includes("legacy-function-response-anthropic")) {
+      return new Response(JSON.stringify({
+        id: "msg_legacy_function_call",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 8, output_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_legacy_function_call",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }],
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const legacyBody = {
+    model: "gpt-legacy",
+    messages: [{ role: "user", content: "Need lookup" }],
+    functions: [{ name: "lookup", parameters: { type: "object", properties: { query: { type: "string" } } } }],
+    function_call: { name: "lookup" },
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: legacyBody,
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.choices[0].finish_reason, "function_call");
+      assert.deepEqual(responses.body.choices[0].message, {
+        role: "assistant",
+        content: null,
+        function_call: { name: "lookup", arguments: "{\"query\":\"docs\"}" },
+      });
+      assert.equal(JSON.stringify(responses.body).includes("tool_calls"), false);
+
+      const anthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: legacyBody,
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.choices[0].finish_reason, "function_call");
+      assert.deepEqual(anthropic.body.choices[0].message, {
+        role: "assistant",
+        content: null,
+        function_call: { name: "lookup", arguments: "{\"query\":\"docs\"}" },
+      });
+      assert.equal(JSON.stringify(anthropic.body).includes("tool_calls"), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway preserves Responses-style Chat input image parts for Responses providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

@@ -23,6 +23,7 @@ export interface ChatAnthropicRequestAdapterResult {
   anthropicRequest: JsonRecord;
   model: string | null;
   stream: boolean;
+  legacyFunctionCalls: boolean;
 }
 
 export interface AnthropicChatRequestAdapterResult {
@@ -39,6 +40,10 @@ export interface AnthropicChatRequestAdapterOptions {
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
   preserveServiceTier?: boolean;
+}
+
+export interface AnthropicChatResponseAdapterOptions {
+  legacyFunctionCalls?: boolean;
 }
 
 export interface ChatAnthropicResponseAdapterOptions {
@@ -160,7 +165,7 @@ export function adaptChatCompletionRequestToAnthropicMessages(
 
   applyAnthropicReasoningOptions(anthropicRequest, request);
 
-  return { anthropicRequest, model, stream };
+  return { anthropicRequest, model, stream, legacyFunctionCalls: usesLegacyChatFunctions(request) };
 }
 
 export function adaptAnthropicMessagesRequestToChatCompletion(
@@ -229,7 +234,11 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   };
 }
 
-export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown, fallbackModel: string | null): JsonRecord {
+export function adaptAnthropicMessagesResponseToChatCompletion(
+  response: unknown,
+  fallbackModel: string | null,
+  options: AnthropicChatResponseAdapterOptions = {},
+): JsonRecord {
   if (!isRecord(response)) {
     throw new AnthropicMessagesChatAdapterError(
       "model_gateway_anthropic_chat_response_invalid",
@@ -262,7 +271,12 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
   if (mcpToolBlocks.length) message.mcp_tool_blocks = mcpToolBlocks;
   const annotations = collectAnthropicTextCitations(content);
   if (annotations.length) message.annotations = annotations;
-  if (toolCalls.length) message.tool_calls = toolCalls;
+  const legacyFunctionCall = options.legacyFunctionCalls ? chatToolCallToLegacyFunctionCall(toolCalls[0]) : null;
+  if (legacyFunctionCall) {
+    message.function_call = legacyFunctionCall;
+  } else if (toolCalls.length) {
+    message.tool_calls = toolCalls;
+  }
 
   const created = Math.floor(Date.now() / 1_000);
   const model = stringOrNull(response.model) || fallbackModel;
@@ -274,7 +288,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     choices: [{
       index: 0,
       message,
-      finish_reason: mapAnthropicStopReasonToChat(response.stop_reason, toolCalls.length > 0),
+      finish_reason: mapAnthropicStopReasonToChat(response.stop_reason, toolCalls.length > 0, Boolean(legacyFunctionCall)),
     }],
     usage: mapAnthropicUsageToChat(response.usage),
   };
@@ -501,6 +515,21 @@ function parseJsonObject(bodyText: string | undefined, codePrefix: string, conte
     `${context} requires a JSON object request body.`,
     400,
   );
+}
+
+function usesLegacyChatFunctions(request: JsonRecord): boolean {
+  return Array.isArray(request.functions) || request.function_call !== undefined;
+}
+
+function chatToolCallToLegacyFunctionCall(toolCall: unknown): JsonRecord | null {
+  if (!isRecord(toolCall)) return null;
+  const fn = isRecord(toolCall.function) ? toolCall.function : null;
+  const name = stringOrNull(fn?.name);
+  if (!fn || !name) return null;
+  return {
+    name,
+    arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+  };
 }
 
 function extractSystemPrompt(messages: unknown): string {
@@ -1163,8 +1192,8 @@ function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: bool
   return "end_turn";
 }
 
-function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
-  if (hasToolCalls) return "tool_calls";
+function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean, legacyFunctionCall = false): string {
+  if (hasToolCalls) return legacyFunctionCall ? "function_call" : "tool_calls";
   if (stopReason === "max_tokens") return "length";
   if (stopReason === "refusal") return "content_filter";
   if (stopReason === "end_turn" || stopReason === "stop_sequence") return "stop";

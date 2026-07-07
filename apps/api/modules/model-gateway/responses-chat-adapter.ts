@@ -25,6 +25,7 @@ export interface ChatResponsesRequestAdapterResult {
   stream: boolean;
   stopSequences: string[];
   allowToolCalls: boolean;
+  legacyFunctionCalls: boolean;
 }
 
 export interface ChatResponsesRequestAdapterOptions {
@@ -35,6 +36,7 @@ export interface ResponsesChatResponseAdapterOptions {
   preserveMcpToolCalls?: boolean;
   stopSequences?: Iterable<string>;
   allowToolCalls?: boolean;
+  legacyFunctionCalls?: boolean;
 }
 
 export function isChatToOpenAIResponsesAdapterTarget(decision: {
@@ -139,6 +141,7 @@ export function adaptChatCompletionRequestToResponses(
     stream,
     stopSequences: normalizeStopSequences(request.stop),
     allowToolCalls: Array.isArray(responsesRequest.tools) && responsesRequest.tools.length > 0,
+    legacyFunctionCalls: usesLegacyChatFunctions(request),
   };
 }
 
@@ -182,12 +185,17 @@ export function adaptResponsesToChatCompletion(
   const annotations = collectResponseOutputAnnotations(output);
   if (annotations.length) message.annotations = annotations;
   if (refusal) message.refusal = refusal;
-  if (toolCalls.length) message.tool_calls = toolCalls;
+  const legacyFunctionCall = options.legacyFunctionCalls ? chatToolCallToLegacyFunctionCall(toolCalls[0]) : null;
+  if (legacyFunctionCall) {
+    message.function_call = legacyFunctionCall;
+  } else if (toolCalls.length) {
+    message.tool_calls = toolCalls;
+  }
 
   const choice: JsonRecord = {
     index: 0,
     message,
-    finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0, Boolean(refusal)),
+    finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0, Boolean(refusal), Boolean(legacyFunctionCall)),
   };
   const logprobs = collectResponseOutputLogprobs(output);
   if (logprobs.length) choice.logprobs = { content: logprobs };
@@ -204,11 +212,26 @@ export function adaptResponsesToChatCompletion(
   return chatCompletion;
 }
 
-function mapResponsesFinishReasonToChat(response: JsonRecord, hasToolCalls: boolean, hasRefusal: boolean): string {
-  if (hasToolCalls) return "tool_calls";
+function mapResponsesFinishReasonToChat(response: JsonRecord, hasToolCalls: boolean, hasRefusal: boolean, legacyFunctionCall = false): string {
+  if (hasToolCalls) return legacyFunctionCall ? "function_call" : "tool_calls";
   if (response.status === "incomplete") return "length";
   if (hasRefusal) return "content_filter";
   return "stop";
+}
+
+function usesLegacyChatFunctions(request: JsonRecord): boolean {
+  return Array.isArray(request.functions) || request.function_call !== undefined;
+}
+
+function chatToolCallToLegacyFunctionCall(toolCall: unknown): JsonRecord | null {
+  if (!isRecord(toolCall)) return null;
+  const fn = isRecord(toolCall.function) ? toolCall.function : null;
+  const name = stringOrNull(fn?.name);
+  if (!fn || !name) return null;
+  return {
+    name,
+    arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+  };
 }
 
 function parseJsonObject(bodyText: string | undefined): JsonRecord {
