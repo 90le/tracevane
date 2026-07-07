@@ -10952,11 +10952,13 @@ export function createModelGatewayService(
         setSelectedProviderHeaders();
         try {
           const streamingBody = observeReadableStreamFirstChunk(upstream.body, markFirstByte);
-          const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog, {
+          const streamingAdapterOptions = {
             customToolNames: codexResponsesChatCustomToolNames,
             stopSequences: responsesAdapterStopSequences,
             allowToolCalls: responsesAdapterAllowToolCalls,
-          });
+            legacyFunctionCalls: chatAdapterLegacyFunctionCalls,
+          };
+          const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog, streamingAdapterOptions);
           if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
             const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
             codexHistory.recordResponse({

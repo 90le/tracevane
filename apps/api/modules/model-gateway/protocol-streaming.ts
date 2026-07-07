@@ -30,6 +30,7 @@ export interface StreamAdapterOptions {
   customToolNames?: Iterable<string>;
   stopSequences?: Iterable<string>;
   allowToolCalls?: boolean;
+  legacyFunctionCalls?: boolean;
 }
 
 export interface StreamErrorEnvelope {
@@ -165,9 +166,11 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
   fallbackModel: string | null,
+  options: StreamAdapterOptions = {},
 ): Promise<StreamResult> {
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
+  const legacyFunctionCalls = Boolean(options.legacyFunctionCalls);
   let sawMessageStop = false;
 
   try {
@@ -202,7 +205,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
             name: stringOrNull(block.name) || undefined,
           });
           if (!tool) return;
-          writeChatToolCallStart(state, res, tool);
+          writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
         }
         return;
       }
@@ -221,13 +224,13 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
           if (!tool) return;
           const partialJson = stringOrNull(delta.partial_json) || "";
           tool.inputJson += partialJson;
-          writeChatToolCallArguments(state, res, tool, partialJson);
+          writeChatToolCallArguments(state, res, tool, partialJson, legacyFunctionCalls);
         }
         return;
       }
       if (event.event === "message_delta") {
         if (isRecord(event.json.delta)) {
-          state.finishReason = mapAnthropicStopReasonToChat(event.json.delta.stop_reason, toolBlocks.size > 0);
+          state.finishReason = mapAnthropicStopReasonToChat(event.json.delta.stop_reason, toolBlocks.size > 0, legacyFunctionCalls);
         }
         if (isRecord(event.json.usage)) {
           state.usage = {
@@ -279,6 +282,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const emittedBuiltinToolItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
   const allowToolCalls = options.allowToolCalls !== false;
+  const legacyFunctionCalls = Boolean(options.legacyFunctionCalls);
   let sawCompleted = false;
 
   try {
@@ -341,8 +345,8 @@ export async function writeChatCompletionsSseFromResponsesSse(
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
           ensureChatStreamStart(state, res);
-          writeChatToolCallStart(state, res, tool);
-          state.finishReason = "tool_calls";
+          writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
+          state.finishReason = chatToolFinishReason(legacyFunctionCalls);
         }
         return;
       }
@@ -357,9 +361,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
         if (delta) {
           tool.inputJson += delta;
           ensureChatStreamStart(state, res);
-          writeChatToolCallArguments(state, res, tool, delta);
+          writeChatToolCallArguments(state, res, tool, delta, legacyFunctionCalls);
         }
-        state.finishReason = "tool_calls";
+        state.finishReason = chatToolFinishReason(legacyFunctionCalls);
         return;
       }
       if (event.event === "response.function_call_arguments.done") {
@@ -373,9 +377,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
         if (remaining) {
           tool.inputJson += remaining;
           ensureChatStreamStart(state, res);
-          writeChatToolCallArguments(state, res, tool, remaining);
+          writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
         }
-        state.finishReason = "tool_calls";
+        state.finishReason = chatToolFinishReason(legacyFunctionCalls);
         return;
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
@@ -402,12 +406,12 @@ export async function writeChatCompletionsSseFromResponsesSse(
           if (!tool) return;
           const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(event.json.item));
           ensureChatStreamStart(state, res);
-          writeChatToolCallStart(state, res, tool);
+          writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
           if (remaining) {
             tool.inputJson += remaining;
-            writeChatToolCallArguments(state, res, tool, remaining);
+            writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
           }
-          state.finishReason = "tool_calls";
+          state.finishReason = chatToolFinishReason(legacyFunctionCalls);
         }
         return;
       }
@@ -415,7 +419,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
         if (allowToolCalls) {
-          emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
+          emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId, legacyFunctionCalls);
         }
         emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         emitMissingChatBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
@@ -427,7 +431,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         if (!stopFilter?.matched && state.finishReason !== "content_filter") {
           state.finishReason = response.status === "incomplete" ? "length" : "stop";
         }
-        if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
+        if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = chatToolFinishReason(legacyFunctionCalls);
         finalizeChatStream(state, res);
       }
     });
@@ -1480,9 +1484,19 @@ function writeChatToolCallStart(
   state: ReturnType<typeof createChatStreamState>,
   res: http.ServerResponse,
   tool: ToolStreamBlock,
+  legacyFunctionCalls = false,
 ): void {
   if (tool.sentChatStart) return;
   tool.sentChatStart = true;
+  if (legacyFunctionCalls) {
+    writeChatChunk(state, res, {
+      function_call: {
+        name: tool.name,
+        arguments: "",
+      },
+    }, null);
+    return;
+  }
   writeChatChunk(state, res, {
     tool_calls: [{
       index: tool.chatIndex,
@@ -1501,9 +1515,16 @@ function writeChatToolCallArguments(
   res: http.ServerResponse,
   tool: ToolStreamBlock,
   partialJson: string,
+  legacyFunctionCalls = false,
 ): void {
-  writeChatToolCallStart(state, res, tool);
+  writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
   if (!partialJson) return;
+  if (legacyFunctionCalls) {
+    writeChatChunk(state, res, {
+      function_call: { arguments: partialJson },
+    }, null);
+    return;
+  }
   writeChatChunk(state, res, {
     tool_calls: [{
       index: tool.chatIndex,
@@ -2043,6 +2064,7 @@ function emitMissingChatToolCallsFromResponsesOutput(
   output: unknown,
   blocks: Map<number, ToolStreamBlock>,
   itemIdToIndex: Map<string, number>,
+  legacyFunctionCalls = false,
 ): void {
   if (!Array.isArray(output)) return;
   for (let index = 0; index < output.length; index += 1) {
@@ -2052,10 +2074,10 @@ function emitMissingChatToolCallsFromResponsesOutput(
     if (!tool) continue;
     const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(item));
     ensureChatStreamStart(state, res);
-    writeChatToolCallStart(state, res, tool);
+    writeChatToolCallStart(state, res, tool, legacyFunctionCalls);
     if (remaining) {
       tool.inputJson += remaining;
-      writeChatToolCallArguments(state, res, tool, remaining);
+      writeChatToolCallArguments(state, res, tool, remaining, legacyFunctionCalls);
     }
   }
 }
@@ -2426,11 +2448,15 @@ function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: bool
   return "end_turn";
 }
 
-function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
-  if (hasToolCalls) return "tool_calls";
+function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean, legacyFunctionCalls = false): string {
+  if (hasToolCalls) return chatToolFinishReason(legacyFunctionCalls);
   if (stopReason === "max_tokens") return "length";
   if (stopReason === "refusal") return "content_filter";
   return "stop";
+}
+
+function chatToolFinishReason(legacyFunctionCalls: boolean): string {
+  return legacyFunctionCalls ? "function_call" : "tool_calls";
 }
 
 function mapChatUsageToAnthropic(usage: JsonRecord): JsonRecord {

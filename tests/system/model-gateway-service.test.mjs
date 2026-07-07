@@ -11026,6 +11026,157 @@ test("model gateway returns legacy Chat function_call for legacy functions clien
   }
 });
 
+
+test("model gateway streams legacy Chat function_call for legacy functions clients", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-function-stream-responses",
+      name: "Legacy Function Stream Responses",
+      appScopes: ["opencode"],
+      baseUrl: "https://legacy-function-stream-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-legacy-function-stream-responses" },
+    setActiveScopes: ["opencode"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-function-stream-anthropic",
+      name: "Legacy Function Stream Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://legacy-function-stream-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-legacy-function-stream-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const upstreamUrl = String(url);
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({
+      url: upstreamUrl,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body,
+    });
+    if (upstreamUrl.includes("legacy-function-stream-anthropic")) {
+      const upstreamSse = [
+        "event: message_start",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_legacy_function_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}",
+        "",
+        "event: content_block_start",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_lookup\",\"name\":\"lookup\",\"input\":{}}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\"}}",
+        "",
+        "event: content_block_delta",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"docs\\\"}\"}}",
+        "",
+        "event: content_block_stop",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}",
+        "",
+        "event: message_delta",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}",
+        "",
+        "event: message_stop",
+        "data: {\"type\":\"message_stop\"}",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
+    const upstreamSse = [
+      "event: response.created",
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_legacy_function_stream\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-responses\",\"output\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}",
+      "",
+      "event: response.output_item.added",
+      "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"in_progress\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"\"}}",
+      "",
+      "event: response.function_call_arguments.delta",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"delta\":\"{\\\"query\\\":\"}",
+      "",
+      "event: response.function_call_arguments.delta",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"delta\":\"\\\"docs\\\"}\"}",
+      "",
+      "event: response.function_call_arguments.done",
+      "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_call_lookup\",\"output_index\":0,\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}",
+      "",
+      "event: response.output_item.done",
+      "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}}",
+      "",
+      "event: response.completed",
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_legacy_function_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-responses\",\"output\":[{\"id\":\"fc_call_lookup\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"call_lookup\",\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\\\"docs\\\"}\"}],\"usage\":{\"input_tokens\":8,\"output_tokens\":2,\"total_tokens\":10}}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+
+  const legacyBody = {
+    model: "gpt-legacy",
+    stream: true,
+    messages: [{ role: "user", content: "Need lookup" }],
+    functions: [{ name: "lookup", parameters: { type: "object", properties: { query: { type: "string" } } } }],
+    function_call: { name: "lookup" },
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: legacyBody,
+      });
+      assert.equal(responses.status, 200, responses.body);
+      const responseEvents = parseSseEvents(responses.body);
+      assert.equal(responseEvents[0].data.choices[0].delta.role, "assistant");
+      assert.deepEqual(responseEvents[1].data.choices[0].delta.function_call, { name: "lookup", arguments: "" });
+      assert.deepEqual(responseEvents[2].data.choices[0].delta.function_call, { arguments: "{\"query\":" });
+      assert.deepEqual(responseEvents[3].data.choices[0].delta.function_call, { arguments: "\"docs\"}" });
+      assert.equal(responseEvents[4].data.choices[0].finish_reason, "function_call");
+      assert.equal(JSON.stringify(responseEvents).includes("tool_calls"), false);
+      assert.equal(responseEvents[5].data, "[DONE]");
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: legacyBody,
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.equal(anthropicEvents[0].data.choices[0].delta.role, "assistant");
+      assert.deepEqual(anthropicEvents[1].data.choices[0].delta.function_call, { name: "lookup", arguments: "" });
+      assert.deepEqual(anthropicEvents[2].data.choices[0].delta.function_call, { arguments: "{\"query\":" });
+      assert.deepEqual(anthropicEvents[3].data.choices[0].delta.function_call, { arguments: "\"docs\"}" });
+      assert.equal(anthropicEvents[4].data.choices[0].finish_reason, "function_call");
+      assert.equal(JSON.stringify(anthropicEvents).includes("tool_calls"), false);
+      assert.equal(anthropicEvents[5].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://legacy-function-stream-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-legacy-function-stream-responses");
+  assert.equal(upstreamCalls[0].body.stream, true);
+  assert.deepEqual(upstreamCalls[0].body.tools, [{ type: "function", name: "lookup", parameters: { type: "object", properties: { query: { type: "string" } } } }]);
+  assert.equal(upstreamCalls[1].url, "https://legacy-function-stream-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-legacy-function-stream-anthropic");
+  assert.equal(upstreamCalls[1].body.stream, true);
+  assert.deepEqual(upstreamCalls[1].body.tools, [{ name: "lookup", input_schema: { type: "object", properties: { query: { type: "string" } } } }]);
+});
+
 test("model gateway preserves Responses-style Chat input image parts for Responses providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
