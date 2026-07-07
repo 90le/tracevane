@@ -12839,8 +12839,8 @@ test("model gateway preserves Responses-style Chat input file parts for Response
             role: "user",
             content: [
               { type: "input_text", text: "Summarize these files." },
-              { type: "input_file", file_url: "https://example.test/report.pdf", filename: "report.pdf" },
-              { type: "file", file: { file_id: "file_abc123", filename: "notes.txt" } },
+              { type: "input_file", file_url: "https://example.test/report.pdf", filename: "report.pdf", media_type: "application/pdf" },
+              { type: "file", file: { file_id: "file_abc123", filename: "notes.txt", mime_type: "text/plain" } },
               { type: "input_file", file_data: "data:text/plain;base64,SGVsbG8=", filename: "inline.txt" },
             ],
           }],
@@ -12861,7 +12861,9 @@ test("model gateway preserves Responses-style Chat input file parts for Response
     content: [
       { type: "input_text", text: "Summarize these files." },
       { type: "input_file", file_url: "https://example.test/report.pdf", filename: "report.pdf" },
+      { type: "input_text", text: "OpenAI Chat file media_type preserved for Responses input: application/pdf" },
       { type: "input_file", file_id: "file_abc123", filename: "notes.txt" },
+      { type: "input_text", text: "OpenAI Chat file media_type preserved for Responses input: text/plain" },
       { type: "input_file", file_data: "data:text/plain;base64,SGVsbG8=", filename: "inline.txt" },
     ],
   }]);

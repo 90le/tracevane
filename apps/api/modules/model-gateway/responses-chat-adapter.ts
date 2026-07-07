@@ -524,8 +524,9 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       continue;
     }
     if ((type === "file" || type === "input_file") && role !== "assistant") {
-      const filePart = chatFilePartToResponsesInputFile(part);
-      parts.push(filePart || chatContentPartFallbackToResponsesText(part, textType));
+      const fileParts = chatFilePartToResponsesInputParts(part);
+      if (fileParts.length) parts.push(...fileParts);
+      else parts.push(chatContentPartFallbackToResponsesText(part, textType));
       continue;
     }
     if (type === "refusal" && role === "assistant") {
@@ -566,6 +567,21 @@ function chatFilePartToResponsesInputFile(part: JsonRecord): JsonRecord | null {
   if (mapped.file_url === undefined && file.url !== undefined) mapped.file_url = file.url;
   if (mapped.filename === undefined && file.name !== undefined) mapped.filename = file.name;
   return Object.keys(mapped).length > 1 ? mapped : null;
+}
+
+function chatFilePartToResponsesInputParts(part: JsonRecord): JsonRecord[] {
+  const filePart = chatFilePartToResponsesInputFile(part);
+  if (!filePart) return [];
+  const file = isRecord(part.file) ? part.file : part;
+  const mediaType = stringOrNull(file.media_type) || stringOrNull(file.mime_type);
+  if (!mediaType) return [filePart];
+  return [
+    filePart,
+    {
+      type: "input_text",
+      text: `OpenAI Chat file media_type preserved for Responses input: ${mediaType}`,
+    },
+  ];
 }
 
 function mapChatToolsToResponses(tools: unknown): JsonRecord[] {
