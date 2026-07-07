@@ -1789,6 +1789,17 @@ async function diagnoseDocument(
       version: request.version ?? 1,
     }));
   }
+  if (provider?.id === "svelte") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "svelte", language, await diagnoseWithExternalLanguageServer({
+      providerId: "svelte",
+      languageId: "svelte",
+      sourceFallback: "svelte-language-server",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -1802,7 +1813,7 @@ async function diagnoseWithExternalLanguageServer({
   version,
   settings,
 }: {
-  providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue";
+  providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte";
   languageId: string;
   sourceFallback: string;
   rootRealPath: string;
@@ -1829,7 +1840,7 @@ async function diagnoseWithExternalLanguageServer({
     return diagnostics.map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
   } catch (error) {
     const reason = (error as { reason?: unknown } | null)?.reason;
-    if ((providerId === "bash" || providerId === "markdown" || providerId === "eslint" || providerId === "vue") && reason === "request_timeout") return [];
+    if ((providerId === "bash" || providerId === "markdown" || providerId === "eslint" || providerId === "vue" || providerId === "svelte") && reason === "request_timeout") return [];
     throw error;
   } finally {
     await gateway.stop(providerId).catch(() => undefined);
@@ -2021,6 +2032,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   const raw = String(language || "").trim().toLowerCase();
   if (raw === "json") return "json";
   if (raw === "vue") return "vue";
+  if (raw === "svelte") return "svelte";
   if (raw === "html" || raw === "htm") return "html";
   if (raw === "css" || raw === "scss" || raw === "less") return raw;
   if (raw === "ts" || raw === "typescript") return "typescript";
@@ -2033,6 +2045,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.jsx$/i.test(targetPath)) return "javascriptreact";
   if (/\.m?js$/i.test(targetPath) || /\.cjs$/i.test(targetPath)) return "javascript";
   if (/\.vue$/i.test(targetPath)) return "vue";
+  if (/\.svelte$/i.test(targetPath)) return "svelte";
   if (/\.html?$/i.test(targetPath)) return "html";
   if (/\.scss$/i.test(targetPath)) return "scss";
   if (/\.less$/i.test(targetPath)) return "less";
@@ -2113,7 +2126,7 @@ function eslintSettingsForWorkingDirectory(activationRoot: string): Record<strin
   };
 }
 
-function externalProfileWithSettings(providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue", settings: Record<string, unknown>) {
+function externalProfileWithSettings(providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte", settings: Record<string, unknown>) {
   const profile = findExternalLanguageServerProfile(providerId);
   if (!profile) throw new Error(`Unknown external LSP profile: ${providerId}`);
   return { ...profile, settings };
@@ -2156,7 +2169,7 @@ function hasEslintScript(packageJson: Record<string, unknown>): boolean {
 }
 
 function responseProviderId(id: string | null | undefined): LspProviderId {
-  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" || id === "markdown" || id === "eslint" || id === "vue" ? id : "json";
+  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" || id === "markdown" || id === "eslint" || id === "vue" || id === "svelte" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {

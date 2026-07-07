@@ -121,6 +121,22 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
       "@vue/language-server 3.3.6 declares a TypeScript * peer; Svelte remains deferred because its current peer range does not match the project TypeScript pin.",
     ],
   },
+
+  svelte: {
+    packageName: "svelte-language-server",
+    source: "npm:svelte-language-server",
+    installMode: "bundled-npm",
+    pinnedVersion: "0.18.3",
+    license: "MIT",
+    optional: false,
+    auditSummary: "Bundled npm provider added as a diagnostics-only Svelte framework proof; package-lock TypeScript 5.9.3 satisfies the provider peer range, while rich Svelte interactions and project config parity remain deferred.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M12-E exposes Svelte diagnostics/status only; hover/completion/definition/formatting/code actions remain deferred.",
+      "svelte-language-server 0.18.3 declares TypeScript peer ^5.9.2 || ^6.0.2; current package-lock resolves TypeScript 5.9.3.",
+      "Frontend cannot provide command, args, env, cwd, runtime, tsdk, svelte package path, or project config paths.",
+    ],
+  },
   eslint: {
     packageName: "vscode-langservers-extracted",
     source: "npm:vscode-langservers-extracted",

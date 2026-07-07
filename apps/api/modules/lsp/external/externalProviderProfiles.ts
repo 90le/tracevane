@@ -18,6 +18,7 @@ export const DOCKERFILE_LANGUAGE_SERVER_BIN = require.resolve("dockerfile-langua
 export const MARKDOWN_LANGUAGE_SERVER_BIN = require.resolve("vscode-langservers-extracted/bin/vscode-markdown-language-server");
 export const ESLINT_LANGUAGE_SERVER_BIN = require.resolve("vscode-langservers-extracted/bin/vscode-eslint-language-server");
 export const VUE_LANGUAGE_SERVER_BIN = require.resolve("@vue/language-server/bin/vue-language-server.js");
+export const SVELTE_LANGUAGE_SERVER_BIN = require.resolve("svelte-language-server/bin/server.js");
 
 /**
  * External language servers are server-side allowlisted. The frontend never
@@ -81,6 +82,17 @@ export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] 
     command: process.execPath,
     args: [VUE_LANGUAGE_SERVER_BIN, "--stdio"],
     languages: ["vue"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 10_000, requestMs: 5_000, shutdownMs: 1_500 },
+    env: { NODE_ENV: "production" },
+  },
+
+  {
+    id: "svelte",
+    label: "Svelte Language Server",
+    command: process.execPath,
+    args: [SVELTE_LANGUAGE_SERVER_BIN, "--stdio"],
+    languages: ["svelte"],
     capabilities: { diagnostics: true },
     budgets: { initializeMs: 10_000, requestMs: 5_000, shutdownMs: 1_500 },
     env: { NODE_ENV: "production" },

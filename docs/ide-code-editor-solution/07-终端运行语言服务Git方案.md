@@ -1004,4 +1004,20 @@ M12-D 已完成，记录见 [`archive/m12-d-svelte-typescript-peer-policy-plan.m
 - M12-E 可以进入 Svelte diagnostics/status proof，但仍必须保持 server-side allowlist、exact pin、root/cwd guard 和 frontend command/env 禁止。
 ```
 
-M12-D 明确不做：安装 `svelte-language-server`、启用 Svelte runtime provider、升级 TypeScript、改 TS/JS provider、Svelte hover/completion/definition/formatting/codeAction、Go/Rust/Java/C/C++ provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-E 进入 Svelte external provider guarded diagnostics proof。
+M12-D 明确不做：安装 `svelte-language-server`、启用 Svelte runtime provider、升级 TypeScript、改 TS/JS provider、Svelte hover/completion/definition/formatting/codeAction、Go/Rust/Java/C/C++ provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-E 已完成 Svelte external provider guarded diagnostics proof；下一步 M12-F 进入 framework provider acceptance / heavy toolchain policy decision。
+
+
+### M12-E 已完成：Svelte External Provider Guarded Diagnostics Proof
+
+M12-E 已完成，记录见 [`archive/m12-e-svelte-external-provider-summary.md`](./archive/m12-e-svelte-external-provider-summary.md)。本阶段把 Svelte 作为第二个 framework external provider proof 接入现有 external LSP gateway：`svelte-language-server@0.18.3` exact-pin、server-side allowlist profile、provider metadata/status、`.svelte` language routing 与 diagnostics response contract 已落地。
+
+完成口径：
+
+- `svelte-language-server@0.18.3` 以 exact-pin 写入 root dependency 与 lockfile。
+- Svelte profile 只通过 `process.execPath + require.resolve("svelte-language-server/bin/server.js") + --stdio` 启动，frontend 不可提供 command/args/env/cwd/runtime/options。
+- provider registry 与 shared `LspProviderId` 增加 `svelte`，capability 只声明 diagnostics。
+- `/api/lsp/status` external provider metadata 展示 installed/version/pinnedVersion/license/source/audit notes。
+- `/api/lsp/diagnostics` 对 `.svelte` / `svelte` 请求路由到 Svelte external provider，并保持标准 diagnostics response shape；timeout 退化为空 diagnostics，避免无项目 Svelte 依赖时悬挂。
+- `tests/system/lsp-svelte-provider.test.mjs` 覆盖 gateway lifecycle、profile allowlist、status metadata 与 diagnostics route。
+
+M12-E 仍不做：Svelte hover/completion/definition/references/semantic tokens/formatting/code action、Svelte project config parity、完整 SvelteKit/Vite workspace semantics、TypeScript 升级、TS/JS provider 替换、Go/Rust/Java/C/C++ heavy toolchain provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-F 进入 framework provider acceptance / heavy toolchain policy decision。

@@ -135,7 +135,8 @@
     "test:system:lsp-dockerfile-provider": "npm run build:api && node --test tests/system/lsp-dockerfile-provider.test.mjs",
     "test:system:lsp-markdown-provider": "npm run build:api && node --test tests/system/lsp-markdown-provider.test.mjs",
     "test:system:lsp-eslint-provider": "npm run build:api && node --test tests/system/lsp-eslint-provider.test.mjs",
-    "test:system:lsp-vue-provider": "npm run build:api && node --test tests/system/lsp-vue-provider.test.mjs"
+    "test:system:lsp-vue-provider": "npm run build:api && node --test tests/system/lsp-vue-provider.test.mjs",
+    "test:system:lsp-svelte-provider": "npm run build:api && node --test tests/system/lsp-svelte-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",
@@ -150,6 +151,7 @@
     "bcryptjs": "^2.4.3",
     "dockerfile-language-server-nodejs": "0.15.0",
     "pyright": "1.1.411",
+    "svelte-language-server": "0.18.3",
     "vscode-css-languageservice": "^6.3.10",
     "vscode-html-languageservice": "^5.6.2",
     "vscode-json-languageservice": "^5.7.2",
