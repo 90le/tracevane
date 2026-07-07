@@ -10739,6 +10739,7 @@ export function createModelGatewayService(
         const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText, {
           preserveMcpServers: true,
           preserveServiceTier: true,
+          preserveToolResultError: true,
         });
         const responsesAdapted = adaptChatCompletionRequestToResponses(JSON.stringify(chatAdapted.chatRequest), {
           allowStreaming: true,

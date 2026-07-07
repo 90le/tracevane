@@ -285,20 +285,12 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
   if (message.role === "tool") {
     const callId = stringOrNull(message.tool_call_id) || stringOrNull(message.id);
     if (!callId) return [];
-    return [{
-      type: "function_call_output",
-      call_id: callId,
-      output: chatToolOutputToResponsesOutput(message.content),
-    }];
+    return [chatToolOutputMessageToResponsesItem(callId, message)];
   }
   if (message.role === "function") {
     const name = stringOrNull(message.name);
     if (!name) return [];
-    return [{
-      type: "function_call_output",
-      call_id: legacyFunctionCallId(name),
-      output: chatToolOutputToResponsesOutput(message.content),
-    }];
+    return [chatToolOutputMessageToResponsesItem(legacyFunctionCallId(name), message)];
   }
 
   const items: JsonRecord[] = [];
@@ -326,6 +318,16 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     }
   }
   return items;
+}
+
+function chatToolOutputMessageToResponsesItem(callId: string, message: JsonRecord): JsonRecord {
+  const item: JsonRecord = {
+    type: "function_call_output",
+    call_id: callId,
+    output: chatToolOutputToResponsesOutput(message.content),
+  };
+  if (message.is_error === true) item.status = "incomplete";
+  return item;
 }
 
 function chatMessageReasoningToResponsesItems(message: JsonRecord): JsonRecord[] {

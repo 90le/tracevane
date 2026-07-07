@@ -40,6 +40,7 @@ export interface AnthropicChatRequestAdapterOptions {
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
   preserveServiceTier?: boolean;
+  preserveToolResultError?: boolean;
 }
 
 export interface AnthropicChatResponseAdapterOptions {
@@ -186,7 +187,7 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
     );
   }
 
-  const messages = mapAnthropicMessagesToChat(request);
+  const messages = mapAnthropicMessagesToChat(request, options);
   if (!options.preserveMcpServers) {
     messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers));
   }
@@ -819,7 +820,7 @@ function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToo
   return choice;
 }
 
-function mapAnthropicMessagesToChat(request: JsonRecord): JsonRecord[] {
+function mapAnthropicMessagesToChat(request: JsonRecord, options: AnthropicChatRequestAdapterOptions = {}): JsonRecord[] {
   const messages: JsonRecord[] = [];
   const system = anthropicSystemToText(request.system);
   if (system) messages.push({ role: "system", content: system });
@@ -833,13 +834,13 @@ function mapAnthropicMessagesToChat(request: JsonRecord): JsonRecord[] {
   }
 
   for (const message of request.messages) {
-    messages.push(...mapAnthropicMessageToChat(message));
+    messages.push(...mapAnthropicMessageToChat(message, options));
   }
 
   return messages.length ? messages : [{ role: "user", content: "" }];
 }
 
-function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
+function mapAnthropicMessageToChat(message: unknown, options: AnthropicChatRequestAdapterOptions = {}): JsonRecord[] {
   if (!isRecord(message)) return [];
   const role = message.role === "assistant" ? "assistant" : "user";
   const blocks = anthropicContentBlocks(message.content);
@@ -871,12 +872,15 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
     return [chatMessage];
   }
 
-  const chatMessages = mapAnthropicUserBlocksToChatMessages(blocks);
+  const chatMessages = mapAnthropicUserBlocksToChatMessages(blocks, options);
   if (!chatMessages.length) chatMessages.push({ role: "user", content: "" });
   return chatMessages;
 }
 
-function mapAnthropicUserBlocksToChatMessages(blocks: JsonRecord[]): JsonRecord[] {
+function mapAnthropicUserBlocksToChatMessages(
+  blocks: JsonRecord[],
+  options: AnthropicChatRequestAdapterOptions = {},
+): JsonRecord[] {
   const chatMessages: JsonRecord[] = [];
   let userContentBlocks: JsonRecord[] = [];
 
@@ -897,11 +901,13 @@ function mapAnthropicUserBlocksToChatMessages(blocks: JsonRecord[]): JsonRecord[
     flushUserContent();
     const toolCallId = stringOrNull(block.tool_use_id);
     if (!toolCallId) continue;
-    chatMessages.push({
+    const chatMessage: JsonRecord = {
       role: "tool",
       tool_call_id: toolCallId,
       content: anthropicToolResultContentToChatContent(block.content),
-    });
+    };
+    if (options.preserveToolResultError && block.is_error === true) chatMessage.is_error = true;
+    chatMessages.push(chatMessage);
   }
   flushUserContent();
   return chatMessages;

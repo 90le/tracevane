@@ -8980,7 +8980,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
             {
               role: "user",
               content: [
-                { type: "tool_result", tool_use_id: "call_lookup", content: "done" },
+                { type: "tool_result", tool_use_id: "call_lookup", is_error: true, content: "done" },
                 { type: "text", text: "continue after tool result" },
               ],
             },
@@ -9184,6 +9184,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         type: "function_call_output",
         call_id: "call_lookup",
         output: "done",
+        status: "incomplete",
       },
       { role: "user", content: [{ type: "input_text", text: "continue after tool result" }] },
     ],
@@ -12090,7 +12091,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             {
               role: "user",
               content: [
-                { type: "tool_result", tool_use_id: "call_lookup", content: "done" },
+                { type: "tool_result", tool_use_id: "call_lookup", is_error: true, content: "done" },
                 { type: "text", text: "continue after tool result" },
               ],
             },
@@ -13678,6 +13679,7 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
               content: [{
                 type: "tool_result",
                 tool_use_id: "call_L9xIoU51YrLBlMT2msasvJZY",
+                is_error: true,
                 content: "done",
               }],
             },
@@ -13728,6 +13730,7 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
       type: "function_call_output",
       call_id: "call_L9xIoU51YrLBlMT2msasvJZY",
       output: "done",
+      status: "incomplete",
     },
     {
       role: "user",
