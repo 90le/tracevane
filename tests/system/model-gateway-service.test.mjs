@@ -15531,6 +15531,130 @@ test("model gateway buffers streaming chat tool arguments until anthropic tool i
   }
 });
 
+
+test("model gateway adapts legacy streaming Chat function_call to Anthropic and Responses SSE", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-chat-function-stream-upstream",
+      name: "Legacy Chat Function Stream Upstream",
+      appScopes: ["claude-code", "codex"],
+      baseUrl: "https://legacy-chat-function-stream-upstream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-legacy-chat-function-stream-upstream" },
+    setActiveScopes: ["claude-code", "codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_legacy_function_stream\",\"created\":1710000048,\"model\":\"legacy-chat\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_legacy_function_stream\",\"created\":1710000048,\"model\":\"legacy-chat\",\"choices\":[{\"delta\":{\"function_call\":{\"name\":\"lookup\",\"arguments\":\"\"}}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_legacy_function_stream\",\"created\":1710000048,\"model\":\"legacy-chat\",\"choices\":[{\"delta\":{\"function_call\":{\"arguments\":\"{\\\"query\\\":\"}}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_legacy_function_stream\",\"created\":1710000048,\"model\":\"legacy-chat\",\"choices\":[{\"delta\":{\"function_call\":{\"arguments\":\"\\\"docs\\\"}\"}},\"finish_reason\":\"function_call\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "legacy-chat",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "Use lookup" }],
+          tools: [{ name: "lookup", input_schema: { type: "object" } }],
+        },
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.deepEqual(anthropicEvents.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.deepEqual(anthropicEvents[1].data.content_block, {
+        type: "tool_use",
+        id: "call_lookup",
+        name: "lookup",
+        input: {},
+      });
+      assert.equal(anthropicEvents[2].data.delta.partial_json, "{\"query\":");
+      assert.equal(anthropicEvents[3].data.delta.partial_json, "\"docs\"}");
+      assert.equal(anthropicEvents[5].data.delta.stop_reason, "tool_use");
+
+      const responses = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "legacy-chat",
+          stream: true,
+          input: "Use lookup",
+          tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }],
+        },
+      });
+      assert.equal(responses.status, 200, responses.body);
+      const responseEvents = parseSseEvents(responses.body);
+      assert.deepEqual(
+        responseEvents
+          .filter((item) => item.event === "response.function_call_arguments.delta")
+          .map((item) => item.data.delta),
+        ["{\"query\":", "\"docs\"}"],
+      );
+      const outputItem = responseEvents.find((item) => item.event === "response.output_item.added" && item.data.item.type === "function_call");
+      assert.deepEqual(outputItem.data.item, {
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "in_progress",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{}",
+      });
+      const completed = responseEvents.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output, [{
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://legacy-chat-function-stream-upstream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-legacy-chat-function-stream-upstream");
+  assert.equal(upstreamCalls[0].body.stream, true);
+  assert.equal(upstreamCalls[1].url, "https://legacy-chat-function-stream-upstream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].body.stream, true);
+});
+
 test("model gateway adapts streaming chat tool calls to codex responses sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

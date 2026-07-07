@@ -134,6 +134,9 @@ export async function writeAnthropicMessagesSseFromChatSse(
       if (Array.isArray(delta.tool_calls)) {
         for (const toolDelta of delta.tool_calls) pushAnthropicToolDeltaFromChat(state, res, toolDelta);
       }
+      if (!Array.isArray(delta.tool_calls) && isRecord(delta.function_call)) {
+        pushAnthropicToolDeltaFromChat(state, res, legacyChatFunctionCallDeltaToToolCall(delta.function_call));
+      }
       const finishReason = stringOrNull(choice.finish_reason);
       if (finishReason) {
         sawFinishReason = true;
@@ -1318,6 +1321,24 @@ function pushAnthropicToolDeltaFromChat(
       },
     });
   }
+}
+
+function legacyChatFunctionCallDeltaToToolCall(functionCall: JsonRecord): JsonRecord {
+  const name = stringOrNull(functionCall.name);
+  return {
+    index: 0,
+    ...(name ? { id: legacyChatFunctionCallId(name) } : {}),
+    type: "function",
+    function: {
+      ...(name ? { name } : {}),
+      arguments: typeof functionCall.arguments === "string" ? functionCall.arguments : "",
+    },
+  };
+}
+
+function legacyChatFunctionCallId(name: string | null): string {
+  if (!name) return "call_legacy_function";
+  return `call_${name.replace(/[^A-Za-z0-9_-]/g, "_") || "legacy_function"}`;
 }
 
 function finalizeAnthropicFromChat(
