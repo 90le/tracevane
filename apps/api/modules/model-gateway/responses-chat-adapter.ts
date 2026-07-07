@@ -702,6 +702,9 @@ function chatUnsupportedRequestControlsToResponsesText(request: JsonRecord): str
     "prediction",
     "presence_penalty",
     "seed",
+    "tool_resources",
+    "web_search_options",
+    "extra_body",
   ];
   const notes = unsupportedFields
     .filter((field) => request[field] !== undefined)

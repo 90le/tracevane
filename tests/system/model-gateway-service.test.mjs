@@ -12777,6 +12777,9 @@ test("model gateway preserves supported responses controls and strips rejected c
           prompt_cache_retention: "24h",
           safety_identifier: "user-hash-123",
           seed: 123,
+          tool_resources: { file_search: { vector_store_ids: ["vs_chat"] } },
+          web_search_options: { search_context_size: "low" },
+          extra_body: { provider_hint: "chat-only" },
           stop: ["STOP"],
           store: false,
           stream_options: { include_usage: true },
@@ -12831,7 +12834,7 @@ test("model gateway preserves supported responses controls and strips rejected c
         role: "user",
         content: [{
           type: "input_text",
-          text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
+          text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 tool_resources={"file_search":{"vector_store_ids":["vs_chat"]}} web_search_options={"search_context_size":"low"} extra_body={"provider_hint":"chat-only"} audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
         }],
       },
       {
@@ -12870,6 +12873,9 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("prediction" in upstreamCalls[0].body, false);
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
+  assert.equal("tool_resources" in upstreamCalls[0].body, false);
+  assert.equal("web_search_options" in upstreamCalls[0].body, false);
+  assert.equal("extra_body" in upstreamCalls[0].body, false);
 
   assert.equal(upstreamCalls[1].url, "https://responses-modern-controls.example.test/v1/responses");
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-responses-modern-controls-secret");
