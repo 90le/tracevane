@@ -1609,6 +1609,22 @@ test("model gateway strips Codex account Responses unsupported request parameter
               type: "input_text",
               text: "hello",
               cache_control: { type: "ephemeral" },
+            }, {
+              type: "text",
+              text: "chat-style text part",
+            }, {
+              type: "image_url",
+              image_url: { url: "data:image/png;base64,iVBORw0KGgo=", detail: "low" },
+            }, {
+              type: "file",
+              url: "https://example.test/readme.txt",
+              filename: "readme.txt",
+            }, {
+              type: "input_audio",
+              input_audio: { data: "data:audio/wav;base64,UklGRg==", format: "wav" },
+            }, {
+              type: "input_video",
+              video_url: "https://example.test/video.mp4",
             }],
           }],
           background: false,
@@ -1707,6 +1723,22 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 4), [{
+    type: "input_text",
+    text: "hello",
+  }, {
+    type: "input_text",
+    text: "chat-style text part",
+  }, {
+    type: "input_image",
+    image_url: "data:image/png;base64,iVBORw0KGgo=",
+    detail: "low",
+  }, {
+    type: "input_file",
+    file_url: "https://example.test/readme.txt",
+  }]);
+  assert.equal(JSON.stringify(directUpstreamBody.input).includes("input_audio"), true);
+  assert.equal(JSON.stringify(directUpstreamBody.input).includes("input_video"), true);
   assert.deepEqual(directUpstreamBody.tools, [{
     type: "function",
     name: "echo_probe",

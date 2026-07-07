@@ -4296,14 +4296,73 @@ function codexAccountCallIdFromFunctionCallItem(source: Record<string, unknown>)
 
 function normalizeCodexAccountResponsesInputItem(source: unknown): unknown {
   if (!isRecord(source)) return source;
-  if (source.role === "system") return { ...source, role: "developer" };
-  if (source.type !== "function_call") return source;
+  if (source.type !== "function_call") {
+    const normalized: Record<string, unknown> = source.role === "system" ? { ...source, role: "developer" } : { ...source };
+    if (Array.isArray(normalized.content)) {
+      normalized.content = normalized.content.map(normalizeCodexAccountResponsesContentPart);
+    }
+    return normalized;
+  }
   const callId = codexAccountCallIdFromFunctionCallItem(source);
   if (!callId) return source;
   return {
     ...source,
     id: codexAccountFunctionCallItemId(callId),
     call_id: callId,
+  };
+}
+
+function normalizeCodexAccountResponsesContentPart(source: unknown): unknown {
+  if (!isRecord(source)) return source;
+  const type = normalizeString(source.type);
+  if (type === "text") {
+    return { ...source, type: "input_text" };
+  }
+  if (type === "image_url") {
+    const imageUrl = isRecord(source.image_url) ? normalizeString(source.image_url.url) : normalizeString(source.image_url);
+    if (!imageUrl) return codexAccountUnsupportedContentPartNote(source);
+    const part: Record<string, unknown> = { type: "input_image", image_url: imageUrl };
+    const detail = normalizeString(source.detail) || (isRecord(source.image_url) ? normalizeString(source.image_url.detail) : "");
+    if (detail) part.detail = detail;
+    return part;
+  }
+  if (type === "file" || type === "input_file") {
+    return normalizeCodexAccountResponsesInputFilePart(source);
+  }
+  if (
+    type === "input_text"
+    || type === "input_image"
+    || type === "output_text"
+    || type === "refusal"
+    || type === "computer_screenshot"
+    || type === "summary_text"
+  ) {
+    return source;
+  }
+  return codexAccountUnsupportedContentPartNote(source);
+}
+
+function normalizeCodexAccountResponsesInputFilePart(source: Record<string, unknown>): unknown {
+  const fileId = source.file_id;
+  if (fileId !== undefined) {
+    return { type: "input_file", file_id: fileId };
+  }
+  const fileUrl = source.file_url ?? source.url;
+  if (fileUrl !== undefined) {
+    return { type: "input_file", file_url: fileUrl };
+  }
+  const fileData = source.file_data;
+  if (fileData !== undefined) {
+    const filename = source.filename ?? source.name ?? "input-file";
+    return { type: "input_file", file_data: fileData, filename };
+  }
+  return codexAccountUnsupportedContentPartNote(source);
+}
+
+function codexAccountUnsupportedContentPartNote(source: unknown): Record<string, unknown> {
+  return {
+    type: "input_text",
+    text: `[OpenAI Responses content part omitted for Codex account compatibility: ${stringifyCompact(source)}]`,
   };
 }
 
