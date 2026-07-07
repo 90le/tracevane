@@ -49,18 +49,32 @@ export interface LspHoverResponse extends LspDocumentRef {
   checkedAt: string;
 }
 
+export type LspCompletionItemKind =
+  | "property"
+  | "value"
+  | "snippet"
+  | "function"
+  | "method"
+  | "variable"
+  | "class"
+  | "interface"
+  | "module"
+  | "keyword"
+  | "field";
+
 export interface LspCompletionItem {
   label: string;
   detail?: string | null;
   documentation?: string | null;
   insertText: string;
-  kind: "property" | "value" | "snippet";
+  kind: LspCompletionItemKind;
+  sortText?: string | null;
 }
 
 export interface LspCompletionResponse extends LspDocumentRef {
   type: "completion";
   id?: string | null;
-  provider: "json";
+  provider: "json" | "typescript";
   items: LspCompletionItem[];
   checkedAt: string;
 }

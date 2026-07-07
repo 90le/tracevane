@@ -155,7 +155,10 @@ function completeDocument(
   request: LspCompletionRequest,
 ): LspCompletionResponse {
   const validated = validateInteractionRequest(config, request);
-  if (validated.language !== "json") throw new Error("Only JSON LSP completion is supported in M7.y-D; TypeScript/JavaScript completion is planned for M7.y-E");
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    return completeTypeScriptLike(request, validated);
+  }
+  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP completion are supported in M7.y-E");
   return {
     type: "completion",
     id: request.id ?? null,
@@ -329,6 +332,76 @@ function hoverTypeScriptLike(
   } finally {
     languageService.service.dispose();
   }
+}
+
+function completeTypeScriptLike(
+  request: LspCompletionRequest,
+  validated: ValidatedInteractionRequest,
+): LspCompletionResponse {
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const offset = positionToOffset(validated.content, request.line, request.column);
+    const completions = languageService.service.getCompletionsAtPosition(languageService.fileName, offset, {
+      includeAutomaticOptionalChainCompletions: true,
+      includeCompletionsForImportStatements: false,
+      includeCompletionsForModuleExports: false,
+      includeCompletionsWithClassMemberSnippets: false,
+      includeCompletionsWithInsertText: true,
+      includeCompletionsWithObjectLiteralMethodSnippets: false,
+      includePackageJsonAutoImports: "off",
+    });
+    const items = (completions?.entries ?? []).slice(0, 200).map((entry) => tsCompletionEntryToLspItem(entry));
+    return {
+      type: "completion",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      items,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function tsCompletionEntryToLspItem(entry: ts.CompletionEntry): LspCompletionItem {
+  return {
+    label: entry.name,
+    detail: entry.kindModifiers ? `${entry.kind} ${entry.kindModifiers}` : entry.kind,
+    documentation: null,
+    insertText: entry.insertText || entry.name,
+    kind: tsCompletionKindToLspKind(entry.kind),
+    sortText: entry.sortText || null,
+  };
+}
+
+function tsCompletionKindToLspKind(kind: string): LspCompletionItem["kind"] {
+  if (kind === ts.ScriptElementKind.functionElement) return "function";
+  if (
+    kind === ts.ScriptElementKind.memberFunctionElement
+    || kind === ts.ScriptElementKind.constructSignatureElement
+    || kind === ts.ScriptElementKind.callSignatureElement
+  ) return "method";
+  if (
+    kind === ts.ScriptElementKind.constElement
+    || kind === ts.ScriptElementKind.letElement
+    || kind === ts.ScriptElementKind.variableElement
+    || kind === ts.ScriptElementKind.localVariableElement
+    || kind === ts.ScriptElementKind.alias
+  ) return "variable";
+  if (kind === ts.ScriptElementKind.classElement) return "class";
+  if (kind === ts.ScriptElementKind.interfaceElement) return "interface";
+  if (kind === ts.ScriptElementKind.moduleElement || kind === ts.ScriptElementKind.externalModuleName) return "module";
+  if (kind === ts.ScriptElementKind.keyword) return "keyword";
+  if (
+    kind === ts.ScriptElementKind.memberVariableElement
+    || kind === ts.ScriptElementKind.memberGetAccessorElement
+    || kind === ts.ScriptElementKind.memberSetAccessorElement
+  ) return "field";
+  return "value";
 }
 
 function defineTypeScriptLike(

@@ -1,5 +1,7 @@
 import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
+import type { LspCompletionItem } from "../../../../../../types/lsp";
+
 import { editorModelUriString } from "@/shared/editor-core";
 import { appendWorkbenchOutput } from "../output/outputStore";
 import { requestLspCompletion, requestLspDefinition, requestLspHover } from "./lspInteractionClient";
@@ -14,7 +16,7 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
   appendWorkbenchOutput({
     channel: { id: "lsp", label: "LSP", kind: "lsp" },
     level: "info",
-    text: "LSP interaction providers registered: JSON hover/completion/definition; TypeScript/JavaScript hover/definition",
+    text: "LSP interaction providers registered: JSON hover/completion/definition; TypeScript/JavaScript hover/definition/completion",
   });
 
   monacoApi.languages.registerHoverProvider("json", {
@@ -124,6 +126,38 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
       },
     });
 
+
+    monacoApi.languages.registerCompletionItemProvider(language, {
+      triggerCharacters: [".", "'", '"', "<"],
+      provideCompletionItems: async (model, position) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return { suggestions: [] };
+        const response = await requestLspCompletion({
+          type: "completion",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          line: position.lineNumber,
+          column: position.column,
+        });
+        const word = model.getWordUntilPosition(position);
+        const range = new monacoApi.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+        return {
+          suggestions: response.items.map((item) => ({
+            label: item.label,
+            detail: item.detail ?? undefined,
+            documentation: item.documentation ?? undefined,
+            insertText: item.insertText,
+            insertTextRules: item.kind === "snippet" ? monacoApi.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+            kind: toMonacoCompletionKind(monacoApi, item),
+            range,
+            sortText: item.sortText || `tracevane-${item.label}`,
+          })),
+        };
+      },
+    });
+
     monacoApi.languages.registerDefinitionProvider(language, {
       provideDefinition: async (model, position) => {
         const ref = editorRefFromModelUri(model.uri.toString());
@@ -148,6 +182,34 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
         }));
       },
     });
+  }
+}
+
+
+function toMonacoCompletionKind(monacoApi: typeof monaco, item: LspCompletionItem): monaco.languages.CompletionItemKind {
+  switch (item.kind) {
+    case "property":
+      return monacoApi.languages.CompletionItemKind.Property;
+    case "snippet":
+      return monacoApi.languages.CompletionItemKind.Snippet;
+    case "function":
+      return monacoApi.languages.CompletionItemKind.Function;
+    case "method":
+      return monacoApi.languages.CompletionItemKind.Method;
+    case "variable":
+      return monacoApi.languages.CompletionItemKind.Variable;
+    case "class":
+      return monacoApi.languages.CompletionItemKind.Class;
+    case "interface":
+      return monacoApi.languages.CompletionItemKind.Interface;
+    case "module":
+      return monacoApi.languages.CompletionItemKind.Module;
+    case "keyword":
+      return monacoApi.languages.CompletionItemKind.Keyword;
+    case "field":
+      return monacoApi.languages.CompletionItemKind.Field;
+    default:
+      return monacoApi.languages.CompletionItemKind.Value;
   }
 }
 
