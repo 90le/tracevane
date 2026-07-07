@@ -12257,6 +12257,101 @@ test("model gateway adapts anthropic messages through openai chat providers", as
   });
 });
 
+test("model gateway adapts legacy Chat function_call responses to Anthropic tool_use", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-legacy-chat-function-response",
+      name: "Anthropic Legacy Chat Function Response",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-legacy-chat-function-response.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-anthropic-legacy-chat-function-response-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_legacy_function_to_anthropic",
+      created: 1_710_000_042,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          function_call: {
+            name: "lookup",
+            arguments: "{\"query\":\"docs\"}",
+          },
+        },
+        finish_reason: "function_call",
+      }],
+      usage: {
+        prompt_tokens: 8,
+        completion_tokens: 3,
+        total_tokens: 11,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "Use lookup." }],
+          tools: [{ name: "lookup", input_schema: { type: "object" } }],
+        },
+      });
+
+      assert.equal(messages.status, 200);
+      assert.equal(messages.body.id, "chatcmpl_legacy_function_to_anthropic");
+      assert.deepEqual(messages.body.content, [
+        { type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } },
+      ]);
+      assert.equal(messages.body.stop_reason, "tool_use");
+      assert.deepEqual(messages.body.usage, { input_tokens: 8, output_tokens: 3 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-legacy-chat-function-response.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-legacy-chat-function-response-secret");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "gpt-chat",
+    messages: [{ role: "user", content: "Use lookup." }],
+    stream: false,
+    max_tokens: 64,
+    tools: [{
+      type: "function",
+      function: { name: "lookup", parameters: { type: "object" } },
+    }],
+  });
+});
+
 test("model gateway ignores chat tool finish reason without tool calls for anthropic messages", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

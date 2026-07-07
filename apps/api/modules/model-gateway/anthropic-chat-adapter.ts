@@ -316,6 +316,8 @@ export function adaptChatCompletionResponseToAnthropicMessages(
       .map(mapChatToolCallToAnthropicToolUse)
       .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
     : [];
+  const legacyFunctionToolUse = mapLegacyChatFunctionCallMessageToAnthropic(message.function_call);
+  if (legacyFunctionToolUse) toolUses.push(legacyFunctionToolUse);
   const content: JsonRecord[] = [];
   const reasoningBlocks = chatReasoningDetailsToAnthropicBlocks(message.reasoning_details);
   if (reasoningBlocks.length) {
