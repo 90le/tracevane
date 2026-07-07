@@ -10460,6 +10460,86 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
   assert.equal(upstreamCalls[0].body.parallel_tool_calls, false);
 });
 
+test("model gateway preserves Responses-style Chat input image parts for Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-responses-input-image",
+      name: "Chat Responses Input Image Provider",
+      appScopes: ["opencode"],
+      baseUrl: "https://chat-responses-input-image.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-responses-input-image-secret" },
+    setActiveScopes: ["opencode"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_chat_input_image",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Image input preserved." }],
+      }],
+      usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: "Describe this image." },
+              { type: "input_image", image_url: "https://example.test/image.png", detail: "low" },
+              { type: "input_image", file_id: "file_image_123" },
+            ],
+          }],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.choices[0].message.content, "Image input preserved.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-responses-input-image.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-responses-input-image-secret");
+  assert.deepEqual(upstreamCalls[0].body.input, [{
+    role: "user",
+    content: [
+      { type: "input_text", text: "Describe this image." },
+      { type: "input_image", image_url: "https://example.test/image.png", detail: "low" },
+      { type: "input_image", file_id: "file_image_123" },
+    ],
+  }]);
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

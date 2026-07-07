@@ -374,6 +374,11 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       }
       continue;
     }
+    if (type === "input_image" && role !== "assistant") {
+      const imagePart = chatInputImagePartToResponsesInputImage(part);
+      if (imagePart) parts.push(imagePart);
+      continue;
+    }
     if ((type === "file" || type === "input_file") && role !== "assistant") {
       const filePart = chatFilePartToResponsesInputFile(part);
       if (filePart) parts.push(filePart);
@@ -386,6 +391,15 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
     if (text) parts.push({ type: textType, text });
   }
   return parts;
+}
+
+function chatInputImagePartToResponsesInputImage(part: JsonRecord): JsonRecord | null {
+  const mapped: JsonRecord = { type: "input_image" };
+  for (const key of ["image_url", "file_id", "detail"] as const) {
+    if (part[key] !== undefined) mapped[key] = part[key];
+  }
+  if (mapped.image_url === undefined && part.url !== undefined) mapped.image_url = part.url;
+  return Object.keys(mapped).length > 1 ? mapped : null;
 }
 
 function chatFilePartToResponsesInputFile(part: JsonRecord): JsonRecord | null {
