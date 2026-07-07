@@ -13229,6 +13229,20 @@ test("model gateway adapts chat completions through native anthropic messages pr
       body: String(init.body || ""),
     });
     if (upstreamCalls.length === 2) {
+      return new Response(JSON.stringify({
+        id: "msg_chat_adapter_json_object",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "JSON object requested." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 5, output_tokens: 3 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (upstreamCalls.length === 3) {
       const upstreamSse = [
         "event: message_start",
         "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_chat_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":1},\"service_tier\":\"priority\"}}}",
@@ -13406,6 +13420,18 @@ test("model gateway adapts chat completions through native anthropic messages pr
       });
       assert.equal(chat.body.service_tier, "priority");
 
+      const jsonObjectChat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "return a json object" }],
+          response_format: { type: "json_object" },
+          max_tokens: 64,
+        },
+      });
+      assert.equal(jsonObjectChat.status, 200);
+      assert.equal(jsonObjectChat.body.choices[0].message.content, "JSON object requested.");
+
       const stream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         body: {
@@ -13435,6 +13461,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["openai_chat_completions", "/v1/chat/completions", "success"],
         ["openai_chat_completions", "/v1/chat/completions", "success"],
+        ["openai_chat_completions", "/v1/chat/completions", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-chat-anthropic-secret"));
     });
@@ -13442,7 +13469,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, null);
@@ -13514,6 +13541,16 @@ test("model gateway adapts chat completions through native anthropic messages pr
   assert.equal(upstreamCalls[1].xApiKey, "sk-chat-anthropic-secret");
   assert.equal(upstreamCalls[1].anthropicVersion, "2023-06-01");
   assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
+    model: "claude-native",
+    max_tokens: 64,
+    messages: [{ role: "user", content: "return a json object" }],
+    output_config: { format: { type: "json_object" } },
+  });
+  assert.equal(upstreamCalls[2].url, "https://chat-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[2].method, "POST");
+  assert.equal(upstreamCalls[2].xApiKey, "sk-chat-anthropic-secret");
+  assert.equal(upstreamCalls[2].anthropicVersion, "2023-06-01");
+  assert.deepEqual(JSON.parse(upstreamCalls[2].body), {
     model: "claude-native",
     max_tokens: 1024,
     messages: [{ role: "user", content: "stream please" }],

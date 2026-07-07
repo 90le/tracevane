@@ -1114,6 +1114,9 @@ function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): 
       ...responseFormat.json_schema,
     };
   }
+  if (responseFormat.type === "json_object" || responseFormat.type === "text") {
+    return { type: responseFormat.type };
+  }
   return undefined;
 }
 
