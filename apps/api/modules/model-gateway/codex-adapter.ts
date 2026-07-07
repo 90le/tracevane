@@ -83,6 +83,10 @@ export function adaptCodexResponsesRequestToChat(
   if (unsupportedResponseFormatText) {
     messages.push({ role: "user", content: unsupportedResponseFormatText });
   }
+  const unsupportedRequestControlsText = responsesUnsupportedRequestControlsToText(request);
+  if (unsupportedRequestControlsText) {
+    messages.push({ role: "user", content: unsupportedRequestControlsText });
+  }
   if (!messages.length) {
     messages.push({ role: "user", content: "" });
   }
@@ -848,6 +852,24 @@ function responsesUnsupportedResponseFormatToText(responseFormat: unknown): stri
   if (responseFormat === undefined) return "";
   if (mapChatResponseFormatToChatResponseFormat(responseFormat) !== undefined) return "";
   return `OpenAI Responses unsupported response_format for Chat: ${stringifyCompact(responseFormat)}`;
+}
+
+function responsesUnsupportedRequestControlsToText(request: JsonRecord): string {
+  const unsupportedFields = [
+    "background",
+    "conversation",
+    "include",
+    "max_tool_calls",
+    "prompt",
+    "store",
+    "truncation",
+  ];
+  const notes = unsupportedFields
+    .filter((field) => request[field] !== undefined)
+    .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  return notes.length
+    ? `OpenAI Responses request controls preserved for Chat: ${notes.join(" ")}`
+    : "";
 }
 
 function responsesTextVerbosity(text: unknown): "low" | "medium" | "high" | null {
