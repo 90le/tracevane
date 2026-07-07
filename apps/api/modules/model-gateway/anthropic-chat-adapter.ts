@@ -778,6 +778,14 @@ function mapChatFunctionsToAnthropic(functions: unknown): JsonRecord[] {
 
 function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
+  if (isOpenAIWebSearchToolType(tool.type)) {
+    const mapped: JsonRecord = {
+      type: "web_search_20250305",
+      name: "web_search",
+    };
+    if (typeof tool.max_uses === "number") mapped.max_uses = tool.max_uses;
+    return mapped;
+  }
   if (tool.type !== "function") return null;
   const fn = isRecord(tool.function) ? tool.function : {};
   const name = stringOrNull(fn.name);
@@ -804,12 +812,17 @@ function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
   if (toolChoice === "auto" || toolChoice === "none") return { type: toolChoice };
   if (toolChoice === "required") return { type: "any" };
   if (!isRecord(toolChoice)) return toolChoice;
+  if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: "tool", name: "web_search" };
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);
     return name ? { type: "tool", name } : toolChoice;
   }
   return toolChoice;
+}
+
+function isOpenAIWebSearchToolType(type: unknown): boolean {
+  return type === "web_search_preview" || type === "web_search_preview_2025_03_11";
 }
 
 function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToolCalls: unknown): unknown {

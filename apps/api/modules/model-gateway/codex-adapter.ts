@@ -778,6 +778,7 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
   if (!isRecord(toolChoice)) return undefined;
+  if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: toolChoice.type };
   if (toolChoice.type === "function") {
     const name = stringOrNull(toolChoice.name) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null);
     return name ? { type: "function", function: { name } } : undefined;
@@ -793,8 +794,12 @@ function responsesUnsupportedToolChoiceToText(toolChoice: unknown): string {
   if (toolChoice === undefined) return "";
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return "";
   if (!isRecord(toolChoice)) return "";
-  if (toolChoice.type === "function" || toolChoice.type === "custom") return "";
+  if (toolChoice.type === "function" || toolChoice.type === "custom" || isOpenAIWebSearchToolType(toolChoice.type)) return "";
   return `[OpenAI Responses tool_choice ${stringifyCompact(toolChoice)}]`;
+}
+
+function isOpenAIWebSearchToolType(type: unknown): boolean {
+  return type === "web_search_preview" || type === "web_search_preview_2025_03_11";
 }
 
 function mapChatToolCallToResponses(

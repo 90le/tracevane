@@ -10574,7 +10574,7 @@ test("model gateway preserves Responses built-in tool output input when degradin
   ]);
 });
 
-test("model gateway degrades Responses built-in tool choices safely for chat providers", async () => {
+test("model gateway preserves Responses built-in web search choices through Chat and Anthropic providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const ctx = createTracevaneContext({ config, logger: createLogger() });
@@ -10590,6 +10590,18 @@ test("model gateway degrades Responses built-in tool choices safely for chat pro
     secret: { apiKey: "sk-chat-builtin-tool-choice-secret" },
     setActiveScopes: ["codex"],
   });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-builtin-tool-choice",
+      name: "Anthropic Builtin Tool Choice Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-builtin-tool-choice.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-anthropic-builtin-tool-choice-secret" },
+    setActiveScopes: ["openclaw"],
+  });
 
   const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
@@ -10598,8 +10610,23 @@ test("model gateway degrades Responses built-in tool choices safely for chat pro
     upstreamCalls.push({
       url: String(url),
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
       body: JSON.parse(String(init.body || "{}")),
     });
+    if (String(url).includes("anthropic-builtin-tool-choice")) {
+      return new Response(JSON.stringify({
+        id: "msg_builtin_tool_choice",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "Anthropic web search accepted." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 8, output_tokens: 4 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({
       id: "chatcmpl_builtin_tool_choice",
       object: "chat.completion",
@@ -10630,22 +10657,44 @@ test("model gateway degrades Responses built-in tool choices safely for chat pro
       });
       assert.equal(response.status, 200, response.body);
       assert.equal(response.body.output[0].content[0].text, "Builtin choice fallback accepted.");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "claude-native",
+          input: "Search current docs with Claude.",
+          tools: [{ type: "web_search_preview", search_context_size: "low" }],
+          tool_choice: { type: "web_search_preview" },
+        },
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.output[0].content[0].text, "Anthropic web search accepted.");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://chat-builtin-tool-choice.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-builtin-tool-choice-secret");
   assert.deepEqual(upstreamCalls[0].body.messages, [
     { role: "user", content: "Search the current docs." },
-    { role: "user", content: "[OpenAI Responses tool_choice {\"type\":\"web_search_preview\"}]" },
   ]);
   assert.deepEqual(upstreamCalls[0].body.tools, [
     { type: "web_search_preview", search_context_size: "low" },
   ]);
-  assert.equal("tool_choice" in upstreamCalls[0].body, false);
+  assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "web_search_preview" });
+
+  assert.equal(upstreamCalls[1].url, "https://anthropic-builtin-tool-choice.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-anthropic-builtin-tool-choice-secret");
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "Search current docs with Claude." },
+  ]);
+  assert.deepEqual(upstreamCalls[1].body.tools, [
+    { type: "web_search_20250305", name: "web_search" },
+  ]);
+  assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "tool", name: "web_search" });
 });
 
 test("model gateway accepts direct-name Chat function tool choices across native adapters", async () => {
