@@ -15670,6 +15670,13 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
         content: [{ type: "output_text", text: "phase preamble" }],
       },
       {
+        id: "msg_status_only",
+        type: "message",
+        status: "incomplete",
+        role: "assistant",
+        content: [{ type: "output_text", text: "status-only update" }],
+      },
+      {
         id: "fc_phase_lookup",
         type: "function_call",
         status: "completed",
@@ -15737,6 +15744,8 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
   assert.match(chatMessages, /OpenAI Responses output item metadata preserved for Chat adapters/);
   assert.match(chatMessages, /id=msg_phase_preamble/);
   assert.match(chatMessages, /phase=preamble/);
+  assert.match(chatMessages, /id=msg_status_only/);
+  assert.match(chatMessages, /status=incomplete/);
   assert.match(chatMessages, /id=fc_phase_lookup/);
   assert.match(chatMessages, /call_id=call_phase_lookup/);
   assert.match(chatMessages, /phase=tool_call/);
@@ -15752,6 +15761,8 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
   assert.match(anthropicMessages, /OpenAI Responses output item metadata preserved for Chat adapters/);
   assert.match(anthropicMessages, /id=msg_phase_preamble/);
   assert.match(anthropicMessages, /phase=preamble/);
+  assert.match(anthropicMessages, /id=msg_status_only/);
+  assert.match(anthropicMessages, /status=incomplete/);
   assert.match(anthropicMessages, /id=fc_phase_lookup/);
   assert.match(anthropicMessages, /call_id=call_phase_lookup/);
   assert.match(anthropicMessages, /phase=tool_call/);

@@ -496,7 +496,13 @@ function mapResponsesInputItemToChatMessage(
 }
 
 function responsesOutputItemMetadataToChatText(item: unknown): string {
-  if (!isRecord(item) || item.phase === undefined) return "";
+  if (!isRecord(item)) return "";
+  const type = stringOrNull(item.type);
+  const hasPhase = item.phase !== undefined;
+  const isMessageOutput = type === "message";
+  if (!hasPhase && !isMessageOutput) return "";
+  const hasMetadata = item.id !== undefined || item.status !== undefined || item.phase !== undefined;
+  if (!hasMetadata) return "";
   const fields = ["type", "id", "call_id", "status", "phase"] as const;
   const notes = fields
     .filter((field) => item[field] !== undefined)
