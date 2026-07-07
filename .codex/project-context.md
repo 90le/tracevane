@@ -100,7 +100,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-E-B JSON official language service migration.
 - Done: M11-E-C HTML/CSS lightweight language services guarded implementation.
 - Done: M11-E-D multi-language provider acceptance closeout.
-- Next: M11-F external language server gateway research plan.
+- Done: M11-F-A external language server gateway research plan.
+- Next: M11-F-B external language server gateway skeleton guarded implementation.
 
 ## Required reading by task
 
