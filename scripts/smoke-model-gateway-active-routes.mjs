@@ -32,6 +32,7 @@ function parseArgs(argv) {
     lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
     smokeRetries: DEFAULT_SMOKE_RETRIES,
     toolSmoke: false,
+    streamToolSmoke: false,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -57,6 +58,10 @@ function parseArgs(argv) {
     else if (arg === "--smoke-retries") options.smokeRetries = nonNegativeInt(argv[++index], DEFAULT_SMOKE_RETRIES);
     else if (arg.startsWith("--smoke-retries=")) options.smokeRetries = nonNegativeInt(arg.slice("--smoke-retries=".length), DEFAULT_SMOKE_RETRIES);
     else if (arg === "--tool-smoke") options.toolSmoke = true;
+    else if (arg === "--stream-tool-smoke") {
+      options.toolSmoke = true;
+      options.streamToolSmoke = true;
+    }
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
     else if (arg === "--expect-routes") options.expectRoutes = parseScopeMap(argv[++index] || "");
@@ -126,6 +131,8 @@ Options:
   --smoke-retries <n>
                     retry transient active-route smoke fetch failures; default: ${DEFAULT_SMOKE_RETRIES}
   --tool-smoke     additionally force a real gateway_smoke_tool call per scope
+  --stream-tool-smoke
+                    also force gateway_smoke_tool through streaming client responses
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -244,6 +251,7 @@ function createResult(options, provider, originalActiveProviders) {
     preflightWarnings: [],
     routeSmokes: [],
     toolSmokes: [],
+    streamToolSmokes: [],
     expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
@@ -650,6 +658,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         timeoutMs: options.timeoutMs,
         input: options.input,
         toolSmoke: Boolean(options.toolSmokeRequest),
+        ...(typeof options.streamRequest === "boolean" ? { stream: options.streamRequest } : {}),
       }),
       timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
     });
@@ -735,6 +744,10 @@ function printResult(result, json) {
   }
   for (const smoke of result.toolSmokes || []) {
     console.log(`- ${smoke.scope} tool: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.streamToolSmokes || []) {
+    console.log(`- ${smoke.scope} stream tool: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
   }
   if (result.setupFailures.length) {
@@ -940,6 +953,12 @@ async function main() {
               result.toolSmokes.push(await runActiveRouteSmoke(toolOptions, key, scope));
             }
           }
+          if (options.streamToolSmoke) {
+            const streamToolOptions = { ...options, toolSmokeRequest: true, streamRequest: true };
+            for (const scope of options.scopes) {
+              result.streamToolSmokes.push(await runActiveRouteSmoke(streamToolOptions, key, scope));
+            }
+          }
           addExpectationFailures(result, options);
         }
       }
@@ -949,9 +968,11 @@ async function main() {
 
     result.ok = result.routeSmokes.length === options.scopes.length
       && (!options.toolSmoke || result.toolSmokes.length === options.scopes.length)
+      && (!options.streamToolSmoke || result.streamToolSmokes.length === options.scopes.length)
       && result.preflightFailures.length === 0
       && result.routeSmokes.every((item) => item.ok)
       && (!options.toolSmoke || result.toolSmokes.every((item) => item.ok))
+      && (!options.streamToolSmoke || result.streamToolSmokes.every((item) => item.ok))
       && result.expectationFailures.length === 0
       && result.setupFailures.length === 0
       && result.restoreFailures.length === 0

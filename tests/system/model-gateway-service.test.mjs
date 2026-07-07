@@ -7471,6 +7471,16 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     seenUrl = String(url);
     seenHeaders = Object.fromEntries(new Headers(init.headers).entries());
     seenBody = JSON.parse(String(init.body || "{}"));
+    if (seenBody.stream === true && seenBody.tool_choice?.name === "gateway_smoke_tool") {
+      return new Response('event: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"type":"function_call","name":"gateway_smoke_tool","arguments":"{\\"value\\":\\"GATEWAY_OK\\"}"}}\n\n', {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-openclaw-model-gateway-provider": "route-chat",
+          "x-openclaw-model-gateway-endpoint": "route-chat-fast",
+        },
+      });
+    }
     return new Response(JSON.stringify(seenBody.tool_choice?.name === "gateway_smoke_tool"
       ? {
         id: "resp-route-tool-smoke",
@@ -7521,6 +7531,17 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(toolResult.ok, true);
     assert.match(seenUrl, /\/v1\/responses$/);
     assert.equal(seenBody.tools[0].name, "gateway_smoke_tool");
+    assert.deepEqual(seenBody.tool_choice, { type: "function", name: "gateway_smoke_tool" });
+
+    const streamToolResult = await service.testActiveRoute(undefined, {
+      scope: "codex",
+      input: "Call the smoke tool in a stream",
+      model: "gpt-route",
+      toolSmoke: true,
+      stream: true,
+    });
+    assert.equal(streamToolResult.ok, true);
+    assert.equal(seenBody.stream, true);
     assert.deepEqual(seenBody.tool_choice, { type: "function", name: "gateway_smoke_tool" });
   } finally {
     globalThis.fetch = originalFetch;
@@ -7660,6 +7681,15 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     const headers = new Headers(init.headers);
     calls.push({ url: String(url), body, anthropicBeta: headers.get("anthropic-beta") });
     if (String(url).endsWith("/v1/messages")) {
+      if (body.stream === true && body.tool_choice?.type === "tool") {
+        return new Response('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_gateway_smoke","name":"gateway_smoke_tool","input":{}}}\n\n', {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream",
+            "x-openclaw-model-gateway-provider": "claude-chat",
+          },
+        });
+      }
       return new Response(JSON.stringify({
         id: "msg_route_smoke",
         type: "message",
@@ -7679,6 +7709,15 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
       });
     }
     const forcedChatTool = body.tool_choice?.type === "function";
+    if (body.stream === true && forcedChatTool) {
+      return new Response('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"type":"function","function":{"name":"gateway_smoke_tool","arguments":"{\\"value\\":\\"GATEWAY_OK\\"}"}}]}}]}\n\n', {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-openclaw-model-gateway-provider": "opencode-responses",
+        },
+      });
+    }
     return new Response(JSON.stringify({
       id: "chatcmpl_route_smoke",
       object: "chat.completion",
@@ -7716,10 +7755,24 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
       model: "gpt-5.5",
       toolSmoke: true,
     });
+    const claudeStreamTool = await service.testActiveRoute(undefined, {
+      scope: "claude-code",
+      model: "glm-5.2",
+      toolSmoke: true,
+      stream: true,
+    });
+    const opencodeStreamTool = await service.testActiveRoute(undefined, {
+      scope: "opencode",
+      model: "gpt-5.5",
+      toolSmoke: true,
+      stream: true,
+    });
     assert.equal(claude.ok, true);
     assert.equal(opencode.ok, true);
     assert.equal(claudeTool.ok, true);
     assert.equal(opencodeTool.ok, true);
+    assert.equal(claudeStreamTool.ok, true);
+    assert.equal(opencodeStreamTool.ok, true);
     assert.equal(calls[0].body.model, "glm-5.2");
     assert.equal(calls[0].body.stream, true);
     assert.equal(calls[0].anthropicBeta, "fine-grained-tool-streaming-2025-05-14");
@@ -7744,6 +7797,10 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     assert.deepEqual(calls[2].body.tool_choice, { type: "tool", name: "gateway_smoke_tool" });
     assert.equal(calls[3].body.stream, false);
     assert.deepEqual(calls[3].body.tool_choice, { type: "function", function: { name: "gateway_smoke_tool" } });
+    assert.equal(calls[4].body.stream, true);
+    assert.deepEqual(calls[4].body.tool_choice, { type: "tool", name: "gateway_smoke_tool" });
+    assert.equal(calls[5].body.stream, true);
+    assert.deepEqual(calls[5].body.tool_choice, { type: "function", function: { name: "gateway_smoke_tool" } });
   } finally {
     globalThis.fetch = originalFetch;
   }
