@@ -149,6 +149,7 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     "temperature",
     "top_p",
     "metadata",
+    "service_tier",
   ]);
   const verbosity = verbosityOrNull(request.verbosity);
   if (verbosity) anthropicRequest.verbosity = verbosity;
