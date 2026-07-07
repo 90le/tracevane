@@ -15055,7 +15055,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           max_tokens: 1024,
           messages: [{ role: "user", content: "Think." }],
           metadata: { trace_id: "chat-strict-should-strip", user_id: "claude-chat-user" },
-          output_config: { effort: "xhigh" },
+          thinking: { type: "enabled", budget_tokens: 9000 },
           service_tier: "standard_only",
           stream: false,
         },
@@ -15106,12 +15106,36 @@ test("model gateway carries reasoning effort across responses chat and anthropic
         },
       });
       assert.equal(anthropicToResponses.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-to-responses-thinking-budget",
+          name: "Anthropic To Responses Thinking Budget",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-to-responses-thinking-budget.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-to-responses-thinking-budget" },
+        setActiveScopes: ["claude-code"],
+      });
+      const anthropicThinkingBudgetToResponses = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoner",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Think with a budget." }],
+          thinking: { type: "enabled", budget_tokens: 9000 },
+          stream: false,
+        },
+      });
+      assert.equal(anthropicThinkingBudgetToResponses.status, 200);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 5);
+  assert.equal(upstreamCalls.length, 6);
   assert.equal(upstreamCalls[0].url, "https://responses-to-anthropic-reasoning.example.test/v1/messages");
   assert.deepEqual(upstreamCalls[0].body.thinking, { type: "adaptive" });
   assert.deepEqual(upstreamCalls[0].body.output_config, { effort: "high" });
@@ -15127,10 +15151,11 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   assert.equal("reasoning" in upstreamCalls[2].body, false);
 
   assert.equal(upstreamCalls[3].url, "https://anthropic-to-chat-reasoning.example.test/v1/chat/completions");
-  assert.equal(upstreamCalls[3].body.reasoning_effort, "xhigh");
+  assert.equal(upstreamCalls[3].body.reasoning_effort, "high");
   assert.equal(upstreamCalls[3].body.user, "claude-chat-user");
   assert.equal("metadata" in upstreamCalls[3].body, false);
   assert.equal("service_tier" in upstreamCalls[3].body, false);
+  assert.equal("thinking" in upstreamCalls[3].body, false);
   assert.equal("output_config" in upstreamCalls[3].body, false);
 
   assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
@@ -15151,6 +15176,11 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   }]);
   assert.deepEqual(upstreamCalls[4].body.tool_choice, { type: "web_search_preview" });
   assert.equal("output_config" in upstreamCalls[4].body, false);
+
+  assert.equal(upstreamCalls[5].url, "https://anthropic-to-responses-thinking-budget.example.test/v1/responses");
+  assert.deepEqual(upstreamCalls[5].body.reasoning, { effort: "high" });
+  assert.equal("thinking" in upstreamCalls[5].body, false);
+  assert.equal("output_config" in upstreamCalls[5].body, false);
 });
 
 test("model gateway maps implicit and explicit codex reasoning to glm chat thinking", async () => {

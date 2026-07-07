@@ -2,6 +2,7 @@ import {
   applyAnthropicReasoningOptions,
   mapReasoningEffort,
   reasoningEffort,
+  reasoningEffortOrThinkingBudget,
 } from "./reasoning-options.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -239,7 +240,7 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   const parallelToolCalls = mapAnthropicParallelToolUseToChat(request.tool_choice);
   if (parallelToolCalls !== undefined) chatRequest.parallel_tool_calls = parallelToolCalls;
 
-  const effort = reasoningEffort(request);
+  const effort = reasoningEffortOrThinkingBudget(request);
   const mappedEffort = effort ? mapReasoningEffort(effort, "passthrough") : null;
   if (mappedEffort) chatRequest.reasoning_effort = mappedEffort;
 

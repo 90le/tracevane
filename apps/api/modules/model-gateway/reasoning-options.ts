@@ -146,6 +146,10 @@ export function reasoningEffort(request: JsonRecord): string | null {
     || null;
 }
 
+export function reasoningEffortOrThinkingBudget(request: JsonRecord): string | null {
+  return reasoningEffort(request) || effortFromThinkingConfig(request.thinking);
+}
+
 export function reasoningRequested(request: JsonRecord): boolean | null {
   const effort = reasoningEffort(request);
   if (effort) return !reasoningEffortDisabled(effort);
@@ -205,6 +209,13 @@ function effortFromBudgetTokens(value: unknown): string | null {
   if (value >= 8_192) return "high";
   if (value >= 2_048) return "medium";
   return "low";
+}
+
+function effortFromThinkingConfig(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const type = stringOrNull(value.type)?.toLowerCase();
+  if (type !== "enabled" && type !== "adaptive") return null;
+  return effortFromBudgetTokens(value.budget_tokens) || "high";
 }
 
 function stringOrNull(value: unknown): string | null {
