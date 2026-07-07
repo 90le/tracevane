@@ -713,7 +713,8 @@ function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
   if (toolChoice === "required") return { type: "any" };
   if (!isRecord(toolChoice)) return toolChoice;
   if (toolChoice.type === "function") {
-    const name = isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null;
+    const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
+      || stringOrNull(toolChoice.name);
     return name ? { type: "tool", name } : toolChoice;
   }
   return toolChoice;

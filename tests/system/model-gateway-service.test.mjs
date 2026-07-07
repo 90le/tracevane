@@ -10171,6 +10171,120 @@ test("model gateway degrades Responses built-in tool choices safely for chat pro
   assert.equal("tool_choice" in upstreamCalls[0].body, false);
 });
 
+test("model gateway accepts direct-name Chat function tool choices across native adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-direct-choice-anthropic",
+      name: "Chat Direct Choice Anthropic Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://chat-direct-choice-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-chat-direct-choice-anthropic-secret" },
+    setActiveScopes: ["openclaw"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-direct-choice-responses",
+      name: "Chat Direct Choice Responses Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-direct-choice-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-direct-choice-responses-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    if (String(url).endsWith("/messages")) {
+      return new Response(JSON.stringify({
+        id: "msg_chat_direct_choice",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "Anthropic direct choice accepted." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 5, output_tokens: 4 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_chat_direct_choice",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Responses direct choice accepted." }],
+      }],
+      usage: { input_tokens: 6, output_tokens: 4, total_tokens: 10 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const chatBody = {
+    messages: [{ role: "user", content: "Use lookup." }],
+    tools: [{
+      type: "function",
+      function: {
+        name: "lookup",
+        description: "Lookup records",
+        parameters: { type: "object" },
+      },
+    }],
+    tool_choice: { type: "function", name: "lookup" },
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const anthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: { ...chatBody, model: "claude-native" },
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.choices[0].message.content, "Anthropic direct choice accepted.");
+
+      const responses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: { ...chatBody, model: "gpt-responses" },
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.choices[0].message.content, "Responses direct choice accepted.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://chat-direct-choice-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-chat-direct-choice-anthropic-secret");
+  assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "tool", name: "lookup" });
+  assert.equal(upstreamCalls[1].url, "https://chat-direct-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-chat-direct-choice-responses-secret");
+  assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "function", name: "lookup" });
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
