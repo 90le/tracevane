@@ -10109,6 +10109,9 @@ export function createModelGatewayService(
       [MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER]: "1",
     });
     if (key) headers.set("authorization", `Bearer ${key}`);
+    if (scope === "claude-code") {
+      headers.set("anthropic-beta", "fine-grained-tool-streaming-2025-05-14");
+    }
     const startedAt = nowIso();
     const controller = new AbortController();
     const stream = typeof payload.stream === "boolean"

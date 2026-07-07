@@ -7611,7 +7611,8 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {
     const body = JSON.parse(String(init.body || "{}"));
-    calls.push({ url: String(url), body });
+    const headers = new Headers(init.headers);
+    calls.push({ url: String(url), body, anthropicBeta: headers.get("anthropic-beta") });
     if (String(url).endsWith("/v1/messages")) {
       return new Response(JSON.stringify({
         id: "msg_route_smoke",
@@ -7658,6 +7659,7 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     assert.equal(opencode.ok, true);
     assert.equal(calls[0].body.model, "glm-5.2");
     assert.equal(calls[0].body.stream, true);
+    assert.equal(calls[0].anthropicBeta, "fine-grained-tool-streaming-2025-05-14");
     assert.deepEqual(calls[0].body.metadata, {
       user_id: "tracevane-gateway-smoke",
       session_id: "active-route-smoke",
@@ -7666,6 +7668,7 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     assert.equal(calls[0].body.tools[0].name, "gateway_smoke_tool");
     assert.deepEqual(calls[0].body.tool_choice, { type: "auto" });
     assert.equal(calls[1].body.model, "gpt-5.5");
+    assert.equal(calls[1].anthropicBeta, null);
     assert.ok(Array.isArray(calls[1].body.tools));
     assert.equal(calls[1].body.tools[0].function.name, "gateway_smoke_tool");
     assert.equal(calls[1].body.tool_choice, "auto");
@@ -9755,6 +9758,7 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
       url: String(url),
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
       anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      anthropicBeta: init.headers instanceof Headers ? init.headers.get("anthropic-beta") : null,
       anthropicWorkspaceId: init.headers instanceof Headers ? init.headers.get("anthropic-workspace-id") : null,
       anthropicFutureCapability: init.headers instanceof Headers ? init.headers.get("anthropic-future-capability") : null,
       body: JSON.parse(String(init.body || "{}")),
@@ -9794,6 +9798,7 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
         method: "POST",
         headers: {
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "fine-grained-tool-streaming-2025-05-14",
           "anthropic-workspace-id": "workspace_must_not_reach_responses",
           "anthropic-future-capability": "future-must-not-reach-responses",
         },
@@ -9847,6 +9852,7 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
   assert.equal(upstreamCalls[0].url, "https://responses-mcp-bridge.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-mcp-bridge-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, null);
+  assert.equal(upstreamCalls[0].anthropicBeta, null);
   assert.equal(upstreamCalls[0].anthropicWorkspaceId, null);
   assert.equal(upstreamCalls[0].anthropicFutureCapability, null);
   assert.deepEqual(upstreamCalls[0].body.context_management, {
@@ -13369,6 +13375,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       method: init.method,
       authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
       anthropicVersion: init.headers instanceof Headers ? init.headers.get("anthropic-version") : null,
+      anthropicBeta: init.headers instanceof Headers ? init.headers.get("anthropic-beta") : null,
       anthropicWorkspaceId: init.headers instanceof Headers ? init.headers.get("anthropic-workspace-id") : null,
       anthropicFutureCapability: init.headers instanceof Headers ? init.headers.get("anthropic-future-capability") : null,
       contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
@@ -13449,6 +13456,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         method: "POST",
         headers: {
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "fine-grained-tool-streaming-2025-05-14",
           "anthropic-workspace-id": "workspace_must_not_reach_chat",
           "anthropic-future-capability": "future-must-not-reach-chat",
         },
@@ -13603,6 +13611,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
   assert.equal(upstreamCalls[0].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, null);
+  assert.equal(upstreamCalls[0].anthropicBeta, null);
   assert.equal(upstreamCalls[0].anthropicWorkspaceId, null);
   assert.equal(upstreamCalls[0].anthropicFutureCapability, null);
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
