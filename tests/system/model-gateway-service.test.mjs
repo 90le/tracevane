@@ -12981,7 +12981,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           model: "gpt-reasoner",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Think." }],
-          metadata: { trace_id: "chat-strict-should-strip" },
+          metadata: { trace_id: "chat-strict-should-strip", user_id: "claude-chat-user" },
           output_config: { effort: "xhigh" },
           service_tier: "standard_only",
           stream: false,
@@ -13007,7 +13007,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
           model: "gpt-reasoner",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Think." }],
-          metadata: { trace_id: "responses-should-preserve", session_id: "claude-code-session" },
+          metadata: { trace_id: "responses-should-strip", user_id: "claude-responses-user", session_id: "claude-code-session" },
           service_tier: "standard_only",
           stop_sequences: ["STOP"],
           mcp_servers: [
@@ -13053,12 +13053,14 @@ test("model gateway carries reasoning effort across responses chat and anthropic
 
   assert.equal(upstreamCalls[3].url, "https://anthropic-to-chat-reasoning.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[3].body.reasoning_effort, "xhigh");
+  assert.equal(upstreamCalls[3].body.user, "claude-chat-user");
   assert.equal("metadata" in upstreamCalls[3].body, false);
   assert.equal("service_tier" in upstreamCalls[3].body, false);
   assert.equal("output_config" in upstreamCalls[3].body, false);
 
   assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
   assert.equal("metadata" in upstreamCalls[4].body, false);
+  assert.equal(upstreamCalls[4].body.user, "claude-responses-user");
   assert.equal("stop" in upstreamCalls[4].body, false);
   assert.equal(upstreamCalls[4].body.service_tier, "default");
   assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });

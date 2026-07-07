@@ -191,6 +191,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
     "top_p",
   ]);
   if (options.preserveMetadata && request.metadata !== undefined) chatRequest.metadata = request.metadata;
+  const metadataUserId = anthropicMetadataUserId(request.metadata);
+  if (metadataUserId && chatRequest.user === undefined) chatRequest.user = metadataUserId;
   if (options.preserveServiceTier) {
     const serviceTier = mapAnthropicServiceTierToOpenAI(request.service_tier);
     if (serviceTier) chatRequest.service_tier = serviceTier;
@@ -880,6 +882,11 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
     if (typeof tool.description === "string") fn.description = tool.description;
     return [{ type: "function", function: fn }];
   });
+}
+
+function anthropicMetadataUserId(metadata: unknown): string | null {
+  if (!isRecord(metadata)) return null;
+  return stringOrNull(metadata.user_id);
 }
 
 function mapAnthropicServiceTierToOpenAI(value: unknown): string | null {
