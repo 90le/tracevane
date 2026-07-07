@@ -1050,6 +1050,7 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
   if (!Array.isArray(tools)) return [];
   return tools.flatMap((tool) => {
     if (!isRecord(tool)) return [];
+    if (isAnthropicWebSearchTool(tool)) return [{ type: "web_search_preview" }];
     const name = stringOrNull(tool.name);
     if (!name) return [];
     const fn: JsonRecord = {
@@ -1059,6 +1060,12 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
     if (typeof tool.description === "string") fn.description = tool.description;
     return [{ type: "function", function: fn }];
   });
+}
+
+function isAnthropicWebSearchTool(tool: JsonRecord): boolean {
+  const type = stringOrNull(tool.type);
+  const name = stringOrNull(tool.name);
+  return name === "web_search" && (type === "web_search_20250305" || type === "web_search_20260209");
 }
 
 function mapAnthropicOutputConfigToChatResponseFormat(outputConfig: unknown): unknown {
@@ -1199,6 +1206,7 @@ function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice.type === "any") return "required";
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
+    if (name === "web_search") return { type: "web_search_preview" };
     return name ? { type: "function", function: { name } } : toolChoice;
   }
   return toolChoice;

@@ -12171,8 +12171,11 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             name: "lookup",
             description: "Lookup docs",
             input_schema: { type: "object", properties: { query: { type: "string" } } },
+          }, {
+            type: "web_search_20250305",
+            name: "web_search",
           }],
-          tool_choice: { type: "tool", name: "lookup", disable_parallel_tool_use: true },
+          tool_choice: { type: "tool", name: "web_search", disable_parallel_tool_use: true },
           output_config: {
             format: {
               type: "json_schema",
@@ -12327,11 +12330,10 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         description: "Lookup docs",
         parameters: { type: "object", properties: { query: { type: "string" } } },
       },
+    }, {
+      type: "web_search_preview",
     }],
-    tool_choice: {
-      type: "function",
-      function: { name: "lookup" },
-    },
+    tool_choice: { type: "web_search_preview" },
     parallel_tool_calls: false,
   });
   assert.equal(upstreamCalls[1].url, "https://anthropic-chat.example.test/v1/chat/completions");
@@ -14838,6 +14840,8 @@ test("model gateway carries reasoning effort across responses chat and anthropic
               tool_configuration: { enabled: false, allowed_tools: ["delete_everything"] },
             },
           ],
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          tool_choice: { type: "tool", name: "web_search" },
           output_config: { effort: "max" },
           stream: false,
         },
@@ -14877,6 +14881,8 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   assert.equal(upstreamCalls[4].body.service_tier, "default");
   assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });
   assert.deepEqual(upstreamCalls[4].body.tools, [{
+    type: "web_search_preview",
+  }, {
     type: "mcp",
     server_label: "repo-tools",
     server_url: "https://mcp.example.test/sse",
@@ -14884,6 +14890,7 @@ test("model gateway carries reasoning effort across responses chat and anthropic
     authorization: "mcp-oauth-token",
     allowed_tools: ["read_file", "search"],
   }]);
+  assert.deepEqual(upstreamCalls[4].body.tool_choice, { type: "web_search_preview" });
   assert.equal("output_config" in upstreamCalls[4].body, false);
 });
 
