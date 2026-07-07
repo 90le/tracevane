@@ -209,7 +209,8 @@ export function adaptResponsesToChatCompletion(
     choices: [choice],
     usage: mapResponsesUsageToChat(response.usage),
   };
-  if (response.service_tier !== undefined) chatCompletion.service_tier = response.service_tier;
+  const serviceTier = stringOrNull(response.service_tier) || serviceTierFromUsage(response.usage);
+  if (serviceTier) chatCompletion.service_tier = serviceTier;
   return chatCompletion;
 }
 
@@ -833,7 +834,17 @@ function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {
   };
   if (Object.keys(completionDetails).length) mapped.completion_tokens_details = completionDetails;
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
+}
+
+function serviceTierFromUsage(usage: unknown): string | null {
+  return isRecord(usage) ? stringOrNull(usage.service_tier) : null;
+}
+
+function copyServiceTier(value: unknown, target: JsonRecord): void {
+  const serviceTier = stringOrNull(value);
+  if (serviceTier) target.service_tier = serviceTier;
 }
 
 function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {

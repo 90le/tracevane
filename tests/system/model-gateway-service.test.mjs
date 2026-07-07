@@ -8766,6 +8766,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           total_tokens: 13,
           server_tool_use: { web_search_requests: 1 },
         },
+        service_tier: "priority",
       }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -8786,7 +8787,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         "data: {\"type\":\"response.output_text.annotation.added\",\"item_id\":\"msg_resp_anthropic_stream\",\"output_index\":0,\"content_index\":0,\"annotation_index\":0,\"annotation\":{\"type\":\"url_citation\",\"url\":\"https://example.test/stream-source\",\"title\":\"Stream Source\"}}",
         "",
         "event: response.completed",
-        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_anthropic_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Anthropic stream\"}]}],\"usage\":{\"input_tokens\":6,\"output_tokens\":2,\"total_tokens\":8,\"server_tool_use\":{\"web_search_requests\":1}}}}",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_anthropic_stream\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-native-responses\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Anthropic stream\"}]}],\"usage\":{\"input_tokens\":6,\"output_tokens\":2,\"total_tokens\":8,\"server_tool_use\":{\"web_search_requests\":1}},\"service_tier\":\"priority\"}}",
         "",
         "data: [DONE]",
         "",
@@ -9022,6 +9023,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         output_tokens: 4,
         cache_read_input_tokens: 0,
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       });
 
       const messageStream = await requestRaw(`${baseUrl}/v1/messages`, {
@@ -9061,6 +9063,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
       assert.deepEqual(messageStreamEvents[6].data.usage, {
         output_tokens: 2,
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       });
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
@@ -12567,6 +12570,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
           input_tokens: 6,
           output_tokens: 3,
           server_tool_use: { web_search_requests: 1 },
+          service_tier: "priority",
         },
       }), {
         status: 200,
@@ -12589,7 +12593,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
       usage: {
         input_tokens: isCompact ? 31 : 17,
         output_tokens: isCompact ? 9 : 5,
-        ...(isCompact ? {} : { server_tool_use: { web_search_requests: 1 } }),
+        ...(isCompact ? {} : { server_tool_use: { web_search_requests: 1 }, service_tier: "priority" }),
       },
     }), {
       status: 200,
@@ -12655,7 +12659,9 @@ test("model gateway adapts codex responses through native anthropic messages pro
         input_tokens_details: { cached_tokens: 0 },
         output_tokens_details: { reasoning_tokens: 0 },
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       });
+      assert.equal(responses.body.service_tier, "priority");
 
       const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
         method: "POST",
@@ -12707,6 +12713,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
         title: "Anthropic Stream",
       }]);
       assert.deepEqual(streamEvents[9].data.response.usage.server_tool_use, { web_search_requests: 1 });
+      assert.equal(streamEvents[9].data.response.usage.service_tier, "priority");
       assert.equal(streamEvents[10].data, "[DONE]");
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
@@ -12819,7 +12826,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     if (upstreamCalls.length === 2) {
       const upstreamSse = [
         "event: message_start",
-        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_chat_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":1}}}}",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_chat_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":8,\"output_tokens\":0,\"server_tool_use\":{\"web_search_requests\":1},\"service_tier\":\"priority\"}}}",
         "",
         "event: content_block_start",
         "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
@@ -12834,7 +12841,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         "data: {\"type\":\"content_block_stop\",\"index\":0}",
         "",
         "event: message_delta",
-        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3,\"server_tool_use\":{\"web_search_requests\":1}}}",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3,\"server_tool_use\":{\"web_search_requests\":1},\"service_tier\":\"priority\"}}",
         "",
         "event: message_stop",
         "data: {\"type\":\"message_stop\"}",
@@ -12873,6 +12880,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         output_tokens: 7,
         cache_read_input_tokens: 3,
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       },
     }), {
       status: 200,
@@ -12989,7 +12997,9 @@ test("model gateway adapts chat completions through native anthropic messages pr
         total_tokens: 18,
         prompt_tokens_details: { cached_tokens: 3 },
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       });
+      assert.equal(chat.body.service_tier, "priority");
 
       const stream = await requestRaw(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -13011,6 +13021,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         completion_tokens: 3,
         total_tokens: 11,
         server_tool_use: { web_search_requests: 1 },
+        service_tier: "priority",
       });
       assert.equal(streamEvents[4].data, "[DONE]");
 

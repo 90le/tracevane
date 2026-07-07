@@ -426,7 +426,10 @@ export async function writeChatCompletionsSseFromResponsesSse(
       }
       if (event.event === "response.completed") {
         sawCompleted = true;
-        if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
+        if (isRecord(response.usage)) {
+          state.usage = mapResponsesUsageToChat(response.usage);
+          copyServiceTier(response.service_tier, state.usage);
+        }
         if (allowToolCalls) {
           emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId, legacyFunctionCalls);
         }
@@ -631,7 +634,10 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       }
       if (event.event === "response.completed") {
         sawCompleted = true;
-        if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
+        if (isRecord(response.usage)) {
+          state.usage = mapResponsesUsageToAnthropic(response.usage);
+          copyServiceTier(response.service_tier, state.usage);
+        }
         closeAnthropicThinkingBlock(state, res);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
@@ -1139,6 +1145,7 @@ function ensureAnthropicMessageStart(
     output_tokens: 0,
   };
   copyServerToolUse(state.usage, usage);
+  copyServiceTier(state.usage.service_tier, usage);
   writeSseEvent(res, "message_start", {
     type: "message_start",
     message: {
@@ -1382,6 +1389,7 @@ function finalizeAnthropicFromChat(
     output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
   };
   copyServerToolUse(state.usage, usage);
+  copyServiceTier(state.usage.service_tier, usage);
   writeSseEvent(res, "message_delta", {
     type: "message_delta",
     delta: {
@@ -1441,6 +1449,7 @@ function finalizeAnthropicTextStream(
     output_tokens: numberOrNull(state.usage.output_tokens) ?? 0,
   };
   copyServerToolUse(state.usage, usage);
+  copyServiceTier(state.usage.service_tier, usage);
   writeSseEvent(res, "message_delta", {
     type: "message_delta",
     delta: {
@@ -2499,6 +2508,7 @@ function mapChatUsageToAnthropic(usage: JsonRecord): JsonRecord {
     output_tokens: numberOrNull(usage.completion_tokens) ?? 0,
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
 }
 
@@ -2511,6 +2521,7 @@ function mapAnthropicUsageToChat(usage: JsonRecord): JsonRecord {
     total_tokens: promptTokens + completionTokens,
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
 }
 
@@ -2524,6 +2535,7 @@ function mapResponsesUsageToChat(usage: JsonRecord): JsonRecord {
     total_tokens: totalTokens,
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
 }
 
@@ -2598,6 +2610,7 @@ function mapResponsesUsageToAnthropic(usage: JsonRecord): JsonRecord {
     output_tokens: numberOrNull(usage.output_tokens) ?? numberOrNull(usage.completion_tokens) ?? 0,
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
 }
 
@@ -2612,7 +2625,13 @@ function mapAnthropicUsageToResponses(usage: JsonRecord): JsonRecord {
     output_tokens_details: { reasoning_tokens: 0 },
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
+}
+
+function copyServiceTier(value: unknown, target: JsonRecord): void {
+  const serviceTier = stringOrNull(value);
+  if (serviceTier) target.service_tier = serviceTier;
 }
 
 function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
@@ -2633,7 +2652,10 @@ function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
       ? usage?.output_tokens_details
       : { reasoning_tokens: 0 },
   };
-  if (usage) copyServerToolUse(usage, mapped);
+  if (usage) {
+    copyServerToolUse(usage, mapped);
+    copyServiceTier(usage.service_tier, mapped);
+  }
   return mapped;
 }
 

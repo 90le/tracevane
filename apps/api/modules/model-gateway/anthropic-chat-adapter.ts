@@ -291,7 +291,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(
 
   const created = Math.floor(Date.now() / 1_000);
   const model = stringOrNull(response.model) || fallbackModel;
-  return {
+  const chatCompletion: JsonRecord = {
     id: stringOrNull(response.id) || `chatcmpl_${Date.now().toString(36)}`,
     object: "chat.completion",
     created,
@@ -303,6 +303,9 @@ export function adaptAnthropicMessagesResponseToChatCompletion(
     }],
     usage: mapAnthropicUsageToChat(response.usage),
   };
+  const serviceTier = serviceTierFromUsage(response.usage);
+  if (serviceTier) chatCompletion.service_tier = serviceTier;
+  return chatCompletion;
 }
 
 export function adaptChatCompletionResponseToAnthropicMessages(
@@ -358,7 +361,7 @@ export function adaptChatCompletionResponseToAnthropicMessages(
       ? "stop_sequence"
       : mapChatFinishReasonToAnthropic(choice?.finish_reason, toolUses.length > 0),
     stop_sequence: stopResult.stopSequence,
-    usage: mapChatUsageToAnthropic(response.usage),
+    usage: mapChatUsageToAnthropic(response.usage, response.service_tier),
   };
 }
 
@@ -1284,8 +1287,12 @@ function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean
   return "stop";
 }
 
-function mapChatUsageToAnthropic(usage: unknown): JsonRecord {
-  if (!isRecord(usage)) return { input_tokens: 0, output_tokens: 0 };
+function mapChatUsageToAnthropic(usage: unknown, fallbackServiceTier?: unknown): JsonRecord {
+  if (!isRecord(usage)) {
+    const mapped: JsonRecord = { input_tokens: 0, output_tokens: 0 };
+    copyServiceTier(fallbackServiceTier, mapped);
+    return mapped;
+  }
   const inputTokens = numberOrNull(usage.prompt_tokens) ?? 0;
   const outputTokens = numberOrNull(usage.completion_tokens) ?? 0;
   const promptDetails = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
@@ -1296,6 +1303,7 @@ function mapChatUsageToAnthropic(usage: unknown): JsonRecord {
   const cachedTokens = numberOrNull(promptDetails.cached_tokens);
   if (cachedTokens !== null) mapped.cache_read_input_tokens = cachedTokens;
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier ?? fallbackServiceTier, mapped);
   return mapped;
 }
 
@@ -1315,7 +1323,17 @@ function mapAnthropicUsageToChat(usage: unknown): JsonRecord | null {
     },
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
+}
+
+function serviceTierFromUsage(usage: unknown): string | null {
+  return isRecord(usage) ? stringOrNull(usage.service_tier) : null;
+}
+
+function copyServiceTier(value: unknown, target: JsonRecord): void {
+  const serviceTier = stringOrNull(value);
+  if (serviceTier) target.service_tier = serviceTier;
 }
 
 function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {

@@ -832,7 +832,13 @@ function mapChatUsageToResponses(usage: JsonRecord): JsonRecord {
       : { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 },
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
+}
+
+function copyServiceTier(value: unknown, target: JsonRecord): void {
+  const serviceTier = stringOrNull(value);
+  if (serviceTier) target.service_tier = serviceTier;
 }
 
 function copyServerToolUse(source: JsonRecord, target: JsonRecord): void {
@@ -853,7 +859,10 @@ function normalizeResponsesUsage(usage: JsonRecord | null): JsonRecord {
       ? usage?.output_tokens_details
       : { reasoning_tokens: 0 },
   };
-  if (usage) copyServerToolUse(usage, mapped);
+  if (usage) {
+    copyServerToolUse(usage, mapped);
+    copyServiceTier(usage.service_tier, mapped);
+  }
   return mapped;
 }
 

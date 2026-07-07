@@ -190,7 +190,8 @@ export function adaptChatCompletionToCodexResponse(
     output,
     usage: mapChatUsageToResponses(chatCompletion.usage),
   };
-  if (chatCompletion.service_tier !== undefined) response.service_tier = chatCompletion.service_tier;
+  const serviceTier = stringOrNull(chatCompletion.service_tier) || serviceTierFromUsage(chatCompletion.usage);
+  if (serviceTier) response.service_tier = serviceTier;
   return response;
 }
 
@@ -873,7 +874,17 @@ function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
       : chatCompletionDetailsToResponsesOutputDetails(completionDetails),
   };
   copyServerToolUse(usage, mapped);
+  copyServiceTier(usage.service_tier, mapped);
   return mapped;
+}
+
+function serviceTierFromUsage(usage: unknown): string | null {
+  return isRecord(usage) ? stringOrNull(usage.service_tier) : null;
+}
+
+function copyServiceTier(value: unknown, target: JsonRecord): void {
+  const serviceTier = stringOrNull(value);
+  if (serviceTier) target.service_tier = serviceTier;
 }
 
 function chatPromptDetailsToResponsesInputDetails(promptDetails: JsonRecord): JsonRecord {
