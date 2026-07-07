@@ -18,6 +18,7 @@ import type {
   LspDiagnosticsResponse,
   LspGatewayServerEvent,
   LspHoverResponse,
+  LspProviderId,
   LspPositionRequest,
   LspFormattingRequest,
   LspFormattingResponse,
@@ -35,6 +36,7 @@ import type {
   LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
+import { completeCssWithLanguageService, completeHtmlWithLanguageService, defineCssWithLanguageService, diagnoseCssWithLanguageService, formatCssWithLanguageService, formatHtmlWithLanguageService, hoverCssWithLanguageService, hoverHtmlWithLanguageService, referenceCssWithLanguageService } from "./providers/htmlCssLanguageService.js";
 import { completeJsonWithLanguageService, defineJsonWithLanguageService, diagnoseJsonWithLanguageService, formatJsonWithLanguageService, hoverJsonWithLanguageService, referenceJsonWithLanguageService } from "./providers/jsonLanguageService.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
@@ -240,18 +242,26 @@ async function hoverDocument(
   if (provider?.id === "typescript") {
     return hoverTypeScriptLike(request, validated);
   }
-  if (provider?.id !== "json") throw unsupportedLspFeatureError("hover", validated.language);
-  const hover = await hoverJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  let hover: { contents: string[]; range?: { startLine: number; startColumn: number; endLine: number; endColumn: number } | null };
+  if (provider?.id === "json") {
+    hover = await hoverJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "html") {
+    hover = hoverHtmlWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "css") {
+    hover = hoverCssWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else {
+    throw unsupportedLspFeatureError("hover", validated.language);
+  }
   return {
     type: "hover",
     id: request.id ?? null,
-    provider: "json",
+    provider: provider.id,
     rootId: validated.rootId,
     path: validated.path,
-    language: "json",
+    language: validated.language,
     version: request.version ?? null,
     contents: hover.contents,
-    range: hover.range,
+    range: hover.range ?? null,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -265,16 +275,25 @@ async function completeDocument(
   if (provider?.id === "typescript") {
     return completeTypeScriptLike(request, validated);
   }
-  if (provider?.id !== "json") throw unsupportedLspFeatureError("completion", validated.language);
+  let items: LspCompletionItem[];
+  if (provider?.id === "json") {
+    items = await completeJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "html") {
+    items = completeHtmlWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "css") {
+    items = completeCssWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else {
+    throw unsupportedLspFeatureError("completion", validated.language);
+  }
   return {
     type: "completion",
     id: request.id ?? null,
-    provider: "json",
+    provider: provider.id,
     rootId: validated.rootId,
     path: validated.path,
-    language: "json",
+    language: validated.language,
     version: request.version ?? null,
-    items: await completeJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
+    items,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -288,16 +307,25 @@ async function defineDocument(
   if (provider?.id === "typescript") {
     return defineTypeScriptLike(request, validated);
   }
-  if (provider?.id !== "json") throw unsupportedLspFeatureError("definition", validated.language);
+  let locations: LspDefinitionResponse["locations"];
+  if (provider?.id === "json") {
+    locations = defineJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "css") {
+    locations = defineCssWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "html") {
+    locations = [];
+  } else {
+    throw unsupportedLspFeatureError("definition", validated.language);
+  }
   return {
     type: "definition",
     id: request.id ?? null,
-    provider: "json",
+    provider: provider.id,
     rootId: validated.rootId,
     path: validated.path,
-    language: "json",
+    language: validated.language,
     version: request.version ?? null,
-    locations: defineJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
+    locations,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -311,16 +339,25 @@ async function referenceDocument(
   if (provider?.id === "typescript") {
     return referenceTypeScriptLike(request, validated);
   }
-  if (provider?.id !== "json") throw unsupportedLspFeatureError("references", validated.language);
+  let locations: LspReferencesResponse["locations"];
+  if (provider?.id === "json") {
+    locations = referenceJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "css") {
+    locations = referenceCssWithLanguageService({ ...htmlCssProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column });
+  } else if (provider?.id === "html") {
+    locations = [];
+  } else {
+    throw unsupportedLspFeatureError("references", validated.language);
+  }
   return {
     type: "references",
     id: request.id ?? null,
-    provider: "json",
+    provider: provider.id,
     rootId: validated.rootId,
     path: validated.path,
-    language: "json",
+    language: validated.language,
     version: request.version ?? null,
-    locations: referenceJsonWithLanguageService({ ...jsonProviderInput(validated, request.version), rootId: validated.rootId, path: validated.path, line: request.line, column: request.column }),
+    locations,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -1108,7 +1145,7 @@ function renameDocument(
   return {
     type: "rename",
     id: request.id ?? null,
-    provider: provider?.id === "json" ? "json" : "typescript",
+    provider: responseProviderId(provider?.id),
     rootId: validated.rootId,
     path: validated.path,
     language: validated.language,
@@ -1127,11 +1164,15 @@ async function formatDocument(
   const options = { tabSize: Math.max(1, Math.floor(request.tabSize ?? 2)), insertSpaces: request.insertSpaces !== false };
   let textEdits: LspWorkspaceTextEdit[] = [];
   const descriptor = providerForLanguage(validated.language);
-  let provider: "json" | "typescript" = descriptor?.id === "typescript" ? "typescript" : "json";
+  const provider = responseProviderId(descriptor?.id);
   if (descriptor?.id === "typescript") {
     textEdits = formatTypeScriptLike(validated, options);
   } else if (descriptor?.id === "json") {
     textEdits = formatJsonWithLanguageService(jsonProviderInput(validated, request.version), options);
+  } else if (descriptor?.id === "html") {
+    textEdits = formatHtmlWithLanguageService(htmlCssProviderInput(validated, request.version), options);
+  } else if (descriptor?.id === "css") {
+    textEdits = formatCssWithLanguageService(htmlCssProviderInput(validated, request.version), options);
   } else {
     textEdits = [];
   }
@@ -1154,7 +1195,7 @@ async function codeActions(
 ): Promise<LspCodeActionResponse> {
   const validated = validateInteractionRequest(config, request);
   const descriptor = providerForLanguage(validated.language);
-  const provider: "json" | "typescript" = descriptor?.id === "typescript" ? "typescript" : "json";
+  const provider = responseProviderId(descriptor?.id);
   const formatting = await formatDocument(config, {
     type: "formatting",
     id: request.id ?? null,
@@ -1590,6 +1631,15 @@ function jsonProviderInput(validated: ValidatedInteractionRequest, version?: num
   };
 }
 
+function htmlCssProviderInput(validated: ValidatedInteractionRequest, version?: number | null): { uri: string; content: string; language: string; version?: number | null } {
+  return {
+    uri: pathToFileUri(validated.absolutePath),
+    content: validated.content,
+    language: validated.language,
+    version: version ?? null,
+  };
+}
+
 function unsupportedLspFeatureError(feature: string, language: string): Error {
   return new Error(`Tracevane LSP ${feature} is not supported for ${language || "unknown"} by the current provider registry`);
 }
@@ -1608,7 +1658,7 @@ async function diagnoseDocument(
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
   const provider = providerForLanguage(language);
   if (provider?.id === "json") {
-    return responseFor(request, resolved.root.id, resolved.relativePath, "json", "json", await diagnoseJsonWithLanguageService({ uri: pathToFileUri(resolved.absolutePath), content, version: request.version ?? 1 }));
+    return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, await diagnoseJsonWithLanguageService({ uri: pathToFileUri(resolved.absolutePath), content, version: request.version ?? 1 }));
   }
   if (provider?.id === "typescript") {
     return responseFor(
@@ -1620,6 +1670,12 @@ async function diagnoseDocument(
       diagnoseTypeScriptLike(content, resolved.absolutePath, language),
     );
   }
+  if (provider?.id === "css") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "css", language, diagnoseCssWithLanguageService({ uri: pathToFileUri(resolved.absolutePath), content, language, version: request.version ?? 1 }));
+  }
+  if (provider?.id === "html") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "html", language, []);
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -1627,7 +1683,7 @@ function responseFor(
   request: LspDiagnosticsRequest,
   rootId: string,
   targetPath: string,
-  provider: "json" | "typescript",
+  provider: LspProviderId,
   language: string,
   diagnostics: LspDiagnostic[],
 ): LspDiagnosticsResponse {
@@ -1739,6 +1795,8 @@ function clampOffset(value: number, length: number): number {
 function normalizeLanguage(language: string | null | undefined, targetPath: string, content: string): string {
   const raw = String(language || "").trim().toLowerCase();
   if (raw === "json") return "json";
+  if (raw === "html" || raw === "htm") return "html";
+  if (raw === "css" || raw === "scss" || raw === "less") return raw;
   if (raw === "ts" || raw === "typescript") return "typescript";
   if (raw === "tsx" || raw === "typescriptreact") return "typescriptreact";
   if (raw === "js" || raw === "javascript") return "javascript";
@@ -1748,10 +1806,19 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.d\.ts$/i.test(targetPath)) return "typescript";
   if (/\.jsx$/i.test(targetPath)) return "javascriptreact";
   if (/\.m?js$/i.test(targetPath) || /\.cjs$/i.test(targetPath)) return "javascript";
+  if (/\.html?$/i.test(targetPath)) return "html";
+  if (/\.scss$/i.test(targetPath)) return "scss";
+  if (/\.less$/i.test(targetPath)) return "less";
+  if (/\.css$/i.test(targetPath)) return "css";
   if (/(^|\.)json($|[.\-_])/i.test(targetPath)) return "json";
   const trimmed = content.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
+  if (/^<!doctype\s+html\b/i.test(trimmed) || /^<html[\s>]/i.test(trimmed) || /<(?:div|span|section|article|main|body|head|script|style)[\s>]/i.test(trimmed)) return "html";
   return raw || "plaintext";
+}
+
+function responseProviderId(id: string | null | undefined): LspProviderId {
+  return id === "typescript" || id === "html" || id === "css" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {

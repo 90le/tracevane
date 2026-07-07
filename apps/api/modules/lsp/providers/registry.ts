@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -25,8 +25,11 @@ export interface TracevaneLspProviderDescriptor {
 
 export const JSON_PROVIDER_SOURCE = "vscode-json-languageservice";
 export const TS_PROVIDER_SOURCE = "typescript-lsp";
+export const HTML_PROVIDER_SOURCE = "vscode-html-languageservice";
+export const CSS_PROVIDER_SOURCE = "vscode-css-languageservice";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
+export const CSS_LANGUAGES = new Set(["css", "scss", "less"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
   {
@@ -35,6 +38,35 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
     mode: "in-process",
     status: "available",
     languages: ["json"],
+    capabilities: {
+      diagnostics: true,
+      hover: true,
+      completion: true,
+      definition: true,
+      references: true,
+      formatting: true,
+      codeAction: true,
+    },
+  },
+  {
+    id: "html",
+    source: HTML_PROVIDER_SOURCE,
+    mode: "in-process",
+    status: "available",
+    languages: ["html"],
+    capabilities: {
+      hover: true,
+      completion: true,
+      formatting: true,
+      codeAction: true,
+    },
+  },
+  {
+    id: "css",
+    source: CSS_PROVIDER_SOURCE,
+    mode: "in-process",
+    status: "available",
+    languages: [...CSS_LANGUAGES],
     capabilities: {
       diagnostics: true,
       hover: true,

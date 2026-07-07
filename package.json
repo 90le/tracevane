@@ -124,7 +124,8 @@
     "smoke:ide:git-branch-management": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5208} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5208} -- node tests/ide-workbench/ide-git-branch-management.smoke.mjs",
     "smoke:ide:git-graph-blame": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5210} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5210} -- node tests/ide-workbench/ide-git-graph-blame.smoke.mjs",
     "smoke:ide:lsp-workspace-symbols": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3903} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5212} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5212} -- node tests/ide-workbench/ide-lsp-workspace-symbols.smoke.mjs",
-    "smoke:ide:command-palette": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3904} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5213} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5213} -- node tests/ide-workbench/ide-command-palette.smoke.mjs"
+    "smoke:ide:command-palette": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3904} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5213} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5213} -- node tests/ide-workbench/ide-command-palette.smoke.mjs",
+    "smoke:ide:lsp-html-css-providers": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3905} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5214} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5214} -- node tests/ide-workbench/ide-lsp-html-css-providers.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",
@@ -135,6 +136,8 @@
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@larksuiteoapi/node-sdk": "^1.66.1",
     "bcryptjs": "^2.4.3",
+    "vscode-css-languageservice": "^6.3.10",
+    "vscode-html-languageservice": "^5.6.2",
     "vscode-json-languageservice": "^5.7.2",
     "ws": "^8.18.3"
   },

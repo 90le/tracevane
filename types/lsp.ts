@@ -1,4 +1,5 @@
 export type LspDiagnosticSeverity = "error" | "warning" | "info" | "hint";
+export type LspProviderId = "json" | "typescript" | "html" | "css";
 
 export interface LspDocumentRef {
   rootId: string;
@@ -43,7 +44,7 @@ export interface LspCompletionRequest extends LspDocumentRef {
 export interface LspHoverResponse extends LspDocumentRef {
   type: "hover";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   contents: string[];
   range?: { startLine: number; startColumn: number; endLine: number; endColumn: number } | null;
   checkedAt: string;
@@ -74,7 +75,7 @@ export interface LspCompletionItem {
 export interface LspCompletionResponse extends LspDocumentRef {
   type: "completion";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   items: LspCompletionItem[];
   checkedAt: string;
 }
@@ -91,7 +92,7 @@ export interface LspDefinitionLocation {
 export interface LspDefinitionResponse extends LspDocumentRef {
   type: "definition";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   locations: LspDefinitionLocation[];
   checkedAt: string;
 }
@@ -101,7 +102,7 @@ export type LspReferenceLocation = LspDefinitionLocation;
 export interface LspReferencesResponse extends LspDocumentRef {
   type: "references";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   locations: LspReferenceLocation[];
   checkedAt: string;
 }
@@ -216,7 +217,7 @@ export interface LspWorkspaceSymbolsResponse {
 export interface LspDiagnosticsResponse extends LspDocumentRef {
   type: "diagnostics";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   diagnostics: LspDiagnostic[];
   checkedAt: string;
 }
@@ -376,7 +377,7 @@ export interface LspRenameRequest extends LspDocumentRef {
 export interface LspRenameResponse extends LspDocumentRef {
   type: "rename";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   workspaceEdit: LspWorkspaceEdit | null;
   rejected?: LspWorkspaceEditRejectedItem[];
   checkedAt: string;
@@ -393,7 +394,7 @@ export interface LspFormattingRequest extends LspDocumentRef {
 export interface LspFormattingResponse extends LspDocumentRef {
   type: "formatting";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   textEdits: LspWorkspaceTextEdit[];
   checkedAt: string;
 }
@@ -417,7 +418,7 @@ export interface LspCodeActionItem {
 export interface LspCodeActionResponse extends LspDocumentRef {
   type: "codeAction";
   id?: string | null;
-  provider: "json" | "typescript";
+  provider: LspProviderId;
   actions: LspCodeActionItem[];
   checkedAt: string;
 }
