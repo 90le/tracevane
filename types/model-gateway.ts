@@ -138,6 +138,7 @@ export const MODEL_GATEWAY_ROUTE_IDS = [
   "openai_audio_translations",
   "openai_audio_speech",
   "anthropic_messages",
+  "anthropic_messages_count_tokens",
 ] as const;
 
 export type ModelGatewayRouteId = (typeof MODEL_GATEWAY_ROUTE_IDS)[number];
@@ -1126,6 +1127,7 @@ export interface ModelGatewayStatusResponse {
     openaiAudioTranslations: string[];
     openaiAudioSpeech: string[];
     anthropicMessages: string[];
+    anthropicMessagesCountTokens: string[];
     unsupportedEndpoints: Array<{
       method: string;
       path: string;

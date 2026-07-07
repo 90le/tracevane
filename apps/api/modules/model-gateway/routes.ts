@@ -436,7 +436,15 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
 
+  router.post("/v1/messages/count_tokens", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
   router.post("/claude/v1/messages", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
+  router.post("/claude/v1/messages/count_tokens", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
 

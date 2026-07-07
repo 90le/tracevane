@@ -294,6 +294,11 @@ const ROUTES: Record<ModelGatewayRouteId, {
     appScope: "claude-code",
     protocol: "anthropic_messages",
   },
+  anthropic_messages_count_tokens: {
+    paths: ["/v1/messages/count_tokens", "/claude/v1/messages/count_tokens"],
+    appScope: "claude-code",
+    protocol: "anthropic_messages",
+  },
 };
 
 export interface ModelGatewayPaths {
@@ -3074,6 +3079,9 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
     if (provider.apiFormat === "openai_responses") return nativeEndpointForProvider(provider, "openai_responses", "/responses");
     return nativeEndpointForProvider(provider, "anthropic_messages", "/messages");
   }
+  if (routeId === "anthropic_messages_count_tokens") {
+    return nativeEndpointForProvider(provider, "anthropic_messages", "/messages/count_tokens");
+  }
   return "/";
 }
 
@@ -3111,6 +3119,9 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
   if (routeId === "anthropic_messages") {
     return provider.apiFormat === "anthropic_messages" ? "passthrough" : "adapter-required";
   }
+  if (routeId === "anthropic_messages_count_tokens") {
+    return provider.apiFormat === "anthropic_messages" ? "passthrough" : "adapter-required";
+  }
   return "unsupported";
 }
 
@@ -3143,6 +3154,7 @@ function modelGatewayRouteSupportForProviderModel(
     supported.add("openai_responses");
     supported.add("openai_responses_compact");
     supported.add("anthropic_messages");
+    supported.add("anthropic_messages_count_tokens");
   }
 
   if (features.imageGeneration === true) {
@@ -4450,6 +4462,50 @@ function isCodexAccountSupportedToolChoice(
     return Boolean(name && supportedToolNames.has(name));
   }
   return supportedToolTypes.has(type);
+}
+
+function estimateAnthropicMessagesCountTokens(bodyText: string | undefined): number {
+  if (!bodyText) return 1;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return estimateTextTokens(bodyText);
+  }
+  const text = collectTokenEstimateText(parsed).join("\n");
+  const structuralOverhead = estimateAnthropicMessagesStructuralOverhead(parsed);
+  return Math.max(1, estimateTextTokens(text) + structuralOverhead);
+}
+
+function estimateTextTokens(text: string): number {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return 1;
+  const asciiWords = normalized.match(/[A-Za-z0-9_]+/g)?.length || 0;
+  const nonAsciiChars = normalized.replace(/[\x00-\x7F]/g, "").length;
+  const punctuation = normalized.match(/[^\sA-Za-z0-9_\x80-\uFFFF]/g)?.length || 0;
+  return Math.max(1, Math.ceil(normalized.length / 4), asciiWords + Math.ceil(nonAsciiChars / 2) + Math.ceil(punctuation / 2));
+}
+
+function collectTokenEstimateText(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(collectTokenEstimateText);
+  if (!isRecord(value)) return [];
+  const type = normalizeString(value.type);
+  if (type === "image" || type === "input_image") return ["[image]"];
+  if (type === "document" || type === "file" || type === "input_file") return ["[document]", ...collectTokenEstimateText(value.title), ...collectTokenEstimateText(value.filename), ...collectTokenEstimateText(value.name)];
+  if (type === "tool_use" || type === "tool_result") return [stringifyCompact(value)];
+  return Object.entries(value)
+    .filter(([key]) => !["image_url", "source", "data"].includes(key))
+    .flatMap(([, item]) => collectTokenEstimateText(item));
+}
+
+function estimateAnthropicMessagesStructuralOverhead(value: unknown): number {
+  if (!isRecord(value)) return 0;
+  const messages = Array.isArray(value.messages) ? value.messages.length : 0;
+  const tools = Array.isArray(value.tools) ? value.tools.length : 0;
+  const systemBlocks = Array.isArray(value.system) ? value.system.length : value.system === undefined ? 0 : 1;
+  return 4 + messages * 4 + tools * 12 + systemBlocks * 2;
 }
 
 function appendCodexAccountCompatibilityNote(value: Record<string, unknown>, label: string, omitted: unknown[]): void {
@@ -7693,6 +7749,7 @@ export function createModelGatewayService(
         openaiAudioTranslations: ROUTES.openai_audio_translations.paths,
         openaiAudioSpeech: ROUTES.openai_audio_speech.paths,
         anthropicMessages: ROUTES.anthropic_messages.paths,
+        anthropicMessagesCountTokens: ROUTES.anthropic_messages_count_tokens.paths,
         unsupportedEndpoints: MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
       },
       registry: {
@@ -10522,6 +10579,8 @@ export function createModelGatewayService(
       || decision.routeId === "openai_audio_translations"
       || decision.routeId === "openai_audio_speech"
     ) && isCodexAccountBackedProvider(provider);
+    const useAnthropicMessagesCountTokensLocalAdapter = decision.routeId === "anthropic_messages_count_tokens"
+      && provider.apiFormat !== "anthropic_messages";
     const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
       && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
     const diagnosticSmokeRequest = readHeader(req.headers, MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER) === "1";
@@ -10535,6 +10594,7 @@ export function createModelGatewayService(
       && !useAnthropicMessagesChatProviderAdapter
       && !useAnthropicMessagesResponsesProviderAdapter
       && !useCodexAccountImageGenerationAdapter
+      && !useAnthropicMessagesCountTokensLocalAdapter
     ) {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -10617,6 +10677,26 @@ export function createModelGatewayService(
           decision,
         },
       });
+      return;
+    }
+
+    if (useAnthropicMessagesCountTokensLocalAdapter) {
+      const inputTokens = estimateAnthropicMessagesCountTokens(bodyText);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 200,
+        outcome: "success",
+        usage: {
+          ...zeroRuntimeUsage(),
+          inputTokens,
+          totalTokens: inputTokens,
+        },
+      }));
+      setSelectedProviderHeaders();
+      sendJson(res, 200, { input_tokens: inputTokens });
       return;
     }
 

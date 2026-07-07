@@ -1691,6 +1691,27 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(claudeCode.status, 200);
       assert.equal(claudeCode.body.id, "resp_metadata");
       assert.equal(claudeCode.body.content[0].text, "ok");
+
+      const tokenCount = await requestJson(`${baseUrl}/v1/messages/count_tokens`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.4",
+          system: [{ type: "text", text: "You are concise." }],
+          messages: [{ role: "user", content: "Count this Claude Code prompt." }],
+          tools: [{
+            name: "read_file",
+            description: "Read a file",
+            input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+          }],
+        },
+      });
+      assert.equal(tokenCount.status, 200);
+      assert.equal(typeof tokenCount.body.input_tokens, "number");
+      assert.ok(tokenCount.body.input_tokens > 0);
     });
   } finally {
     globalThis.fetch = originalFetch;
