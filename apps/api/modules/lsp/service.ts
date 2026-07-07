@@ -38,6 +38,7 @@ import type {
 import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
 import { completeCssWithLanguageService, completeHtmlWithLanguageService, defineCssWithLanguageService, diagnoseCssWithLanguageService, formatCssWithLanguageService, formatHtmlWithLanguageService, hoverCssWithLanguageService, hoverHtmlWithLanguageService, referenceCssWithLanguageService } from "./providers/htmlCssLanguageService.js";
 import { completeJsonWithLanguageService, defineJsonWithLanguageService, diagnoseJsonWithLanguageService, formatJsonWithLanguageService, hoverJsonWithLanguageService, referenceJsonWithLanguageService } from "./providers/jsonLanguageService.js";
+import { createExternalLanguageServerGateway } from "./external/externalLanguageServerGateway.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
 const LSP_WS_PATH = "/ws/lsp";
@@ -1676,7 +1677,65 @@ async function diagnoseDocument(
   if (provider?.id === "html") {
     return responseFor(request, resolved.root.id, resolved.relativePath, "html", language, []);
   }
+  if (provider?.id === "yaml") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "yaml", language, await diagnoseYamlWithExternalLanguageServer(resolved.root.realPath, resolved.absolutePath, content, request.version ?? 1));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
+}
+
+async function diagnoseYamlWithExternalLanguageServer(
+  rootRealPath: string,
+  absolutePath: string,
+  content: string,
+  version: number,
+): Promise<LspDiagnostic[]> {
+  const providerId = "yaml";
+  const uri = pathToFileUri(absolutePath);
+  const gateway = createExternalLanguageServerGateway({ rootPath: rootRealPath });
+  await gateway.start(providerId);
+  try {
+    gateway.notify(providerId, "textDocument/didOpen", {
+      textDocument: { uri, languageId: "yaml", version, text: content },
+    });
+    const diagnostics = await gateway.waitForDiagnostics(providerId, uri, 3_000);
+    return diagnostics.map(yamlDiagnosticToTracevaneDiagnostic);
+  } finally {
+    await gateway.stop(providerId).catch(() => undefined);
+  }
+}
+
+function yamlDiagnosticToTracevaneDiagnostic(diagnostic: unknown): LspDiagnostic {
+  const record = isRecord(diagnostic) ? diagnostic : {};
+  const range = isRecord(record.range) ? record.range : {};
+  const start = isRecord(range.start) ? range.start : {};
+  const end = isRecord(range.end) ? range.end : {};
+  return {
+    severity: lspNumericSeverityToTracevane(record.severity),
+    message: typeof record.message === "string" ? record.message : "YAML diagnostic",
+    startLine: safeNumber(start.line),
+    startColumn: safeNumber(start.character),
+    endLine: typeof end.line === "number" ? end.line : undefined,
+    endColumn: typeof end.character === "number" ? end.character : undefined,
+    code: typeof record.code === "string" || typeof record.code === "number" ? String(record.code) : null,
+    source: typeof record.source === "string" ? record.source : "yaml-language-server",
+  };
+}
+
+function lspNumericSeverityToTracevane(severity: unknown): LspDiagnostic["severity"] {
+  if (severity === 1) return "error";
+  if (severity === 2) return "warning";
+  if (severity === 3) return "info";
+  if (severity === 4) return "hint";
+  return "warning";
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function responseFor(

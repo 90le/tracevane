@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -27,9 +27,11 @@ export const JSON_PROVIDER_SOURCE = "vscode-json-languageservice";
 export const TS_PROVIDER_SOURCE = "typescript-lsp";
 export const HTML_PROVIDER_SOURCE = "vscode-html-languageservice";
 export const CSS_PROVIDER_SOURCE = "vscode-css-languageservice";
+export const YAML_PROVIDER_SOURCE = "yaml-language-server";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 export const CSS_LANGUAGES = new Set(["css", "scss", "less"]);
+export const YAML_LANGUAGES = new Set(["yaml", "yml"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
   {
@@ -75,6 +77,17 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
       references: true,
       formatting: true,
       codeAction: true,
+    },
+  },
+
+  {
+    id: "yaml",
+    source: YAML_PROVIDER_SOURCE,
+    mode: "external",
+    status: "available",
+    languages: [...YAML_LANGUAGES],
+    capabilities: {
+      diagnostics: true,
     },
   },
   {

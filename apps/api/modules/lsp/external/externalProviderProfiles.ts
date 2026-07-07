@@ -1,6 +1,9 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import type { ExternalLanguageServerBudgets, ExternalLanguageServerProfile } from "./externalLanguageServerTypes.js";
+
+const require = createRequire(import.meta.url);
 
 export const DEFAULT_EXTERNAL_LSP_BUDGETS: ExternalLanguageServerBudgets = {
   initializeMs: 3_000,
@@ -8,12 +11,24 @@ export const DEFAULT_EXTERNAL_LSP_BUDGETS: ExternalLanguageServerBudgets = {
   shutdownMs: 1_000,
 };
 
+export const YAML_LANGUAGE_SERVER_BIN = require.resolve("yaml-language-server/bin/yaml-language-server");
+
 /**
- * M11-F-B intentionally ships no real external language-server profiles.
- * Future M11-F-C+ providers must add allowlisted, server-side profiles here
- * instead of accepting arbitrary frontend commands.
+ * External language servers are server-side allowlisted. The frontend never
+ * provides commands or arguments. M11-F-C enables only YAML as the first
+ * real provider proof.
  */
-export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] = [];
+export const EXTERNAL_LANGUAGE_SERVER_PROFILES: ExternalLanguageServerProfile[] = [
+  {
+    id: "yaml",
+    label: "YAML Language Server",
+    command: process.execPath,
+    args: [YAML_LANGUAGE_SERVER_BIN, "--stdio"],
+    languages: ["yaml", "yml"],
+    capabilities: { diagnostics: true },
+    budgets: { initializeMs: 3_000, requestMs: 3_000, shutdownMs: 1_000 },
+  },
+];
 
 export function getExternalLanguageServerProfiles(): ExternalLanguageServerProfile[] {
   return EXTERNAL_LANGUAGE_SERVER_PROFILES.map(cloneProfile);

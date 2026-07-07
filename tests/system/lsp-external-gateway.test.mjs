@@ -82,6 +82,24 @@ test("external LSP gateway rejects profile cwd outside workspace root", async ()
   await assert.rejects(() => gateway.start("mock"), /workspace root/);
 });
 
+
+test("external LSP gateway starts real YAML language server and receives diagnostics", async () => {
+  const gateway = new ExternalLanguageServerGateway({ rootPath: repoRoot });
+  const yamlProfile = gateway.listProfiles().find((profile) => profile.id === "yaml");
+  assert.ok(yamlProfile, "yaml profile should be server-side allowlisted");
+
+  const started = await gateway.start("yaml");
+  assert.equal(started.status, "available");
+
+  const uri = `file://${path.join(repoRoot, "tracevane-invalid-yaml-proof.yaml")}`;
+  gateway.notify("yaml", "textDocument/didOpen", {
+    textDocument: { uri, languageId: "yaml", version: 1, text: "name: tracevane\n  bad-indent: true\n" },
+  });
+  const diagnostics = await gateway.waitForDiagnostics("yaml", uri, 3_000);
+  assert.ok(diagnostics.length >= 1, "invalid YAML should publish diagnostics");
+  await gateway.stop("yaml");
+});
+
 async function waitFor(predicate, timeoutMs = 500) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {

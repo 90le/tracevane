@@ -184,6 +184,20 @@ export class ExternalLanguageServerGateway {
     return [...(this.requireRunning(providerId).diagnostics.get(uri) ?? [])];
   }
 
+  async waitForDiagnostics(providerId: string, uri: string, timeoutMs?: number): Promise<unknown[]> {
+    const running = this.requireRunning(providerId);
+    const timeout = timeoutMs ?? running.budgets.requestMs;
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const diagnostics = running.diagnostics.get(uri);
+      if (diagnostics) return [...diagnostics];
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    running.state.status = "degraded";
+    running.state.reason = "request_timeout";
+    throw this.withReason(new Error(`External LSP diagnostics timed out: ${providerId}`), "request_timeout");
+  }
+
   async stop(providerId: string): Promise<ExternalLanguageServerState> {
     const running = this.servers.get(providerId);
     if (!running) return this.getStatus(providerId);
@@ -221,7 +235,26 @@ export class ExternalLanguageServerGateway {
       this.handleResponse(running, message as LspJsonRpcResponse);
       return;
     }
+    if ("id" in message && "method" in message) {
+      this.handleServerRequest(running, message as LspJsonRpcRequest);
+      return;
+    }
     if ("method" in message) this.handleNotification(running, message as LspJsonRpcNotification);
+  }
+
+  private handleServerRequest(running: RunningServer, request: LspJsonRpcRequest): void {
+    let result: unknown = null;
+    if (request.method === "workspace/configuration") {
+      const items = Array.isArray((request.params as { items?: unknown[] } | undefined)?.items)
+        ? (request.params as { items: unknown[] }).items
+        : [];
+      result = items.map(() => ({ yaml: { validate: true, schemaStore: { enable: false } } }));
+    }
+    try {
+      running.transport.send({ jsonrpc: "2.0", id: request.id, result });
+    } catch (error) {
+      this.options.logger?.warn?.(error);
+    }
   }
 
   private handleResponse(running: RunningServer, response: LspJsonRpcResponse): void {
