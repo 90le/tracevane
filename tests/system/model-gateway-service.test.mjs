@@ -10540,6 +10540,88 @@ test("model gateway preserves Responses-style Chat input image parts for Respons
   }]);
 });
 
+test("model gateway preserves Responses-style Chat input file parts for Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-responses-input-file",
+      name: "Chat Responses Input File Provider",
+      appScopes: ["opencode"],
+      baseUrl: "https://chat-responses-input-file.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-responses-input-file-secret" },
+    setActiveScopes: ["opencode"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_chat_input_file",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "File input preserved." }],
+      }],
+      usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: "Summarize these files." },
+              { type: "input_file", file_url: "https://example.test/report.pdf", filename: "report.pdf" },
+              { type: "file", file: { file_id: "file_abc123", filename: "notes.txt" } },
+              { type: "input_file", file_data: "data:text/plain;base64,SGVsbG8=", filename: "inline.txt" },
+            ],
+          }],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.choices[0].message.content, "File input preserved.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-responses-input-file.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-responses-input-file-secret");
+  assert.deepEqual(upstreamCalls[0].body.input, [{
+    role: "user",
+    content: [
+      { type: "input_text", text: "Summarize these files." },
+      { type: "input_file", file_url: "https://example.test/report.pdf", filename: "report.pdf" },
+      { type: "input_file", file_id: "file_abc123", filename: "notes.txt" },
+      { type: "input_file", file_data: "data:text/plain;base64,SGVsbG8=", filename: "inline.txt" },
+    ],
+  }]);
+});
+
 test("model gateway preserves Chat assistant refusal parts for Responses providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
