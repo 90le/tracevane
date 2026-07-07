@@ -124,6 +124,7 @@ export function adaptCodexResponsesRequestToChat(
   } else if (request.max_tokens !== undefined) {
     chatRequest.max_tokens = request.max_tokens;
   }
+  applyResponsesLogprobControlsToChat(chatRequest, request);
 
   const tools = mapResponsesToolsToChat(request.tools);
   if (tools.length) chatRequest.tools = tools;
@@ -854,12 +855,28 @@ function responsesUnsupportedResponseFormatToText(responseFormat: unknown): stri
   return `OpenAI Responses unsupported response_format for Chat: ${stringifyCompact(responseFormat)}`;
 }
 
+function applyResponsesLogprobControlsToChat(chatRequest: JsonRecord, request: JsonRecord): void {
+  if (request.top_logprobs !== undefined) {
+    chatRequest.logprobs = true;
+    chatRequest.top_logprobs = request.top_logprobs;
+    return;
+  }
+  const include = Array.isArray(request.include)
+    ? request.include.map((item) => stringOrNull(item)).filter(Boolean)
+    : [];
+  if (include.includes("message.output_text.logprobs")) {
+    chatRequest.logprobs = true;
+  }
+}
+
 function responsesUnsupportedRequestControlsToText(request: JsonRecord): string {
   const unsupportedFields = [
     "background",
+    "context_management",
     "conversation",
     "include",
     "max_tool_calls",
+    "moderation",
     "prompt",
     "store",
     "truncation",

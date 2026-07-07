@@ -12682,15 +12682,18 @@ test("model gateway preserves Responses cache and safety controls for Chat provi
           model: "gpt-chat",
           input: "preserve responses cache controls",
           background: true,
+          context_management: { truncation: { type: "auto" } },
           conversation: "conv_responses_chat_controls",
-          include: ["reasoning.encrypted_content"],
+          include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
           max_tool_calls: 3,
+          moderation: { type: "auto" },
           previous_response_id: "resp_previous_chat_controls",
           prompt: { id: "pmpt_chat_controls", variables: { topic: "gateway" } },
           prompt_cache_key: "responses-cache-key",
           prompt_cache_retention: "24h",
           safety_identifier: "hashed-user-id",
           store: false,
+          top_logprobs: 4,
           truncation: "auto",
         },
       });
@@ -12727,16 +12730,20 @@ test("model gateway preserves Responses cache and safety controls for Chat provi
   assert.equal(upstreamCalls[0].body.prompt_cache_retention, "24h");
   assert.equal(upstreamCalls[0].body.safety_identifier, "hashed-user-id");
   assert.equal(upstreamCalls[0].body.background, undefined);
+  assert.equal(upstreamCalls[0].body.context_management, undefined);
   assert.equal(upstreamCalls[0].body.conversation, undefined);
   assert.equal(upstreamCalls[0].body.include, undefined);
   assert.equal(upstreamCalls[0].body.max_tool_calls, undefined);
+  assert.equal(upstreamCalls[0].body.moderation, undefined);
   assert.equal(upstreamCalls[0].body.previous_response_id, undefined);
   assert.equal(upstreamCalls[0].body.prompt, undefined);
   assert.equal(upstreamCalls[0].body.store, undefined);
   assert.equal(upstreamCalls[0].body.truncation, undefined);
+  assert.equal(upstreamCalls[0].body.logprobs, true);
+  assert.equal(upstreamCalls[0].body.top_logprobs, 4);
   assert.deepEqual(upstreamCalls[0].body.messages, [
     { role: "user", content: "preserve responses cache controls" },
-    { role: "user", content: 'OpenAI Responses request controls preserved for Chat: background=true conversation=conv_responses_chat_controls include=["reasoning.encrypted_content"] max_tool_calls=3 prompt={"id":"pmpt_chat_controls","variables":{"topic":"gateway"}} store=false truncation=auto' },
+    { role: "user", content: 'OpenAI Responses request controls preserved for Chat: background=true context_management={"truncation":{"type":"auto"}} conversation=conv_responses_chat_controls include=["reasoning.encrypted_content","message.output_text.logprobs"] max_tool_calls=3 moderation={"type":"auto"} prompt={"id":"pmpt_chat_controls","variables":{"topic":"gateway"}} store=false truncation=auto' },
   ]);
 
   assert.equal(upstreamCalls[1].url, "https://responses-chat-cache-controls.example.test/v1/chat/completions");
