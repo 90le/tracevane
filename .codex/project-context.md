@@ -90,7 +90,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M10-A LSP semantic tokens / workspace symbols foundation plan.
 - Done: M10-B LSP semantic tokens guarded implementation.
 - Done: M10-C LSP workspace symbols foundation.
-- Next: M10-D LSP semantic/workspace symbols acceptance closeout.
+- Done: M10-D LSP semantic/workspace symbols acceptance closeout.
+- Next: M11-A post-M10 IDE intelligence roadmap and release gate plan.
 
 ## Required reading by task
 
