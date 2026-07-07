@@ -13683,6 +13683,9 @@ test("model gateway adapts codex responses through native anthropic messages pro
           user: "responses-user-123",
           max_output_tokens: 256,
           temperature: 0.1,
+          prompt_cache_key: "responses-cache-key",
+          prompt_cache_retention: "24h",
+          safety_identifier: "responses-safety-user",
         },
       });
       assert.equal(responses.status, 200, responses.body);
@@ -13795,6 +13798,9 @@ test("model gateway adapts codex responses through native anthropic messages pro
           title: "brief.pdf",
         },
       ],
+    }, {
+      role: "user",
+      content: "OpenAI Chat request controls preserved for Anthropic Messages: prompt_cache_key=responses-cache-key prompt_cache_retention=24h safety_identifier=responses-safety-user",
     }],
     system: "Use concise responses.",
     temperature: 0.1,
