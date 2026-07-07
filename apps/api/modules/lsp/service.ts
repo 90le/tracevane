@@ -35,11 +35,9 @@ import type {
   LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
+import { JSON_PROVIDER_SOURCE, TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
 const LSP_WS_PATH = "/ws/lsp";
-const JSON_PROVIDER_SOURCE = "json-lsp";
-const TS_PROVIDER_SOURCE = "typescript-lsp";
-const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 const SEMANTIC_TOKEN_TYPES = [
   "class",
   "enum",
@@ -87,7 +85,7 @@ const WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES = new Set([
 const WORKSPACE_SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 
 export interface LspService {
-  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[] };
+  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix> };
   diagnoseDocument(request: LspDiagnosticsRequest): LspDiagnosticsResponse;
   hoverDocument(request: LspPositionRequest): LspHoverResponse;
   completeDocument(request: LspCompletionRequest): LspCompletionResponse;
@@ -185,8 +183,9 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         ok: true,
         provider: "tracevane-lsp",
         websocketPath: LSP_WS_PATH,
-        supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
-        features: ["diagnostics", "hover", "completion", "definition", "references", "semanticTokens", "workspaceSymbols", "rename", "formatting", "codeAction"],
+        supportedLanguages: supportedLanguagesFromRegistry(),
+        features: supportedFeaturesFromRegistry(),
+        providers: providerCapabilityMatrix(),
       };
     },
     diagnoseDocument(request) {
@@ -236,10 +235,11 @@ function hoverDocument(
   request: LspPositionRequest,
 ): LspHoverResponse {
   const validated = validateInteractionRequest(config, request);
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  const provider = providerForLanguage(validated.language);
+  if (provider?.id === "typescript") {
     return hoverTypeScriptLike(request, validated);
   }
-  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP hover are supported in M7.y-D");
+  if (provider?.id !== "json") throw unsupportedLspFeatureError("hover", validated.language);
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   const contents = symbol
     ? [
@@ -266,10 +266,11 @@ function completeDocument(
   request: LspCompletionRequest,
 ): LspCompletionResponse {
   const validated = validateInteractionRequest(config, request);
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  const provider = providerForLanguage(validated.language);
+  if (provider?.id === "typescript") {
     return completeTypeScriptLike(request, validated);
   }
-  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP completion are supported in M7.y-E");
+  if (provider?.id !== "json") throw unsupportedLspFeatureError("completion", validated.language);
   return {
     type: "completion",
     id: request.id ?? null,
@@ -288,10 +289,11 @@ function defineDocument(
   request: LspPositionRequest,
 ): LspDefinitionResponse {
   const validated = validateInteractionRequest(config, request);
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  const provider = providerForLanguage(validated.language);
+  if (provider?.id === "typescript") {
     return defineTypeScriptLike(request, validated);
   }
-  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP definition are supported in M7.y-D");
+  if (provider?.id !== "json") throw unsupportedLspFeatureError("definition", validated.language);
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "definition",
@@ -318,10 +320,11 @@ function referenceDocument(
   request: LspPositionRequest,
 ): LspReferencesResponse {
   const validated = validateInteractionRequest(config, request);
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  const provider = providerForLanguage(validated.language);
+  if (provider?.id === "typescript") {
     return referenceTypeScriptLike(request, validated);
   }
-  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP references are supported in M7.z-B");
+  if (provider?.id !== "json") throw unsupportedLspFeatureError("references", validated.language);
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "references",
@@ -348,7 +351,7 @@ function semanticTokens(
   request: LspSemanticTokensRequest,
 ): LspSemanticTokensResponse {
   const validated = validateInteractionRequest(config, request);
-  if (!TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  if (!providerSupports(validated.language, "semanticTokens")) {
     throw new Error("Semantic tokens are currently supported for TypeScript/JavaScript documents only");
   }
   return semanticTokensTypeScriptLike(request, validated);
@@ -1194,13 +1197,14 @@ function renameDocument(
   const validated = validateInteractionRequest(config, request);
   const newName = String(request.newName || "").trim();
   if (!newName) throw new Error("newName is required");
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+  const provider = providerForLanguage(validated.language);
+  if (provider?.id === "typescript") {
     return renameTypeScriptLike(request, validated, newName);
   }
   return {
     type: "rename",
     id: request.id ?? null,
-    provider: validated.language === "json" ? "json" : "typescript",
+    provider: provider?.id === "json" ? "json" : "typescript",
     rootId: validated.rootId,
     path: validated.path,
     language: validated.language,
@@ -1218,11 +1222,11 @@ function formatDocument(
   const validated = validateInteractionRequest(config, request);
   const options = { tabSize: Math.max(1, Math.floor(request.tabSize ?? 2)), insertSpaces: request.insertSpaces !== false };
   let textEdits: LspWorkspaceTextEdit[] = [];
-  let provider: "json" | "typescript" = "json";
-  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
-    provider = "typescript";
+  const descriptor = providerForLanguage(validated.language);
+  let provider: "json" | "typescript" = descriptor?.id === "typescript" ? "typescript" : "json";
+  if (descriptor?.id === "typescript") {
     textEdits = formatTypeScriptLike(validated, options);
-  } else if (validated.language === "json") {
+  } else if (descriptor?.id === "json") {
     textEdits = formatJsonLike(validated.content, options);
   } else {
     textEdits = [];
@@ -1245,7 +1249,8 @@ function codeActions(
   request: LspCodeActionRequest,
 ): LspCodeActionResponse {
   const validated = validateInteractionRequest(config, request);
-  const provider: "json" | "typescript" = TYPESCRIPT_LANGUAGES.has(validated.language) ? "typescript" : "json";
+  const descriptor = providerForLanguage(validated.language);
+  const provider: "json" | "typescript" = descriptor?.id === "typescript" ? "typescript" : "json";
   const formatting = formatDocument(config, {
     type: "formatting",
     id: request.id ?? null,
@@ -1691,6 +1696,10 @@ function relativePathInsideRoot(rootRealPath: string, fileName: string): string 
   return relative;
 }
 
+function unsupportedLspFeatureError(feature: string, language: string): Error {
+  return new Error(`Tracevane LSP ${feature} is not supported for ${language || "unknown"} by the current provider registry`);
+}
+
 function diagnoseDocument(
   config: TracevaneServerConfig,
   request: LspDiagnosticsRequest,
@@ -1703,10 +1712,11 @@ function diagnoseDocument(
   // the path still has to resolve to an existing workspace file.
   const resolved = resolveFilesServiceExistingFilePath(config, rootId, targetPath);
   const language = normalizeLanguage(request.language, resolved.relativePath, content);
-  if (language === "json") {
+  const provider = providerForLanguage(language);
+  if (provider?.id === "json") {
     return responseFor(request, resolved.root.id, resolved.relativePath, "json", "json", diagnoseJson(content));
   }
-  if (TYPESCRIPT_LANGUAGES.has(language)) {
+  if (provider?.id === "typescript") {
     return responseFor(
       request,
       resolved.root.id,
