@@ -14,8 +14,10 @@ import {
   PanelBottomOpen,
   PanelRightOpen,
   Play,
+  RefreshCw,
   RotateCcw,
   Search,
+  Server,
   Terminal,
   X,
 } from "lucide-react";
@@ -38,6 +40,8 @@ import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type 
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView, useIdeDebugSnapshot } from "./debug";
 import { TerminalPanel } from "./terminal";
+import { summarizeExternalLspProviders, useLspExternalProviderStatus } from "./lsp";
+import type { ExternalLspProviderProfile, ExternalLspProviderStatus, LspStatusResponse } from "./lsp";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import { useWorkbenchFileEvents, type WorkbenchFileEvent } from "./watcher";
@@ -92,6 +96,9 @@ export function IdeWorkbenchPage() {
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
+  const [lspProviderStatusOpen, setLspProviderStatusOpen] = React.useState(false);
+  const lspProviderStatus = useLspExternalProviderStatus();
+  const lspProviderSummary = summarizeExternalLspProviders(lspProviderStatus.status);
   const debugSnapshot = useIdeDebugSnapshot();
 
   const openFilePath = React.useCallback(
@@ -221,6 +228,11 @@ export function IdeWorkbenchPage() {
 
   const openCommandPalette = React.useCallback(() => setCommandPaletteOpen(true), []);
   const closeCommandPalette = React.useCallback(() => setCommandPaletteOpen(false), []);
+
+  const openLspProviderStatus = React.useCallback(() => {
+    setLspProviderStatusOpen(true);
+    void lspProviderStatus.refresh();
+  }, [lspProviderStatus]);
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -674,11 +686,21 @@ export function IdeWorkbenchPage() {
         onSaveActiveTab={saveActiveEditorTab}
         onCloseActiveTab={closeActiveEditorTab}
         onOpenSymbol={(request) => openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true, reveal: request.reveal })}
+        onShowLspStatus={openLspProviderStatus}
+        lspStatusSummary={lspProviderSummary.label}
       />
       <IdeEditorCloseConfirmDialog
         request={closeRequest}
         saving={closeSaving}
         onResolve={resolveCloseRequest}
+      />
+      <LspExternalProviderStatusDialog
+        open={lspProviderStatusOpen}
+        status={lspProviderStatus.status}
+        loading={lspProviderStatus.loading}
+        error={lspProviderStatus.error}
+        onRefresh={() => { void lspProviderStatus.refresh(); }}
+        onClose={() => setLspProviderStatusOpen(false)}
       />
       <WorkbenchStatusBar
         rootId={rootId}
@@ -688,6 +710,8 @@ export function IdeWorkbenchPage() {
         activePanelId={layout.panel.activePanelId}
         activeTab={activeTab}
         git={gitStatus.status}
+        lspStatus={lspProviderStatus.status}
+        onOpenLspStatus={openLspProviderStatus}
       />
     </div>
   );
@@ -737,6 +761,145 @@ function IdeEditorCloseConfirmDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function LspExternalProviderStatusDialog({
+  open,
+  status,
+  loading,
+  error,
+  onRefresh,
+  onClose,
+}: {
+  open: boolean;
+  status: LspStatusResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onClose: () => void;
+}) {
+  const profiles = status?.externalProviders?.profiles ?? [];
+  const statuses = status?.externalProviders?.statuses ?? [];
+  const byProviderId = React.useMemo(() => new Map(statuses.map((item) => [item.providerId, item])), [statuses]);
+  const summary = summarizeExternalLspProviders(status);
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent className="max-w-3xl" data-ide-lsp-provider-status-dialog>
+        <DialogHeader>
+          <DialogTitle>外部 LSP Provider 状态</DialogTitle>
+          <DialogDescription>
+            只读展示 server-side allowlist provider 状态；本入口不安装、不启动、不停止 provider，也不暴露 command/args。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <div className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel-2 p-3 text-xs text-muted">
+              <div className="min-w-0">
+                <div className="font-medium text-ink" data-ide-lsp-provider-status-summary>{summary.label}</div>
+                <div className="mt-1 truncate">{summary.title}</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={loading} data-ide-lsp-provider-status-refresh>
+                <RefreshCw className={cn("size-3.5", loading && "animate-spin")} aria-hidden />
+                刷新状态
+              </Button>
+            </div>
+            {error ? (
+              <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger" data-ide-lsp-provider-status-error>
+                {error}
+              </div>
+            ) : null}
+            {profiles.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-line bg-canvas p-5 text-center text-sm text-muted" data-ide-lsp-provider-status-empty>
+                当前没有启用外部 LSP provider profile；IDE 仍使用内置 provider。
+              </div>
+            ) : (
+              <div className="grid gap-2" data-ide-lsp-provider-status-list>
+                {profiles.map((profile) => (
+                  <ExternalProviderStatusRow
+                    key={profile.id}
+                    profile={profile}
+                    runtimeStatus={byProviderId.get(profile.id) ?? null}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} data-ide-lsp-provider-status-close>关闭</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ExternalProviderStatusRow({
+  profile,
+  runtimeStatus,
+}: {
+  profile: ExternalLspProviderProfile;
+  runtimeStatus: ExternalLspProviderStatus | null;
+}) {
+  const tone = lspRuntimeStatusTone(runtimeStatus?.status ?? (profile.enabled ? "stopped" : "unavailable"));
+  return (
+    <article
+      className="grid gap-3 rounded-lg border border-line bg-panel p-3 text-sm"
+      data-ide-lsp-provider-status-row
+      data-ide-lsp-provider-status-provider-id={profile.id}
+      data-ide-lsp-provider-status-runtime={runtimeStatus?.status ?? "unknown"}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-ink">{profile.label}</span>
+            <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-2xs text-subtle">{profile.id}</span>
+            <span className={cn("rounded px-1.5 py-0.5 text-2xs font-medium", tone.className)}>{runtimeStatus?.status ?? "unknown"}</span>
+            {!profile.enabled ? <span className="rounded bg-disabled/10 px-1.5 py-0.5 text-2xs text-disabled">disabled</span> : null}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            languages: {profile.languages.join(", ") || "--"} · capabilities: {formatLspCapabilities(profile.capabilities)}
+          </div>
+        </div>
+        <div className="grid gap-1 text-right font-mono text-2xs text-subtle">
+          {typeof runtimeStatus?.pid === "number" ? <span>pid {runtimeStatus.pid}</span> : null}
+          {runtimeStatus?.lastTransitionAt ? <span>{formatStatusTimestamp(runtimeStatus.lastTransitionAt)}</span> : null}
+        </div>
+      </div>
+      {runtimeStatus?.reason ? <div className="text-xs text-muted">{runtimeStatus.reason}</div> : null}
+      {runtimeStatus?.lastError ? (
+        <div className="rounded border border-danger/30 bg-danger/10 p-2 font-mono text-xs text-danger" data-ide-lsp-provider-status-last-error>
+          {runtimeStatus.lastError}
+        </div>
+      ) : null}
+      {runtimeStatus?.stderrTail?.length ? (
+        <pre className="max-h-32 overflow-auto rounded border border-line bg-canvas p-2 font-mono text-2xs text-muted [scrollbar-width:thin]" data-ide-lsp-provider-status-stderr>
+          {runtimeStatus.stderrTail.join("\n")}
+        </pre>
+      ) : null}
+    </article>
+  );
+}
+
+
+function formatLspCapabilities(capabilities: ExternalLspProviderProfile["capabilities"]): string {
+  if (Array.isArray(capabilities)) return capabilities.join(", ") || "--";
+  const enabled = Object.entries(capabilities ?? {})
+    .filter(([, value]) => value)
+    .map(([key]) => key);
+  return enabled.join(", ") || "--";
+}
+
+function lspRuntimeStatusTone(status: string): { className: string } {
+  if (status === "available" || status === "starting") return { className: "bg-success/10 text-success" };
+  if (status === "crashed" || status === "degraded" || status === "unavailable") return { className: "bg-danger/10 text-danger" };
+  return { className: "bg-panel-3 text-muted" };
+}
+
+function formatStatusTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 function WorkbenchHeader({
@@ -1244,6 +1407,8 @@ function WorkbenchStatusBar({
   activePanelId,
   activeTab,
   git,
+  lspStatus,
+  onOpenLspStatus,
 }: {
   rootId: string;
   rootAbsolutePath?: string;
@@ -1253,6 +1418,8 @@ function WorkbenchStatusBar({
   activePanelId: WorkbenchPanelId;
   activeTab: IdeWorkbenchEditorTab | null;
   git: GitStatusPayload | null;
+  lspStatus: LspStatusResponse | null;
+  onOpenLspStatus: () => void;
 }) {
   const fileState = activeTab?.deleted
     ? "deleted"
@@ -1260,6 +1427,7 @@ function WorkbenchStatusBar({
   const metadata = activeTab?.metadata;
   const gitChangeCount = git?.available ? git.changes.length : 0;
   const gitSummary = git?.available ? formatGitStatusBar(git) : null;
+  const lspSummary = summarizeExternalLspProviders(lspStatus);
   return (
     <footer className="flex min-h-6 items-center gap-3 overflow-hidden border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
       <span className="truncate">root: {rootId || "pending"}</span>
@@ -1275,6 +1443,23 @@ function WorkbenchStatusBar({
       ) : null}
       <span className="shrink-0">sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
       <span className="shrink-0">panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex max-w-[12rem] shrink-0 items-center gap-1 truncate rounded px-1 py-0.5 hover:bg-panel-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          lspSummary.tone === "available" && "text-success",
+          lspSummary.tone === "attention" && "text-danger",
+          lspSummary.tone === "stopped" && "text-muted",
+          lspSummary.tone === "none" && "text-subtle",
+        )}
+        title={lspSummary.title}
+        onClick={onOpenLspStatus}
+        data-ide-status-lsp
+        data-ide-status-lsp-tone={lspSummary.tone}
+      >
+        <Server className="size-3" aria-hidden />
+        <span className="truncate">{lspSummary.label}</span>
+      </button>
       {activeTab ? (
         <span className="ml-auto inline-flex min-w-0 items-center gap-2" data-ide-status-active-file>
           <span className="truncate" data-ide-status-active-file-path>{activeTab.ref.path}</span>

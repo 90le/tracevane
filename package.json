@@ -127,7 +127,8 @@
     "smoke:ide:command-palette": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3904} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5213} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5213} -- node tests/ide-workbench/ide-command-palette.smoke.mjs",
     "smoke:ide:lsp-html-css-providers": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3905} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5214} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5214} -- node tests/ide-workbench/ide-lsp-html-css-providers.smoke.mjs",
     "test:system:lsp-external-gateway": "npm run build:api && node --test tests/system/lsp-external-gateway.test.mjs",
-    "test:system:lsp-yaml-provider": "npm run build:api && node --test tests/system/lsp-yaml-provider.test.mjs"
+    "test:system:lsp-yaml-provider": "npm run build:api && node --test tests/system/lsp-yaml-provider.test.mjs",
+    "smoke:ide:lsp-provider-status": "TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3906} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5215} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5215} -- node tests/ide-workbench/ide-lsp-provider-status.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

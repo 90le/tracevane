@@ -7,8 +7,8 @@ import {
   Files,
   GitBranch,
   Loader2,
-  PanelLeft,
   Save,
+  Server,
   Search,
   X,
 } from "lucide-react";
@@ -33,6 +33,8 @@ export interface IdeCommandPaletteProps {
   onSaveActiveTab: () => void;
   onCloseActiveTab: () => void;
   onOpenSymbol: (request: { rootId: string; path: string; reveal: IdeWorkbenchEditorRevealRange }) => void;
+  onShowLspStatus: () => void;
+  lspStatusSummary?: string;
 }
 
 type PaletteCommandId =
@@ -42,7 +44,8 @@ type PaletteCommandId =
   | "workbench.view.debug"
   | "workbench.action.files.save"
   | "workbench.action.closeActiveEditor"
-  | "workbench.action.gotoSymbol";
+  | "workbench.action.gotoSymbol"
+  | "workbench.action.lsp.showExternalProviderStatus";
 
 interface PaletteCommand {
   id: PaletteCommandId;
@@ -73,6 +76,8 @@ export function IdeCommandPalette({
   onSaveActiveTab,
   onCloseActiveTab,
   onOpenSymbol,
+  onShowLspStatus,
+  lspStatusSummary,
 }: IdeCommandPaletteProps) {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = React.useState("");
@@ -156,7 +161,15 @@ export function IdeCommandPalette({
         inputRef.current?.focus();
       },
     },
-  ], [activeTab, onClose, onCloseActiveTab, onOpenActivity, onSaveActiveTab]);
+    {
+      id: "workbench.action.lsp.showExternalProviderStatus",
+      title: "显示外部 LSP Provider 状态",
+      subtitle: lspStatusSummary || "查看 allowlisted language server provider 状态",
+      keywords: "lsp provider language server external status 外部 状态 语言服务",
+      icon: <Server />,
+      run: () => { onShowLspStatus(); onClose(); },
+    },
+  ], [activeTab, lspStatusSummary, onClose, onCloseActiveTab, onOpenActivity, onSaveActiveTab, onShowLspStatus]);
 
   const normalizedQuery = query.trim();
   const commandQuery = normalizedQuery.replace(/^>/, "").replace(/^@/, "").trim().toLowerCase();
