@@ -553,6 +553,7 @@ function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
   if (!isRecord(toolChoice)) return toolChoice;
+  if (toolChoice.type === "any") return "required";
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);

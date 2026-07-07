@@ -10802,16 +10802,38 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
       });
       assert.equal(response.status, 200, response.body);
       assert.equal(response.body.choices[0].message.content, "Anthropic-style choice accepted.");
+
+      const anyResponse = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{ role: "user", content: "Use any available tool." }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }],
+          tool_choice: { type: "any", disable_parallel_tool_use: true },
+        },
+      });
+      assert.equal(anyResponse.status, 200, anyResponse.body);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", name: "lookup" });
   assert.equal(upstreamCalls[0].body.parallel_tool_calls, false);
+  assert.equal(upstreamCalls[1].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
+  assert.equal(upstreamCalls[1].body.tool_choice, "required");
+  assert.equal(upstreamCalls[1].body.parallel_tool_calls, false);
 });
 
 test("model gateway adapts legacy Chat functions through Responses and Anthropic providers", async () => {
