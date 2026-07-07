@@ -146,6 +146,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   if (unsupportedToolChoiceText) anthropicMessages.push({ role: "user", content: unsupportedToolChoiceText });
   const unsupportedResponseFormatText = chatUnsupportedResponseFormatToAnthropicText(request.response_format);
   if (unsupportedResponseFormatText) anthropicMessages.push({ role: "user", content: unsupportedResponseFormatText });
+  const unsupportedRequestControlsText = chatUnsupportedRequestControlsToAnthropicText(request);
+  if (unsupportedRequestControlsText) anthropicMessages.push({ role: "user", content: unsupportedRequestControlsText });
 
   const anthropicRequest: JsonRecord = {
     model,
@@ -939,6 +941,27 @@ function chatUnsupportedResponseFormatToAnthropicText(responseFormat: unknown): 
   if (responseFormat === undefined) return "";
   if (mapChatResponseFormatToAnthropicOutputFormat(responseFormat) !== undefined) return "";
   return `OpenAI Chat unsupported response_format for Anthropic Messages: ${stringifyCompact(responseFormat)}`;
+}
+
+function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): string {
+  const unsupportedFields = [
+    "frequency_penalty",
+    "logit_bias",
+    "logprobs",
+    "modalities",
+    "n",
+    "prediction",
+    "presence_penalty",
+    "seed",
+    "store",
+    "top_logprobs",
+  ];
+  const notes = unsupportedFields
+    .filter((field) => request[field] !== undefined)
+    .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  return notes.length
+    ? `OpenAI Chat request controls preserved for Anthropic Messages: ${notes.join(" ")}`
+    : "";
 }
 
 function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown }): number {
