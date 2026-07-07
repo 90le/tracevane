@@ -12588,9 +12588,11 @@ test("model gateway preserves supported responses controls and strips rejected c
           max_tool_calls: 7,
           max_tokens: 128,
           max_completion_tokens: 512,
+          audio: { voice: "alloy", format: "mp3" },
           frequency_penalty: 0,
           logprobs: true,
           metadata: { trace_id: "strip-for-codex-responses" },
+          modalities: ["text", "audio"],
           presence_penalty: 0,
           previous_response_id: "resp_previous",
           prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
@@ -12646,7 +12648,16 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-modern-controls-secret");
   assert.deepEqual(upstreamCalls[0].body, {
     model: "gpt-5.4",
-    input: [{ role: "user", content: [{ type: "input_text", text: "preserve modern responses controls" }] }],
+    input: [
+      { role: "user", content: [{ type: "input_text", text: "preserve modern responses controls" }] },
+      {
+        role: "user",
+        content: [{
+          type: "input_text",
+          text: 'OpenAI Chat request controls preserved for Responses: audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
+        }],
+      },
+    ],
     stream: false,
     background: true,
     conversation: "conv_123",
@@ -12664,6 +12675,8 @@ test("model gateway preserves supported responses controls and strips rejected c
     truncation: "auto",
   });
   assert.equal("metadata" in upstreamCalls[0].body, false);
+  assert.equal("audio" in upstreamCalls[0].body, false);
+  assert.equal("modalities" in upstreamCalls[0].body, false);
   assert.equal("stop" in upstreamCalls[0].body, false);
   assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
   assert.equal("logprobs" in upstreamCalls[0].body, false);
@@ -14314,6 +14327,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
             type: "yaml_schema",
             schema: { type: "object", additionalProperties: false },
           },
+          audio: { voice: "alloy", format: "wav" },
           modalities: ["text", "audio"],
           max_tokens: 64,
         },
@@ -14433,7 +14447,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     messages: [
       { role: "user", content: "preserve unsupported chat response format" },
       { role: "user", content: 'OpenAI Chat unsupported response_format for Anthropic Messages: {"type":"yaml_schema","schema":{"type":"object","additionalProperties":false}}' },
-      { role: "user", content: 'OpenAI Chat request controls preserved for Anthropic Messages: modalities=["text","audio"]' },
+      { role: "user", content: 'OpenAI Chat request controls preserved for Anthropic Messages: audio={"voice":"alloy","format":"wav"} modalities=["text","audio"]' },
     ],
   });
 });

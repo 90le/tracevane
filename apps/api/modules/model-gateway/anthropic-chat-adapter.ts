@@ -985,6 +985,7 @@ function chatUnsupportedResponseFormatToAnthropicText(responseFormat: unknown): 
 
 function chatUnsupportedRequestControlsToAnthropicText(request: JsonRecord): string {
   const unsupportedFields = [
+    "audio",
     "frequency_penalty",
     "logit_bias",
     "logprobs",

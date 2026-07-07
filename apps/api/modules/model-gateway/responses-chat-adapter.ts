@@ -93,6 +93,10 @@ export function adaptChatCompletionRequestToResponses(
   if (unsupportedResponseFormatText) {
     responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedResponseFormatText }] });
   }
+  const unsupportedRequestControlsText = chatUnsupportedRequestControlsToResponsesText(request);
+  if (unsupportedRequestControlsText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedRequestControlsText }] });
+  }
 
   const responsesRequest: JsonRecord = {
     model,
@@ -684,6 +688,24 @@ function chatUnsupportedResponseFormatToResponsesText(responseFormat: unknown): 
   if (responseFormat === undefined) return "";
   if (mapChatResponseFormatToResponsesText(responseFormat) !== undefined) return "";
   return `OpenAI Chat unsupported response_format for Responses: ${stringifyCompact(responseFormat)}`;
+}
+
+function chatUnsupportedRequestControlsToResponsesText(request: JsonRecord): string {
+  const notes: string[] = [];
+  if (request.audio !== undefined) {
+    notes.push(`audio=${stringifyCompact(request.audio)}`);
+  }
+  if (request.modalities !== undefined && !chatModalitiesAreTextOnly(request.modalities)) {
+    notes.push(`modalities=${stringifyCompact(request.modalities)}`);
+  }
+  return notes.length
+    ? `OpenAI Chat request controls preserved for Responses: ${notes.join(" ")}`
+    : "";
+}
+
+function chatModalitiesAreTextOnly(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.every((item) => stringOrNull(item)?.toLowerCase() === "text");
 }
 
 function applyChatVerbosityToResponsesText(responsesRequest: JsonRecord, verbosityValue: unknown): void {
