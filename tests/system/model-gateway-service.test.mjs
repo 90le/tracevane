@@ -9348,6 +9348,12 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
           name: "delete_file",
           arguments: "{\"path\":\"danger.txt\"}",
         },
+        {
+          id: "ws_1",
+          type: "web_search_call",
+          status: "completed",
+          action: { query: "Tracevane gateway" },
+        },
       ],
       usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
     }), {
@@ -9358,7 +9364,8 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
 
   const expectedText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]"
     + "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]"
-    + "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_delete_1 arguments: {\"path\":\"danger.txt\"}]";
+    + "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_delete_1 arguments: {\"path\":\"danger.txt\"}]"
+    + "[OpenAI Responses web_search_call {\"status\":\"completed\",\"action\":{\"query\":\"Tracevane gateway\"}}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -9564,6 +9571,13 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
     name: "delete_file",
     arguments: "{\"path\":\"danger.txt\"}",
   };
+  const builtinToolItem = {
+    id: "fs_stream_1",
+    type: "file_search_call",
+    status: "completed",
+    queries: ["README.md"],
+    results: [{ file_id: "file_1", filename: "README.md" }],
+  };
   globalThis.fetch = async (url, init = {}) => {
     const requestBody = JSON.parse(String(init.body || "{}"));
     upstreamCalls.push({
@@ -9576,7 +9590,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
       object: "response",
       status: "completed",
       model: "gpt-5.4",
-      output: [mcpListItem, mcpCallItem, mcpApprovalItem],
+      output: [mcpListItem, mcpCallItem, mcpApprovalItem, builtinToolItem],
       usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
     };
     const upstreamSse = [
@@ -9587,6 +9601,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
       `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 1, item: mcpCallItem })}`,
       `event: response.output_item.added\ndata: ${JSON.stringify({ output_index: 2, item: mcpApprovalItem })}`,
       `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 2, item: mcpApprovalItem })}`,
+      `event: response.output_item.done\ndata: ${JSON.stringify({ output_index: 3, item: builtinToolItem })}`,
       `event: response.completed\ndata: ${JSON.stringify({ response })}`,
       "data: [DONE]",
       "",
@@ -9600,6 +9615,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
   const expectedListText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]";
   const expectedCallText = "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
   const expectedApprovalText = "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_stream_delete_1 arguments: {\"path\":\"danger.txt\"}]";
+  const expectedBuiltinText = "[OpenAI Responses file_search_call {\"status\":\"completed\",\"queries\":[\"README.md\"],\"results\":[{\"file_id\":\"file_1\",\"filename\":\"README.md\"}]}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -9617,7 +9633,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         .filter((item) => item.data !== "[DONE]")
         .map((item) => item.data.choices?.[0]?.delta?.content || "")
         .join("");
-      assert.equal(chatText, expectedListText + expectedCallText + expectedApprovalText);
+      assert.equal(chatText, expectedListText + expectedCallText + expectedApprovalText + expectedBuiltinText);
       assert.equal(chatEvents.at(-2).data.choices[0].finish_reason, "stop");
       assert.equal(chatEvents.at(-1).data, "[DONE]");
 
@@ -9636,7 +9652,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
         .filter((item) => item.event === "content_block_delta")
         .map((item) => item.data.delta.text || "")
         .join("");
-      assert.equal(messageText, expectedListText + expectedApprovalText);
+      assert.equal(messageText, expectedListText + expectedApprovalText + expectedBuiltinText);
       const contentBlocks = messageEvents
         .filter((item) => item.event === "content_block_start")
         .map((item) => item.data.content_block);

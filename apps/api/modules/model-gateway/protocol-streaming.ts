@@ -5,6 +5,10 @@ import {
   responsesMcpCallToAnthropicToolBlocks,
   responsesMcpOutputItemToText,
 } from "./mcp-translation.js";
+import {
+  isResponsesBuiltinToolOutputItem,
+  responsesBuiltinToolOutputItemToText,
+} from "./responses-output-items.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -271,6 +275,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const toolBlocks = new Map<number, ToolStreamBlock>();
   const toolIndexByItemId = new Map<string, number>();
   const emittedMcpItemKeys = new Set<string>();
+  const emittedBuiltinToolItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
   let sawCompleted = false;
 
@@ -375,6 +380,15 @@ export async function writeChatCompletionsSseFromResponsesSse(
           }
           return;
         }
+        if (isResponsesBuiltinToolOutputItem(event.json.item)) {
+          const text = responsesBuiltinToolOutputItemToText(event.json.item);
+          if (text) {
+            emittedBuiltinToolItemKeys.add(responsesOutputItemKey(event.json, event.json.item));
+            ensureChatStreamStart(state, res);
+            writeChatTextDelta(state, res, text);
+          }
+          return;
+        }
         if (isUsableResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
@@ -394,6 +408,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
         emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
         emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
+        emitMissingChatBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
         const pending = flushStopSequenceFilter(stopFilter);
         if (pending) {
           ensureChatStreamStart(state, res);
@@ -452,6 +467,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     stopSequence: null as string | null,
   };
   const emittedMcpItemKeys = new Set<string>();
+  const emittedBuiltinToolItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
   let sawCompleted = false;
 
@@ -568,6 +584,11 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           if (emitted) emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
           return;
         }
+        if (isResponsesBuiltinToolOutputItem(event.json.item)) {
+          const emitted = emitAnthropicBuiltinToolOutputFromResponsesItem(state, res, event.json.item);
+          if (emitted) emittedBuiltinToolItemKeys.add(responsesOutputItemKey(event.json, event.json.item));
+          return;
+        }
         if (isUsableResponsesToolCallItem(event.json.item)) {
           closeAnthropicThinkingBlock(state, res);
           closeAnthropicTextBlock(state, res);
@@ -587,6 +608,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         closeAnthropicThinkingBlock(state, res);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
+        emitMissingAnthropicBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
         const pending = flushStopSequenceFilter(stopFilter);
         if (pending) {
           closeAnthropicThinkingBlock(state, res);
@@ -2033,6 +2055,26 @@ function emitMissingChatMcpOutputsFromResponsesOutput(
   }
 }
 
+function emitMissingChatBuiltinToolOutputsFromResponsesOutput(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || !isResponsesBuiltinToolOutputItem(item)) continue;
+    const key = responsesOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const text = responsesBuiltinToolOutputItemToText(item);
+    if (!text) continue;
+    emittedKeys.add(key);
+    ensureChatStreamStart(state, res);
+    writeChatTextDelta(state, res, text);
+  }
+}
+
 function emitMissingAnthropicToolUsesFromResponsesOutput(
   state: {
     nextContentIndex: number;
@@ -2056,6 +2098,34 @@ function emitMissingAnthropicToolUsesFromResponsesOutput(
     pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
     stopAnthropicToolBlock(res, tool);
     state.stopReason = "tool_use";
+  }
+}
+
+function emitMissingAnthropicBuiltinToolOutputsFromResponsesOutput(
+  state: {
+    started: boolean;
+    messageId: string;
+    model: string | null;
+    usage: JsonRecord;
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+    nextContentIndex: number;
+    text: string;
+  },
+  res: http.ServerResponse,
+  output: unknown,
+  emittedKeys: Set<string>,
+): void {
+  if (!Array.isArray(output)) return;
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index];
+    if (!isRecord(item) || !isResponsesBuiltinToolOutputItem(item)) continue;
+    const key = responsesOutputItemKey({ output_index: index }, item);
+    if (emittedKeys.has(key)) continue;
+    const emitted = emitAnthropicBuiltinToolOutputFromResponsesItem(state, res, item);
+    if (emitted) emittedKeys.add(key);
   }
 }
 
@@ -2084,6 +2154,30 @@ function emitMissingAnthropicMcpOutputsFromResponsesOutput(
     if (emittedKeys.has(key)) continue;
     if (emitAnthropicMcpOutputFromResponsesItem(state, res, item)) emittedKeys.add(key);
   }
+}
+
+function emitAnthropicBuiltinToolOutputFromResponsesItem(
+  state: {
+    started: boolean;
+    messageId: string;
+    model: string | null;
+    usage: JsonRecord;
+    textBlockIndex: number | null;
+    textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+    nextContentIndex: number;
+    text: string;
+  },
+  res: http.ServerResponse,
+  item: JsonRecord,
+): boolean {
+  const text = responsesBuiltinToolOutputItemToText(item);
+  if (!text) return false;
+  closeAnthropicThinkingBlock(state, res);
+  ensureAnthropicTextMessageStart(state, res);
+  pushAnthropicTextDelta(state, res, text);
+  return true;
 }
 
 function emitAnthropicMcpOutputFromResponsesItem(
@@ -2142,9 +2236,13 @@ function emitAnthropicMcpToolBlocksFromResponsesCall(
 
 
 function responsesMcpOutputItemKey(payload: JsonRecord, item: JsonRecord): string {
+  return responsesOutputItemKey(payload, item);
+}
+
+function responsesOutputItemKey(payload: JsonRecord, item: JsonRecord): string {
   return stringOrNull(item.id)
     || stringOrNull(payload.item_id)
-    || `${String(item.type || "mcp")}:${numberOrNull(payload.output_index) ?? "?"}`;
+    || `${String(item.type || "output")}:${numberOrNull(payload.output_index) ?? "?"}`;
 }
 
 function createStopSequenceFilter(stopSequences: Iterable<string> | undefined): StopSequenceFilter | null {

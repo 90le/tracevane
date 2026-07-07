@@ -4,6 +4,7 @@ import {
   responsesMcpOutputItemToText,
 } from "./mcp-translation.js";
 import { applyResponsesReasoningOptions } from "./reasoning-options.js";
+import { responsesBuiltinToolOutputItemToText } from "./responses-output-items.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -507,6 +508,8 @@ function responseOutputItemToText(item: unknown, options: { skipMcpToolCalls?: b
   if (item.type === "mcp_call" && options.skipMcpToolCalls) return "";
   const mcpText = responsesMcpOutputItemToText(item);
   if (mcpText) return mcpText;
+  const builtinToolText = responsesBuiltinToolOutputItemToText(item);
+  if (builtinToolText) return builtinToolText;
   return "";
 }
 
