@@ -12344,16 +12344,45 @@ test("model gateway preserves Responses cache and safety controls for Chat provi
 
       assert.equal(response.status, 200, response.body);
       assert.equal(response.body.output[0].content[0].text, "cache ok");
+
+      const unsupportedFormat = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "preserve unsupported responses formats as context",
+          text: {
+            format: { type: "grammar", syntax: "lark", definition: "start: WORD" },
+            verbosity: "low",
+          },
+          response_format: {
+            type: "yaml_schema",
+            schema: { type: "object", additionalProperties: false },
+          },
+        },
+      });
+
+      assert.equal(unsupportedFormat.status, 200, unsupportedFormat.body);
+      assert.equal(unsupportedFormat.body.output[0].content[0].text, "cache ok");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://responses-chat-cache-controls.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].body.prompt_cache_key, "responses-cache-key");
   assert.equal(upstreamCalls[0].body.prompt_cache_retention, "24h");
   assert.equal(upstreamCalls[0].body.safety_identifier, "hashed-user-id");
+
+  assert.equal(upstreamCalls[1].url, "https://responses-chat-cache-controls.example.test/v1/chat/completions");
+  assert.equal("response_format" in upstreamCalls[1].body, false);
+  assert.equal("text" in upstreamCalls[1].body, false);
+  assert.equal(upstreamCalls[1].body.verbosity, "low");
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "preserve unsupported responses formats as context" },
+    { role: "user", content: 'OpenAI Responses unsupported text.format for Chat: {"type":"grammar","syntax":"lark","definition":"start: WORD"}' },
+    { role: "user", content: 'OpenAI Responses unsupported response_format for Chat: {"type":"yaml_schema","schema":{"type":"object","additionalProperties":false}}' },
+  ]);
 });
 
 test("model gateway applies responses adapter stop sequences locally without forwarding unsupported stop", async () => {

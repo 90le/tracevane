@@ -75,6 +75,14 @@ export function adaptCodexResponsesRequestToChat(
   if (unsupportedToolChoiceText) {
     messages.push({ role: "user", content: unsupportedToolChoiceText });
   }
+  const unsupportedTextFormatText = responsesUnsupportedTextFormatToText(request.text);
+  if (unsupportedTextFormatText) {
+    messages.push({ role: "user", content: unsupportedTextFormatText });
+  }
+  const unsupportedResponseFormatText = responsesUnsupportedResponseFormatToText(request.response_format);
+  if (unsupportedResponseFormatText) {
+    messages.push({ role: "user", content: unsupportedResponseFormatText });
+  }
   if (!messages.length) {
     messages.push({ role: "user", content: "" });
   }
@@ -120,7 +128,8 @@ export function adaptCodexResponsesRequestToChat(
   const toolChoice = mapResponsesToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
 
-  const responseFormat = mapResponsesTextFormatToChatResponseFormat(request.text) ?? request.response_format;
+  const responseFormat = mapResponsesTextFormatToChatResponseFormat(request.text)
+    ?? mapChatResponseFormatToChatResponseFormat(request.response_format);
   if (responseFormat !== undefined) chatRequest.response_format = responseFormat;
   const verbosity = responsesTextVerbosity(request.text) ?? verbosityOrNull(request.verbosity);
   if (verbosity) chatRequest.verbosity = verbosity;
@@ -772,6 +781,27 @@ function mapResponsesTextFormatToChatResponseFormat(text: unknown): unknown {
   }
   if (format.type === "json_object" || format.type === "text") return { type: format.type };
   return undefined;
+}
+
+function mapChatResponseFormatToChatResponseFormat(responseFormat: unknown): unknown {
+  if (!isRecord(responseFormat)) return undefined;
+  if (responseFormat.type === "json_schema" && isRecord(responseFormat.json_schema)) {
+    return { type: "json_schema", json_schema: responseFormat.json_schema };
+  }
+  if (responseFormat.type === "json_object" || responseFormat.type === "text") return { type: responseFormat.type };
+  return undefined;
+}
+
+function responsesUnsupportedTextFormatToText(text: unknown): string {
+  if (!isRecord(text) || text.format === undefined) return "";
+  if (mapResponsesTextFormatToChatResponseFormat(text) !== undefined) return "";
+  return `OpenAI Responses unsupported text.format for Chat: ${stringifyCompact(text.format)}`;
+}
+
+function responsesUnsupportedResponseFormatToText(responseFormat: unknown): string {
+  if (responseFormat === undefined) return "";
+  if (mapChatResponseFormatToChatResponseFormat(responseFormat) !== undefined) return "";
+  return `OpenAI Responses unsupported response_format for Chat: ${stringifyCompact(responseFormat)}`;
 }
 
 function responsesTextVerbosity(text: unknown): "low" | "medium" | "high" | null {
