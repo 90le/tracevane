@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
 
 const EXTERNAL_BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL;
-const SMOKE_PORT = Number(process.env.TRACEVANE_WEB_PORT || 5187);
+const SMOKE_PORT = Number(process.env.TRACEVANE_WEB_PORT || 5188);
 const BASE_URL = EXTERNAL_BASE_URL || `http://127.0.0.1:${SMOKE_PORT}`;
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
 
@@ -185,11 +185,11 @@ async function run() {
   const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE debug breakpoint smoke');
-  const smokeDir = normalizePortablePath(path.join(relativePathFromRoot(root.absolutePath, process.cwd()), '.tmp', `ide-debug-breakpoints-${Date.now().toString(36)}`));
-  const filePath = `${smokeDir}/breakpoint-target.ts`;
+  const smokeDir = normalizePortablePath(path.join(relativePathFromRoot(root.absolutePath, process.cwd()), '.tmp', `ide-debug-adapter-proof-${Date.now().toString(36)}`));
+  const filePath = `${smokeDir}/adapter-proof-target.js`;
   await ensureDirectory(rootId, smokeDir);
   await createFile(rootId, filePath, [
-    'export function alpha() {',
+    'function alpha() {',
     '  const value = 1;',
     '  return value;',
     '}',
@@ -197,18 +197,46 @@ async function run() {
     '',
   ].join('\n'));
 
+
+  await api('/api/debug/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, cwd: smokeDir, profileId: 'node-lite' }),
+  }).then(() => {
+    throw new Error('Debug adapter proof unexpectedly accepted missing program');
+  }).catch((error) => {
+    if (!String(error?.message || error).includes('Debug program is required')) throw error;
+  });
+
+  await api('/api/debug/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ rootId, cwd: smokeDir, profileId: 'node-lite', program: filePath.replace(/\.js$/, '.txt') }),
+  }).then(() => {
+    throw new Error('Debug adapter proof unexpectedly accepted missing/unsupported program');
+  }).catch((error) => {
+    const message = String(error?.message || error);
+    if (!message.includes('does not exist') && !message.includes('only accepts') && !message.includes('not found')) throw error;
+  });
+
   const apiPayload = await api('/api/debug/sessions', {
     method: 'POST',
     body: JSON.stringify({
       rootId,
       cwd: smokeDir,
-      profileId: 'mock-node',
+      profileId: 'node-lite',
+      program: filePath,
       breakpoints: [{ rootId, path: filePath, lineNumber: 3, column: 1, enabled: true }],
     }),
   });
   if (apiPayload.session?.activeLocation?.path !== filePath || apiPayload.session?.activeLocation?.lineNumber !== 3) {
-    throw new Error(`Debug API did not preserve breakpoint location: ${JSON.stringify(apiPayload)}`);
+    throw new Error(`Debug adapter proof API did not preserve breakpoint location: ${JSON.stringify(apiPayload)}`);
   }
+  if (apiPayload.session?.profileId !== 'node-lite' || apiPayload.session?.program !== filePath) {
+    throw new Error(`Debug adapter proof API did not preserve profile/program: ${JSON.stringify(apiPayload)}`);
+  }
+  await api('/api/debug/sessions/stop', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId: apiPayload.session.id }),
+  });
 
   const layout = createWorkbenchLayout(rootId, smokeDir, filePath);
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
@@ -232,15 +260,13 @@ async function run() {
     await page.locator('[data-ide-debug-view]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-debug-console-panel]').waitFor({ state: 'visible', timeout: 30_000 });
 
-    await clickEditorGutterLine(page, 3);
-    await page.locator(`[data-ide-debug-breakpoint-row][data-ide-debug-breakpoint-path="${filePath}"][data-ide-debug-breakpoint-line="3"]`).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-monaco-editor-panel][data-ide-editor-debug-breakpoint-count="1"]').waitFor({ state: 'visible', timeout: 30_000 });
-
-    await page.locator('[data-ide-debug-start]').click();
-    await page.locator('[data-ide-debug-session][data-ide-debug-session-state="stopped"]').first().waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-debug-breakpoint-row][data-ide-debug-breakpoint-active="true"]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-monaco-editor-panel][data-ide-editor-debug-stopped-line="3"]').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-debug-console-event]', { hasText: 'breakpoint' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-adapter-start]').click({ position: { x: 12, y: 12 } });
+    await page.locator('[data-ide-debug-session][data-ide-debug-session-state="stopped"][data-ide-debug-session-profile="node-lite"]').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-monaco-editor-panel][data-ide-editor-debug-stopped-line="1"]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-stack-frame]', { hasText: 'adapter-proof-target.js:1' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-variable][data-ide-debug-variable-name="adapter"]', { hasText: 'node-lite' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-console-event]', { hasText: 'stack trace received' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-console-event]', { hasText: 'variables received' }).first().waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: location.href,

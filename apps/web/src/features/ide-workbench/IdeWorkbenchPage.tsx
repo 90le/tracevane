@@ -545,6 +545,7 @@ export function IdeWorkbenchPage() {
               hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
               rootId={rootId}
               cwd={directoryPath}
+              activeFile={activeTab && activeTab.mode !== "git-diff" ? activeTab.ref : null}
               onOpenDebugConsole={() => layoutApi.setActivePanelId("debugConsole")}
               onOpenLocation={openDebugLocation}
             />
@@ -581,7 +582,7 @@ export function IdeWorkbenchPage() {
           ) : null}
           <div
             className={cn(
-              "grid min-h-0 min-w-0",
+              "col-start-2 row-start-1 grid min-h-0 min-w-0 overflow-hidden",
               layout.panel.collapsed || layout.panel.maximized
                 ? "grid-rows-[minmax(0,1fr)]"
                 : layout.panel.placement === "right"

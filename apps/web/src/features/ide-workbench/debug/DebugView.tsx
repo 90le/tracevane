@@ -16,18 +16,22 @@ export function IdeDebugView({
   hidden,
   rootId,
   cwd,
+  activeFile,
   onOpenDebugConsole,
   onOpenLocation,
 }: {
   hidden: boolean;
   rootId: string;
   cwd: string;
+  activeFile?: { rootId: string; path: string } | null;
   onOpenDebugConsole: () => void;
   onOpenLocation: (location: DebugSourceLocation) => void;
 }) {
   const snapshot = useIdeDebugSnapshot();
   const [busy, setBusy] = React.useState(false);
   const activeSession = snapshot.sessions.find((session) => session.state !== "terminated") ?? snapshot.sessions[0] ?? null;
+  const stackFrames = activeSession ? snapshot.stackFramesBySessionId[activeSession.id] ?? [] : [];
+  const variables = activeSession ? snapshot.variablesBySessionId[activeSession.id] ?? [] : [];
 
   const handleStart = React.useCallback(async () => {
     if (!rootId || busy) return;
@@ -46,6 +50,25 @@ export function IdeDebugView({
     }
   }, [busy, cwd, onOpenLocation, rootId, snapshot.breakpoints, snapshot.sessions.length]);
 
+  const handleStartAdapterProof = React.useCallback(async () => {
+    if (!rootId || !activeFile || busy) return;
+    setBusy(true);
+    try {
+      const payload = await createIdeDebugSession({
+        rootId,
+        cwd,
+        profileId: "node-lite",
+        program: activeFile.path,
+        name: `Node Lite ${snapshot.sessions.length + 1}`,
+        breakpoints: snapshot.breakpoints.filter((breakpoint) => breakpoint.enabled !== false),
+      });
+      upsertDebugSession(payload.session);
+      if (payload.session.activeLocation) onOpenLocation(payload.session.activeLocation);
+    } finally {
+      setBusy(false);
+    }
+  }, [activeFile, busy, cwd, onOpenLocation, rootId, snapshot.breakpoints, snapshot.sessions.length]);
+
   const handleStop = React.useCallback(async () => {
     if (!activeSession || activeSession.state === "terminated" || busy) return;
     setBusy(true);
@@ -61,7 +84,7 @@ export function IdeDebugView({
 
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel" data-ide-sidebar data-ide-debug-view>
-      <div className="border-b border-line px-3 py-3">
+      <div className="min-w-0 overflow-hidden border-b border-line px-3 py-3">
         <div className="flex items-center gap-2">
           <Bug className="size-4 text-primary" />
           <div className="min-w-0 flex-1 font-semibold text-ink-strong">运行和调试</div>
@@ -69,15 +92,30 @@ export function IdeDebugView({
         <div className="mt-1 text-xs text-muted" data-ide-debug-status>
           {snapshot.connectionState === "connected" ? "Debug Gateway 已连接" : snapshot.message ?? "Debug Gateway 等待连接"}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Button size="sm" onClick={handleStart} disabled={!rootId || busy} data-ide-debug-start>
+        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
+          <Button className="w-full min-w-0 justify-start" size="sm" onClick={handleStart} disabled={!rootId || busy} data-ide-debug-start>
             <Play />
             启动 Mock
           </Button>
-          <Button size="sm" variant="outline" onClick={handleStop} disabled={!activeSession || activeSession.state === "terminated" || busy} data-ide-debug-stop>
+          <Button
+            className="w-full min-w-0 justify-start"
+            size="sm"
+            variant="primary"
+            onClick={handleStartAdapterProof}
+            disabled={!rootId || !activeFile || busy}
+            title={activeFile ? `使用 Node Lite 调试 ${activeFile.path}` : "先在编辑器中打开一个 JavaScript/TypeScript 文件"}
+            data-ide-debug-adapter-start
+          >
+            <Play />
+            Node Lite
+          </Button>
+          <Button className="w-full min-w-0 justify-start" size="sm" variant="outline" onClick={handleStop} disabled={!activeSession || activeSession.state === "terminated" || busy} data-ide-debug-stop>
             <CircleStop />
             停止
           </Button>
+        </div>
+        <div className="mt-1 truncate text-xs text-muted" data-ide-debug-active-file>
+          当前文件：{activeFile?.path ?? "未打开文件"}
         </div>
         <Button className="mt-2 w-full justify-start" size="sm" variant="ghost" onClick={onOpenDebugConsole} data-ide-debug-open-console>
           <TerminalSquare />
@@ -157,6 +195,7 @@ export function IdeDebugView({
                 className="rounded-md border border-line bg-canvas px-2 py-2 text-sm"
                 data-ide-debug-session
                 data-ide-debug-session-state={session.state}
+                data-ide-debug-session-profile={session.profileId}
               >
                 <div className="flex items-center gap-2">
                   <span className={cn(
@@ -167,6 +206,7 @@ export function IdeDebugView({
                   <span className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-muted">{session.state}</span>
                 </div>
                 <div className="mt-1 truncate font-mono text-xs text-muted">cwd: {session.cwd || "."}</div>
+                {session.program ? <div className="mt-1 truncate font-mono text-xs text-muted">program: {session.program}</div> : null}
                 {session.message ? <div className="mt-1 text-xs text-subtle">{session.message}</div> : null}
               </div>
             ))}
@@ -174,6 +214,47 @@ export function IdeDebugView({
         ) : (
           <div className="rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-empty>
             还没有 Debug session。当前阶段只提供 mock provider 骨架，用于验证 Gateway / Debug View / Debug Console 闭环。
+          </div>
+        )}
+        <div className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Call Stack</div>
+        {stackFrames.length ? (
+          <div className="mb-4 space-y-1">
+            {stackFrames.map((frame) => (
+              <button
+                key={`${activeSession?.id ?? "session"}:${frame.id}`}
+                type="button"
+                className="w-full rounded-md border border-line bg-canvas px-2 py-2 text-left text-sm hover:border-primary-line hover:bg-primary-soft"
+                onClick={() => onOpenLocation(frame.source)}
+                data-ide-debug-stack-frame
+              >
+                <div className="truncate font-medium text-ink-strong">{frame.name}</div>
+                <div className="truncate font-mono text-xs text-muted">{frame.source.path}:{frame.source.lineNumber}</div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mb-4 rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-stack-empty>
+            Adapter proof 运行后会显示最小调用栈。
+          </div>
+        )}
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Variables</div>
+        {variables.length ? (
+          <div className="space-y-1">
+            {variables.map((variable) => (
+              <div
+                key={`${activeSession?.id ?? "session"}:${variable.name}`}
+                className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs"
+                data-ide-debug-variable
+                data-ide-debug-variable-name={variable.name}
+              >
+                <span className="truncate font-medium text-ink-strong">{variable.name}</span>
+                <span className="truncate font-mono text-muted">{variable.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-variables-empty>
+            Adapter proof 运行后会显示最小变量快照。
           </div>
         )}
       </div>

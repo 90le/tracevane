@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import type http from "node:http";
+import path from "node:path";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 
@@ -7,20 +9,26 @@ import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   DebugBreakpointLocation,
   DebugCreateSessionRequest,
-  DebugSourceLocation,
   DebugGatewayClientEvent,
   DebugGatewayServerEvent,
   DebugProfileDescriptor,
+  DebugSourceLocation,
+  DebugStackFrame,
+  DebugVariable,
   DebugSessionDescriptor,
   DebugSessionPayload,
   DebugSessionsPayload,
   DebugStatusPayload,
   DebugStopSessionRequest,
 } from "../../../../types/debug.js";
-import { resolveFilesServiceDirectoryPath } from "../files/service.js";
+import {
+  resolveFilesServiceDirectoryPath,
+  resolveFilesServiceExistingFilePath,
+} from "../files/service.js";
 
 const DEBUG_WS_PATH = "/ws/debug";
 const MOCK_PROFILE_ID = "mock-node";
+const NODE_LITE_PROFILE_ID = "node-lite";
 
 const DEBUG_PROFILES: DebugProfileDescriptor[] = [
   {
@@ -28,6 +36,13 @@ const DEBUG_PROFILES: DebugProfileDescriptor[] = [
     label: "Mock Node Debugger",
     kind: "mock",
     description: "Deterministic Debug Adapter skeleton for Tracevane Workbench smoke validation.",
+  },
+  {
+    id: NODE_LITE_PROFILE_ID,
+    label: "Node Lite Adapter Proof",
+    kind: "adapter-proof",
+    description: "Minimal guarded adapter-proof profile that maps program breakpoints to stopped/stack/variables events.",
+    requiresProgram: true,
   },
 ];
 
@@ -63,6 +78,9 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "terminate-events",
         "breakpoint-locations",
         "stopped-source-location",
+        "adapter-proof-profile",
+        "stack-trace-events",
+        "variables-events",
       ],
     };
   }
@@ -84,11 +102,12 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     const validated = validateCreateRequest(config, request);
     const now = new Date().toISOString();
     const id = `debug-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
-    const activeLocation = validated.breakpoints.find((breakpoint) => breakpoint.enabled !== false) ?? null;
+    const adapterResult = createAdapterProofResult(validated);
+    const activeLocation = adapterResult.activeLocation;
     const stoppedReason = activeLocation ? "breakpoint" : "entry";
     const message = activeLocation
-      ? `Mock debug session stopped at ${activeLocation.path}:${activeLocation.lineNumber}.`
-      : "Mock debug session stopped on entry.";
+      ? `${validated.profile.label} stopped at ${activeLocation.path}:${activeLocation.lineNumber}.`
+      : `${validated.profile.label} stopped on entry.`;
     const session: DebugSessionDescriptor = {
       id,
       rootId: validated.rootId,
@@ -97,6 +116,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       profileId: validated.profileId,
       name: validated.name,
       state: "stopped",
+      adapterKind: validated.profile.kind,
+      program: validated.program?.relativePath ?? null,
       createdAt: now,
       updatedAt: now,
       stoppedReason,
@@ -110,8 +131,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       sessionId: id,
       category: "console",
       text: activeLocation
-        ? `Mock debug session ${session.name} initialized at ${session.cwd || "."}; stopped at ${activeLocation.path}:${activeLocation.lineNumber}`
-        : `Mock debug session ${session.name} initialized at ${session.cwd || "."}`,
+        ? `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}; stopped at ${activeLocation.path}:${activeLocation.lineNumber}`
+        : `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}`,
       timestamp: now,
     });
     emit({
@@ -122,6 +143,24 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       timestamp: now,
       ...(activeLocation ?? {}),
     });
+    if (adapterResult.frames.length) {
+      emit({
+        type: "stackTrace",
+        sessionId: id,
+        threadId: 1,
+        frames: adapterResult.frames,
+        timestamp: now,
+      });
+    }
+    if (adapterResult.variables.length) {
+      emit({
+        type: "variables",
+        sessionId: id,
+        frameId: adapterResult.frames[0]?.id ?? 1,
+        variables: adapterResult.variables,
+        timestamp: now,
+      });
+    }
     return { session };
   }
 
@@ -227,22 +266,100 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
 function validateCreateRequest(
   config: TracevaneServerConfig,
   request: DebugCreateSessionRequest,
-): { rootId: string; workspaceId: string | null; cwd: string; profileId: string; name: string; breakpoints: DebugBreakpointLocation[] } {
+): {
+  rootId: string;
+  workspaceId: string | null;
+  cwd: string;
+  profile: DebugProfileDescriptor;
+  profileId: string;
+  name: string;
+  breakpoints: DebugBreakpointLocation[];
+  program: { relativePath: string; absolutePath: string } | null;
+} {
   const rootId = String(request?.rootId || "").trim();
   if (!rootId) throw new Error("Debug rootId is required");
   const profileId = String(request?.profileId || MOCK_PROFILE_ID).trim() || MOCK_PROFILE_ID;
-  if (profileId !== MOCK_PROFILE_ID) throw new Error("Unsupported debug profile");
+  const profile = DEBUG_PROFILES.find((item) => item.id === profileId);
+  if (!profile) throw new Error("Unsupported debug profile");
   const resolved = resolveFilesServiceDirectoryPath(config, rootId, request?.cwd || "");
-  const name = String(request?.name || DEBUG_PROFILES[0].label).trim() || DEBUG_PROFILES[0].label;
+  const program = profile.requiresProgram
+    ? resolveDebugProgram(config, resolved.root.id, request?.program)
+    : null;
+  const name = String(request?.name || profile.label).trim() || profile.label;
   const breakpoints = normalizeBreakpointLocations(config, resolved.root.id, request?.breakpoints);
   return {
     rootId: resolved.root.id,
     workspaceId: String(request?.workspaceId || rootId || "").trim() || null,
     cwd: resolved.relativePath,
+    profile,
     profileId,
     name,
     breakpoints,
+    program,
   };
+}
+
+function resolveDebugProgram(
+  config: TracevaneServerConfig,
+  rootId: string,
+  program: string | null | undefined,
+): { relativePath: string; absolutePath: string } {
+  const rawProgram = String(program || "").trim();
+  if (!rawProgram) throw new Error("Debug program is required for this profile");
+  const resolved = resolveFilesServiceExistingFilePath(config, rootId, rawProgram);
+  const extension = path.extname(resolved.relativePath).toLowerCase();
+  if (![".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx"].includes(extension)) {
+    throw new Error("Node Lite adapter proof only accepts JavaScript/TypeScript source files");
+  }
+  return { relativePath: resolved.relativePath, absolutePath: resolved.absolutePath };
+}
+
+function createAdapterProofResult(validated: {
+  rootId: string;
+  cwd: string;
+  profile: DebugProfileDescriptor;
+  breakpoints: DebugBreakpointLocation[];
+  program: { relativePath: string; absolutePath: string } | null;
+}): { activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] } {
+  if (validated.profile.id !== NODE_LITE_PROFILE_ID || !validated.program) {
+    const activeLocation = validated.breakpoints.find((breakpoint) => breakpoint.enabled !== false) ?? null;
+    return { activeLocation, frames: [], variables: [] };
+  }
+  const lineCount = safeReadLineCount(validated.program.absolutePath);
+  const programBreakpoints = validated.breakpoints.filter((breakpoint) =>
+    breakpoint.enabled !== false
+    && breakpoint.rootId === validated.rootId
+    && breakpoint.path === validated.program?.relativePath,
+  );
+  const firstBreakpoint = programBreakpoints[0];
+  const lineNumber = Math.max(1, Math.min(firstBreakpoint?.lineNumber ?? 1, lineCount));
+  const activeLocation: DebugSourceLocation = {
+    rootId: validated.rootId,
+    path: validated.program.relativePath,
+    lineNumber,
+    column: firstBreakpoint?.column ?? 1,
+  };
+  const frame: DebugStackFrame = {
+    id: 1,
+    name: `adapter-proof:${path.basename(validated.program.relativePath)}`,
+    source: activeLocation,
+  };
+  const variables: DebugVariable[] = [
+    { name: "program", value: validated.program.relativePath, type: "string", variablesReference: 0 },
+    { name: "cwd", value: validated.cwd || ".", type: "string", variablesReference: 0 },
+    { name: "breakpointCount", value: String(programBreakpoints.length), type: "number", variablesReference: 0 },
+    { name: "adapter", value: NODE_LITE_PROFILE_ID, type: "string", variablesReference: 0 },
+  ];
+  return { activeLocation, frames: [frame], variables };
+}
+
+function safeReadLineCount(absolutePath: string): number {
+  try {
+    const content = fs.readFileSync(absolutePath, "utf8");
+    return Math.max(1, content.split(/\r\n|\r|\n/).length);
+  } catch {
+    return 1;
+  }
 }
 
 function normalizeBreakpointLocations(

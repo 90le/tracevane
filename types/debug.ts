@@ -3,8 +3,9 @@ export type DebugSessionState = "created" | "running" | "stopped" | "terminated"
 export interface DebugProfileDescriptor {
   id: string;
   label: string;
-  kind: "mock";
+  kind: "mock" | "adapter-proof";
   description: string;
+  requiresProgram?: boolean;
 }
 
 export interface DebugStatusPayload {
@@ -39,6 +40,21 @@ export interface DebugSessionDescriptor {
   stoppedReason?: string | null;
   message?: string | null;
   activeLocation?: DebugSourceLocation | null;
+  adapterKind?: DebugProfileDescriptor["kind"];
+  program?: string | null;
+}
+
+export interface DebugStackFrame {
+  id: number;
+  name: string;
+  source: DebugSourceLocation;
+}
+
+export interface DebugVariable {
+  name: string;
+  value: string;
+  type?: string | null;
+  variablesReference?: number;
 }
 
 export interface DebugCreateSessionRequest {
@@ -48,6 +64,7 @@ export interface DebugCreateSessionRequest {
   profileId?: string | null;
   name?: string | null;
   breakpoints?: DebugBreakpointLocation[];
+  program?: string | null;
 }
 
 export interface DebugStopSessionRequest {
@@ -74,5 +91,7 @@ export type DebugGatewayServerEvent =
   | { type: "session"; session: DebugSessionDescriptor }
   | { type: "output"; sessionId: string; category: "console" | "stdout" | "stderr" | "telemetry"; text: string; timestamp: string }
   | ({ type: "stopped"; sessionId: string; reason: string; threadId?: number | null; timestamp: string } & Partial<DebugSourceLocation>)
+  | { type: "stackTrace"; sessionId: string; threadId: number; frames: DebugStackFrame[]; timestamp: string }
+  | { type: "variables"; sessionId: string; frameId: number; variables: DebugVariable[]; timestamp: string }
   | { type: "terminated"; sessionId: string; reason: string; timestamp: string }
   | { type: "error"; sessionId?: string | null; message: string };

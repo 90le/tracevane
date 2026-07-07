@@ -6,7 +6,9 @@ import type {
   DebugGatewayServerEvent,
   DebugSourceLocation,
   DebugSessionDescriptor,
+  DebugStackFrame,
   DebugStatusPayload,
+  DebugVariable,
 } from "../../../../../../types/debug";
 
 export interface IdeDebugConsoleEvent {
@@ -26,6 +28,8 @@ export interface IdeDebugSnapshot {
   events: IdeDebugConsoleEvent[];
   breakpoints: DebugBreakpointLocation[];
   activeStoppedLocation: (DebugSourceLocation & { sessionId: string; reason: string }) | null;
+  stackFramesBySessionId: Record<string, DebugStackFrame[]>;
+  variablesBySessionId: Record<string, DebugVariable[]>;
 }
 
 const MAX_DEBUG_EVENTS = 1_000;
@@ -40,6 +44,8 @@ let snapshot: IdeDebugSnapshot = {
   events: [],
   breakpoints: [],
   activeStoppedLocation: null,
+  stackFramesBySessionId: {},
+  variablesBySessionId: {},
 };
 
 export function useIdeDebugSnapshot(): IdeDebugSnapshot {
@@ -118,6 +124,38 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
       text: hasDebugSourceLocation(event)
         ? `Debug session stopped: ${event.reason} at ${event.path}:${event.lineNumber}`
         : `Debug session stopped: ${event.reason}`,
+    });
+    return;
+  }
+  if (event.type === "stackTrace") {
+    snapshot = {
+      ...snapshot,
+      stackFramesBySessionId: {
+        ...snapshot.stackFramesBySessionId,
+        [event.sessionId]: event.frames,
+      },
+    };
+    appendConsoleEvent({
+      sessionId: event.sessionId,
+      level: "debug",
+      timestamp: event.timestamp,
+      text: `Debug stack trace received: ${event.frames.length} frame(s)`,
+    });
+    return;
+  }
+  if (event.type === "variables") {
+    snapshot = {
+      ...snapshot,
+      variablesBySessionId: {
+        ...snapshot.variablesBySessionId,
+        [event.sessionId]: event.variables,
+      },
+    };
+    appendConsoleEvent({
+      sessionId: event.sessionId,
+      level: "debug",
+      timestamp: event.timestamp,
+      text: `Debug variables received: ${event.variables.length} item(s)`,
     });
     return;
   }
