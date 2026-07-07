@@ -21,6 +21,7 @@ import type {
  *  - POST /api/git/commit    → commit staged changes with a message
  *  - POST /api/git/branches  → create a branch (optionally checkout, from ref)
  *  - POST /api/git/checkout  → checkout a branch/ref (optionally detached)
+ *  - POST /api/git/fetch     → fetch upstream/remote tracking refs
  *  - POST /api/git/pull      → fast-forward pull from upstream/remote
  *  - POST /api/git/push      → push to upstream/remote
  *  - POST /api/git/sync      → fast-forward pull, then push
@@ -191,6 +192,14 @@ export interface GitRemoteActionParams extends GitMutationParams {
   remote?: string;
   branch?: string;
 }
+export function fetchBranch(params: GitRemoteActionParams): Promise<GitStatusPayload> {
+  const { rootId, path, remote, branch } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/fetch`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", remote, branch }),
+  });
+}
+
 export function pullBranch(params: GitRemoteActionParams): Promise<GitStatusPayload> {
   const { rootId, path, remote, branch } = params;
   return apiRequest<GitStatusPayload>(`${BASE}/pull`, {

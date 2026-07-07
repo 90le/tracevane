@@ -136,6 +136,11 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     );
   });
 
+  router.post("/api/git/fetch", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRemoteActionRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.fetch(payload.rootId || "", payload.path || "", payload.remote || "", payload.branch || ""));
+  });
+
   router.post("/api/git/pull", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<GitRemoteActionRequest>(req);
     sendJson(res, 200, routeCtx.services.git.pull(payload.rootId || "", payload.path || "", payload.remote || "", payload.branch || ""));

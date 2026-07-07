@@ -38,6 +38,7 @@ export interface GitService {
   commit(rootId: string, directoryPath: string | undefined, message?: string): GitStatusPayload;
   createBranch(rootId: string, directoryPath: string | undefined, name?: string, checkout?: boolean, from?: string): GitStatusPayload;
   checkout(rootId: string, directoryPath: string | undefined, target?: string, detach?: boolean): GitStatusPayload;
+  fetch(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
   pull(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
   push(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
   sync(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
@@ -833,6 +834,12 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       const normalizedTarget = normalizeGitRefName(target, "Checkout target");
       runGit(repositoryRoot, detach ? ["checkout", "--detach", normalizedTarget] : ["checkout", normalizedTarget]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    fetch(rootId: string, directoryPath = "", remote = "", branch = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      runGit(repositoryRoot, ["fetch", ...buildRemoteArgs(remote, branch)]);
       return buildStatus(resolved.root.id, resolved.relativePath);
     },
 

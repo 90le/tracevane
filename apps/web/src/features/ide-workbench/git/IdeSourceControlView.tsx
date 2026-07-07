@@ -1,10 +1,10 @@
 import * as React from "react";
-import { AlertCircle, CheckCircle2, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw, UploadCloud } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
-import { commitFiles, stageFiles, unstageFiles } from "@/lib/api/git";
+import { commitFiles, fetchBranch, publishBranch, pullBranch, pushBranch, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
 import { appendWorkbenchOutput } from "../output";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
 
@@ -42,6 +42,56 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
         text: `${kind} failed: ${message}`,
       });
       toast.error(`${label}失败`, { description: message });
+    } finally {
+      setBusyKey(null);
+    }
+  }, [busyKey, git, rootId]);
+
+  const runRemoteAction = React.useCallback(async (kind: "fetch" | "pull" | "push" | "publish" | "sync") => {
+    const status = git.status;
+    if (!status?.available || busyKey) return;
+    const labels: Record<typeof kind, string> = {
+      fetch: "Fetch",
+      pull: "Pull",
+      push: "Push",
+      publish: "Publish Branch",
+      sync: "Sync",
+    };
+    const confirmText: Record<typeof kind, string> = {
+      fetch: "",
+      pull: git.changes.length
+        ? `当前工作区有 ${git.changes.length} 个变更。Pull 使用 git pull --ff-only，仍可能因本地变更失败。继续？`
+        : "执行 git pull --ff-only 从 upstream 拉取？",
+      push: "Push 会更新远端分支。继续？",
+      publish: "Publish 会将当前分支推送到 origin 并设置 upstream。继续？",
+      sync: git.changes.length
+        ? `当前工作区有 ${git.changes.length} 个变更。Sync 会先 git pull --ff-only 再 git push，可能因本地变更失败。继续？`
+        : "Sync 会先 git pull --ff-only 再 git push。继续？",
+    };
+    if (confirmText[kind] && !window.confirm(confirmText[kind])) return;
+    setBusyKey(`remote:${kind}`);
+    try {
+      const params = { rootId, path: status.directoryPath };
+      if (kind === "fetch") await fetchBranch(params);
+      if (kind === "pull") await pullBranch(params);
+      if (kind === "push") await pushBranch(params);
+      if (kind === "publish") await publishBranch(params);
+      if (kind === "sync") await syncBranch(params);
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "info",
+        text: `git remote ${kind} completed for ${status.branch || "HEAD"}${status.upstream ? ` (${status.upstream})` : ""}`,
+      });
+      toast.success(`${labels[kind]} 已完成`);
+      git.refresh();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      appendWorkbenchOutput({
+        channel: { id: "git", label: "Git", kind: "custom" },
+        level: "error",
+        text: `git remote ${kind} failed: ${message}`,
+      });
+      toast.error(`${labels[kind]} 失败`, { description: message });
     } finally {
       setBusyKey(null);
     }
@@ -132,6 +182,73 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             <span>{status?.message || "当前目录不是 Git 仓库，或 Git 状态不可用。"}</span>
           )}
         </div>
+        {status?.available ? (
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1" data-ide-source-control-remote-actions>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 justify-center text-xs"
+              disabled={busyKey !== null}
+              onClick={() => void runRemoteAction("fetch")}
+              data-ide-source-control-fetch
+            >
+              {busyKey === "remote:fetch" ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />}
+              Fetch
+            </Button>
+            {status.behind > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 justify-center text-xs"
+                disabled={busyKey !== null}
+                onClick={() => void runRemoteAction("pull")}
+                data-ide-source-control-pull
+              >
+                {busyKey === "remote:pull" ? <Loader2 className="size-3.5 animate-spin" /> : <CloudDownload className="size-3.5" />}
+                Pull
+              </Button>
+            ) : null}
+            {status.upstream && status.ahead > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 justify-center text-xs"
+                disabled={busyKey !== null}
+                onClick={() => void runRemoteAction("push")}
+                data-ide-source-control-push
+              >
+                {busyKey === "remote:push" ? <Loader2 className="size-3.5 animate-spin" /> : <CloudUpload className="size-3.5" />}
+                Push
+              </Button>
+            ) : null}
+            {!status.upstream && status.branch && status.branch !== "HEAD" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 justify-center text-xs"
+                disabled={busyKey !== null}
+                onClick={() => void runRemoteAction("publish")}
+                data-ide-source-control-publish
+              >
+                {busyKey === "remote:publish" ? <Loader2 className="size-3.5 animate-spin" /> : <UploadCloud className="size-3.5" />}
+                Publish
+              </Button>
+            ) : null}
+            {status.upstream && status.ahead > 0 && status.behind > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 justify-center text-xs"
+                disabled={busyKey !== null}
+                onClick={() => void runRemoteAction("sync")}
+                data-ide-source-control-sync
+              >
+                {busyKey === "remote:sync" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCcw className="size-3.5" />}
+                Sync
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {status?.available ? (
           <div className="mt-2 grid gap-2" data-ide-source-control-commit-box>
             <textarea
