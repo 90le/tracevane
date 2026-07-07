@@ -160,7 +160,12 @@ export function IdeWorkbenchPage() {
       layoutApi.setActiveActivityId("explorer");
       return;
     }
-    openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true });
+    openFilePath({ rootId: request.rootId, path: request.path }, {
+      pinned: true,
+      reveal: request.lineNumber
+        ? { lineNumber: request.lineNumber, column: request.column ?? 1 }
+        : undefined,
+    });
   }, [layoutApi, openFilePath]);
 
   const openGitChangeDiff = React.useCallback((request: { rootId: string; change: IdeGitDecoratedChange }) => {

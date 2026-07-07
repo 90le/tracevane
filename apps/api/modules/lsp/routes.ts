@@ -9,6 +9,7 @@ import type {
   LspPositionRequest,
   LspRenameRequest,
   LspSemanticTokensRequest,
+  LspWorkspaceSymbolsRequest,
   LspWorkspaceEditApplyRequest,
   LspWorkspaceEditPreviewRequest,
 } from "../../../../types/lsp.js";
@@ -80,6 +81,19 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     }
   });
 
+
+
+  router.post("/api/lsp/workspace-symbols", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspWorkspaceSymbolsRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.workspaceSymbols(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_workspace_symbols_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 
   router.post("/api/lsp/rename", async (req, res, routeCtx) => {
     const body = await parseJsonBody<LspRenameRequest>(req);

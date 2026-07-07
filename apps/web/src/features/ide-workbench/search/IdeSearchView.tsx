@@ -6,13 +6,18 @@ import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
 import { useFilesSearchQuery } from "@/lib/query/files";
 import { normalizeExplorerPath } from "@/shared/explorer-core";
+import { requestLspWorkspaceSymbols } from "../lsp/lspInteractionClient";
 import type { FileSearchResult } from "../../../../../../types/files";
+import type { LspWorkspaceSymbolItem, LspWorkspaceSymbolsResponse } from "../../../../../../types/lsp";
 
 export interface IdeSearchResultOpenRequest {
   rootId: string;
   path: string;
   kind: "file" | "directory";
   query: string;
+  lineNumber?: number;
+  column?: number;
+  source?: "files" | "symbols";
 }
 
 export interface IdeSearchViewProps {
@@ -37,6 +42,11 @@ export function IdeSearchView({
   const [hiddenFiles, setHiddenFiles] = React.useState(true);
   const [caseSensitive, setCaseSensitive] = React.useState(false);
   const [regex, setRegex] = React.useState(false);
+  const [mode, setMode] = React.useState<"files" | "symbols">("files");
+  const [submittedMode, setSubmittedMode] = React.useState<"files" | "symbols">("files");
+  const [symbolResponse, setSymbolResponse] = React.useState<LspWorkspaceSymbolsResponse | null>(null);
+  const [symbolLoading, setSymbolLoading] = React.useState(false);
+  const [symbolError, setSymbolError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (scopePath) return;
@@ -44,7 +54,7 @@ export function IdeSearchView({
   }, [directoryPath, scopePath]);
 
   const query = useFilesSearchQuery(
-    submittedQuery.trim() && rootId
+    submittedMode === "files" && submittedQuery.trim() && rootId
       ? {
           rootId,
           query: submittedQuery.trim(),
@@ -63,8 +73,35 @@ export function IdeSearchView({
   const hasSearched = Boolean(submittedQuery.trim());
 
   const runSearch = React.useCallback(() => {
-    setSubmittedQuery(draftQuery.trim());
-  }, [draftQuery]);
+    const nextQuery = draftQuery.trim();
+    setSubmittedQuery(nextQuery);
+    setSubmittedMode(mode);
+    if (mode !== "symbols" || !nextQuery || !rootId) return;
+    const controller = new AbortController();
+    setSymbolLoading(true);
+    setSymbolError(null);
+    requestLspWorkspaceSymbols({
+      type: "workspaceSymbols",
+      rootId,
+      query: nextQuery,
+      path: scopePath,
+      limit: 100,
+      includeHidden: hiddenFiles,
+    }, { signal: controller.signal })
+      .then((response) => setSymbolResponse(response))
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setSymbolResponse(null);
+        setSymbolError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSymbolLoading(false);
+      });
+    return () => controller.abort();
+  }, [draftQuery, hiddenFiles, mode, rootId, scopePath]);
+
+  const isSearching = submittedMode === "symbols" ? symbolLoading : query.isFetching;
+  const symbolItems = symbolResponse?.items ?? [];
 
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
 
@@ -92,8 +129,8 @@ export function IdeSearchView({
           <Input
             value={draftQuery}
             onChange={(event) => setDraftQuery(event.currentTarget.value)}
-            placeholder="搜索文件名或内容"
-            aria-label="搜索文件名或内容"
+            placeholder={mode === "symbols" ? "搜索工作区符号、类、函数、变量" : "搜索文件名或内容"}
+            aria-label={mode === "symbols" ? "搜索工作区符号" : "搜索文件名或内容"}
             data-ide-search-input
           />
           <Input
@@ -105,10 +142,12 @@ export function IdeSearchView({
             data-ide-search-scope
           />
           <div className="flex flex-wrap items-center gap-1">
+            <ModeToggle active={mode === "files"} label="文件/内容" onClick={() => setMode("files")} dataAttr="files" />
+            <ModeToggle active={mode === "symbols"} label="符号" onClick={() => setMode("symbols")} dataAttr="symbols" />
             <SearchToggle active={caseSensitive} label="大小写" onClick={() => setCaseSensitive((value) => !value)}>
               <WholeWord />
             </SearchToggle>
-            <SearchToggle active={regex} label="正则" onClick={() => setRegex((value) => !value)}>
+            <SearchToggle active={regex} label="正则" disabled={mode === "symbols"} onClick={() => setRegex((value) => !value)}>
               <Regex />
             </SearchToggle>
             <SearchToggle active={recursive} label="递归" onClick={() => setRecursive((value) => !value)}>
@@ -118,15 +157,48 @@ export function IdeSearchView({
               .*
             </SearchToggle>
           </div>
-          <Button type="submit" size="sm" disabled={!draftQuery.trim() || query.isFetching} data-ide-search-submit>
-            {query.isFetching ? <Loader2 className="animate-spin" /> : <Search />}
-            搜索
+          <Button type="submit" size="sm" disabled={!draftQuery.trim() || isSearching} data-ide-search-submit>
+            {isSearching ? <Loader2 className="animate-spin" /> : <Search />}
+            {mode === "symbols" ? "搜索符号" : "搜索"}
           </Button>
         </form>
       </div>
       <div className="min-h-0 overflow-auto p-2 [scrollbar-width:thin]" data-ide-search-results>
         {!hasSearched ? (
-          <SearchEmptyState title="输入关键词开始搜索" description="M6-C 复用现有 Files search；结果点击会打开 IDE Editor tab。" />
+          <SearchEmptyState title="输入关键词开始搜索" description="文件/内容搜索复用 Files search；符号搜索复用 LSP workspace symbols。" />
+        ) : submittedMode === "symbols" ? (
+          symbolLoading && symbolItems.length === 0 ? (
+            <SearchEmptyState title="正在搜索符号…" description="正在扫描当前范围内的 TypeScript/JavaScript 文件。" loading />
+          ) : symbolError ? (
+            <SearchEmptyState title="符号搜索失败" description={symbolError} tone="danger" />
+          ) : symbolItems.length === 0 ? (
+            <SearchEmptyState title="没有符号结果" description={`未找到 “${submittedQuery}”。`} />
+          ) : (
+            <div className="grid gap-1" role="list" aria-label="IDE 符号搜索结果">
+              <div className="mb-1 flex items-center justify-between gap-2 px-1 text-2xs text-subtle" data-ide-search-summary>
+                <span>{symbolItems.length} 个符号</span>
+                <span className="truncate">
+                  scanned: {symbolResponse?.scannedFiles ?? 0}{symbolResponse?.truncated ? " · truncated" : ""} · scope: /{symbolResponse?.path ?? scopePath}
+                </span>
+              </div>
+              {symbolItems.map((item) => (
+                <SymbolResultRow
+                  key={`${item.path}:${item.name}:${item.startLine}:${item.startColumn}`}
+                  item={item}
+                  query={submittedQuery}
+                  onOpen={() => onOpenResult({
+                    rootId,
+                    path: item.path,
+                    kind: "file",
+                    query: submittedQuery,
+                    lineNumber: item.startLine,
+                    column: item.startColumn,
+                    source: "symbols",
+                  })}
+                />
+              ))}
+            </div>
+          )
         ) : query.isLoading || query.isFetching && results.length === 0 ? (
           <SearchEmptyState title="正在搜索…" description="正在查询当前工作区文件名和文本内容。" loading />
         ) : query.isError ? (
@@ -154,30 +226,95 @@ export function IdeSearchView({
   );
 }
 
+function ModeToggle({
+  active,
+  label,
+  onClick,
+  dataAttr,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  dataAttr: "files" | "symbols";
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active ? "true" : "false"}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 items-center justify-center rounded-md border border-line bg-panel-2 px-2 text-xs font-medium text-muted outline-none hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)]",
+        active && "border-primary-line bg-primary-soft text-primary",
+      )}
+      data-ide-search-mode={dataAttr}
+    >
+      {label}
+    </button>
+  );
+}
+
 function SearchToggle({
   active,
   label,
   children,
   onClick,
+  disabled = false,
 }: {
   active: boolean;
   label: string;
   children: React.ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       aria-pressed={active ? "true" : "false"}
       title={label}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md border border-line bg-panel-2 px-2 text-xs text-muted outline-none hover:border-primary-line hover:text-ink focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
         active && "border-primary-line bg-primary-soft text-primary",
+        disabled && "cursor-not-allowed opacity-50 hover:border-line hover:text-muted",
       )}
     >
       {children}
       <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
+function SymbolResultRow({
+  item,
+  query,
+  onOpen,
+}: {
+  item: LspWorkspaceSymbolItem;
+  query: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="group grid min-w-0 gap-1 rounded-md border border-transparent px-2 py-2 text-left outline-none hover:border-primary-line hover:bg-primary-soft/50 focus-visible:shadow-[var(--ring)]"
+      onClick={onOpen}
+      data-ide-symbol-result
+      data-ide-symbol-result-name={item.name}
+      data-ide-symbol-result-path={item.path}
+      data-ide-symbol-result-kind={item.kind}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <FileText className="size-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">{highlightSnippet(item.name, query)}</span>
+        <span className="shrink-0 rounded border border-line bg-panel-2 px-1.5 py-0.5 text-2xs text-subtle">{item.kind}</span>
+      </div>
+      <div className="truncate font-mono text-2xs text-subtle">
+        {item.path}:{item.startLine}:{item.startColumn}
+      </div>
+      {item.containerName ? (
+        <div className="truncate text-2xs text-muted">in {item.containerName}</div>
+      ) : null}
     </button>
   );
 }

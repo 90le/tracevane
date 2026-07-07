@@ -149,6 +149,57 @@ export interface LspSemanticTokensResponse extends LspDocumentRef {
   checkedAt: string;
 }
 
+
+export interface LspWorkspaceSymbolsRequest {
+  type?: "workspaceSymbols";
+  id?: string | null;
+  rootId: string;
+  query: string;
+  path?: string | null;
+  limit?: number | null;
+  includeHidden?: boolean | null;
+}
+
+export type LspWorkspaceSymbolKind =
+  | "class"
+  | "interface"
+  | "type"
+  | "enum"
+  | "module"
+  | "function"
+  | "method"
+  | "variable"
+  | "property"
+  | "constructor"
+  | "unknown";
+
+export interface LspWorkspaceSymbolItem {
+  rootId: string;
+  path: string;
+  name: string;
+  kind: LspWorkspaceSymbolKind;
+  containerName?: string | null;
+  matchKind?: "exact" | "prefix" | "substring" | "camelCase" | string;
+  startLine: number;
+  startColumn: number;
+  endLine?: number;
+  endColumn?: number;
+}
+
+export interface LspWorkspaceSymbolsResponse {
+  type: "workspaceSymbols";
+  id?: string | null;
+  provider: "typescript";
+  rootId: string;
+  query: string;
+  path: string;
+  items: LspWorkspaceSymbolItem[];
+  scannedFiles: number;
+  skippedFiles: number;
+  truncated: boolean;
+  checkedAt: string;
+}
+
 export interface LspDiagnosticsResponse extends LspDocumentRef {
   type: "diagnostics";
   id?: string | null;
@@ -185,6 +236,7 @@ export type LspGatewayServerEvent =
   | LspDefinitionResponse
   | LspReferencesResponse
   | LspSemanticTokensResponse
+  | LspWorkspaceSymbolsResponse
   | LspRenameResponse
   | LspFormattingResponse
   | LspCodeActionResponse;

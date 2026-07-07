@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
@@ -27,9 +28,12 @@ import type {
   LspSemanticTokensRequest,
   LspSemanticTokensResponse,
   LspWorkspaceEditRejectedItem,
+  LspWorkspaceSymbolItem,
+  LspWorkspaceSymbolsRequest,
+  LspWorkspaceSymbolsResponse,
   LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
-import { resolveFilesServiceExistingFilePath } from "../files/service.js";
+import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
 
 const LSP_WS_PATH = "/ws/lsp";
 const JSON_PROVIDER_SOURCE = "json-lsp";
@@ -61,6 +65,22 @@ const SEMANTIC_TOKEN_LEGEND: LspSemanticTokenLegend = {
 const SEMANTIC_TOKEN_TYPE_INDEX = new Map<string, number>(SEMANTIC_TOKEN_TYPES.map((type, index) => [type, index]));
 const MAX_SEMANTIC_TOKEN_FILE_LENGTH = 250_000;
 const MAX_SEMANTIC_TOKEN_COUNT = 20_000;
+const MAX_WORKSPACE_SYMBOL_QUERY_LENGTH = 80;
+const MAX_WORKSPACE_SYMBOL_RESULTS = 100;
+const MAX_WORKSPACE_SYMBOL_FILES = 300;
+const MAX_WORKSPACE_SYMBOL_FILE_BYTES = 300_000;
+const WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vite",
+]);
+const WORKSPACE_SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 
 export interface LspService {
   getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[] };
@@ -70,6 +90,7 @@ export interface LspService {
   defineDocument(request: LspPositionRequest): LspDefinitionResponse;
   referenceDocument(request: LspPositionRequest): LspReferencesResponse;
   semanticTokens(request: LspSemanticTokensRequest): LspSemanticTokensResponse;
+  workspaceSymbols(request: LspWorkspaceSymbolsRequest): LspWorkspaceSymbolsResponse;
   renameDocument(request: LspRenameRequest): LspRenameResponse;
   formatDocument(request: LspFormattingRequest): LspFormattingResponse;
   codeActions(request: LspCodeActionRequest): LspCodeActionResponse;
@@ -95,7 +116,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         return;
       }
 
-      const request = parsed as Partial<LspDiagnosticsRequest & LspPositionRequest & LspCompletionRequest & LspSemanticTokensRequest>;
+      const request = parsed as Partial<LspDiagnosticsRequest & LspPositionRequest & LspCompletionRequest & LspSemanticTokensRequest & LspWorkspaceSymbolsRequest>;
       if (!request?.type) {
         send(socket, { type: "error", id: request?.id ?? null, message: "Unsupported LSP gateway message type" });
         return;
@@ -124,6 +145,10 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         }
         if (request.type === "semanticTokens") {
           send(socket, semanticTokens(config, request as LspSemanticTokensRequest));
+          return;
+        }
+        if (request.type === "workspaceSymbols") {
+          send(socket, workspaceSymbols(config, request as LspWorkspaceSymbolsRequest));
           return;
         }
         if (request.type === "rename") {
@@ -156,7 +181,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         provider: "tracevane-lsp",
         websocketPath: LSP_WS_PATH,
         supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
-        features: ["diagnostics", "hover", "completion", "definition", "references", "semanticTokens", "rename", "formatting", "codeAction"],
+        features: ["diagnostics", "hover", "completion", "definition", "references", "semanticTokens", "workspaceSymbols", "rename", "formatting", "codeAction"],
       };
     },
     diagnoseDocument(request) {
@@ -176,6 +201,9 @@ export function createLspService(config: TracevaneServerConfig): LspService {
     },
     semanticTokens(request) {
       return semanticTokens(config, request);
+    },
+    workspaceSymbols(request) {
+      return workspaceSymbols(config, request);
     },
     renameDocument(request) {
       return renameDocument(config, request);
@@ -319,6 +347,85 @@ function semanticTokens(
     throw new Error("Semantic tokens are currently supported for TypeScript/JavaScript documents only");
   }
   return semanticTokensTypeScriptLike(request, validated);
+}
+
+interface WorkspaceSymbolSourceFile {
+  fileName: string;
+  relativePath: string;
+  content: string;
+  language: string;
+  version: string;
+}
+
+function workspaceSymbols(
+  config: TracevaneServerConfig,
+  request: LspWorkspaceSymbolsRequest,
+): LspWorkspaceSymbolsResponse {
+  const rootId = normalizeRequired(request.rootId, "rootId");
+  const query = String(request.query || "").trim();
+  if (query.length > MAX_WORKSPACE_SYMBOL_QUERY_LENGTH) {
+    throw new Error(`query must be ${MAX_WORKSPACE_SYMBOL_QUERY_LENGTH} characters or less`);
+  }
+  const directoryPath = normalizeOptionalDirectoryPath(request.path);
+  const resolved = resolveFilesServiceDirectoryPath(config, rootId, directoryPath);
+  const limit = clampInteger(request.limit, 1, MAX_WORKSPACE_SYMBOL_RESULTS, MAX_WORKSPACE_SYMBOL_RESULTS);
+  const includeHidden = request.includeHidden === true;
+  if (!query) {
+    return {
+      type: "workspaceSymbols",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: resolved.root.id,
+      query,
+      path: resolved.relativePath,
+      items: [],
+      scannedFiles: 0,
+      skippedFiles: 0,
+      truncated: false,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const scan = collectWorkspaceSymbolSourceFiles(resolved.root.realPath, resolved.absolutePath, includeHidden);
+  if (!scan.files.length) {
+    return {
+      type: "workspaceSymbols",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: resolved.root.id,
+      query,
+      path: resolved.relativePath,
+      items: [],
+      scannedFiles: scan.scannedFiles,
+      skippedFiles: scan.skippedFiles,
+      truncated: scan.truncated,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const languageService = createWorkspaceTypeScriptLanguageService(resolved.root.realPath, scan.files);
+  try {
+    const navigateItems = languageService.service.getNavigateToItems(query, limit, undefined, true, true) ?? [];
+    const items = navigateItems
+      .map((item) => workspaceNavigateItemToSymbol(resolved.root.id, languageService.filesByName, item))
+      .filter((item): item is LspWorkspaceSymbolItem => Boolean(item))
+      .slice(0, limit);
+    return {
+      type: "workspaceSymbols",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: resolved.root.id,
+      query,
+      path: resolved.relativePath,
+      items,
+      scannedFiles: scan.scannedFiles,
+      skippedFiles: scan.skippedFiles,
+      truncated: scan.truncated || navigateItems.length > items.length || items.length >= limit,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
 }
 
 interface ValidatedInteractionRequest {
@@ -1050,6 +1157,213 @@ function createTypeScriptLanguageService(
   };
 }
 
+function createWorkspaceTypeScriptLanguageService(
+  rootRealPath: string,
+  files: WorkspaceSymbolSourceFile[],
+): { service: ts.LanguageService; filesByName: Map<string, WorkspaceSymbolSourceFile> } {
+  const filesByName = new Map(files.map((file) => [file.fileName, file]));
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: true,
+    checkJs: false,
+    jsx: ts.JsxEmit.ReactJSX,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    noEmit: true,
+    skipLibCheck: true,
+    strict: false,
+    target: ts.ScriptTarget.ES2022,
+  };
+  const host: ts.LanguageServiceHost = {
+    getCompilationSettings: () => compilerOptions,
+    getCurrentDirectory: () => rootRealPath,
+    getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+    getScriptFileNames: () => files.map((file) => file.fileName),
+    getScriptVersion: (name) => filesByName.get(normalizeTsFileName(name))?.version ?? "0",
+    getScriptSnapshot: (name) => {
+      const source = filesByName.get(normalizeTsFileName(name));
+      if (source) return ts.ScriptSnapshot.fromString(source.content);
+      if (!isAllowedTypeScriptLibraryFile(name)) return undefined;
+      const text = ts.sys.readFile(name);
+      return typeof text === "string" ? ts.ScriptSnapshot.fromString(text) : undefined;
+    },
+    fileExists: (name) => filesByName.has(normalizeTsFileName(name)) || (isAllowedTypeScriptLibraryFile(name) && Boolean(ts.sys.fileExists(name))),
+    readFile: (name) => filesByName.get(normalizeTsFileName(name))?.content ?? (isAllowedTypeScriptLibraryFile(name) ? ts.sys.readFile(name) : undefined),
+    readDirectory: () => [],
+    directoryExists: (directoryName) => ts.sys.directoryExists?.(directoryName) ?? false,
+    getDirectories: (directoryName) => ts.sys.getDirectories?.(directoryName) ?? [],
+    useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
+  };
+  return {
+    service: ts.createLanguageService(host, ts.createDocumentRegistry()),
+    filesByName,
+  };
+}
+
+function collectWorkspaceSymbolSourceFiles(rootRealPath: string, startDirectory: string, includeHidden: boolean): {
+  files: WorkspaceSymbolSourceFile[];
+  scannedFiles: number;
+  skippedFiles: number;
+  truncated: boolean;
+} {
+  const files: WorkspaceSymbolSourceFile[] = [];
+  let scannedFiles = 0;
+  let skippedFiles = 0;
+  let truncated = false;
+  const pending = [startDirectory];
+  while (pending.length && !truncated) {
+    const directory = pending.shift();
+    if (!directory) break;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      skippedFiles += 1;
+      continue;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        skippedFiles += 1;
+        continue;
+      }
+      if (!includeHidden && entry.name.startsWith(".")) {
+        skippedFiles += 1;
+        continue;
+      }
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES.has(entry.name)) {
+          skippedFiles += 1;
+          continue;
+        }
+        pending.push(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        skippedFiles += 1;
+        continue;
+      }
+      const extension = path.extname(entry.name).toLowerCase();
+      if (!WORKSPACE_SYMBOL_EXTENSIONS.has(extension)) {
+        skippedFiles += 1;
+        continue;
+      }
+      if (scannedFiles >= MAX_WORKSPACE_SYMBOL_FILES) {
+        truncated = true;
+        break;
+      }
+      scannedFiles += 1;
+      let stat: fs.Stats;
+      let realPath: string;
+      try {
+        stat = fs.statSync(absolutePath);
+        realPath = fs.realpathSync.native?.(absolutePath) || fs.realpathSync(absolutePath);
+      } catch {
+        skippedFiles += 1;
+        continue;
+      }
+      if (!stat.isFile() || stat.size > MAX_WORKSPACE_SYMBOL_FILE_BYTES) {
+        skippedFiles += 1;
+        continue;
+      }
+      const relativePath = relativePathInsideRoot(rootRealPath, realPath);
+      if (!relativePath) {
+        skippedFiles += 1;
+        continue;
+      }
+      let content: string;
+      try {
+        content = fs.readFileSync(absolutePath, "utf8");
+      } catch {
+        skippedFiles += 1;
+        continue;
+      }
+      const language = languageForWorkspaceSymbolPath(relativePath);
+      files.push({
+        fileName: normalizeTsFileName(realPath),
+        relativePath,
+        content,
+        language,
+        version: `${Math.floor(stat.mtimeMs)}:${stat.size}`,
+      });
+    }
+  }
+  return { files, scannedFiles, skippedFiles, truncated };
+}
+
+function workspaceNavigateItemToSymbol(
+  rootId: string,
+  filesByName: Map<string, WorkspaceSymbolSourceFile>,
+  item: ts.NavigateToItem,
+): LspWorkspaceSymbolItem | null {
+  const source = filesByName.get(normalizeTsFileName(item.fileName));
+  if (!source) return null;
+  const sourceFile = ts.createSourceFile(item.fileName, source.content, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(source.language));
+  const range = textSpanToRange(sourceFile, item.textSpan);
+  return {
+    rootId,
+    path: source.relativePath,
+    name: item.name,
+    kind: workspaceSymbolKindForScriptElementKind(item.kind),
+    containerName: item.containerName || null,
+    matchKind: item.matchKind || null,
+    startLine: range.startLine,
+    startColumn: range.startColumn,
+    endLine: range.endLine,
+    endColumn: range.endColumn,
+  };
+}
+
+function workspaceSymbolKindForScriptElementKind(kind: ts.ScriptElementKind): LspWorkspaceSymbolItem["kind"] {
+  switch (kind) {
+    case ts.ScriptElementKind.classElement:
+    case ts.ScriptElementKind.localClassElement:
+      return "class";
+    case ts.ScriptElementKind.interfaceElement:
+      return "interface";
+    case ts.ScriptElementKind.typeElement:
+      return "type";
+    case ts.ScriptElementKind.enumElement:
+      return "enum";
+    case ts.ScriptElementKind.moduleElement:
+    case ts.ScriptElementKind.externalModuleName:
+      return "module";
+    case ts.ScriptElementKind.functionElement:
+    case ts.ScriptElementKind.localFunctionElement:
+      return "function";
+    case ts.ScriptElementKind.memberFunctionElement:
+    case ts.ScriptElementKind.memberGetAccessorElement:
+    case ts.ScriptElementKind.memberSetAccessorElement:
+      return "method";
+    case ts.ScriptElementKind.constElement:
+    case ts.ScriptElementKind.letElement:
+    case ts.ScriptElementKind.variableElement:
+    case ts.ScriptElementKind.localVariableElement:
+    case ts.ScriptElementKind.variableUsingElement:
+    case ts.ScriptElementKind.variableAwaitUsingElement:
+      return "variable";
+    case ts.ScriptElementKind.memberVariableElement:
+    case ts.ScriptElementKind.memberAccessorVariableElement:
+    case ts.ScriptElementKind.enumMemberElement:
+      return "property";
+    case ts.ScriptElementKind.constructorImplementationElement:
+      return "constructor";
+    default:
+      return "unknown";
+  }
+}
+
+function languageForWorkspaceSymbolPath(targetPath: string): string {
+  if (/\.tsx$/i.test(targetPath)) return "typescriptreact";
+  if (/\.jsx$/i.test(targetPath)) return "javascriptreact";
+  if (/\.(?:js|mjs|cjs)$/i.test(targetPath)) return "javascript";
+  return "typescript";
+}
+
+function normalizeTsFileName(fileName: string): string {
+  return path.resolve(fileName).replace(/\\/g, "/");
+}
+
 function textSpanToRange(sourceFile: ts.SourceFile, textSpan: ts.TextSpan): { startLine: number; startColumn: number; endLine: number; endColumn: number } {
   const start = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start, sourceFile.text.length));
   const end = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start + Math.max(1, textSpan.length), sourceFile.text.length));
@@ -1288,6 +1602,19 @@ function normalizePath(value: string | undefined): string {
   const raw = String(value || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   if (!raw || raw === "." || raw === ".." || raw.startsWith("../")) throw new Error("path is required");
   return raw;
+}
+
+function normalizeOptionalDirectoryPath(value: string | null | undefined): string | undefined {
+  const raw = String(value || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!raw || raw === ".") return undefined;
+  if (raw === ".." || raw.startsWith("../")) throw new Error("path escapes the selected root");
+  return raw;
+}
+
+function clampInteger(value: number | null | undefined, min: number, max: number, fallback: number): number {
+  const candidate = Number(value);
+  if (!Number.isFinite(candidate)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(candidate)));
 }
 
 function send(socket: WebSocket, event: LspGatewayServerEvent): void {

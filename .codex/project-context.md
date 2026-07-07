@@ -89,7 +89,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M9-D Git graph / blame read-only foundation.
 - Done: M10-A LSP semantic tokens / workspace symbols foundation plan.
 - Done: M10-B LSP semantic tokens guarded implementation.
-- Next: M10-C LSP workspace symbols foundation.
+- Done: M10-C LSP workspace symbols foundation.
+- Next: M10-D LSP semantic/workspace symbols acceptance closeout.
 
 ## Required reading by task
 

@@ -17,6 +17,8 @@ import type {
   LspWorkspaceEditApplyResponse,
   LspWorkspaceEditPreviewRequest,
   LspWorkspaceEditPreviewResponse,
+  LspWorkspaceSymbolsRequest,
+  LspWorkspaceSymbolsResponse,
 } from "../../../../../../types/lsp";
 
 export async function requestLspHover(
@@ -54,6 +56,12 @@ export async function requestLspSemanticTokens(
   return requestLspFeature<LspSemanticTokensResponse>("/api/lsp/semantic-tokens", request, options);
 }
 
+export async function requestLspWorkspaceSymbols(
+  request: LspWorkspaceSymbolsRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspWorkspaceSymbolsResponse> {
+  return requestLspFeature<LspWorkspaceSymbolsResponse>("/api/lsp/workspace-symbols", request, options);
+}
 
 export async function requestLspRename(
   request: LspRenameRequest,
