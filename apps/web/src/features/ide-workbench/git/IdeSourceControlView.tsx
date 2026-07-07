@@ -4,8 +4,9 @@ import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, FileDiff, GitBra
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
-import { commitFiles, fetchBranch, publishBranch, pullBranch, pushBranch, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
+import { applyGitStash, checkoutBranch, commitFiles, createBranch, dropGitStash, fetchBranch, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, saveGitStash, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
 import { appendWorkbenchOutput } from "../output";
+import type { GitStashEntry } from "../../../../../../types/git";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
 
 export interface IdeSourceControlViewProps {
@@ -19,6 +20,43 @@ export interface IdeSourceControlViewProps {
 export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDiff }: IdeSourceControlViewProps) {
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [commitMessage, setCommitMessage] = React.useState("");
+  const [branchName, setBranchName] = React.useState("");
+  const [stashMessage, setStashMessage] = React.useState("");
+  const [stashes, setStashes] = React.useState<GitStashEntry[]>([]);
+  const [stashLoading, setStashLoading] = React.useState(false);
+  const [stashError, setStashError] = React.useState<string | null>(null);
+  const [stashRefreshTick, setStashRefreshTick] = React.useState(0);
+  React.useEffect(() => {
+    const status = git.status;
+    if (!rootId || !status?.available) {
+      setStashes([]);
+      setStashError(null);
+      setStashLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setStashLoading(true);
+    getGitStashes({ rootId, path: status.directoryPath }, controller.signal)
+      .then((payload) => {
+        setStashes(payload.stashes ?? []);
+        setStashError(payload.available ? null : payload.message || "Git stash is unavailable");
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setStashError(message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setStashLoading(false);
+      });
+    return () => controller.abort();
+  }, [git.status?.available, git.status?.checkedAt, git.status?.directoryPath, rootId, stashRefreshTick]);
+
+  const refreshGitAndStashes = React.useCallback(() => {
+    git.refresh();
+    setStashRefreshTick((value) => value + 1);
+  }, [git]);
+
   const runGitAction = React.useCallback(async (kind: "stage" | "unstage", paths: string[], label: string) => {
     const status = git.status;
     if (!status?.available || busyKey) return;
@@ -33,7 +71,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
         text: `${kind} ${paths.length ? paths.join(", ") : "all"}`,
       });
       toast.success(label);
-      git.refresh();
+      refreshGitAndStashes();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
       appendWorkbenchOutput({
@@ -45,7 +83,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     } finally {
       setBusyKey(null);
     }
-  }, [busyKey, git, rootId]);
+  }, [busyKey, git, refreshGitAndStashes, rootId]);
 
   const runRemoteAction = React.useCallback(async (kind: "fetch" | "pull" | "push" | "publish" | "sync") => {
     const status = git.status;
@@ -83,7 +121,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
         text: `git remote ${kind} completed for ${status.branch || "HEAD"}${status.upstream ? ` (${status.upstream})` : ""}`,
       });
       toast.success(`${labels[kind]} 已完成`);
-      git.refresh();
+      refreshGitAndStashes();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
       appendWorkbenchOutput({
@@ -95,7 +133,100 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     } finally {
       setBusyKey(null);
     }
-  }, [busyKey, git, rootId]);
+  }, [busyKey, git, refreshGitAndStashes, rootId]);
+
+  const runBranchAction = React.useCallback(async (kind: "create" | "checkout", target?: string) => {
+    const status = git.status;
+    if (!status?.available || busyKey) return;
+    if (kind === "create") {
+      const name = branchName.trim();
+      if (!name) {
+        toast.error("分支名称不能为空");
+        return;
+      }
+      setBusyKey("branch:create");
+      try {
+        await createBranch({ rootId, path: status.directoryPath, name, checkout: false });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git branch ${name}` });
+        toast.success(`已创建分支 ${name}`);
+        setBranchName("");
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch create failed: ${message}` });
+        toast.error("创建分支失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    const branch = String(target || "").trim();
+    if (!branch || branch === status.branch) return;
+    if (git.changes.length && !window.confirm(`当前工作区有 ${git.changes.length} 个变更。切换分支可能失败或影响工作区状态。继续 checkout ${branch}？`)) return;
+    setBusyKey(`branch:checkout:${branch}`);
+    try {
+      await checkoutBranch({ rootId, path: status.directoryPath, target: branch });
+      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git checkout ${branch}` });
+      toast.success(`已切换到 ${branch}`);
+      refreshGitAndStashes();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch checkout failed: ${message}` });
+      toast.error("切换分支失败", { description: message });
+    } finally {
+      setBusyKey(null);
+    }
+  }, [branchName, busyKey, git, refreshGitAndStashes, rootId]);
+
+  const runStashAction = React.useCallback(async (kind: "save" | "apply" | "pop" | "drop", ref?: string) => {
+    const status = git.status;
+    if (!status?.available || busyKey) return;
+    const labels: Record<typeof kind, string> = { save: "保存储藏", apply: "应用储藏", pop: "弹出储藏", drop: "删除储藏" };
+    if (kind === "save") {
+      if (!git.changes.length) {
+        toast.error("没有可储藏的变更");
+        return;
+      }
+      setBusyKey("stash:save");
+      try {
+        await saveGitStash({ rootId, path: status.directoryPath, message: stashMessage.trim() || "Tracevane IDE stash", includeUntracked: true });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: "git stash push --include-untracked" });
+        toast.success("已保存储藏");
+        setStashMessage("");
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `stash save failed: ${message}` });
+        toast.error("保存储藏失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    const stashRef = String(ref || "").trim();
+    if (!stashRef) return;
+    const confirmText = kind === "drop"
+      ? `删除 ${stashRef}？此操作不可撤销。`
+      : kind === "pop"
+        ? `弹出 ${stashRef}？这会应用并删除该 stash，可能和当前工作区冲突。继续？`
+        : `应用 ${stashRef} 到当前工作区？可能产生冲突。继续？`;
+    if (!window.confirm(confirmText)) return;
+    setBusyKey(`stash:${kind}:${stashRef}`);
+    try {
+      if (kind === "apply") await applyGitStash({ rootId, path: status.directoryPath, ref: stashRef });
+      if (kind === "pop") await popGitStash({ rootId, path: status.directoryPath, ref: stashRef });
+      if (kind === "drop") await dropGitStash({ rootId, path: status.directoryPath, ref: stashRef });
+      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git stash ${kind} ${stashRef}` });
+      toast.success(`${labels[kind]} 已完成`);
+      refreshGitAndStashes();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `stash ${kind} failed: ${message}` });
+      toast.error(`${labels[kind]}失败`, { description: message });
+    } finally {
+      setBusyKey(null);
+    }
+  }, [busyKey, git, refreshGitAndStashes, rootId, stashMessage]);
 
   const runCommit = React.useCallback(async () => {
     const status = git.status;
@@ -120,7 +251,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       });
       toast.success("已提交暂存变更");
       setCommitMessage("");
-      git.refresh();
+      refreshGitAndStashes();
     } catch (reason) {
       const errorMessage = reason instanceof Error ? reason.message : String(reason);
       appendWorkbenchOutput({
@@ -132,7 +263,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     } finally {
       setBusyKey(null);
     }
-  }, [busyKey, commitMessage, git, rootId]);
+  }, [busyKey, commitMessage, git, refreshGitAndStashes, rootId]);
 
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   const status = git.status;
@@ -249,6 +380,107 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             ) : null}
           </div>
         ) : null}
+        {status?.available ? (
+          <div className="mt-2 grid gap-2 rounded-md border border-line bg-panel-2 p-2" data-ide-source-control-branches>
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold text-ink-strong">
+              <span>分支</span>
+              <span className="text-2xs font-normal text-subtle" data-ide-source-control-branch-count>{status.branches.length} 个</span>
+            </div>
+            <div className="flex min-w-0 items-center gap-1">
+              <input
+                className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                value={branchName}
+                onChange={(event) => setBranchName(event.target.value)}
+                placeholder="新分支名"
+                aria-label="新建 Git 分支名"
+                disabled={busyKey !== null}
+                data-ide-source-control-branch-name
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 justify-center text-xs"
+                disabled={busyKey !== null || !branchName.trim()}
+                onClick={() => void runBranchAction("create")}
+                data-ide-source-control-create-branch
+              >
+                {busyKey === "branch:create" ? <Loader2 className="size-3.5 animate-spin" /> : <PlusSquare className="size-3.5" />}
+                创建
+              </Button>
+            </div>
+            <div className="grid max-h-32 gap-1 overflow-auto pr-1 [scrollbar-width:thin]" data-ide-source-control-branch-list>
+              {status.branches.length ? status.branches.map((branch) => (
+                <div key={branch.name} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded border border-line bg-canvas px-2 py-1 text-xs" data-ide-source-control-branch-row data-ide-source-control-branch-name-value={branch.name} data-ide-source-control-branch-current={branch.current ? "true" : "false"}>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-ink-strong">{branch.current ? "● " : ""}{branch.name}</div>
+                    <div className="truncate text-2xs text-subtle">{branch.upstream || branch.shortHash || branch.subject || "local branch"}</div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-2xs"
+                    disabled={busyKey !== null || branch.current}
+                    onClick={() => void runBranchAction("checkout", branch.name)}
+                    data-ide-source-control-checkout-branch
+                  >
+                    {busyKey === `branch:checkout:${branch.name}` ? <Loader2 className="size-3 animate-spin" /> : null}
+                    切换
+                  </Button>
+                </div>
+              )) : <span className="text-xs text-muted">暂无分支列表。</span>}
+            </div>
+          </div>
+        ) : null}
+
+        {status?.available ? (
+          <div className="mt-2 grid gap-2 rounded-md border border-line bg-panel-2 p-2" data-ide-source-control-stashes>
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold text-ink-strong">
+              <span>储藏</span>
+              <button type="button" className="text-2xs text-subtle hover:text-primary" onClick={() => setStashRefreshTick((value) => value + 1)} disabled={stashLoading} data-ide-source-control-refresh-stashes>{stashLoading ? "读取中" : `${stashes.length} 个`}</button>
+            </div>
+            <div className="flex min-w-0 items-center gap-1">
+              <input
+                className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                value={stashMessage}
+                onChange={(event) => setStashMessage(event.target.value)}
+                placeholder="储藏说明（可选）"
+                aria-label="Git stash message"
+                disabled={busyKey !== null}
+                data-ide-source-control-stash-message
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 justify-center text-xs"
+                disabled={busyKey !== null || git.changes.length === 0}
+                onClick={() => void runStashAction("save")}
+                data-ide-source-control-save-stash
+              >
+                {busyKey === "stash:save" ? <Loader2 className="size-3.5 animate-spin" /> : <UploadCloud className="size-3.5" />}
+                保存
+              </Button>
+            </div>
+            {stashError ? <div className="text-2xs text-danger" data-ide-source-control-stash-error>{stashError}</div> : null}
+            <div className="grid max-h-36 gap-1 overflow-auto pr-1 [scrollbar-width:thin]" data-ide-source-control-stash-list>
+              {stashLoading && !stashes.length ? <span className="text-xs text-muted">正在读取储藏…</span> : null}
+              {!stashLoading && !stashes.length ? <span className="text-xs text-muted">暂无储藏。</span> : null}
+              {stashes.map((stash) => (
+                <div key={stash.ref} className="grid min-w-0 gap-1 rounded border border-line bg-canvas px-2 py-1 text-xs" data-ide-source-control-stash-row data-ide-source-control-stash-ref={stash.ref}>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-ink-strong">{stash.ref}</div>
+                    <div className="truncate text-2xs text-subtle">{stash.branch || "stash"} · {stash.message || "No message"}</div>
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null} onClick={() => void runStashAction("apply", stash.ref)} data-ide-source-control-apply-stash>应用</Button>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null} onClick={() => void runStashAction("pop", stash.ref)} data-ide-source-control-pop-stash>弹出</Button>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs text-danger hover:text-danger" disabled={busyKey !== null} onClick={() => void runStashAction("drop", stash.ref)} data-ide-source-control-drop-stash>删除</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {status?.available ? (
           <div className="mt-2 grid gap-2" data-ide-source-control-commit-box>
             <textarea
