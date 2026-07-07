@@ -11294,12 +11294,12 @@ test("model gateway adapts chat completions through native anthropic messages pr
           { type: "redacted_thinking", data: "opaque_redacted_chat_adapter" },
         ],
         annotations: [{
-          type: "char_location",
+          type: "file_citation",
           cited_text: "Tokyo is sunny.",
-          document_index: 0,
-          document_title: "Weather Doc",
-          start_char_index: 0,
-          end_char_index: 15,
+          filename: "Weather Doc",
+          index: 0,
+          start_index: 0,
+          end_index: 15,
           content_index: 0,
         }],
         tool_calls: [{

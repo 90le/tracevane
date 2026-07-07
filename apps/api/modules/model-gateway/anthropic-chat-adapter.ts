@@ -352,8 +352,48 @@ function collectAnthropicTextCitations(content: JsonRecord[]): JsonRecord[] {
     if (!Array.isArray(part.citations)) return [];
     return part.citations
       .filter(isRecord)
-      .map((citation) => ({ ...citation, content_index: contentIndex }));
+      .map((citation) => ({ ...mapAnthropicCitationToChatAnnotation(citation), content_index: contentIndex }));
   });
+}
+
+function mapAnthropicCitationToChatAnnotation(citation: JsonRecord): JsonRecord {
+  if (citation.type === "web_search_result_location") {
+    return withoutUndefined({
+      ...stripCitationTransportFields(citation),
+      type: "url_citation",
+      url: citation.url,
+      title: citation.title,
+      start_index: citation.start_char_index,
+      end_index: citation.end_char_index,
+    });
+  }
+  if (citation.type === "page_location" || citation.type === "char_location" || citation.type === "content_block_location") {
+    return withoutUndefined({
+      ...stripCitationTransportFields(citation),
+      type: "file_citation",
+      file_id: citation.file_id,
+      filename: citation.document_title,
+      index: citation.document_index,
+      start_index: citation.start_char_index,
+      end_index: citation.end_char_index,
+    });
+  }
+  return { ...citation };
+}
+
+function stripCitationTransportFields(citation: JsonRecord): JsonRecord {
+  const {
+    start_char_index: _startCharIndex,
+    end_char_index: _endCharIndex,
+    document_title: _documentTitle,
+    document_index: _documentIndex,
+    ...rest
+  } = citation;
+  return rest;
+}
+
+function withoutUndefined(record: JsonRecord): JsonRecord {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
 
 function anthropicThinkingBlocksToChatReasoningDetails(content: JsonRecord[]): JsonRecord[] {
