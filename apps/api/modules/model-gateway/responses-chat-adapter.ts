@@ -71,6 +71,10 @@ export function adaptChatCompletionRequestToResponses(
   }
 
   const responsesInput = mapChatMessagesToResponsesInput(request.messages);
+  const toolCompatibilityText = chatToolCompatibilityNotesToResponsesText(request.tools);
+  if (toolCompatibilityText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: toolCompatibilityText }] });
+  }
   const unsupportedToolsText = chatUnsupportedToolsToResponsesText(request.tools);
   if (unsupportedToolsText) {
     responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedToolsText }] });
@@ -578,7 +582,7 @@ function mapChatFunctionsToResponses(functions: unknown): JsonRecord[] {
 function mapChatToolToResponses(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
   if (isOpenAIWebSearchToolType(tool.type)) return copyOpenAIWebSearchTool(tool);
-  if (isAnthropicWebSearchTool(tool)) return { type: "web_search_preview" };
+  if (isAnthropicWebSearchTool(tool)) return copyAnthropicWebSearchToolToResponses(tool);
   if (tool.type === "mcp") return copyResponsesMcpTool(tool);
   if (tool.type === "custom") return mapChatCustomToolToResponses(tool);
   if (tool.type !== "function") return null;
@@ -609,6 +613,26 @@ function copyOpenAIWebSearchTool(tool: JsonRecord): JsonRecord {
     if (tool[key] !== undefined) mapped[key] = tool[key];
   }
   return mapped;
+}
+
+function copyAnthropicWebSearchToolToResponses(tool: JsonRecord): JsonRecord {
+  const mapped: JsonRecord = { type: "web_search_preview" };
+  if (tool.user_location !== undefined) mapped.user_location = tool.user_location;
+  return mapped;
+}
+
+function chatToolCompatibilityNotesToResponsesText(tools: unknown): string {
+  if (!Array.isArray(tools)) return "";
+  const notes = tools.flatMap((tool): string[] => {
+    if (!isRecord(tool) || !isAnthropicWebSearchTool(tool)) return [];
+    const fields = ["allowed_callers", "allowed_domains", "blocked_domains", "defer_loading", "max_uses", "strict"]
+      .filter((field) => tool[field] !== undefined)
+      .map((field) => `${field}=${stringifyCompact(tool[field])}`);
+    return fields.length ? [`web_search ${fields.join(" ")}`] : [];
+  });
+  return notes.length
+    ? `Anthropic web_search fields preserved for OpenAI Responses context: ${notes.join("; ")}`
+    : "";
 }
 
 function copyResponsesMcpTool(tool: JsonRecord): JsonRecord | null {

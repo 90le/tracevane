@@ -11242,7 +11242,11 @@ test("model gateway preserves Responses built-in web search choices through Chat
         body: {
           model: "claude-native",
           input: "Search current docs with Claude.",
-          tools: [{ type: "web_search_preview", search_context_size: "low" }],
+          tools: [{
+            type: "web_search_preview",
+            search_context_size: "low",
+            user_location: { type: "approximate", city: "San Francisco", region: "CA", country: "US" },
+          }],
           tool_choice: { type: "web_search_preview" },
         },
       });
@@ -11270,7 +11274,11 @@ test("model gateway preserves Responses built-in web search choices through Chat
     { role: "user", content: "Search current docs with Claude." },
   ]);
   assert.deepEqual(upstreamCalls[1].body.tools, [
-    { type: "web_search_20250305", name: "web_search" },
+    {
+      type: "web_search_20250305",
+      name: "web_search",
+      user_location: { type: "approximate", city: "San Francisco", region: "CA", country: "US" },
+    },
   ]);
   assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "tool", name: "web_search" });
 });
@@ -11679,7 +11687,13 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
           model: "gpt-responses",
           messages: [{ role: "user", content: "Search and summarize." }],
           tools: [
-            { type: "web_search_20250305", name: "web_search", max_uses: 2 },
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: 2,
+              allowed_domains: ["docs.example.test"],
+              user_location: { type: "approximate", city: "Seattle", region: "WA", country: "US" },
+            },
             {
               type: "function",
               function: {
@@ -11724,10 +11738,17 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
   assert.equal(upstreamCalls[2].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
   assert.equal(upstreamCalls[2].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
   assert.deepEqual(upstreamCalls[2].body.tools, [
-    { type: "web_search_preview" },
+    { type: "web_search_preview", user_location: { type: "approximate", city: "Seattle", region: "WA", country: "US" } },
     { type: "function", name: "lookup", parameters: { type: "object" } },
   ]);
   assert.deepEqual(upstreamCalls[2].body.tool_choice, { type: "web_search_preview" });
+  assert.deepEqual(upstreamCalls[2].body.input.at(-2), {
+    role: "user",
+    content: [{
+      type: "input_text",
+      text: 'Anthropic web_search fields preserved for OpenAI Responses context: web_search allowed_domains=["docs.example.test"] max_uses=2',
+    }],
+  });
   assert.deepEqual(upstreamCalls[2].body.input.at(-1), {
     role: "user",
     content: [{

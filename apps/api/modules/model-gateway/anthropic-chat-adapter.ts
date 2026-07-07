@@ -877,7 +877,15 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
       type: "web_search_20250305",
       name: "web_search",
     };
-    if (typeof tool.max_uses === "number") mapped.max_uses = tool.max_uses;
+    copyScalarFields(tool, mapped, [
+      "allowed_callers",
+      "allowed_domains",
+      "blocked_domains",
+      "defer_loading",
+      "max_uses",
+      "strict",
+      "user_location",
+    ]);
     return mapped;
   }
   if (tool.type === "custom") return mapChatCustomToolToAnthropic(tool);
@@ -1323,7 +1331,7 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
   if (!Array.isArray(tools)) return [];
   return tools.flatMap((tool) => {
     if (!isRecord(tool)) return [];
-    if (isAnthropicWebSearchTool(tool)) return [{ type: "web_search_preview" }];
+    if (isAnthropicWebSearchTool(tool)) return [mapAnthropicWebSearchToolToChat(tool)];
     const name = stringOrNull(tool.name);
     if (!name) return [];
     const fn: JsonRecord = {
@@ -1333,6 +1341,20 @@ function mapAnthropicToolsToChat(tools: unknown): JsonRecord[] {
     if (typeof tool.description === "string") fn.description = tool.description;
     return [{ type: "function", function: fn }];
   });
+}
+
+function mapAnthropicWebSearchToolToChat(tool: JsonRecord): JsonRecord {
+  const mapped: JsonRecord = { type: "web_search_preview" };
+  copyScalarFields(tool, mapped, [
+    "allowed_callers",
+    "allowed_domains",
+    "blocked_domains",
+    "defer_loading",
+    "max_uses",
+    "strict",
+    "user_location",
+  ]);
+  return mapped;
 }
 
 function isAnthropicWebSearchTool(tool: JsonRecord): boolean {
@@ -1866,6 +1888,7 @@ function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string
     if (source[field] !== undefined) target[field] = source[field];
   }
 }
+
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
