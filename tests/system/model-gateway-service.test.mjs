@@ -12226,12 +12226,26 @@ test("model gateway preserves supported responses controls and strips rejected c
           rejected_prediction_tokens: 4,
         },
       });
+
+      const unsupportedFormat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "preserve unsupported chat response_format as context" }],
+          response_format: {
+            type: "yaml_schema",
+            schema: { type: "object", additionalProperties: false },
+          },
+        },
+      });
+      assert.equal(unsupportedFormat.status, 200, unsupportedFormat.body);
+      assert.equal(unsupportedFormat.body.choices[0].message.content, "Modern controls preserved.");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://responses-modern-controls.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-modern-controls-secret");
   assert.deepEqual(upstreamCalls[0].body, {
@@ -12257,6 +12271,20 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
+
+  assert.equal(upstreamCalls[1].url, "https://responses-modern-controls.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-responses-modern-controls-secret");
+  assert.equal("text" in upstreamCalls[1].body, false);
+  assert.deepEqual(upstreamCalls[1].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "preserve unsupported chat response_format as context" }] },
+    {
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: 'OpenAI Chat unsupported response_format for Responses: {"type":"yaml_schema","schema":{"type":"object","additionalProperties":false}}',
+      }],
+    },
+  ]);
 });
 
 test("model gateway preserves Responses cache and safety controls for Chat providers", async () => {

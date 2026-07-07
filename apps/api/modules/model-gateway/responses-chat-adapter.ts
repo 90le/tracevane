@@ -85,6 +85,10 @@ export function adaptChatCompletionRequestToResponses(
   if (unsupportedToolChoiceText) {
     responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedToolChoiceText }] });
   }
+  const unsupportedResponseFormatText = chatUnsupportedResponseFormatToResponsesText(request.response_format);
+  if (unsupportedResponseFormatText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedResponseFormatText }] });
+  }
 
   const responsesRequest: JsonRecord = {
     model,
@@ -593,7 +597,13 @@ function mapChatResponseFormatToResponsesText(responseFormat: unknown): unknown 
   if (responseFormat.type === "json_object" || responseFormat.type === "text") {
     return { type: responseFormat.type };
   }
-  return responseFormat;
+  return undefined;
+}
+
+function chatUnsupportedResponseFormatToResponsesText(responseFormat: unknown): string {
+  if (responseFormat === undefined) return "";
+  if (mapChatResponseFormatToResponsesText(responseFormat) !== undefined) return "";
+  return `OpenAI Chat unsupported response_format for Responses: ${stringifyCompact(responseFormat)}`;
 }
 
 function applyChatVerbosityToResponsesText(responsesRequest: JsonRecord, verbosityValue: unknown): void {
