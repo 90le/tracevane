@@ -15084,6 +15084,8 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   const anthropicBody = {
     model: "claude-native",
     max_tokens: 128,
+    container: "container_unknown_request_blocks",
+    context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
     messages: [
       {
         role: "user",
@@ -15161,6 +15163,11 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(chatMessages, /Anthropic Messages malformed mcp_tool_result for Chat/);
   assert.match(chatMessages, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(chatMessages, /missing tool_use_id result/);
+  assert.match(chatMessages, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(chatMessages, /container_unknown_request_blocks/);
+  assert.match(chatMessages, /clear_tool_uses_20250919/);
+  assert.equal(upstreamCalls[0].body.container, undefined);
+  assert.equal(upstreamCalls[0].body.context_management, undefined);
 
   assert.equal(upstreamCalls[1].url, "https://anthropic-unknown-request-to-responses.example.test/v1/responses");
   const responsesInput = JSON.stringify(upstreamCalls[1].body.input);
@@ -15172,6 +15179,10 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(responsesInput, /Anthropic Messages malformed mcp_tool_result for Chat/);
   assert.match(responsesInput, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(responsesInput, /missing tool_use_id result/);
+  assert.match(responsesInput, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(responsesInput, /container_unknown_request_blocks/);
+  assert.deepEqual(upstreamCalls[1].body.context_management, { edits: [{ type: "clear_tool_uses_20250919" }] });
+  assert.equal(upstreamCalls[1].body.container, undefined);
   assert.equal(JSON.stringify(upstreamCalls[1].body.input).includes('"type":"tool_result"'), false);
 });
 

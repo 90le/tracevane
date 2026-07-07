@@ -215,6 +215,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   if (!options.preserveMcpServers) {
     messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers, request.tools));
   }
+  const unsupportedRequestContextText = anthropicUnsupportedRequestContextToChatText(request, options);
+  if (unsupportedRequestContextText) messages.push({ role: "user", content: unsupportedRequestContextText });
   const unsupportedOutputFormatText = anthropicUnsupportedOutputFormatToChatText(request.output_config);
   if (unsupportedOutputFormatText) messages.push({ role: "user", content: unsupportedOutputFormatText });
   const chatRequest: JsonRecord = {
@@ -1270,6 +1272,22 @@ function anthropicUnsupportedOutputFormatToChatText(outputConfig: unknown): stri
   if (!isRecord(outputConfig) || outputConfig.format === undefined) return "";
   if (mapAnthropicOutputConfigToChatResponseFormat(outputConfig) !== undefined) return "";
   return `Anthropic Messages unsupported output_config.format for Chat: ${stringifyCompact(outputConfig.format)}`;
+}
+
+function anthropicUnsupportedRequestContextToChatText(
+  request: JsonRecord,
+  options: AnthropicChatRequestAdapterOptions = {},
+): string {
+  const notes: string[] = [];
+  if (request.container !== undefined) {
+    notes.push(`container=${stringifyCompact(request.container)}`);
+  }
+  if (!options.preserveContextManagement && request.context_management !== undefined) {
+    notes.push(`context_management=${stringifyCompact(request.context_management)}`);
+  }
+  return notes.length
+    ? `Anthropic Messages request context preserved for Chat adapters: ${notes.join(" ")}`
+    : "";
 }
 
 function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): unknown {
