@@ -14386,6 +14386,100 @@ test("model gateway adapts chat completions through native anthropic messages pr
   });
 });
 
+test("model gateway maps Chat custom tools through Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-custom-tool-anthropic",
+      name: "Chat Custom Tool Anthropic Provider",
+      appScopes: ["opencode", "openclaw"],
+      baseUrl: "https://chat-custom-tool-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-chat-custom-tool-anthropic" },
+    setActiveScopes: ["opencode", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_custom_tool",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [{
+        type: "tool_use",
+        id: "toolu_normalize_note",
+        name: "normalize_note",
+        input: { input: "ORDER-8831 | delayed" },
+      }],
+      stop_reason: "tool_use",
+      usage: { input_tokens: 5, output_tokens: 3 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "Normalize this support note." }],
+          tools: [{
+            type: "custom",
+            name: "normalize_note",
+            description: "Normalize support note text",
+            input_format: { type: "text" },
+          }],
+          tool_choice: { type: "custom", name: "normalize_note" },
+          max_tokens: 64,
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      const toolCall = response.body.choices[0].message.tool_calls[0];
+      assert.equal(toolCall.type, "function");
+      assert.equal(toolCall.function.name, "normalize_note");
+      assert.deepEqual(JSON.parse(toolCall.function.arguments), { input: "ORDER-8831 | delayed" });
+      assert.equal(response.body.choices[0].finish_reason, "tool_calls");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-custom-tool-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-chat-custom-tool-anthropic");
+  assert.deepEqual(upstreamCalls[0].body, {
+    model: "claude-native",
+    max_tokens: 64,
+    messages: [{ role: "user", content: "Normalize this support note." }],
+    tools: [{
+      name: "normalize_note",
+      input_schema: {
+        type: "object",
+        properties: { input: { type: "string" } },
+        required: ["input"],
+      },
+      description: "Normalize support note text",
+    }],
+    tool_choice: { type: "tool", name: "normalize_note" },
+  });
+});
+
 
 test("model gateway streams Anthropic tool_use start input through Chat adapters", async () => {
   const root = makeTempRoot();

@@ -872,6 +872,7 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
     if (typeof tool.max_uses === "number") mapped.max_uses = tool.max_uses;
     return mapped;
   }
+  if (tool.type === "custom") return mapChatCustomToolToAnthropic(tool);
   if (tool.type !== "function") return null;
   const fn = isRecord(tool.function) ? tool.function : {};
   const name = stringOrNull(fn.name);
@@ -882,6 +883,24 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
     input_schema: isRecord(fn.parameters) ? fn.parameters : {},
   };
   if (typeof fn.description === "string") mapped.description = fn.description;
+  return mapped;
+}
+
+function mapChatCustomToolToAnthropic(tool: JsonRecord): JsonRecord | null {
+  const source = isRecord(tool.function) ? tool.function : tool;
+  const name = stringOrNull(source.name);
+  if (!name) return null;
+  const mapped: JsonRecord = {
+    name,
+    input_schema: {
+      type: "object",
+      properties: {
+        input: { type: "string" },
+      },
+      required: ["input"],
+    },
+  };
+  if (typeof source.description === "string") mapped.description = source.description;
   return mapped;
 }
 
@@ -908,6 +927,11 @@ function mapChatToolChoiceToAnthropic(
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);
     return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "tool", name } : undefined;
+  }
+  if (toolChoice.type === "custom") {
+    const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
+      || stringOrNull(toolChoice.name);
+    return name && chatToolChoiceCustomNameAvailable(name, context.tools) ? { type: "tool", name } : undefined;
   }
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
@@ -1007,6 +1031,15 @@ function chatToolsIncludeFunction(tools: unknown, name: string): boolean {
 function chatFunctionsIncludeName(functions: unknown, name: string): boolean {
   return Array.isArray(functions)
     && functions.some((fn) => isRecord(fn) && stringOrNull(fn.name) === name);
+}
+
+function chatToolChoiceCustomNameAvailable(name: string, tools: unknown): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => {
+      if (!isRecord(tool) || tool.type !== "custom") return false;
+      const source = isRecord(tool.function) ? tool.function : tool;
+      return stringOrNull(source.name) === name;
+    });
 }
 
 function chatToolsIncludeOpenAIWebSearch(tools: unknown): boolean {
