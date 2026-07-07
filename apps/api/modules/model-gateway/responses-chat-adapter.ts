@@ -25,6 +25,7 @@ export interface ChatResponsesRequestAdapterOptions {
 }
 
 export interface ResponsesChatResponseAdapterOptions {
+  preserveMcpToolCalls?: boolean;
   stopSequences?: Iterable<string>;
 }
 
@@ -130,8 +131,11 @@ export function adaptResponsesToChatCompletion(
   }
 
   const output = Array.isArray(response.output) ? response.output : [];
+  const mcpToolBlocks = options.preserveMcpToolCalls
+    ? collectResponseMcpToolBlocks(output)
+    : [];
   const text = truncateAtStopSequence(
-    collectResponseOutputText(response, output),
+    collectResponseOutputText(response, output, { skipMcpToolCalls: mcpToolBlocks.length > 0 }),
     options.stopSequences,
   ).text;
   const toolCalls = output
@@ -145,6 +149,7 @@ export function adaptResponsesToChatCompletion(
   const reasoningDetails = collectResponseReasoningDetails(output);
   if (reasoningText) message.reasoning_content = reasoningText;
   if (reasoningDetails.length) message.reasoning_details = reasoningDetails;
+  if (mcpToolBlocks.length) message.mcp_tool_blocks = mcpToolBlocks;
   const annotations = collectResponseOutputAnnotations(output);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -231,7 +236,10 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
 
   const items: JsonRecord[] = [];
   const role = message.role === "assistant" ? "assistant" : "user";
-  if (role === "assistant") items.push(...chatMessageReasoningToResponsesItems(message));
+  if (role === "assistant") {
+    items.push(...chatMessageReasoningToResponsesItems(message));
+    items.push(...chatMcpToolBlocksToResponsesItems(message.mcp_tool_blocks));
+  }
   const content = chatContentToResponsesContent(message.content, role);
   if (content.length || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
     items.push({
@@ -450,6 +458,17 @@ function responsesFunctionCallItemId(callId: string): string {
   return callId.startsWith("fc") ? callId : `fc_${callId}`;
 }
 
+function parseToolArguments(value: unknown): unknown {
+  if (isRecord(value) || Array.isArray(value)) return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) || Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | null {
   if (!isRecord(item) || (item.type !== "function_call" && item.type !== "custom_tool_call")) return null;
   const name = stringOrNull(item.name);
@@ -472,24 +491,108 @@ function customToolArgumentsFromResponsesInput(input: unknown): string {
   return JSON.stringify({ input: typeof input === "string" ? input : stringifyCompact(input ?? "") });
 }
 
-function collectResponseOutputText(response: JsonRecord, output: unknown[]): string {
+function collectResponseOutputText(
+  response: JsonRecord,
+  output: unknown[],
+  options: { skipMcpToolCalls?: boolean } = {},
+): string {
   const outputText = stringOrNull(response.output_text);
   if (outputText) return outputText;
 
   return output
-    .map(responseOutputItemToText)
+    .map((item) => responseOutputItemToText(item, options))
     .filter(Boolean)
     .join("");
 }
 
-function responseOutputItemToText(item: unknown): string {
+function responseOutputItemToText(item: unknown, options: { skipMcpToolCalls?: boolean } = {}): string {
   if (!isRecord(item)) return "";
   if (item.type === "message") return responseContentToText(item.content);
   if (item.type === "output_text") return stringOrNull(item.text) || "";
   if (item.type === "refusal") return stringOrNull(item.refusal) || "";
-  if (item.type === "mcp_call") return mcpCallOutputToText(item);
+  if (item.type === "mcp_call") return options.skipMcpToolCalls ? "" : mcpCallOutputToText(item);
   if (item.type === "mcp_list_tools") return mcpListToolsOutputToText(item);
   return "";
+}
+
+function collectResponseMcpToolBlocks(output: unknown[]): JsonRecord[] {
+  return output.flatMap((item): JsonRecord[] => {
+    if (!isRecord(item) || item.type !== "mcp_call") return [];
+    const id = stringOrNull(item.id) || stringOrNull(item.call_id);
+    const name = stringOrNull(item.name) || stringOrNull(item.tool_name);
+    const serverName = stringOrNull(item.server_label) || stringOrNull(item.server_name);
+    if (!id || !name || !serverName) return [];
+
+    const blocks: JsonRecord[] = [{
+      type: "mcp_tool_use",
+      id,
+      name,
+      server_name: serverName,
+      input: parseToolArguments(item.arguments ?? item.input),
+    }];
+
+    const outputValue = item.output ?? item.result ?? item.content;
+    if (outputValue !== undefined || item.error !== undefined) {
+      blocks.push({
+        type: "mcp_tool_result",
+        tool_use_id: id,
+        is_error: item.error !== undefined && item.error !== null,
+        content: mcpToolResultContentToAnthropicContent(item.error ?? outputValue),
+      });
+    }
+    return blocks;
+  });
+}
+
+function chatMcpToolBlocksToResponsesItems(blocks: unknown): JsonRecord[] {
+  if (!Array.isArray(blocks)) return [];
+  const pendingResults = new Map<string, JsonRecord>();
+  for (const block of blocks) {
+    if (!isRecord(block) || block.type !== "mcp_tool_result") continue;
+    const toolUseId = stringOrNull(block.tool_use_id);
+    if (toolUseId) pendingResults.set(toolUseId, block);
+  }
+
+  return blocks.flatMap((block): JsonRecord[] => {
+    if (!isRecord(block) || block.type !== "mcp_tool_use") return [];
+    const id = stringOrNull(block.id);
+    const name = stringOrNull(block.name);
+    const serverLabel = stringOrNull(block.server_name) || stringOrNull(block.server_label);
+    if (!id || !name || !serverLabel) return [];
+
+    const result = pendingResults.get(id);
+    const item: JsonRecord = {
+      type: "mcp_call",
+      id,
+      name,
+      server_label: serverLabel,
+      arguments: JSON.stringify(block.input ?? {}),
+    };
+    if (result) {
+      if (result.is_error === true) item.error = mcpResultContentToText(result.content);
+      else item.output = mcpResultContentToText(result.content);
+    }
+    return [item];
+  });
+}
+
+function mcpToolResultContentToAnthropicContent(value: unknown): JsonRecord[] {
+  if (Array.isArray(value)) {
+    const blocks = value.filter(isRecord);
+    if (blocks.length) return blocks;
+  }
+  if (isRecord(value) && typeof value.type === "string") return [value];
+  return [{ type: "text", text: stringifyCompact(value ?? "") }];
+}
+
+function mcpResultContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const text = content.map(chatContentPartToText).filter(Boolean).join("");
+    return text || stringifyCompact(content);
+  }
+  const text = chatContentPartToText(content);
+  return text || stringifyCompact(content ?? "");
 }
 
 function collectResponseReasoningDetails(output: unknown[]): JsonRecord[] {

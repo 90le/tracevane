@@ -9386,6 +9386,127 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
   assert.ok(upstreamCalls.every((call) => call.authorization === "Bearer sk-responses-mcp-output-secret"));
 });
 
+test("model gateway preserves Anthropic MCP blocks through Responses provider", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-responses-mcp-bridge",
+      name: "Anthropic Responses MCP Bridge",
+      appScopes: ["claude-code"],
+      baseUrl: "https://responses-mcp-bridge.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-mcp-bridge-secret" },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_mcp_bridge",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [
+        {
+          id: "mcp_call_read",
+          type: "mcp_call",
+          server_label: "repo-tools",
+          name: "read_file",
+          arguments: JSON.stringify({ path: "README.md" }),
+          output: "README contents",
+          status: "completed",
+        },
+        {
+          id: "msg_mcp_bridge",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Read complete." }],
+        },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 256,
+          mcp_servers: [
+            {
+              type: "url",
+              name: "repo-tools",
+              url: "https://mcp.example.test/sse",
+              authorization_token: "mcp-token",
+              tool_configuration: { enabled: true, allowed_tools: ["read_file"] },
+            },
+          ],
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                { type: "mcp_tool_use", id: "mcp_prev", name: "read_file", server_name: "repo-tools", input: { path: "package.json" } },
+                { type: "mcp_tool_result", tool_use_id: "mcp_prev", is_error: false, content: [{ type: "text", text: "package" }] },
+                { type: "text", text: "Previous MCP done." },
+              ],
+            },
+            { role: "user", content: "read README" },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.deepEqual(response.body.content, [
+        { type: "mcp_tool_use", id: "mcp_call_read", name: "read_file", server_name: "repo-tools", input: { path: "README.md" } },
+        { type: "mcp_tool_result", tool_use_id: "mcp_call_read", is_error: false, content: [{ type: "text", text: "README contents" }] },
+        { type: "text", text: "Read complete." },
+      ]);
+      assert.equal(response.body.stop_reason, "end_turn");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://responses-mcp-bridge.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-mcp-bridge-secret");
+  assert.deepEqual(upstreamCalls[0].body.tools, [{
+    type: "mcp",
+    server_label: "repo-tools",
+    server_url: "https://mcp.example.test/sse",
+    authorization: "mcp-token",
+    allowed_tools: ["read_file"],
+  }]);
+  assert.deepEqual(upstreamCalls[0].body.input[0], {
+    type: "mcp_call",
+    id: "mcp_prev",
+    name: "read_file",
+    server_label: "repo-tools",
+    arguments: JSON.stringify({ path: "package.json" }),
+    output: "package",
+  });
+  assert.deepEqual(upstreamCalls[0].body.input[1], {
+    role: "assistant",
+    content: [{ type: "output_text", text: "Previous MCP done." }],
+  });
+});
+
 test("model gateway exposes streaming responses mcp outputs through chat and anthropic adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

@@ -11422,7 +11422,7 @@ export function createModelGatewayService(
             codexAccountSse: useCodexAccountResponsesUpstream && useAnthropicMessagesResponsesProviderAdapter,
           });
           const chatCompletion = useAnthropicMessagesResponsesProviderAdapter
-            ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog)
+            ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog, { preserveMcpToolCalls: true })
             : upstreamJson;
           adaptedResponse = adaptChatCompletionResponseToAnthropicMessages(chatCompletion, requestModelForLog, {
             stopSequences: responsesAdapterStopSequences,

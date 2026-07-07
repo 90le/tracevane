@@ -232,6 +232,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
     .filter((part): part is string => Boolean(part))
     .join("");
   const reasoningDetails = anthropicThinkingBlocksToChatReasoningDetails(content);
+  const mcpToolBlocks = anthropicMcpToolBlocks(content);
   const text = content
     .map((part) => isRecord(part) && part.type === "text" ? stringOrNull(part.text) : null)
     .filter((part): part is string => Boolean(part))
@@ -245,6 +246,7 @@ export function adaptAnthropicMessagesResponseToChatCompletion(response: unknown
   };
   if (reasoningText) message.reasoning_content = reasoningText;
   if (reasoningDetails.length) message.reasoning_details = reasoningDetails;
+  if (mcpToolBlocks.length) message.mcp_tool_blocks = mcpToolBlocks;
   const annotations = collectAnthropicTextCitations(content);
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
@@ -295,6 +297,7 @@ export function adaptChatCompletionResponseToAnthropicMessages(
     const reasoningText = extractChatReasoningText(message);
     if (reasoningText) content.push({ type: "thinking", thinking: reasoningText });
   }
+  content.push(...chatMcpToolBlocksToAnthropicBlocks(message.mcp_tool_blocks));
   if (text) {
     const textBlock: JsonRecord = { type: "text", text };
     if (Array.isArray(message.annotations) && message.annotations.length) {
@@ -335,6 +338,73 @@ function anthropicThinkingBlocksToChatReasoningDetails(content: JsonRecord[]): J
   return content.flatMap((part): JsonRecord[] => {
     if (part.type === "thinking" && stringOrNull(part.thinking) && stringOrNull(part.signature)) return [{ ...part }];
     if (part.type === "redacted_thinking" && stringOrNull(part.data)) return [{ ...part }];
+    return [];
+  });
+}
+
+function anthropicMcpToolBlocks(content: JsonRecord[]): JsonRecord[] {
+  return content.flatMap((part): JsonRecord[] => {
+    if (part.type === "mcp_tool_use") {
+      const id = stringOrNull(part.id);
+      const name = stringOrNull(part.name);
+      const serverName = stringOrNull(part.server_name) || stringOrNull(part.server_label);
+      if (!id || !name || !serverName) return [];
+      return [{
+        type: "mcp_tool_use",
+        id,
+        name,
+        server_name: serverName,
+        input: isRecord(part.input) || Array.isArray(part.input) ? part.input : {},
+      }];
+    }
+    if (part.type === "mcp_tool_result") {
+      const toolUseId = stringOrNull(part.tool_use_id);
+      if (!toolUseId) return [];
+      return [{
+        type: "mcp_tool_result",
+        tool_use_id: toolUseId,
+        is_error: part.is_error === true,
+        content: anthropicMcpResultContent(part.content),
+      }];
+    }
+    return [];
+  });
+}
+
+function anthropicMcpResultContent(content: unknown): unknown {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.filter(isRecord);
+  if (isRecord(content)) return [content];
+  return [];
+}
+
+function chatMcpToolBlocksToAnthropicBlocks(blocks: unknown): JsonRecord[] {
+  if (!Array.isArray(blocks)) return [];
+  return blocks.flatMap((block): JsonRecord[] => {
+    if (!isRecord(block)) return [];
+    if (block.type === "mcp_tool_use") {
+      const id = stringOrNull(block.id);
+      const name = stringOrNull(block.name);
+      const serverName = stringOrNull(block.server_name) || stringOrNull(block.server_label);
+      if (!id || !name || !serverName) return [];
+      return [{
+        type: "mcp_tool_use",
+        id,
+        name,
+        server_name: serverName,
+        input: isRecord(block.input) || Array.isArray(block.input) ? block.input : {},
+      }];
+    }
+    if (block.type === "mcp_tool_result") {
+      const toolUseId = stringOrNull(block.tool_use_id);
+      if (!toolUseId) return [];
+      return [{
+        type: "mcp_tool_result",
+        tool_use_id: toolUseId,
+        is_error: block.is_error === true,
+        content: anthropicMcpResultContent(block.content),
+      }];
+    }
     return [];
   });
 }
@@ -641,6 +711,7 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
       .filter(Boolean)
       .join("");
     const reasoningDetails = anthropicThinkingBlocksToChatReasoningDetails(blocks);
+    const mcpToolBlocks = anthropicMcpToolBlocks(blocks);
     const toolCalls = blocks
       .filter((block) => block.type === "tool_use")
       .map(mapAnthropicToolUseToChatToolCall)
@@ -651,6 +722,7 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
     };
     if (reasoningText) chatMessage.reasoning_content = reasoningText;
     if (reasoningDetails.length) chatMessage.reasoning_details = reasoningDetails;
+    if (mcpToolBlocks.length) chatMessage.mcp_tool_blocks = mcpToolBlocks;
     if (toolCalls.length) chatMessage.tool_calls = toolCalls;
     return [chatMessage];
   }
