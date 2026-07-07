@@ -691,7 +691,17 @@ function chatUnsupportedResponseFormatToResponsesText(responseFormat: unknown): 
 }
 
 function chatUnsupportedRequestControlsToResponsesText(request: JsonRecord): string {
-  const notes: string[] = [];
+  const unsupportedFields = [
+    "frequency_penalty",
+    "logit_bias",
+    "n",
+    "prediction",
+    "presence_penalty",
+    "seed",
+  ];
+  const notes = unsupportedFields
+    .filter((field) => request[field] !== undefined)
+    .map((field) => `${field}=${stringifyCompact(request[field])}`);
   if (request.audio !== undefined) {
     notes.push(`audio=${stringifyCompact(request.audio)}`);
   }

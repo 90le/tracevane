@@ -12589,11 +12589,14 @@ test("model gateway preserves supported responses controls and strips rejected c
           max_tokens: 128,
           max_completion_tokens: 512,
           audio: { voice: "alloy", format: "mp3" },
-          frequency_penalty: 0,
+          frequency_penalty: 0.3,
+          logit_bias: { "123": -5 },
           logprobs: true,
           metadata: { trace_id: "strip-for-codex-responses" },
           modalities: ["text", "audio"],
-          presence_penalty: 0,
+          n: 2,
+          prediction: { type: "content", content: "Modern controls preserved." },
+          presence_penalty: 0.4,
           previous_response_id: "resp_previous",
           prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
           prompt_cache_key: "cache-key-123",
@@ -12654,7 +12657,7 @@ test("model gateway preserves supported responses controls and strips rejected c
         role: "user",
         content: [{
           type: "input_text",
-          text: 'OpenAI Chat request controls preserved for Responses: audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
+          text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
         }],
       },
     ],
@@ -12679,7 +12682,10 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("modalities" in upstreamCalls[0].body, false);
   assert.equal("stop" in upstreamCalls[0].body, false);
   assert.equal("frequency_penalty" in upstreamCalls[0].body, false);
+  assert.equal("logit_bias" in upstreamCalls[0].body, false);
   assert.equal("logprobs" in upstreamCalls[0].body, false);
+  assert.equal("n" in upstreamCalls[0].body, false);
+  assert.equal("prediction" in upstreamCalls[0].body, false);
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
 
