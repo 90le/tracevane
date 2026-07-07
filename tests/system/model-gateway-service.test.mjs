@@ -10375,12 +10375,12 @@ test("model gateway preserves unknown streaming Responses output through Chat an
   };
 
   const expectedChatText = [
-    'OpenAI Responses unrecognized message content part for Chat: {"type":"output_audio","id":"aud_stream","transcript":"hello audio"}',
+    'hello audio',
     'OpenAI Responses function_call omitted for Chat: {"id":"fc_stream_malformed","type":"function_call","status":"completed","arguments":"{\\"query\\":\\"docs\\"}"}',
     'OpenAI Responses unrecognized output item for Chat: {"type":"future_tool_call","status":"completed","payload":{"value":42}}',
   ].join("");
   const expectedAnthropicText = [
-    'OpenAI Responses unrecognized message content part for Anthropic Messages: {"type":"output_audio","id":"aud_stream","transcript":"hello audio"}',
+    'hello audio',
     'OpenAI Responses malformed function_call for Anthropic Messages: {"id":"fc_stream_malformed","type":"function_call","status":"completed","arguments":"{\\"query\\":\\"docs\\"}"}',
     'OpenAI Responses unrecognized output item for Anthropic Messages: {"type":"future_tool_call","status":"completed","payload":{"value":42}}',
   ].join("");
@@ -15753,8 +15753,9 @@ test("model gateway preserves unknown upstream output blocks as chat context", a
         },
       });
       assert.equal(responsesToChat.status, 200);
-      assert.match(responsesToChat.body.choices[0].message.content, /OpenAI Responses unrecognized message content part for Chat/);
-      assert.match(responsesToChat.body.choices[0].message.content, /output_audio/);
+      assert.match(responsesToChat.body.choices[0].message.content, /^hello audio/);
+      assert.doesNotMatch(responsesToChat.body.choices[0].message.content, /OpenAI Responses unrecognized message content part for Chat/);
+      assert.doesNotMatch(responsesToChat.body.choices[0].message.content, /output_audio/);
       assert.match(responsesToChat.body.choices[0].message.content, /OpenAI Responses unrecognized output item for Chat/);
       assert.match(responsesToChat.body.choices[0].message.content, /future_tool_call/);
 

@@ -1016,7 +1016,7 @@ function responseContentToText(content: unknown): string {
     .map((part) => {
       if (typeof part === "string") return part;
       if (!isRecord(part)) return "";
-      const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.refusal);
+      const text = responseContentPartText(part);
       if (text) return text;
       return stringOrNull(part.type)
         ? `OpenAI Responses unrecognized message content part for Chat: ${stringifyCompact(part)}`
@@ -1024,6 +1024,14 @@ function responseContentToText(content: unknown): string {
     })
     .filter(Boolean)
     .join("");
+}
+
+function responseContentPartText(part: JsonRecord): string {
+  return stringOrNull(part.text)
+    || stringOrNull(part.output_text)
+    || stringOrNull(part.refusal)
+    || stringOrNull(part.transcript)
+    || "";
 }
 
 function mapResponsesUsageToChat(usage: unknown): JsonRecord | null {

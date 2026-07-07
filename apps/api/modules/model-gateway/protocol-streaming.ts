@@ -2438,6 +2438,8 @@ function responsesUnknownMessageContentToText(content: unknown, target: "Chat" |
   return content
     .map((part) => {
       if (!isRecord(part) || !stringOrNull(part.type)) return "";
+      const transcript = stringOrNull(part.transcript);
+      if (transcript) return transcript;
       if (part.type === "output_text" || part.type === "refusal") return "";
       return `OpenAI Responses unrecognized message content part for ${target}: ${stringifyCompact(part)}`;
     })
