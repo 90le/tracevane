@@ -10156,6 +10156,141 @@ test("model gateway maps non-streaming responses incomplete status to client sto
   assert.deepEqual(upstreamCalls.map((call) => JSON.parse(call.body).stream), [false, false]);
 });
 
+test("model gateway maps GPT-5 verbosity across Chat, Anthropic, and Responses adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-verbosity",
+      name: "Responses Verbosity Provider",
+      appScopes: ["openclaw", "opencode", "claude-code"],
+      baseUrl: "https://responses-verbosity.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-verbosity-secret" },
+    setActiveScopes: ["openclaw", "opencode", "claude-code"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-verbosity",
+      name: "Chat Verbosity Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-verbosity.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-verbosity-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    if (String(url).includes("responses-verbosity")) {
+      return new Response(JSON.stringify({
+        id: "resp_verbosity",
+        object: "response",
+        status: "completed",
+        model: "gpt-native-responses",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Responses verbosity kept." }],
+        }],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_verbosity",
+      object: "chat.completion",
+      created: 1_710_000_046,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Chat verbosity kept." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          verbosity: "high",
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: "chat verbosity" }],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "Responses verbosity kept.");
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-native-responses",
+          max_tokens: 32,
+          verbosity: "low",
+          messages: [{ role: "user", content: "anthropic verbosity" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+      assert.deepEqual(messages.body.content, [{ type: "text", text: "Responses verbosity kept." }]);
+
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "responses verbosity",
+          text: {
+            verbosity: "medium",
+            format: {
+              type: "json_schema",
+              name: "verbosity_schema",
+              schema: { type: "object", additionalProperties: false, properties: {} },
+              strict: true,
+            },
+          },
+        },
+      });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.output[0].content[0].text, "Chat verbosity kept.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls[0].url, "https://responses-verbosity.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-verbosity-secret");
+  assert.deepEqual(upstreamCalls[0].body.text, { format: { type: "json_object" }, verbosity: "high" });
+  assert.equal(upstreamCalls[1].url, "https://responses-verbosity.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-responses-verbosity-secret");
+  assert.equal(upstreamCalls[1].body.text.verbosity, "low");
+  assert.equal(upstreamCalls[2].url, "https://chat-verbosity.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[2].authorization, "Bearer sk-chat-verbosity-secret");
+  assert.equal(upstreamCalls[2].body.verbosity, "medium");
+  assert.deepEqual(upstreamCalls[2].body.response_format, {
+    type: "json_schema",
+    json_schema: {
+      name: "verbosity_schema",
+      schema: { type: "object", additionalProperties: false, properties: {} },
+      strict: true,
+    },
+  });
+});
+
 test("model gateway preserves service tier across chat and responses adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

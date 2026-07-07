@@ -114,6 +114,8 @@ export function adaptCodexResponsesRequestToChat(
 
   const responseFormat = mapResponsesTextFormatToChatResponseFormat(request.text) ?? request.response_format;
   if (responseFormat !== undefined) chatRequest.response_format = responseFormat;
+  const verbosity = responsesTextVerbosity(request.text) ?? verbosityOrNull(request.verbosity);
+  if (verbosity) chatRequest.verbosity = verbosity;
 
   applyChatReasoningOptions(chatRequest, request, options.reasoning || null, {
     preserveEffort: options.preserveReasoningEffort,
@@ -755,6 +757,10 @@ function mapResponsesTextFormatToChatResponseFormat(text: unknown): unknown {
   return undefined;
 }
 
+function responsesTextVerbosity(text: unknown): "low" | "medium" | "high" | null {
+  return isRecord(text) ? verbosityOrNull(text.verbosity) : null;
+}
+
 function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
@@ -936,6 +942,10 @@ function ensureStreamUsageOption(chatRequest: JsonRecord): void {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function verbosityOrNull(value: unknown): "low" | "medium" | "high" | null {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
 }
 
 function isPlaceholderText(value: string): boolean {

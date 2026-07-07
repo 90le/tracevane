@@ -121,6 +121,7 @@ export function adaptChatCompletionRequestToResponses(
 
   const textFormat = mapChatResponseFormatToResponsesText(request.response_format);
   if (textFormat !== undefined) responsesRequest.text = { format: textFormat };
+  applyChatVerbosityToResponsesText(responsesRequest, request.verbosity);
 
   applyResponsesReasoningOptions(responsesRequest, request);
 
@@ -463,6 +464,16 @@ function mapChatResponseFormatToResponsesText(responseFormat: unknown): unknown 
   return responseFormat;
 }
 
+function applyChatVerbosityToResponsesText(responsesRequest: JsonRecord, verbosityValue: unknown): void {
+  const verbosity = verbosityOrNull(verbosityValue);
+  if (!verbosity) return;
+  const existingText = isRecord(responsesRequest.text) ? responsesRequest.text : {};
+  responsesRequest.text = {
+    ...existingText,
+    verbosity,
+  };
+}
+
 function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
@@ -783,6 +794,10 @@ function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function verbosityOrNull(value: unknown): "low" | "medium" | "high" | null {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
 }
 
 function numberOrNull(value: unknown): number | null {

@@ -193,6 +193,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
     "temperature",
     "top_p",
   ]);
+  const verbosity = verbosityOrNull(request.verbosity);
+  if (verbosity) chatRequest.verbosity = verbosity;
   if (options.preserveMetadata && request.metadata !== undefined) chatRequest.metadata = request.metadata;
   const metadataUserId = anthropicMetadataUserId(request.metadata);
   if (metadataUserId && chatRequest.user === undefined) chatRequest.user = metadataUserId;
@@ -1236,6 +1238,10 @@ function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function verbosityOrNull(value: unknown): "low" | "medium" | "high" | null {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
 }
 
 function numberOrNull(value: unknown): number | null {
