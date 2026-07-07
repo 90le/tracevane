@@ -384,6 +384,11 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       if (filePart) parts.push(filePart);
       continue;
     }
+    if (type === "refusal" && role === "assistant") {
+      const refusal = stringOrNull(part.refusal) || stringOrNull(part.text);
+      if (refusal) parts.push({ type: "refusal", refusal });
+      continue;
+    }
     const text = stringOrNull(part.text)
       || stringOrNull(part.input_text)
       || stringOrNull(part.output_text)

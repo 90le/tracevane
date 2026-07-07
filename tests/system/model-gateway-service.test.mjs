@@ -10540,6 +10540,87 @@ test("model gateway preserves Responses-style Chat input image parts for Respons
   }]);
 });
 
+test("model gateway preserves Chat assistant refusal parts for Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-responses-refusal-input",
+      name: "Chat Responses Refusal Input Provider",
+      appScopes: ["opencode"],
+      baseUrl: "https://chat-responses-refusal-input.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-responses-refusal-input-secret" },
+    setActiveScopes: ["opencode"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_chat_refusal_input",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Refusal history preserved." }],
+      }],
+      usage: { input_tokens: 9, output_tokens: 4, total_tokens: 13 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "refusal", refusal: "I cannot help with that." }],
+            },
+            { role: "user", content: "Please answer safely." },
+          ],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.choices[0].message.content, "Refusal history preserved.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-responses-refusal-input.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-responses-refusal-input-secret");
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    {
+      role: "assistant",
+      content: [{ type: "refusal", refusal: "I cannot help with that." }],
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: "Please answer safely." }],
+    },
+  ]);
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
