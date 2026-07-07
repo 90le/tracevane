@@ -297,6 +297,14 @@ export async function writeChatCompletionsSseFromResponsesSse(
       if (id) state.id = id;
       const model = stringOrNull(response.model);
       if (model) state.model = model;
+      if (event.event === "response.reasoning_summary_text.delta") {
+        const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.text);
+        if (delta) {
+          ensureChatStreamStart(state, res);
+          writeChatReasoningDelta(state, res, delta);
+        }
+        return;
+      }
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
@@ -427,6 +435,9 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     text: "",
     textBlockIndex: null as number | null,
     textBlockStopped: false,
+    thinkingBlockIndex: null as number | null,
+    thinkingBlockStopped: false,
+    thinkingText: "",
     citations: [] as JsonRecord[],
     nextContentIndex: 0,
     tools: new Map<number, ToolStreamBlock>(),
@@ -467,11 +478,21 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
       const model = stringOrNull(response.model);
       if (model) state.model = model;
+      if (event.event === "response.reasoning_summary_text.delta") {
+        const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.text);
+        if (delta) {
+          closeAnthropicTextBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicThinkingDelta(state, res, delta);
+        }
+        return;
+      }
       if (event.event === "response.output_text.delta" || event.event === "response.refusal.delta") {
         const delta = stringOrNull(event.json.delta) || stringOrNull(event.json.refusal);
         if (delta) {
           const filtered = applyStopSequenceFilter(stopFilter, delta);
           if (filtered.delta) {
+            closeAnthropicThinkingBlock(state, res);
             ensureAnthropicTextMessageStart(state, res);
             pushAnthropicTextDelta(state, res, filtered.delta);
           }
@@ -483,12 +504,14 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_text.annotation.added" && isRecord(event.json.annotation)) {
+        closeAnthropicThinkingBlock(state, res);
         ensureAnthropicTextMessageStart(state, res);
         pushAnthropicCitationDelta(state, res, event.json.annotation);
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
         if (isUsableResponsesToolCallItem(event.json.item)) {
+          closeAnthropicThinkingBlock(state, res);
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
@@ -507,6 +530,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
         if (!tool) return;
         if (delta) {
+          closeAnthropicThinkingBlock(state, res);
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicToolDeltaFromResponses(state, res, tool, delta);
@@ -523,6 +547,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         if (!tool) return;
         const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
         if (remaining) {
+          closeAnthropicThinkingBlock(state, res);
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
@@ -536,12 +561,14 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
           const text = responsesMcpOutputItemToText(event.json.item);
           if (text) {
             emittedMcpItemKeys.add(responsesMcpOutputItemKey(event.json, event.json.item));
+            closeAnthropicThinkingBlock(state, res);
             ensureAnthropicTextMessageStart(state, res);
             pushAnthropicTextDelta(state, res, text);
           }
           return;
         }
         if (isUsableResponsesToolCallItem(event.json.item)) {
+          closeAnthropicThinkingBlock(state, res);
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
@@ -556,10 +583,12 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
       if (event.event === "response.completed") {
         sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
+        closeAnthropicThinkingBlock(state, res);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         emitMissingAnthropicMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         const pending = flushStopSequenceFilter(stopFilter);
         if (pending) {
+          closeAnthropicThinkingBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           pushAnthropicTextDelta(state, res, pending);
         }
@@ -1120,6 +1149,35 @@ function pushAnthropicTextDelta(
   });
 }
 
+function pushAnthropicThinkingDelta(
+  state: {
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+    thinkingText?: string;
+    nextContentIndex: number;
+  },
+  res: http.ServerResponse,
+  delta: string,
+): void {
+  if (state.thinkingBlockIndex === undefined) return;
+  if (state.thinkingBlockIndex === null) {
+    state.thinkingBlockIndex = state.nextContentIndex;
+    state.nextContentIndex += 1;
+    state.thinkingBlockStopped = false;
+    writeSseEvent(res, "content_block_start", {
+      type: "content_block_start",
+      index: state.thinkingBlockIndex,
+      content_block: { type: "thinking", thinking: "" },
+    });
+  }
+  state.thinkingText = `${state.thinkingText || ""}${delta}`;
+  writeSseEvent(res, "content_block_delta", {
+    type: "content_block_delta",
+    index: state.thinkingBlockIndex,
+    delta: { type: "thinking_delta", thinking: delta },
+  });
+}
+
 function pushAnthropicCitationDelta(
   state: {
     textBlockIndex: number | null;
@@ -1288,12 +1346,15 @@ function finalizeAnthropicTextStream(
     stopSequence?: string | null;
     textBlockIndex: number | null;
     textBlockStopped: boolean;
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
     usage: JsonRecord;
   },
   res: http.ServerResponse,
 ): void {
   if (state.completed) return;
   ensureAnthropicMessageStart(state, res);
+  closeAnthropicThinkingBlock(state, res);
   if (state.textBlockIndex !== null && !state.textBlockStopped) {
     writeSseEvent(res, "content_block_stop", {
       type: "content_block_stop",
@@ -1357,6 +1418,14 @@ function writeChatTextDelta(
 ): void {
   state.outputText += delta;
   writeChatChunk(state, res, { content: delta }, null);
+}
+
+function writeChatReasoningDelta(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  delta: string,
+): void {
+  writeChatChunk(state, res, { reasoning_content: delta }, null);
 }
 
 function writeChatToolCallStart(
@@ -2178,6 +2247,22 @@ function closeAnthropicTextBlock(
   });
   state.textBlockIndex = null;
   state.textBlockStopped = false;
+}
+
+function closeAnthropicThinkingBlock(
+  state: {
+    thinkingBlockIndex?: number | null;
+    thinkingBlockStopped?: boolean;
+  },
+  res: http.ServerResponse,
+): void {
+  if (state.thinkingBlockIndex === undefined || state.thinkingBlockIndex === null || state.thinkingBlockStopped) return;
+  writeSseEvent(res, "content_block_stop", {
+    type: "content_block_stop",
+    index: state.thinkingBlockIndex,
+  });
+  state.thinkingBlockIndex = null;
+  state.thinkingBlockStopped = false;
 }
 
 function stopAnthropicToolBlock(res: http.ServerResponse, tool: ToolStreamBlock): void {

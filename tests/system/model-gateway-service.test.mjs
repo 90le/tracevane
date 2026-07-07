@@ -14434,6 +14434,135 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
   ]);
 });
 
+
+test("model gateway preserves streaming responses reasoning summaries through chat and anthropic sse", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-reasoning-stream-adapter",
+      name: "Responses Reasoning Stream Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-reasoning-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-reasoning-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    const responseId = upstreamCalls.length === 1 ? "resp_reason_chat" : "resp_reason_anthropic";
+    const upstreamSse = [
+      "event: response.created",
+      `data: {"type":"response.created","response":{"id":"${responseId}","object":"response","status":"in_progress","model":"gpt-reasoning","output":[],"usage":{"input_tokens":6,"output_tokens":0}}}`,
+      "",
+      "event: response.output_item.added",
+      "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"status\":\"in_progress\",\"summary\":[]}}",
+      "",
+      "event: response.reasoning_summary_part.added",
+      "data: {\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"\"}}",
+      "",
+      "event: response.reasoning_summary_text.delta",
+      "data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"delta\":\"Need context. \"}",
+      "",
+      "event: response.reasoning_summary_text.delta",
+      "data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"delta\":\"Then answer.\"}",
+      "",
+      "event: response.output_text.delta",
+      "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"Done\"}",
+      "",
+      "event: response.completed",
+      `data: {"type":"response.completed","response":{"id":"${responseId}","object":"response","status":"completed","model":"gpt-reasoning","output":[{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"Need context. Then answer."}]},{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Done"}]}],"usage":{"input_tokens":6,"output_tokens":4,"total_tokens":10,"output_tokens_details":{"reasoning_tokens":2}}}}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoning",
+          stream: true,
+          messages: [{ role: "user", content: "reason please" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].delta.reasoning_content, "Need context. ");
+      assert.equal(chatEvents[2].data.choices[0].delta.reasoning_content, "Then answer.");
+      assert.equal(chatEvents[3].data.choices[0].delta.content, "Done");
+      assert.equal(chatEvents[4].data.choices[0].finish_reason, "stop");
+      assert.deepEqual(chatEvents[4].data.usage, {
+        prompt_tokens: 6,
+        completion_tokens: 4,
+        total_tokens: 10,
+      });
+      assert.equal(chatEvents[5].data, "[DONE]");
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-reasoning",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "reason please" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.deepEqual(anthropicEvents.map((item) => item.event), [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.deepEqual(anthropicEvents[1].data.content_block, { type: "thinking", thinking: "" });
+      assert.deepEqual(anthropicEvents[2].data.delta, { type: "thinking_delta", thinking: "Need context. " });
+      assert.deepEqual(anthropicEvents[3].data.delta, { type: "thinking_delta", thinking: "Then answer." });
+      assert.deepEqual(anthropicEvents[5].data.content_block, { type: "text", text: "" });
+      assert.equal(anthropicEvents[6].data.delta.text, "Done");
+      assert.equal(anthropicEvents[8].data.delta.stop_reason, "end_turn");
+      assert.deepEqual(anthropicEvents[8].data.usage, { output_tokens: 4 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-reasoning-stream.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-reasoning-stream-secret");
+  assert.equal(upstreamCalls[1].url, "https://responses-reasoning-stream.example.test/v1/responses");
+});
+
 test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
