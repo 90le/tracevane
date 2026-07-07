@@ -1478,6 +1478,157 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
   assert.equal(gpt53Spark.maxOutputTokens, null);
 });
 
+test("model gateway strips unsupported metadata from direct Codex account Responses requests", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const authRef = "provider:codex-metadata:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "metadata@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_metadata",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-metadata-access",
+      refresh_token: "codex-metadata-refresh",
+      account_id: "acct_metadata",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-metadata",
+      name: "Codex Metadata",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.4",
+        models: [{ id: "gpt-5.4" }],
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-metadata-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "metadata-a",
+          emailMasked: "me***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      accountId: init.headers instanceof Headers ? init.headers.get("chatgpt-account-id") : null,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    return new Response([
+      "event: response.completed",
+      `data: ${JSON.stringify({
+        type: "response.completed",
+        response: {
+          id: "resp_metadata",
+          object: "response",
+          status: "completed",
+          model: "gpt-5.4",
+          output: [{
+            id: "msg_metadata",
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text: "ok" }],
+          }],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        },
+      })}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n"), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "hello",
+          metadata: {
+            trace_id: "claude-code-cli",
+            session_id: "metadata-regression",
+          },
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.id, "resp_metadata");
+      assert.equal(response.body.output[0].content[0].text, "ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].accountId, "acct_metadata");
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-metadata-access");
+  const upstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.equal(upstreamBody.metadata, undefined);
+  assert.equal(upstreamBody.stream, true);
+  assert.equal(upstreamBody.store, false);
+  assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
+});
+
 test("model gateway repairs stale raw Codex account catalog budgets on startup", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
