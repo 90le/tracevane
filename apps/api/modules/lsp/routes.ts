@@ -56,5 +56,17 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     }
   });
 
+  router.post("/api/lsp/references", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspPositionRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.referenceDocument(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_references_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   void ctx;
 }

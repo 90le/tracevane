@@ -4,6 +4,7 @@ import type {
   LspDefinitionResponse,
   LspHoverResponse,
   LspPositionRequest,
+  LspReferencesResponse,
 } from "../../../../../../types/lsp";
 
 export async function requestLspHover(
@@ -25,6 +26,13 @@ export async function requestLspDefinition(
   options: { signal?: AbortSignal } = {},
 ): Promise<LspDefinitionResponse> {
   return requestLspFeature<LspDefinitionResponse>("/api/lsp/definition", request, options);
+}
+
+export async function requestLspReferences(
+  request: LspPositionRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspReferencesResponse> {
+  return requestLspFeature<LspReferencesResponse>("/api/lsp/references", request, options);
 }
 
 async function requestLspFeature<T>(

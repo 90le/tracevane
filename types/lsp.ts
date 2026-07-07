@@ -25,7 +25,7 @@ export interface LspDiagnosticsRequest extends LspDocumentRef {
 }
 
 export interface LspPositionRequest extends LspDocumentRef {
-  type?: "hover" | "definition";
+  type?: "hover" | "definition" | "references";
   id?: string | null;
   content: string;
   line: number;
@@ -96,6 +96,16 @@ export interface LspDefinitionResponse extends LspDocumentRef {
   checkedAt: string;
 }
 
+export type LspReferenceLocation = LspDefinitionLocation;
+
+export interface LspReferencesResponse extends LspDocumentRef {
+  type: "references";
+  id?: string | null;
+  provider: "json" | "typescript";
+  locations: LspReferenceLocation[];
+  checkedAt: string;
+}
+
 export interface LspDiagnosticsResponse extends LspDocumentRef {
   type: "diagnostics";
   id?: string | null;
@@ -129,4 +139,5 @@ export type LspGatewayServerEvent =
   | LspDiagnosticsResponse
   | LspHoverResponse
   | LspCompletionResponse
-  | LspDefinitionResponse;
+  | LspDefinitionResponse
+  | LspReferencesResponse;

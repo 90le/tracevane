@@ -4,7 +4,7 @@ import type { LspCompletionItem } from "../../../../../../types/lsp";
 
 import { editorModelUriString } from "@/shared/editor-core";
 import { appendWorkbenchOutput } from "../output/outputStore";
-import { requestLspCompletion, requestLspDefinition, requestLspHover } from "./lspInteractionClient";
+import { requestLspCompletion, requestLspDefinition, requestLspHover, requestLspReferences } from "./lspInteractionClient";
 
 let registered = false;
 
@@ -16,7 +16,7 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
   appendWorkbenchOutput({
     channel: { id: "lsp", label: "LSP", kind: "lsp" },
     level: "info",
-    text: "LSP interaction providers registered: JSON hover/completion/definition; TypeScript/JavaScript hover/definition/completion",
+    text: "LSP interaction providers registered: JSON hover/completion/definition/references; TypeScript/JavaScript hover/definition/completion/references",
   });
 
   monacoApi.languages.registerHoverProvider("json", {
@@ -102,6 +102,23 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
     },
   });
 
+  monacoApi.languages.registerReferenceProvider("json", {
+    provideReferences: async (model, position) => {
+      const ref = editorRefFromModelUri(model.uri.toString());
+      if (!ref) return [];
+      const response = await requestLspReferences({
+        type: "references",
+        rootId: ref.rootId,
+        path: ref.path,
+        language: "json",
+        content: model.getValue(),
+        line: position.lineNumber,
+        column: position.column,
+      });
+      return response.locations.map((location) => lspLocationToMonaco(monacoApi, location));
+    },
+  });
+
   for (const language of TYPESCRIPT_INTERACTION_LANGUAGES) {
     monacoApi.languages.registerHoverProvider(language, {
       provideHover: async (model, position) => {
@@ -182,7 +199,39 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
         }));
       },
     });
+
+    monacoApi.languages.registerReferenceProvider(language, {
+      provideReferences: async (model, position) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return [];
+        const response = await requestLspReferences({
+          type: "references",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          line: position.lineNumber,
+          column: position.column,
+        });
+        return response.locations.map((location) => lspLocationToMonaco(monacoApi, location));
+      },
+    });
   }
+}
+
+function lspLocationToMonaco(
+  monacoApi: typeof monaco,
+  location: { rootId: string; path: string; startLine: number; startColumn: number; endLine?: number; endColumn?: number },
+): monaco.languages.Location {
+  return {
+    uri: monacoApi.Uri.parse(editorModelUriString({ rootId: location.rootId, path: location.path })),
+    range: new monacoApi.Range(
+      location.startLine,
+      location.startColumn,
+      location.endLine ?? location.startLine,
+      location.endColumn ?? location.startColumn + 1,
+    ),
+  };
 }
 
 

@@ -16,6 +16,7 @@ import type {
   LspGatewayServerEvent,
   LspHoverResponse,
   LspPositionRequest,
+  LspReferencesResponse,
 } from "../../../../types/lsp.js";
 import { resolveFilesServiceExistingFilePath } from "../files/service.js";
 
@@ -30,6 +31,7 @@ export interface LspService {
   hoverDocument(request: LspPositionRequest): LspHoverResponse;
   completeDocument(request: LspCompletionRequest): LspCompletionResponse;
   defineDocument(request: LspPositionRequest): LspDefinitionResponse;
+  referenceDocument(request: LspPositionRequest): LspReferencesResponse;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
 }
 
@@ -75,6 +77,10 @@ export function createLspService(config: TracevaneServerConfig): LspService {
           send(socket, defineDocument(config, request as LspPositionRequest));
           return;
         }
+        if (request.type === "references") {
+          send(socket, referenceDocument(config, request as LspPositionRequest));
+          return;
+        }
         send(socket, { type: "error", id: request.id ?? null, message: "Unsupported LSP gateway message type" });
       } catch (error) {
         send(socket, {
@@ -93,7 +99,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         provider: "tracevane-lsp",
         websocketPath: LSP_WS_PATH,
         supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
-        features: ["diagnostics", "hover", "completion", "definition"],
+        features: ["diagnostics", "hover", "completion", "definition", "references"],
       };
     },
     diagnoseDocument(request) {
@@ -107,6 +113,9 @@ export function createLspService(config: TracevaneServerConfig): LspService {
     },
     defineDocument(request) {
       return defineDocument(config, request);
+    },
+    referenceDocument(request) {
+      return referenceDocument(config, request);
     },
     handleUpgrade(req, socket, head) {
       const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -184,6 +193,36 @@ function defineDocument(
   const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
   return {
     type: "definition",
+    id: request.id ?? null,
+    provider: "json",
+    rootId: validated.rootId,
+    path: validated.path,
+    language: "json",
+    version: request.version ?? null,
+    locations: symbol ? [{
+      rootId: validated.rootId,
+      path: validated.path,
+      startLine: symbol.range.startLine,
+      startColumn: symbol.range.startColumn,
+      endLine: symbol.range.endLine,
+      endColumn: symbol.range.endColumn,
+    }] : [],
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function referenceDocument(
+  config: TracevaneServerConfig,
+  request: LspPositionRequest,
+): LspReferencesResponse {
+  const validated = validateInteractionRequest(config, request);
+  if (TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    return referenceTypeScriptLike(request, validated);
+  }
+  if (validated.language !== "json") throw new Error("Only JSON and TypeScript/JavaScript LSP references are supported in M7.z-B");
+  const symbol = jsonSymbolAtPosition(validated.content, request.line, request.column);
+  return {
+    type: "references",
     id: request.id ?? null,
     provider: "json",
     rootId: validated.rootId,
@@ -432,6 +471,48 @@ function defineTypeScriptLike(
     });
     return {
       type: "definition",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      locations,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function referenceTypeScriptLike(
+  request: LspPositionRequest,
+  validated: ValidatedInteractionRequest,
+): LspReferencesResponse {
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const offset = positionToOffset(validated.content, request.line, request.column);
+    const references = languageService.service.getReferencesAtPosition(languageService.fileName, offset) ?? [];
+    const locations = references.flatMap((reference) => {
+      const relativePath = relativePathInsideRoot(validated.rootRealPath, reference.fileName);
+      if (!relativePath) return [];
+      const sourceText = sameTsFile(reference.fileName, languageService.fileName)
+        ? validated.content
+        : ts.sys.readFile(reference.fileName);
+      if (typeof sourceText !== "string") return [];
+      const sourceFile = ts.createSourceFile(reference.fileName, sourceText, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(validated.language));
+      const range = textSpanToRange(sourceFile, reference.textSpan);
+      return [{
+        rootId: validated.rootId,
+        path: relativePath,
+        startLine: range.startLine,
+        startColumn: range.startColumn,
+        endLine: range.endLine,
+        endColumn: range.endColumn,
+      }];
+    });
+    return {
+      type: "references",
       id: request.id ?? null,
       provider: "typescript",
       rootId: validated.rootId,
