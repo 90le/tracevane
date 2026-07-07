@@ -15525,6 +15525,64 @@ test("model gateway preserves unknown upstream output blocks as chat context", a
   }
 });
 
+test("model gateway preserves unknown Chat upstream content parts through Responses and Anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-unknown-output-parts",
+      name: "Chat Unknown Output Parts",
+      appScopes: ["codex", "claude-code", "openclaw"],
+      baseUrl: "https://chat-unknown-output-parts.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-unknown-output-parts" },
+    setActiveScopes: ["codex", "claude-code", "openclaw"],
+  });
+
+  const unknownPart = { type: "output_audio", id: "aud_chat_1", transcript: "chat audio transcript" };
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_unknown_output_part",
+    object: "chat.completion",
+    created: 1_710_000_046,
+    model: "gpt-chat",
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content: [{ type: "text", text: "visible" }, unknownPart] },
+      finish_reason: "stop",
+    }],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-chat", input: "hello", stream: false },
+      });
+      assert.equal(responses.status, 200, JSON.stringify(responses.body));
+      assert.equal(responses.body.output[0].content[0].text, "visible");
+      assert.match(responses.body.output[0].content[1].text, /OpenAI Chat unrecognized message content part for Responses/);
+      assert.match(responses.body.output[0].content[1].text, /output_audio/);
+      assert.match(responses.body.output[0].content[1].text, /chat audio transcript/);
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: { model: "gpt-chat", max_tokens: 64, messages: [{ role: "user", content: "hello" }], stream: false },
+      });
+      assert.equal(anthropic.status, 200, JSON.stringify(anthropic.body));
+      assert.equal(anthropic.body.content[0].text, "visibleOpenAI Chat unrecognized message content part for Anthropic Messages: " + JSON.stringify(unknownPart));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

@@ -1642,7 +1642,24 @@ function parseToolArguments(value: unknown): unknown {
 }
 
 function chatMessageText(message: JsonRecord): string {
-  return chatContentToText(message.content) || stringOrNull(message.refusal) || "";
+  return chatOutputContentToText(message.content) || stringOrNull(message.refusal) || "";
+}
+
+function chatOutputContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    return content.map(chatOutputContentPartToText).filter(Boolean).join("");
+  }
+  return chatOutputContentPartToText(content);
+}
+
+function chatOutputContentPartToText(part: unknown): string {
+  const text = chatContentPartToText(part);
+  if (text || !isRecord(part)) return text;
+  const type = stringOrNull(part.type);
+  if (!type || type === "text" || type === "input_text" || type === "output_text" || type === "refusal") return "";
+  return `OpenAI Chat unrecognized message content part for Anthropic Messages: ${stringifyCompact(part)}`;
 }
 
 function extractChatReasoningText(message: JsonRecord): string {

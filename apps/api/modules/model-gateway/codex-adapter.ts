@@ -259,12 +259,21 @@ function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null 
       || stringOrNull(part.input_text)
       || "",
   );
-  if (!text) return null;
+  if (!text) {
+    const fallback = chatOutputContentPartFallbackToResponsesText(part);
+    return fallback ? { type: "output_text", text: fallback } : null;
+  }
   const outputText: JsonRecord = { type: "output_text", text };
   const annotations = chatAnnotationsToResponsesAnnotations(part.annotations);
   if (annotations.length) outputText.annotations = annotations;
   if (Array.isArray(part.logprobs)) outputText.logprobs = part.logprobs.filter(isRecord);
   return outputText;
+}
+
+function chatOutputContentPartFallbackToResponsesText(part: JsonRecord): string {
+  const type = stringOrNull(part.type);
+  if (!type || type === "text" || type === "input_text" || type === "output_text" || type === "refusal") return "";
+  return `OpenAI Chat unrecognized message content part for Responses: ${stringifyCompact(part)}`;
 }
 
 function attachChatLogprobs(outputText: JsonRecord, choiceLogprobs: unknown): void {
