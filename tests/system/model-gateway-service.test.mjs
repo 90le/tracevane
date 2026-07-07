@@ -8927,7 +8927,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         type: "text",
         text: "Anthropic through Responses.",
         citations: [{
-          type: "url_citation",
+          type: "web_search_result_location",
           url: "https://example.test/source",
           title: "Source",
           output_index: 0,
@@ -10672,7 +10672,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
           type: "text",
           text: "Chat provider answer.",
           citations: [{
-            type: "url_citation",
+            type: "web_search_result_location",
             url: "https://example.test/chat-source",
             title: "Chat Source",
           }],
@@ -10785,6 +10785,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     stream: false,
     max_tokens: 128,
     temperature: 0.1,
+    user: "claude-code-session",
     tools: [{
       type: "function",
       function: {

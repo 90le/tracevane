@@ -303,7 +303,8 @@ export function adaptChatCompletionResponseToAnthropicMessages(
   if (text) {
     const textBlock: JsonRecord = { type: "text", text };
     if (Array.isArray(message.annotations) && message.annotations.length) {
-      textBlock.citations = message.annotations.filter(isRecord);
+      const citations = message.annotations.filter(isRecord).map(mapChatAnnotationToAnthropicCitation);
+      if (citations.length) textBlock.citations = citations;
     }
     content.push(textBlock);
   }
@@ -321,6 +322,25 @@ export function adaptChatCompletionResponseToAnthropicMessages(
     stop_sequence: stopResult.stopSequence,
     usage: mapChatUsageToAnthropic(response.usage),
   };
+}
+
+function mapChatAnnotationToAnthropicCitation(annotation: JsonRecord): JsonRecord {
+  if (annotation.type === "url_citation") {
+    const mapped: JsonRecord = { type: "web_search_result_location" };
+    if (annotation.url !== undefined) mapped.url = annotation.url;
+    if (annotation.title !== undefined) mapped.title = annotation.title;
+    if (annotation.start_index !== undefined) mapped.start_char_index = annotation.start_index;
+    if (annotation.end_index !== undefined) mapped.end_char_index = annotation.end_index;
+    return { ...annotation, ...mapped };
+  }
+  if (annotation.type === "file_citation" || annotation.type === "container_file_citation") {
+    const mapped: JsonRecord = { type: "page_location" };
+    if (annotation.file_id !== undefined) mapped.file_id = annotation.file_id;
+    if (annotation.filename !== undefined) mapped.document_title = annotation.filename;
+    if (annotation.index !== undefined) mapped.document_index = annotation.index;
+    return { ...annotation, ...mapped };
+  }
+  return { ...annotation };
 }
 
 function collectAnthropicTextCitations(content: JsonRecord[]): JsonRecord[] {
