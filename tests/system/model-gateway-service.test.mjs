@@ -11186,12 +11186,35 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
       });
       assert.equal(anthropic.status, 200, anthropic.body);
       assert.equal(anthropic.body.output[0].content[0].text, "Anthropic fallback kept context.");
+
+      const chatMalformedChoice = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "Preserve string tool choice.",
+          tool_choice: "file_search",
+        },
+      });
+      assert.equal(chatMalformedChoice.status, 200, chatMalformedChoice.body);
+      assert.equal(chatMalformedChoice.body.output[0].content[0].text, "Chat fallback kept context.");
+
+      const anthropicMalformedChoice = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "claude-native",
+          input: "Preserve malformed function tool choice.",
+          tool_choice: { type: "function" },
+        },
+      });
+      assert.equal(anthropicMalformedChoice.status, 200, anthropicMalformedChoice.body);
+      assert.equal(anthropicMalformedChoice.body.output[0].content[0].text, "Anthropic fallback kept context.");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");
   assert.deepEqual(upstreamCalls[0].body.tools, [
     { type: "web_search_preview", search_context_size: "low" },
@@ -11212,6 +11235,20 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
     { role: "user", content: "Use the available tools if possible." },
     { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"file_search","vector_store_ids":["vs_unsupported"],"max_num_results":3},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
     { role: "user", content: '[OpenAI Responses tool_choice {"type":"file_search"}]' },
+  ]);
+
+  assert.equal(upstreamCalls[2].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[2].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[2].body.messages, [
+    { role: "user", content: "Preserve string tool choice." },
+    { role: "user", content: "[OpenAI Responses tool_choice file_search]" },
+  ]);
+
+  assert.equal(upstreamCalls[3].url, "https://anthropic-unsupported-responses-tools.example.test/v1/messages");
+  assert.equal(upstreamCalls[3].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[3].body.messages, [
+    { role: "user", content: "Preserve malformed function tool choice." },
+    { role: "user", content: '[OpenAI Responses tool_choice {"type":"function"}]' },
   ]);
 });
 

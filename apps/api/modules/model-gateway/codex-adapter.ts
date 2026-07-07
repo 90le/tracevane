@@ -833,9 +833,7 @@ function responsesUnsupportedToolsToText(tools: unknown): string {
 
 function responsesUnsupportedToolChoiceToText(toolChoice: unknown): string {
   if (toolChoice === undefined) return "";
-  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return "";
-  if (!isRecord(toolChoice)) return "";
-  if (toolChoice.type === "function" || toolChoice.type === "custom" || isOpenAIWebSearchToolType(toolChoice.type)) return "";
+  if (mapResponsesToolChoiceToChat(toolChoice) !== undefined) return "";
   return `[OpenAI Responses tool_choice ${stringifyCompact(toolChoice)}]`;
 }
 
