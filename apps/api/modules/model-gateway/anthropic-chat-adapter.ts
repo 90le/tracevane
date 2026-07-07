@@ -1411,6 +1411,7 @@ function anthropicUnsupportedRequestContextToChatText(
   const notes = unsupportedFields
     .filter((field) => request[field] !== undefined)
     .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  notes.push(...collectAnthropicContentCacheControlNotes(request));
   if (request.container !== undefined) {
     notes.push(`container=${stringifyCompact(request.container)}`);
   }
@@ -1420,6 +1421,33 @@ function anthropicUnsupportedRequestContextToChatText(
   return notes.length
     ? `Anthropic Messages request context preserved for Chat adapters: ${notes.join(" ")}`
     : "";
+}
+
+function collectAnthropicContentCacheControlNotes(request: JsonRecord): string[] {
+  const notes: string[] = [];
+  notes.push(...collectCacheControlNotesAt(request.system, "system"));
+  if (Array.isArray(request.messages)) {
+    request.messages.forEach((message, messageIndex) => {
+      if (!isRecord(message)) return;
+      notes.push(...collectCacheControlNotesAt(message.content, `messages[${messageIndex}].content`));
+    });
+  }
+  return notes;
+}
+
+function collectCacheControlNotesAt(value: unknown, path: string): string[] {
+  if (isRecord(value)) {
+    const notes: string[] = [];
+    if (value.cache_control !== undefined) {
+      notes.push(`${path}.cache_control=${stringifyCompact(value.cache_control)}`);
+    }
+    if (Array.isArray(value.content)) {
+      notes.push(...collectCacheControlNotesAt(value.content, `${path}.content`));
+    }
+    return notes;
+  }
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => collectCacheControlNotesAt(item, `${path}[${index}]`));
 }
 
 function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): unknown {

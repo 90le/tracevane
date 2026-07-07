@@ -15483,15 +15483,16 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
     container: "container_unknown_request_blocks",
     context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
     inference_geo: "eu",
+    system: [{ type: "text", text: "system cache prefix", cache_control: { type: "ephemeral" } }],
     messages: [
       {
         role: "user",
         content: [
-          { type: "text", text: "keep anthropic text" },
+          { type: "text", text: "keep anthropic text", cache_control: { type: "ephemeral" } },
           { type: "image", source: { type: "url" } },
           { type: "document", title: "missing-source.pdf" },
           { type: "container_upload", filename: "missing-file-id.txt" },
-          { type: "future_block", payload: { value: 42 } },
+          { type: "future_block", payload: { value: 42 }, cache_control: { type: "ephemeral" } },
           { type: "tool_result", content: "missing tool_use_id result" },
         ],
       },
@@ -15564,6 +15565,9 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(chatMessages, /missing tool_use_id result/);
   assert.match(chatMessages, /Anthropic Messages request context preserved for Chat adapters/);
   assert.match(chatMessages, /cache_control/);
+  assert.match(chatMessages, /system\[0\]\.cache_control/);
+  assert.match(chatMessages, /messages\[0\]\.content\[0\]\.cache_control/);
+  assert.match(chatMessages, /messages\[0\]\.content\[4\]\.cache_control/);
   assert.match(chatMessages, /container_unknown_request_blocks/);
   assert.match(chatMessages, /clear_tool_uses_20250919/);
   assert.match(chatMessages, /inference_geo=eu/);
@@ -15588,6 +15592,9 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(responsesInput, /missing tool_use_id result/);
   assert.match(responsesInput, /Anthropic Messages request context preserved for Chat adapters/);
   assert.match(responsesInput, /cache_control/);
+  assert.match(responsesInput, /system\[0\]\.cache_control/);
+  assert.match(responsesInput, /messages\[0\]\.content\[0\]\.cache_control/);
+  assert.match(responsesInput, /messages\[0\]\.content\[4\]\.cache_control/);
   assert.match(responsesInput, /container_unknown_request_blocks/);
   assert.match(responsesInput, /inference_geo=eu/);
   assert.match(responsesInput, /speed=1.25/);
