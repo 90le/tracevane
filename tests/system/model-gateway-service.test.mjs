@@ -13594,6 +13594,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             },
           },
           temperature: 0.1,
+          service_tier: "standard_only",
           metadata: {
             user_id: "claude-code-session",
           },
@@ -13742,6 +13743,10 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         role: "user",
         content: 'Anthropic Messages tool fields preserved for Chat adapters: lookup input_examples=[{"query":"docs"}] cache_control={"type":"ephemeral"}; web_search input_examples=[{"query":"latest docs"}]',
       },
+      {
+        role: "user",
+        content: "Anthropic Messages request context preserved for Chat adapters: service_tier=standard_only",
+      },
     ],
     stream: false,
     max_tokens: 128,
@@ -13768,6 +13773,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     tool_choice: { type: "web_search_preview" },
     parallel_tool_calls: false,
   });
+  assert.equal("service_tier" in JSON.parse(upstreamCalls[0].body), false);
   assert.equal(JSON.stringify(JSON.parse(upstreamCalls[0].body)).includes("tool-token-should-not-leak"), false);
   assert.equal(upstreamCalls[1].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-anthropic-chat-secret");

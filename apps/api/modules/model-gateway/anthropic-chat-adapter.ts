@@ -1453,6 +1453,10 @@ function anthropicUnsupportedRequestContextToChatText(
   const notes = unsupportedFields
     .filter((field) => request[field] !== undefined)
     .map((field) => `${field}=${stringifyCompact(request[field])}`);
+  if (request.service_tier !== undefined
+    && (!options.preserveServiceTier || !mapAnthropicServiceTierToOpenAI(request.service_tier))) {
+    notes.push(`service_tier=${stringifyCompact(request.service_tier)}`);
+  }
   notes.push(...collectAnthropicContentCacheControlNotes(request));
   if (request.container !== undefined) {
     notes.push(`container=${stringifyCompact(request.container)}`);
