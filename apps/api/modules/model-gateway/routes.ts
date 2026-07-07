@@ -95,6 +95,11 @@ function registerModelGatewayUnsupportedEndpoints(router: TracevaneRouter): void
 }
 
 export function registerModelGatewayRoutes(router: TracevaneRouter): void {
+  router.add("HEAD", "/", (_req, res) => {
+    res.statusCode = 204;
+    res.end();
+  });
+
   router.get("/gateway/status", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.getStatus());

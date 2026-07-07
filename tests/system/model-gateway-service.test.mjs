@@ -19496,6 +19496,10 @@ test("model gateway routes expose status/providers and forward chat passthrough"
 
   try {
     await withServer(handler, async (baseUrl) => {
+      const connectivityProbe = await requestJson(`${baseUrl}/`, { method: "HEAD" });
+      assert.equal(connectivityProbe.status, 204);
+      assert.equal(connectivityProbe.body, null);
+
       const status = await requestJson(`${baseUrl}/gateway/status`);
       assert.equal(status.status, 200);
       assert.equal(status.body.ok, true);
