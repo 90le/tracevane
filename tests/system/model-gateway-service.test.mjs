@@ -17111,9 +17111,9 @@ test("model gateway preserves structured tool result content through OpenAI Resp
   };
 
   const chatToolContent = [
-    { type: "text", text: "weather:" },
+    { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
     { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav", transcript: "tool audio transcript" } },
-    { type: "image_url", image_url: { url: "data:image/png;base64,abc123" } },
+    { type: "image_url", image_url: { url: "data:image/png;base64,abc123" }, cache_control: { type: "ephemeral" } },
   ];
   const anthropicToolContent = [
     { type: "text", text: "weather:" },
@@ -17200,8 +17200,10 @@ test("model gateway preserves structured tool result content through OpenAI Resp
     call_id: "call_lookup",
     output: [
       { type: "input_text", text: "weather:" },
+      { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
       { type: "input_text", text: "tool audio transcript" },
       { type: "input_image", image_url: "data:image/png;base64,abc123" },
+      { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
     ],
   });
 

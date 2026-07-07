@@ -1282,7 +1282,7 @@ function chatToolOutputPartToResponsesOutputParts(part: unknown): JsonRecord[] {
   const type = stringOrNull(part.type);
   if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
     const text = chatContentPartToText(part);
-    return text ? [{ type: "input_text", text }] : [];
+    return text ? withChatToolOutputCacheControlNote([{ type: "input_text", text }], part) : [];
   }
   if (type === "image_url" && isRecord(part.image_url)) {
     const imageUrl = stringOrNull(part.image_url.url);
@@ -1290,15 +1290,26 @@ function chatToolOutputPartToResponsesOutputParts(part: unknown): JsonRecord[] {
     const imagePart: JsonRecord = { type: "input_image", image_url: imageUrl };
     const detail = stringOrNull(part.image_url.detail) || stringOrNull(part.detail);
     if (detail) imagePart.detail = detail;
-    return [imagePart];
+    return withChatToolOutputCacheControlNote([imagePart], part);
   }
   if (type === "input_image") {
     const imagePart = chatInputImagePartToResponsesInputImage(part);
-    return imagePart ? [imagePart] : [];
+    return imagePart ? withChatToolOutputCacheControlNote([imagePart], part) : [];
   }
   if (type === "file" || type === "input_file") return chatToolOutputFilePartToResponsesOutputParts(part);
   const text = chatContentPartToText(part);
-  return text ? [{ type: "input_text", text }] : [];
+  return text ? withChatToolOutputCacheControlNote([{ type: "input_text", text }], part) : [];
+}
+
+function withChatToolOutputCacheControlNote(parts: JsonRecord[], part: JsonRecord): JsonRecord[] {
+  if (part.cache_control === undefined) return parts;
+  return [
+    ...parts,
+    {
+      type: "input_text",
+      text: `OpenAI Chat tool output cache_control preserved for Responses: ${stringifyCompact(part.cache_control)}`,
+    },
+  ];
 }
 
 function chatToolOutputFilePartToResponsesOutputParts(part: JsonRecord): JsonRecord[] {
@@ -1306,14 +1317,14 @@ function chatToolOutputFilePartToResponsesOutputParts(part: JsonRecord): JsonRec
   if (!filePart) return [];
   const file = isRecord(part.file) ? part.file : part;
   const mediaType = stringOrNull(file.media_type) || stringOrNull(file.mime_type);
-  if (!mediaType) return [filePart];
-  return [
-    filePart,
-    {
+  const parts: JsonRecord[] = [filePart];
+  if (mediaType) {
+    parts.push({
       type: "input_text",
       text: `OpenAI Chat file media_type preserved for Responses tool output: ${mediaType}`,
-    },
-  ];
+    });
+  }
+  return withChatToolOutputCacheControlNote(parts, part);
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {
