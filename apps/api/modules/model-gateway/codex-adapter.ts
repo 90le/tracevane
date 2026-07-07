@@ -193,6 +193,16 @@ export function adaptChatCompletionToCodexResponse(
     const mapped = mapChatToolCallToResponses(toolCall, reasoningText, customToolNames);
     if (mapped) output.push(mapped);
   }
+  const additionalChoicesText = chatAdditionalChoicesToResponsesText(chatCompletion);
+  if (additionalChoicesText) {
+    output.push({
+      type: "message",
+      id: `msg_${generatedSuffix}_additional_choices`,
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: additionalChoicesText }],
+    });
+  }
 
   const response: JsonRecord = {
     id: stringOrNull(chatCompletion.id) || `resp_${generatedSuffix}`,
@@ -206,6 +216,15 @@ export function adaptChatCompletionToCodexResponse(
   const serviceTier = stringOrNull(chatCompletion.service_tier) || serviceTierFromUsage(chatCompletion.usage);
   if (serviceTier) response.service_tier = serviceTier;
   return response;
+}
+
+function chatAdditionalChoicesToResponsesText(chatCompletion: JsonRecord): string {
+  if (!Array.isArray(chatCompletion.choices) || chatCompletion.choices.length <= 1) return "";
+  return chatCompletion.choices
+    .slice(1)
+    .filter(isRecord)
+    .map((choice) => `OpenAI Chat additional choice preserved for Responses: ${stringifyCompact(choice)}`)
+    .join("\n");
 }
 
 function chatMessageToResponsesOutputContent(message: JsonRecord, choiceLogprobs: unknown): JsonRecord[] {

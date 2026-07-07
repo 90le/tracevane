@@ -15583,6 +15583,68 @@ test("model gateway preserves unknown Chat upstream content parts through Respon
   }
 });
 
+test("model gateway preserves additional Chat choices through Responses and Anthropic adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-additional-choices",
+      name: "Chat Additional Choices",
+      appScopes: ["codex", "claude-code", "openclaw"],
+      baseUrl: "https://chat-additional-choices.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-additional-choices" },
+    setActiveScopes: ["codex", "claude-code", "openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_additional_choices",
+    object: "chat.completion",
+    created: 1_710_000_047,
+    model: "gpt-chat",
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content: "primary choice" },
+      finish_reason: "stop",
+    }, {
+      index: 1,
+      message: { role: "assistant", content: "secondary choice" },
+      finish_reason: "stop",
+    }],
+    usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-chat", input: "hello", stream: false },
+      });
+      assert.equal(responses.status, 200, JSON.stringify(responses.body));
+      assert.equal(responses.body.output[0].content[0].text, "primary choice");
+      assert.match(responses.body.output[1].content[0].text, /OpenAI Chat additional choice preserved for Responses/);
+      assert.match(responses.body.output[1].content[0].text, /secondary choice/);
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: { model: "gpt-chat", max_tokens: 64, messages: [{ role: "user", content: "hello" }], stream: false },
+      });
+      assert.equal(anthropic.status, 200, JSON.stringify(anthropic.body));
+      assert.equal(anthropic.body.content[0].text, "primary choice");
+      assert.match(anthropic.body.content[1].text, /OpenAI Chat additional choice preserved for Anthropic Messages/);
+      assert.match(anthropic.body.content[1].text, /secondary choice/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

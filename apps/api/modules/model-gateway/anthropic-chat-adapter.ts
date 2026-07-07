@@ -384,6 +384,8 @@ export function adaptChatCompletionResponseToAnthropicMessages(
     }
     content.push(textBlock);
   }
+  const additionalChoicesText = chatAdditionalChoicesToAnthropicText(response);
+  if (additionalChoicesText) content.push({ type: "text", text: additionalChoicesText });
   content.push(...toolUses);
 
   return {
@@ -398,6 +400,15 @@ export function adaptChatCompletionResponseToAnthropicMessages(
     stop_sequence: stopResult.stopSequence,
     usage: mapChatUsageToAnthropic(response.usage, response.service_tier),
   };
+}
+
+function chatAdditionalChoicesToAnthropicText(response: JsonRecord): string {
+  if (!Array.isArray(response.choices) || response.choices.length <= 1) return "";
+  return response.choices
+    .slice(1)
+    .filter(isRecord)
+    .map((choice) => `OpenAI Chat additional choice preserved for Anthropic Messages: ${stringifyCompact(choice)}`)
+    .join("\n");
 }
 
 function mapChatAnnotationToAnthropicCitation(annotation: JsonRecord): JsonRecord {
