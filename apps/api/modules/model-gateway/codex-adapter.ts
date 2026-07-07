@@ -554,7 +554,7 @@ function mapResponsesToolCallToChatToolCall(item: JsonRecord): JsonRecord | null
   const callId = stringOrNull(item.call_id) || stringOrNull(item.id);
   const name = stringOrNull(item.name);
   if (!callId || !name) return null;
-  return {
+  const toolCall: JsonRecord = {
     id: callId,
     type: "function",
     function: {
@@ -564,6 +564,9 @@ function mapResponsesToolCallToChatToolCall(item: JsonRecord): JsonRecord | null
         : canonicalizeToolArguments(item.arguments),
     },
   };
+  const status = stringOrNull(item.status);
+  if (status && status !== "completed") toolCall.status = status;
+  return toolCall;
 }
 
 function isResponsesToolCallItem(item: JsonRecord): boolean {
@@ -1096,7 +1099,7 @@ function mapChatToolCallToResponses(
       type: "custom_tool_call",
       id,
       call_id: id,
-      status: "completed",
+      status: stringOrNull(toolCall.status) || "completed",
       name,
       input: customToolInputFromChatArguments(fn.arguments),
     };
@@ -1108,7 +1111,7 @@ function mapChatToolCallToResponses(
     type: "function_call",
     id,
     call_id: id,
-    status: "completed",
+    status: stringOrNull(toolCall.status) || "completed",
     name,
     arguments: stringOrNull(fn.arguments) || "{}",
   };

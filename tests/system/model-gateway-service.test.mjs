@@ -15705,6 +15705,114 @@ test("model gateway preserves incomplete responses function calls for chat compl
   assert.equal(upstreamCalls.length, 2);
 });
 
+test("model gateway preserves Responses tool-call status across Chat adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-chat-tool-status",
+      name: "Responses Chat Tool Status",
+      appScopes: ["openclaw"],
+      baseUrl: "https://responses-chat-tool-status.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-chat-tool-status" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    return new Response(JSON.stringify({
+      id: "resp_tool_status",
+      object: "response",
+      created_at: 1_710_000_044,
+      model: body.model,
+      status: "in_progress",
+      output: [{
+        id: "fc_lookup_status",
+        type: "function_call",
+        call_id: "call_lookup_status",
+        status: "in_progress",
+        name: "lookup",
+        arguments: "{\"query\":\"next\"}",
+      }],
+      usage: { input_tokens: 8, output_tokens: 1, total_tokens: 9 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          messages: [
+            { role: "user", content: "start lookup" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [{
+                id: "call_lookup_status",
+                type: "function",
+                status: "incomplete",
+                function: {
+                  name: "lookup",
+                  arguments: "{\"query\":\"start\"}",
+                },
+              }],
+            },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object", properties: { query: { type: "string" } } },
+            },
+          }],
+          stream: false,
+        },
+      });
+
+      assert.equal(chat.status, 200, chat.body);
+      assert.deepEqual(chat.body.choices[0].message.tool_calls, [{
+        id: "call_lookup_status",
+        type: "function",
+        status: "in_progress",
+        function: {
+          name: "lookup",
+          arguments: "{\"query\":\"next\"}",
+        },
+      }]);
+      assert.equal(chat.body.choices[0].finish_reason, "tool_calls");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://responses-chat-tool-status.example.test/v1/responses");
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "start lookup" }] },
+    {
+      type: "function_call",
+      id: "fc_call_lookup_status",
+      call_id: "call_lookup_status",
+      status: "incomplete",
+      name: "lookup",
+      arguments: "{\"query\":\"start\"}",
+    },
+  ]);
+});
+
 test("model gateway preserves orphan tool result context before provider adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -21879,6 +21987,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
             tool_calls: [{
               id: "call_lookup",
               type: "function",
+              status: "in_progress",
               function: {
                 name: "lookup",
                 arguments: "{\"query\":\"weather\"}",
@@ -21933,7 +22042,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
         type: "function_call",
         id: "call_lookup",
         call_id: "call_lookup",
-        status: "completed",
+        status: "in_progress",
         name: "lookup",
         arguments: "{\"query\":\"weather\"}",
       }]);
@@ -21983,6 +22092,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
       tool_calls: [{
         id: "call_lookup",
         type: "function",
+        status: "in_progress",
         function: {
           name: "lookup",
           arguments: "{\"query\":\"weather\"}",

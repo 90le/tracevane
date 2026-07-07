@@ -920,7 +920,7 @@ function mapChatToolCallToResponsesFunctionCall(toolCall: unknown): JsonRecord |
     type: "function_call",
     id: responsesFunctionCallItemId(callId),
     call_id: callId,
-    status: "completed",
+    status: stringOrNull(toolCall.status) || "completed",
     name,
     arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
   };
@@ -937,7 +937,7 @@ function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | nul
   const name = stringOrNull(item.name);
   const id = stringOrNull(item.call_id) || stringOrNull(item.id);
   if (!name || !id) return null;
-  return {
+  const toolCall: JsonRecord = {
     id,
     type: "function",
     function: {
@@ -947,6 +947,9 @@ function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | nul
         : typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
     },
   };
+  const status = stringOrNull(item.status);
+  if (status && status !== "completed") toolCall.status = status;
+  return toolCall;
 }
 
 function responsesFunctionCallFallbackToChatText(item: unknown, allowToolCalls: boolean): string {
