@@ -774,7 +774,8 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 88. M12-A：Framework / heavy language provider research plan（已完成）
 89. M12-B：Vue / Svelte framework provider guarded proof plan（已完成）
 90. M12-C：Vue external provider guarded diagnostics proof（已完成）
-91. M12-D：Svelte dependency compatibility / TypeScript peer policy plan（下一步）
+91. M12-D：Svelte dependency compatibility / TypeScript peer policy plan（已完成）
+92. M12-E：Svelte external provider guarded diagnostics proof（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -988,3 +989,19 @@ M12-C 已完成，记录见 [`archive/m12-c-vue-external-provider-summary.md`](.
 ```
 
 M12-C 明确不做：Svelte provider、Go/Rust/Java/C/C++ heavy toolchain provider、Vue hover/completion/definition/references/semantic tokens/formatting/code action、完整 Volar TypeScript plugin bridge、替换现有 TS/JS provider、auto install、system binary discovery、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-D 进入 Svelte dependency compatibility / TypeScript peer policy plan。
+
+
+### M12-D 已完成：Svelte Dependency Compatibility / TypeScript Peer Policy Plan
+
+M12-D 已完成，记录见 [`archive/m12-d-svelte-typescript-peer-policy-plan.md`](./archive/m12-d-svelte-typescript-peer-policy-plan.md)。本阶段只做 Svelte provider 的依赖兼容与 TypeScript peer 策略，不安装 `svelte-language-server`，不启用 runtime provider。
+
+验收口径：
+
+```txt
+- svelte-language-server 0.18.3 当前 peerDependencies 要求 TypeScript ^5.9.2 || ^6.0.2。
+- 当前 package-lock / installed TypeScript 是 5.9.3，实际满足 peer；但 package.json 仍是 ^5.3.0，需要在 M12-E 前明确 peer/pin 策略。
+- Svelte provider 引入 svelte / prettier / chokidar / config loader 等 runtime 面，必须有 provider metadata、status degraded reason 和 provider-specific tests。
+- M12-E 可以进入 Svelte diagnostics/status proof，但仍必须保持 server-side allowlist、exact pin、root/cwd guard 和 frontend command/env 禁止。
+```
+
+M12-D 明确不做：安装 `svelte-language-server`、启用 Svelte runtime provider、升级 TypeScript、改 TS/JS provider、Svelte hover/completion/definition/formatting/codeAction、Go/Rust/Java/C/C++ provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-E 进入 Svelte external provider guarded diagnostics proof。
