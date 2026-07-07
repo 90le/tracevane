@@ -3,7 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 WEB_DIR="$ROOT_DIR/apps/web"
-VITE_CACHE_DIR="$ROOT_DIR/apps/web/node_modules/.vite"
+TRACEVANE_SMOKE_PORT="${TRACEVANE_WEB_PORT:-5176}"
+VITE_CACHE_DIR="${TRACEVANE_VITE_CACHE_DIR:-$ROOT_DIR/tmp/.tracevane-vite-smoke-$TRACEVANE_SMOKE_PORT}"
+export TRACEVANE_VITE_CACHE_DIR="$VITE_CACHE_DIR"
+export TRACEVANE_SMOKE_DISABLE_WATCH="${TRACEVANE_SMOKE_DISABLE_WATCH:-1}"
 VITE_BIN="$ROOT_DIR/node_modules/.bin/vite"
 
 # Smoke tests need a deterministic dependency cache. A stale Vite optimized-deps
@@ -13,6 +16,7 @@ VITE_BIN="$ROOT_DIR/node_modules/.bin/vite"
 if [ -d "$VITE_CACHE_DIR" ]; then
   find "$VITE_CACHE_DIR" -mindepth 1 -maxdepth 1 -type d -name 'deps_temp_*' -exec rm -rf {} +
 fi
+mkdir -p "$(dirname "$VITE_CACHE_DIR")"
 
 # Vite can leave bundled config timestamp modules under .vite-temp. Remove
 # them for smoke runs so the in-process API always reflects current TypeScript
@@ -27,4 +31,4 @@ if [ "${TRACEVANE_SMOKE_SKIP_OPTIMIZE:-0}" != "1" ]; then
   "$VITE_BIN" optimize --force || true
 fi
 
-exec "$VITE_BIN"
+exec "$VITE_BIN" --force

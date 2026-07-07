@@ -17,6 +17,7 @@ apps/web-vue/components.d.ts
 
 # Local runtime and cache state
 .tmp/
+tmp/
 .omc/
 .cache/
 .worktrees/

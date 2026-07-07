@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 
@@ -90,9 +92,11 @@ const domainArg = process.argv.find((arg) => arg.startsWith('--domain='));
 const listMode = args.has('--list');
 const dryRun = args.has('--dry-run');
 const continueOnError = args.has('--continue-on-error');
+const rcWebPort = process.env.TRACEVANE_RC_WEB_PORT || process.env.TRACEVANE_WEB_PORT || '5310';
+const SELF_STARTING_SMOKE_PREFIXES = ['smoke:ide:debug-'];
 
 function usage() {
-  console.log(`Tracevane IDE RC smoke matrix runner\n\nUsage:\n  node scripts/ide-rc-matrix.mjs --quick [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --full [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --domain=<${Object.keys(GROUPS).join('|')}> [--dry-run]\n  node scripts/ide-rc-matrix.mjs --list [--quick|--full|--domain=<name>]\n\nNotes:\n  - Commands run sequentially through npm scripts.\n  - Full matrix is intentionally long; use --quick for PR gate.\n  - :git-diff-check runs \`git diff --check\`.\n`);
+  console.log(`Tracevane IDE RC smoke matrix runner\n\nUsage:\n  node scripts/ide-rc-matrix.mjs --quick [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --full [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --domain=<${Object.keys(GROUPS).join('|')}> [--dry-run]\n  node scripts/ide-rc-matrix.mjs --list [--quick|--full|--domain=<name>]\n\nNotes:\n  - Commands run sequentially through npm scripts.\n  - Full matrix is intentionally long; use --quick for PR gate.\n  - :git-diff-check runs \`git diff --check\`.\n  - Smoke commands default to TRACEVANE_RC_WEB_PORT/TRACEVANE_WEB_PORT or 5310 so local dev servers on 5176 do not contaminate RC evidence.\n  - with_server smoke scripts also receive TRACEVANE_WEB_SMOKE_URL; self-starting debug smokes only receive TRACEVANE_WEB_PORT.\n`);
 }
 
 function selectedCommands() {
@@ -114,18 +118,71 @@ function printCommands(commands) {
   }
 }
 
-function runShell(command) {
+function cleanupSmokeArtifacts() {
+  const workbenchTestDir = path.join(process.cwd(), 'tests', 'ide-workbench');
+  const repoRootPatterns = [
+    /^tracevane-terminal-focus-.*\.ts$/,
+  ];
+  const workbenchPatterns = [
+    /^git-(?:status|diff|stage|commit|branch|remote)-smoke-.*\.txt$/,
+    /^tracevane-terminal-focus-.*\.ts$/,
+  ];
+
+  for (const [directory, patterns] of [[process.cwd(), repoRootPatterns], [workbenchTestDir, workbenchPatterns]]) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!patterns.some((pattern) => pattern.test(entry.name))) continue;
+      try {
+        fs.rmSync(path.join(directory, entry.name), { force: true });
+      } catch {
+        // Best-effort cleanup for failed smoke runs; the next command will
+        // surface a real failure if stale artifacts still affect it.
+      }
+    }
+  }
+}
+
+function runShell(command, env = process.env) {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, stdio: 'inherit', env: process.env });
+    const child = spawn(command, { shell: true, stdio: 'inherit', env });
     child.on('close', (code, signal) => resolve({ code: code ?? 1, signal }));
   });
 }
 
 async function runCommand(command) {
+  cleanupSmokeArtifacts();
   const shellCommand = command === ':git-diff-check' ? 'git diff --check' : `npm run ${command}`;
-  console.log(`\n[ide-rc] ${shellCommand}`);
+  const isSmokeCommand = command.startsWith('smoke:');
+  const isSelfStartingSmoke = SELF_STARTING_SMOKE_PREFIXES.some((prefix) =>
+    command.startsWith(prefix),
+  );
+  const smokeWebPort = process.env.TRACEVANE_WEB_PORT || rcWebPort;
+  const commandEnv = isSmokeCommand
+    ? {
+        ...process.env,
+        TRACEVANE_WEB_PORT: smokeWebPort,
+        ...(isSelfStartingSmoke
+          ? {}
+          : {
+              TRACEVANE_WEB_SMOKE_URL:
+                process.env.TRACEVANE_WEB_SMOKE_URL ||
+                `http://127.0.0.1:${smokeWebPort}`,
+            }),
+      }
+    : process.env;
+  const envLabel = isSmokeCommand
+    ? ` TRACEVANE_WEB_PORT=${commandEnv.TRACEVANE_WEB_PORT}${commandEnv.TRACEVANE_WEB_SMOKE_URL ? ` TRACEVANE_WEB_SMOKE_URL=${commandEnv.TRACEVANE_WEB_SMOKE_URL}` : ''}`
+    : '';
+  console.log(`\n[ide-rc]${envLabel} ${shellCommand}`);
   if (dryRun) return { command, code: 0 };
-  const result = await runShell(shellCommand);
+  const result = await runShell(shellCommand, commandEnv);
+  cleanupSmokeArtifacts();
   return { command, code: result.code, signal: result.signal };
 }
 

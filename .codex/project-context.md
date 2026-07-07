@@ -77,8 +77,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M7.z-I Git branch / stash hardening and acceptance closeout.
 - Done: M7.z-J LSP / Git / Debug enhancement acceptance closeout.
 - Done: M8-A IDE stabilization and release-candidate plan.
-- Done: M8-B RC smoke matrix runner / documentation cleanup foundation.
-- Next: M8-C RC smoke matrix execution and blocker triage.
+- Done: M8-C RC quick gate execution and blocker triage.
+- Next: M8-D full/domain RC matrix execution and blocker triage.
 
 ## Required reading by task
 

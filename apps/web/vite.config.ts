@@ -24,6 +24,7 @@ const tracevaneApiPort = normalizePort(
 );
 const tracevaneWebPort = normalizePort(process.env.TRACEVANE_WEB_PORT, 5176);
 const tracevaneBasePath = process.env.TRACEVANE_BASE_PATH || "";
+const tracevaneSmokeDisableWatch = process.env.TRACEVANE_SMOKE_DISABLE_WATCH === "1";
 const webConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const tracevaneRootDir = path.resolve(webConfigDir, "..", "..");
 const TRACEVANE_PACKAGE_VERSION_FALLBACK = "0.1.71";
@@ -140,6 +141,9 @@ function createKatexOptimizedDepFallbackPlugin(): Plugin {
 }
 
 export default defineConfig({
+  cacheDir:
+    process.env.TRACEVANE_VITE_CACHE_DIR ||
+    path.join(webConfigDir, "node_modules", ".vite"),
   resolve: {
     alias: [
       {
@@ -214,6 +218,22 @@ export default defineConfig({
     host: "127.0.0.1",
     port: tracevaneWebPort,
     strictPort: true,
+    watch: {
+      ignored: tracevaneSmokeDisableWatch
+        ? ["**/*"]
+        : [
+            path.join(tracevaneRootDir, "tracevane-terminal-focus-*.ts"),
+            path.join(tracevaneRootDir, "tests/ide-workbench/*-smoke-*"),
+            path.join(tracevaneRootDir, "tmp/.tracevane-*-smoke-*/**"),
+            path.join(tracevaneRootDir, "tmp/.tracevane-ide-smoke-*/**"),
+            path.join(tracevaneRootDir, "tmp/.tracevane-debug-smoke-*/**"),
+            "**/tracevane-terminal-focus-*.ts",
+            "**/tests/ide-workbench/*-smoke-*",
+            "**/tmp/.tracevane-*-smoke-*/**",
+            "**/tmp/.tracevane-ide-smoke-*/**",
+            "**/tmp/.tracevane-debug-smoke-*/**",
+          ],
+    },
     proxy: useExternalApi
       ? {
           "/api": {
