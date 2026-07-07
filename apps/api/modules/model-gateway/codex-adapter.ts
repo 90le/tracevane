@@ -311,7 +311,7 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
   if (isResponsesToolOutputItem(item)) {
     const toolCallId = stringOrNull(item.call_id) || stringOrNull(item.id);
     if (!toolCallId) return null;
-    const output = canonicalizeJsonStringIfParseable(contentToText(item.output));
+    const output = canonicalizeJsonStringIfParseable(responsesToolOutputToChatContent(item.output));
     return {
       role: "tool",
       content: output,
@@ -430,6 +430,34 @@ function canonicalJsonString(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value ?? {});
+}
+
+function responsesToolOutputToChatContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    const text = content.map(contentPartToText).filter(Boolean).join("");
+    return content.every(contentPartIsTextLike) ? text : stringifyCompact(content);
+  }
+  const text = contentPartToText(content);
+  return text || stringifyCompact(content);
+}
+
+function contentPartIsTextLike(part: unknown): boolean {
+  if (typeof part === "string") return true;
+  if (!isRecord(part)) return false;
+  const type = stringOrNull(part.type);
+  if (type === null) return Boolean(contentPartToText(part));
+  return type === "text" || type === "input_text" || type === "output_text" || type === "refusal";
+}
+
+function stringifyCompact(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function contentToText(content: unknown): string {

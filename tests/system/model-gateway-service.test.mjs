@@ -12138,6 +12138,170 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   });
 });
 
+test("model gateway preserves structured responses tool outputs through Chat and Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-structured-tool-output-chat",
+      name: "Codex Structured Tool Output Chat",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-structured-tool-output-chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-structured-tool-output-chat-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-structured-tool-output-anthropic",
+      name: "Codex Structured Tool Output Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://codex-structured-tool-output-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-codex-structured-tool-output-anthropic-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: headers.get("authorization"),
+      xApiKey: headers.get("x-api-key"),
+      body: String(init.body || ""),
+    });
+
+    if (String(url).includes("anthropic")) {
+      return new Response(JSON.stringify({
+        id: "msg_codex_structured_tool_output",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "Anthropic accepted." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 9, output_tokens: 3 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      id: "chatcmpl_codex_structured_tool_output",
+      created: 1_710_000_113,
+      model: "gpt-test",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Chat accepted." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const toolOutput = [
+    { type: "output_text", text: "weather:" },
+    { type: "input_image", image_url: "data:image/png;base64,abc123" },
+  ];
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chatBacked = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-test",
+          input: [{
+            role: "user",
+            content: "Use lookup.",
+          }, {
+            type: "function_call",
+            id: "fc_call_lookup",
+            call_id: "call_lookup",
+            status: "completed",
+            name: "lookup",
+            arguments: "{\"query\":\"weather\"}",
+          }, {
+            type: "function_call_output",
+            call_id: "call_lookup",
+            output: toolOutput,
+          }],
+          stream: false,
+        },
+      });
+
+      assert.equal(chatBacked.status, 200);
+      assert.equal(chatBacked.body.output[0].content[0].text, "Chat accepted.");
+
+      const anthropicBacked = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "claude-native",
+          input: [{
+            role: "user",
+            content: "Use lookup.",
+          }, {
+            type: "function_call",
+            id: "fc_call_lookup",
+            call_id: "call_lookup",
+            status: "completed",
+            name: "lookup",
+            arguments: "{\"query\":\"weather\"}",
+          }, {
+            type: "function_call_output",
+            call_id: "call_lookup",
+            output: toolOutput,
+          }],
+          stream: false,
+        },
+      });
+
+      assert.equal(anthropicBacked.status, 200);
+      assert.equal(anthropicBacked.body.output[0].content[0].text, "Anthropic accepted.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  const chatBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(chatBody.messages[2], {
+    role: "tool",
+    content: '[{"text":"weather:","type":"output_text"},{"image_url":"data:image/png;base64,abc123","type":"input_image"}]',
+    tool_call_id: "call_lookup",
+  });
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-structured-tool-output-chat-secret");
+
+  const anthropicBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(anthropicBody.messages[2], {
+    role: "user",
+    content: [{
+      type: "tool_result",
+      tool_use_id: "call_lookup",
+      content: '[{"text":"weather:","type":"output_text"},{"image_url":"data:image/png;base64,abc123","type":"input_image"}]',
+    }],
+  });
+  assert.equal(upstreamCalls[1].xApiKey, "sk-codex-structured-tool-output-anthropic-secret");
+});
+
+
 test("model gateway drops placeholder chat reasoning from non-streaming codex responses", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
