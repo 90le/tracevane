@@ -99,7 +99,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-E-A provider registry extraction.
 - Done: M11-E-B JSON official language service migration.
 - Done: M11-E-C HTML/CSS lightweight language services guarded implementation.
-- Next: M11-E-D multi-language provider acceptance closeout.
+- Done: M11-E-D multi-language provider acceptance closeout.
+- Next: M11-F external language server gateway research plan.
 
 ## Required reading by task
 
