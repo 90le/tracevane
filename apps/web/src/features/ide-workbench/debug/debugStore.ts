@@ -4,6 +4,7 @@ import { appendWorkbenchOutput } from "../output";
 import type {
   DebugBreakpointLocation,
   DebugGatewayServerEvent,
+  DebugScope,
   DebugSourceLocation,
   DebugSessionDescriptor,
   DebugStackFrame,
@@ -29,6 +30,7 @@ export interface IdeDebugSnapshot {
   breakpoints: DebugBreakpointLocation[];
   activeStoppedLocation: (DebugSourceLocation & { sessionId: string; reason: string }) | null;
   stackFramesBySessionId: Record<string, DebugStackFrame[]>;
+  scopesBySessionId: Record<string, DebugScope[]>;
   variablesBySessionId: Record<string, DebugVariable[]>;
 }
 
@@ -45,6 +47,7 @@ let snapshot: IdeDebugSnapshot = {
   breakpoints: [],
   activeStoppedLocation: null,
   stackFramesBySessionId: {},
+  scopesBySessionId: {},
   variablesBySessionId: {},
 };
 
@@ -181,6 +184,22 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
       level: "debug",
       timestamp: event.timestamp,
       text: `Debug variables received: ${event.variables.length} item(s)`,
+    });
+    return;
+  }
+  if (event.type === "scopes") {
+    snapshot = {
+      ...snapshot,
+      scopesBySessionId: {
+        ...snapshot.scopesBySessionId,
+        [event.sessionId]: event.scopes,
+      },
+    };
+    appendConsoleEvent({
+      sessionId: event.sessionId,
+      level: "debug",
+      timestamp: event.timestamp,
+      text: `Debug scopes received: ${event.scopes.length} scope(s)`,
     });
     return;
   }

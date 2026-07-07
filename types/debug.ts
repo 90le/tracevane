@@ -111,6 +111,20 @@ export interface DebugVariable {
   variablesReference?: number;
 }
 
+export interface DebugScope {
+  name: string;
+  variablesReference: number;
+  expensive?: boolean;
+  variables: DebugVariable[];
+}
+
+export type DebugControlAction =
+  | "continue"
+  | "pause"
+  | "stepOver"
+  | "stepInto"
+  | "stepOut";
+
 export interface DebugCreateSessionRequest {
   rootId: string;
   workspaceId?: string | null;
@@ -128,6 +142,11 @@ export interface DebugStopSessionRequest {
   sessionId: string;
 }
 
+export interface DebugControlSessionRequest {
+  sessionId: string;
+  action: DebugControlAction;
+}
+
 export interface DebugSessionsPayload {
   sessions: DebugSessionDescriptor[];
 }
@@ -138,6 +157,7 @@ export interface DebugSessionPayload {
 
 export type DebugGatewayClientEvent =
   | ({ type: "create" } & DebugCreateSessionRequest)
+  | ({ type: "control" } & DebugControlSessionRequest)
   | ({ type: "stop" } & DebugStopSessionRequest)
   | { type: "list" };
 
@@ -151,5 +171,6 @@ export type DebugGatewayServerEvent =
   | ({ type: "stopped"; sessionId: string; reason: string; threadId?: number | null; timestamp: string } & Partial<DebugSourceLocation>)
   | { type: "stackTrace"; sessionId: string; threadId: number; frames: DebugStackFrame[]; timestamp: string }
   | { type: "variables"; sessionId: string; frameId: number; variables: DebugVariable[]; timestamp: string }
+  | { type: "scopes"; sessionId: string; frameId: number; scopes: DebugScope[]; timestamp: string }
   | { type: "terminated"; sessionId: string; reason: string; timestamp: string }
   | { type: "error"; sessionId?: string | null; message: string };

@@ -1,6 +1,7 @@
-import { createDebugSession, stopDebugSession } from "@/lib/api/debug";
+import { controlDebugSession, createDebugSession, stopDebugSession } from "@/lib/api/debug";
 import type {
   DebugBreakpointLocation,
+  DebugControlAction,
   DebugGatewayServerEvent,
   DebugSessionPayload,
 } from "../../../../../../types/debug";
@@ -31,6 +32,10 @@ export function createIdeDebugSession(input: IdeDebugCreateInput): Promise<Debug
 
 export function stopIdeDebugSession(sessionId: string): Promise<DebugSessionPayload> {
   return stopDebugSession({ sessionId });
+}
+
+export function controlIdeDebugSession(sessionId: string, action: DebugControlAction): Promise<DebugSessionPayload> {
+  return controlDebugSession({ sessionId, action });
 }
 
 export function createDebugWebSocketUrl(): string {

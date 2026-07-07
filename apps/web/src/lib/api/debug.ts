@@ -1,6 +1,7 @@
 import { apiRequest } from "./client";
 import type {
   DebugCreateSessionRequest,
+  DebugControlSessionRequest,
   DebugSessionPayload,
   DebugSessionsPayload,
   DebugStatusPayload,
@@ -26,6 +27,13 @@ export function createDebugSession(payload: DebugCreateSessionRequest): Promise<
 
 export function stopDebugSession(payload: DebugStopSessionRequest): Promise<DebugSessionPayload> {
   return apiRequest<DebugSessionPayload>(`${DEBUG_API_BASE}/sessions/stop`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function controlDebugSession(payload: DebugControlSessionRequest): Promise<DebugSessionPayload> {
+  return apiRequest<DebugSessionPayload>(`${DEBUG_API_BASE}/sessions/control`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

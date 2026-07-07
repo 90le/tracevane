@@ -326,7 +326,7 @@ M7：LSP / Git / Debug
 - M7 Git Source Control 总体验收已完成，记录见 [`archive/m7-git-execution-summary.md`](./archive/m7-git-execution-summary.md)。
 - M7-F-A Debug Adapter Protocol 研究与最小实现计划已完成，记录见 [`archive/m7-f-a-debug-adapter-plan.md`](./archive/m7-f-a-debug-adapter-plan.md)。
 - M7-F-B Debug Gateway skeleton + Debug View shell 已完成，记录见 [`archive/m7-f-b-debug-foundation-summary.md`](./archive/m7-f-b-debug-foundation-summary.md)。
-- M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof 与 M7-F-E Debug acceptance closeout 已完成，记录见 [`archive/m7-f-debug-execution-summary.md`](./archive/m7-f-debug-execution-summary.md)。M7.x-A Debug hardening plan 已完成，记录见 [`archive/m7x-a-debug-hardening-plan.md`](./archive/m7x-a-debug-hardening-plan.md)。M7.x-B Debug lifecycle foundation 已完成，记录见 [`archive/m7x-b-debug-lifecycle-summary.md`](./archive/m7x-b-debug-lifecycle-summary.md)。M7.x-C Launch profile / config foundation 已完成，记录见 [`archive/m7x-c-debug-launch-profile-summary.md`](./archive/m7x-c-debug-launch-profile-summary.md)。M7.x-D Real Node inspector adapter minimal 已完成，记录见 [`archive/m7x-d-debug-node-inspector-summary.md`](./archive/m7x-d-debug-node-inspector-summary.md)。下一步进入 M7.x-E Debug controls / scopes foundation；Debug 仍不和 LSP/Git 同时追完整。
+- M7-F-C Breakpoints + editor reveal foundation、M7-F-D 最小真实 adapter proof 与 M7-F-E Debug acceptance closeout 已完成，记录见 [`archive/m7-f-debug-execution-summary.md`](./archive/m7-f-debug-execution-summary.md)。M7.x-A Debug hardening plan 已完成，记录见 [`archive/m7x-a-debug-hardening-plan.md`](./archive/m7x-a-debug-hardening-plan.md)。M7.x-B Debug lifecycle foundation 已完成，记录见 [`archive/m7x-b-debug-lifecycle-summary.md`](./archive/m7x-b-debug-lifecycle-summary.md)。M7.x-C Launch profile / config foundation 已完成，记录见 [`archive/m7x-c-debug-launch-profile-summary.md`](./archive/m7x-c-debug-launch-profile-summary.md)。M7.x-D Real Node inspector adapter minimal 已完成，记录见 [`archive/m7x-d-debug-node-inspector-summary.md`](./archive/m7x-d-debug-node-inspector-summary.md)。M7.x-E Debug controls / scopes foundation 已完成，记录见 [`archive/m7x-e-debug-controls-scopes-summary.md`](./archive/m7x-e-debug-controls-scopes-summary.md)。下一步进入 M7.x-F Debug Console watch / evaluate foundation；Debug 仍不和 LSP/Git 同时追完整。
 ```
 
 ## 4. LSP 语言服务方案
@@ -505,7 +505,8 @@ M7.x-A：Debug hardening plan（已完成）。
 M7.x-B：Debug lifecycle foundation（已完成）。
 M7.x-C：Launch profile / config foundation（已完成）。
 M7.x-D：Real Node inspector adapter minimal（已完成）。
-M7.x-E：Debug controls / scopes foundation（下一步）。
+M7.x-E：Debug controls / scopes foundation（已完成）。
+M7.x-F：Debug Console watch / evaluate foundation（下一步）。
 ```
 
 ## 8. 能力建设优先级
@@ -536,7 +537,8 @@ M7.x-E：Debug controls / scopes foundation（下一步）。
 21. M7.x-B：Debug lifecycle foundation（已完成）
 22. M7.x-C：Launch profile / config foundation（已完成）
 23. M7.x-D：Real Node inspector adapter minimal（已完成）
-24. M7.x-E：Debug controls / scopes foundation（下一步）
+24. M7.x-E：Debug controls / scopes foundation（已完成）
+25. M7.x-F：Debug Console watch / evaluate foundation（下一步）
 ```
 
 ## 9. 验收标准

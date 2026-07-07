@@ -1,16 +1,16 @@
 import * as React from "react";
-import { Bug, Circle, CircleDot, CircleStop, ExternalLink, Play, TerminalSquare, Trash2 } from "lucide-react";
+import { Bug, Circle, CircleDot, CircleStop, ExternalLink, Pause, Play, SkipForward, TerminalSquare, Trash2 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
-import { createIdeDebugSession, stopIdeDebugSession } from "./debugClient";
+import { controlIdeDebugSession, createIdeDebugSession, stopIdeDebugSession } from "./debugClient";
 import {
   removeDebugBreakpoint,
   setDebugBreakpointEnabled,
   upsertDebugSession,
   useIdeDebugSnapshot,
 } from "./debugStore";
-import type { DebugLaunchProfile, DebugSourceLocation } from "../../../../../../types/debug";
+import type { DebugControlAction, DebugLaunchProfile, DebugSourceLocation } from "../../../../../../types/debug";
 
 export function IdeDebugView({
   hidden,
@@ -36,6 +36,7 @@ export function IdeDebugView({
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null;
   const activeSession = snapshot.sessions.find((session) => !["terminated", "disconnected"].includes(session.state)) ?? snapshot.sessions[0] ?? null;
   const stackFrames = activeSession ? snapshot.stackFramesBySessionId[activeSession.id] ?? [] : [];
+  const scopes = activeSession ? snapshot.scopesBySessionId[activeSession.id] ?? [] : [];
   const variables = activeSession ? snapshot.variablesBySessionId[activeSession.id] ?? [] : [];
 
   React.useEffect(() => {
@@ -125,7 +126,22 @@ export function IdeDebugView({
     }
   }, [activeSession, busy]);
 
+  const handleControl = React.useCallback(async (action: DebugControlAction) => {
+    if (!activeSession || busy) return;
+    setBusy(true);
+    try {
+      const payload = await controlIdeDebugSession(activeSession.id, action);
+      upsertDebugSession(payload.session);
+      if (payload.session.activeLocation) onOpenLocation(payload.session.activeLocation);
+    } finally {
+      setBusy(false);
+    }
+  }, [activeSession, busy, onOpenLocation]);
+
   const canStopActiveSession = Boolean(activeSession && !["terminating", "terminated", "disconnected"].includes(activeSession.state));
+  const canContinue = Boolean(activeSession && activeSession.state === "stopped");
+  const canPause = Boolean(activeSession && activeSession.state === "running");
+  const canStep = canContinue;
 
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
 
@@ -207,6 +223,28 @@ export function IdeDebugView({
             <CircleStop />
             停止
           </Button>
+          <div className="grid grid-cols-2 gap-2" data-ide-debug-controls>
+            <Button size="sm" variant="outline" onClick={() => handleControl("continue")} disabled={!canContinue || busy} data-ide-debug-control-continue>
+              <Play />
+              继续
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleControl("pause")} disabled={!canPause || busy} data-ide-debug-control-pause>
+              <Pause />
+              暂停
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleControl("stepOver")} disabled={!canStep || busy} data-ide-debug-control-step-over>
+              <SkipForward />
+              跳过
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleControl("stepInto")} disabled={!canStep || busy} data-ide-debug-control-step-into>
+              <SkipForward />
+              进入
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleControl("stepOut")} disabled={!canStep || busy} data-ide-debug-control-step-out>
+              <SkipForward />
+              跳出
+            </Button>
+          </div>
         </div>
         <div className="mt-1 truncate text-xs text-muted" data-ide-debug-active-file>
           当前文件：{activeFile?.path ?? "未打开文件"}
@@ -336,6 +374,40 @@ export function IdeDebugView({
           </div>
         )}
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Variables</div>
+        {scopes.length ? (
+          <div className="mb-4 space-y-2" data-ide-debug-scopes>
+            {scopes.map((scope) => (
+              <div
+                key={`${activeSession?.id ?? "session"}:${scope.name}`}
+                className="rounded-md border border-line bg-canvas"
+                data-ide-debug-scope
+                data-ide-debug-scope-name={scope.name}
+              >
+                <div className="border-b border-line px-2 py-1.5 text-xs font-semibold text-ink-strong">
+                  {scope.name}
+                </div>
+                <div className="space-y-1 p-2">
+                  {scope.variables.map((variable) => (
+                    <div
+                      key={`${scope.name}:${variable.name}`}
+                      className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 text-xs"
+                      data-ide-debug-scope-variable
+                      data-ide-debug-scope-variable-name={variable.name}
+                    >
+                      <span className="truncate font-medium text-ink-strong">{variable.name}</span>
+                      <span className="truncate font-mono text-muted">{variable.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mb-4 rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-scopes-empty>
+            Debug session 停止后会显示最小 Scopes 分组。
+          </div>
+        )}
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Raw Variables</div>
         {variables.length ? (
           <div className="space-y-1">
             {variables.map((variable) => (

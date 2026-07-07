@@ -10,12 +10,15 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   DebugBreakpointLocation,
+  DebugControlAction,
+  DebugControlSessionRequest,
   DebugCreateSessionRequest,
   DebugLaunchProfile,
   DebugLifecycleEventKind,
   DebugGatewayClientEvent,
   DebugGatewayServerEvent,
   DebugSourceLocation,
+  DebugScope,
   DebugStackFrame,
   DebugVariable,
   DebugSessionDescriptor,
@@ -76,6 +79,7 @@ export interface DebugService {
   getStatus(): DebugStatusPayload;
   listSessions(): DebugSessionsPayload;
   createSession(request: DebugCreateSessionRequest): Promise<DebugSessionPayload>;
+  controlSession(request: DebugControlSessionRequest): DebugSessionPayload;
   stopSession(request: DebugStopSessionRequest): DebugSessionPayload;
   handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
   dispose(): void;
@@ -114,6 +118,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "launch-args-env-guard",
         "node-inspector-lite-profile",
         "node-inspector-launch-proof",
+        "debug-control-commands",
+        "debug-scopes",
       ],
     };
   }
@@ -206,7 +212,57 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         timestamp: now,
       });
     }
+    if (adapterResult.scopes.length) {
+      emit({
+        type: "scopes",
+        sessionId: id,
+        frameId: adapterResult.frames[0]?.id ?? 1,
+        scopes: adapterResult.scopes,
+        timestamp: now,
+      });
+    }
     return { session };
+  }
+
+  function controlSession(request: DebugControlSessionRequest): DebugSessionPayload {
+    const sessionId = String(request?.sessionId || "").trim();
+    const action = normalizeDebugControlAction(request?.action);
+    if (!sessionId) throw new Error("Debug session id is required");
+    const existing = sessions.get(sessionId);
+    if (!existing) throw new Error("Debug session not found");
+    if (["terminated", "terminating", "disconnected", "error"].includes(existing.state)) {
+      throw new Error(`Debug session cannot ${action} from ${existing.state}`);
+    }
+    if (action === "continue") {
+      const running = transitionSession(existing, "running", "running", "Debug control continue.", {
+        stoppedReason: "continued",
+      });
+      emit({
+        type: "output",
+        sessionId,
+        category: "console",
+        text: `Debug control continue: ${running.name}`,
+        timestamp: running.updatedAt,
+      });
+      return { session: running };
+    }
+    if (action === "pause") {
+      const paused = transitionSession(existing, "stopped", "stopped", "Debug control pause.", {
+        stoppedReason: "pause",
+        activeLocation: existing.activeLocation ?? null,
+      });
+      emitStoppedProof(paused, "pause");
+      return { session: paused };
+    }
+    if (existing.state !== "stopped") {
+      throw new Error(`Debug session must be stopped before ${action}`);
+    }
+    const stepped = transitionSession(existing, "stopped", "stopped", `Debug control ${action}.`, {
+      stoppedReason: action,
+      activeLocation: stepDebugLocation(existing.activeLocation ?? null, action),
+    });
+    emitStoppedProof(stepped, action);
+    return { session: stepped };
   }
 
   function stopSession(request: DebugStopSessionRequest): DebugSessionPayload {
@@ -276,6 +332,10 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
           stopSession(parsed);
           return;
         }
+        if (parsed.type === "control") {
+          controlSession(parsed);
+          return;
+        }
         if (parsed.type === "list") {
           send(socket, { type: "sessions", sessions: [...sessions.values()] });
           return;
@@ -297,6 +357,7 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       return { sessions: [...sessions.values()] };
     },
     createSession,
+    controlSession,
     stopSession,
     handleUpgrade(req, socket, head) {
       const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
@@ -353,6 +414,85 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       timestamp,
     });
   }
+
+  function emitStoppedProof(session: DebugSessionDescriptor, reason: DebugControlAction): void {
+    const timestamp = session.updatedAt || new Date().toISOString();
+    emit({
+      type: "output",
+      sessionId: session.id,
+      category: "console",
+      text: `Debug control ${reason}: ${session.name}`,
+      timestamp,
+    });
+    emit({
+      type: "stopped",
+      sessionId: session.id,
+      reason,
+      threadId: 1,
+      timestamp,
+      ...(session.activeLocation ?? {}),
+    });
+    if (!session.activeLocation) return;
+    emit({
+      type: "stackTrace",
+      sessionId: session.id,
+      threadId: 1,
+      frames: [{
+        id: 1,
+        name: `control:${reason}`,
+        source: session.activeLocation,
+      }],
+      timestamp,
+    });
+  }
+}
+
+type DebugAdapterResult = {
+  activeLocation: DebugSourceLocation | null;
+  frames: DebugStackFrame[];
+  variables: DebugVariable[];
+  scopes: DebugScope[];
+};
+
+function normalizeDebugControlAction(input: unknown): DebugControlAction {
+  if (
+    input === "continue"
+    || input === "pause"
+    || input === "stepOver"
+    || input === "stepInto"
+    || input === "stepOut"
+  ) {
+    return input;
+  }
+  throw new Error("Unsupported debug control action");
+}
+
+function stepDebugLocation(
+  location: DebugSourceLocation | null,
+  action: DebugControlAction,
+): DebugSourceLocation | null {
+  if (!location) return null;
+  if (action === "stepOut") {
+    return { ...location, column: Math.max(1, location.column ?? 1) };
+  }
+  return {
+    ...location,
+    lineNumber: Math.max(1, location.lineNumber + 1),
+    column: Math.max(1, location.column ?? 1),
+  };
+}
+
+function createDebugScopes(variables: DebugVariable[]): DebugScope[] {
+  const byName = new Map(variables.map((variable) => [variable.name, variable]));
+  const pick = (names: string[]) => names.map((name) => byName.get(name)).filter((variable): variable is DebugVariable => Boolean(variable));
+  const scopes: DebugScope[] = [];
+  const local = pick(["program", "cwd", "breakpointCount", "pauseReason"]);
+  if (local.length) scopes.push({ name: "Local", variablesReference: 1, variables: local });
+  const launch = pick(["args", "envKeys"]);
+  if (launch.length) scopes.push({ name: "Launch", variablesReference: 2, variables: launch });
+  const adapter = pick(["adapter", "inspector"]);
+  if (adapter.length) scopes.push({ name: "Adapter", variablesReference: 3, variables: adapter });
+  return scopes;
 }
 
 function validateCreateRequest(
@@ -466,10 +606,10 @@ function createAdapterProofResult(validated: {
   args: string[];
   env?: Record<string, string>;
   envKeys: string[];
-}): { activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] } {
+}): DebugAdapterResult {
   if (validated.profile.id !== NODE_LITE_PROFILE_ID || !validated.program) {
     const activeLocation = validated.breakpoints.find((breakpoint) => breakpoint.enabled !== false) ?? null;
-    return { activeLocation, frames: [], variables: [] };
+    return { activeLocation, frames: [], variables: [], scopes: [] };
   }
   const lineCount = safeReadLineCount(validated.program.absolutePath);
   const programBreakpoints = validated.breakpoints.filter((breakpoint) =>
@@ -498,7 +638,7 @@ function createAdapterProofResult(validated: {
     { name: "envKeys", value: validated.envKeys.join(",") || "(none)", type: "string", variablesReference: 0 },
     { name: "adapter", value: NODE_LITE_PROFILE_ID, type: "string", variablesReference: 0 },
   ];
-  return { activeLocation, frames: [frame], variables };
+  return { activeLocation, frames: [frame], variables, scopes: createDebugScopes(variables) };
 }
 
 async function createNodeInspectorProofResult(validated: {
@@ -511,7 +651,7 @@ async function createNodeInspectorProofResult(validated: {
   args: string[];
   env: Record<string, string>;
   envKeys: string[];
-}): Promise<{ activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] }> {
+}): Promise<DebugAdapterResult> {
   if (!validated.program) throw new Error("Node inspector program is required");
   const launchInput = { ...validated, program: validated.program };
   const inspectorUrl = await launchNodeInspectorAndCaptureUrl(launchInput);
@@ -584,7 +724,7 @@ async function runNodeInspectorProof(
     envKeys: string[];
   },
   inspectorUrl: string,
-): Promise<{ activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] }> {
+): Promise<DebugAdapterResult> {
   const socket = new WebSocket(inspectorUrl);
   let nextId = 1;
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
@@ -694,7 +834,7 @@ async function runNodeInspectorProof(
       { name: "args", value: String(validated.args.length), type: "number", variablesReference: 0 },
       { name: "envKeys", value: validated.envKeys.join(",") || "(none)", type: "string", variablesReference: 0 },
     ];
-    return { activeLocation, frames, variables };
+    return { activeLocation, frames, variables, scopes: createDebugScopes(variables) };
   } finally {
     for (const entry of pending.values()) entry.reject(new Error("Node inspector websocket closed"));
     pending.clear();
