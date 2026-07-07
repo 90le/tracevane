@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -31,6 +31,7 @@ export const YAML_PROVIDER_SOURCE = "yaml-language-server";
 export const BASH_PROVIDER_SOURCE = "bash-language-server";
 export const PYRIGHT_PROVIDER_SOURCE = "pyright";
 export const DOCKERFILE_PROVIDER_SOURCE = "dockerfile-language-server-nodejs";
+export const MARKDOWN_PROVIDER_SOURCE = "vscode-langservers-extracted";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 export const CSS_LANGUAGES = new Set(["css", "scss", "less"]);
@@ -38,6 +39,7 @@ export const YAML_LANGUAGES = new Set(["yaml", "yml"]);
 export const BASH_LANGUAGES = new Set(["shell", "shellscript", "bash", "sh"]);
 export const PYTHON_LANGUAGES = new Set(["python", "py", "python3", "pyi"]);
 export const DOCKERFILE_LANGUAGES = new Set(["dockerfile", "docker"]);
+export const MARKDOWN_LANGUAGES = new Set(["markdown", "md", "mdx"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
   {
@@ -122,6 +124,16 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
     mode: "external",
     status: "available",
     languages: [...DOCKERFILE_LANGUAGES],
+    capabilities: {
+      diagnostics: true,
+    },
+  },
+  {
+    id: "markdown",
+    source: MARKDOWN_PROVIDER_SOURCE,
+    mode: "external",
+    status: "available",
+    languages: [...MARKDOWN_LANGUAGES],
     capabilities: {
       diagnostics: true,
     },

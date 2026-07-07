@@ -1723,6 +1723,17 @@ async function diagnoseDocument(
       version: request.version ?? 1,
     }));
   }
+  if (provider?.id === "markdown") {
+    return responseFor(request, resolved.root.id, resolved.relativePath, "markdown", language, await diagnoseWithExternalLanguageServer({
+      providerId: "markdown",
+      languageId: "markdown",
+      sourceFallback: "vscode-markdown-language-server",
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    }));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -1735,7 +1746,7 @@ async function diagnoseWithExternalLanguageServer({
   content,
   version,
 }: {
-  providerId: "yaml" | "bash" | "pyright" | "dockerfile";
+  providerId: "yaml" | "bash" | "pyright" | "dockerfile" | "markdown";
   languageId: string;
   sourceFallback: string;
   rootRealPath: string;
@@ -1754,7 +1765,7 @@ async function diagnoseWithExternalLanguageServer({
     return diagnostics.map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
   } catch (error) {
     const reason = (error as { reason?: unknown } | null)?.reason;
-    if (providerId === "bash" && reason === "request_timeout") return [];
+    if ((providerId === "bash" || providerId === "markdown") && reason === "request_timeout") return [];
     throw error;
   } finally {
     await gateway.stop(providerId).catch(() => undefined);
@@ -1957,6 +1968,9 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.(?:ba)?sh$/i.test(targetPath) || /\.bashrc$/i.test(targetPath) || /(^|\/)bashrc$/i.test(targetPath)) return "shell";
   if (raw === "docker" || raw === "dockerfile") return "dockerfile";
   if (/\/?Dockerfile(?:$|[.\-_])/i.test(targetPath) || /\.(?:dockerfile|containerfile)$/i.test(targetPath)) return "dockerfile";
+  if (raw === "markdown" || raw === "md" || raw === "mdx") return raw === "mdx" ? "mdx" : "markdown";
+  if (/\.mdx$/i.test(targetPath)) return "mdx";
+  if (/\.(?:md|markdown)$/i.test(targetPath)) return "markdown";
   if (/(^|\.)json($|[.\-_])/i.test(targetPath)) return "json";
   const trimmed = content.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return "json";
@@ -1965,7 +1979,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
 }
 
 function responseProviderId(id: string | null | undefined): LspProviderId {
-  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" ? id : "json";
+  return id === "typescript" || id === "html" || id === "css" || id === "yaml" || id === "bash" || id === "pyright" || id === "dockerfile" || id === "markdown" ? id : "json";
 }
 
 function normalizeRequired(value: string | undefined, label: string): string {

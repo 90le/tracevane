@@ -93,6 +93,19 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
       "M11-P exposes diagnostics/status only; Dockerfile hover/completion/formatting remain deferred.",
     ],
   },
+  markdown: {
+    packageName: "vscode-langservers-extracted",
+    source: "npm:vscode-langservers-extracted",
+    installMode: "bundled-npm",
+    pinnedVersion: "4.10.0",
+    license: "MIT",
+    optional: false,
+    auditSummary: "Bundled multi-bin provider package accepted only for the Markdown language server proof; JSON/HTML/CSS/ESLint bins remain disabled by Tracevane policy.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M11-R exposes Markdown diagnostics/status only; JSON/HTML/CSS/ESLint bins from this package are intentionally not enabled.",
+    ],
+  },
 };
 
 export function externalProviderMetadataForProfile(profile: ExternalLanguageServerProfile): ExternalLanguageServerProviderMetadata {

@@ -132,7 +132,8 @@
     "test:system:lsp-bash-provider": "npm run build:api && node --test tests/system/lsp-bash-provider.test.mjs",
     "test:system:lsp-provider-hygiene": "npm run build:api && node --test tests/system/lsp-external-provider-hygiene.test.mjs",
     "test:system:lsp-pyright-provider": "npm run build:api && node --test tests/system/lsp-pyright-provider.test.mjs",
-    "test:system:lsp-dockerfile-provider": "npm run build:api && node --test tests/system/lsp-dockerfile-provider.test.mjs"
+    "test:system:lsp-dockerfile-provider": "npm run build:api && node --test tests/system/lsp-dockerfile-provider.test.mjs",
+    "test:system:lsp-markdown-provider": "npm run build:api && node --test tests/system/lsp-markdown-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",
@@ -149,6 +150,7 @@
     "vscode-css-languageservice": "^6.3.10",
     "vscode-html-languageservice": "^5.6.2",
     "vscode-json-languageservice": "^5.7.2",
+    "vscode-langservers-extracted": "4.10.0",
     "ws": "^8.18.3",
     "yaml-language-server": "1.23.0"
   },
@@ -158,5 +160,10 @@
     "@types/node": "^22.13.14",
     "@types/ws": "^8.18.1",
     "typescript": "^5.3.0"
+  },
+  "overrides": {
+    "vscode-markdown-languageservice": {
+      "vscode-uri": "2.1.2"
+    }
   }
 }

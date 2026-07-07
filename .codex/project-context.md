@@ -115,7 +115,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-O External provider acceptance / heavy provider expansion decision.
 - Done: M11-P Dockerfile external provider guarded proof.
 - Done: M11-Q Markdown / vscode-langservers-extracted provider plan.
-- Next: M11-R Markdown external provider guarded implementation.
+- Done: M11-R Markdown external provider guarded implementation.
+- Next: M11-S ESLint external provider project-config/runtime safety plan.
 
 ## Required reading by task
 
