@@ -1623,6 +1623,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
           n: 1,
           presence_penalty: 0.1,
           conversation: "conv_unsupported_codex_account",
+          prompt: { id: "pmpt_unsupported_codex_account", variables: { topic: "gateway" } },
+          reasoning: {
+            effort: "low",
+            generate_summary: "concise",
+          },
           seed: 123,
           stream: false,
           top_logprobs: 1,
@@ -1672,6 +1677,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.n, undefined);
     assert.equal(upstreamBody.presence_penalty, undefined);
     assert.equal(upstreamBody.conversation, undefined);
+    assert.equal(upstreamBody.prompt, undefined);
+    assert.equal(upstreamBody.reasoning?.generate_summary, undefined);
+    if (upstreamBody.reasoning !== undefined) {
+      assert.equal(upstreamBody.reasoning?.summary, "concise");
+    }
     assert.equal(upstreamBody.seed, undefined);
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);

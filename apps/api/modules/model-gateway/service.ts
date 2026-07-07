@@ -4337,6 +4337,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     if (Array.isArray(next.input)) {
       next.input = next.input.map(normalizeCodexAccountResponsesInputItem);
     }
+    normalizeCodexAccountResponsesReasoning(next);
 
     next.stream = true;
     next.store = false;
@@ -4357,6 +4358,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       "modalities",
       "n",
       "presence_penalty",
+      "prompt",
       "seed",
       "temperature",
       "top_p",
@@ -4394,6 +4396,16 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
   } catch {
     return value;
   }
+}
+
+function normalizeCodexAccountResponsesReasoning(value: Record<string, unknown>): void {
+  if (!isRecord(value.reasoning)) return;
+  const reasoning: Record<string, unknown> = { ...value.reasoning };
+  if (reasoning.summary === undefined && reasoning.generate_summary !== undefined) {
+    reasoning.summary = reasoning.generate_summary;
+  }
+  delete reasoning.generate_summary;
+  value.reasoning = reasoning;
 }
 
 function stripCodexAccountResponsesUnsupportedFields(value: unknown): void {
