@@ -605,6 +605,11 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
       .map((block) => stringOrNull(block.text) || "")
       .filter(Boolean)
       .join("");
+    const reasoningText = blocks
+      .filter((block) => block.type === "thinking")
+      .map((block) => stringOrNull(block.thinking) || "")
+      .filter(Boolean)
+      .join("");
     const toolCalls = blocks
       .filter((block) => block.type === "tool_use")
       .map(mapAnthropicToolUseToChatToolCall)
@@ -613,6 +618,7 @@ function mapAnthropicMessageToChat(message: unknown): JsonRecord[] {
       role,
       content: text || (toolCalls.length ? null : ""),
     };
+    if (reasoningText) chatMessage.reasoning_content = reasoningText;
     if (toolCalls.length) chatMessage.tool_calls = toolCalls;
     return [chatMessage];
   }

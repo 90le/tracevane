@@ -10352,6 +10352,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
             {
               role: "assistant",
               content: [
+                { type: "thinking", thinking: "Need lookup before answering.", signature: "sig_lookup" },
                 { type: "text", text: "I will call." },
                 { type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } },
               ],
@@ -10474,6 +10475,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       {
         role: "assistant",
         content: "I will call.",
+        reasoning_content: "Need lookup before answering.",
         tool_calls: [{
           id: "call_lookup",
           type: "function",
