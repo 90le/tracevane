@@ -874,7 +874,14 @@ function responseOutputItemToText(item: unknown, options: { skipMcpToolCalls?: b
   if (mcpText) return mcpText;
   const builtinToolText = responsesBuiltinToolOutputItemToText(item);
   if (builtinToolText) return builtinToolText;
-  return "";
+  return responseUnknownOutputItemToText(item);
+}
+
+function responseUnknownOutputItemToText(item: JsonRecord): string {
+  const type = stringOrNull(item.type);
+  if (!type) return "";
+  if (type === "reasoning" || type === "function_call" || type === "custom_tool_call") return "";
+  return `OpenAI Responses unrecognized output item for Chat: ${stringifyCompact(item)}`;
 }
 
 function collectResponseMcpToolBlocks(output: unknown[]): JsonRecord[] {
@@ -990,7 +997,11 @@ function responseContentToText(content: unknown): string {
     .map((part) => {
       if (typeof part === "string") return part;
       if (!isRecord(part)) return "";
-      return stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.refusal) || "";
+      const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.refusal);
+      if (text) return text;
+      return stringOrNull(part.type)
+        ? `OpenAI Responses unrecognized message content part for Chat: ${stringifyCompact(part)}`
+        : "";
     })
     .filter(Boolean)
     .join("");

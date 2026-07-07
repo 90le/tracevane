@@ -302,7 +302,11 @@ export function adaptAnthropicMessagesResponseToChatCompletion(
     .map(anthropicMalformedToolUseToChatText)
     .filter(Boolean)
     .join("\n");
-  const messageText = [text, malformedToolUseText].filter(Boolean).join("\n");
+  const unknownContentBlockText = content
+    .map(anthropicUnknownContentBlockToChatText)
+    .filter(Boolean)
+    .join("\n");
+  const messageText = [text, malformedToolUseText, unknownContentBlockText].filter(Boolean).join("\n");
   const message: JsonRecord = {
     role: "assistant",
     content: messageText || (toolCalls.length ? null : ""),
@@ -1532,6 +1536,19 @@ function anthropicMalformedToolUseToChatText(part: unknown): string {
   return mapAnthropicToolUseToChatToolCall(part)
     ? ""
     : `Anthropic Messages malformed tool_use for Chat: ${stringifyCompact(part)}`;
+}
+
+function anthropicUnknownContentBlockToChatText(part: unknown): string {
+  if (!isRecord(part)) return "";
+  const type = stringOrNull(part.type);
+  if (!type || type === "text" || type === "thinking" || type === "redacted_thinking") return "";
+  if (type === "tool_use") return "";
+  if (type === "mcp_tool_use" || type === "mcp_tool_result") {
+    return anthropicMcpToolBlocks([part]).length
+      ? ""
+      : `Anthropic Messages malformed ${type} for Chat: ${stringifyCompact(part)}`;
+  }
+  return `Anthropic Messages unrecognized content block for Chat: ${stringifyCompact(part)}`;
 }
 
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
