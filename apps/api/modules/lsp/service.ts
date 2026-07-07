@@ -28,6 +28,7 @@ import type {
   LspSemanticTokensRequest,
   LspSemanticTokensResponse,
   LspWorkspaceEditRejectedItem,
+  LspWorkspaceSymbolIndexMetadata,
   LspWorkspaceSymbolItem,
   LspWorkspaceSymbolsRequest,
   LspWorkspaceSymbolsResponse,
@@ -69,6 +70,9 @@ const MAX_WORKSPACE_SYMBOL_QUERY_LENGTH = 80;
 const MAX_WORKSPACE_SYMBOL_RESULTS = 100;
 const MAX_WORKSPACE_SYMBOL_FILES = 300;
 const MAX_WORKSPACE_SYMBOL_FILE_BYTES = 300_000;
+const MAX_WORKSPACE_SYMBOL_INDEX_SCOPES = 20;
+const MAX_WORKSPACE_SYMBOL_INDEX_ITEMS = 5_000;
+const WORKSPACE_SYMBOL_INDEX_PROVIDER_VERSION = "typescript-navigate-v1";
 const WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES = new Set([
   ".git",
   "node_modules",
@@ -99,6 +103,7 @@ export interface LspService {
 
 export function createLspService(config: TracevaneServerConfig): LspService {
   const wss = new WebSocketServer({ noServer: true });
+  const workspaceSymbolIndex = createWorkspaceSymbolIndex();
 
   wss.on("connection", (socket) => {
     send(socket, {
@@ -148,7 +153,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
           return;
         }
         if (request.type === "workspaceSymbols") {
-          send(socket, workspaceSymbols(config, request as LspWorkspaceSymbolsRequest));
+          send(socket, workspaceSymbols(config, request as LspWorkspaceSymbolsRequest, workspaceSymbolIndex));
           return;
         }
         if (request.type === "rename") {
@@ -203,7 +208,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
       return semanticTokens(config, request);
     },
     workspaceSymbols(request) {
-      return workspaceSymbols(config, request);
+      return workspaceSymbols(config, request, workspaceSymbolIndex);
     },
     renameDocument(request) {
       return renameDocument(config, request);
@@ -360,6 +365,7 @@ interface WorkspaceSymbolSourceFile {
 function workspaceSymbols(
   config: TracevaneServerConfig,
   request: LspWorkspaceSymbolsRequest,
+  index: WorkspaceSymbolIndex,
 ): LspWorkspaceSymbolsResponse {
   const rootId = normalizeRequired(request.rootId, "rootId");
   const query = String(request.query || "").trim();
@@ -371,61 +377,346 @@ function workspaceSymbols(
   const limit = clampInteger(request.limit, 1, MAX_WORKSPACE_SYMBOL_RESULTS, MAX_WORKSPACE_SYMBOL_RESULTS);
   const includeHidden = request.includeHidden === true;
   if (!query) {
-    return {
-      type: "workspaceSymbols",
-      id: request.id ?? null,
-      provider: "typescript",
-      rootId: resolved.root.id,
-      query,
-      path: resolved.relativePath,
-      items: [],
-      scannedFiles: 0,
-      skippedFiles: 0,
-      truncated: false,
-      checkedAt: new Date().toISOString(),
-    };
+    return workspaceSymbolsEmptyResponse(request, resolved.root.id, "", resolved.relativePath, null, 0, 0, false);
   }
 
-  const scan = collectWorkspaceSymbolSourceFiles(resolved.root.realPath, resolved.absolutePath, includeHidden);
+  return index.query({
+    id: request.id ?? null,
+    rootId: resolved.root.id,
+    rootRealPath: resolved.root.realPath,
+    absolutePath: resolved.absolutePath,
+    relativePath: resolved.relativePath,
+    query,
+    limit,
+    includeHidden,
+  });
+}
+
+interface WorkspaceSymbolIndexQuery {
+  id: string | null;
+  rootId: string;
+  rootRealPath: string;
+  absolutePath: string;
+  relativePath: string;
+  query: string;
+  limit: number;
+  includeHidden: boolean;
+}
+
+interface WorkspaceSymbolFileFingerprint {
+  fileName: string;
+  relativePath: string;
+  language: string;
+  version: string;
+  size: number;
+  mtimeMs: number;
+}
+
+interface WorkspaceSymbolScanResult {
+  files: WorkspaceSymbolSourceFile[];
+  fingerprints: WorkspaceSymbolFileFingerprint[];
+  scannedFiles: number;
+  skippedFiles: number;
+  truncated: boolean;
+}
+
+interface WorkspaceSymbolIndexScope {
+  key: string;
+  rootId: string;
+  relativePath: string;
+  includeHidden: boolean;
+  fingerprints: Map<string, WorkspaceSymbolFileFingerprint>;
+  items: LspWorkspaceSymbolItem[];
+  scannedFiles: number;
+  skippedFiles: number;
+  truncated: boolean;
+  rebuiltAt: string;
+  lastUsedAt: number;
+}
+
+interface WorkspaceSymbolIndex {
+  query(request: WorkspaceSymbolIndexQuery): LspWorkspaceSymbolsResponse;
+}
+
+function createWorkspaceSymbolIndex(): WorkspaceSymbolIndex {
+  const scopes = new Map<string, WorkspaceSymbolIndexScope>();
+
+  const touch = (scope: WorkspaceSymbolIndexScope) => {
+    scope.lastUsedAt = Date.now();
+    scopes.delete(scope.key);
+    scopes.set(scope.key, scope);
+  };
+
+  const evictIfNeeded = () => {
+    while (scopes.size > MAX_WORKSPACE_SYMBOL_INDEX_SCOPES) {
+      const oldest = scopes.keys().next().value;
+      if (!oldest) break;
+      scopes.delete(oldest);
+    }
+  };
+
+  return {
+    query(request) {
+      const scopeKey = workspaceSymbolIndexScopeKey(request.rootId, request.relativePath, request.includeHidden);
+      const metadataScan = collectWorkspaceSymbolSourceFiles(request.rootRealPath, request.absolutePath, request.includeHidden, false);
+      const existing = scopes.get(scopeKey);
+      if (existing) {
+        const staleFiles = countStaleWorkspaceSymbolFiles(existing.fingerprints, metadataScan.fingerprints);
+        if (staleFiles === 0 && !metadataScan.truncated) {
+          touch(existing);
+          const items = filterWorkspaceSymbolIndexItems(existing.items, request.query, request.limit, request.rootId);
+          return workspaceSymbolsResponseFromIndex(request, items, existing, {
+            status: "fresh",
+            staleFiles: 0,
+            scannedFiles: metadataScan.scannedFiles,
+            skippedFiles: metadataScan.skippedFiles,
+            truncated: metadataScan.truncated || items.length >= request.limit,
+          });
+        }
+      }
+
+      try {
+        const sourceScan = collectWorkspaceSymbolSourceFiles(request.rootRealPath, request.absolutePath, request.includeHidden, true);
+        const rebuilt = buildWorkspaceSymbolIndexScope(scopeKey, request, sourceScan);
+        scopes.set(scopeKey, rebuilt);
+        touch(rebuilt);
+        evictIfNeeded();
+        const items = filterWorkspaceSymbolIndexItems(rebuilt.items, request.query, request.limit, request.rootId);
+        return workspaceSymbolsResponseFromIndex(request, items, rebuilt, {
+          status: "rebuilt",
+          staleFiles: existing ? countStaleWorkspaceSymbolFiles(existing.fingerprints, sourceScan.fingerprints) : sourceScan.fingerprints.length,
+          scannedFiles: sourceScan.scannedFiles,
+          skippedFiles: sourceScan.skippedFiles,
+          truncated: sourceScan.truncated || rebuilt.truncated || items.length >= request.limit,
+        });
+      } catch {
+        return workspaceSymbolsDirect(request, "direct", scopeKey);
+      }
+    },
+  };
+}
+
+function buildWorkspaceSymbolIndexScope(
+  scopeKey: string,
+  request: WorkspaceSymbolIndexQuery,
+  scan: WorkspaceSymbolScanResult,
+): WorkspaceSymbolIndexScope {
   if (!scan.files.length) {
     return {
-      type: "workspaceSymbols",
-      id: request.id ?? null,
-      provider: "typescript",
-      rootId: resolved.root.id,
-      query,
-      path: resolved.relativePath,
+      key: scopeKey,
+      rootId: request.rootId,
+      relativePath: request.relativePath,
+      includeHidden: request.includeHidden,
+      fingerprints: new Map(scan.fingerprints.map((fingerprint) => [fingerprint.relativePath, fingerprint])),
       items: [],
       scannedFiles: scan.scannedFiles,
       skippedFiles: scan.skippedFiles,
       truncated: scan.truncated,
-      checkedAt: new Date().toISOString(),
+      rebuiltAt: new Date().toISOString(),
+      lastUsedAt: Date.now(),
     };
   }
 
-  const languageService = createWorkspaceTypeScriptLanguageService(resolved.root.realPath, scan.files);
+  const languageService = createWorkspaceTypeScriptLanguageService(request.rootRealPath, scan.files);
   try {
-    const navigateItems = languageService.service.getNavigateToItems(query, limit, undefined, true, true) ?? [];
+    const navigateItems = languageService.service.getNavigateToItems("", MAX_WORKSPACE_SYMBOL_INDEX_ITEMS, undefined, true, true) ?? [];
     const items = navigateItems
-      .map((item) => workspaceNavigateItemToSymbol(resolved.root.id, languageService.filesByName, item))
-      .filter((item): item is LspWorkspaceSymbolItem => Boolean(item))
-      .slice(0, limit);
+      .map((item) => workspaceNavigateItemToSymbol(request.rootId, languageService.filesByName, item))
+      .filter((item): item is LspWorkspaceSymbolItem => Boolean(item));
     return {
-      type: "workspaceSymbols",
-      id: request.id ?? null,
-      provider: "typescript",
-      rootId: resolved.root.id,
-      query,
-      path: resolved.relativePath,
+      key: scopeKey,
+      rootId: request.rootId,
+      relativePath: request.relativePath,
+      includeHidden: request.includeHidden,
+      fingerprints: new Map(scan.fingerprints.map((fingerprint) => [fingerprint.relativePath, fingerprint])),
       items,
       scannedFiles: scan.scannedFiles,
       skippedFiles: scan.skippedFiles,
-      truncated: scan.truncated || navigateItems.length > items.length || items.length >= limit,
+      truncated: scan.truncated || navigateItems.length >= MAX_WORKSPACE_SYMBOL_INDEX_ITEMS,
+      rebuiltAt: new Date().toISOString(),
+      lastUsedAt: Date.now(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function workspaceSymbolsDirect(
+  request: WorkspaceSymbolIndexQuery,
+  indexStatus: LspWorkspaceSymbolIndexMetadata["status"],
+  scopeKey: string,
+): LspWorkspaceSymbolsResponse {
+  const scan = collectWorkspaceSymbolSourceFiles(request.rootRealPath, request.absolutePath, request.includeHidden, true);
+  if (!scan.files.length) {
+    return workspaceSymbolsEmptyResponse(
+      { id: request.id },
+      request.rootId,
+      request.query,
+      request.relativePath,
+      workspaceSymbolIndexMetadata(indexStatus, scopeKey, 0, 0, scan.fingerprints.length, null),
+      scan.scannedFiles,
+      scan.skippedFiles,
+      scan.truncated,
+    );
+  }
+  const languageService = createWorkspaceTypeScriptLanguageService(request.rootRealPath, scan.files);
+  try {
+    const navigateItems = languageService.service.getNavigateToItems(request.query, request.limit, undefined, true, true) ?? [];
+    const items = navigateItems
+      .map((item) => workspaceNavigateItemToSymbol(request.rootId, languageService.filesByName, item))
+      .filter((item): item is LspWorkspaceSymbolItem => Boolean(item))
+      .slice(0, request.limit);
+    return {
+      type: "workspaceSymbols",
+      id: request.id,
+      provider: "typescript",
+      rootId: request.rootId,
+      query: request.query,
+      path: request.relativePath,
+      items,
+      scannedFiles: scan.scannedFiles,
+      skippedFiles: scan.skippedFiles,
+      truncated: scan.truncated || navigateItems.length > items.length || items.length >= request.limit,
+      index: workspaceSymbolIndexMetadata(indexStatus, scopeKey, scan.files.length, items.length, scan.fingerprints.length, null),
       checkedAt: new Date().toISOString(),
     };
   } finally {
     languageService.service.dispose();
   }
+}
+
+function workspaceSymbolsResponseFromIndex(
+  request: WorkspaceSymbolIndexQuery,
+  items: LspWorkspaceSymbolItem[],
+  scope: WorkspaceSymbolIndexScope,
+  options: {
+    status: LspWorkspaceSymbolIndexMetadata["status"];
+    staleFiles: number;
+    scannedFiles: number;
+    skippedFiles: number;
+    truncated: boolean;
+  },
+): LspWorkspaceSymbolsResponse {
+  return {
+    type: "workspaceSymbols",
+    id: request.id,
+    provider: "typescript",
+    rootId: request.rootId,
+    query: request.query,
+    path: request.relativePath,
+    items,
+    scannedFiles: options.scannedFiles,
+    skippedFiles: options.skippedFiles,
+    truncated: options.truncated,
+    index: workspaceSymbolIndexMetadata(options.status, scope.key, scope.fingerprints.size, scope.items.length, options.staleFiles, scope.rebuiltAt),
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function workspaceSymbolsEmptyResponse(
+  request: { id?: string | null },
+  rootId: string,
+  query: string,
+  relativePath: string,
+  index: LspWorkspaceSymbolIndexMetadata | null,
+  scannedFiles: number,
+  skippedFiles: number,
+  truncated: boolean,
+): LspWorkspaceSymbolsResponse {
+  return {
+    type: "workspaceSymbols",
+    id: request.id ?? null,
+    provider: "typescript",
+    rootId,
+    query,
+    path: relativePath,
+    items: [],
+    scannedFiles,
+    skippedFiles,
+    truncated,
+    index,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function workspaceSymbolIndexMetadata(
+  status: LspWorkspaceSymbolIndexMetadata["status"],
+  scopeKey: string,
+  indexedFiles: number,
+  indexedSymbols: number,
+  staleFiles: number,
+  rebuiltAt: string | null,
+): LspWorkspaceSymbolIndexMetadata {
+  return {
+    status,
+    scopeKey,
+    indexedFiles,
+    indexedSymbols,
+    staleFiles,
+    providerVersion: WORKSPACE_SYMBOL_INDEX_PROVIDER_VERSION,
+    rebuiltAt,
+  };
+}
+
+function filterWorkspaceSymbolIndexItems(
+  items: LspWorkspaceSymbolItem[],
+  query: string,
+  limit: number,
+  rootId: string,
+): LspWorkspaceSymbolItem[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+  const scored: Array<{ item: LspWorkspaceSymbolItem; score: number; matchKind: LspWorkspaceSymbolItem["matchKind"] }> = [];
+  for (const item of items) {
+    const name = item.name.toLowerCase();
+    const container = (item.containerName || "").toLowerCase();
+    const pathName = item.path.toLowerCase();
+    let score = Number.POSITIVE_INFINITY;
+    let matchKind: LspWorkspaceSymbolItem["matchKind"] = undefined;
+    if (name === normalizedQuery) {
+      score = 0;
+      matchKind = "exact";
+    } else if (name.startsWith(normalizedQuery)) {
+      score = 1;
+      matchKind = "prefix";
+    } else if (name.includes(normalizedQuery)) {
+      score = 2;
+      matchKind = "substring";
+    } else if (container.includes(normalizedQuery)) {
+      score = 3;
+      matchKind = "substring";
+    } else if (pathName.includes(normalizedQuery)) {
+      score = 4;
+      matchKind = "substring";
+    }
+    if (score === Number.POSITIVE_INFINITY) continue;
+    scored.push({ item, score, matchKind });
+  }
+  return scored
+    .sort((left, right) => left.score - right.score || left.item.name.localeCompare(right.item.name) || left.item.path.localeCompare(right.item.path))
+    .slice(0, limit)
+    .map(({ item, matchKind }) => ({ ...item, rootId, matchKind }));
+}
+
+function countStaleWorkspaceSymbolFiles(
+  previous: Map<string, WorkspaceSymbolFileFingerprint>,
+  next: WorkspaceSymbolFileFingerprint[],
+): number {
+  let stale = 0;
+  const seen = new Set<string>();
+  for (const fingerprint of next) {
+    seen.add(fingerprint.relativePath);
+    const old = previous.get(fingerprint.relativePath);
+    if (!old || old.version !== fingerprint.version || old.fileName !== fingerprint.fileName) stale += 1;
+  }
+  for (const key of previous.keys()) {
+    if (!seen.has(key)) stale += 1;
+  }
+  return stale;
+}
+
+function workspaceSymbolIndexScopeKey(rootId: string, relativePath: string, includeHidden: boolean): string {
+  return `${rootId}:${includeHidden ? "hidden" : "visible"}:${relativePath || "."}`;
 }
 
 interface ValidatedInteractionRequest {
@@ -1199,13 +1490,14 @@ function createWorkspaceTypeScriptLanguageService(
   };
 }
 
-function collectWorkspaceSymbolSourceFiles(rootRealPath: string, startDirectory: string, includeHidden: boolean): {
-  files: WorkspaceSymbolSourceFile[];
-  scannedFiles: number;
-  skippedFiles: number;
-  truncated: boolean;
-} {
+function collectWorkspaceSymbolSourceFiles(
+  rootRealPath: string,
+  startDirectory: string,
+  includeHidden: boolean,
+  readContent = true,
+): WorkspaceSymbolScanResult {
   const files: WorkspaceSymbolSourceFile[] = [];
+  const fingerprints: WorkspaceSymbolFileFingerprint[] = [];
   let scannedFiles = 0;
   let skippedFiles = 0;
   let truncated = false;
@@ -1271,6 +1563,18 @@ function collectWorkspaceSymbolSourceFiles(rootRealPath: string, startDirectory:
         skippedFiles += 1;
         continue;
       }
+      const language = languageForWorkspaceSymbolPath(relativePath);
+      const fileName = normalizeTsFileName(realPath);
+      const version = `${stat.mtimeMs}:${stat.size}`;
+      fingerprints.push({
+        fileName,
+        relativePath,
+        language,
+        version,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      });
+      if (!readContent) continue;
       let content: string;
       try {
         content = fs.readFileSync(absolutePath, "utf8");
@@ -1278,17 +1582,16 @@ function collectWorkspaceSymbolSourceFiles(rootRealPath: string, startDirectory:
         skippedFiles += 1;
         continue;
       }
-      const language = languageForWorkspaceSymbolPath(relativePath);
       files.push({
-        fileName: normalizeTsFileName(realPath),
+        fileName,
         relativePath,
         content,
         language,
-        version: `${Math.floor(stat.mtimeMs)}:${stat.size}`,
+        version,
       });
     }
   }
-  return { files, scannedFiles, skippedFiles, truncated };
+  return { files, fingerprints, scannedFiles, skippedFiles, truncated };
 }
 
 function workspaceNavigateItemToSymbol(

@@ -186,6 +186,18 @@ export interface LspWorkspaceSymbolItem {
   endColumn?: number;
 }
 
+export type LspWorkspaceSymbolIndexStatus = "fresh" | "rebuilt" | "direct" | "disabled";
+
+export interface LspWorkspaceSymbolIndexMetadata {
+  status: LspWorkspaceSymbolIndexStatus;
+  scopeKey: string;
+  indexedFiles: number;
+  indexedSymbols: number;
+  staleFiles: number;
+  providerVersion: string;
+  rebuiltAt?: string | null;
+}
+
 export interface LspWorkspaceSymbolsResponse {
   type: "workspaceSymbols";
   id?: string | null;
@@ -197,6 +209,7 @@ export interface LspWorkspaceSymbolsResponse {
   scannedFiles: number;
   skippedFiles: number;
   truncated: boolean;
+  index?: LspWorkspaceSymbolIndexMetadata | null;
   checkedAt: string;
 }
 

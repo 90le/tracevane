@@ -158,8 +158,26 @@ function assertWorkspaceSymbols(response, label, expectedPath) {
   if (!response.items.some((item) => item.name === 'TracevaneWorkspaceSymbolAlpha' && item.kind === 'class' && item.path === expectedPath)) {
     throw new Error(`${label} workspace symbols response missing expected class item: ${JSON.stringify(response.items)}`);
   }
-  if (response.items.length > 20 || response.scannedFiles < 2) {
+  if (response.items.length > 20 || response.scannedFiles < 1) {
     throw new Error(`${label} workspace symbols response was not bounded/scanned enough: ${JSON.stringify(response)}`);
+  }
+}
+
+function assertSymbolIndex(response, label, expectedStatus) {
+  if (!response.index || response.index.providerVersion !== 'typescript-navigate-v1') {
+    throw new Error(`${label} workspace symbols missing symbol index metadata: ${JSON.stringify(response)}`);
+  }
+  if (expectedStatus && response.index.status !== expectedStatus) {
+    throw new Error(`${label} workspace symbols index status expected ${expectedStatus}, got ${response.index.status}: ${JSON.stringify(response.index)}`);
+  }
+  if (response.index.indexedFiles < 0 || response.index.indexedSymbols < 0 || response.index.staleFiles < 0) {
+    throw new Error(`${label} workspace symbols index metadata has invalid counts: ${JSON.stringify(response.index)}`);
+  }
+}
+
+function assertMissingPath(response, label, missingPath) {
+  if (response.items.some((item) => item.path === missingPath)) {
+    throw new Error(`${label} returned deleted path ${missingPath}: ${JSON.stringify(response.items)}`);
   }
 }
 
@@ -200,12 +218,37 @@ async function run() {
   const payload = { type: 'workspaceSymbols', rootId, path: smokeDir, query: 'TracevaneWorkspaceSymbol', limit: 20, includeHidden: true };
   const direct = await api('/api/lsp/workspace-symbols', { method: 'POST', body: JSON.stringify(payload) });
   assertWorkspaceSymbols(direct, 'direct', alphaPath);
+  assertSymbolIndex(direct, 'direct', 'rebuilt');
+
+  const cached = await api('/api/lsp/workspace-symbols', { method: 'POST', body: JSON.stringify(payload) });
+  assertWorkspaceSymbols(cached, 'cached', alphaPath);
+  assertSymbolIndex(cached, 'cached', 'fresh');
+
+  await createFile(rootId, alphaPath, `${alphaContent}export class TracevaneWorkspaceSymbolGamma {}\n`);
+  const changed = await api('/api/lsp/workspace-symbols', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, query: 'TracevaneWorkspaceSymbolGamma' }),
+  });
+  if (!changed.items.some((item) => item.name === 'TracevaneWorkspaceSymbolGamma' && item.path === alphaPath)) {
+    throw new Error(`Changed symbol query did not rebuild stale index: ${JSON.stringify(changed)}`);
+  }
+  assertSymbolIndex(changed, 'changed', 'rebuilt');
+
+  await cleanup(rootId, [betaPath]);
+  const deleted = await api('/api/lsp/workspace-symbols', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, query: 'tracevaneWorkspaceSymbolValue' }),
+  });
+  assertSymbolIndex(deleted, 'deleted', 'rebuilt');
+  assertMissingPath(deleted, 'deleted', betaPath);
 
   const gateway = await requestGatewayEvent(payload);
   assertWorkspaceSymbols(gateway, 'gateway', alphaPath);
+  assertSymbolIndex(gateway, 'gateway', 'fresh');
 
   const empty = await api('/api/lsp/workspace-symbols', { method: 'POST', body: JSON.stringify({ ...payload, query: 'DefinitelyMissingTracevaneSymbol' }) });
   if (empty.items.length !== 0) throw new Error(`Missing symbol query should return empty items: ${JSON.stringify(empty)}`);
+  assertSymbolIndex(empty, 'empty', 'fresh');
 
   let longQueryFailed = false;
   try {
