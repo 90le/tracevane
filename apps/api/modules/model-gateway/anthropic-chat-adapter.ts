@@ -151,8 +151,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
 
   const anthropicRequest: JsonRecord = {
     model,
-    max_tokens: numberOrNull(request.max_tokens)
-      ?? numberOrNull(request.max_completion_tokens)
+    max_tokens: numberOrNull(request.max_completion_tokens)
+      ?? numberOrNull(request.max_tokens)
       ?? 1024,
     messages: anthropicMessages,
   };

@@ -102,9 +102,9 @@ export function sanitizeOpenAIChatUpstreamBody(
 }
 
 function normalizeModernChatTokenLimit(request: JsonRecord): void {
-  if (request.max_tokens === undefined || request.max_completion_tokens !== undefined) return;
+  if (request.max_tokens === undefined) return;
   if (!usesModernChatCompletionTokenLimit(request.model)) return;
-  request.max_completion_tokens = request.max_tokens;
+  if (request.max_completion_tokens === undefined) request.max_completion_tokens = request.max_tokens;
   delete request.max_tokens;
 }
 

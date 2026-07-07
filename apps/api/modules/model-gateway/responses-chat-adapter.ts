@@ -128,10 +128,10 @@ export function adaptChatCompletionRequestToResponses(
     "user",
   ]);
 
-  if (request.max_tokens !== undefined) {
-    responsesRequest.max_output_tokens = request.max_tokens;
-  } else if (request.max_completion_tokens !== undefined) {
+  if (request.max_completion_tokens !== undefined) {
     responsesRequest.max_output_tokens = request.max_completion_tokens;
+  } else if (request.max_tokens !== undefined) {
+    responsesRequest.max_output_tokens = request.max_tokens;
   }
   applyChatLogprobControlsToResponses(responsesRequest, request);
   // Do not forward Chat/Claude stop sequences through adapter-generated

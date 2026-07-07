@@ -12538,6 +12538,8 @@ test("model gateway preserves supported responses controls and strips rejected c
           conversation: "conv_123",
           include: ["reasoning.encrypted_content"],
           max_tool_calls: 7,
+          max_tokens: 128,
+          max_completion_tokens: 512,
           frequency_penalty: 0,
           logprobs: true,
           metadata: { trace_id: "strip-for-codex-responses" },
@@ -12602,6 +12604,7 @@ test("model gateway preserves supported responses controls and strips rejected c
     conversation: "conv_123",
     include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
     max_tool_calls: 7,
+    max_output_tokens: 512,
     previous_response_id: "resp_previous",
     prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
     prompt_cache_key: "cache-key-123",
@@ -12642,13 +12645,13 @@ test("model gateway maps modern Chat token limits for GPT-5 adapters", async () 
     provider: {
       id: "modern-chat-token-limit",
       name: "Modern Chat Token Limit Provider",
-      appScopes: ["codex", "claude-code"],
+      appScopes: ["codex", "claude-code", "opencode"],
       baseUrl: "https://modern-chat-token-limit.example.test/v1",
       apiFormat: "openai_chat",
       authStrategy: "bearer",
     },
     secret: { apiKey: "sk-modern-chat-token-limit-secret" },
-    setActiveScopes: ["codex", "claude-code"],
+    setActiveScopes: ["codex", "claude-code", "opencode"],
   });
 
   const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
@@ -12707,12 +12710,24 @@ test("model gateway maps modern Chat token limits for GPT-5 adapters", async () 
         },
       });
       assert.equal(legacyResponses.status, 200, legacyResponses.body);
+
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "prefer modern chat token limit" }],
+          max_tokens: 22,
+          max_completion_tokens: 99,
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 4);
   assert.equal(upstreamCalls[0].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].body.max_completion_tokens, 77);
   assert.equal(upstreamCalls[0].body.max_tokens, undefined);
@@ -12722,6 +12737,9 @@ test("model gateway maps modern Chat token limits for GPT-5 adapters", async () 
   assert.equal(upstreamCalls[2].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[2].body.max_completion_tokens, undefined);
   assert.equal(upstreamCalls[2].body.max_tokens, 66);
+  assert.equal(upstreamCalls[3].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[3].body.max_completion_tokens, 99);
+  assert.equal(upstreamCalls[3].body.max_tokens, undefined);
 });
 
 test("model gateway preserves Responses cache and safety controls for Chat providers", async () => {
@@ -14149,6 +14167,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
           modalities: ["text"],
           top_logprobs: 2,
           max_tokens: 128,
+          max_completion_tokens: 256,
           verbosity: "high",
           service_tier: "priority",
           temperature: 0.2,
@@ -14274,7 +14293,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
   assert.equal(upstreamCalls[0].contentType, "application/json");
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "claude-native",
-    max_tokens: 128,
+    max_tokens: 256,
     messages: [
       {
         role: "user",
