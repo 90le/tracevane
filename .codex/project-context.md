@@ -122,7 +122,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-V ESLint guarded workingDirectories implementation.
 - Done: M11-W External provider acceptance / next provider decision.
 - Done: M12-A Framework / heavy language provider research plan.
-- Next: M12-B Vue / Svelte framework provider guarded proof plan.
+- Done: M12-B Vue / Svelte framework provider guarded proof plan.
+- Next: M12-C Vue external provider guarded diagnostics proof.
 
 ## Required reading by task
 
