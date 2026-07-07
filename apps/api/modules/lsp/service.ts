@@ -39,6 +39,7 @@ import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath }
 import { completeCssWithLanguageService, completeHtmlWithLanguageService, defineCssWithLanguageService, diagnoseCssWithLanguageService, formatCssWithLanguageService, formatHtmlWithLanguageService, hoverCssWithLanguageService, hoverHtmlWithLanguageService, referenceCssWithLanguageService } from "./providers/htmlCssLanguageService.js";
 import { completeJsonWithLanguageService, defineJsonWithLanguageService, diagnoseJsonWithLanguageService, formatJsonWithLanguageService, hoverJsonWithLanguageService, referenceJsonWithLanguageService } from "./providers/jsonLanguageService.js";
 import { createExternalLanguageServerGateway } from "./external/externalLanguageServerGateway.js";
+import { externalProviderMetadataForProfile } from "./external/externalProviderMetadata.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 
 const LSP_WS_PATH = "/ws/lsp";
@@ -1742,14 +1743,26 @@ function externalLanguageServerStatusSnapshot(config: TracevaneServerConfig) {
   const rootPath = path.resolve(path.parse(config.openclawRoot).root || "/");
   const gateway = createExternalLanguageServerGateway({ rootPath });
   return {
-    profiles: gateway.listProfiles().map((profile) => ({
-      id: profile.id,
-      label: profile.label,
-      languages: profile.languages,
-      capabilities: profile.capabilities,
-      enabled: profile.enabled !== false,
-    })),
+    profiles: gateway.listProfiles().map((profile) => {
+      const metadata = externalProviderMetadataForProfile(profile);
+      return {
+        id: profile.id,
+        label: profile.label,
+        languages: profile.languages,
+        capabilities: profile.capabilities,
+        enabled: profile.enabled !== false,
+        install: {
+          status: metadata.installStatus,
+          version: metadata.version,
+          pinnedVersion: metadata.pinnedVersion,
+          source: metadata.source,
+          packageName: metadata.packageName,
+          optional: metadata.optional,
+        },
+      };
+    }),
     statuses: gateway.listStatuses(),
+    metadata: gateway.listProfiles().map((profile) => externalProviderMetadataForProfile(profile)),
   };
 }
 

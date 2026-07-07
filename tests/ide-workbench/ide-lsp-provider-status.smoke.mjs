@@ -77,6 +77,17 @@ async function run() {
   if (!bashProfile?.enabled) {
     throw new Error(`Expected enabled bash external provider profile: ${JSON.stringify(status.externalProviders)}`);
   }
+  const yamlMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'yaml');
+  const bashMetadata = status.externalProviders?.metadata?.find((item) => item.providerId === 'bash');
+  if (yamlProfile.install?.status !== 'installed' || yamlMetadata?.installStatus !== 'installed' || !yamlMetadata.version) {
+    throw new Error(`Expected installed yaml provider metadata: ${JSON.stringify(status.externalProviders)}`);
+  }
+  if (bashProfile.install?.status !== 'installed' || bashMetadata?.installStatus !== 'installed' || bashMetadata.version !== '5.6.0') {
+    throw new Error(`Expected installed bash provider metadata: ${JSON.stringify(status.externalProviders)}`);
+  }
+  if (yamlMetadata.policy?.autoInstall !== false || bashMetadata.policy?.frontendCanProvideCommand !== false) {
+    throw new Error(`Expected read-only provider policy metadata: ${JSON.stringify(status.externalProviders)}`);
+  }
 
   const layout = createDefaultWorkbenchLayout('');
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
@@ -103,6 +114,10 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-source]').filter({ hasText: 'npm:yaml-language-server' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-audit-note]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-install-status]').filter({ hasText: 'installed' }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-version]').filter({ hasText: '5.6.0' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-close]').click();
     await page.locator('[data-ide-lsp-provider-status-dialog]').waitFor({ state: 'detached', timeout: 10_000 });
 

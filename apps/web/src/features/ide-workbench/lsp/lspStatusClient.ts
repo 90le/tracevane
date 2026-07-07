@@ -8,12 +8,43 @@ export type ExternalLspProviderRuntimeStatus =
   | "degraded"
   | "unavailable";
 
+export type ExternalLspProviderInstallStatus = "installed" | "missing" | "disabled" | "degraded" | string;
+
+export interface ExternalLspProviderInstallSummary {
+  status: ExternalLspProviderInstallStatus;
+  version?: string | null;
+  pinnedVersion?: string | null;
+  source?: string | null;
+  packageName?: string | null;
+  optional?: boolean;
+}
+
 export interface ExternalLspProviderProfile {
   id: string;
   label: string;
   languages: string[];
   capabilities: string[] | Record<string, boolean>;
   enabled: boolean;
+  install?: ExternalLspProviderInstallSummary;
+}
+
+export interface ExternalLspProviderMetadata {
+  providerId: string;
+  packageName: string;
+  source: string;
+  installMode: string;
+  installStatus: ExternalLspProviderInstallStatus;
+  version?: string | null;
+  pinnedVersion?: string | null;
+  license?: string | null;
+  optional?: boolean;
+  commandSource?: string | null;
+  audit?: { status?: string | null; summary?: string | null } | null;
+  policy?: {
+    autoInstall?: boolean;
+    frontendCanProvideCommand?: boolean;
+    notes?: string[];
+  } | null;
 }
 
 export interface ExternalLspProviderStatus {
@@ -40,6 +71,7 @@ export interface LspStatusResponse {
   externalProviders?: {
     profiles?: ExternalLspProviderProfile[];
     statuses?: ExternalLspProviderStatus[];
+    metadata?: ExternalLspProviderMetadata[];
   };
 }
 

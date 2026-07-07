@@ -41,7 +41,7 @@ import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView, useIdeDebugSnapshot } from "./debug";
 import { TerminalPanel } from "./terminal";
 import { summarizeExternalLspProviders, useLspExternalProviderStatus } from "./lsp";
-import type { ExternalLspProviderProfile, ExternalLspProviderStatus, LspStatusResponse } from "./lsp";
+import type { ExternalLspProviderMetadata, ExternalLspProviderProfile, ExternalLspProviderStatus, LspStatusResponse } from "./lsp";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import { useWorkbenchFileEvents, type WorkbenchFileEvent } from "./watcher";
@@ -780,7 +780,9 @@ function LspExternalProviderStatusDialog({
 }) {
   const profiles = status?.externalProviders?.profiles ?? [];
   const statuses = status?.externalProviders?.statuses ?? [];
+  const metadata = status?.externalProviders?.metadata ?? [];
   const byProviderId = React.useMemo(() => new Map(statuses.map((item) => [item.providerId, item])), [statuses]);
+  const metadataByProviderId = React.useMemo(() => new Map(metadata.map((item) => [item.providerId, item])), [metadata]);
   const summary = summarizeExternalLspProviders(status);
 
   return (
@@ -820,6 +822,7 @@ function LspExternalProviderStatusDialog({
                     key={profile.id}
                     profile={profile}
                     runtimeStatus={byProviderId.get(profile.id) ?? null}
+                    metadata={metadataByProviderId.get(profile.id) ?? null}
                   />
                 ))}
               </div>
@@ -837,11 +840,19 @@ function LspExternalProviderStatusDialog({
 function ExternalProviderStatusRow({
   profile,
   runtimeStatus,
+  metadata,
 }: {
   profile: ExternalLspProviderProfile;
   runtimeStatus: ExternalLspProviderStatus | null;
+  metadata: ExternalLspProviderMetadata | null;
 }) {
   const tone = lspRuntimeStatusTone(runtimeStatus?.status ?? (profile.enabled ? "stopped" : "unavailable"));
+  const install = profile.install;
+  const installStatus = metadata?.installStatus ?? install?.status ?? "unknown";
+  const version = metadata?.version ?? install?.version ?? null;
+  const pinnedVersion = metadata?.pinnedVersion ?? install?.pinnedVersion ?? null;
+  const source = metadata?.source ?? install?.source ?? null;
+  const packageName = metadata?.packageName ?? install?.packageName ?? null;
   return (
     <article
       className="grid gap-3 rounded-lg border border-line bg-panel p-3 text-sm"
@@ -860,6 +871,13 @@ function ExternalProviderStatusRow({
           <div className="mt-1 text-xs text-muted">
             languages: {profile.languages.join(", ") || "--"} · capabilities: {formatLspCapabilities(profile.capabilities)}
           </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-2xs" data-ide-lsp-provider-install-summary>
+            <span className={cn("rounded border px-1.5 py-0.5", lspInstallStatusTone(installStatus).className)} data-ide-lsp-provider-install-status>{installStatus}</span>
+            {version ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-version>version {version}</span> : null}
+            {pinnedVersion ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-pinned-version>pin {pinnedVersion}</span> : null}
+            {source ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-source>{source}</span> : null}
+            {packageName ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-package>{packageName}</span> : null}
+          </div>
         </div>
         <div className="grid gap-1 text-right font-mono text-2xs text-subtle">
           {typeof runtimeStatus?.pid === "number" ? <span>pid {runtimeStatus.pid}</span> : null}
@@ -867,6 +885,16 @@ function ExternalProviderStatusRow({
         </div>
       </div>
       {runtimeStatus?.reason ? <div className="text-xs text-muted">{runtimeStatus.reason}</div> : null}
+      {metadata?.audit?.summary ? (
+        <div className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-muted" data-ide-lsp-provider-audit-note>
+          Audit: {metadata.audit.summary}
+        </div>
+      ) : null}
+      {metadata?.policy?.notes?.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-xs text-muted" data-ide-lsp-provider-policy-notes>
+          {metadata.policy.notes.map((note) => <li key={note}>{note}</li>)}
+        </ul>
+      ) : null}
       {runtimeStatus?.lastError ? (
         <div className="rounded border border-danger/30 bg-danger/10 p-2 font-mono text-xs text-danger" data-ide-lsp-provider-status-last-error>
           {runtimeStatus.lastError}
@@ -894,6 +922,13 @@ function lspRuntimeStatusTone(status: string): { className: string } {
   if (status === "available" || status === "starting") return { className: "bg-success/10 text-success" };
   if (status === "crashed" || status === "degraded" || status === "unavailable") return { className: "bg-danger/10 text-danger" };
   return { className: "bg-panel-3 text-muted" };
+}
+
+function lspInstallStatusTone(status: string): { className: string } {
+  if (status === "installed") return { className: "border-success/30 bg-success/10 text-success" };
+  if (status === "missing" || status === "degraded") return { className: "border-warning/30 bg-warning/10 text-warning" };
+  if (status === "disabled") return { className: "border-line bg-disabled/10 text-disabled" };
+  return { className: "border-line bg-panel-2 text-muted" };
 }
 
 function formatStatusTimestamp(value: string): string {

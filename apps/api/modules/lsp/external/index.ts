@@ -3,3 +3,4 @@ export * from "./externalLanguageServerTypes.js";
 export * from "./externalProviderProfiles.js";
 export * from "./lspMessageFraming.js";
 export * from "./lspStdioTransport.js";
+export * from "./externalProviderMetadata.js";
