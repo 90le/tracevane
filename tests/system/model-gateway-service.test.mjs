@@ -11399,23 +11399,44 @@ test("model gateway degrades unsupported Responses built-in tools before Chat an
   assert.equal(upstreamCalls[0].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");
   assert.deepEqual(upstreamCalls[0].body.tools, [
     { type: "web_search_preview", search_context_size: "low" },
+    {
+      type: "function",
+      function: {
+        name: "file_search",
+        description: 'Search files available to the model. vector_store_ids=["vs_unsupported"] max_num_results=3',
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string", description: "Search query for the available files." } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+      },
+    },
   ]);
-  assert.equal(upstreamCalls[0].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", function: { name: "file_search" } });
   assert.deepEqual(upstreamCalls[0].body.messages, [
     { role: "user", content: "Use the available tools if possible." },
-    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"file_search","vector_store_ids":["vs_unsupported"],"max_num_results":3},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
-    { role: "user", content: '[OpenAI Responses tool_choice {"type":"file_search"}]' },
+    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
   ]);
 
   assert.equal(upstreamCalls[1].url, "https://anthropic-unsupported-responses-tools.example.test/v1/messages");
   assert.deepEqual(upstreamCalls[1].body.tools, [
     { type: "web_search_20250305", name: "web_search" },
+    {
+      name: "file_search",
+      description: 'Search files available to the model. vector_store_ids=["vs_unsupported"] max_num_results=3',
+      input_schema: {
+        type: "object",
+        properties: { query: { type: "string", description: "Search query for the available files." } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
   ]);
-  assert.equal(upstreamCalls[1].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "tool", name: "file_search" });
   assert.deepEqual(upstreamCalls[1].body.messages, [
     { role: "user", content: "Use the available tools if possible." },
-    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"file_search","vector_store_ids":["vs_unsupported"],"max_num_results":3},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
-    { role: "user", content: '[OpenAI Responses tool_choice {"type":"file_search"}]' },
+    { role: "user", content: 'OpenAI Responses unsupported tools: [{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation","size":"1024x1024"}]' },
   ]);
 
   assert.equal(upstreamCalls[2].url, "https://chat-unsupported-responses-tools.example.test/v1/chat/completions");

@@ -809,6 +809,7 @@ function collectResponsesCustomToolNames(tools: unknown): string[] {
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
   if (isOpenAIWebSearchToolType(tool.type)) return { ...tool };
+  if (tool.type === "file_search") return mapResponsesFileSearchToolToChat(tool);
   if (tool.type !== "function" && tool.type !== "custom") return null;
   const source = isRecord(tool.function) ? tool.function : tool;
   const name = stringOrNull(source.name);
@@ -831,6 +832,38 @@ function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   return {
     type: "function",
     function: fn,
+  };
+}
+
+
+function mapResponsesFileSearchToolToChat(tool: JsonRecord): JsonRecord {
+  const descriptionParts = ["Search files available to the model."];
+  if (Array.isArray(tool.vector_store_ids) && tool.vector_store_ids.length) {
+    descriptionParts.push(`vector_store_ids=${stringifyCompact(tool.vector_store_ids)}`);
+  }
+  if (tool.max_num_results !== undefined) {
+    descriptionParts.push(`max_num_results=${stringifyCompact(tool.max_num_results)}`);
+  }
+  if (tool.filters !== undefined) {
+    descriptionParts.push(`filters=${stringifyCompact(tool.filters)}`);
+  }
+  if (tool.ranking_options !== undefined) {
+    descriptionParts.push(`ranking_options=${stringifyCompact(tool.ranking_options)}`);
+  }
+  return {
+    type: "function",
+    function: {
+      name: "file_search",
+      description: descriptionParts.join(" "),
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query for the available files." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
   };
 }
 
@@ -927,6 +960,7 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
   if (!isRecord(toolChoice)) return undefined;
   if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: toolChoice.type };
+  if (toolChoice.type === "file_search") return { type: "function", function: { name: "file_search" } };
   if (toolChoice.type === "function") {
     const name = stringOrNull(toolChoice.name) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null);
     return name ? { type: "function", function: { name } } : undefined;
