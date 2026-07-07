@@ -1,10 +1,10 @@
 import * as React from "react";
-import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, FileDiff, GitBranch, Loader2, MinusSquare, PlusSquare, RefreshCcw, UploadCloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudDownload, CloudUpload, Copy, FileDiff, GitBranch, Link2, Loader2, MoreHorizontal, MinusSquare, Pencil, PlusSquare, RefreshCcw, Trash2, Unlink, UploadCloud } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
-import { applyGitStash, checkoutBranch, commitFiles, createBranch, dropGitStash, fetchBranch, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, saveGitStash, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
+import { applyGitStash, checkoutBranch, commitFiles, createBranch, deleteBranch, dropGitStash, fetchBranch, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, renameBranch, saveGitStash, setBranchUpstream, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
 import { appendWorkbenchOutput } from "../output";
 import type { GitStashEntry } from "../../../../../../types/git";
 import type { IdeGitDecoratedChange, IdeGitDecorationSnapshot } from "./gitDecorations";
@@ -26,6 +26,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   const [stashLoading, setStashLoading] = React.useState(false);
   const [stashError, setStashError] = React.useState<string | null>(null);
   const [stashRefreshTick, setStashRefreshTick] = React.useState(0);
+  const [openBranchMenu, setOpenBranchMenu] = React.useState<string | null>(null);
   React.useEffect(() => {
     const status = git.status;
     if (!rootId || !status?.available) {
@@ -135,7 +136,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     }
   }, [busyKey, git, refreshGitAndStashes, rootId]);
 
-  const runBranchAction = React.useCallback(async (kind: "create" | "checkout", target?: string) => {
+  const runBranchAction = React.useCallback(async (kind: "create" | "checkout" | "rename" | "delete" | "set-upstream" | "unset-upstream" | "copy", target?: string) => {
     const status = git.status;
     if (!status?.available || busyKey) return;
     if (kind === "create") {
@@ -162,20 +163,112 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       return;
     }
     const branch = String(target || "").trim();
-    if (!branch || branch === status.branch) return;
-    if (git.changes.length && !window.confirm(`当前工作区有 ${git.changes.length} 个变更。切换分支可能失败或影响工作区状态。继续 checkout ${branch}？`)) return;
-    setBusyKey(`branch:checkout:${branch}`);
-    try {
-      await checkoutBranch({ rootId, path: status.directoryPath, target: branch });
-      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git checkout ${branch}` });
-      toast.success(`已切换到 ${branch}`);
-      refreshGitAndStashes();
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch checkout failed: ${message}` });
-      toast.error("切换分支失败", { description: message });
-    } finally {
-      setBusyKey(null);
+    if (!branch) return;
+    if (kind === "copy") {
+      try {
+        await navigator.clipboard?.writeText(branch);
+        toast.success("已复制分支名");
+      } catch {
+        toast.error("复制分支名失败");
+      }
+      return;
+    }
+    if (kind === "checkout") {
+      if (branch === status.branch) return;
+      if (git.changes.length && !window.confirm(`当前工作区有 ${git.changes.length} 个变更。切换分支可能失败或影响工作区状态。继续 checkout ${branch}？`)) return;
+      setBusyKey(`branch:checkout:${branch}`);
+      try {
+        await checkoutBranch({ rootId, path: status.directoryPath, target: branch });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git checkout ${branch}` });
+        toast.success(`已切换到 ${branch}`);
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch checkout failed: ${message}` });
+        toast.error("切换分支失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    if (kind === "rename") {
+      const nextName = window.prompt(`将分支 ${branch} 重命名为：`, branch)?.trim() || "";
+      if (!nextName || nextName === branch) return;
+      const validationError = validateBranchName(nextName);
+      if (validationError) {
+        toast.error("分支名称不可用", { description: validationError });
+        return;
+      }
+      setBusyKey(`branch:rename:${branch}`);
+      try {
+        await renameBranch({ rootId, path: status.directoryPath, oldName: branch, newName: nextName });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git branch -m ${branch} ${nextName}` });
+        toast.success(`已重命名为 ${nextName}`);
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch rename failed: ${message}` });
+        toast.error("重命名分支失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    if (kind === "delete") {
+      if (branch === status.branch) {
+        toast.error("不能删除当前分支");
+        return;
+      }
+      const confirmation = window.prompt(`删除本地分支 ${branch}？请输入完整分支名确认：`)?.trim();
+      if (confirmation !== branch) return;
+      setBusyKey(`branch:delete:${branch}`);
+      try {
+        await deleteBranch({ rootId, path: status.directoryPath, name: branch });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git branch -d ${branch}` });
+        toast.success(`已删除分支 ${branch}`);
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch delete failed: ${message}` });
+        toast.error("删除分支失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    if (kind === "set-upstream") {
+      const upstream = window.prompt(`为 ${branch} 设置 upstream（例如 origin/${branch}）：`, status.upstream && branch === status.branch ? status.upstream : "")?.trim() || "";
+      if (!upstream) return;
+      setBusyKey(`branch:upstream:${branch}`);
+      try {
+        await setBranchUpstream({ rootId, path: status.directoryPath, branch, upstream });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git branch --set-upstream-to ${upstream} ${branch}` });
+        toast.success(`已设置 ${branch} upstream`);
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch upstream failed: ${message}` });
+        toast.error("设置 upstream 失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+    if (kind === "unset-upstream") {
+      if (!window.confirm(`取消 ${branch} 的 upstream？`)) return;
+      setBusyKey(`branch:upstream:${branch}`);
+      try {
+        await setBranchUpstream({ rootId, path: status.directoryPath, branch, unset: true });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: `git branch --unset-upstream ${branch}` });
+        toast.success(`已取消 ${branch} upstream`);
+        refreshGitAndStashes();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "error", text: `branch unset upstream failed: ${message}` });
+        toast.error("取消 upstream 失败", { description: message });
+      } finally {
+        setBusyKey(null);
+      }
     }
   }, [branchName, busyKey, git, refreshGitAndStashes, rootId]);
 
@@ -275,6 +368,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   const trackingLabel = formatTracking(status?.upstream ?? null, status?.ahead ?? 0, status?.behind ?? 0);
   const branchNameValidation = validateBranchName(branchName);
   const canCreateBranch = Boolean(branchName.trim()) && !branchNameValidation;
+  const selectedBranchForMenu = status?.branches.find((branch) => branch.name === openBranchMenu) ?? null;
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel" data-ide-sidebar data-ide-source-control-view>
       <div className="border-b border-line bg-panel px-3 py-2" data-ide-source-control-toolbar>
@@ -384,7 +478,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
           </div>
         ) : null}
         {status?.available ? (
-          <div className="mt-2 grid gap-2 rounded-md border border-line bg-panel-2 p-2" data-ide-source-control-branches>
+          <div className="relative mt-2 grid gap-2 rounded-md border border-line bg-panel-2 p-2" data-ide-source-control-branches>
             <div className="flex items-center justify-between gap-2 text-xs font-semibold text-ink-strong">
               <span>分支</span>
               <span className="text-2xs font-normal text-subtle" data-ide-source-control-branch-count>{status.branches.length} 个</span>
@@ -415,24 +509,41 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
             <div className="grid max-h-32 gap-1 overflow-auto pr-1 [scrollbar-width:thin]" data-ide-source-control-branch-list>
               {status.branches.length ? status.branches.map((branch) => (
                 <div key={branch.name} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded border border-line bg-canvas px-2 py-1 text-xs" data-ide-source-control-branch-row data-ide-source-control-branch-name-value={branch.name} data-ide-source-control-branch-current={branch.current ? "true" : "false"}>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-ink-strong">{branch.current ? "● " : ""}{branch.name}</div>
-                    <div className="truncate text-2xs text-subtle">{branch.upstream || branch.shortHash || branch.subject || "local branch"}</div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-2xs"
+                  <button
+                    type="button"
+                    className="min-w-0 text-left"
                     disabled={busyKey !== null || branch.current || stashLoading}
                     onClick={() => void runBranchAction("checkout", branch.name)}
                     data-ide-source-control-checkout-branch
                   >
-                    {busyKey === `branch:checkout:${branch.name}` ? <Loader2 className="size-3 animate-spin" /> : null}
-                    切换
+                    <div className="truncate font-medium text-ink-strong">{branch.current ? "● " : ""}{branch.name}</div>
+                    <div className="truncate text-2xs text-subtle">{branch.upstream || branch.shortHash || branch.subject || "local branch"}</div>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-7 px-0 text-2xs"
+                    disabled={busyKey !== null || stashLoading}
+                    aria-label={`Git branch actions for ${branch.name}`}
+                    onClick={() => setOpenBranchMenu((value) => value === branch.name ? null : branch.name)}
+                    data-ide-source-control-branch-actions
+                  >
+                    {busyKey?.includes(`:${branch.name}`) ? <Loader2 className="size-3 animate-spin" /> : <MoreHorizontal className="size-3.5" />}
                   </Button>
                 </div>
               )) : <span className="text-xs text-muted">暂无分支列表。</span>}
             </div>
+            {selectedBranchForMenu ? (
+              <div className="absolute right-3 top-24 z-50 w-52 rounded-lg border border-line bg-popover p-1 text-xs text-ink-strong shadow-xl" data-ide-source-control-branch-menu>
+                <BranchMenuButton icon={<GitBranch className="size-3.5" />} disabled={selectedBranchForMenu.current} onClick={() => { setOpenBranchMenu(null); void runBranchAction("checkout", selectedBranchForMenu.name); }}>切换到此分支</BranchMenuButton>
+                <BranchMenuButton icon={<Pencil className="size-3.5" />} onClick={() => { setOpenBranchMenu(null); void runBranchAction("rename", selectedBranchForMenu.name); }}>重命名</BranchMenuButton>
+                <BranchMenuButton icon={<Link2 className="size-3.5" />} onClick={() => { setOpenBranchMenu(null); void runBranchAction("set-upstream", selectedBranchForMenu.name); }}>设置 upstream</BranchMenuButton>
+                <BranchMenuButton icon={<Unlink className="size-3.5" />} disabled={!selectedBranchForMenu.upstream} onClick={() => { setOpenBranchMenu(null); void runBranchAction("unset-upstream", selectedBranchForMenu.name); }}>取消 upstream</BranchMenuButton>
+                <BranchMenuButton icon={<Copy className="size-3.5" />} onClick={() => { setOpenBranchMenu(null); void runBranchAction("copy", selectedBranchForMenu.name); }}>复制分支名</BranchMenuButton>
+                <div className="my-1 h-px bg-line" />
+                <BranchMenuButton danger icon={<Trash2 className="size-3.5" />} disabled={selectedBranchForMenu.current} onClick={() => { setOpenBranchMenu(null); void runBranchAction("delete", selectedBranchForMenu.name); }}>删除本地分支</BranchMenuButton>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -638,6 +749,31 @@ export function GitBadge({ label, tone }: { label: string; tone: IdeGitDecorated
     >
       {label}
     </span>
+  );
+}
+
+
+function BranchMenuButton({ children, disabled = false, danger = false, icon, onClick }: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  danger?: boolean;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+        danger ? "text-danger hover:bg-danger-soft" : "hover:bg-panel-2",
+        disabled && "pointer-events-none opacity-45",
+      )}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   );
 }
 

@@ -11,14 +11,17 @@ import {
   checkoutBranch,
   commitFiles,
   createBranch,
+  deleteBranch,
   getGitCommitDetail,
   getGitDiff,
   getGitStashes,
   getGitStatus,
   publishBranch,
   pullBranch,
+  renameBranch,
   pushBranch,
   saveGitStash,
+  setBranchUpstream,
   dropGitStash,
   popGitStash,
   stageFiles,
@@ -30,9 +33,12 @@ import type {
   GitCommitDetailParams,
   GitCommitParams,
   GitCreateBranchParams,
+  GitDeleteBranchParams,
   GitDiffParams,
   GitPublishBranchParams,
   GitRemoteActionParams,
+  GitRenameBranchParams,
+  GitSetBranchUpstreamParams,
   GitStageParams,
   GitStashActionParams,
   GitStashListParams,
@@ -244,6 +250,52 @@ export function useCheckoutBranchMutation(
   const invalidate = useInvalidateGitSurface();
   return useMutation<GitStatusPayload, ApiError, GitCheckoutParams>({
     mutationFn: (payload) => checkoutBranch(payload),
+    ...options,
+    onSuccess: (...args) => {
+      invalidate();
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+
+/** Delete a local branch (`/api/git/branches/delete`). Guarded server-side; force delete is rejected in M9-C. */
+export function useDeleteBranchMutation(
+  options?: MutationOpts<GitStatusPayload, GitDeleteBranchParams>,
+) {
+  const invalidate = useInvalidateGitSurface();
+  return useMutation<GitStatusPayload, ApiError, GitDeleteBranchParams>({
+    mutationFn: (payload) => deleteBranch(payload),
+    ...options,
+    onSuccess: (...args) => {
+      invalidate();
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+/** Rename a local branch (`/api/git/branches/rename`). */
+export function useRenameBranchMutation(
+  options?: MutationOpts<GitStatusPayload, GitRenameBranchParams>,
+) {
+  const invalidate = useInvalidateGitSurface();
+  return useMutation<GitStatusPayload, ApiError, GitRenameBranchParams>({
+    mutationFn: (payload) => renameBranch(payload),
+    ...options,
+    onSuccess: (...args) => {
+      invalidate();
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+/** Set or unset a local branch upstream (`/api/git/branches/upstream`). */
+export function useSetBranchUpstreamMutation(
+  options?: MutationOpts<GitStatusPayload, GitSetBranchUpstreamParams>,
+) {
+  const invalidate = useInvalidateGitSurface();
+  return useMutation<GitStatusPayload, ApiError, GitSetBranchUpstreamParams>({
+    mutationFn: (payload) => setBranchUpstream(payload),
     ...options,
     onSuccess: (...args) => {
       invalidate();

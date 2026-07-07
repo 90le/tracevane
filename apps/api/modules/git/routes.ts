@@ -5,15 +5,18 @@ import type { TracevaneRouter } from "../../core/router.js";
 import type {
   GitCheckoutRequest,
   GitCommitDetailRequest,
+  GitDeleteBranchRequest,
   GitCommitRequest,
   GitCreateBranchRequest,
   GitDiffRequest,
   GitPathActionRequest,
   GitPublishBranchRequest,
+  GitRenameBranchRequest,
   GitRemoteActionRequest,
   GitRepositoryRequest,
   GitStashActionRequest,
   GitStashSaveRequest,
+  GitSetUpstreamRequest,
 } from "../../../../types/git.js";
 
 function readUrl(req: http.IncomingMessage): URL {
@@ -132,6 +135,50 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
         payload.path || "",
         payload.target || "",
         payload.detach === true,
+      ),
+    );
+  });
+
+
+  router.post("/api/git/branches/delete", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitDeleteBranchRequest>(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.deleteBranch(
+        payload.rootId || "",
+        payload.path || "",
+        payload.name || "",
+        payload.force === true,
+      ),
+    );
+  });
+
+  router.post("/api/git/branches/rename", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRenameBranchRequest>(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.renameBranch(
+        payload.rootId || "",
+        payload.path || "",
+        payload.oldName || "",
+        payload.newName || "",
+      ),
+    );
+  });
+
+  router.post("/api/git/branches/upstream", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitSetUpstreamRequest>(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.setBranchUpstream(
+        payload.rootId || "",
+        payload.path || "",
+        payload.branch || "",
+        payload.upstream || "",
+        payload.unset === true,
       ),
     );
   });

@@ -187,6 +187,47 @@ export function checkoutBranch(params: GitCheckoutParams): Promise<GitStatusPayl
   });
 }
 
+
+/** POST /api/git/branches/delete — guarded local branch delete. */
+export interface GitDeleteBranchParams extends GitMutationParams {
+  name: string;
+  force?: boolean;
+}
+export function deleteBranch(params: GitDeleteBranchParams): Promise<GitStatusPayload> {
+  const { rootId, path, name, force } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/branches/delete`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", name, force }),
+  });
+}
+
+/** POST /api/git/branches/rename — guarded local branch rename. */
+export interface GitRenameBranchParams extends GitMutationParams {
+  oldName: string;
+  newName: string;
+}
+export function renameBranch(params: GitRenameBranchParams): Promise<GitStatusPayload> {
+  const { rootId, path, oldName, newName } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/branches/rename`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", oldName, newName }),
+  });
+}
+
+/** POST /api/git/branches/upstream — guarded upstream set/unset. */
+export interface GitSetBranchUpstreamParams extends GitMutationParams {
+  branch: string;
+  upstream?: string;
+  unset?: boolean;
+}
+export function setBranchUpstream(params: GitSetBranchUpstreamParams): Promise<GitStatusPayload> {
+  const { rootId, path, branch, upstream, unset } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/branches/upstream`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", branch, upstream, unset }),
+  });
+}
+
 /** Shared remote/ref selector for pull/push/sync. Empty remote+branch means upstream. */
 export interface GitRemoteActionParams extends GitMutationParams {
   remote?: string;

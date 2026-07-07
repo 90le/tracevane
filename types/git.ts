@@ -146,6 +146,23 @@ export interface GitCheckoutRequest extends GitRepositoryRequest {
   detach?: boolean;
 }
 
+export interface GitDeleteBranchRequest extends GitRepositoryRequest {
+  name?: string;
+  /** M9-C intentionally rejects force delete; kept for explicit API guard messaging. */
+  force?: boolean;
+}
+
+export interface GitRenameBranchRequest extends GitRepositoryRequest {
+  oldName?: string;
+  newName?: string;
+}
+
+export interface GitSetUpstreamRequest extends GitRepositoryRequest {
+  branch?: string;
+  upstream?: string;
+  unset?: boolean;
+}
+
 export interface GitRemoteActionRequest extends GitRepositoryRequest {
   /** Optional remote name. When omitted, Git uses the current branch upstream. */
   remote?: string;

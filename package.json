@@ -119,7 +119,8 @@
     "ide:rc:quick": "node scripts/ide-rc-matrix.mjs --quick",
     "ide:rc:quick:dry": "node scripts/ide-rc-matrix.mjs --quick --dry-run",
     "ide:rc:full": "node scripts/ide-rc-matrix.mjs --full",
-    "ide:rc:full:dry": "node scripts/ide-rc-matrix.mjs --full --dry-run"
+    "ide:rc:full:dry": "node scripts/ide-rc-matrix.mjs --full --dry-run",
+    "smoke:ide:git-branch-management": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5208} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5208} -- node tests/ide-workbench/ide-git-branch-management.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

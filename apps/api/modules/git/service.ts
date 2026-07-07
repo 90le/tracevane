@@ -38,6 +38,9 @@ export interface GitService {
   commit(rootId: string, directoryPath: string | undefined, message?: string): GitStatusPayload;
   createBranch(rootId: string, directoryPath: string | undefined, name?: string, checkout?: boolean, from?: string): GitStatusPayload;
   checkout(rootId: string, directoryPath: string | undefined, target?: string, detach?: boolean): GitStatusPayload;
+  deleteBranch(rootId: string, directoryPath: string | undefined, name?: string, force?: boolean): GitStatusPayload;
+  renameBranch(rootId: string, directoryPath: string | undefined, oldName?: string, newName?: string): GitStatusPayload;
+  setBranchUpstream(rootId: string, directoryPath: string | undefined, branch?: string, upstream?: string, unset?: boolean): GitStatusPayload;
   fetch(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
   pull(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
   push(rootId: string, directoryPath: string | undefined, remote?: string, branch?: string): GitStatusPayload;
@@ -532,6 +535,46 @@ function listBranches(repositoryRoot: string): GitBranchSummary[] {
   }
 }
 
+function listRemoteBranches(repositoryRoot: string): string[] {
+  try {
+    const output = runGit(repositoryRoot, ["branch", "-r", "--format=%(refname:short)"]);
+    return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function assertLocalBranch(repositoryRoot: string, name: string, label = "Branch name"): string {
+  const branchName = normalizeGitRefName(name, label);
+  if (branchName === "HEAD") throw new Error(`${label} cannot be HEAD`);
+  const exists = listBranches(repositoryRoot).some((branch) => branch.name === branchName);
+  if (!exists) {
+    const remoteExists = listRemoteBranches(repositoryRoot).some((branch) => branch === branchName);
+    throw new Error(remoteExists ? "Remote-tracking branch management is not supported here" : "Git branch does not exist");
+  }
+  return branchName;
+}
+
+function assertBranchTargetAvailable(repositoryRoot: string, name: string): string {
+  const branchName = normalizeGitRefName(name, "New branch name");
+  if (branchName === "HEAD") throw new Error("New branch name cannot be HEAD");
+  if (listBranches(repositoryRoot).some((branch) => branch.name === branchName)) {
+    throw new Error("Target Git branch already exists");
+  }
+  return branchName;
+}
+
+function assertRemoteTrackingBranch(repositoryRoot: string, upstream: string): string {
+  const upstreamName = normalizeGitRefName(upstream, "Git upstream");
+  if (!upstreamName.includes("/")) {
+    throw new Error("Git upstream must be a remote-tracking branch such as origin/main");
+  }
+  if (!listRemoteBranches(repositoryRoot).some((branch) => branch === upstreamName)) {
+    throw new Error("Git upstream remote-tracking branch does not exist");
+  }
+  return upstreamName;
+}
+
 function parseCommitLine(line: string): GitCommitSummary | null {
   const [hash = "", shortHash = "", authorName = "", authorEmail = "", date = "", refs = "", subject = ""] = line.split("\0");
   if (!hash.trim()) return null;
@@ -834,6 +877,44 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       const normalizedTarget = normalizeGitRefName(target, "Checkout target");
       runGit(repositoryRoot, detach ? ["checkout", "--detach", normalizedTarget] : ["checkout", normalizedTarget]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    deleteBranch(rootId: string, directoryPath = "", name = "", force = false): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      if (force) {
+        throw new Error("Force deleting Git branches is not supported by the IDE branch manager");
+      }
+      const branchName = assertLocalBranch(repositoryRoot, name);
+      const current = currentBranchName(repositoryRoot);
+      if (branchName === current) {
+        throw new Error("Cannot delete the current Git branch");
+      }
+      runGit(repositoryRoot, ["branch", "-d", branchName]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    renameBranch(rootId: string, directoryPath = "", oldName = "", newName = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const sourceName = assertLocalBranch(repositoryRoot, oldName, "Old branch name");
+      const targetName = assertBranchTargetAvailable(repositoryRoot, newName);
+      if (sourceName === targetName) {
+        throw new Error("New branch name must be different");
+      }
+      const current = currentBranchName(repositoryRoot);
+      runGit(repositoryRoot, sourceName === current ? ["branch", "-m", targetName] : ["branch", "-m", sourceName, targetName]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    setBranchUpstream(rootId: string, directoryPath = "", branch = "", upstream = "", unset = false): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const branchName = assertLocalBranch(repositoryRoot, branch || currentBranchName(repositoryRoot));
+      if (unset) {
+        runGit(repositoryRoot, ["branch", "--unset-upstream", branchName]);
+        return buildStatus(resolved.root.id, resolved.relativePath);
+      }
+      const upstreamName = assertRemoteTrackingBranch(repositoryRoot, upstream);
+      runGit(repositoryRoot, ["branch", "--set-upstream-to", upstreamName, branchName]);
       return buildStatus(resolved.root.id, resolved.relativePath);
     },
 
