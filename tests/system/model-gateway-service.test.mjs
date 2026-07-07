@@ -14307,7 +14307,17 @@ test("model gateway preserves structured responses tool outputs through Chat and
     content: [{
       type: "tool_result",
       tool_use_id: "call_lookup",
-      content: '[{"text":"weather:","type":"output_text"},{"image_url":"data:image/png;base64,abc123","type":"input_image"}]',
+      content: [{
+        type: "text",
+        text: "weather:",
+      }, {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/png",
+          data: "abc123",
+        },
+      }],
     }],
   });
   assert.equal(upstreamCalls[1].xApiKey, "sk-codex-structured-tool-output-anthropic-secret");

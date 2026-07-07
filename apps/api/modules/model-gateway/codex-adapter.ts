@@ -25,6 +25,7 @@ export interface CodexResponsesChatRequestAdapterResult {
 export interface CodexResponsesChatRequestAdapterOptions {
   allowStreaming?: boolean;
   preserveReasoningEffort?: boolean;
+  preserveToolOutputContent?: boolean;
   reasoning?: ModelGatewayProviderReasoning | null;
 }
 
@@ -65,7 +66,7 @@ export function adaptCodexResponsesRequestToChat(
   if (instructions) {
     messages.push({ role: "system", content: instructions });
   }
-  appendResponsesInputMessages(request.input ?? request.messages, messages);
+  appendResponsesInputMessages(request.input ?? request.messages, messages, options);
   const unsupportedToolChoiceText = responsesUnsupportedToolChoiceToText(request.tool_choice);
   if (unsupportedToolChoiceText) {
     messages.push({ role: "user", content: unsupportedToolChoiceText });
@@ -336,7 +337,11 @@ function parseJsonObject(bodyText: string | undefined): JsonRecord {
   );
 }
 
-function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): void {
+function appendResponsesInputMessages(
+  input: unknown,
+  messages: JsonRecord[],
+  options: CodexResponsesChatRequestAdapterOptions = {},
+): void {
   if (typeof input === "string") {
     messages.push({ role: "user", content: input });
     return;
@@ -368,7 +373,7 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
       pendingReasoningText = "";
       pendingReasoningItems.length = 0;
     }
-    const message = mapResponsesInputItemToChatMessage(item);
+    const message = mapResponsesInputItemToChatMessage(item, options);
     if (message) {
       if (message.role === "assistant") {
         if (pendingReasoningText && message.reasoning_content === undefined) message.reasoning_content = pendingReasoningText;
@@ -381,14 +386,19 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText, pendingReasoningItems);
 }
 
-function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
+function mapResponsesInputItemToChatMessage(
+  item: unknown,
+  options: CodexResponsesChatRequestAdapterOptions = {},
+): JsonRecord | null {
   if (typeof item === "string") return { role: "user", content: item };
   if (!isRecord(item)) return null;
 
   if (isResponsesToolOutputItem(item)) {
     const toolCallId = stringOrNull(item.call_id) || stringOrNull(item.id);
     if (!toolCallId) return null;
-    const output = canonicalizeJsonStringIfParseable(responsesToolOutputToChatContent(item.output));
+    const output = options.preserveToolOutputContent
+      ? contentToChatContent(item.output, "user")
+      : canonicalizeJsonStringIfParseable(responsesToolOutputToChatContent(item.output));
     return {
       role: "tool",
       content: output,

@@ -10646,6 +10646,7 @@ export function createModelGatewayService(
           ? adaptCodexResponsesRequestToChat(enriched?.bodyText, {
             allowStreaming: true,
             preserveReasoningEffort: true,
+            preserveToolOutputContent: true,
             reasoning: provider.reasoning,
           })
           : null;
