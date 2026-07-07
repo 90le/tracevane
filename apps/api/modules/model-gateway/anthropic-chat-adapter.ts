@@ -225,10 +225,15 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   }
 
   const tools = mapAnthropicToolsToChat(request.tools);
-  if (options.preserveMcpServers) tools.push(...mapAnthropicMcpServersToResponsesTools(request.mcp_servers));
+  if (options.preserveMcpServers) tools.push(...mapAnthropicMcpServersToResponsesTools(request.mcp_servers, request.tools));
   if (tools.length) chatRequest.tools = tools;
 
-  const toolChoice = mapAnthropicToolChoiceToChat(request.tool_choice);
+  const toolChoice = mapAnthropicToolChoiceToChat(
+    request.tool_choice,
+    options.preserveMcpServers
+      ? { mcpServers: request.mcp_servers, mcpToolsets: request.tools, chatTools: tools }
+      : undefined,
+  );
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
 
   const parallelToolCalls = mapAnthropicParallelToolUseToChat(request.tool_choice);
@@ -1121,17 +1126,22 @@ function mapAnthropicServiceTierToOpenAI(value: unknown): string | null {
   return null;
 }
 
-function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown): JsonRecord[] {
+function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown, mcpToolsetsSource?: unknown): JsonRecord[] {
   if (!Array.isArray(mcpServers)) return [];
+  const mcpToolsets = anthropicMcpToolsetsByServerName(mcpToolsetsSource);
+  const hasToolsets = mcpToolsets.size > 0;
   return mcpServers.flatMap((server) => {
     if (!isRecord(server)) return [];
     if (server.type !== "url") return [];
     const serverLabel = stringOrNull(server.name) || stringOrNull(server.server_label);
     const serverUrl = stringOrNull(server.url) || stringOrNull(server.server_url);
     if (!serverLabel || !serverUrl) return [];
+    const mcpToolset = mcpToolsets.get(serverLabel) || null;
+    if (hasToolsets && !mcpToolset) return [];
 
     const toolConfiguration = isRecord(server.tool_configuration) ? server.tool_configuration : null;
-    if (toolConfiguration?.enabled === false) return [];
+    const toolsetDefaultConfig = isRecord(mcpToolset?.default_config) ? mcpToolset.default_config : null;
+    if (!mcpToolset && toolConfiguration?.enabled === false) return [];
 
     const tool: JsonRecord = {
       type: "mcp",
@@ -1142,22 +1152,25 @@ function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown): JsonRecord
     if (description) tool.server_description = description;
     const authorization = stringOrNull(server.authorization_token) || stringOrNull(server.authorization);
     if (authorization) tool.authorization = authorization;
-    const allowedToolsSource = Array.isArray(toolConfiguration?.allowed_tools)
-      ? toolConfiguration.allowed_tools
-      : Array.isArray(server.allowed_tools)
-        ? server.allowed_tools
-        : [];
-    const allowedTools = allowedToolsSource.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    const allowedTools = mcpToolset
+      ? anthropicMcpToolsetAllowedTools(mcpToolset)
+      : anthropicStringArray(Array.isArray(toolConfiguration?.allowed_tools)
+        ? toolConfiguration.allowed_tools
+        : Array.isArray(server.allowed_tools)
+          ? server.allowed_tools
+          : []);
     if (allowedTools.length) tool.allowed_tools = allowedTools;
 
     const requireApproval = server.require_approval ?? toolConfiguration?.require_approval;
     if (requireApproval !== undefined) tool.require_approval = requireApproval;
 
-    const deferLoading = typeof server.defer_loading === "boolean"
-      ? server.defer_loading
-      : typeof toolConfiguration?.defer_loading === "boolean"
-        ? toolConfiguration.defer_loading
-        : undefined;
+    const deferLoading = typeof toolsetDefaultConfig?.defer_loading === "boolean"
+      ? toolsetDefaultConfig.defer_loading
+      : typeof server.defer_loading === "boolean"
+        ? server.defer_loading
+        : typeof toolConfiguration?.defer_loading === "boolean"
+          ? toolConfiguration.defer_loading
+          : undefined;
     if (deferLoading !== undefined) tool.defer_loading = deferLoading;
     return [tool];
   });
@@ -1201,7 +1214,10 @@ function mapAnthropicMcpServersToChatContext(mcpServers: unknown): string[] {
   });
 }
 
-function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
+function mapAnthropicToolChoiceToChat(
+  toolChoice: unknown,
+  context?: { mcpServers?: unknown; mcpToolsets?: unknown; chatTools?: unknown },
+): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
   if (!isRecord(toolChoice)) return toolChoice;
@@ -1210,9 +1226,75 @@ function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
     if (name === "web_search") return { type: "web_search_preview" };
+    const mcpServerLabel = name ? anthropicMcpToolChoiceServerLabel(name, context) : null;
+    if (mcpServerLabel) return { type: "mcp", server_label: mcpServerLabel, name };
     return name ? { type: "function", function: { name } } : toolChoice;
   }
   return toolChoice;
+}
+
+function anthropicMcpToolsetsByServerName(tools: unknown): Map<string, JsonRecord> {
+  const result = new Map<string, JsonRecord>();
+  if (!Array.isArray(tools)) return result;
+  for (const tool of tools) {
+    if (!isRecord(tool) || tool.type !== "mcp_toolset") continue;
+    const serverName = stringOrNull(tool.mcp_server_name);
+    if (serverName && !result.has(serverName)) result.set(serverName, tool);
+  }
+  return result;
+}
+
+function anthropicMcpToolsetAllowedTools(toolset: JsonRecord): string[] {
+  const defaultConfig = isRecord(toolset.default_config) ? toolset.default_config : null;
+  const configs = isRecord(toolset.configs) ? toolset.configs : null;
+  if (defaultConfig?.enabled !== false || !configs) return [];
+  return Object.entries(configs)
+    .filter(([, config]) => isRecord(config) && config.enabled === true)
+    .map(([name]) => name)
+    .filter((name) => name.length > 0);
+}
+
+function anthropicMcpToolChoiceServerLabel(
+  toolName: string,
+  context?: { mcpServers?: unknown; mcpToolsets?: unknown; chatTools?: unknown },
+): string | null {
+  if (!context || anthropicChatToolsContainFunction(context.chatTools, toolName)) return null;
+  const serverLabels = anthropicMcpServerLabels(context.mcpServers);
+  if (!serverLabels.length) return null;
+  const toolsets = anthropicMcpToolsetsByServerName(context.mcpToolsets);
+  const explicitMatches = [...toolsets.entries()]
+    .filter(([serverLabel]) => serverLabels.includes(serverLabel))
+    .filter(([, toolset]) => anthropicMcpToolsetAllowedTools(toolset).includes(toolName))
+    .map(([serverLabel]) => serverLabel);
+  if (explicitMatches.length === 1) return explicitMatches[0];
+  if (explicitMatches.length > 1) return null;
+  if (serverLabels.length === 1) return serverLabels[0];
+  return null;
+}
+
+function anthropicMcpServerLabels(mcpServers: unknown): string[] {
+  if (!Array.isArray(mcpServers)) return [];
+  return mcpServers.flatMap((server): string[] => {
+    if (!isRecord(server) || server.type !== "url") return [];
+    const toolConfiguration = isRecord(server.tool_configuration) ? server.tool_configuration : null;
+    if (toolConfiguration?.enabled === false) return [];
+    const serverLabel = stringOrNull(server.name) || stringOrNull(server.server_label);
+    return serverLabel ? [serverLabel] : [];
+  });
+}
+
+function anthropicChatToolsContainFunction(tools: unknown, toolName: string): boolean {
+  if (!Array.isArray(tools)) return false;
+  return tools.some((tool) => {
+    if (!isRecord(tool) || tool.type !== "function") return false;
+    const fn = isRecord(tool.function) ? tool.function : {};
+    return stringOrNull(fn.name) === toolName || stringOrNull(tool.name) === toolName;
+  });
+}
+
+function anthropicStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function mapAnthropicParallelToolUseToChat(toolChoice: unknown): boolean | undefined {
