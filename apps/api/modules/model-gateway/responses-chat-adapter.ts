@@ -513,6 +513,7 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
         const detail = stringOrNull(image?.detail) || stringOrNull(part.detail);
         if (detail) imagePart.detail = detail;
         parts.push(imagePart);
+        appendChatCacheControlNoteForResponses(parts, part, textType);
       } else {
         parts.push(chatContentPartFallbackToResponsesText(part, textType));
       }
@@ -520,13 +521,22 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
     }
     if (type === "input_image" && role !== "assistant") {
       const imagePart = chatInputImagePartToResponsesInputImage(part);
-      parts.push(imagePart || chatContentPartFallbackToResponsesText(part, textType));
+      if (imagePart) {
+        parts.push(imagePart);
+        appendChatCacheControlNoteForResponses(parts, part, textType);
+      } else {
+        parts.push(chatContentPartFallbackToResponsesText(part, textType));
+      }
       continue;
     }
     if ((type === "file" || type === "input_file") && role !== "assistant") {
       const fileParts = chatFilePartToResponsesInputParts(part);
-      if (fileParts.length) parts.push(...fileParts);
-      else parts.push(chatContentPartFallbackToResponsesText(part, textType));
+      if (fileParts.length) {
+        parts.push(...fileParts);
+        appendChatCacheControlNoteForResponses(parts, part, textType);
+      } else {
+        parts.push(chatContentPartFallbackToResponsesText(part, textType));
+      }
       continue;
     }
     if (type === "refusal" && role === "assistant") {
@@ -536,8 +546,12 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       continue;
     }
     const text = chatContentPartToText(part);
-    if (text) parts.push({ type: textType, text });
-    else if (type) parts.push(chatContentPartFallbackToResponsesText(part, textType));
+    if (text) {
+      parts.push({ type: textType, text });
+      appendChatCacheControlNoteForResponses(parts, part, textType);
+    } else if (type) {
+      parts.push(chatContentPartFallbackToResponsesText(part, textType));
+    }
   }
   return parts;
 }
@@ -547,6 +561,14 @@ function chatContentPartFallbackToResponsesText(part: JsonRecord, textType: stri
     type: textType,
     text: `OpenAI Chat unrecognized content part for Responses: ${stringifyCompact(part)}`,
   };
+}
+
+function appendChatCacheControlNoteForResponses(parts: JsonRecord[], part: JsonRecord, textType: string): void {
+  if (part.cache_control === undefined) return;
+  parts.push({
+    type: textType,
+    text: `OpenAI Chat content part cache_control preserved for Responses: ${stringifyCompact(part.cache_control)}`,
+  });
 }
 
 function chatInputImagePartToResponsesInputImage(part: JsonRecord): JsonRecord | null {

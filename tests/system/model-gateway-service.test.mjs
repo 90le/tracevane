@@ -16618,7 +16618,7 @@ test("model gateway preserves unknown chat content parts before provider adapter
   const chatMessages = [{
     role: "user",
     content: [
-      { type: "text", text: "keep text" },
+      { type: "text", text: "keep text", cache_control: { type: "ephemeral" } },
       { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav", transcript: "chat request audio transcript" } },
       { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } },
       { type: "image_url", image_url: { detail: "high" } },
@@ -16673,6 +16673,8 @@ test("model gateway preserves unknown chat content parts before provider adapter
   assert.equal(upstreamCalls[0].url, "https://chat-unknown-content-to-responses.example.test/v1/responses");
   const responsesInput = JSON.stringify(upstreamCalls[0].body.input);
   assert.match(responsesInput, /keep text/);
+  assert.match(responsesInput, /OpenAI Chat content part cache_control preserved for Responses/);
+  assert.match(responsesInput, /cache_control/);
   assert.match(responsesInput, /chat request audio transcript/);
   assert.match(responsesInput, /OpenAI Chat unrecognized content part for Responses/);
   assert.match(responsesInput, /input_audio/);
@@ -16682,6 +16684,7 @@ test("model gateway preserves unknown chat content parts before provider adapter
   assert.equal(upstreamCalls[1].url, "https://chat-unknown-content-to-anthropic.example.test/v1/messages");
   const anthropicMessages = JSON.stringify(upstreamCalls[1].body.messages);
   assert.match(anthropicMessages, /keep text/);
+  assert.match(anthropicMessages, /cache_control/);
   assert.match(anthropicMessages, /chat request audio transcript/);
   assert.match(anthropicMessages, /OpenAI Chat unrecognized content part for Anthropic Messages/);
   assert.match(anthropicMessages, /input_audio/);
