@@ -368,18 +368,25 @@ function responsesFunctionCallItemId(callId: string): string {
 }
 
 function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | null {
-  if (!isRecord(item) || item.type !== "function_call") return null;
+  if (!isRecord(item) || (item.type !== "function_call" && item.type !== "custom_tool_call")) return null;
   const name = stringOrNull(item.name);
-  const id = stringOrNull(item.call_id);
+  const id = stringOrNull(item.call_id) || stringOrNull(item.id);
   if (!name || !id) return null;
   return {
     id,
     type: "function",
     function: {
       name,
-      arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+      arguments: item.type === "custom_tool_call"
+        ? customToolArgumentsFromResponsesInput(item.input)
+        : typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
     },
   };
+}
+
+function customToolArgumentsFromResponsesInput(input: unknown): string {
+  if (isRecord(input)) return JSON.stringify(input);
+  return JSON.stringify({ input: typeof input === "string" ? input : stringifyCompact(input ?? "") });
 }
 
 function collectResponseOutputText(response: JsonRecord, output: unknown[]): string {

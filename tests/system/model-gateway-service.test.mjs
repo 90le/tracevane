@@ -14833,6 +14833,158 @@ test("model gateway preserves non-streaming responses reasoning summaries throug
   assert.equal(upstreamCalls[1].url, "https://responses-reasoning-json.example.test/v1/responses");
 });
 
+test("model gateway preserves non-streaming responses function and custom tool calls through chat and anthropic", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-tool-json-adapter",
+      name: "Responses Tool JSON Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-tool-json.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-tool-json-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    const responseId = upstreamCalls.length === 1 ? "resp_tool_chat_json" : "resp_tool_anthropic_json";
+    return new Response(JSON.stringify({
+      id: responseId,
+      object: "response",
+      created_at: 1_710_000_111,
+      status: "completed",
+      model: "gpt-tools",
+      output: [{
+        id: "fc_lookup",
+        type: "function_call",
+        status: "completed",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }, {
+        id: "call_patch",
+        type: "custom_tool_call",
+        status: "completed",
+        call_id: "call_patch",
+        name: "apply_patch",
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      }],
+      usage: {
+        input_tokens: 7,
+        output_tokens: 3,
+        total_tokens: 10,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-tools",
+          stream: false,
+          messages: [{ role: "user", content: "Use tools" }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }, {
+            type: "function",
+            function: {
+              name: "apply_patch",
+              parameters: {
+                type: "object",
+                properties: { input: { type: "string" } },
+                required: ["input"],
+              },
+            },
+          }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.content, null);
+      assert.equal(chat.body.choices[0].finish_reason, "tool_calls");
+      assert.deepEqual(chat.body.choices[0].message.tool_calls, [{
+        id: "fc_lookup",
+        type: "function",
+        function: {
+          name: "lookup",
+          arguments: "{\"query\":\"docs\"}",
+        },
+      }, {
+        id: "call_patch",
+        type: "function",
+        function: {
+          name: "apply_patch",
+          arguments: "{\"input\":\"*** Begin Patch\\n*** Add File: probe.txt\\n+ok\\n*** End Patch\\n\"}",
+        },
+      }]);
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-tools",
+          max_tokens: 64,
+          stream: false,
+          messages: [{ role: "user", content: "Use tools" }],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }, {
+            name: "apply_patch",
+            input_schema: {
+              type: "object",
+              properties: { input: { type: "string" } },
+              required: ["input"],
+            },
+          }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      assert.deepEqual(anthropic.body.content, [{
+        type: "tool_use",
+        id: "fc_lookup",
+        name: "lookup",
+        input: { query: "docs" },
+      }, {
+        type: "tool_use",
+        id: "call_patch",
+        name: "apply_patch",
+        input: { input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n" },
+      }]);
+      assert.equal(anthropic.body.stop_reason, "tool_use");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-tool-json.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-tool-json-secret");
+  assert.equal(upstreamCalls[1].url, "https://responses-tool-json.example.test/v1/responses");
+});
+
 test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
