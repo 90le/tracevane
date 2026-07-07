@@ -4348,10 +4348,19 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     next.include = include;
 
     for (const field of [
+      "background",
+      "frequency_penalty",
+      "logprobs",
       "max_output_tokens",
       "max_completion_tokens",
+      "max_tool_calls",
+      "modalities",
+      "n",
+      "presence_penalty",
+      "seed",
       "temperature",
       "top_p",
+      "top_logprobs",
       "truncation",
       "context_management",
       "conversation",

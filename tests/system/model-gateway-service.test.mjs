@@ -1478,7 +1478,7 @@ test("model gateway preserves Codex account GPT-5.5 product context cap while re
   assert.equal(gpt53Spark.maxOutputTokens, null);
 });
 
-test("model gateway strips unsupported metadata from direct Codex account Responses requests", async () => {
+test("model gateway strips Codex account Responses unsupported request parameters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
@@ -1611,12 +1611,21 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
               cache_control: { type: "ephemeral" },
             }],
           }],
+          background: false,
+          frequency_penalty: 0.1,
+          logprobs: true,
+          max_tool_calls: 1,
           metadata: {
             trace_id: "claude-code-cli",
             session_id: "metadata-regression",
           },
+          modalities: ["text"],
+          n: 1,
+          presence_penalty: 0.1,
           conversation: "conv_unsupported_codex_account",
+          seed: 123,
           stream: false,
+          top_logprobs: 1,
         },
       });
       assert.equal(response.status, 200);
@@ -1654,8 +1663,17 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
     const upstreamBody = JSON.parse(upstreamCall.body);
+    assert.equal(upstreamBody.background, undefined);
+    assert.equal(upstreamBody.frequency_penalty, undefined);
+    assert.equal(upstreamBody.logprobs, undefined);
+    assert.equal(upstreamBody.max_tool_calls, undefined);
     assert.equal(upstreamBody.metadata, undefined);
+    assert.equal(upstreamBody.modalities, undefined);
+    assert.equal(upstreamBody.n, undefined);
+    assert.equal(upstreamBody.presence_penalty, undefined);
     assert.equal(upstreamBody.conversation, undefined);
+    assert.equal(upstreamBody.seed, undefined);
+    assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
