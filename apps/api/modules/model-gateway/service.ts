@@ -4378,9 +4378,27 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       next.tool_choice = toolChoice;
     }
 
+    stripCodexAccountResponsesUnsupportedFields(next);
+
     return JSON.stringify(next);
   } catch {
     return value;
+  }
+}
+
+function stripCodexAccountResponsesUnsupportedFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) stripCodexAccountResponsesUnsupportedFields(item);
+    return;
+  }
+  if (!isRecord(value)) return;
+  // Anthropic prompt-caching hints are block-local and not part of the OpenAI
+  // Responses input schema. Strip them before forwarding to the Codex account
+  // backend so Claude Code cache_control blocks do not trigger unsupported
+  // parameter errors.
+  delete value.cache_control;
+  for (const item of Object.values(value)) {
+    stripCodexAccountResponsesUnsupportedFields(item);
   }
 }
 

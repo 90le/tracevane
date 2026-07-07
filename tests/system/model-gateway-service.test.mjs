@@ -1603,7 +1603,14 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
         headers: { "x-tracevane-app-scope": "codex" },
         body: {
           model: "gpt-5.4",
-          input: "hello",
+          input: [{
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: "hello",
+              cache_control: { type: "ephemeral" },
+            }],
+          }],
           metadata: {
             trace_id: "claude-code-cli",
             session_id: "metadata-regression",
@@ -1646,6 +1653,7 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
     const upstreamBody = JSON.parse(upstreamCall.body);
     assert.equal(upstreamBody.metadata, undefined);
+    assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
