@@ -15624,6 +15624,12 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
     container: "container_unknown_request_blocks",
     context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
     inference_geo: "eu",
+    metadata: {
+      user_id: "anthropic-user-123",
+      trace_id: "anthropic-trace",
+      session_id: "anthropic-session",
+      api_key: "anthropic-metadata-key-should-not-leak",
+    },
     system: [{ type: "text", text: "system cache prefix", cache_control: { type: "ephemeral" } }],
     messages: [
       {
@@ -15705,6 +15711,9 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(chatMessages, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(chatMessages, /missing tool_use_id result/);
   assert.match(chatMessages, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(chatMessages, /Anthropic Messages metadata preserved for Chat adapters: trace_id=anthropic-trace session_id=anthropic-session/);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("anthropic-metadata-key-should-not-leak"), false);
+  assert.equal(upstreamCalls[0].body.user, "anthropic-user-123");
   assert.match(chatMessages, /cache_control/);
   assert.match(chatMessages, /system\[0\]\.cache_control/);
   assert.match(chatMessages, /messages\[0\]\.content\[0\]\.cache_control/);
@@ -15732,6 +15741,9 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(responsesInput, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(responsesInput, /missing tool_use_id result/);
   assert.match(responsesInput, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(responsesInput, /Anthropic Messages metadata preserved for Chat adapters: trace_id=anthropic-trace session_id=anthropic-session/);
+  assert.equal(JSON.stringify(upstreamCalls[1].body).includes("anthropic-metadata-key-should-not-leak"), false);
+  assert.equal(upstreamCalls[1].body.user, "anthropic-user-123");
   assert.match(responsesInput, /cache_control/);
   assert.match(responsesInput, /system\[0\]\.cache_control/);
   assert.match(responsesInput, /messages\[0\]\.content\[0\]\.cache_control/);

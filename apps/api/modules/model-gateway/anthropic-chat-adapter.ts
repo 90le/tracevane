@@ -223,6 +223,8 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   if (unsupportedToolContextText) messages.push({ role: "user", content: unsupportedToolContextText });
   const unsupportedRequestContextText = anthropicUnsupportedRequestContextToChatText(request, options);
   if (unsupportedRequestContextText) messages.push({ role: "user", content: unsupportedRequestContextText });
+  const metadataContextText = anthropicMetadataContextToChatText(request.metadata);
+  if (metadataContextText) messages.push({ role: "user", content: metadataContextText });
   const unsupportedOutputFormatText = anthropicUnsupportedOutputFormatToChatText(request.output_config);
   if (unsupportedOutputFormatText) messages.push({ role: "user", content: unsupportedOutputFormatText });
   const chatRequest: JsonRecord = {
@@ -1455,6 +1457,17 @@ function anthropicSupportedToolFields(tool: JsonRecord): Set<string> {
 
 function isSensitiveAnthropicToolField(field: string): boolean {
   return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
+}
+
+function anthropicMetadataContextToChatText(metadata: unknown): string {
+  if (!isRecord(metadata)) return "";
+  const notes = Object.keys(metadata)
+    .filter((field) => field !== "user_id")
+    .filter((field) => !isSensitiveMetadataField(field))
+    .map((field) => `${field}=${stringifyCompact(metadata[field])}`);
+  return notes.length
+    ? `Anthropic Messages metadata preserved for Chat adapters: ${notes.join(" ")}`
+    : "";
 }
 
 function anthropicUnsupportedRequestContextToChatText(
