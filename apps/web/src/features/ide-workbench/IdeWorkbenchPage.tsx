@@ -41,7 +41,7 @@ import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView, useIdeDebugSnapshot } from "./debug";
 import { TerminalPanel } from "./terminal";
 import { summarizeExternalLspProviders, useLspExternalProviderStatus } from "./lsp";
-import type { ExternalLspProviderMetadata, ExternalLspProviderProfile, ExternalLspProviderStatus, LspStatusResponse } from "./lsp";
+import type { ExternalLspProviderMetadata, ExternalLspProviderProfile, ExternalLspProviderStatus, LspStatusResponse, ToolchainLspProviderCandidate } from "./lsp";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
 import { useWorkbenchFileEvents, type WorkbenchFileEvent } from "./watcher";
@@ -784,6 +784,7 @@ function LspExternalProviderStatusDialog({
   const byProviderId = React.useMemo(() => new Map(statuses.map((item) => [item.providerId, item])), [statuses]);
   const metadataByProviderId = React.useMemo(() => new Map(metadata.map((item) => [item.providerId, item])), [metadata]);
   const summary = summarizeExternalLspProviders(status);
+  const toolchainCandidates = status?.toolchainProviders?.candidates ?? [];
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
@@ -811,22 +812,47 @@ function LspExternalProviderStatusDialog({
                 {error}
               </div>
             ) : null}
-            {profiles.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-line bg-canvas p-5 text-center text-sm text-muted" data-ide-lsp-provider-status-empty>
-                当前没有启用外部 LSP provider profile；IDE 仍使用内置 provider。
+            <section className="grid gap-2" data-ide-lsp-external-provider-section>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div>
+                  <div className="font-semibold text-ink">Bundled / external providers</div>
+                  <div className="text-muted">Server-side allowlist providers with runtime lifecycle status.</div>
+                </div>
+                <span className="rounded border border-line bg-panel-2 px-2 py-0.5 text-2xs text-subtle">{profiles.length} profiles</span>
               </div>
-            ) : (
-              <div className="grid gap-2" data-ide-lsp-provider-status-list>
-                {profiles.map((profile) => (
-                  <ExternalProviderStatusRow
-                    key={profile.id}
-                    profile={profile}
-                    runtimeStatus={byProviderId.get(profile.id) ?? null}
-                    metadata={metadataByProviderId.get(profile.id) ?? null}
-                  />
-                ))}
-              </div>
-            )}
+              {profiles.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-line bg-canvas p-5 text-center text-sm text-muted" data-ide-lsp-provider-status-empty>
+                  当前没有启用外部 LSP provider profile；IDE 仍使用内置 provider。
+                </div>
+              ) : (
+                <div className="grid gap-2" data-ide-lsp-provider-status-list>
+                  {profiles.map((profile) => (
+                    <ExternalProviderStatusRow
+                      key={profile.id}
+                      profile={profile}
+                      runtimeStatus={byProviderId.get(profile.id) ?? null}
+                      metadata={metadataByProviderId.get(profile.id) ?? null}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+            {toolchainCandidates.length ? (
+              <section className="grid gap-2" data-ide-lsp-toolchain-provider-section>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div>
+                    <div className="font-semibold text-ink">Toolchain provider candidates</div>
+                    <div className="text-muted">M12-H 只读候选状态：不探测 PATH，不启动 Go/Rust/Java/clangd language server。</div>
+                  </div>
+                  <span className="rounded border border-warning/30 bg-warning/10 px-2 py-0.5 text-2xs text-warning">status skeleton</span>
+                </div>
+                <div className="grid gap-2" data-ide-lsp-toolchain-provider-list>
+                  {toolchainCandidates.map((candidate) => (
+                    <ToolchainProviderStatusRow key={candidate.providerId} candidate={candidate} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         </DialogBody>
         <DialogFooter>
@@ -910,6 +936,43 @@ function ExternalProviderStatusRow({
 }
 
 
+function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProviderCandidate }) {
+  return (
+    <article
+      className="grid gap-2 rounded-lg border border-line bg-panel p-3 text-sm"
+      data-ide-lsp-toolchain-provider-row
+      data-ide-lsp-toolchain-provider-id={candidate.providerId}
+      data-ide-lsp-toolchain-provider-status={candidate.status}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-ink">{candidate.label}</span>
+            <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-2xs text-subtle">{candidate.providerId}</span>
+            <span className={cn("rounded px-1.5 py-0.5 text-2xs font-medium", toolchainStatusTone(candidate.status).className)} data-ide-lsp-toolchain-provider-status-chip>{candidate.status}</span>
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            languages: {candidate.languages.join(", ") || "--"} · capabilities: {candidate.capabilities.join(", ") || "--"}
+          </div>
+        </div>
+        <div className="grid gap-1 text-right font-mono text-2xs text-subtle">
+          <span data-ide-lsp-toolchain-provider-binary>{candidate.requiredBinary}</span>
+          <span data-ide-lsp-toolchain-provider-config-key>{candidate.configurationKey}</span>
+        </div>
+      </div>
+      <div className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-muted" data-ide-lsp-toolchain-provider-next-action>
+        {candidate.nextAction}
+      </div>
+      {candidate.notes.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-xs text-muted" data-ide-lsp-toolchain-provider-notes>
+          {candidate.notes.map((note) => <li key={note}>{note}</li>)}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+
 function formatLspCapabilities(capabilities: ExternalLspProviderProfile["capabilities"]): string {
   if (Array.isArray(capabilities)) return capabilities.join(", ") || "--";
   const enabled = Object.entries(capabilities ?? {})
@@ -921,6 +984,13 @@ function formatLspCapabilities(capabilities: ExternalLspProviderProfile["capabil
 function lspRuntimeStatusTone(status: string): { className: string } {
   if (status === "available" || status === "starting") return { className: "bg-success/10 text-success" };
   if (status === "crashed" || status === "degraded" || status === "unavailable") return { className: "bg-danger/10 text-danger" };
+  return { className: "bg-panel-3 text-muted" };
+}
+
+function toolchainStatusTone(status: string): { className: string } {
+  if (status === "configured") return { className: "bg-success/10 text-success" };
+  if (status === "notConfigured" || status === "missingWorkspaceConfig") return { className: "bg-warning/10 text-warning" };
+  if (status === "missingBinary" || status === "unsupportedVersion" || status === "disabledByTrust" || status === "unavailable") return { className: "bg-danger/10 text-danger" };
   return { className: "bg-panel-3 text-muted" };
 }
 

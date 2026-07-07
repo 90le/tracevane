@@ -42,6 +42,7 @@ import { createExternalLanguageServerGateway } from "./external/externalLanguage
 import { findExternalLanguageServerProfile } from "./external/externalProviderProfiles.js";
 import { externalProviderMetadataForProfile } from "./external/externalProviderMetadata.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
+import { toolchainProviderStatusSnapshot } from "./toolchain/toolchainProviderStatus.js";
 
 const LSP_WS_PATH = "/ws/lsp";
 const SEMANTIC_TOKEN_TYPES = [
@@ -119,7 +120,7 @@ const ESLINT_MARKER_DISCOVERY_EXCLUDED_DIRECTORIES = new Set([
 ]);
 
 export interface LspService {
-  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix>; externalProviders: ReturnType<typeof externalLanguageServerStatusSnapshot> };
+  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix>; externalProviders: ReturnType<typeof externalLanguageServerStatusSnapshot>; toolchainProviders: ReturnType<typeof toolchainProviderStatusSnapshot> };
   diagnoseDocument(request: LspDiagnosticsRequest): Promise<LspDiagnosticsResponse>;
   hoverDocument(request: LspPositionRequest): Promise<LspHoverResponse>;
   completeDocument(request: LspCompletionRequest): Promise<LspCompletionResponse>;
@@ -221,6 +222,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         features: supportedFeaturesFromRegistry(),
         providers: providerCapabilityMatrix(),
         externalProviders: externalLanguageServerStatusSnapshot(config),
+        toolchainProviders: toolchainProviderStatusSnapshot(),
       };
     },
     diagnoseDocument(request) {

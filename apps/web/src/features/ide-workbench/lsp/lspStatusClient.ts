@@ -47,6 +47,36 @@ export interface ExternalLspProviderMetadata {
   } | null;
 }
 
+
+export type ToolchainLspProviderStatus =
+  | "notConfigured"
+  | "configured"
+  | "missingBinary"
+  | "unsupportedVersion"
+  | "missingWorkspaceConfig"
+  | "disabledByTrust"
+  | "unavailable";
+
+export interface ToolchainLspProviderCandidate {
+  providerId: string;
+  label: string;
+  languages: string[];
+  status: ToolchainLspProviderStatus | string;
+  configured: boolean;
+  requiredBinary: string;
+  configurationKey: string;
+  capabilities: string[];
+  nextAction: string;
+  notes: string[];
+}
+
+export interface ToolchainLspProviderPolicy {
+  readOnly: boolean;
+  probesRuntimePath: boolean;
+  startsLanguageServers: boolean;
+  acceptsFrontendCommandOverrides: boolean;
+}
+
 export interface ExternalLspProviderStatus {
   providerId: string;
   label: string;
@@ -72,6 +102,10 @@ export interface LspStatusResponse {
     profiles?: ExternalLspProviderProfile[];
     statuses?: ExternalLspProviderStatus[];
     metadata?: ExternalLspProviderMetadata[];
+  };
+  toolchainProviders?: {
+    candidates?: ToolchainLspProviderCandidate[];
+    policy?: ToolchainLspProviderPolicy;
   };
 }
 

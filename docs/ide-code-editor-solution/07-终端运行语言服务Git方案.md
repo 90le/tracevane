@@ -778,7 +778,8 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 92. M12-E：Svelte external provider guarded diagnostics proof（已完成）
 93. M12-F：Framework provider acceptance / heavy toolchain policy decision（已完成）
 94. M12-G：Toolchain provider status / configuration foundation plan（已完成）
-95. M12-H：Toolchain provider status skeleton guarded implementation（下一步）
+95. M12-H：Toolchain provider status skeleton guarded implementation（已完成）
+96. M12-I：Toolchain provider configuration / trust UI foundation（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -1042,7 +1043,7 @@ M12-F 已完成，记录见 [`archive/m12-f-framework-provider-acceptance-toolch
   - C/C++ `clangd` 需要 clangd binary、compile_commands.json / compile_flags.txt 与 compiler/toolchain 语义。
 - 定义 M12-G 先做 toolchain provider status / configuration foundation，不直接启动 heavy runtime server。
 
-M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan；下一步 M12-H 进入 Toolchain provider status skeleton guarded implementation。
+M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan，M12-H 已完成 Toolchain provider status skeleton guarded implementation；下一步 M12-I 进入 Toolchain provider configuration / trust UI foundation。
 
 
 ### M12-G 已完成：Toolchain Provider Status / Configuration Foundation Plan
@@ -1057,4 +1058,20 @@ M12-G 已完成，记录见 [`archive/m12-g-toolchain-provider-status-configurat
 - 定义 IDE Provider Status UI 的 Toolchain section：默认只展示候选、状态、原因和下一步，不自动发现、不自动安装。
 - 定义 M12-H 最小实现：只增加 read-only candidate/status skeleton，全部默认 `notConfigured`，不读取 PATH、不启动 server、不接 diagnostics。
 
-M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-H 进入 Toolchain provider status skeleton guarded implementation。
+M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-H 已完成 Toolchain provider status skeleton guarded implementation；下一步 M12-I 进入 Toolchain provider configuration / trust UI foundation。
+
+### M12-H 已完成：Toolchain Provider Status Skeleton Guarded Implementation
+
+M12-H 已完成，记录见 [`archive/m12-h-toolchain-provider-status-skeleton-summary.md`](./archive/m12-h-toolchain-provider-status-skeleton-summary.md)。本阶段把 Go / Rust / Java / C/C++ 纳入现有 LSP Provider Status 只读视图，但全部以 `notConfigured` candidate 呈现，不探测 PATH、不启动 language server、不接 diagnostics。
+
+完成口径：
+
+```txt
+- /api/lsp/status 新增 toolchainProviders.candidates。
+- 候选包含 go/gopls、rust/rust-analyzer、java/Eclipse JDT LS、clangd。
+- 每个候选显示 required binary、future configuration key、languages、capabilities、nextAction 与 no-probe notes。
+- IDE Provider Status dialog 新增 Toolchain provider candidates 区块。
+- system test 与 provider status smoke 覆盖 no PATH probe / no runtime start policy 与 UI 可见性。
+```
+
+M12-H 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary discovery、PATH probe、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics 或 rich LSP capability runtime、修改 `/api/lsp/diagnostics` routing、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-I 进入 Toolchain provider configuration / trust UI foundation。

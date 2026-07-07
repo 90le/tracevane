@@ -69,6 +69,17 @@ async function run() {
   if (!rootId) throw new Error('No file root is available for IDE LSP provider status smoke');
 
   const status = await api('/api/lsp/status');
+  const toolchainCandidates = status.toolchainProviders?.candidates ?? [];
+  const toolchainById = new Map(toolchainCandidates.map((candidate) => [candidate.providerId, candidate]));
+  for (const [providerId, binary] of [['go', 'gopls'], ['rust', 'rust-analyzer'], ['java', 'jdtls'], ['clangd', 'clangd']]) {
+    const candidate = toolchainById.get(providerId);
+    if (candidate?.status !== 'notConfigured' || candidate.configured !== false || candidate.requiredBinary !== binary) {
+      throw new Error(`Expected guarded ${providerId} toolchain candidate: ${JSON.stringify(status.toolchainProviders)}`);
+    }
+  }
+  if (status.toolchainProviders?.policy?.probesRuntimePath !== false || status.toolchainProviders?.policy?.startsLanguageServers !== false) {
+    throw new Error(`Toolchain provider policy must remain read-only: ${JSON.stringify(status.toolchainProviders)}`);
+  }
   const yamlProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'yaml');
   if (!yamlProfile?.enabled) {
     throw new Error(`Expected enabled yaml external provider profile: ${JSON.stringify(status.externalProviders)}`);
@@ -138,6 +149,12 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="markdown"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="eslint"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-toolchain-provider-section]').waitFor({ state: 'visible', timeout: 10_000 });
+    for (const providerId of ['go', 'rust', 'java', 'clangd']) {
+      await page.locator(`[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="${providerId}"]`).waitFor({ state: 'visible', timeout: 10_000 });
+      await page.locator(`[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="${providerId}"] [data-ide-lsp-toolchain-provider-status-chip]`).filter({ hasText: 'notConfigured' }).waitFor({ state: 'visible', timeout: 10_000 });
+    }
+    await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="go"] [data-ide-lsp-toolchain-provider-binary]').filter({ hasText: 'gopls' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-source]').filter({ hasText: 'npm:yaml-language-server' }).waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="bash"] [data-ide-lsp-provider-audit-note]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="yaml"] [data-ide-lsp-provider-install-status]').filter({ hasText: 'installed' }).waitFor({ state: 'visible', timeout: 10_000 });
@@ -160,6 +177,7 @@ async function run() {
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="dockerfile"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="markdown"]').waitFor({ state: 'visible', timeout: 10_000 });
     await page.locator('[data-ide-lsp-provider-status-row][data-ide-lsp-provider-status-provider-id="eslint"]').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('[data-ide-lsp-toolchain-provider-row][data-ide-lsp-toolchain-provider-id="clangd"]').waitFor({ state: 'visible', timeout: 10_000 });
   } finally {
     await browser.close().catch(() => undefined);
     const severe = logs.filter((line) => line.includes('[pageerror]'));
