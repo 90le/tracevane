@@ -1660,6 +1660,76 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
   }
 });
 
+test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "generic-responses-metadata",
+      name: "Generic Responses Metadata",
+      enabled: true,
+      category: "custom",
+      appScopes: ["codex", "claude-code"],
+      baseUrl: "https://responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: { defaultModel: "gpt-5.4", models: [{ id: "gpt-5.4" }] },
+      endpoints: { openai_responses: "/responses" },
+    },
+    secret: { apiKey: "sk-generic-responses-metadata" },
+    setActiveScopes: ["codex", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_generic_metadata",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.4",
+      output: [{ id: "msg_generic_metadata", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "metadata ok" }] }],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "claude-code", "anthropic-version": "2023-06-01" },
+        body: { model: "gpt-5.4", max_tokens: 128, metadata: { user_id: "claude-code-cli", session_id: "generic-responses-metadata" }, messages: [{ role: "user", content: "hello" }], stream: false },
+      });
+      assert.equal(claudeCode.status, 200);
+      assert.equal(claudeCode.body.content[0].text, "metadata ok");
+
+      const codex = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: { model: "gpt-5.4", input: "hello", metadata: { session_id: "direct-responses-metadata" }, stream: false },
+      });
+      assert.equal(codex.status, 200);
+      assert.equal(codex.body.output[0].content[0].text, "metadata ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  for (const upstreamCall of upstreamCalls) {
+    assert.equal(upstreamCall.url, "https://responses.example.test/v1/responses");
+    assert.equal(upstreamCall.authorization, "Bearer sk-generic-responses-metadata");
+    assert.equal(JSON.parse(upstreamCall.body).metadata, undefined);
+  }
+});
+
 test("model gateway repairs stale raw Codex account catalog budgets on startup", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

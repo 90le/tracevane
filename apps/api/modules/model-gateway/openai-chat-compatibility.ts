@@ -13,8 +13,49 @@ export interface OpenAIChatCompatibilityResult {
   removedFields: string[];
 }
 
+export interface OpenAIResponsesCompatibilityOptions {
+  allowMetadata?: boolean;
+}
+
+export interface OpenAIResponsesCompatibilityResult {
+  bodyText: string | undefined;
+  removedFields: string[];
+}
+
 const STRICT_CHAT_INCOMPATIBLE_FIELDS = ["metadata"] as const;
+const STRICT_RESPONSES_INCOMPATIBLE_FIELDS = ["metadata"] as const;
 const TOOL_REASONING_INCOMPATIBLE_FIELDS = ["reasoning_effort", "reasoningEffort"] as const;
+
+export function sanitizeOpenAIResponsesUpstreamBody(
+  bodyText: string | undefined,
+  options: OpenAIResponsesCompatibilityOptions = {},
+): OpenAIResponsesCompatibilityResult {
+  if (!bodyText) return { bodyText, removedFields: [] };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { bodyText, removedFields: [] };
+  }
+  if (!isRecord(parsed)) return { bodyText, removedFields: [] };
+
+  const sanitized: JsonRecord = { ...parsed };
+  const removedFields: string[] = [];
+  for (const field of STRICT_RESPONSES_INCOMPATIBLE_FIELDS) {
+    if (field === "metadata" && options.allowMetadata) continue;
+    if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+      delete sanitized[field];
+      removedFields.push(field);
+    }
+  }
+
+  const nextBodyText = JSON.stringify(sanitized);
+  return {
+    bodyText: nextBodyText !== bodyText ? nextBodyText : bodyText,
+    removedFields,
+  };
+}
 
 export function sanitizeOpenAIChatUpstreamBody(
   bodyText: string | undefined,
