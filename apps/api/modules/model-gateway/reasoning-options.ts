@@ -97,10 +97,15 @@ export function applyResponsesReasoningOptions(
   responsesRequest: JsonRecord,
   request: JsonRecord,
 ): void {
-  const effort = reasoningEffort(request);
+  const effort = reasoningEffortOrThinkingBudget(request);
   if (!effort || reasoningEffortDisabled(effort)) return;
   const mapped = mapReasoningEffort(effort, "responses");
-  if (mapped) responsesRequest.reasoning = { effort: mapped };
+  if (!mapped) return;
+  const reasoning = isRecord(responsesRequest.reasoning)
+    ? { ...responsesRequest.reasoning }
+    : {};
+  reasoning.effort = mapped;
+  responsesRequest.reasoning = reasoning;
 }
 
 export function applyAnthropicReasoningOptions(

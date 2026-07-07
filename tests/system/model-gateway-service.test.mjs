@@ -1651,6 +1651,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
             effort: "low",
             generate_summary: "concise",
           },
+          thinking: { type: "enabled", budget_tokens: 9000 },
+          output_config: { effort: "max" },
+          reasoning_effort: "high",
+          reasoningEffort: "xhigh",
+          enable_thinking: true,
+          reasoning_split: true,
           seed: 123,
           stream: false,
           tools: [
@@ -1676,6 +1682,19 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(response.status, 200);
       assert.equal(response.body.id, "resp_metadata");
       assert.equal(response.body.output[0].content[0].text, "ok");
+
+      const thinkingOnly = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "Think directly.",
+          thinking: { type: "enabled", budget_tokens: 9000 },
+          stream: false,
+        },
+      });
+      assert.equal(thinkingOnly.status, 200);
+      assert.equal(thinkingOnly.body.id, "resp_metadata");
 
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -1758,7 +1777,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -1774,9 +1793,15 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.conversation, undefined);
     assert.equal(upstreamBody.prompt, undefined);
     assert.equal(upstreamBody.reasoning?.generate_summary, undefined);
-    if (upstreamBody.reasoning !== undefined) {
+    if (upstreamBody.reasoning?.summary !== undefined) {
       assert.equal(upstreamBody.reasoning?.summary, "concise");
     }
+    assert.equal(upstreamBody.thinking, undefined);
+    assert.equal(upstreamBody.output_config, undefined);
+    assert.equal(upstreamBody.reasoning_effort, undefined);
+    assert.equal(upstreamBody.reasoningEffort, undefined);
+    assert.equal(upstreamBody.enable_thinking, undefined);
+    assert.equal(upstreamBody.reasoning_split, undefined);
     assert.equal(upstreamBody.seed, undefined);
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
@@ -1785,6 +1810,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.equal(directUpstreamBody.reasoning?.effort, "low");
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",
     text: "hello",
@@ -1819,6 +1845,8 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.equal(JSON.stringify(directUpstreamBody).includes("file_search"), true);
   assert.equal(JSON.stringify(directUpstreamBody).includes("code_interpreter"), true);
   assert.equal(JSON.stringify(directUpstreamBody).includes("computer_use_preview"), true);
+  const thinkingOnlyUpstreamBody = JSON.parse(upstreamCalls[1].body);
+  assert.deepEqual(thinkingOnlyUpstreamBody.reasoning, { effort: "high" });
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {

@@ -163,7 +163,7 @@ import {
   adaptResponsesToChatCompletion,
   isChatToOpenAIResponsesAdapterTarget,
 } from "./responses-chat-adapter.js";
-import { normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
+import { applyResponsesReasoningOptions, normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
 import { sanitizeAnthropicMessagesUpstreamBody, sanitizeOpenAIChatUpstreamBody, sanitizeOpenAIResponsesUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 import { MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS } from "./unsupported-endpoints.js";
@@ -4586,6 +4586,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     if (Array.isArray(next.input)) {
       next.input = next.input.map(normalizeCodexAccountResponsesInputItem);
     }
+    applyResponsesReasoningOptions(next, next);
     normalizeCodexAccountResponsesReasoning(next);
 
     next.stream = true;
@@ -4613,6 +4614,12 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       "top_p",
       "top_logprobs",
       "truncation",
+      "thinking",
+      "output_config",
+      "reasoning_effort",
+      "reasoningEffort",
+      "enable_thinking",
+      "reasoning_split",
       "context_management",
       "conversation",
       "metadata",
