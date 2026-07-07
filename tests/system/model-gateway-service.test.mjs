@@ -17066,6 +17066,92 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
   ]);
 });
 
+
+test("model gateway preserves Chat tool-result cache controls through Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-tool-cache-to-anthropic",
+      name: "Chat Tool Cache To Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://chat-tool-cache-to-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-chat-tool-cache-to-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_chat_tool_cache_to_anthropic",
+      type: "message",
+      role: "assistant",
+      model: "claude-test",
+      content: [{ type: "text", text: "accepted" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-test",
+          messages: [{
+            role: "user",
+            content: "Call lookup.",
+          }, {
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: "call_lookup",
+              type: "function",
+              function: { name: "lookup", arguments: "{\"query\":\"weather\"}" },
+            }],
+          }, {
+            role: "tool",
+            tool_call_id: "call_lookup",
+            content: [
+              { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
+              { type: "image_url", image_url: { url: "https://example.test/weather.png" }, cache_control: { type: "ephemeral" } },
+            ],
+          }],
+          tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.content, "accepted");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-tool-cache-to-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].authorization, "sk-chat-tool-cache-to-anthropic");
+  assert.deepEqual(upstreamCalls[0].body.messages[2].content, [{
+    type: "tool_result",
+    tool_use_id: "call_lookup",
+    content: [
+      { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
+      { type: "image", source: { type: "url", url: "https://example.test/weather.png" }, cache_control: { type: "ephemeral" } },
+    ],
+  }]);
+});
+
 test("model gateway preserves structured tool result content through OpenAI Responses adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

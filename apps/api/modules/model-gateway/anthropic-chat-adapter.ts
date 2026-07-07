@@ -724,12 +724,14 @@ function chatToolResultContentToAnthropicContent(content: unknown): string | Jso
   if (typeof content === "string") return content;
   if (content === null || content === undefined) return "";
   if (Array.isArray(content)) {
-    const text = content.map(chatContentPartToText).filter(Boolean).join("");
-    if (content.every(chatContentPartIsTextLike)) return text;
     const blocks = content
       .map(chatContentPartToAnthropicToolResultBlock)
       .filter((block): block is JsonRecord => Boolean(block));
-    return blocks.length === content.length ? blocks : stringifyCompact(content);
+    if (blocks.length !== content.length) return stringifyCompact(content);
+    if (content.every(chatContentPartIsTextLike) && !blocks.some((block) => block.cache_control !== undefined)) {
+      return blocks.map((block) => stringOrNull(block.text) || "").join("");
+    }
+    return blocks;
   }
   const text = chatContentPartToText(content);
   return text || stringifyCompact(content);
@@ -739,18 +741,20 @@ function chatContentPartToAnthropicToolResultBlock(part: unknown): JsonRecord | 
   if (typeof part === "string") return part ? { type: "text", text: part } : null;
   if (!isRecord(part)) return null;
   const type = stringOrNull(part.type);
+  let block: JsonRecord | null = null;
   if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
     const text = chatContentPartToText(part);
-    return text ? { type: "text", text } : null;
+    block = text ? { type: "text", text } : null;
+  } else if (type === "image_url" && isRecord(part.image_url)) {
+    block = imageUrlToAnthropicBlock(stringOrNull(part.image_url.url));
+  } else if (type === "input_image") {
+    block = imageUrlToAnthropicBlock(stringOrNull(part.image_url));
+  } else {
+    const text = chatContentPartToText(part);
+    block = text ? { type: "text", text } : null;
   }
-  if (type === "image_url" && isRecord(part.image_url)) {
-    return imageUrlToAnthropicBlock(stringOrNull(part.image_url.url));
-  }
-  if (type === "input_image") {
-    return imageUrlToAnthropicBlock(stringOrNull(part.image_url));
-  }
-  const text = chatContentPartToText(part);
-  return text ? { type: "text", text } : null;
+  if (block && part.cache_control !== undefined) block.cache_control = part.cache_control;
+  return block;
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {
