@@ -17116,9 +17116,9 @@ test("model gateway preserves structured tool result content through OpenAI Resp
     { type: "image_url", image_url: { url: "data:image/png;base64,abc123" }, cache_control: { type: "ephemeral" } },
   ];
   const anthropicToolContent = [
-    { type: "text", text: "weather:" },
-    { type: "image", source: { type: "url", url: "https://example.test/weather.png" } },
-    { type: "document", title: "weather.pdf", source: { type: "base64", media_type: "application/pdf", data: "JVBERi0x" } },
+    { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
+    { type: "image", source: { type: "url", url: "https://example.test/weather.png" }, cache_control: { type: "ephemeral" } },
+    { type: "document", title: "weather.pdf", source: { type: "base64", media_type: "application/pdf", data: "JVBERi0x" }, cache_control: { type: "ephemeral" } },
   ];
 
   try {
@@ -17213,9 +17213,12 @@ test("model gateway preserves structured tool result content through OpenAI Resp
     call_id: "call_lookup",
     output: [
       { type: "input_text", text: "weather:" },
+      { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
       { type: "input_image", image_url: "https://example.test/weather.png" },
+      { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
       { type: "input_file", file_data: "JVBERi0x", filename: "weather.pdf" },
       { type: "input_text", text: "OpenAI Chat file media_type preserved for Responses tool output: application/pdf" },
+      { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
     ],
   });
 });
