@@ -11308,6 +11308,19 @@ test("model gateway accepts direct-name Chat function tool choices across native
       assert.equal(anthropic.status, 200, anthropic.body);
       assert.equal(anthropic.body.choices[0].message.content, "Anthropic direct choice accepted.");
 
+      const unsupportedAnthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "Use the native-only tool if possible." }],
+          tools: [{ type: "unsupported_native_tool", name: "bad_tool", config: { mode: "x" } }],
+          tool_choice: { type: "tool", name: "bad_tool" },
+        },
+      });
+      assert.equal(unsupportedAnthropic.status, 200, unsupportedAnthropic.body);
+      assert.equal(unsupportedAnthropic.body.choices[0].message.content, "Anthropic direct choice accepted.");
+
       const responses = await requestJson(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: { "x-tracevane-app-scope": "codex" },
@@ -11320,13 +11333,22 @@ test("model gateway accepts direct-name Chat function tool choices across native
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://chat-direct-choice-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[0].xApiKey, "sk-chat-direct-choice-anthropic-secret");
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "tool", name: "lookup" });
-  assert.equal(upstreamCalls[1].url, "https://chat-direct-choice-responses.example.test/v1/responses");
-  assert.equal(upstreamCalls[1].authorization, "Bearer sk-chat-direct-choice-responses-secret");
-  assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "function", name: "lookup" });
+  assert.equal(upstreamCalls[1].url, "https://chat-direct-choice-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-chat-direct-choice-anthropic-secret");
+  assert.equal(upstreamCalls[1].body.tools, undefined);
+  assert.equal(upstreamCalls[1].body.tool_choice, undefined);
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "Use the native-only tool if possible." },
+    { role: "user", content: 'OpenAI Chat unsupported tools for Anthropic Messages: [{"type":"unsupported_native_tool","name":"bad_tool","config":{"mode":"x"}}]' },
+    { role: "user", content: 'OpenAI Chat unsupported tool_choice for Anthropic Messages: {"type":"tool","name":"bad_tool"}' },
+  ]);
+  assert.equal(upstreamCalls[2].url, "https://chat-direct-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[2].authorization, "Bearer sk-chat-direct-choice-responses-secret");
+  assert.deepEqual(upstreamCalls[2].body.tool_choice, { type: "function", name: "lookup" });
 });
 
 test("model gateway adapts Anthropic-style Chat tool choices for Responses providers", async () => {

@@ -133,12 +133,24 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     );
   }
 
+  const anthropicMessages = mapChatMessagesToAnthropic(request.messages);
+  const unsupportedToolsText = chatUnsupportedToolsToAnthropicText(request.tools);
+  if (unsupportedToolsText) anthropicMessages.push({ role: "user", content: unsupportedToolsText });
+  const rawToolChoice = request.tool_choice !== undefined
+    ? request.tool_choice
+    : mapLegacyChatFunctionCallToToolChoice(request.function_call);
+  const unsupportedToolChoiceText = chatUnsupportedToolChoiceToAnthropicText(rawToolChoice, {
+    tools: request.tools,
+    functions: request.functions,
+  });
+  if (unsupportedToolChoiceText) anthropicMessages.push({ role: "user", content: unsupportedToolChoiceText });
+
   const anthropicRequest: JsonRecord = {
     model,
     max_tokens: numberOrNull(request.max_tokens)
       ?? numberOrNull(request.max_completion_tokens)
       ?? 1024,
-    messages: mapChatMessagesToAnthropic(request.messages),
+    messages: anthropicMessages,
   };
   if (stream) anthropicRequest.stream = true;
 
@@ -167,7 +179,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
 
   const toolChoice = applyChatParallelToolChoiceToAnthropic(
     mapChatToolChoiceToAnthropic(
-      request.tool_choice !== undefined ? request.tool_choice : mapLegacyChatFunctionCallToToolChoice(request.function_call),
+      rawToolChoice,
+      { tools: request.tools, functions: request.functions },
     ),
     request.parallel_tool_calls,
   );
@@ -819,22 +832,87 @@ function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
   return name ? { type: "function", name } : functionCall;
 }
 
-function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
+function mapChatToolChoiceToAnthropic(
+  toolChoice: unknown,
+  context: { tools?: unknown; functions?: unknown } = {},
+): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none") return { type: toolChoice };
-  if (toolChoice === "required") return { type: "any" };
-  if (!isRecord(toolChoice)) return toolChoice;
-  if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: "tool", name: "web_search" };
+  if (toolChoice === "required") return chatAnthropicCompatibleToolCount(context) > 0 ? { type: "any" } : undefined;
+  if (!isRecord(toolChoice)) return undefined;
+  if (isOpenAIWebSearchToolType(toolChoice.type)) {
+    return chatToolsIncludeOpenAIWebSearch(context.tools) ? { type: "tool", name: "web_search" } : undefined;
+  }
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);
-    return name ? { type: "tool", name } : toolChoice;
+    return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "tool", name } : undefined;
   }
-  return toolChoice;
+  if (toolChoice.type === "tool") {
+    const name = stringOrNull(toolChoice.name);
+    if (name === "web_search" && chatToolsIncludeOpenAIWebSearch(context.tools)) return { type: "tool", name: "web_search" };
+    return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "tool", name } : undefined;
+  }
+  return undefined;
 }
 
 function isOpenAIWebSearchToolType(type: unknown): boolean {
   return type === "web_search_preview" || type === "web_search_preview_2025_03_11";
+}
+
+function chatUnsupportedToolsToAnthropicText(tools: unknown): string {
+  if (!Array.isArray(tools)) return "";
+  const unsupported = tools.filter((tool) => isRecord(tool) && !mapChatToolToAnthropic(tool));
+  if (!unsupported.length) return "";
+  return `OpenAI Chat unsupported tools for Anthropic Messages: ${stringifyCompact(unsupported)}`;
+}
+
+function chatUnsupportedToolChoiceToAnthropicText(
+  toolChoice: unknown,
+  context: { tools?: unknown; functions?: unknown } = {},
+): string {
+  if (toolChoice === undefined) return "";
+  if (mapChatToolChoiceToAnthropic(toolChoice, context) !== undefined) return "";
+  return `OpenAI Chat unsupported tool_choice for Anthropic Messages: ${stringifyCompact(toolChoice)}`;
+}
+
+function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown }): number {
+  const toolsCount = Array.isArray(context.tools)
+    ? context.tools.filter((tool) => mapChatToolToAnthropic(tool)).length
+    : 0;
+  const functionsCount = Array.isArray(context.functions)
+    ? context.functions.filter((fn) => {
+      if (!isRecord(fn)) return false;
+      return Boolean(stringOrNull(fn.name));
+    }).length
+    : 0;
+  return toolsCount + functionsCount;
+}
+
+function chatToolChoiceFunctionNameAvailable(
+  name: string,
+  context: { tools?: unknown; functions?: unknown },
+): boolean {
+  return chatToolsIncludeFunction(context.tools, name) || chatFunctionsIncludeName(context.functions, name);
+}
+
+function chatToolsIncludeFunction(tools: unknown, name: string): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => {
+      if (!isRecord(tool) || tool.type !== "function") return false;
+      const fn = isRecord(tool.function) ? tool.function : null;
+      return stringOrNull(fn?.name) === name;
+    });
+}
+
+function chatFunctionsIncludeName(functions: unknown, name: string): boolean {
+  return Array.isArray(functions)
+    && functions.some((fn) => isRecord(fn) && stringOrNull(fn.name) === name);
+}
+
+function chatToolsIncludeOpenAIWebSearch(tools: unknown): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => isRecord(tool) && isOpenAIWebSearchToolType(tool.type));
 }
 
 function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToolCalls: unknown): unknown {
