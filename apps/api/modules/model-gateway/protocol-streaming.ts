@@ -29,6 +29,7 @@ interface StreamResult {
 export interface StreamAdapterOptions {
   customToolNames?: Iterable<string>;
   stopSequences?: Iterable<string>;
+  allowToolCalls?: boolean;
 }
 
 export interface StreamErrorEnvelope {
@@ -277,6 +278,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const emittedMcpItemKeys = new Set<string>();
   const emittedBuiltinToolItemKeys = new Set<string>();
   const stopFilter = createStopSequenceFilter(options.stopSequences);
+  const allowToolCalls = options.allowToolCalls !== false;
   let sawCompleted = false;
 
   try {
@@ -335,7 +337,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
-        if (isUsableResponsesToolCallItem(event.json.item)) {
+        if (allowToolCalls && isUsableResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
           ensureChatStreamStart(state, res);
@@ -346,8 +348,8 @@ export async function writeChatCompletionsSseFromResponsesSse(
       }
       if (event.event === "response.function_call_arguments.delta") {
         const delta = stringOrNull(event.json.delta) || "";
-        if (!hasExistingResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId)
-          && !hasResponsesToolIdentity(event.json, null)) {
+        if (!allowToolCalls || (!hasExistingResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId)
+          && !hasResponsesToolIdentity(event.json, null))) {
           return;
         }
         const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
@@ -361,8 +363,8 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.function_call_arguments.done") {
-        if (!hasExistingResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId)
-          && !hasResponsesToolIdentity(event.json, null)) {
+        if (!allowToolCalls || (!hasExistingResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId)
+          && !hasResponsesToolIdentity(event.json, null))) {
           return;
         }
         const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
@@ -395,7 +397,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
           }
           return;
         }
-        if (isUsableResponsesToolCallItem(event.json.item)) {
+        if (allowToolCalls && isUsableResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           if (!tool) return;
           const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(event.json.item));
@@ -412,7 +414,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
       if (event.event === "response.completed") {
         sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
-        emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
+        if (allowToolCalls) {
+          emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
+        }
         emitMissingChatMcpOutputsFromResponsesOutput(state, res, response.output, emittedMcpItemKeys);
         emitMissingChatBuiltinToolOutputsFromResponsesOutput(state, res, response.output, emittedBuiltinToolItemKeys);
         const pending = flushStopSequenceFilter(stopFilter);

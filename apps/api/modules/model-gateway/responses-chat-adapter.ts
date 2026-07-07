@@ -24,6 +24,7 @@ export interface ChatResponsesRequestAdapterResult {
   model: string | null;
   stream: boolean;
   stopSequences: string[];
+  allowToolCalls: boolean;
 }
 
 export interface ChatResponsesRequestAdapterOptions {
@@ -33,6 +34,7 @@ export interface ChatResponsesRequestAdapterOptions {
 export interface ResponsesChatResponseAdapterOptions {
   preserveMcpToolCalls?: boolean;
   stopSequences?: Iterable<string>;
+  allowToolCalls?: boolean;
 }
 
 export function isChatToOpenAIResponsesAdapterTarget(decision: {
@@ -90,6 +92,7 @@ export function adaptChatCompletionRequestToResponses(
     "previous_response_id",
     "prompt",
     "prompt_cache_key",
+    "prompt_cache_retention",
     "safety_identifier",
     "service_tier",
     "store",
@@ -125,7 +128,13 @@ export function adaptChatCompletionRequestToResponses(
 
   applyResponsesReasoningOptions(responsesRequest, request);
 
-  return { responsesRequest, model, stream, stopSequences: normalizeStopSequences(request.stop) };
+  return {
+    responsesRequest,
+    model,
+    stream,
+    stopSequences: normalizeStopSequences(request.stop),
+    allowToolCalls: Array.isArray(responsesRequest.tools) && responsesRequest.tools.length > 0,
+  };
 }
 
 export function adaptResponsesToChatCompletion(
@@ -150,9 +159,12 @@ export function adaptResponsesToChatCompletion(
     collectResponseOutputText(response, output, { skipMcpToolCalls: mcpToolBlocks.length > 0 }),
     options.stopSequences,
   ).text;
-  const toolCalls = output
-    .map(mapResponsesFunctionCallToChatToolCall)
-    .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall));
+  const allowToolCalls = options.allowToolCalls !== false;
+  const toolCalls = allowToolCalls
+    ? output
+      .map(mapResponsesFunctionCallToChatToolCall)
+      .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall))
+    : [];
   const message: JsonRecord = {
     role: "assistant",
     content: text || (toolCalls.length ? null : ""),

@@ -10563,6 +10563,7 @@ export function createModelGatewayService(
     let requestModelForLog = resolvedModel || requestModel;
     let codexResponsesChatCustomToolNames: string[] = [];
     let responsesAdapterStopSequences: string[] = [];
+    let responsesAdapterAllowToolCalls = true;
     let codexImageGenerationRequest: CodexAccountImageGenerationPreparedRequest | null = null;
     if (useCodexAccountImageGenerationAdapter) {
       try {
@@ -10601,6 +10602,7 @@ export function createModelGatewayService(
       try {
         const adapted = adaptChatCompletionRequestToResponses(bodyText, { allowStreaming: true });
         responsesAdapterStopSequences = adapted.stopSequences;
+        responsesAdapterAllowToolCalls = adapted.allowToolCalls;
         upstreamBodyText = JSON.stringify(adapted.responsesRequest);
         requestModelForLog = adapted.model || requestModel;
         useChatResponsesStreamingAdapter = adapted.stream;
@@ -10739,6 +10741,7 @@ export function createModelGatewayService(
           allowStreaming: true,
         });
         responsesAdapterStopSequences = responsesAdapted.stopSequences;
+        responsesAdapterAllowToolCalls = responsesAdapted.allowToolCalls;
         upstreamBodyText = JSON.stringify(responsesAdapted.responsesRequest);
         requestModelForLog = responsesAdapted.model || chatAdapted.model || requestModel;
         useAnthropicMessagesResponsesProviderStreamingAdapter = responsesAdapted.stream;
@@ -10940,6 +10943,7 @@ export function createModelGatewayService(
           const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog, {
             customToolNames: codexResponsesChatCustomToolNames,
             stopSequences: responsesAdapterStopSequences,
+            allowToolCalls: responsesAdapterAllowToolCalls,
           });
           if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
             const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
@@ -11311,7 +11315,10 @@ export function createModelGatewayService(
           adaptedResponse = adaptResponsesToChatCompletion(
             parseOpenAIResponsesUpstreamBody(responseText, { codexAccountSse: useCodexAccountResponsesUpstream }),
             requestModelForLog,
-            { stopSequences: responsesAdapterStopSequences },
+            {
+              stopSequences: responsesAdapterStopSequences,
+              allowToolCalls: responsesAdapterAllowToolCalls,
+            },
           );
         } catch (error) {
           const adapterError = error instanceof OpenAIResponsesChatAdapterError
@@ -11440,7 +11447,10 @@ export function createModelGatewayService(
             codexAccountSse: useCodexAccountResponsesUpstream && useAnthropicMessagesResponsesProviderAdapter,
           });
           const chatCompletion = useAnthropicMessagesResponsesProviderAdapter
-            ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog, { preserveMcpToolCalls: true })
+            ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog, {
+              preserveMcpToolCalls: true,
+              allowToolCalls: responsesAdapterAllowToolCalls,
+            })
             : upstreamJson;
           adaptedResponse = adaptChatCompletionResponseToAnthropicMessages(chatCompletion, requestModelForLog, {
             stopSequences: responsesAdapterStopSequences,

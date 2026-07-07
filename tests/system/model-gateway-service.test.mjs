@@ -11062,6 +11062,7 @@ test("model gateway preserves supported responses controls and strips rejected c
           previous_response_id: "resp_previous",
           prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
           prompt_cache_key: "cache-key-123",
+          prompt_cache_retention: "24h",
           safety_identifier: "user-hash-123",
           seed: 123,
           stop: ["STOP"],
@@ -11107,6 +11108,7 @@ test("model gateway preserves supported responses controls and strips rejected c
     previous_response_id: "resp_previous",
     prompt: { id: "pmpt_123", variables: { topic: "gateway" } },
     prompt_cache_key: "cache-key-123",
+    prompt_cache_retention: "24h",
     safety_identifier: "user-hash-123",
     store: false,
     stream_options: { include_usage: true },
@@ -11118,6 +11120,75 @@ test("model gateway preserves supported responses controls and strips rejected c
   assert.equal("presence_penalty" in upstreamCalls[0].body, false);
   assert.equal("seed" in upstreamCalls[0].body, false);
   assert.equal("top_logprobs" in upstreamCalls[0].body, false);
+});
+
+test("model gateway preserves Responses cache and safety controls for Chat providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-chat-cache-controls",
+      name: "Responses Chat Cache Controls Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://responses-chat-cache-controls.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-responses-chat-cache-controls-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chat_cache_controls",
+      object: "chat.completion",
+      created: 1_710_000_041,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "cache ok" },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "preserve responses cache controls",
+          prompt_cache_key: "responses-cache-key",
+          prompt_cache_retention: "24h",
+          safety_identifier: "hashed-user-id",
+        },
+      });
+
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.output[0].content[0].text, "cache ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://responses-chat-cache-controls.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].body.prompt_cache_key, "responses-cache-key");
+  assert.equal(upstreamCalls[0].body.prompt_cache_retention, "24h");
+  assert.equal(upstreamCalls[0].body.safety_identifier, "hashed-user-id");
 });
 
 test("model gateway applies responses adapter stop sequences locally without forwarding unsupported stop", async () => {
@@ -16660,6 +16731,13 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
           model: "gpt-responses",
           stream: true,
           messages: [{ role: "user", content: "tool please" }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }],
         },
       });
       assert.equal(chat.status, 200);
@@ -16695,6 +16773,10 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
           max_tokens: 64,
           stream: true,
           messages: [{ role: "user", content: "tool please" }],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }],
         },
       });
       assert.equal(anthropic.status, 200);
