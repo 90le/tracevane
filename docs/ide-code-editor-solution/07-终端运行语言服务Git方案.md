@@ -324,7 +324,8 @@ M7：LSP / Git / Debug
 - M7-D Git status + Explorer decoration + Source Control View 已完成，记录见 [`archive/m7-d-git-status-source-control-summary.md`](./archive/m7-d-git-status-source-control-summary.md)。
 - M7-E-A 已复用现有 Git API 接入 diff 查看；M7-E-B 已复用现有 Git API 接入 stage/unstage；M7-E-C 已复用现有 Git API 接入 staged commit；M7-E-D 已复用 Git status payload 在 Source Control / StatusBar 展示 branch、upstream、ahead/behind 与变更汇总。
 - M7 Git Source Control 总体验收已完成，记录见 [`archive/m7-git-execution-summary.md`](./archive/m7-git-execution-summary.md)。
-- Debug 后置到 M7-F/M7.x，不和 LSP/Git 同时追完整。
+- M7-F-A Debug Adapter Protocol 研究与最小实现计划已完成，记录见 [`archive/m7-f-a-debug-adapter-plan.md`](./archive/m7-f-a-debug-adapter-plan.md)。
+- 下一步进入 M7-F-B Debug Gateway skeleton + Debug View shell；Debug 仍不和 LSP/Git 同时追完整。
 ```
 
 ## 4. LSP 语言服务方案
@@ -478,7 +479,7 @@ POST /api/workspaces/:id/git/push
 
 ## 7. Debug 方案
 
-Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/diff 同时追完整。
+Debug 是复杂能力，M7-F-A 已完成 DAP 研究和分段计划；后续仍必须分阶段推进，不和单语言 LSP、Git status/diff 同时追完整。
 
 如果要做，需要考虑：
 
@@ -495,9 +496,10 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 建议阶段：
 
 ```txt
-第一阶段不做。
-第二阶段只做运行任务。
-第三阶段按具体语言接入 DAP。
+M7-F-B：Debug Gateway skeleton + Debug View shell。
+M7-F-C：Breakpoints + editor reveal foundation。
+M7-F-D：最小真实 adapter proof。
+M7-F-E：Debug acceptance closeout。
 ```
 
 ## 8. 能力建设优先级
@@ -519,8 +521,9 @@ Debug 是复杂能力，建议后置到 M7.x，不和单语言 LSP、Git status/
 12. M7-E-C：Git commit foundation（已完成）
 13. M7-E-D：Git branch / upstream status foundation（已完成）
 14. M7 Git acceptance closeout（已完成）
-15. M7-F-A：Debug Adapter Protocol 研究与最小实现计划
-16. M7-F/M7.x：Debug Adapter Protocol 研究与最小实现
+15. M7-F-A：Debug Adapter Protocol 研究与最小实现计划（已完成）
+16. M7-F-B：Debug Gateway skeleton + Debug View shell
+17. M7-F/M7.x：Debug Adapter Protocol 研究与最小实现
 ```
 
 ## 9. 验收标准
