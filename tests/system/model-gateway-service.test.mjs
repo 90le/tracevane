@@ -1719,6 +1719,40 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(tokenCount.status, 200);
       assert.equal(typeof tokenCount.body.input_tokens, "number");
       assert.ok(tokenCount.body.input_tokens > 0);
+
+      const plainCount = await requestJson(`${baseUrl}/v1/messages/count_tokens`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          system: [{ type: "text", text: "Stable counting system." }],
+          messages: [{ role: "user", content: [{ type: "text", text: "Stable counting prompt." }] }],
+        },
+      });
+      const noisyCount = await requestJson(`${baseUrl}/v1/messages/count_tokens`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 64,
+          metadata: {
+            user_id: "claude-code-cli",
+            session_id: "x".repeat(4096),
+          },
+          temperature: 0.2,
+          system: [{ type: "text", text: "Stable counting system.", cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: [{ type: "text", text: "Stable counting prompt.", cache_control: { type: "ephemeral" } }] }],
+        },
+      });
+      assert.equal(noisyCount.status, 200);
+      assert.equal(noisyCount.body.input_tokens, plainCount.body.input_tokens);
     });
   } finally {
     globalThis.fetch = originalFetch;

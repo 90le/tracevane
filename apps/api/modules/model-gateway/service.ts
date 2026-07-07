@@ -4497,9 +4497,19 @@ function estimateAnthropicMessagesCountTokens(bodyText: string | undefined): num
   } catch {
     return estimateTextTokens(bodyText);
   }
-  const text = collectTokenEstimateText(parsed).join("\n");
+  const tokenBearingPayload = anthropicCountTokensEstimatePayload(parsed);
+  const text = collectTokenEstimateText(tokenBearingPayload).join("\n");
   const structuralOverhead = estimateAnthropicMessagesStructuralOverhead(parsed);
   return Math.max(1, estimateTextTokens(text) + structuralOverhead);
+}
+
+function anthropicCountTokensEstimatePayload(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const payload: Record<string, unknown> = {};
+  for (const key of ["system", "messages", "tools"] as const) {
+    if (value[key] !== undefined) payload[key] = value[key];
+  }
+  return payload;
 }
 
 function estimateTextTokens(text: string): number {
@@ -4521,9 +4531,17 @@ function collectTokenEstimateText(value: unknown): string[] {
   if (type === "document" || type === "file" || type === "input_file") return ["[document]", ...collectTokenEstimateText(value.title), ...collectTokenEstimateText(value.filename), ...collectTokenEstimateText(value.name)];
   if (type === "tool_use" || type === "tool_result") return [stringifyCompact(value)];
   return Object.entries(value)
-    .filter(([key]) => !["image_url", "source", "data"].includes(key))
+    .filter(([key]) => !TOKEN_ESTIMATE_NON_TEXT_KEYS.has(key))
     .flatMap(([, item]) => collectTokenEstimateText(item));
 }
+
+const TOKEN_ESTIMATE_NON_TEXT_KEYS = new Set([
+  "cache_control",
+  "data",
+  "image_url",
+  "metadata",
+  "source",
+]);
 
 function estimateAnthropicMessagesStructuralOverhead(value: unknown): number {
   if (!isRecord(value)) return 0;
