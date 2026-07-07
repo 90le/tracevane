@@ -114,6 +114,10 @@ export function adaptChatCompletionRequestToResponses(
 
   const toolChoice = mapChatToolChoiceToResponses(request.tool_choice);
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
+  if (responsesRequest.parallel_tool_calls === undefined) {
+    const parallelToolCalls = mapChatToolChoiceParallelToolUseToResponses(request.tool_choice);
+    if (parallelToolCalls !== undefined) responsesRequest.parallel_tool_calls = parallelToolCalls;
+  }
 
   const textFormat = mapChatResponseFormatToResponsesText(request.response_format);
   if (textFormat !== undefined) responsesRequest.text = { format: textFormat };
@@ -442,7 +446,16 @@ function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
       || stringOrNull(toolChoice.name);
     return name ? { type: "function", name } : toolChoice;
   }
+  if (toolChoice.type === "tool") {
+    const name = stringOrNull(toolChoice.name);
+    return name ? { type: "function", name } : toolChoice;
+  }
   return toolChoice;
+}
+
+function mapChatToolChoiceParallelToolUseToResponses(toolChoice: unknown): boolean | undefined {
+  if (!isRecord(toolChoice)) return undefined;
+  return toolChoice.disable_parallel_tool_use === true ? false : undefined;
 }
 
 function mapChatToolCallToResponsesFunctionCall(toolCall: unknown): JsonRecord | null {

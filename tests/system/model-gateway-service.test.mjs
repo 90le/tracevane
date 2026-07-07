@@ -10285,6 +10285,81 @@ test("model gateway accepts direct-name Chat function tool choices across native
   assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "function", name: "lookup" });
 });
 
+test("model gateway adapts Anthropic-style Chat tool choices for Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-anthropic-choice-responses",
+      name: "Chat Anthropic Choice Responses Provider",
+      appScopes: ["opencode"],
+      baseUrl: "https://chat-anthropic-choice-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-anthropic-choice-responses-secret" },
+    setActiveScopes: ["opencode"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_chat_anthropic_choice",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Anthropic-style choice accepted." }],
+      }],
+      usage: { input_tokens: 5, output_tokens: 4, total_tokens: 9 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{ role: "user", content: "Use lookup." }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }],
+          tool_choice: { type: "tool", name: "lookup", disable_parallel_tool_use: true },
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.choices[0].message.content, "Anthropic-style choice accepted.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
+  assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", name: "lookup" });
+  assert.equal(upstreamCalls[0].body.parallel_tool_calls, false);
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
