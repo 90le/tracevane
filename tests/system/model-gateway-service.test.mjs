@@ -15408,8 +15408,10 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   const anthropicBody = {
     model: "claude-native",
     max_tokens: 128,
+    cache_control: { type: "ephemeral" },
     container: "container_unknown_request_blocks",
     context_management: { edits: [{ type: "clear_tool_uses_20250919" }] },
+    inference_geo: "eu",
     messages: [
       {
         role: "user",
@@ -15431,6 +15433,8 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
         ],
       },
     ],
+    speed: 1.25,
+    top_k: 40,
   };
 
   try {
@@ -15488,10 +15492,18 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(chatMessages, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(chatMessages, /missing tool_use_id result/);
   assert.match(chatMessages, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(chatMessages, /cache_control/);
   assert.match(chatMessages, /container_unknown_request_blocks/);
   assert.match(chatMessages, /clear_tool_uses_20250919/);
+  assert.match(chatMessages, /inference_geo=eu/);
+  assert.match(chatMessages, /speed=1.25/);
+  assert.match(chatMessages, /top_k=40/);
+  assert.equal(upstreamCalls[0].body.cache_control, undefined);
   assert.equal(upstreamCalls[0].body.container, undefined);
   assert.equal(upstreamCalls[0].body.context_management, undefined);
+  assert.equal(upstreamCalls[0].body.inference_geo, undefined);
+  assert.equal(upstreamCalls[0].body.speed, undefined);
+  assert.equal(upstreamCalls[0].body.top_k, undefined);
 
   assert.equal(upstreamCalls[1].url, "https://anthropic-unknown-request-to-responses.example.test/v1/responses");
   const responsesInput = JSON.stringify(upstreamCalls[1].body.input);
@@ -15504,9 +15516,17 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(responsesInput, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
   assert.match(responsesInput, /missing tool_use_id result/);
   assert.match(responsesInput, /Anthropic Messages request context preserved for Chat adapters/);
+  assert.match(responsesInput, /cache_control/);
   assert.match(responsesInput, /container_unknown_request_blocks/);
+  assert.match(responsesInput, /inference_geo=eu/);
+  assert.match(responsesInput, /speed=1.25/);
+  assert.match(responsesInput, /top_k=40/);
   assert.deepEqual(upstreamCalls[1].body.context_management, { edits: [{ type: "clear_tool_uses_20250919" }] });
+  assert.equal(upstreamCalls[1].body.cache_control, undefined);
   assert.equal(upstreamCalls[1].body.container, undefined);
+  assert.equal(upstreamCalls[1].body.inference_geo, undefined);
+  assert.equal(upstreamCalls[1].body.speed, undefined);
+  assert.equal(upstreamCalls[1].body.top_k, undefined);
   assert.equal(JSON.stringify(upstreamCalls[1].body.input).includes('"type":"tool_result"'), false);
 });
 

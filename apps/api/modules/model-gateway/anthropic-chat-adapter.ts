@@ -1390,7 +1390,15 @@ function anthropicUnsupportedRequestContextToChatText(
   request: JsonRecord,
   options: AnthropicChatRequestAdapterOptions = {},
 ): string {
-  const notes: string[] = [];
+  const unsupportedFields = [
+    "cache_control",
+    "inference_geo",
+    "speed",
+    "top_k",
+  ];
+  const notes = unsupportedFields
+    .filter((field) => request[field] !== undefined)
+    .map((field) => `${field}=${stringifyCompact(request[field])}`);
   if (request.container !== undefined) {
     notes.push(`container=${stringifyCompact(request.container)}`);
   }
