@@ -1625,6 +1625,9 @@ test("model gateway strips Codex account Responses unsupported request parameter
               filename: "readme.txt",
             }, {
               type: "input_audio",
+              input_audio: { data: "data:audio/wav;base64,UklGRg==", format: "wav", transcript: "spoken audio transcript" },
+            }, {
+              type: "input_audio",
               input_audio: { data: "data:audio/wav;base64,UklGRg==", format: "wav" },
             }, {
               type: "input_video",
@@ -1748,7 +1751,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
-  assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 4), [{
+  assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",
     text: "hello",
   }, {
@@ -1761,6 +1764,9 @@ test("model gateway strips Codex account Responses unsupported request parameter
   }, {
     type: "input_file",
     file_url: "https://example.test/readme.txt",
+  }, {
+    type: "input_text",
+    text: "spoken audio transcript",
   }]);
   assert.equal(JSON.stringify(directUpstreamBody.input).includes("input_audio"), true);
   assert.equal(JSON.stringify(directUpstreamBody.input).includes("input_video"), true);

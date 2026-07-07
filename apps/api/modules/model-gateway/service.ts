@@ -4355,6 +4355,8 @@ function normalizeCodexAccountResponsesContentPart(source: unknown): unknown {
   if (type === "file" || type === "input_file") {
     return normalizeCodexAccountResponsesInputFilePart(source);
   }
+  const transcript = codexAccountContentPartTranscript(source);
+  if (transcript) return { type: "input_text", text: transcript };
   if (
     type === "input_text"
     || type === "input_image"
@@ -4366,6 +4368,15 @@ function normalizeCodexAccountResponsesContentPart(source: unknown): unknown {
     return source;
   }
   return codexAccountUnsupportedContentPartNote(source);
+}
+
+function codexAccountContentPartTranscript(source: Record<string, unknown>): string {
+  const direct = normalizeString(source.transcript);
+  if (direct) return direct;
+  const inputAudio = isRecord(source.input_audio) ? normalizeString(source.input_audio.transcript) : "";
+  if (inputAudio) return inputAudio;
+  const outputAudio = isRecord(source.output_audio) ? normalizeString(source.output_audio.transcript) : "";
+  return outputAudio;
 }
 
 function normalizeCodexAccountResponsesInputFilePart(source: Record<string, unknown>): unknown {
