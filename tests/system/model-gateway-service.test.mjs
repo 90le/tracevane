@@ -1509,13 +1509,13 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
       enabled: true,
       category: "official",
       sourceType: "account-backed",
-      appScopes: ["codex"],
+      appScopes: ["codex", "claude-code"],
       baseUrl: "https://chatgpt.com/backend-api/codex",
       apiFormat: "openai_responses",
       authStrategy: "oauth_proxy",
       models: {
-        defaultModel: "gpt-5.4",
-        models: [{ id: "gpt-5.4" }],
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }, { id: "gpt-5.4" }],
       },
       endpoints: {
         openai_responses: "/responses",
@@ -1541,7 +1541,7 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
         }],
       },
     },
-    setActiveScopes: ["codex"],
+    setActiveScopes: ["codex", "claude-code"],
   });
   const stamp = new Date().toISOString();
   fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
@@ -1614,19 +1614,42 @@ test("model gateway strips unsupported metadata from direct Codex account Respon
       assert.equal(response.status, 200);
       assert.equal(response.body.id, "resp_metadata");
       assert.equal(response.body.output[0].content[0].text, "ok");
+
+      const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+        },
+        body: {
+          model: "gpt-5.5",
+          max_tokens: 128,
+          metadata: {
+            user_id: "claude-code-cli",
+            session_id: "metadata-regression",
+          },
+          messages: [{ role: "user", content: "hello" }],
+          stream: false,
+        },
+      });
+      assert.equal(claudeCode.status, 200);
+      assert.equal(claudeCode.body.id, "resp_metadata");
+      assert.equal(claudeCode.body.content[0].text, "ok");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
-  assert.equal(upstreamCalls[0].accountId, "acct_metadata");
-  assert.equal(upstreamCalls[0].authorization, "Bearer codex-metadata-access");
-  const upstreamBody = JSON.parse(upstreamCalls[0].body);
-  assert.equal(upstreamBody.metadata, undefined);
-  assert.equal(upstreamBody.stream, true);
-  assert.equal(upstreamBody.store, false);
-  assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
+  assert.equal(upstreamCalls.length, 2);
+  for (const upstreamCall of upstreamCalls) {
+    assert.equal(upstreamCall.accountId, "acct_metadata");
+    assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
+    const upstreamBody = JSON.parse(upstreamCall.body);
+    assert.equal(upstreamBody.metadata, undefined);
+    assert.equal(upstreamBody.stream, true);
+    assert.equal(upstreamBody.store, false);
+    assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
+  }
 });
 
 test("model gateway repairs stale raw Codex account catalog budgets on startup", () => {
