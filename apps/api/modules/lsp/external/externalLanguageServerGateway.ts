@@ -290,10 +290,30 @@ export class ExternalLanguageServerGateway {
   }
 
   private handleNotification(running: RunningServer, notification: LspJsonRpcNotification): void {
+    if (notification.method === "tsserver/request") {
+      this.handleTsServerBridgeRequest(running, notification.params);
+      return;
+    }
     if (notification.method !== "textDocument/publishDiagnostics") return;
     const params = notification.params as Partial<LspPublishDiagnosticsParams> | undefined;
     if (!params || typeof params.uri !== "string" || !Array.isArray(params.diagnostics)) return;
     running.diagnostics.set(params.uri, [...params.diagnostics]);
+  }
+
+  private handleTsServerBridgeRequest(running: RunningServer, params: unknown): void {
+    if (running.profile.id !== "vue") return;
+    const requestId = Array.isArray(params) ? params[0] : null;
+    if (typeof requestId !== "number" && typeof requestId !== "string") return;
+    try {
+      // @vue/language-server can ask the editor-hosted TypeScript plugin for
+      // project metadata and Vue-specific rich interactions. Tracevane M12-C is
+      // diagnostics/status only and does not host a TS plugin bridge yet, so we
+      // answer with null to let Volar fall back to its simple project service
+      // instead of hanging external diagnostics forever.
+      running.transport.send({ jsonrpc: "2.0", method: "tsserver/response", params: [requestId, null] });
+    } catch (error) {
+      this.options.logger?.warn?.(error);
+    }
   }
 
   private handleExit(running: RunningServer, code: number | null, signal: NodeJS.Signals | null): void {

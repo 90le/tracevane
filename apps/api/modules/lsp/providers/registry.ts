@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -33,6 +33,7 @@ export const PYRIGHT_PROVIDER_SOURCE = "pyright";
 export const DOCKERFILE_PROVIDER_SOURCE = "dockerfile-language-server-nodejs";
 export const MARKDOWN_PROVIDER_SOURCE = "vscode-langservers-extracted";
 export const ESLINT_PROVIDER_SOURCE = "vscode-langservers-extracted";
+export const VUE_PROVIDER_SOURCE = "@vue/language-server";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
 export const CSS_LANGUAGES = new Set(["css", "scss", "less"]);
@@ -42,6 +43,7 @@ export const PYTHON_LANGUAGES = new Set(["python", "py", "python3", "pyi"]);
 export const DOCKERFILE_LANGUAGES = new Set(["dockerfile", "docker"]);
 export const MARKDOWN_LANGUAGES = new Set(["markdown", "md", "mdx"]);
 export const ESLINT_LANGUAGES = new Set(["javascript", "javascriptreact", "typescript", "typescriptreact"]);
+export const VUE_LANGUAGES = new Set(["vue"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
   {
@@ -157,6 +159,17 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
       rename: true,
       formatting: true,
       codeAction: true,
+    },
+  },
+
+  {
+    id: "vue",
+    source: VUE_PROVIDER_SOURCE,
+    mode: "external",
+    status: "available",
+    languages: [...VUE_LANGUAGES],
+    capabilities: {
+      diagnostics: true,
     },
   },
   {

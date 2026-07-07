@@ -106,6 +106,21 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
       "M11-R exposes Markdown diagnostics/status only; JSON/HTML/CSS bins from this package remain intentionally disabled.",
     ],
   },
+
+  vue: {
+    packageName: "@vue/language-server",
+    source: "npm:@vue/language-server",
+    installMode: "bundled-npm",
+    pinnedVersion: "3.3.6",
+    license: "MIT",
+    optional: false,
+    auditSummary: "Bundled npm provider added as a diagnostics-only Vue framework proof; TypeScript/Volar rich interactions and Svelte remain behind separate compatibility gates.",
+    notes: [
+      "Started only through server-side allowlisted process.execPath + require.resolve command.",
+      "M12-C exposes Vue diagnostics/status only; hover/completion/definition/formatting/code actions and Vue project takeover behavior remain deferred.",
+      "@vue/language-server 3.3.6 declares a TypeScript * peer; Svelte remains deferred because its current peer range does not match the project TypeScript pin.",
+    ],
+  },
   eslint: {
     packageName: "vscode-langservers-extracted",
     source: "npm:vscode-langservers-extracted",

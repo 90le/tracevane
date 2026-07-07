@@ -773,7 +773,8 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 87. M11-W：External provider acceptance / next provider decision（已完成）
 88. M12-A：Framework / heavy language provider research plan（已完成）
 89. M12-B：Vue / Svelte framework provider guarded proof plan（已完成）
-90. M12-C：Vue external provider guarded diagnostics proof（下一步）
+90. M12-C：Vue external provider guarded diagnostics proof（已完成）
+91. M12-D：Svelte dependency compatibility / TypeScript peer policy plan（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -972,3 +973,18 @@ M11-V 已完成，记录见 [`archive/m11-v-eslint-workingdirectories-summary.md
 ```
 
 M11-V 明确不做：ESLint fix、formatting、code actions、fix on save、glob/auto workingDirectories、用户/前端自定义 provider 配置、system binary discovery、auto install、第二套 LSP/Files/Search API、替换既有 TS/JS hover/completion/definition/references provider 或 File Manager Online Editor 产品壳变更。M11-W 已完成 External provider acceptance / next provider decision；M12-A 已完成 Framework / heavy language provider research plan；M12-B 已完成 Vue / Svelte framework provider guarded proof plan；下一步 M12-C 进入 Vue external provider guarded diagnostics proof。
+
+### M12-C 已完成：Vue External Provider Guarded Diagnostics Proof
+
+M12-C 已完成，记录见 [`archive/m12-c-vue-external-provider-summary.md`](./archive/m12-c-vue-external-provider-summary.md)。本阶段把 Vue 作为第一个 framework external provider proof 接入现有 external LSP gateway：`@vue/language-server@3.3.6` exact-pin、server-side allowlist profile、provider metadata/status、`.vue` language routing 与 diagnostics response contract 已落地。
+
+验收口径：
+
+```txt
+- Vue provider 只通过后端 allowlist 的 process.execPath + require.resolve bin + --stdio 启动。
+- /api/lsp/status / provider matrix 可见 vue provider、installed version、pinnedVersion、source 和 diagnostics capability。
+- Vue 文件 diagnostics request 走现有 diagnoseDocument / external gateway 路径，并返回标准 Tracevane diagnostics response shape。
+- Vue LS 的 tsserver/request 在 M12-C 以 null bridge 响应，避免未托管 Volar TS plugin bridge 时 diagnostics route 悬挂；完整 rich bridge 后置。
+```
+
+M12-C 明确不做：Svelte provider、Go/Rust/Java/C/C++ heavy toolchain provider、Vue hover/completion/definition/references/semantic tokens/formatting/code action、完整 Volar TypeScript plugin bridge、替换现有 TS/JS provider、auto install、system binary discovery、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-D 进入 Svelte dependency compatibility / TypeScript peer policy plan。
