@@ -11,6 +11,8 @@ import type {
   LspReferencesResponse,
   LspRenameRequest,
   LspRenameResponse,
+  LspSemanticTokensRequest,
+  LspSemanticTokensResponse,
   LspWorkspaceEditApplyRequest,
   LspWorkspaceEditApplyResponse,
   LspWorkspaceEditPreviewRequest,
@@ -45,6 +47,12 @@ export async function requestLspReferences(
   return requestLspFeature<LspReferencesResponse>("/api/lsp/references", request, options);
 }
 
+export async function requestLspSemanticTokens(
+  request: LspSemanticTokensRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspSemanticTokensResponse> {
+  return requestLspFeature<LspSemanticTokensResponse>("/api/lsp/semantic-tokens", request, options);
+}
 
 
 export async function requestLspRename(

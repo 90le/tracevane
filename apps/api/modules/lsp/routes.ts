@@ -8,6 +8,7 @@ import type {
   LspFormattingRequest,
   LspPositionRequest,
   LspRenameRequest,
+  LspSemanticTokensRequest,
   LspWorkspaceEditApplyRequest,
   LspWorkspaceEditPreviewRequest,
 } from "../../../../types/lsp.js";
@@ -66,6 +67,18 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     }
   });
 
+
+  router.post("/api/lsp/semantic-tokens", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspSemanticTokensRequest>(req);
+    try {
+      sendJson(res, 200, routeCtx.services.lsp.semanticTokens(body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_semantic_tokens_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 
 
   router.post("/api/lsp/rename", async (req, res, routeCtx) => {

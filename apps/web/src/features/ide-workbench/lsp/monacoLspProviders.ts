@@ -1,14 +1,36 @@
 import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
-import type { LspCompletionItem, LspWorkspaceTextEdit } from "../../../../../../types/lsp";
+import type { LspCompletionItem, LspSemanticTokensResponse, LspWorkspaceTextEdit } from "../../../../../../types/lsp";
 
 import { editorModelUriString } from "@/shared/editor-core";
 import { appendWorkbenchOutput } from "../output/outputStore";
-import { requestLspCodeActions, requestLspCompletion, requestLspDefinition, requestLspFormatting, requestLspHover, requestLspReferences, requestLspRename } from "./lspInteractionClient";
+import { requestLspCodeActions, requestLspCompletion, requestLspDefinition, requestLspFormatting, requestLspHover, requestLspReferences, requestLspRename, requestLspSemanticTokens } from "./lspInteractionClient";
 
 let registered = false;
 
 const TYPESCRIPT_INTERACTION_LANGUAGES = ["typescript", "typescriptreact", "javascript", "javascriptreact"] as const;
+
+const TRACEVANE_SEMANTIC_TOKENS_LEGEND: monaco.languages.SemanticTokensLegend = {
+  tokenTypes: [
+    "class",
+    "enum",
+    "interface",
+    "namespace",
+    "type",
+    "typeParameter",
+    "parameter",
+    "variable",
+    "property",
+    "function",
+    "keyword",
+    "string",
+    "number",
+    "regexp",
+    "operator",
+    "comment",
+  ],
+  tokenModifiers: ["declaration", "readonly", "static", "deprecated", "async"],
+};
 
 export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): void {
   if (registered || typeof window === "undefined") return;
@@ -16,7 +38,7 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
   appendWorkbenchOutput({
     channel: { id: "lsp", label: "LSP", kind: "lsp" },
     level: "info",
-    text: "LSP interaction providers registered: JSON hover/completion/definition/references; TypeScript/JavaScript hover/definition/completion/references",
+    text: "LSP interaction providers registered: JSON hover/completion/definition/references; TypeScript/JavaScript hover/definition/completion/references/semantic tokens",
   });
 
   monacoApi.languages.registerHoverProvider("json", {
@@ -167,6 +189,25 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
   });
 
   for (const language of TYPESCRIPT_INTERACTION_LANGUAGES) {
+
+    monacoApi.languages.registerDocumentSemanticTokensProvider(language, {
+      getLegend: () => TRACEVANE_SEMANTIC_TOKENS_LEGEND,
+      provideDocumentSemanticTokens: async (model) => {
+        const ref = editorRefFromModelUri(model.uri.toString());
+        if (!ref) return { data: new Uint32Array() };
+        const response = await requestLspSemanticTokens({
+          type: "semanticTokens",
+          rootId: ref.rootId,
+          path: ref.path,
+          language,
+          content: model.getValue(),
+          version: model.getVersionId(),
+        });
+        return semanticTokensToMonaco(response);
+      },
+      releaseDocumentSemanticTokens: () => undefined,
+    });
+
     monacoApi.languages.registerHoverProvider(language, {
       provideHover: async (model, position) => {
         const ref = editorRefFromModelUri(model.uri.toString());
@@ -331,6 +372,11 @@ export function registerTracevaneLspMonacoProviders(monacoApi: typeof monaco): v
       },
     });
   }
+}
+
+
+function semanticTokensToMonaco(response: LspSemanticTokensResponse): monaco.languages.SemanticTokens {
+  return { data: new Uint32Array(response.data) };
 }
 
 function lspLocationToMonaco(

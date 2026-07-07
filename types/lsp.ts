@@ -106,6 +106,49 @@ export interface LspReferencesResponse extends LspDocumentRef {
   checkedAt: string;
 }
 
+export interface LspSemanticTokensRequest extends LspDocumentRef {
+  type?: "semanticTokens";
+  id?: string | null;
+  content: string;
+}
+
+export type LspSemanticTokenType =
+  | "class"
+  | "enum"
+  | "interface"
+  | "namespace"
+  | "type"
+  | "typeParameter"
+  | "parameter"
+  | "variable"
+  | "property"
+  | "function"
+  | "keyword"
+  | "string"
+  | "number"
+  | "regexp"
+  | "operator"
+  | "comment";
+
+export type LspSemanticTokenModifier = "declaration" | "readonly" | "static" | "deprecated" | "async";
+
+export interface LspSemanticTokenLegend {
+  tokenTypes: LspSemanticTokenType[];
+  tokenModifiers: LspSemanticTokenModifier[];
+}
+
+export interface LspSemanticTokensResponse extends LspDocumentRef {
+  type: "semanticTokens";
+  id?: string | null;
+  provider: "typescript";
+  legend: LspSemanticTokenLegend;
+  /** Monaco/LSP-compatible full document tokens encoded as deltaLine, deltaStart, length, tokenType, tokenModifiers. */
+  data: number[];
+  tokenCount: number;
+  truncated: boolean;
+  checkedAt: string;
+}
+
 export interface LspDiagnosticsResponse extends LspDocumentRef {
   type: "diagnostics";
   id?: string | null;
@@ -141,6 +184,7 @@ export type LspGatewayServerEvent =
   | LspCompletionResponse
   | LspDefinitionResponse
   | LspReferencesResponse
+  | LspSemanticTokensResponse
   | LspRenameResponse
   | LspFormattingResponse
   | LspCodeActionResponse;

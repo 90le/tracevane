@@ -23,6 +23,9 @@ import type {
   LspReferencesResponse,
   LspRenameRequest,
   LspRenameResponse,
+  LspSemanticTokenLegend,
+  LspSemanticTokensRequest,
+  LspSemanticTokensResponse,
   LspWorkspaceEditRejectedItem,
   LspWorkspaceTextEdit,
 } from "../../../../types/lsp.js";
@@ -32,6 +35,32 @@ const LSP_WS_PATH = "/ws/lsp";
 const JSON_PROVIDER_SOURCE = "json-lsp";
 const TS_PROVIDER_SOURCE = "typescript-lsp";
 const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
+const SEMANTIC_TOKEN_TYPES = [
+  "class",
+  "enum",
+  "interface",
+  "namespace",
+  "type",
+  "typeParameter",
+  "parameter",
+  "variable",
+  "property",
+  "function",
+  "keyword",
+  "string",
+  "number",
+  "regexp",
+  "operator",
+  "comment",
+] as const satisfies LspSemanticTokenLegend["tokenTypes"];
+const SEMANTIC_TOKEN_MODIFIERS = ["declaration", "readonly", "static", "deprecated", "async"] as const satisfies LspSemanticTokenLegend["tokenModifiers"];
+const SEMANTIC_TOKEN_LEGEND: LspSemanticTokenLegend = {
+  tokenTypes: [...SEMANTIC_TOKEN_TYPES],
+  tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
+};
+const SEMANTIC_TOKEN_TYPE_INDEX = new Map<string, number>(SEMANTIC_TOKEN_TYPES.map((type, index) => [type, index]));
+const MAX_SEMANTIC_TOKEN_FILE_LENGTH = 250_000;
+const MAX_SEMANTIC_TOKEN_COUNT = 20_000;
 
 export interface LspService {
   getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[] };
@@ -40,6 +69,7 @@ export interface LspService {
   completeDocument(request: LspCompletionRequest): LspCompletionResponse;
   defineDocument(request: LspPositionRequest): LspDefinitionResponse;
   referenceDocument(request: LspPositionRequest): LspReferencesResponse;
+  semanticTokens(request: LspSemanticTokensRequest): LspSemanticTokensResponse;
   renameDocument(request: LspRenameRequest): LspRenameResponse;
   formatDocument(request: LspFormattingRequest): LspFormattingResponse;
   codeActions(request: LspCodeActionRequest): LspCodeActionResponse;
@@ -65,7 +95,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         return;
       }
 
-      const request = parsed as Partial<LspDiagnosticsRequest & LspPositionRequest & LspCompletionRequest>;
+      const request = parsed as Partial<LspDiagnosticsRequest & LspPositionRequest & LspCompletionRequest & LspSemanticTokensRequest>;
       if (!request?.type) {
         send(socket, { type: "error", id: request?.id ?? null, message: "Unsupported LSP gateway message type" });
         return;
@@ -90,6 +120,10 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         }
         if (request.type === "references") {
           send(socket, referenceDocument(config, request as LspPositionRequest));
+          return;
+        }
+        if (request.type === "semanticTokens") {
+          send(socket, semanticTokens(config, request as LspSemanticTokensRequest));
           return;
         }
         if (request.type === "rename") {
@@ -122,7 +156,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         provider: "tracevane-lsp",
         websocketPath: LSP_WS_PATH,
         supportedLanguages: ["json", "typescript", "typescriptreact", "javascript", "javascriptreact"],
-        features: ["diagnostics", "hover", "completion", "definition", "references", "rename", "formatting", "codeAction"],
+        features: ["diagnostics", "hover", "completion", "definition", "references", "semanticTokens", "rename", "formatting", "codeAction"],
       };
     },
     diagnoseDocument(request) {
@@ -139,6 +173,9 @@ export function createLspService(config: TracevaneServerConfig): LspService {
     },
     referenceDocument(request) {
       return referenceDocument(config, request);
+    },
+    semanticTokens(request) {
+      return semanticTokens(config, request);
     },
     renameDocument(request) {
       return renameDocument(config, request);
@@ -271,6 +308,17 @@ function referenceDocument(
     }] : [],
     checkedAt: new Date().toISOString(),
   };
+}
+
+function semanticTokens(
+  config: TracevaneServerConfig,
+  request: LspSemanticTokensRequest,
+): LspSemanticTokensResponse {
+  const validated = validateInteractionRequest(config, request);
+  if (!TYPESCRIPT_LANGUAGES.has(validated.language)) {
+    throw new Error("Semantic tokens are currently supported for TypeScript/JavaScript documents only");
+  }
+  return semanticTokensTypeScriptLike(request, validated);
 }
 
 interface ValidatedInteractionRequest {
@@ -563,6 +611,180 @@ function referenceTypeScriptLike(
     };
   } finally {
     languageService.service.dispose();
+  }
+}
+
+
+function semanticTokensTypeScriptLike(
+  request: LspSemanticTokensRequest,
+  validated: ValidatedInteractionRequest,
+): LspSemanticTokensResponse {
+  if (validated.content.length > MAX_SEMANTIC_TOKEN_FILE_LENGTH) {
+    return {
+      type: "semanticTokens",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      legend: SEMANTIC_TOKEN_LEGEND,
+      data: [],
+      tokenCount: 0,
+      truncated: true,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  const languageService = createTypeScriptLanguageService(validated, request.version);
+  try {
+    const sourceFile = languageService.sourceFile();
+    const classifications = languageService.service.getEncodedSemanticClassifications(
+      languageService.fileName,
+      { start: 0, length: validated.content.length },
+      ts.SemanticClassificationFormat.TwentyTwenty,
+    );
+    const data: number[] = [];
+    let previousLine = 0;
+    let previousStartCharacter = 0;
+    let tokenCount = 0;
+    const spans = classifications.spans ?? [];
+    for (let index = 0; index + 2 < spans.length; index += 3) {
+      if (tokenCount >= MAX_SEMANTIC_TOKEN_COUNT) break;
+      const start = spans[index];
+      const length = spans[index + 1];
+      const classification = spans[index + 2];
+      if (!Number.isFinite(start) || !Number.isFinite(length) || length <= 0) continue;
+      const token = semanticTokenInfoForClassification(classification);
+      if (!token) continue;
+      const tokenTypeIndex = SEMANTIC_TOKEN_TYPE_INDEX.get(token.type);
+      if (tokenTypeIndex === undefined) continue;
+      const position = sourceFile.getLineAndCharacterOfPosition(clampOffset(start, sourceFile.text.length));
+      const deltaLine = position.line - previousLine;
+      const deltaStart = deltaLine === 0 ? position.character - previousStartCharacter : position.character;
+      if (deltaLine < 0 || deltaStart < 0) continue;
+      data.push(deltaLine, deltaStart, Math.max(1, Math.floor(length)), tokenTypeIndex, token.modifiers);
+      previousLine = position.line;
+      previousStartCharacter = position.character;
+      tokenCount += 1;
+    }
+    return {
+      type: "semanticTokens",
+      id: request.id ?? null,
+      provider: "typescript",
+      rootId: validated.rootId,
+      path: validated.path,
+      language: validated.language,
+      version: request.version ?? null,
+      legend: SEMANTIC_TOKEN_LEGEND,
+      data,
+      tokenCount,
+      truncated: tokenCount >= MAX_SEMANTIC_TOKEN_COUNT || spans.length / 3 > tokenCount,
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    languageService.service.dispose();
+  }
+}
+
+function semanticTokenInfoForClassification(classification: number): {
+  type: LspSemanticTokenLegend["tokenTypes"][number];
+  modifiers: number;
+} | null {
+  if (!Number.isFinite(classification)) return null;
+
+  // TypeScript's 2020 semantic classifier encodes tokens as:
+  //   (tokenType + 1) << 8 | modifierBitSet
+  // See TypeScript's classifier2020 TokenEncodingConsts. Monaco expects
+  // token type/modifier indexes from our stable legend, so decode instead
+  // of comparing against the older ClassificationType enum.
+  const encodedType = Math.floor(classification / 256) - 1;
+  const encodedModifiers = classification & 0xff;
+  if (encodedType >= 0) {
+    const type = semanticTokenTypeForTwentyTwentyToken(encodedType);
+    if (!type) return null;
+    return { type, modifiers: semanticTokenModifiersForTwentyTwenty(encodedModifiers) };
+  }
+
+  const legacyType = semanticTokenTypeForLegacyClassification(classification);
+  return legacyType ? { type: legacyType, modifiers: 0 } : null;
+}
+
+function semanticTokenTypeForTwentyTwentyToken(typeIndex: number): LspSemanticTokenLegend["tokenTypes"][number] | null {
+  switch (typeIndex) {
+    case 0: // class
+      return "class";
+    case 1: // enum
+      return "enum";
+    case 2: // interface
+      return "interface";
+    case 3: // namespace
+      return "namespace";
+    case 4: // typeParameter
+      return "typeParameter";
+    case 5: // type
+      return "type";
+    case 6: // parameter
+      return "parameter";
+    case 7: // variable
+      return "variable";
+    case 8: // enumMember
+    case 9: // property
+      return "property";
+    case 10: // function
+      return "function";
+    case 11: // member
+      return "property";
+    default:
+      return null;
+  }
+}
+
+function semanticTokenModifiersForTwentyTwenty(modifiers: number): number {
+  let result = 0;
+  if (modifiers & (1 << 0)) result |= 1 << SEMANTIC_TOKEN_MODIFIERS.indexOf("declaration");
+  if (modifiers & (1 << 1)) result |= 1 << SEMANTIC_TOKEN_MODIFIERS.indexOf("static");
+  if (modifiers & (1 << 2)) result |= 1 << SEMANTIC_TOKEN_MODIFIERS.indexOf("async");
+  if (modifiers & (1 << 3)) result |= 1 << SEMANTIC_TOKEN_MODIFIERS.indexOf("readonly");
+  return result;
+}
+
+function semanticTokenTypeForLegacyClassification(classification: number): LspSemanticTokenLegend["tokenTypes"][number] | null {
+  switch (classification) {
+    case ts.ClassificationType.className:
+      return "class";
+    case ts.ClassificationType.enumName:
+      return "enum";
+    case ts.ClassificationType.interfaceName:
+      return "interface";
+    case ts.ClassificationType.moduleName:
+      return "namespace";
+    case ts.ClassificationType.typeAliasName:
+      return "type";
+    case ts.ClassificationType.typeParameterName:
+      return "typeParameter";
+    case ts.ClassificationType.parameterName:
+      return "parameter";
+    case ts.ClassificationType.identifier:
+      return "variable";
+    case ts.ClassificationType.jsxAttribute:
+      return "property";
+    case ts.ClassificationType.keyword:
+      return "keyword";
+    case ts.ClassificationType.stringLiteral:
+    case ts.ClassificationType.jsxAttributeStringLiteralValue:
+      return "string";
+    case ts.ClassificationType.numericLiteral:
+    case ts.ClassificationType.bigintLiteral:
+      return "number";
+    case ts.ClassificationType.regularExpressionLiteral:
+      return "regexp";
+    case ts.ClassificationType.operator:
+      return "operator";
+    case ts.ClassificationType.comment:
+    case ts.ClassificationType.docCommentTagName:
+      return "comment";
+    default:
+      return null;
   }
 }
 
