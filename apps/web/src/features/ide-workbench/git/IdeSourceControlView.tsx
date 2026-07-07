@@ -140,8 +140,9 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     if (!status?.available || busyKey) return;
     if (kind === "create") {
       const name = branchName.trim();
-      if (!name) {
-        toast.error("分支名称不能为空");
+      const validationError = validateBranchName(name);
+      if (validationError) {
+        toast.error("分支名称不可用", { description: validationError });
         return;
       }
       setBusyKey("branch:create");
@@ -272,6 +273,8 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   const untrackedChanges = git.changes.filter((change) => change.kind === "untracked");
   const unstagedTrackedChanges = git.changes.filter((change) => change.unstaged && change.kind !== "untracked");
   const trackingLabel = formatTracking(status?.upstream ?? null, status?.ahead ?? 0, status?.behind ?? 0);
+  const branchNameValidation = validateBranchName(branchName);
+  const canCreateBranch = Boolean(branchName.trim()) && !branchNameValidation;
   return (
     <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel" data-ide-sidebar data-ide-source-control-view>
       <div className="border-b border-line bg-panel px-3 py-2" data-ide-source-control-toolbar>
@@ -400,7 +403,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                 variant="outline"
                 size="sm"
                 className="h-7 shrink-0 justify-center text-xs"
-                disabled={busyKey !== null || !branchName.trim()}
+                disabled={busyKey !== null || !canCreateBranch}
                 onClick={() => void runBranchAction("create")}
                 data-ide-source-control-create-branch
               >
@@ -408,6 +411,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                 创建
               </Button>
             </div>
+            {branchNameValidation ? <div className="text-2xs text-danger" data-ide-source-control-branch-error>{branchNameValidation}</div> : null}
             <div className="grid max-h-32 gap-1 overflow-auto pr-1 [scrollbar-width:thin]" data-ide-source-control-branch-list>
               {status.branches.length ? status.branches.map((branch) => (
                 <div key={branch.name} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded border border-line bg-canvas px-2 py-1 text-xs" data-ide-source-control-branch-row data-ide-source-control-branch-name-value={branch.name} data-ide-source-control-branch-current={branch.current ? "true" : "false"}>
@@ -419,7 +423,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-2xs"
-                    disabled={busyKey !== null || branch.current}
+                    disabled={busyKey !== null || branch.current || stashLoading}
                     onClick={() => void runBranchAction("checkout", branch.name)}
                     data-ide-source-control-checkout-branch
                   >
@@ -471,9 +475,9 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                     <div className="truncate text-2xs text-subtle">{stash.branch || "stash"} · {stash.message || "No message"}</div>
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null} onClick={() => void runStashAction("apply", stash.ref)} data-ide-source-control-apply-stash>应用</Button>
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null} onClick={() => void runStashAction("pop", stash.ref)} data-ide-source-control-pop-stash>弹出</Button>
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs text-danger hover:text-danger" disabled={busyKey !== null} onClick={() => void runStashAction("drop", stash.ref)} data-ide-source-control-drop-stash>删除</Button>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null || stashLoading} onClick={() => void runStashAction("apply", stash.ref)} data-ide-source-control-apply-stash>应用</Button>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs" disabled={busyKey !== null || stashLoading} onClick={() => void runStashAction("pop", stash.ref)} data-ide-source-control-pop-stash>弹出</Button>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-2xs text-danger hover:text-danger" disabled={busyKey !== null || stashLoading} onClick={() => void runStashAction("drop", stash.ref)} data-ide-source-control-drop-stash>删除</Button>
                   </div>
                 </div>
               ))}
@@ -652,6 +656,18 @@ function SourceControlState({ title, description, tone = "default", loading = fa
 function fileName(value: string) {
   const parts = value.split("/").filter(Boolean);
   return parts.at(-1) || value || "/";
+}
+
+function validateBranchName(value: string): string | null {
+  const name = value.trim();
+  if (!name) return null;
+  if (name.length > 120) return "分支名过长";
+  if (name === "HEAD") return "不能使用 HEAD 作为分支名";
+  if (name.startsWith("/") || name.endsWith("/") || name.startsWith(".")) return "分支名不能以 / 或 . 开头，也不能以 / 结尾";
+  if (name.endsWith(".lock")) return "分支名不能以 .lock 结尾";
+  if (name.includes("..") || name.includes("@{") || name.includes("//")) return "分支名不能包含 ..、@{ 或连续 /";
+  if (/[\s~^:?*\[\]\\]/.test(name)) return "分支名不能包含空白或 ~ ^ : ? * [ ] \\";
+  return null;
 }
 
 function formatTracking(upstream: string | null, ahead: number, behind: number): string {
