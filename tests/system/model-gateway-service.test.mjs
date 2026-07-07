@@ -11410,12 +11410,34 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
         },
       });
       assert.equal(anyResponse.status, 200, anyResponse.body);
+
+      const webSearchResponse = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-responses",
+          messages: [{ role: "user", content: "Search and summarize." }],
+          tools: [
+            { type: "web_search_20250305", name: "web_search", max_uses: 2 },
+            {
+              type: "function",
+              function: {
+                name: "lookup",
+                parameters: { type: "object" },
+              },
+            },
+            { type: "unsupported_native_tool", name: "bad_tool", config: { mode: "x" } },
+          ],
+          tool_choice: { type: "tool", name: "web_search" },
+        },
+      });
+      assert.equal(webSearchResponse.status, 200, webSearchResponse.body);
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
   assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", name: "lookup" });
@@ -11424,6 +11446,20 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
   assert.equal(upstreamCalls[1].body.tool_choice, "required");
   assert.equal(upstreamCalls[1].body.parallel_tool_calls, false);
+  assert.equal(upstreamCalls[2].url, "https://chat-anthropic-choice-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[2].authorization, "Bearer sk-chat-anthropic-choice-responses-secret");
+  assert.deepEqual(upstreamCalls[2].body.tools, [
+    { type: "web_search_preview" },
+    { type: "function", name: "lookup", parameters: { type: "object" } },
+  ]);
+  assert.deepEqual(upstreamCalls[2].body.tool_choice, { type: "web_search_preview" });
+  assert.deepEqual(upstreamCalls[2].body.input.at(-1), {
+    role: "user",
+    content: [{
+      type: "input_text",
+      text: 'OpenAI Chat unsupported tools for Responses: [{"type":"unsupported_native_tool","name":"bad_tool","config":{"mode":"x"}}]',
+    }],
+  });
 });
 
 test("model gateway adapts legacy Chat functions through Responses and Anthropic providers", async () => {

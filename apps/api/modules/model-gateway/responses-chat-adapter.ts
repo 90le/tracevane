@@ -70,9 +70,15 @@ export function adaptChatCompletionRequestToResponses(
     );
   }
 
+  const responsesInput = mapChatMessagesToResponsesInput(request.messages);
+  const unsupportedToolsText = chatUnsupportedToolsToResponsesText(request.tools);
+  if (unsupportedToolsText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedToolsText }] });
+  }
+
   const responsesRequest: JsonRecord = {
     model,
-    input: mapChatMessagesToResponsesInput(request.messages),
+    input: responsesInput,
     stream,
   };
 
@@ -125,6 +131,7 @@ export function adaptChatCompletionRequestToResponses(
 
   const toolChoice = mapChatToolChoiceToResponses(
     request.tool_choice !== undefined ? request.tool_choice : mapLegacyChatFunctionCallToToolChoice(request.function_call),
+    request.tools,
   );
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
   if (responsesRequest.parallel_tool_calls === undefined) {
@@ -509,9 +516,11 @@ function mapChatFunctionsToResponses(functions: unknown): JsonRecord[] {
 
 function mapChatToolToResponses(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
-  if (tool.type !== "function") {
-    return typeof tool.type === "string" ? { ...tool } : null;
-  }
+  if (isOpenAIWebSearchToolType(tool.type)) return copyOpenAIWebSearchTool(tool);
+  if (isAnthropicWebSearchTool(tool)) return { type: "web_search_preview" };
+  if (tool.type === "mcp") return copyResponsesMcpTool(tool);
+  if (tool.type === "custom") return mapChatCustomToolToResponses(tool);
+  if (tool.type !== "function") return null;
   const fn = isRecord(tool.function) ? tool.function : {};
   const name = stringOrNull(fn.name);
   if (!name) return null;
@@ -520,6 +529,46 @@ function mapChatToolToResponses(tool: unknown): JsonRecord | null {
   if (typeof fn.description === "string") mapped.description = fn.description;
   if (fn.parameters !== undefined) mapped.parameters = fn.parameters;
   if (typeof fn.strict === "boolean") mapped.strict = fn.strict;
+  return mapped;
+}
+
+function mapChatCustomToolToResponses(tool: JsonRecord): JsonRecord | null {
+  const source = isRecord(tool.function) ? tool.function : tool;
+  const name = stringOrNull(source.name);
+  if (!name) return null;
+  const mapped: JsonRecord = { type: "custom", name };
+  if (typeof source.description === "string") mapped.description = source.description;
+  if (source.input_format !== undefined) mapped.input_format = source.input_format;
+  return mapped;
+}
+
+function copyOpenAIWebSearchTool(tool: JsonRecord): JsonRecord {
+  const mapped: JsonRecord = { type: tool.type };
+  for (const key of ["search_context_size", "user_location"] as const) {
+    if (tool[key] !== undefined) mapped[key] = tool[key];
+  }
+  return mapped;
+}
+
+function copyResponsesMcpTool(tool: JsonRecord): JsonRecord | null {
+  const serverLabel = stringOrNull(tool.server_label);
+  const serverUrl = stringOrNull(tool.server_url);
+  if (!serverLabel || !serverUrl) return null;
+  const mapped: JsonRecord = {
+    type: "mcp",
+    server_label: serverLabel,
+    server_url: serverUrl,
+  };
+  for (const key of [
+    "allowed_tools",
+    "authorization",
+    "defer_loading",
+    "headers",
+    "require_approval",
+    "server_description",
+  ] as const) {
+    if (tool[key] !== undefined) mapped[key] = tool[key];
+  }
   return mapped;
 }
 
@@ -555,11 +604,12 @@ function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
   return name ? { type: "function", name } : functionCall;
 }
 
-function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
+function mapChatToolChoiceToResponses(toolChoice: unknown, tools?: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
   if (!isRecord(toolChoice)) return toolChoice;
   if (toolChoice.type === "any") return "required";
+  if (isOpenAIWebSearchToolType(toolChoice.type)) return { type: toolChoice.type };
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
       || stringOrNull(toolChoice.name);
@@ -567,9 +617,36 @@ function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
   }
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
+    if (name === "web_search" && chatToolsIncludeWebSearch(tools)) return { type: "web_search_preview" };
     return name ? { type: "function", name } : toolChoice;
   }
+  if (toolChoice.type === "custom") {
+    const name = stringOrNull(toolChoice.name);
+    return name ? { type: "custom", name } : toolChoice;
+  }
   return toolChoice;
+}
+
+function chatUnsupportedToolsToResponsesText(tools: unknown): string {
+  if (!Array.isArray(tools)) return "";
+  const unsupported = tools.filter((tool) => isRecord(tool) && !mapChatToolToResponses(tool));
+  if (!unsupported.length) return "";
+  return `OpenAI Chat unsupported tools for Responses: ${stringifyCompact(unsupported)}`;
+}
+
+function chatToolsIncludeWebSearch(tools: unknown): boolean {
+  return Array.isArray(tools)
+    && tools.some((tool) => isRecord(tool) && (isOpenAIWebSearchToolType(tool.type) || isAnthropicWebSearchTool(tool)));
+}
+
+function isOpenAIWebSearchToolType(type: unknown): boolean {
+  return type === "web_search_preview" || type === "web_search_preview_2025_03_11";
+}
+
+function isAnthropicWebSearchTool(tool: JsonRecord): boolean {
+  const type = stringOrNull(tool.type);
+  const name = stringOrNull(tool.name);
+  return name === "web_search" && (type === "web_search_20250305" || type === "web_search_20260209");
 }
 
 function mapChatToolChoiceParallelToolUseToResponses(toolChoice: unknown): boolean | undefined {
