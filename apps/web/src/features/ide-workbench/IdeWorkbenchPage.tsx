@@ -4,6 +4,7 @@ import type { SerializedDockview } from "dockview-react";
 import {
   AlertCircle,
   Bug,
+  Command,
   Files,
   GitBranch,
   ListChecks,
@@ -28,6 +29,7 @@ import type { EditorSaveState } from "@/shared/editor-core";
 import { isExplorerPathInside, joinExplorerPath, normalizeExplorerPath } from "@/shared/explorer-core";
 import type { ExplorerEntry } from "@/shared/explorer-core";
 import { EditorDock } from "./editor";
+import { IdeCommandPalette } from "./command-palette";
 import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
@@ -89,6 +91,7 @@ export function IdeWorkbenchPage() {
   const gitStatus = useIdeGitStatus(rootId, directoryPath);
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const debugSnapshot = useIdeDebugSnapshot();
 
   const openFilePath = React.useCallback(
@@ -215,6 +218,25 @@ export function IdeWorkbenchPage() {
       },
     );
   }, [openFilePath]);
+
+  const openCommandPalette = React.useCallback(() => setCommandPaletteOpen(true), []);
+  const closeCommandPalette = React.useCallback(() => setCommandPaletteOpen(false), []);
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isEditable = Boolean(target?.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select");
+      const wantsPalette = event.key === "F1" || ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p");
+      if (!wantsPalette) return;
+      if (isEditable && event.key !== "F1") return;
+      event.preventDefault();
+      openCommandPalette();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [openCommandPalette]);
 
   const openDebugLocation = React.useCallback((location: { rootId: string; path: string; lineNumber: number; column?: number | null }) => {
     openFilePath(
@@ -399,6 +421,16 @@ export function IdeWorkbenchPage() {
     (tab) => tab.id === activeGroup.activeTabId,
   ) ?? null;
 
+  const saveActiveEditorTab = React.useCallback(() => {
+    if (!activeTab) return;
+    void saveIdeEditorTab(activeTab.id);
+  }, [activeTab]);
+
+  const closeActiveEditorTab = React.useCallback(() => {
+    if (!activeTab) return;
+    requestCloseEditorTabs([activeTab.id]);
+  }, [activeTab, requestCloseEditorTabs]);
+
   const openTabs = React.useMemo(
     () =>
       layout.editorGroups.flatMap((group) =>
@@ -509,6 +541,7 @@ export function IdeWorkbenchPage() {
         panelCollapsed={layout.panel.collapsed}
         panelPlacement={layout.panel.placement}
         onTogglePanel={layoutApi.togglePanel}
+        onOpenCommandPalette={openCommandPalette}
       />
       <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] border-b border-line" data-ide-main-area>
         <ActivityBar
@@ -630,6 +663,18 @@ export function IdeWorkbenchPage() {
           </div>
         </div>
       </div>
+      <IdeCommandPalette
+        open={commandPaletteOpen}
+        rootId={rootId}
+        rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+        directoryPath={directoryPath}
+        activeTab={activeTab}
+        onClose={closeCommandPalette}
+        onOpenActivity={layoutApi.setActiveActivityId}
+        onSaveActiveTab={saveActiveEditorTab}
+        onCloseActiveTab={closeActiveEditorTab}
+        onOpenSymbol={(request) => openFilePath({ rootId: request.rootId, path: request.path }, { pinned: true, reveal: request.reveal })}
+      />
       <IdeEditorCloseConfirmDialog
         request={closeRequest}
         saving={closeSaving}
@@ -701,6 +746,7 @@ function WorkbenchHeader({
   panelCollapsed,
   panelPlacement,
   onTogglePanel,
+  onOpenCommandPalette,
 }: {
   rootLabel: string;
   rootPath: string;
@@ -708,6 +754,7 @@ function WorkbenchHeader({
   panelCollapsed: boolean;
   panelPlacement: WorkbenchPanelPlacement;
   onTogglePanel: () => void;
+  onOpenCommandPalette: () => void;
 }) {
   return (
     <header className="flex min-h-[50px] min-w-0 items-center gap-3 border-b border-line bg-panel px-3" data-ide-header>
@@ -734,6 +781,17 @@ function WorkbenchHeader({
           {panelPlacement === "right" ? <PanelRightOpen /> : <PanelBottomOpen />}
         </Button>
       ) : null}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onOpenCommandPalette}
+        title="命令面板（F1 / Ctrl+Shift+P）"
+        aria-label="打开命令面板"
+        data-ide-command-palette-button
+      >
+        <Command />
+        <span className="hidden sm:inline">命令</span>
+      </Button>
       <Button variant="ghost" size="sm" onClick={onResetLayout}>
         <RotateCcw />
         <span className="hidden sm:inline">重置布局</span>
