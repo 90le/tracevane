@@ -18,6 +18,7 @@ import { registerChannelsRoutes } from "./modules/channels/routes.js";
 import { registerConfigRoutes } from "./modules/config/routes.js";
 import { registerCronRoutes } from "./modules/cron/routes.js";
 import { registerDashboardRoutes } from "./modules/dashboard/routes.js";
+import { registerDebugRoutes } from "./modules/debug/routes.js";
 import { registerFilesRoutes } from "./modules/files/routes.js";
 import { registerGitRoutes } from "./modules/git/routes.js";
 import { registerIdeWorkbenchRoutes } from "./modules/ide-workbench/routes.js";
@@ -43,6 +44,7 @@ export function createTracevaneRouter(
 ): TracevaneRouter {
   const router = new TracevaneRouter();
   registerDashboardRoutes(router, ctx);
+  registerDebugRoutes(router, ctx);
   registerFilesRoutes(router, ctx);
   registerGitRoutes(router, ctx);
   registerIdeWorkbenchRoutes(router, ctx);
@@ -204,7 +206,8 @@ export function createTracevaneUpgradeHandler(
     const handled =
       handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head) ||
       ctx.services.terminal.handleUpgrade(req, socket, head) ||
-      ctx.services.lsp.handleUpgrade(req, socket, head);
+      ctx.services.lsp.handleUpgrade(req, socket, head) ||
+      ctx.services.debug.handleUpgrade(req, socket, head);
     if (!handled) {
       try {
         socket.destroy();
@@ -318,6 +321,7 @@ export function createTracevaneServer(
 
       server = null;
       ctx.services.terminal.dispose();
+      ctx.services.debug.dispose();
       ctx.logger.info("tracevane: HTTP server stopped");
     },
 

@@ -34,6 +34,7 @@ import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
 import { IdeSourceControlView, type IdeGitDecoratedChange, useIdeGitStatus } from "./git";
 import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
+import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView } from "./debug";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
@@ -57,7 +58,7 @@ const ACTIVITY_ITEMS: Array<{
   { id: "explorer", icon: <Files /> },
   { id: "search", icon: <Search /> },
   { id: "git", icon: <GitBranch /> },
-  { id: "run", icon: <Play />, disabled: true },
+  { id: "run", icon: <Play /> },
   { id: "extensions", icon: <Package />, disabled: true },
 ];
 
@@ -474,6 +475,7 @@ export function IdeWorkbenchPage() {
 
   return (
     <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
+      <DebugGatewayBridge rootId={rootId} cwd={directoryPath} enabled={Boolean(rootId)} />
       <WorkbenchHeader
         rootLabel={(root?.labelZh ?? root?.labelEn ?? rootId) || "未选择工作区"}
         rootPath={root?.absolutePath ?? "等待文件根目录加载"}
@@ -516,6 +518,13 @@ export function IdeWorkbenchPage() {
               rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
               git={gitStatus}
               onOpenDiff={openGitChangeDiff}
+            />
+          ) : layout.activeActivityId === "run" ? (
+            <IdeDebugView
+              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
+              rootId={rootId}
+              cwd={directoryPath}
+              onOpenDebugConsole={() => layoutApi.setActivePanelId("debugConsole")}
             />
           ) : layout.activeActivityId === "explorer" ? (
             <IdeExplorerView
@@ -913,14 +922,7 @@ function PanelArea({
       ) : panel.activePanelId === "output" ? (
         <IdeOutputPanel />
       ) : (
-        <div className="grid min-h-0 place-items-center p-4 text-sm text-muted" data-ide-debug-console-placeholder>
-          <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center">
-            <div className="font-medium text-ink-strong">{IDE_PANEL_LABELS[panel.activePanelId]} 占位</div>
-            <div className="mt-1 max-w-lg">
-              Debug Console 仍后置到 M7；M6-E 只接入 Problems / Output 数据基础。
-            </div>
-          </div>
-        </div>
+        <DebugConsolePanel />
       )}
     </section>
   );

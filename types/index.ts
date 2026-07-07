@@ -5,6 +5,7 @@ export * from './channels.js';
 export * from './chat.js';
 export * from './config.js';
 export * from './cron.js';
+export * from './debug.js';
 export * from './dashboard.js';
 export * from './files.js';
 export * from './model-gateway.js';

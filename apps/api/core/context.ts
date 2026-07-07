@@ -6,6 +6,7 @@ import type { ChannelsService } from "../modules/channels/service.js";
 import type { ConfigService } from "../modules/config/service.js";
 import type { CronService } from "../modules/cron/service.js";
 import type { DashboardService } from "../modules/dashboard/service.js";
+import type { DebugService } from "../modules/debug/service.js";
 import type { FilesService } from "../modules/files/service.js";
 import type { GitService } from "../modules/git/service.js";
 import type { IdeWorkbenchService } from "../modules/ide-workbench/service.js";
@@ -23,6 +24,7 @@ export interface TracevaneServices {
   config: ConfigService;
   cron: CronService;
   dashboard: DashboardService;
+  debug: DebugService;
   files: FilesService;
   git: GitService;
   ideWorkbench: IdeWorkbenchService;

@@ -189,7 +189,8 @@ export default defineConfig({
           const currentContext = getTracevaneDevContext();
           const handled =
             currentContext.services.terminal.handleUpgrade(req, socket, head) ||
-            currentContext.services.lsp.handleUpgrade(req, socket, head);
+            currentContext.services.lsp.handleUpgrade(req, socket, head) ||
+            currentContext.services.debug.handleUpgrade(req, socket, head);
           if (!handled) return;
         });
 

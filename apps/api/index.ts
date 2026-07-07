@@ -20,6 +20,7 @@ import { createChannelsService } from "./modules/channels/service.js";
 import { createConfigService } from "./modules/config/service.js";
 import { createCronService } from "./modules/cron/service.js";
 import { createDashboardService } from "./modules/dashboard/service.js";
+import { createDebugService } from "./modules/debug/service.js";
 import { createFilesService } from "./modules/files/service.js";
 import { createGitService } from "./modules/git/service.js";
 import { createIdeWorkbenchService } from "./modules/ide-workbench/service.js";
@@ -75,6 +76,7 @@ export function createTracevaneContext(
   const git = createGitService(options.config);
   const ideWorkbench = createIdeWorkbenchService(options.config);
   const lsp = createLspService(options.config);
+  const debug = createDebugService(options.config);
   const modelGateway = createModelGatewayService(
     options.config,
     options.modelGatewayOptions,
@@ -87,6 +89,7 @@ export function createTracevaneContext(
     config,
     cron,
     dashboard,
+    debug,
     files,
     git,
     ideWorkbench,
