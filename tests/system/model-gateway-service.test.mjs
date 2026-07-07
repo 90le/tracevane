@@ -23,7 +23,10 @@ import {
   MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
   MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES,
 } from "../../dist/apps/api/modules/model-gateway/unsupported-endpoints.js";
-import { writeCodexResponsesSseFromAnthropicMessagesSse } from "../../dist/apps/api/modules/model-gateway/protocol-streaming.js";
+import {
+  writeCodexResponsesSseFromAnthropicMessagesSse,
+  writeCodexResponsesSseFromResponse,
+} from "../../dist/apps/api/modules/model-gateway/protocol-streaming.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-model-gateway-"));
@@ -5045,6 +5048,52 @@ test("model gateway synthesizes responses sse for codex streams through anthropi
   assert.equal(upstreamCalls.length, 1);
   assert.equal(upstreamCalls[0].url, "https://open.bigmodel.cn/api/anthropic/v1/messages");
   assert.equal(JSON.parse(upstreamCalls[0].body).stream, false);
+});
+
+test("model gateway preserves unknown Responses content parts in synthetic Responses SSE", async () => {
+  const unknownPart = { type: "output_audio", id: "aud_synthetic_1", transcript: "hello synthetic audio" };
+  const response = {
+    id: "resp_synthetic_unknown_part",
+    object: "response",
+    created_at: 1_710_000_045,
+    model: "gpt-5.4",
+    status: "completed",
+    output: [{
+      id: "msg_synthetic_unknown_part",
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [unknownPart],
+    }],
+    usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+  };
+  const expectedText = `OpenAI Responses unrecognized message content part for Responses SSE: ${JSON.stringify(unknownPart)}`;
+  const server = http.createServer((_, res) => {
+    res.statusCode = 200;
+    res.setHeader("content-type", "text/event-stream; charset=utf-8");
+    writeCodexResponsesSseFromResponse(response, res, "gpt-5.4");
+    res.end();
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const streamed = await requestRaw(`http://127.0.0.1:${address.port}/responses`, { method: "GET" });
+    assert.equal(streamed.status, 200, streamed.body);
+    const events = parseSseEvents(streamed.body);
+    const delta = events.find((item) => item.event === "response.output_text.delta");
+    assert.equal(delta.data.delta, expectedText);
+    const done = events.find((item) => item.event === "response.content_part.done");
+    assert.deepEqual(done.data.part, { type: "output_text", text: expectedText, annotations: [] });
+    const completed = events.find((item) => item.event === "response.completed");
+    assert.deepEqual(completed.data.response.output[0].content[0], unknownPart);
+    assert.equal(events.at(-1).data, "[DONE]");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("model gateway endpoint profiles prefer same-provider model endpoint fallback", () => {

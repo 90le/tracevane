@@ -915,16 +915,23 @@ export function writeCodexResponsesSseFromResponse(
         },
       });
       content.forEach((part, contentIndex) => {
-        if (part.type !== "output_text" && part.type !== "refusal") return;
+        const fallbackText = responsesSyntheticUnknownContentPartText(part);
+        if (part.type !== "output_text" && part.type !== "refusal" && !fallbackText) return;
         const isRefusal = part.type === "refusal";
-        const text = stringOrNull(isRefusal ? part.refusal : part.text) || "";
+        const text = fallbackText || stringOrNull(isRefusal ? part.refusal : part.text) || "";
+        const eventPart = fallbackText
+          ? { type: "output_text", text: "", annotations: [] }
+          : isRefusal ? { type: "refusal", refusal: "" } : { type: "output_text", text: "", annotations: [] };
+        const donePart = fallbackText
+          ? { type: "output_text", text, annotations: [] }
+          : part;
         outputText += text;
         writeSseEvent(res, "response.content_part.added", {
           type: "response.content_part.added",
           item_id: itemId,
           output_index: outputIndex,
           content_index: contentIndex,
-          part: isRefusal ? { type: "refusal", refusal: "" } : { type: "output_text", text: "", annotations: [] },
+          part: eventPart,
         });
         if (text) {
           writeSseEvent(res, isRefusal ? "response.refusal.delta" : "response.output_text.delta", {
@@ -959,7 +966,7 @@ export function writeCodexResponsesSseFromResponse(
           item_id: itemId,
           output_index: outputIndex,
           content_index: contentIndex,
-          part,
+          part: donePart,
         });
       });
       writeSseEvent(res, "response.output_item.done", {
@@ -1040,6 +1047,12 @@ export function writeCodexResponsesSseFromResponse(
   });
   res.write("data: [DONE]\n\n");
   return { id: responseId, model, outputText, output };
+}
+
+function responsesSyntheticUnknownContentPartText(part: JsonRecord): string {
+  const type = stringOrNull(part.type);
+  if (!type || type === "output_text" || type === "refusal") return "";
+  return `OpenAI Responses unrecognized message content part for Responses SSE: ${stringifyCompact(part)}`;
 }
 
 async function readSseEvents(
