@@ -739,7 +739,8 @@ function chatContentPartToAnthropicToolResultBlock(part: unknown): JsonRecord | 
   if (type === "input_image") {
     return imageUrlToAnthropicBlock(stringOrNull(part.image_url));
   }
-  return null;
+  const text = chatContentPartToText(part);
+  return text ? { type: "text", text } : null;
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {
@@ -747,7 +748,11 @@ function chatContentPartIsTextLike(part: unknown): boolean {
   if (!isRecord(part)) return false;
   const type = stringOrNull(part.type);
   if (type === null) return Boolean(chatContentPartToText(part));
-  return type === "text" || type === "input_text" || type === "output_text" || type === "refusal";
+  return type === "text"
+    || type === "input_text"
+    || type === "output_text"
+    || type === "refusal"
+    || Boolean(chatContentPartToText(part));
 }
 
 function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
@@ -782,7 +787,10 @@ function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {
       blocks.push(document || { type: "text", text: chatContentPartFallbackToAnthropicText(part) });
       continue;
     }
-    if (type) blocks.push({ type: "text", text: chatContentPartFallbackToAnthropicText(part) });
+    if (type) {
+      const text = chatContentPartToText(part);
+      blocks.push({ type: "text", text: text || chatContentPartFallbackToAnthropicText(part) });
+    }
   }
   return blocks;
 }
@@ -1813,7 +1821,15 @@ function chatContentPartToText(part: unknown): string {
     || stringOrNull(part.output_text)
     || stringOrNull(part.refusal)
     || stringOrNull(part.transcript)
+    || chatContentPartAudioTranscript(part)
     || "";
+}
+
+function chatContentPartAudioTranscript(part: JsonRecord): string {
+  const inputAudio = isRecord(part.input_audio) ? stringOrNull(part.input_audio.transcript) : null;
+  if (inputAudio) return inputAudio;
+  const outputAudio = isRecord(part.output_audio) ? stringOrNull(part.output_audio.transcript) : null;
+  return outputAudio || "";
 }
 
 function truncateAtStopSequence(text: string, stopSequences: Iterable<string> | undefined): {

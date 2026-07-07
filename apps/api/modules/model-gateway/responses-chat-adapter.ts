@@ -1124,7 +1124,8 @@ function chatToolOutputPartToResponsesOutputPart(part: unknown): JsonRecord | nu
   }
   if (type === "input_image") return chatInputImagePartToResponsesInputImage(part);
   if (type === "file" || type === "input_file") return chatFilePartToResponsesInputFile(part);
-  return null;
+  const text = chatContentPartToText(part);
+  return text ? { type: "input_text", text } : null;
 }
 
 function chatContentPartIsTextLike(part: unknown): boolean {
@@ -1132,7 +1133,11 @@ function chatContentPartIsTextLike(part: unknown): boolean {
   if (!isRecord(part)) return false;
   const type = stringOrNull(part.type);
   if (type === null) return Boolean(chatContentPartToText(part));
-  return type === "text" || type === "input_text" || type === "output_text" || type === "refusal";
+  return type === "text"
+    || type === "input_text"
+    || type === "output_text"
+    || type === "refusal"
+    || Boolean(chatContentPartToText(part));
 }
 
 function chatContentToText(content: unknown): string {
@@ -1152,7 +1157,15 @@ function chatContentPartToText(part: unknown): string {
     || stringOrNull(part.output_text)
     || stringOrNull(part.refusal)
     || stringOrNull(part.transcript)
+    || chatContentPartAudioTranscript(part)
     || "";
+}
+
+function chatContentPartAudioTranscript(part: JsonRecord): string {
+  const inputAudio = isRecord(part.input_audio) ? stringOrNull(part.input_audio.transcript) : null;
+  if (inputAudio) return inputAudio;
+  const outputAudio = isRecord(part.output_audio) ? stringOrNull(part.output_audio.transcript) : null;
+  return outputAudio || "";
 }
 
 function copyScalarFields(source: JsonRecord, target: JsonRecord, fields: string[]): void {

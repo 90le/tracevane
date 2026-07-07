@@ -278,6 +278,7 @@ function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null 
       || stringOrNull(part.output_text)
       || stringOrNull(part.input_text)
       || stringOrNull(part.transcript)
+      || chatAudioTranscript(part)
       || "",
   );
   if (!text) {
@@ -289,6 +290,14 @@ function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null 
   if (annotations.length) outputText.annotations = annotations;
   if (Array.isArray(part.logprobs)) outputText.logprobs = part.logprobs.filter(isRecord);
   return outputText;
+}
+
+
+function chatAudioTranscript(part: JsonRecord): string {
+  const inputAudio = isRecord(part.input_audio) ? stringOrNull(part.input_audio.transcript) : null;
+  if (inputAudio) return inputAudio;
+  const outputAudio = isRecord(part.output_audio) ? stringOrNull(part.output_audio.transcript) : null;
+  return outputAudio || "";
 }
 
 function chatOutputContentPartFallbackToResponsesText(part: JsonRecord): string {
@@ -715,7 +724,8 @@ function contentPartToChatParts(part: unknown): JsonRecord[] {
   const text = stringOrNull(part.text)
     || stringOrNull(part.output_text)
     || stringOrNull(part.input_text)
-    || stringOrNull(part.transcript);
+    || stringOrNull(part.transcript)
+    || chatAudioTranscript(part);
   if (text) return [{ type: "text", text }];
   if (Array.isArray(part.content)) {
     const nested = contentToChatParts(part.content);
@@ -765,7 +775,8 @@ function contentPartToText(part: unknown): string {
   const text = stringOrNull(part.text)
     || stringOrNull(part.output_text)
     || stringOrNull(part.input_text)
-    || stringOrNull(part.transcript);
+    || stringOrNull(part.transcript)
+    || chatAudioTranscript(part);
   if (text) return text;
   if (Array.isArray(part.content)) {
     const nested = contentToText(part.content);

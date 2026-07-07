@@ -15618,6 +15618,7 @@ test("model gateway preserves unknown chat content parts before provider adapter
     role: "user",
     content: [
       { type: "text", text: "keep text" },
+      { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav", transcript: "chat request audio transcript" } },
       { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } },
       { type: "image_url", image_url: { detail: "high" } },
       { type: "file", file: { filename: "missing-source.txt" } },
@@ -15671,6 +15672,7 @@ test("model gateway preserves unknown chat content parts before provider adapter
   assert.equal(upstreamCalls[0].url, "https://chat-unknown-content-to-responses.example.test/v1/responses");
   const responsesInput = JSON.stringify(upstreamCalls[0].body.input);
   assert.match(responsesInput, /keep text/);
+  assert.match(responsesInput, /chat request audio transcript/);
   assert.match(responsesInput, /OpenAI Chat unrecognized content part for Responses/);
   assert.match(responsesInput, /input_audio/);
   assert.match(responsesInput, /future_context/);
@@ -15679,6 +15681,7 @@ test("model gateway preserves unknown chat content parts before provider adapter
   assert.equal(upstreamCalls[1].url, "https://chat-unknown-content-to-anthropic.example.test/v1/messages");
   const anthropicMessages = JSON.stringify(upstreamCalls[1].body.messages);
   assert.match(anthropicMessages, /keep text/);
+  assert.match(anthropicMessages, /chat request audio transcript/);
   assert.match(anthropicMessages, /OpenAI Chat unrecognized content part for Anthropic Messages/);
   assert.match(anthropicMessages, /input_audio/);
   assert.match(anthropicMessages, /future_context/);
@@ -16105,6 +16108,7 @@ test("model gateway preserves structured tool result content through OpenAI Resp
 
   const chatToolContent = [
     { type: "text", text: "weather:" },
+    { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav", transcript: "tool audio transcript" } },
     { type: "image_url", image_url: { url: "data:image/png;base64,abc123" } },
   ];
   const anthropicToolContent = [
@@ -16191,6 +16195,7 @@ test("model gateway preserves structured tool result content through OpenAI Resp
     call_id: "call_lookup",
     output: [
       { type: "input_text", text: "weather:" },
+      { type: "input_text", text: "tool audio transcript" },
       { type: "input_image", image_url: "data:image/png;base64,abc123" },
     ],
   });
