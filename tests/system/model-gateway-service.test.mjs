@@ -12039,8 +12039,11 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
               ],
             },
             {
+              id: "rs_earlier",
               type: "reasoning",
+              status: "completed",
               summary: [{ type: "summary_text", text: "Earlier reasoning." }],
+              encrypted_content: "encrypted-earlier-reasoning",
             },
             { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier" }] },
             { role: "user", content: "Next" },
@@ -12147,7 +12150,18 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
           { type: "file", file: { file_id: "file_abc123", filename: "notes.md", text: "[OpenAI Responses input_file: file_id=file_abc123 filename=notes.md]" } },
         ],
       },
-      { role: "assistant", content: "Earlier", reasoning_content: "Earlier reasoning." },
+      {
+        role: "assistant",
+        content: "Earlier",
+        reasoning_content: "Earlier reasoning.",
+        reasoning_details: [{
+          id: "rs_earlier",
+          type: "reasoning",
+          status: "completed",
+          summary: [{ type: "summary_text", text: "Earlier reasoning." }],
+          encrypted_content: "encrypted-earlier-reasoning",
+        }],
+      },
       { role: "user", content: "Next" },
     ],
     stream: false,
@@ -13080,6 +13094,13 @@ test("model gateway maps chat reasoning content to codex responses output items"
       message: {
         role: "assistant",
         reasoning_content: "Need context before answering.",
+        reasoning_details: [{
+          id: "rs_chat_provider",
+          type: "reasoning",
+          status: "completed",
+          summary: [{ type: "summary_text", text: "Need context before answering." }],
+          encrypted_content: "encrypted-chat-provider-reasoning",
+        }],
         content: "Done.",
         tool_calls: [{
           id: "call_lookup",
@@ -13115,10 +13136,13 @@ test("model gateway maps chat reasoning content to codex responses output items"
       });
 
       assert.equal(responses.status, 200);
-      assert.equal(responses.body.output[0].type, "reasoning");
-      assert.match(responses.body.output[0].id, /^reasoning_/);
-      assert.equal(responses.body.output[0].status, "completed");
-      assert.deepEqual(responses.body.output[0].summary, [{ type: "summary_text", text: "Need context before answering." }]);
+      assert.deepEqual(responses.body.output[0], {
+        id: "rs_chat_provider",
+        type: "reasoning",
+        status: "completed",
+        summary: [{ type: "summary_text", text: "Need context before answering." }],
+        encrypted_content: "encrypted-chat-provider-reasoning",
+      });
       assert.equal(responses.body.output[1].type, "message");
       assert.match(responses.body.output[1].id, /^msg_/);
       assert.equal(responses.body.output[1].status, "completed");

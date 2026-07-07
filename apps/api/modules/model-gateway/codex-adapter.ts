@@ -143,7 +143,10 @@ export function adaptChatCompletionToCodexResponse(
   const reasoningText = extractReasoningText(message);
   const generatedSuffix = Date.now().toString(36);
   const output: JsonRecord[] = [];
-  if (reasoningText) {
+  const reasoningItems = chatReasoningDetailsToResponsesReasoningItems(message.reasoning_details);
+  if (reasoningItems.length) {
+    output.push(...reasoningItems);
+  } else if (reasoningText) {
     output.push({
       type: "reasoning",
       id: `reasoning_${generatedSuffix}`,
@@ -283,9 +286,11 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   if (!items.length) return;
 
   const pendingToolCalls: JsonRecord[] = [];
+  const pendingReasoningItems: JsonRecord[] = [];
   let pendingReasoningText = "";
   for (const item of items) {
     if (isRecord(item) && item.type === "reasoning") {
+      pendingReasoningItems.push(stripReasoningTransportFields(item));
       pendingReasoningText = joinTextParts(pendingReasoningText, responsesReasoningItemToText(item));
       continue;
     }
@@ -295,18 +300,22 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
       continue;
     }
     const flushedToolCalls = pendingToolCalls.length > 0;
-    flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText);
-    if (flushedToolCalls) pendingReasoningText = "";
+    flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText, pendingReasoningItems);
+    if (flushedToolCalls) {
+      pendingReasoningText = "";
+      pendingReasoningItems.length = 0;
+    }
     const message = mapResponsesInputItemToChatMessage(item);
     if (message) {
-      if (message.role === "assistant" && pendingReasoningText && message.reasoning_content === undefined) {
-        message.reasoning_content = pendingReasoningText;
+      if (message.role === "assistant") {
+        if (pendingReasoningText && message.reasoning_content === undefined) message.reasoning_content = pendingReasoningText;
+        if (pendingReasoningItems.length && message.reasoning_details === undefined) message.reasoning_details = pendingReasoningItems.splice(0);
+        pendingReasoningText = "";
       }
-      if (message.role === "assistant") pendingReasoningText = "";
       messages.push(message);
     }
   }
-  flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText);
+  flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText, pendingReasoningItems);
 }
 
 function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
@@ -401,6 +410,7 @@ function flushPendingToolCalls(
   messages: JsonRecord[],
   pendingToolCalls: JsonRecord[],
   reasoningText = "",
+  reasoningItems: JsonRecord[] = [],
 ): void {
   if (!pendingToolCalls.length) return;
   const message: JsonRecord = {
@@ -409,7 +419,45 @@ function flushPendingToolCalls(
     tool_calls: pendingToolCalls.splice(0),
   };
   if (reasoningText) message.reasoning_content = reasoningText;
+  if (reasoningItems.length) message.reasoning_details = reasoningItems.splice(0);
   messages.push(message);
+}
+
+function chatReasoningDetailsToResponsesReasoningItems(details: unknown): JsonRecord[] {
+  if (!Array.isArray(details)) return [];
+  const items: JsonRecord[] = [];
+  const textParts: string[] = [];
+  for (const detail of details) {
+    if (typeof detail === "string") {
+      if (detail && !isPlaceholderReasoningText(detail)) textParts.push(detail);
+      continue;
+    }
+    if (!isRecord(detail)) continue;
+    if (detail.type === "reasoning") {
+      items.push(stripReasoningTransportFields(detail));
+      continue;
+    }
+    const encryptedContent = stringOrNull(detail.encrypted_content);
+    if (encryptedContent) {
+      items.push({ type: "reasoning", encrypted_content: encryptedContent });
+      continue;
+    }
+    const text = extractReasoningDetailsText(detail);
+    if (text) textParts.push(text);
+  }
+  if (textParts.length) {
+    items.push({
+      type: "reasoning",
+      status: "completed",
+      summary: [{ type: "summary_text", text: textParts.join("\n\n") }],
+    });
+  }
+  return items;
+}
+
+function stripReasoningTransportFields(detail: JsonRecord): JsonRecord {
+  const { output_index: _outputIndex, content_index: _contentIndex, annotation_index: _annotationIndex, ...rest } = detail;
+  return { ...rest, type: "reasoning" };
 }
 
 function collapseSystemMessagesToHead(messages: JsonRecord[]): JsonRecord[] {
@@ -761,10 +809,12 @@ function extractReasoningDetailsText(value: unknown): string | null {
     return text || null;
   }
   if (!isRecord(value)) return null;
-  for (const key of ["text", "content", "summary"] as const) {
+  for (const key of ["text", "content", "summary_text", "thinking"] as const) {
     const text = stringOrNull(value[key]);
     if (text && !isPlaceholderReasoningText(text)) return text;
   }
+  const summaryText = extractReasoningDetailsText(value.summary);
+  if (summaryText) return summaryText;
   return extractReasoningDetailsText(value.parts);
 }
 
