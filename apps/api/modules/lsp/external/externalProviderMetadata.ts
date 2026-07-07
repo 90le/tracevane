@@ -45,13 +45,13 @@ const PROVIDER_METADATA: Record<string, ProviderMetadataSeed> = {
     packageName: "yaml-language-server",
     source: "npm:yaml-language-server",
     installMode: "bundled-npm",
-    pinnedVersion: "^1.23.0",
+    pinnedVersion: "1.23.0",
     license: "MIT",
     optional: false,
-    auditSummary: "Bundled npm provider proof. M11-J requires exact-pin hygiene before adding more heavy providers.",
+    auditSummary: "Bundled npm provider proof with exact-pinned dependency; future upgrades require provider-specific audit and smoke evidence.",
     notes: [
       "Started only through server-side allowlisted process.execPath + require.resolve command.",
-      "Current package range is not exact-pinned yet; M11-K/dependency hygiene should resolve this before further expansion.",
+      "Exact-pinned during M11-L dependency hygiene; update only with provider-specific audit and smoke evidence.",
     ],
   },
   bash: {
