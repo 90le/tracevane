@@ -12569,6 +12569,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
               strict: true,
             },
           },
+          user: "responses-user-123",
           max_output_tokens: 256,
           temperature: 0.1,
         },
@@ -12699,6 +12700,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
         strict: true,
       },
     },
+    metadata: { user_id: "responses-user-123" },
   });
   assert.equal(upstreamCalls[1].url, "https://responses-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].xApiKey, "sk-responses-anthropic-secret");
@@ -12877,6 +12879,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
               strict: true,
             },
           },
+          user: "chat-user-456",
           max_tokens: 128,
           temperature: 0.2,
           top_p: 0.9,
@@ -13022,6 +13025,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
         strict: true,
       },
     },
+    metadata: { user_id: "chat-user-456" },
   });
   assert.equal(upstreamCalls[1].url, "https://chat-anthropic.example.test/v1/messages");
   assert.equal(upstreamCalls[1].method, "POST");

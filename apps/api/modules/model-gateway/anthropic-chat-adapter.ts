@@ -149,6 +149,7 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     "top_p",
     "metadata",
   ]);
+  applyOpenAIUserToAnthropicMetadata(anthropicRequest, request.user);
 
   if (request.stop !== undefined) anthropicRequest.stop_sequences = request.stop;
   const outputFormat = mapChatResponseFormatToAnthropicOutputFormat(request.response_format);
@@ -1072,6 +1073,16 @@ function mapChatResponseFormatToAnthropicOutputFormat(responseFormat: unknown): 
     };
   }
   return undefined;
+}
+
+function applyOpenAIUserToAnthropicMetadata(anthropicRequest: JsonRecord, user: unknown): void {
+  const userId = stringOrNull(user);
+  if (!userId) return;
+  const existing = anthropicRequest.metadata;
+  if (existing !== undefined && !isRecord(existing)) return;
+  const metadata: JsonRecord = isRecord(existing) ? { ...existing } : {};
+  if (metadata.user_id === undefined) metadata.user_id = userId;
+  anthropicRequest.metadata = metadata;
 }
 
 function anthropicMetadataUserId(metadata: unknown): string | null {
