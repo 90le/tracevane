@@ -1,7 +1,14 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { TracevaneApiContext } from "../../core/context.js";
 import type { TracevaneRouter } from "../../core/router.js";
-import type { LspCompletionRequest, LspDiagnosticsRequest, LspPositionRequest } from "../../../../types/lsp.js";
+import type {
+  LspCompletionRequest,
+  LspDiagnosticsRequest,
+  LspPositionRequest,
+  LspWorkspaceEditApplyRequest,
+  LspWorkspaceEditPreviewRequest,
+} from "../../../../types/lsp.js";
+import { applyWorkspaceEdit, previewWorkspaceEdit } from "./workspaceEdit.js";
 
 export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get("/api/lsp/status", async (_req, res, routeCtx) => {
@@ -51,6 +58,34 @@ export function registerLspRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     } catch (error) {
       sendJson(res, 400, {
         error: "lsp_definition_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+
+  router.post("/api/lsp/workspace-edit/preview", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspWorkspaceEditPreviewRequest>(req);
+    try {
+      sendJson(res, 200, previewWorkspaceEdit(routeCtx.config, body));
+    } catch (error) {
+      sendJson(res, 400, {
+        error: "lsp_workspace_edit_preview_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.post("/api/lsp/workspace-edit/apply", async (req, res, routeCtx) => {
+    const body = await parseJsonBody<LspWorkspaceEditApplyRequest>(req);
+    try {
+      sendJson(res, 200, applyWorkspaceEdit(routeCtx.config, routeCtx.services.files, body));
+    } catch (error) {
+      const statusCode = typeof (error as { statusCode?: unknown })?.statusCode === "number"
+        ? Number((error as { statusCode: number }).statusCode)
+        : 400;
+      sendJson(res, statusCode, {
+        error: "lsp_workspace_edit_apply_failed",
         message: error instanceof Error ? error.message : String(error),
       });
     }

@@ -71,7 +71,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M7.z-C LSP rename / formatting / code actions plan.
 - Done: M7.z-D Git remote operations foundation plan.
 - Done: M7.z-E Git remote operations foundation hardening.
-- Next: M7.z-F LSP WorkspaceEdit preview/apply foundation.
+- Done: M7.z-F LSP WorkspaceEdit preview/apply foundation.
+- Next: M7.z-G LSP rename / formatting / code actions UI foundation.
 
 ## Required reading by task
 

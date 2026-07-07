@@ -5,6 +5,10 @@ import type {
   LspHoverResponse,
   LspPositionRequest,
   LspReferencesResponse,
+  LspWorkspaceEditApplyRequest,
+  LspWorkspaceEditApplyResponse,
+  LspWorkspaceEditPreviewRequest,
+  LspWorkspaceEditPreviewResponse,
 } from "../../../../../../types/lsp";
 
 export async function requestLspHover(
@@ -33,6 +37,21 @@ export async function requestLspReferences(
   options: { signal?: AbortSignal } = {},
 ): Promise<LspReferencesResponse> {
   return requestLspFeature<LspReferencesResponse>("/api/lsp/references", request, options);
+}
+
+
+export async function previewLspWorkspaceEdit(
+  request: LspWorkspaceEditPreviewRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspWorkspaceEditPreviewResponse> {
+  return requestLspFeature<LspWorkspaceEditPreviewResponse>("/api/lsp/workspace-edit/preview", request, options);
+}
+
+export async function applyLspWorkspaceEdit(
+  request: LspWorkspaceEditApplyRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<LspWorkspaceEditApplyResponse> {
+  return requestLspFeature<LspWorkspaceEditApplyResponse>("/api/lsp/workspace-edit/apply", request, options);
 }
 
 async function requestLspFeature<T>(

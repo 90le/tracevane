@@ -141,3 +141,113 @@ export type LspGatewayServerEvent =
   | LspCompletionResponse
   | LspDefinitionResponse
   | LspReferencesResponse;
+
+export interface LspWorkspaceEditPosition {
+  line: number;
+  character: number;
+}
+
+export interface LspWorkspaceEditRange {
+  start: LspWorkspaceEditPosition;
+  end: LspWorkspaceEditPosition;
+}
+
+export interface LspWorkspaceTextEdit {
+  range: LspWorkspaceEditRange;
+  newText: string;
+}
+
+export interface LspWorkspaceTextDocumentEdit {
+  textDocument: {
+    uri: string;
+    version?: number | null;
+  };
+  edits: LspWorkspaceTextEdit[];
+}
+
+export interface LspWorkspaceResourceOperation {
+  kind?: "create" | "rename" | "delete" | string;
+  uri?: string;
+  oldUri?: string;
+  newUri?: string;
+}
+
+export interface LspWorkspaceEdit {
+  changes?: Record<string, LspWorkspaceTextEdit[]>;
+  documentChanges?: Array<LspWorkspaceTextDocumentEdit | LspWorkspaceResourceOperation>;
+}
+
+export type LspWorkspaceEditOpenState = "closed" | "open-clean" | "open-dirty";
+
+export interface LspWorkspaceEditOpenDocument {
+  path?: string | null;
+  uri?: string | null;
+  dirty?: boolean;
+  version?: number | null;
+}
+
+export interface LspWorkspaceEditPreviewRequest {
+  rootId: string;
+  source?: "rename" | "formatting" | "codeAction" | "manual" | string;
+  workspaceEdit?: LspWorkspaceEdit | null;
+  /** Convenience input for providers such as formatting that return TextEdit[]. */
+  textDocumentUri?: string | null;
+  textEdits?: LspWorkspaceTextEdit[] | null;
+  openDocuments?: LspWorkspaceEditOpenDocument[];
+}
+
+export interface LspWorkspaceEditPreviewItem {
+  kind: "text";
+  rootId: string;
+  path: string;
+  uri: string;
+  range: LspWorkspaceEditRange;
+  newText: string;
+  openState: LspWorkspaceEditOpenState;
+  supported: true;
+}
+
+export interface LspWorkspaceEditRejectedItem {
+  kind: "text" | "resource" | "unknown";
+  uri?: string | null;
+  path?: string | null;
+  operation?: string | null;
+  reason: string;
+}
+
+export interface LspWorkspaceEditPreviewResponse {
+  type: "workspaceEditPreview";
+  rootId: string;
+  source: string;
+  checkedAt: string;
+  items: LspWorkspaceEditPreviewItem[];
+  rejected: LspWorkspaceEditRejectedItem[];
+  summary: {
+    totalTextEdits: number;
+    affectedFiles: number;
+    openCleanFiles: number;
+    openDirtyFiles: number;
+    closedFiles: number;
+    rejected: number;
+    applySupported: boolean;
+  };
+}
+
+export interface LspWorkspaceEditApplyRequest extends LspWorkspaceEditPreviewRequest {
+  /** Allow applying to documents reported as open-clean. Dirty documents remain rejected in M7.z-F. */
+  allowOpenClean?: boolean;
+  /** Bypass Files API expected mtime/size checks. Intended only for explicit future user confirmations. */
+  force?: boolean;
+}
+
+export interface LspWorkspaceEditApplyResponse {
+  type: "workspaceEditApply";
+  rootId: string;
+  source: string;
+  checkedAt: string;
+  items: LspWorkspaceEditPreviewItem[];
+  rejected: LspWorkspaceEditRejectedItem[];
+  summary: LspWorkspaceEditPreviewResponse["summary"];
+  applied: Array<{ path: string; editCount: number; modifiedAt?: string | null; size?: number | null }>;
+  skipped: LspWorkspaceEditRejectedItem[];
+}
