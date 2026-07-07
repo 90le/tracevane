@@ -9529,6 +9529,106 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
   });
 });
 
+test("model gateway preserves Anthropic MCP server context through Chat providers without leaking tokens", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-chat-mcp-context",
+      name: "Anthropic Chat MCP Context",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-chat-mcp-context.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-anthropic-chat-mcp-context-secret" },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_mcp_context",
+      object: "chat.completion",
+      created: 1_710_000_046,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "MCP context preserved." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          max_tokens: 128,
+          mcp_servers: [
+            {
+              type: "url",
+              name: "repo-tools",
+              url: "https://mcp.example.test/sse",
+              description: "Repository tools",
+              authorization_token: "mcp-token-should-not-leak",
+              tool_configuration: {
+                enabled: true,
+                allowed_tools: ["read_file", "search"],
+                require_approval: "always",
+                defer_loading: true,
+              },
+            },
+            {
+              type: "url",
+              name: "disabled-tools",
+              url: "https://disabled-mcp.example.test/sse",
+              authorization_token: "disabled-token-should-not-leak",
+              tool_configuration: {
+                enabled: false,
+                allowed_tools: ["delete_everything"],
+              },
+            },
+          ],
+          messages: [{ role: "user", content: "Read README using MCP if possible." }],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.content[0].text, "MCP context preserved.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-chat-mcp-context.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-mcp-context-secret");
+  assert.deepEqual(upstreamCalls[0].body.messages, [
+    { role: "user", content: "Read README using MCP if possible." },
+    {
+      role: "user",
+      content: "[Anthropic MCP server server_label=repo-tools server_url=https://mcp.example.test/sse description=Repository tools allowed_tools=read_file,search require_approval=always defer_loading=true]",
+    },
+  ]);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("mcp-token-should-not-leak"), false);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("disabled-token-should-not-leak"), false);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("disabled-tools"), false);
+});
+
 test("model gateway exposes streaming responses mcp outputs through chat and anthropic adapters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

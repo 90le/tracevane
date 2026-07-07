@@ -177,6 +177,9 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   }
 
   const messages = mapAnthropicMessagesToChat(request);
+  if (!options.preserveMcpServers) {
+    messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers));
+  }
   const chatRequest: JsonRecord = {
     model,
     messages,
@@ -997,6 +1000,44 @@ function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown): JsonRecord
         : undefined;
     if (deferLoading !== undefined) tool.defer_loading = deferLoading;
     return [tool];
+  });
+}
+
+function mapAnthropicMcpServersToChatContextMessages(mcpServers: unknown): JsonRecord[] {
+  const contexts = mapAnthropicMcpServersToChatContext(mcpServers);
+  return contexts.length ? [{ role: "user", content: contexts.join("\n") }] : [];
+}
+
+function mapAnthropicMcpServersToChatContext(mcpServers: unknown): string[] {
+  if (!Array.isArray(mcpServers)) return [];
+  return mcpServers.flatMap((server) => {
+    if (!isRecord(server)) return [];
+    if (server.type !== "url") return [];
+    const toolConfiguration = isRecord(server.tool_configuration) ? server.tool_configuration : null;
+    if (toolConfiguration?.enabled === false) return [];
+    const serverLabel = stringOrNull(server.name) || stringOrNull(server.server_label);
+    const serverUrl = stringOrNull(server.url) || stringOrNull(server.server_url);
+    if (!serverLabel || !serverUrl) return [];
+
+    const details = [`server_label=${serverLabel}`, `server_url=${serverUrl}`];
+    const description = stringOrNull(server.description) || stringOrNull(server.server_description);
+    if (description) details.push(`description=${description}`);
+    const allowedToolsSource = Array.isArray(toolConfiguration?.allowed_tools)
+      ? toolConfiguration.allowed_tools
+      : Array.isArray(server.allowed_tools)
+        ? server.allowed_tools
+        : [];
+    const allowedTools = allowedToolsSource.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (allowedTools.length) details.push(`allowed_tools=${allowedTools.join(",")}`);
+    const requireApproval = server.require_approval ?? toolConfiguration?.require_approval;
+    if (requireApproval !== undefined) details.push(`require_approval=${stringifyCompact(requireApproval)}`);
+    const deferLoading = typeof server.defer_loading === "boolean"
+      ? server.defer_loading
+      : typeof toolConfiguration?.defer_loading === "boolean"
+        ? toolConfiguration.defer_loading
+        : undefined;
+    if (deferLoading !== undefined) details.push(`defer_loading=${String(deferLoading)}`);
+    return [`[Anthropic MCP server ${details.join(" ")}]`];
   });
 }
 
