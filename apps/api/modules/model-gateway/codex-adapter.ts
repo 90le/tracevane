@@ -144,7 +144,7 @@ export function adaptChatCompletionToCodexResponse(
 
   const choice = firstChoice(chatCompletion);
   const message = isRecord(choice?.message) ? choice.message : {};
-  const messageContent = chatMessageToResponsesOutputContent(message);
+  const messageContent = chatMessageToResponsesOutputContent(message, choice?.logprobs);
   const reasoningText = extractReasoningText(message);
   const generatedSuffix = Date.now().toString(36);
   const output: JsonRecord[] = [];
@@ -188,7 +188,7 @@ export function adaptChatCompletionToCodexResponse(
   return response;
 }
 
-function chatMessageToResponsesOutputContent(message: JsonRecord): JsonRecord[] {
+function chatMessageToResponsesOutputContent(message: JsonRecord, choiceLogprobs: unknown): JsonRecord[] {
   const content = message.content;
   if (Array.isArray(content)) {
     const parts: JsonRecord[] = [];
@@ -196,15 +196,16 @@ function chatMessageToResponsesOutputContent(message: JsonRecord): JsonRecord[] 
       const mapped = chatContentPartToResponsesOutputPart(part);
       if (mapped) parts.push(mapped);
     }
-    const messageAnnotations = chatAnnotationsToResponsesAnnotations(message.annotations);
-    if (messageAnnotations.length) {
-      const outputText = parts.find((part): part is JsonRecord => part.type === "output_text");
-      if (outputText) {
+    const outputText = parts.find((part): part is JsonRecord => part.type === "output_text");
+    if (outputText) {
+      const messageAnnotations = chatAnnotationsToResponsesAnnotations(message.annotations);
+      if (messageAnnotations.length) {
         outputText.annotations = [
           ...messageAnnotations,
           ...(Array.isArray(outputText.annotations) ? outputText.annotations.filter(isRecord) : []),
         ];
       }
+      attachChatLogprobs(outputText, choiceLogprobs);
     }
     return parts;
   }
@@ -214,6 +215,7 @@ function chatMessageToResponsesOutputContent(message: JsonRecord): JsonRecord[] 
     const outputText: JsonRecord = { type: "output_text", text };
     const annotations = chatAnnotationsToResponsesAnnotations(message.annotations);
     if (annotations.length) outputText.annotations = annotations;
+    attachChatLogprobs(outputText, choiceLogprobs);
     return [outputText];
   }
 
@@ -241,7 +243,16 @@ function chatContentPartToResponsesOutputPart(part: unknown): JsonRecord | null 
   const outputText: JsonRecord = { type: "output_text", text };
   const annotations = chatAnnotationsToResponsesAnnotations(part.annotations);
   if (annotations.length) outputText.annotations = annotations;
+  if (Array.isArray(part.logprobs)) outputText.logprobs = part.logprobs.filter(isRecord);
   return outputText;
+}
+
+function attachChatLogprobs(outputText: JsonRecord, choiceLogprobs: unknown): void {
+  if (outputText.logprobs !== undefined) return;
+  const contentLogprobs = isRecord(choiceLogprobs) && Array.isArray(choiceLogprobs.content)
+    ? choiceLogprobs.content.filter(isRecord)
+    : [];
+  if (contentLogprobs.length) outputText.logprobs = contentLogprobs;
 }
 
 function chatAnnotationsToResponsesAnnotations(annotations: unknown): JsonRecord[] {

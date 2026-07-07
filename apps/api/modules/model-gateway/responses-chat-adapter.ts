@@ -164,16 +164,20 @@ export function adaptResponsesToChatCompletion(
   if (annotations.length) message.annotations = annotations;
   if (toolCalls.length) message.tool_calls = toolCalls;
 
+  const choice: JsonRecord = {
+    index: 0,
+    message,
+    finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0),
+  };
+  const logprobs = collectResponseOutputLogprobs(output);
+  if (logprobs.length) choice.logprobs = { content: logprobs };
+
   const chatCompletion: JsonRecord = {
     id: stringOrNull(response.id) || `chatcmpl_${Date.now().toString(36)}`,
     object: "chat.completion",
     created: numberOrNull(response.created_at) || Math.floor(Date.now() / 1_000),
     model: stringOrNull(response.model) || fallbackModel,
-    choices: [{
-      index: 0,
-      message,
-      finish_reason: mapResponsesFinishReasonToChat(response, toolCalls.length > 0),
-    }],
+    choices: [choice],
     usage: mapResponsesUsageToChat(response.usage),
   };
   if (response.service_tier !== undefined) chatCompletion.service_tier = response.service_tier;
@@ -616,6 +620,17 @@ function truncateAtStopSequence(text: string, stopSequences: Iterable<string> | 
   return earliestIndex === -1
     ? { text, stopSequence: null }
     : { text: text.slice(0, earliestIndex), stopSequence: matched };
+}
+
+function collectResponseOutputLogprobs(output: unknown[]): JsonRecord[] {
+  return output.flatMap((item): JsonRecord[] => {
+    if (!isRecord(item)) return [];
+    if (Array.isArray(item.logprobs)) return item.logprobs.filter(isRecord);
+    if (item.type !== "message" || !Array.isArray(item.content)) return [];
+    return item.content.flatMap((part): JsonRecord[] => (
+      isRecord(part) && Array.isArray(part.logprobs) ? part.logprobs.filter(isRecord) : []
+    ));
+  });
 }
 
 function collectResponseOutputAnnotations(output: unknown[]): JsonRecord[] {

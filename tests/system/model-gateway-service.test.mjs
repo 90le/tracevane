@@ -10811,7 +10811,11 @@ test("model gateway preserves supported responses controls and strips rejected c
       output: [{
         type: "message",
         role: "assistant",
-        content: [{ type: "output_text", text: "Modern controls preserved." }],
+        content: [{
+          type: "output_text",
+          text: "Modern controls preserved.",
+          logprobs: [{ token: "Modern", logprob: -0.1, bytes: [77] }],
+        }],
       }],
       usage: {
         input_tokens: 5,
@@ -10859,6 +10863,9 @@ test("model gateway preserves supported responses controls and strips rejected c
       });
       assert.equal(chat.status, 200, chat.body);
       assert.equal(chat.body.choices[0].message.content, "Modern controls preserved.");
+      assert.deepEqual(chat.body.choices[0].logprobs, {
+        content: [{ token: "Modern", logprob: -0.1, bytes: [77] }],
+      });
       assert.deepEqual(chat.body.usage, {
         prompt_tokens: 5,
         completion_tokens: 3,
@@ -12983,6 +12990,9 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
           }],
         },
         finish_reason: "stop",
+        logprobs: {
+          content: [{ token: "Adapted", logprob: -0.2, bytes: [65] }],
+        },
       }],
       usage: {
         prompt_tokens: 10,
@@ -13073,6 +13083,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
       assert.deepEqual(responses.body.output[0].content, [{
         type: "output_text",
         text: "Adapted answer.",
+        logprobs: [{ token: "Adapted", logprob: -0.2, bytes: [65] }],
         annotations: [{
           type: "url_citation",
           url: "https://example.test/adapted",
