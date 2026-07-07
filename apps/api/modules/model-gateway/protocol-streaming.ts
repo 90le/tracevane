@@ -1,5 +1,7 @@
 import type http from "node:http";
 
+import { responsesMcpCallToAnthropicToolBlocks } from "./mcp-translation.js";
+
 type JsonRecord = Record<string, unknown>;
 
 interface ParsedSseEvent {
@@ -2116,70 +2118,24 @@ function emitAnthropicMcpToolBlocksFromResponsesCall(
   res: http.ServerResponse,
   item: JsonRecord,
 ): boolean {
-  const id = stringOrNull(item.id) || stringOrNull(item.call_id);
-  const name = stringOrNull(item.name) || stringOrNull(item.tool_name);
-  const serverName = stringOrNull(item.server_label) || stringOrNull(item.server_name);
-  if (!id || !name || !serverName) return false;
-
-  const useIndex = state.nextContentIndex;
-  state.nextContentIndex += 1;
-  writeSseEvent(res, "content_block_start", {
-    type: "content_block_start",
-    index: useIndex,
-    content_block: {
-      type: "mcp_tool_use",
-      id,
-      name,
-      server_name: serverName,
-      input: parseResponsesToolArguments(item.arguments ?? item.input),
-    },
-  });
-  writeSseEvent(res, "content_block_stop", {
-    type: "content_block_stop",
-    index: useIndex,
-  });
-
-  const outputValue = item.output ?? item.result ?? item.content;
-  if (outputValue !== undefined || item.error !== undefined) {
-    const resultIndex = state.nextContentIndex;
+  const blocks = responsesMcpCallToAnthropicToolBlocks(item);
+  if (!blocks.length) return false;
+  for (const block of blocks) {
+    const index = state.nextContentIndex;
     state.nextContentIndex += 1;
     writeSseEvent(res, "content_block_start", {
       type: "content_block_start",
-      index: resultIndex,
-      content_block: {
-        type: "mcp_tool_result",
-        tool_use_id: id,
-        is_error: item.error !== undefined && item.error !== null,
-        content: responsesMcpResultContentToAnthropicContent(item.error ?? outputValue),
-      },
+      index,
+      content_block: block,
     });
     writeSseEvent(res, "content_block_stop", {
       type: "content_block_stop",
-      index: resultIndex,
+      index,
     });
   }
   return true;
 }
 
-function parseResponsesToolArguments(value: unknown): unknown {
-  if (isRecord(value) || Array.isArray(value)) return value;
-  if (typeof value !== "string") return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isRecord(parsed) || Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function responsesMcpResultContentToAnthropicContent(value: unknown): JsonRecord[] {
-  if (Array.isArray(value)) {
-    const blocks = value.filter(isRecord);
-    if (blocks.length) return blocks;
-  }
-  if (isRecord(value) && typeof value.type === "string") return [value];
-  return [{ type: "text", text: stringifyCompact(value ?? "") }];
-}
 
 function isResponsesMcpOutputItem(item: JsonRecord): boolean {
   return item.type === "mcp_call" || item.type === "mcp_list_tools";

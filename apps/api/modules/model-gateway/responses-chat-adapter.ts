@@ -1,3 +1,7 @@
+import {
+  chatMcpToolBlocksToResponsesItems,
+  responsesMcpCallToAnthropicToolBlocks,
+} from "./mcp-translation.js";
 import { applyResponsesReasoningOptions } from "./reasoning-options.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -458,17 +462,6 @@ function responsesFunctionCallItemId(callId: string): string {
   return callId.startsWith("fc") ? callId : `fc_${callId}`;
 }
 
-function parseToolArguments(value: unknown): unknown {
-  if (isRecord(value) || Array.isArray(value)) return value;
-  if (typeof value !== "string") return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isRecord(parsed) || Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | null {
   if (!isRecord(item) || (item.type !== "function_call" && item.type !== "custom_tool_call")) return null;
   const name = stringOrNull(item.name);
@@ -516,83 +509,9 @@ function responseOutputItemToText(item: unknown, options: { skipMcpToolCalls?: b
 }
 
 function collectResponseMcpToolBlocks(output: unknown[]): JsonRecord[] {
-  return output.flatMap((item): JsonRecord[] => {
-    if (!isRecord(item) || item.type !== "mcp_call") return [];
-    const id = stringOrNull(item.id) || stringOrNull(item.call_id);
-    const name = stringOrNull(item.name) || stringOrNull(item.tool_name);
-    const serverName = stringOrNull(item.server_label) || stringOrNull(item.server_name);
-    if (!id || !name || !serverName) return [];
-
-    const blocks: JsonRecord[] = [{
-      type: "mcp_tool_use",
-      id,
-      name,
-      server_name: serverName,
-      input: parseToolArguments(item.arguments ?? item.input),
-    }];
-
-    const outputValue = item.output ?? item.result ?? item.content;
-    if (outputValue !== undefined || item.error !== undefined) {
-      blocks.push({
-        type: "mcp_tool_result",
-        tool_use_id: id,
-        is_error: item.error !== undefined && item.error !== null,
-        content: mcpToolResultContentToAnthropicContent(item.error ?? outputValue),
-      });
-    }
-    return blocks;
-  });
-}
-
-function chatMcpToolBlocksToResponsesItems(blocks: unknown): JsonRecord[] {
-  if (!Array.isArray(blocks)) return [];
-  const pendingResults = new Map<string, JsonRecord>();
-  for (const block of blocks) {
-    if (!isRecord(block) || block.type !== "mcp_tool_result") continue;
-    const toolUseId = stringOrNull(block.tool_use_id);
-    if (toolUseId) pendingResults.set(toolUseId, block);
-  }
-
-  return blocks.flatMap((block): JsonRecord[] => {
-    if (!isRecord(block) || block.type !== "mcp_tool_use") return [];
-    const id = stringOrNull(block.id);
-    const name = stringOrNull(block.name);
-    const serverLabel = stringOrNull(block.server_name) || stringOrNull(block.server_label);
-    if (!id || !name || !serverLabel) return [];
-
-    const result = pendingResults.get(id);
-    const item: JsonRecord = {
-      type: "mcp_call",
-      id,
-      name,
-      server_label: serverLabel,
-      arguments: JSON.stringify(block.input ?? {}),
-    };
-    if (result) {
-      if (result.is_error === true) item.error = mcpResultContentToText(result.content);
-      else item.output = mcpResultContentToText(result.content);
-    }
-    return [item];
-  });
-}
-
-function mcpToolResultContentToAnthropicContent(value: unknown): JsonRecord[] {
-  if (Array.isArray(value)) {
-    const blocks = value.filter(isRecord);
-    if (blocks.length) return blocks;
-  }
-  if (isRecord(value) && typeof value.type === "string") return [value];
-  return [{ type: "text", text: stringifyCompact(value ?? "") }];
-}
-
-function mcpResultContentToText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const text = content.map(chatContentPartToText).filter(Boolean).join("");
-    return text || stringifyCompact(content);
-  }
-  const text = chatContentPartToText(content);
-  return text || stringifyCompact(content ?? "");
+  return output.flatMap((item): JsonRecord[] => (
+    isRecord(item) ? responsesMcpCallToAnthropicToolBlocks(item) : []
+  ));
 }
 
 function collectResponseReasoningDetails(output: unknown[]): JsonRecord[] {
