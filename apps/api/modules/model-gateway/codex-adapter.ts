@@ -832,11 +832,30 @@ function mapChatUsageToResponses(usage: unknown): JsonRecord | null {
     total_tokens: totalTokens,
     input_tokens_details: isRecord(usage.input_tokens_details)
       ? usage.input_tokens_details
-      : { cached_tokens: numberOrNull(promptDetails.cached_tokens) || 0 },
+      : chatPromptDetailsToResponsesInputDetails(promptDetails),
     output_tokens_details: isRecord(usage.output_tokens_details)
       ? usage.output_tokens_details
-      : { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 },
+      : chatCompletionDetailsToResponsesOutputDetails(completionDetails),
   };
+}
+
+function chatPromptDetailsToResponsesInputDetails(promptDetails: JsonRecord): JsonRecord {
+  const mapped: JsonRecord = { cached_tokens: numberOrNull(promptDetails.cached_tokens) || 0 };
+  copyNumericField(promptDetails, mapped, "audio_tokens");
+  return mapped;
+}
+
+function chatCompletionDetailsToResponsesOutputDetails(completionDetails: JsonRecord): JsonRecord {
+  const mapped: JsonRecord = { reasoning_tokens: numberOrNull(completionDetails.reasoning_tokens) || 0 };
+  for (const field of ["audio_tokens", "accepted_prediction_tokens", "rejected_prediction_tokens"] as const) {
+    copyNumericField(completionDetails, mapped, field);
+  }
+  return mapped;
+}
+
+function copyNumericField(source: JsonRecord, target: JsonRecord, field: string): void {
+  const value = numberOrNull(source[field]);
+  if (value !== null) target[field] = value;
 }
 
 function extractReasoningText(value: unknown): string | null {

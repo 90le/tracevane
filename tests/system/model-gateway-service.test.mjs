@@ -10813,7 +10813,18 @@ test("model gateway preserves supported responses controls and strips rejected c
         role: "assistant",
         content: [{ type: "output_text", text: "Modern controls preserved." }],
       }],
-      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      usage: {
+        input_tokens: 5,
+        output_tokens: 3,
+        total_tokens: 8,
+        input_tokens_details: { cached_tokens: 2, audio_tokens: 1 },
+        output_tokens_details: {
+          reasoning_tokens: 1,
+          audio_tokens: 2,
+          accepted_prediction_tokens: 3,
+          rejected_prediction_tokens: 4,
+        },
+      },
     }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -10848,6 +10859,18 @@ test("model gateway preserves supported responses controls and strips rejected c
       });
       assert.equal(chat.status, 200, chat.body);
       assert.equal(chat.body.choices[0].message.content, "Modern controls preserved.");
+      assert.deepEqual(chat.body.usage, {
+        prompt_tokens: 5,
+        completion_tokens: 3,
+        total_tokens: 8,
+        prompt_tokens_details: { cached_tokens: 2, audio_tokens: 1 },
+        completion_tokens_details: {
+          reasoning_tokens: 1,
+          audio_tokens: 2,
+          accepted_prediction_tokens: 3,
+          rejected_prediction_tokens: 4,
+        },
+      });
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -12965,6 +12988,13 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         prompt_tokens: 10,
         completion_tokens: 4,
         total_tokens: 14,
+        prompt_tokens_details: { cached_tokens: 2, audio_tokens: 1 },
+        completion_tokens_details: {
+          reasoning_tokens: 1,
+          audio_tokens: 2,
+          accepted_prediction_tokens: 3,
+          rejected_prediction_tokens: 4,
+        },
       },
     }), {
       status: 200,
@@ -13053,8 +13083,13 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         input_tokens: 10,
         output_tokens: 4,
         total_tokens: 14,
-        input_tokens_details: { cached_tokens: 0 },
-        output_tokens_details: { reasoning_tokens: 0 },
+        input_tokens_details: { cached_tokens: 2, audio_tokens: 1 },
+        output_tokens_details: {
+          reasoning_tokens: 1,
+          audio_tokens: 2,
+          accepted_prediction_tokens: 3,
+          rejected_prediction_tokens: 4,
+        },
       });
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
@@ -13070,7 +13105,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         inputTokens: 10,
         outputTokens: 4,
         totalTokens: 14,
-        cacheReadTokens: 0,
+        cacheReadTokens: 2,
         cacheCreationTokens: 0,
         imageGenerationRequests: 0,
         imagesGenerated: 0,
