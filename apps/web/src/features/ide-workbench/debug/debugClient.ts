@@ -12,6 +12,8 @@ export interface IdeDebugCreateInput {
   profileId?: string;
   breakpoints?: DebugBreakpointLocation[];
   program?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
 }
 
 export function createIdeDebugSession(input: IdeDebugCreateInput): Promise<DebugSessionPayload> {
@@ -22,6 +24,8 @@ export function createIdeDebugSession(input: IdeDebugCreateInput): Promise<Debug
     profileId: input.profileId ?? "mock-node",
     breakpoints: input.breakpoints,
     program: input.program,
+    args: input.args,
+    env: input.env,
   });
 }
 

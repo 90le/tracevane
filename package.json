@@ -101,7 +101,8 @@
     "smoke:ide:debug-foundation": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5186} node tests/ide-workbench/ide-debug-foundation.smoke.mjs",
     "smoke:ide:debug-breakpoints": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5187} node tests/ide-workbench/ide-debug-breakpoints.smoke.mjs",
     "smoke:ide:debug-adapter-proof": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5188} node tests/ide-workbench/ide-debug-adapter-proof.smoke.mjs",
-    "smoke:ide:debug-lifecycle": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5189} node tests/ide-workbench/ide-debug-lifecycle.smoke.mjs"
+    "smoke:ide:debug-lifecycle": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5189} node tests/ide-workbench/ide-debug-lifecycle.smoke.mjs",
+    "smoke:ide:debug-launch-profile": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5190} node tests/ide-workbench/ide-debug-launch-profile.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

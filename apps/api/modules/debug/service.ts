@@ -9,10 +9,10 @@ import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   DebugBreakpointLocation,
   DebugCreateSessionRequest,
+  DebugLaunchProfile,
   DebugLifecycleEventKind,
   DebugGatewayClientEvent,
   DebugGatewayServerEvent,
-  DebugProfileDescriptor,
   DebugSourceLocation,
   DebugStackFrame,
   DebugVariable,
@@ -30,13 +30,18 @@ import {
 const DEBUG_WS_PATH = "/ws/debug";
 const MOCK_PROFILE_ID = "mock-node";
 const NODE_LITE_PROFILE_ID = "node-lite";
+const NODE_LITE_PROGRAM_EXTENSIONS = [".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx"];
 
-const DEBUG_PROFILES: DebugProfileDescriptor[] = [
+const DEBUG_PROFILES: DebugLaunchProfile[] = [
   {
     id: MOCK_PROFILE_ID,
     label: "Mock Node Debugger",
     kind: "mock",
     description: "Deterministic Debug Adapter skeleton for Tracevane Workbench smoke validation.",
+    allowArgs: false,
+    allowEnv: false,
+    maxArgs: 0,
+    maxEnv: 0,
   },
   {
     id: NODE_LITE_PROFILE_ID,
@@ -44,6 +49,11 @@ const DEBUG_PROFILES: DebugProfileDescriptor[] = [
     kind: "adapter-proof",
     description: "Minimal guarded adapter-proof profile that maps program breakpoints to stopped/stack/variables events.",
     requiresProgram: true,
+    allowArgs: true,
+    allowEnv: true,
+    maxArgs: 16,
+    maxEnv: 32,
+    programExtensions: NODE_LITE_PROGRAM_EXTENSIONS,
   },
 ];
 
@@ -84,6 +94,9 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "variables-events",
         "lifecycle-events",
         "session-state-machine",
+        "launch-profiles",
+        "launch-config-validation",
+        "launch-args-env-guard",
       ],
     };
   }
@@ -121,6 +134,9 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       state: "created",
       adapterKind: validated.profile.kind,
       program: validated.program?.relativePath ?? null,
+      launchProfileId: validated.profileId,
+      launchArgs: validated.args,
+      launchEnvKeys: validated.envKeys,
       createdAt: now,
       updatedAt: now,
       activeLocation,
@@ -141,8 +157,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       sessionId: id,
       category: "console",
       text: activeLocation
-        ? `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}; stopped at ${activeLocation.path}:${activeLocation.lineNumber}`
-        : `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}`,
+        ? `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}; args=${validated.args.length}; envKeys=${validated.envKeys.length}; stopped at ${activeLocation.path}:${activeLocation.lineNumber}`
+        : `${validated.profile.label} ${session.name} initialized at ${session.cwd || "."}; args=${validated.args.length}; envKeys=${validated.envKeys.length}`,
       timestamp: now,
     });
     emit({
@@ -325,23 +341,28 @@ function validateCreateRequest(
   rootId: string;
   workspaceId: string | null;
   cwd: string;
-  profile: DebugProfileDescriptor;
+  profile: DebugLaunchProfile;
   profileId: string;
   name: string;
   breakpoints: DebugBreakpointLocation[];
   program: { relativePath: string; absolutePath: string } | null;
+  args: string[];
+  envKeys: string[];
 } {
   const rootId = String(request?.rootId || "").trim();
   if (!rootId) throw new Error("Debug rootId is required");
-  const profileId = String(request?.profileId || MOCK_PROFILE_ID).trim() || MOCK_PROFILE_ID;
+  const launch = request?.launch && typeof request.launch === "object" ? request.launch : null;
+  const profileId = String(launch?.profileId || request?.profileId || MOCK_PROFILE_ID).trim() || MOCK_PROFILE_ID;
   const profile = DEBUG_PROFILES.find((item) => item.id === profileId);
   if (!profile) throw new Error("Unsupported debug profile");
-  const resolved = resolveFilesServiceDirectoryPath(config, rootId, request?.cwd || "");
+  const resolved = resolveFilesServiceDirectoryPath(config, rootId, launch?.cwd ?? request?.cwd ?? "");
   const program = profile.requiresProgram
-    ? resolveDebugProgram(config, resolved.root.id, request?.program)
+    ? resolveDebugProgram(config, resolved.root.id, launch?.program ?? request?.program, profile)
     : null;
   const name = String(request?.name || profile.label).trim() || profile.label;
   const breakpoints = normalizeBreakpointLocations(config, resolved.root.id, request?.breakpoints);
+  const args = normalizeLaunchArgs(profile, launch?.args ?? request?.args);
+  const envKeys = normalizeLaunchEnv(profile, launch?.env ?? request?.env);
   return {
     rootId: resolved.root.id,
     workspaceId: String(request?.workspaceId || rootId || "").trim() || null,
@@ -351,6 +372,8 @@ function validateCreateRequest(
     name,
     breakpoints,
     program,
+    args,
+    envKeys,
   };
 }
 
@@ -358,23 +381,64 @@ function resolveDebugProgram(
   config: TracevaneServerConfig,
   rootId: string,
   program: string | null | undefined,
+  profile: DebugLaunchProfile,
 ): { relativePath: string; absolutePath: string } {
   const rawProgram = String(program || "").trim();
   if (!rawProgram) throw new Error("Debug program is required for this profile");
   const resolved = resolveFilesServiceExistingFilePath(config, rootId, rawProgram);
   const extension = path.extname(resolved.relativePath).toLowerCase();
-  if (![".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx"].includes(extension)) {
-    throw new Error("Node Lite adapter proof only accepts JavaScript/TypeScript source files");
+  const allowedExtensions = profile.programExtensions?.length ? profile.programExtensions : NODE_LITE_PROGRAM_EXTENSIONS;
+  if (!allowedExtensions.includes(extension)) {
+    throw new Error(`${profile.label} only accepts these program extensions: ${allowedExtensions.join(", ")}`);
   }
   return { relativePath: resolved.relativePath, absolutePath: resolved.absolutePath };
+}
+
+function normalizeLaunchArgs(profile: DebugLaunchProfile, input: unknown): string[] {
+  if (input == null) return [];
+  if (Array.isArray(input) && input.length === 0) return [];
+  if (!profile.allowArgs) throw new Error(`${profile.label} does not allow launch args`);
+  if (!Array.isArray(input)) throw new Error("Debug launch args must be an array of strings");
+  const maxArgs = profile.maxArgs ?? 16;
+  if (input.length > maxArgs) throw new Error(`Debug launch args exceed max ${maxArgs}`);
+  return input.map((item, index) => {
+    if (typeof item !== "string") throw new Error(`Debug launch arg ${index + 1} must be a string`);
+    const value = item.trim();
+    if (!value) throw new Error(`Debug launch arg ${index + 1} must not be empty`);
+    if (value.length > 512) throw new Error(`Debug launch arg ${index + 1} is too long`);
+    return value;
+  });
+}
+
+function normalizeLaunchEnv(profile: DebugLaunchProfile, input: unknown): string[] {
+  if (input == null) return [];
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Debug launch env must be an object of string values");
+  }
+  const entries = Object.entries(input as Record<string, unknown>);
+  if (entries.length === 0) return [];
+  if (!profile.allowEnv) throw new Error(`${profile.label} does not allow launch env`);
+  const maxEnv = profile.maxEnv ?? 32;
+  if (entries.length > maxEnv) throw new Error(`Debug launch env exceeds max ${maxEnv}`);
+  const keys: string[] = [];
+  for (const [rawKey, rawValue] of entries) {
+    const key = rawKey.trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error(`Invalid debug launch env key: ${rawKey}`);
+    if (typeof rawValue !== "string") throw new Error(`Debug launch env ${key} must be a string`);
+    if (rawValue.length > 2048) throw new Error(`Debug launch env ${key} is too long`);
+    keys.push(key);
+  }
+  return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
 }
 
 function createAdapterProofResult(validated: {
   rootId: string;
   cwd: string;
-  profile: DebugProfileDescriptor;
+  profile: DebugLaunchProfile;
   breakpoints: DebugBreakpointLocation[];
   program: { relativePath: string; absolutePath: string } | null;
+  args: string[];
+  envKeys: string[];
 }): { activeLocation: DebugSourceLocation | null; frames: DebugStackFrame[]; variables: DebugVariable[] } {
   if (validated.profile.id !== NODE_LITE_PROFILE_ID || !validated.program) {
     const activeLocation = validated.breakpoints.find((breakpoint) => breakpoint.enabled !== false) ?? null;
@@ -403,6 +467,8 @@ function createAdapterProofResult(validated: {
     { name: "program", value: validated.program.relativePath, type: "string", variablesReference: 0 },
     { name: "cwd", value: validated.cwd || ".", type: "string", variablesReference: 0 },
     { name: "breakpointCount", value: String(programBreakpoints.length), type: "number", variablesReference: 0 },
+    { name: "args", value: String(validated.args.length), type: "number", variablesReference: 0 },
+    { name: "envKeys", value: validated.envKeys.join(",") || "(none)", type: "string", variablesReference: 0 },
     { name: "adapter", value: NODE_LITE_PROFILE_ID, type: "string", variablesReference: 0 },
   ];
   return { activeLocation, frames: [frame], variables };

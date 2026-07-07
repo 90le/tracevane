@@ -28,11 +28,29 @@ export interface DebugProfileDescriptor {
   requiresProgram?: boolean;
 }
 
+export interface DebugLaunchProfile extends DebugProfileDescriptor {
+  defaultCwd?: string | null;
+  defaultProgram?: string | null;
+  allowArgs?: boolean;
+  allowEnv?: boolean;
+  maxArgs?: number;
+  maxEnv?: number;
+  programExtensions?: string[];
+}
+
+export interface DebugLaunchConfig {
+  profileId?: string | null;
+  cwd?: string | null;
+  program?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
 export interface DebugStatusPayload {
   ok: true;
   provider: "mock";
   websocketPath: string;
-  supportedProfiles: DebugProfileDescriptor[];
+  supportedProfiles: DebugLaunchProfile[];
   features: string[];
 }
 
@@ -65,6 +83,9 @@ export interface DebugSessionDescriptor {
   activeLocation?: DebugSourceLocation | null;
   adapterKind?: DebugProfileDescriptor["kind"];
   program?: string | null;
+  launchProfileId?: string | null;
+  launchArgs?: string[];
+  launchEnvKeys?: string[];
 }
 
 export interface DebugLifecycleEvent {
@@ -98,6 +119,9 @@ export interface DebugCreateSessionRequest {
   name?: string | null;
   breakpoints?: DebugBreakpointLocation[];
   program?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+  launch?: DebugLaunchConfig | null;
 }
 
 export interface DebugStopSessionRequest {

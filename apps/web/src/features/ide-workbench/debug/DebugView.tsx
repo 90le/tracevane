@@ -10,7 +10,7 @@ import {
   upsertDebugSession,
   useIdeDebugSnapshot,
 } from "./debugStore";
-import type { DebugSourceLocation } from "../../../../../../types/debug";
+import type { DebugLaunchProfile, DebugSourceLocation } from "../../../../../../types/debug";
 
 export function IdeDebugView({
   hidden,
@@ -29,9 +29,21 @@ export function IdeDebugView({
 }) {
   const snapshot = useIdeDebugSnapshot();
   const [busy, setBusy] = React.useState(false);
+  const profiles = snapshot.status?.supportedProfiles ?? [];
+  const [selectedProfileId, setSelectedProfileId] = React.useState("mock-node");
+  const [launchArgsText, setLaunchArgsText] = React.useState("");
+  const [launchEnvText, setLaunchEnvText] = React.useState("");
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null;
   const activeSession = snapshot.sessions.find((session) => !["terminated", "disconnected"].includes(session.state)) ?? snapshot.sessions[0] ?? null;
   const stackFrames = activeSession ? snapshot.stackFramesBySessionId[activeSession.id] ?? [] : [];
   const variables = activeSession ? snapshot.variablesBySessionId[activeSession.id] ?? [] : [];
+
+  React.useEffect(() => {
+    if (!profiles.length) return;
+    if (!profiles.some((profile) => profile.id === selectedProfileId)) {
+      setSelectedProfileId(profiles[0]?.id ?? "mock-node");
+    }
+  }, [profiles, selectedProfileId]);
 
   const handleStart = React.useCallback(async () => {
     if (!rootId || busy) return;
@@ -69,6 +81,39 @@ export function IdeDebugView({
     }
   }, [activeFile, busy, cwd, onOpenLocation, rootId, snapshot.breakpoints, snapshot.sessions.length]);
 
+  const handleStartSelectedProfile = React.useCallback(async () => {
+    if (!rootId || !selectedProfile || busy) return;
+    if (selectedProfile.requiresProgram && !activeFile) return;
+    setBusy(true);
+    try {
+      const payload = await createIdeDebugSession({
+        rootId,
+        cwd,
+        profileId: selectedProfile.id,
+        program: selectedProfile.requiresProgram ? activeFile?.path ?? null : null,
+        name: `${selectedProfile.label} ${snapshot.sessions.length + 1}`,
+        args: parseLaunchArgs(launchArgsText, selectedProfile),
+        env: parseLaunchEnv(launchEnvText, selectedProfile),
+        breakpoints: snapshot.breakpoints.filter((breakpoint) => breakpoint.enabled !== false),
+      });
+      upsertDebugSession(payload.session);
+      if (payload.session.activeLocation) onOpenLocation(payload.session.activeLocation);
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    activeFile,
+    busy,
+    cwd,
+    launchArgsText,
+    launchEnvText,
+    onOpenLocation,
+    rootId,
+    selectedProfile,
+    snapshot.breakpoints,
+    snapshot.sessions.length,
+  ]);
+
   const handleStop = React.useCallback(async () => {
     if (!activeSession || ["terminating", "terminated", "disconnected"].includes(activeSession.state) || busy) return;
     setBusy(true);
@@ -95,6 +140,53 @@ export function IdeDebugView({
           {snapshot.connectionState === "connected" ? "Debug Gateway 已连接" : snapshot.message ?? "Debug Gateway 等待连接"}
         </div>
         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
+          <div className="rounded-lg border border-line bg-canvas p-2" data-ide-debug-launch-config>
+            <label className="block text-xs font-medium text-subtle" htmlFor="ide-debug-profile-select">Launch profile</label>
+            <select
+              id="ide-debug-profile-select"
+              className="mt-1 h-8 w-full rounded-md border border-line bg-panel px-2 text-sm text-ink-strong outline-none focus:border-primary-line"
+              value={selectedProfile?.id ?? selectedProfileId}
+              onChange={(event) => setSelectedProfileId(event.target.value)}
+              data-ide-debug-profile-select
+            >
+              {profiles.length ? profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>{profile.label}</option>
+              )) : (
+                <option value="mock-node">Mock Node Debugger</option>
+              )}
+            </select>
+            <div className="mt-1 truncate text-[11px] text-muted" data-ide-debug-profile-description>
+              {selectedProfile?.description ?? "等待 Debug status profiles"}
+            </div>
+            <input
+              className="mt-2 h-8 w-full rounded-md border border-line bg-panel px-2 font-mono text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line disabled:opacity-60"
+              value={launchArgsText}
+              onChange={(event) => setLaunchArgsText(event.target.value)}
+              placeholder="args: --flag value"
+              disabled={!selectedProfile?.allowArgs}
+              data-ide-debug-launch-args
+            />
+            <textarea
+              className="mt-2 min-h-14 w-full resize-y rounded-md border border-line bg-panel px-2 py-1 font-mono text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line disabled:opacity-60"
+              value={launchEnvText}
+              onChange={(event) => setLaunchEnvText(event.target.value)}
+              placeholder={"ENV_KEY=value\\nTRACEVANE_SMOKE=1"}
+              disabled={!selectedProfile?.allowEnv}
+              data-ide-debug-launch-env
+            />
+            <Button
+              className="mt-2 w-full min-w-0 justify-start"
+              size="sm"
+              variant="primary"
+              onClick={handleStartSelectedProfile}
+              disabled={!rootId || !selectedProfile || (selectedProfile.requiresProgram && !activeFile) || busy}
+              title={selectedProfile?.requiresProgram && !activeFile ? "先在编辑器中打开一个 JavaScript/TypeScript 文件" : "使用所选 launch profile 启动"}
+              data-ide-debug-launch-start
+            >
+              <Play />
+              启动所选配置
+            </Button>
+          </div>
           <Button className="w-full min-w-0 justify-start" size="sm" onClick={handleStart} disabled={!rootId || busy} data-ide-debug-start>
             <Play />
             启动 Mock
@@ -210,6 +302,8 @@ export function IdeDebugView({
                 </div>
                 <div className="mt-1 truncate font-mono text-xs text-muted">cwd: {session.cwd || "."}</div>
                 {session.program ? <div className="mt-1 truncate font-mono text-xs text-muted">program: {session.program}</div> : null}
+                {session.launchArgs?.length ? <div className="mt-1 truncate font-mono text-xs text-muted" data-ide-debug-session-args>args: {session.launchArgs.length}</div> : null}
+                {session.launchEnvKeys?.length ? <div className="mt-1 truncate font-mono text-xs text-muted" data-ide-debug-session-env>env: {session.launchEnvKeys.join(", ")}</div> : null}
                 {session.lastError ? <div className="mt-1 text-xs text-red" data-ide-debug-session-error>{session.lastError}</div> : null}
                 {session.message ? <div className="mt-1 text-xs text-subtle">{session.message}</div> : null}
               </div>
@@ -273,4 +367,27 @@ function debugStateDotClass(state: string): string {
   if (state === "terminating") return "bg-subtle";
   if (state === "initializing" || state === "configured") return "bg-info";
   return "bg-primary";
+}
+
+function parseLaunchArgs(value: string, profile: DebugLaunchProfile): string[] {
+  if (!profile.allowArgs) return [];
+  return value.split(/\s+/).map((item) => item.trim()).filter(Boolean).slice(0, profile.maxArgs ?? 16);
+}
+
+function parseLaunchEnv(value: string, profile: DebugLaunchProfile): Record<string, string> {
+  if (!profile.allowEnv) return {};
+  const result: Record<string, string> = {};
+  const maxEnv = profile.maxEnv ?? 32;
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) continue;
+    const key = trimmed.slice(0, separator).trim();
+    const envValue = trimmed.slice(separator + 1);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    result[key] = envValue;
+    if (Object.keys(result).length >= maxEnv) break;
+  }
+  return result;
 }
