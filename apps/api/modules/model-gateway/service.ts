@@ -9946,7 +9946,9 @@ export function createModelGatewayService(
     input: string,
     stream = false,
     toolSmoke = false,
+    toolResultSmoke = false,
   ): Record<string, unknown> {
+    if (toolResultSmoke) return buildGatewayRouteToolResultSmokePayload(scope, routeId, model, input, stream);
     if (toolSmoke) return buildGatewayRouteToolSmokePayload(scope, routeId, model, input, stream);
     const prompt = `${input}\nDo not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
     if (routeId === "anthropic_messages") {
@@ -10055,6 +10057,111 @@ export function createModelGatewayService(
     };
   }
 
+
+  function buildGatewayRouteToolResultSmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+    stream = false,
+  ): Record<string, unknown> {
+    const finalPrompt = `${input}\nUse the gateway_smoke_tool result. Do not call tools again. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-tool-result-smoke",
+        },
+        messages: [
+          { role: "user", content: `Call gateway_smoke_tool with value ${JSON.stringify(MODEL_GATEWAY_SMOKE_SENTINEL)}.` },
+          {
+            role: "assistant",
+            content: [{
+              type: "tool_use",
+              id: "toolu_gateway_smoke",
+              name: "gateway_smoke_tool",
+              input: { value: MODEL_GATEWAY_SMOKE_SENTINEL },
+            }],
+          },
+          {
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: "toolu_gateway_smoke",
+              content: MODEL_GATEWAY_SMOKE_SENTINEL,
+            }],
+          },
+          { role: "user", content: finalPrompt },
+        ],
+        tools: [gatewaySmokeToolForAnthropic()],
+        tool_choice: { type: "auto" },
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        messages: [
+          { role: "user", content: `Call gateway_smoke_tool with value ${JSON.stringify(MODEL_GATEWAY_SMOKE_SENTINEL)}.` },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: "call_gateway_smoke",
+              type: "function",
+              function: { name: "gateway_smoke_tool", arguments: JSON.stringify({ value: MODEL_GATEWAY_SMOKE_SENTINEL }) },
+            }],
+          },
+          { role: "tool", tool_call_id: "call_gateway_smoke", content: MODEL_GATEWAY_SMOKE_SENTINEL },
+          { role: "user", content: finalPrompt },
+        ],
+        tools: [gatewaySmokeToolForChat()],
+        tool_choice: "auto",
+      };
+    }
+    const responsesInput = [
+      { role: "user", content: [{ type: "input_text", text: `Call gateway_smoke_tool with value ${JSON.stringify(MODEL_GATEWAY_SMOKE_SENTINEL)}.` }] },
+      {
+        type: "function_call",
+        id: "fc_gateway_smoke",
+        call_id: "call_gateway_smoke",
+        name: "gateway_smoke_tool",
+        arguments: JSON.stringify({ value: MODEL_GATEWAY_SMOKE_SENTINEL }),
+        status: "completed",
+      },
+      {
+        type: "function_call_output",
+        id: "fco_gateway_smoke",
+        call_id: "call_gateway_smoke",
+        output: MODEL_GATEWAY_SMOKE_SENTINEL,
+        status: "completed",
+      },
+      { role: "user", content: [{ type: "input_text", text: finalPrompt }] },
+    ];
+    return {
+      model,
+      input: responsesInput,
+      stream,
+      max_output_tokens: 256,
+      tools: [{
+        type: "function",
+        name: "gateway_smoke_tool",
+        description: "A no-op tool used only to verify Responses tool result history compatibility.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      }],
+    };
+  }
   function extractTextFromGatewayRouteSmokeSse(responseText: string): string {
     return extractJsonPayloadsFromSseText(responseText)
       .flatMap((payload) => {
@@ -10076,8 +10183,8 @@ export function createModelGatewayService(
             const delta = isRecord(choice.delta) ? choice.delta : {};
             const message = isRecord(choice.message) ? choice.message : {};
             return [
-              ...extractTextFromContentParts(delta.content),
-              ...extractTextFromContentParts(message.content),
+              ...(Array.isArray(delta.content) ? extractTextFromContentParts(delta.content) : []),
+              ...(Array.isArray(message.content) ? extractTextFromContentParts(message.content) : []),
               normalizeString(delta.content),
               normalizeString(message.content),
               normalizeString(choice.text),
@@ -10245,9 +10352,10 @@ export function createModelGatewayService(
     const startedAt = nowIso();
     const controller = new AbortController();
     const toolSmoke = payload.toolSmoke === true;
+    const toolResultSmoke = payload.toolResultSmoke === true;
     const stream = typeof payload.stream === "boolean"
       ? payload.stream
-      : toolSmoke ? false : scope === "claude-code";
+      : toolSmoke || toolResultSmoke ? false : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -10263,6 +10371,7 @@ export function createModelGatewayService(
           normalizeString(payload.input, `Reply with ${MODEL_GATEWAY_SMOKE_SENTINEL}`),
           stream,
           toolSmoke,
+          toolResultSmoke,
         )),
         signal: controller.signal,
       });
@@ -10289,7 +10398,7 @@ export function createModelGatewayService(
             ? toolSmoke
               ? `${stream ? "Streaming " : ""}Active route tool smoke did not return gateway_smoke_tool in the client protocol response.`
               : `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
-            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
+            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
         },
       };
     } catch (error) {
