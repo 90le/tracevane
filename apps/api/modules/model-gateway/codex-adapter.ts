@@ -283,25 +283,30 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   if (!items.length) return;
 
   const pendingToolCalls: JsonRecord[] = [];
+  let pendingReasoningText = "";
   for (const item of items) {
+    if (isRecord(item) && item.type === "reasoning") {
+      pendingReasoningText = joinTextParts(pendingReasoningText, responsesReasoningItemToText(item));
+      continue;
+    }
     if (isRecord(item) && isResponsesToolCallItem(item)) {
       const toolCall = mapResponsesToolCallToChatToolCall(item);
       if (toolCall) pendingToolCalls.push(toolCall);
       continue;
     }
-    if (isRecord(item) && item.type === "reasoning") {
-      continue;
-    }
-    flushPendingToolCalls(messages, pendingToolCalls);
+    const flushedToolCalls = pendingToolCalls.length > 0;
+    flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText);
+    if (flushedToolCalls) pendingReasoningText = "";
     const message = mapResponsesInputItemToChatMessage(item);
     if (message) {
-      if (message.role === "assistant") {
-        delete message.reasoning_content;
+      if (message.role === "assistant" && pendingReasoningText && message.reasoning_content === undefined) {
+        message.reasoning_content = pendingReasoningText;
       }
+      if (message.role === "assistant") pendingReasoningText = "";
       messages.push(message);
     }
   }
-  flushPendingToolCalls(messages, pendingToolCalls);
+  flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText);
 }
 
 function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
@@ -325,6 +330,8 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
       role,
       content: contentToChatContent(item.content, role),
     };
+    const reasoningContent = stringOrNull(item.reasoning_content);
+    if (role === "assistant" && reasoningContent) message.reasoning_content = reasoningContent;
     const toolCallId = stringOrNull(item.tool_call_id) || stringOrNull(item.call_id);
     if (role === "tool" && toolCallId) message.tool_call_id = toolCallId;
     if (role === "tool" && !toolCallId) return null;
@@ -333,6 +340,31 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
 
   const text = contentToText(item);
   return text ? { role: "user", content: text } : null;
+}
+
+function responsesReasoningItemToText(item: JsonRecord): string {
+  const summary = Array.isArray(item.summary) ? item.summary : [];
+  const summaryText = summary
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (!isRecord(part)) return "";
+      return stringOrNull(part.text)
+        || stringOrNull(part.summary_text)
+        || stringOrNull(part.output_text)
+        || "";
+    })
+    .filter(Boolean)
+    .join("");
+  return summaryText
+    || stringOrNull(item.text)
+    || contentToText(item.content)
+    || "";
+}
+
+function joinTextParts(left: string, right: string): string {
+  if (!left) return right;
+  if (!right) return left;
+  return `${left}\n${right}`;
 }
 
 function mapResponsesRoleToChat(role: unknown): string {
@@ -368,6 +400,7 @@ function isResponsesToolOutputItem(item: JsonRecord): boolean {
 function flushPendingToolCalls(
   messages: JsonRecord[],
   pendingToolCalls: JsonRecord[],
+  reasoningText = "",
 ): void {
   if (!pendingToolCalls.length) return;
   const message: JsonRecord = {
@@ -375,6 +408,7 @@ function flushPendingToolCalls(
     content: null,
     tool_calls: pendingToolCalls.splice(0),
   };
+  if (reasoningText) message.reasoning_content = reasoningText;
   messages.push(message);
 }
 
