@@ -378,7 +378,7 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
       content: [{
         type: "tool_result",
         tool_use_id: toolUseId,
-        content: chatContentToText(message.content),
+        content: chatToolResultContentToAnthropicContent(message.content),
       }],
     }];
   }
@@ -397,6 +397,46 @@ function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] 
     }
   }
   return blocks.length ? blocks : [{ type: "text", text: "" }];
+}
+
+function chatToolResultContentToAnthropicContent(content: unknown): string | JsonRecord[] {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) {
+    const text = content.map(chatContentPartToText).filter(Boolean).join("");
+    if (content.every(chatContentPartIsTextLike)) return text;
+    const blocks = content
+      .map(chatContentPartToAnthropicToolResultBlock)
+      .filter((block): block is JsonRecord => Boolean(block));
+    return blocks.length === content.length ? blocks : stringifyCompact(content);
+  }
+  const text = chatContentPartToText(content);
+  return text || stringifyCompact(content);
+}
+
+function chatContentPartToAnthropicToolResultBlock(part: unknown): JsonRecord | null {
+  if (typeof part === "string") return part ? { type: "text", text: part } : null;
+  if (!isRecord(part)) return null;
+  const type = stringOrNull(part.type);
+  if (type === "text" || type === "input_text" || type === "output_text" || type === "refusal") {
+    const text = chatContentPartToText(part);
+    return text ? { type: "text", text } : null;
+  }
+  if (type === "image_url" && isRecord(part.image_url)) {
+    return imageUrlToAnthropicBlock(stringOrNull(part.image_url.url));
+  }
+  if (type === "input_image") {
+    return imageUrlToAnthropicBlock(stringOrNull(part.image_url));
+  }
+  return null;
+}
+
+function chatContentPartIsTextLike(part: unknown): boolean {
+  if (typeof part === "string") return true;
+  if (!isRecord(part)) return false;
+  const type = stringOrNull(part.type);
+  if (type === null) return Boolean(chatContentPartToText(part));
+  return type === "text" || type === "input_text" || type === "output_text" || type === "refusal";
 }
 
 function chatContentToAnthropicBlocks(content: unknown): JsonRecord[] {

@@ -10956,7 +10956,10 @@ test("model gateway adapts chat completions through native anthropic messages pr
             {
               role: "tool",
               tool_call_id: "call_weather",
-              content: "Sunny",
+              content: [
+                { type: "text", text: "Sunny" },
+                { type: "image_url", image_url: { url: "data:image/png;base64,TOOL_IMAGE" } },
+              ],
             },
           ],
           tools: [{
@@ -11075,7 +11078,17 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
       {
         role: "user",
-        content: [{ type: "tool_result", tool_use_id: "call_weather", content: "Sunny" }],
+        content: [{
+          type: "tool_result",
+          tool_use_id: "call_weather",
+          content: [
+            { type: "text", text: "Sunny" },
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "TOOL_IMAGE" },
+            },
+          ],
+        }],
       },
     ],
     system: "Use metric units.",
