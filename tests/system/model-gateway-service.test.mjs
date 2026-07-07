@@ -10814,6 +10814,115 @@ test("model gateway adapts Anthropic-style Chat tool choices for Responses provi
   assert.equal(upstreamCalls[0].body.parallel_tool_calls, false);
 });
 
+test("model gateway adapts legacy Chat functions through Responses and Anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-chat-functions-responses",
+      name: "Legacy Chat Functions Responses",
+      appScopes: ["opencode"],
+      baseUrl: "https://legacy-chat-functions-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-legacy-chat-functions-responses" },
+    setActiveScopes: ["opencode"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "legacy-chat-functions-anthropic",
+      name: "Legacy Chat Functions Anthropic",
+      appScopes: ["openclaw"],
+      baseUrl: "https://legacy-chat-functions-anthropic.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-legacy-chat-functions-anthropic" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const upstreamUrl = String(url);
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({
+      url: upstreamUrl,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body,
+    });
+    if (upstreamUrl.includes("legacy-chat-functions-anthropic")) {
+      return new Response(JSON.stringify({
+        id: "msg_legacy_functions",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "legacy anthropic ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 8, output_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "resp_legacy_functions",
+      object: "response",
+      status: "completed",
+      model: "gpt-responses",
+      output: [{ id: "msg_legacy_functions", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "legacy responses ok" }] }],
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const legacyBody = {
+    model: "gpt-legacy",
+    messages: [
+      { role: "user", content: "Need lookup" },
+      { role: "assistant", content: null, function_call: { name: "lookup", arguments: "{\"query\":\"docs\"}" } },
+      { role: "function", name: "lookup", content: "found" },
+    ],
+    functions: [{ name: "lookup", description: "Lookup docs", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } }],
+    function_call: { name: "lookup" },
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/chat/completions`, { method: "POST", headers: { "x-tracevane-app-scope": "opencode" }, body: legacyBody });
+      assert.equal(responses.status, 200, responses.body);
+      assert.equal(responses.body.choices[0].message.content, "legacy responses ok");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/chat/completions`, { method: "POST", headers: { "x-tracevane-app-scope": "openclaw" }, body: legacyBody });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.choices[0].message.content, "legacy anthropic ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://legacy-chat-functions-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-legacy-chat-functions-responses");
+  assert.deepEqual(upstreamCalls[0].body.tools, [{ type: "function", name: "lookup", description: "Lookup docs", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } }]);
+  assert.deepEqual(upstreamCalls[0].body.tool_choice, { type: "function", name: "lookup" });
+  assert.deepEqual(upstreamCalls[0].body.input, [
+    { role: "user", content: [{ type: "input_text", text: "Need lookup" }] },
+    { type: "function_call", id: "fc_call_lookup", call_id: "call_lookup", status: "completed", name: "lookup", arguments: "{\"query\":\"docs\"}" },
+    { type: "function_call_output", call_id: "call_lookup", output: "found" },
+  ]);
+
+  assert.equal(upstreamCalls[1].url, "https://legacy-chat-functions-anthropic.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-legacy-chat-functions-anthropic");
+  assert.deepEqual(upstreamCalls[1].body.tools, [{ name: "lookup", input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] }, description: "Lookup docs" }]);
+  assert.deepEqual(upstreamCalls[1].body.tool_choice, { type: "tool", name: "lookup" });
+  assert.deepEqual(upstreamCalls[1].body.messages, [
+    { role: "user", content: "Need lookup" },
+    { role: "assistant", content: [{ type: "tool_use", id: "call_lookup", name: "lookup", input: { query: "docs" } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "call_lookup", content: "found" }] },
+  ]);
+});
+
 test("model gateway preserves Responses-style Chat input image parts for Responses providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

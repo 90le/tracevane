@@ -112,10 +112,15 @@ export function adaptChatCompletionRequestToResponses(
   // Responses requests. The Codex account Responses endpoint rejects `stop` as
   // unsupported, which breaks Claude Code CLI compatibility.
 
-  const tools = mapChatToolsToResponses(request.tools);
+  const tools = [
+    ...mapChatToolsToResponses(request.tools),
+    ...mapChatFunctionsToResponses(request.functions),
+  ];
   if (tools.length) responsesRequest.tools = tools;
 
-  const toolChoice = mapChatToolChoiceToResponses(request.tool_choice);
+  const toolChoice = mapChatToolChoiceToResponses(
+    request.tool_choice !== undefined ? request.tool_choice : mapLegacyChatFunctionCallToToolChoice(request.function_call),
+  );
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
   if (responsesRequest.parallel_tool_calls === undefined) {
     const parallelToolCalls = mapChatToolChoiceParallelToolUseToResponses(request.tool_choice);
@@ -263,6 +268,15 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
       output: chatToolOutputToResponsesOutput(message.content),
     }];
   }
+  if (message.role === "function") {
+    const name = stringOrNull(message.name);
+    if (!name) return [];
+    return [{
+      type: "function_call_output",
+      call_id: legacyFunctionCallId(name),
+      output: chatToolOutputToResponsesOutput(message.content),
+    }];
+  }
 
   const items: JsonRecord[] = [];
   const role = message.role === "assistant" ? "assistant" : "user";
@@ -271,12 +285,16 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     items.push(...chatMcpToolBlocksToResponsesItems(message.mcp_tool_blocks));
   }
   const content = chatContentToResponsesContent(message.content, role);
-  if (content.length || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+  const legacyFunctionCall = role === "assistant" ? mapLegacyChatFunctionCallMessageToResponses(message.function_call) : null;
+  const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+  if (content.length || (!hasToolCalls && !legacyFunctionCall)) {
     items.push({
       role,
       content,
     });
   }
+
+  if (legacyFunctionCall) items.push(legacyFunctionCall);
 
   if (Array.isArray(message.tool_calls)) {
     for (const toolCall of message.tool_calls) {
@@ -446,6 +464,20 @@ function mapChatToolsToResponses(tools: unknown): JsonRecord[] {
   });
 }
 
+function mapChatFunctionsToResponses(functions: unknown): JsonRecord[] {
+  if (!Array.isArray(functions)) return [];
+  return functions.flatMap((fn) => {
+    if (!isRecord(fn)) return [];
+    const name = stringOrNull(fn.name);
+    if (!name) return [];
+    const mapped: JsonRecord = { type: "function", name };
+    if (typeof fn.description === "string") mapped.description = fn.description;
+    if (fn.parameters !== undefined) mapped.parameters = fn.parameters;
+    if (typeof fn.strict === "boolean") mapped.strict = fn.strict;
+    return [mapped];
+  });
+}
+
 function mapChatToolToResponses(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
   if (tool.type !== "function") {
@@ -486,6 +518,14 @@ function applyChatVerbosityToResponsesText(responsesRequest: JsonRecord, verbosi
   };
 }
 
+function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
+  if (functionCall === undefined) return undefined;
+  if (functionCall === "auto" || functionCall === "none") return functionCall;
+  if (!isRecord(functionCall)) return functionCall;
+  const name = stringOrNull(functionCall.name);
+  return name ? { type: "function", name } : functionCall;
+}
+
 function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
@@ -505,6 +545,25 @@ function mapChatToolChoiceToResponses(toolChoice: unknown): unknown {
 function mapChatToolChoiceParallelToolUseToResponses(toolChoice: unknown): boolean | undefined {
   if (!isRecord(toolChoice)) return undefined;
   return toolChoice.disable_parallel_tool_use === true ? false : undefined;
+}
+
+function mapLegacyChatFunctionCallMessageToResponses(functionCall: unknown): JsonRecord | null {
+  if (!isRecord(functionCall)) return null;
+  const name = stringOrNull(functionCall.name);
+  if (!name) return null;
+  const callId = legacyFunctionCallId(name);
+  return {
+    type: "function_call",
+    id: responsesFunctionCallItemId(callId),
+    call_id: callId,
+    status: "completed",
+    name,
+    arguments: typeof functionCall.arguments === "string" ? functionCall.arguments : JSON.stringify(functionCall.arguments ?? {}),
+  };
+}
+
+function legacyFunctionCallId(name: string): string {
+  return `call_${name}`;
 }
 
 function mapChatToolCallToResponsesFunctionCall(toolCall: unknown): JsonRecord | null {

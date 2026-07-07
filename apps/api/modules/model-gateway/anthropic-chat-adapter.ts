@@ -144,11 +144,16 @@ export function adaptChatCompletionRequestToAnthropicMessages(
 
   if (request.stop !== undefined) anthropicRequest.stop_sequences = request.stop;
 
-  const tools = mapChatToolsToAnthropic(request.tools);
+  const tools = [
+    ...mapChatToolsToAnthropic(request.tools),
+    ...mapChatFunctionsToAnthropic(request.functions),
+  ];
   if (tools.length) anthropicRequest.tools = tools;
 
   const toolChoice = applyChatParallelToolChoiceToAnthropic(
-    mapChatToolChoiceToAnthropic(request.tool_choice),
+    mapChatToolChoiceToAnthropic(
+      request.tool_choice !== undefined ? request.tool_choice : mapLegacyChatFunctionCallToToolChoice(request.function_call),
+    ),
     request.parallel_tool_calls,
   );
   if (toolChoice !== undefined) anthropicRequest.tool_choice = toolChoice;
@@ -537,6 +542,18 @@ function mapChatMessageToAnthropic(message: unknown): JsonRecord[] {
       }],
     }];
   }
+  if (message.role === "function") {
+    const name = stringOrNull(message.name);
+    if (!name) return [];
+    return [{
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: legacyFunctionCallId(name),
+        content: chatToolResultContentToAnthropicContent(message.content),
+      }],
+    }];
+  }
 
   const role = message.role === "assistant" ? "assistant" : "user";
   const content = chatMessageContentToAnthropicBlocks(message);
@@ -554,6 +571,8 @@ function chatMessageContentToAnthropicBlocks(message: JsonRecord): JsonRecord[] 
       if (mapped) blocks.push(mapped);
     }
   }
+  const legacyFunctionCall = mapLegacyChatFunctionCallMessageToAnthropic(message.function_call);
+  if (legacyFunctionCall) blocks.push(legacyFunctionCall);
   return blocks.length ? blocks : [{ type: "text", text: "" }];
 }
 
@@ -698,6 +717,21 @@ function mapChatToolsToAnthropic(tools: unknown): JsonRecord[] {
   });
 }
 
+function mapChatFunctionsToAnthropic(functions: unknown): JsonRecord[] {
+  if (!Array.isArray(functions)) return [];
+  return functions.flatMap((fn) => {
+    if (!isRecord(fn)) return [];
+    const name = stringOrNull(fn.name);
+    if (!name) return [];
+    const mapped: JsonRecord = {
+      name,
+      input_schema: isRecord(fn.parameters) ? fn.parameters : {},
+    };
+    if (typeof fn.description === "string") mapped.description = fn.description;
+    return [mapped];
+  });
+}
+
 function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
   if (tool.type !== "function") return null;
@@ -711,6 +745,14 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
   };
   if (typeof fn.description === "string") mapped.description = fn.description;
   return mapped;
+}
+
+function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
+  if (functionCall === undefined) return undefined;
+  if (functionCall === "auto" || functionCall === "none") return functionCall;
+  if (!isRecord(functionCall)) return functionCall;
+  const name = stringOrNull(functionCall.name);
+  return name ? { type: "function", name } : functionCall;
 }
 
 function mapChatToolChoiceToAnthropic(toolChoice: unknown): unknown {
@@ -1060,6 +1102,22 @@ function mapAnthropicToolChoiceToChat(toolChoice: unknown): unknown {
 function mapAnthropicParallelToolUseToChat(toolChoice: unknown): boolean | undefined {
   if (!isRecord(toolChoice)) return undefined;
   return toolChoice.disable_parallel_tool_use === true ? false : undefined;
+}
+
+function mapLegacyChatFunctionCallMessageToAnthropic(functionCall: unknown): JsonRecord | null {
+  if (!isRecord(functionCall)) return null;
+  const name = stringOrNull(functionCall.name);
+  if (!name) return null;
+  return {
+    type: "tool_use",
+    id: legacyFunctionCallId(name),
+    name,
+    input: parseToolArguments(functionCall.arguments),
+  };
+}
+
+function legacyFunctionCallId(name: string): string {
+  return `call_${name}`;
 }
 
 function mapChatToolCallToAnthropicToolUse(toolCall: unknown): JsonRecord | null {
