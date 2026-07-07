@@ -38,6 +38,7 @@ export interface ChatAnthropicRequestAdapterOptions {
 }
 
 export interface AnthropicChatRequestAdapterOptions {
+  preserveContentCacheControl?: boolean;
   preserveContextManagement?: boolean;
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
@@ -1283,7 +1284,7 @@ function mapAnthropicUserBlocksToChatMessages(
     if (!userContentBlocks.length) return;
     chatMessages.push({
       role: "user",
-      content: anthropicBlocksToChatContent(userContentBlocks),
+      content: anthropicBlocksToChatContent(userContentBlocks, { preserveCacheControl: options.preserveContentCacheControl }),
     });
     userContentBlocks = [];
   };
@@ -1306,7 +1307,10 @@ function mapAnthropicUserBlocksToChatMessages(
       role: "tool",
       tool_call_id: toolCallId,
       content: options.preserveToolResultContent
-        ? anthropicToolResultContentToChatContent(block.content, { preserveStructuredContent: true })
+        ? anthropicToolResultContentToChatContent(block.content, {
+          preserveCacheControl: options.preserveContentCacheControl,
+          preserveStructuredContent: true,
+        })
         : anthropicToolResultContentToChatContent(block.content),
     };
     if (options.preserveToolResultError && block.is_error === true) chatMessage.is_error = true;
@@ -1327,31 +1331,34 @@ function anthropicContentBlocks(content: unknown): JsonRecord[] {
   return content.filter(isRecord);
 }
 
-function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
+function anthropicBlocksToChatContent(
+  blocks: JsonRecord[],
+  options: { preserveCacheControl?: boolean } = {},
+): unknown {
   const parts: JsonRecord[] = blocks.flatMap((block): JsonRecord[] => {
     if (block.type === "text") {
       const text = stringOrNull(block.text);
-      return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text })] : [];
+      return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text }, options)] : [];
     }
     if (block.type === "image") {
       const imageUrl = anthropicImageSourceToChatImageUrl(block.source);
-      if (imageUrl) return [copyAnthropicCacheControlToChatPart(block, { type: "image_url", image_url: { url: imageUrl } })];
-      return [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) })];
+      if (imageUrl) return [copyAnthropicCacheControlToChatPart(block, { type: "image_url", image_url: { url: imageUrl } }, options)];
+      return [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     if (block.type === "document") {
       const filePart = anthropicDocumentToChatFilePart(block);
       return filePart
-        ? [copyAnthropicCacheControlToChatPart(block, filePart)]
-        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) })];
+        ? [copyAnthropicCacheControlToChatPart(block, filePart, options)]
+        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     if (block.type === "container_upload") {
       const filePart = anthropicContainerUploadToChatFilePart(block);
       return filePart
-        ? [copyAnthropicCacheControlToChatPart(block, filePart)]
-        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) })];
+        ? [copyAnthropicCacheControlToChatPart(block, filePart, options)]
+        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     const text = anthropicContentToText(block) || anthropicUnknownContentBlockToChatText(block);
-    return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text })] : [];
+    return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text }, options)] : [];
   });
   if (!parts.length) return "";
   if (parts.every((part) => part.type === "text") && !parts.some((part) => part.cache_control !== undefined)) {
@@ -1360,8 +1367,14 @@ function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
   return parts;
 }
 
-function copyAnthropicCacheControlToChatPart(block: JsonRecord, part: JsonRecord): JsonRecord {
-  return block.cache_control !== undefined ? { ...part, cache_control: block.cache_control } : part;
+function copyAnthropicCacheControlToChatPart(
+  block: JsonRecord,
+  part: JsonRecord,
+  options: { preserveCacheControl?: boolean } = {},
+): JsonRecord {
+  return options.preserveCacheControl && block.cache_control !== undefined
+    ? { ...part, cache_control: block.cache_control }
+    : part;
 }
 
 function anthropicDocumentToChatFilePart(block: JsonRecord): JsonRecord | null {
@@ -1407,11 +1420,13 @@ function anthropicImageSourceToChatImageUrl(source: unknown): string | null {
 
 function anthropicToolResultContentToChatContent(
   content: unknown,
-  options: { preserveStructuredContent?: boolean } = {},
+  options: { preserveCacheControl?: boolean; preserveStructuredContent?: boolean } = {},
 ): unknown {
   if (typeof content === "string") return content;
   if (content === null || content === undefined) return "";
-  if (options.preserveStructuredContent && Array.isArray(content)) return anthropicBlocksToChatContent(content.filter(isRecord));
+  if (options.preserveStructuredContent && Array.isArray(content)) {
+    return anthropicBlocksToChatContent(content.filter(isRecord), { preserveCacheControl: options.preserveCacheControl });
+  }
   if (Array.isArray(content)) {
     const text = content.map(anthropicContentPartToText).filter(Boolean).join("");
     return content.every(anthropicContentPartIsTextLike) ? text : stringifyCompact(content);

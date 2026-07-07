@@ -11340,6 +11340,7 @@ export function createModelGatewayService(
     } else if (useAnthropicMessagesResponsesProviderAdapter) {
       try {
         const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText, {
+          preserveContentCacheControl: true,
           preserveContextManagement: true,
           preserveMcpServers: true,
           preserveServiceTier: true,

@@ -64,6 +64,13 @@ function createLogger() {
   };
 }
 
+function containsObjectKey(value, key) {
+  if (Array.isArray(value)) return value.some((item) => containsObjectKey(item, key));
+  if (!value || typeof value !== "object") return false;
+  if (Object.prototype.hasOwnProperty.call(value, key)) return true;
+  return Object.values(value).some((item) => containsObjectKey(item, key));
+}
+
 async function withServer(handler, task) {
   const running = await startHttpServer(handler);
   try {
@@ -16368,6 +16375,7 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(chatMessages, /speed=1.25/);
   assert.match(chatMessages, /top_k=40/);
   assert.equal(upstreamCalls[0].body.cache_control, undefined);
+  assert.equal(containsObjectKey(upstreamCalls[0].body, "cache_control"), false);
   assert.equal(upstreamCalls[0].body.container, undefined);
   assert.equal(upstreamCalls[0].body.context_management, undefined);
   assert.equal(upstreamCalls[0].body.inference_geo, undefined);
@@ -16398,6 +16406,7 @@ test("model gateway preserves unknown Anthropic request blocks before Chat and R
   assert.match(responsesInput, /top_k=40/);
   assert.deepEqual(upstreamCalls[1].body.context_management, { edits: [{ type: "clear_tool_uses_20250919" }] });
   assert.equal(upstreamCalls[1].body.cache_control, undefined);
+  assert.equal(containsObjectKey(upstreamCalls[1].body, "cache_control"), false);
   assert.equal(upstreamCalls[1].body.container, undefined);
   assert.equal(upstreamCalls[1].body.inference_geo, undefined);
   assert.equal(upstreamCalls[1].body.speed, undefined);
@@ -17221,6 +17230,7 @@ test("model gateway preserves structured tool result content through OpenAI Resp
       { type: "input_text", text: 'OpenAI Chat tool output cache_control preserved for Responses: {"type":"ephemeral"}' },
     ],
   });
+  assert.equal(containsObjectKey(anthropicResponsesBody, "cache_control"), false);
 });
 
 test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {
