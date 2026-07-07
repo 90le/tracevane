@@ -13372,6 +13372,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
           },
           user: "chat-user-456",
           max_tokens: 128,
+          verbosity: "high",
           temperature: 0.2,
           top_p: 0.9,
           stop: ["END"],
@@ -13515,6 +13516,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     system: "Use metric units.",
     temperature: 0.2,
     top_p: 0.9,
+    verbosity: "high",
     stop_sequences: ["END"],
     tools: [{
       name: "get_weather",

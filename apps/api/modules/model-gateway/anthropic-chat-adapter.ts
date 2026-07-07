@@ -150,6 +150,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     "top_p",
     "metadata",
   ]);
+  const verbosity = verbosityOrNull(request.verbosity);
+  if (verbosity) anthropicRequest.verbosity = verbosity;
   applyOpenAIUserToAnthropicMetadata(anthropicRequest, request.user);
 
   if (request.stop !== undefined) anthropicRequest.stop_sequences = request.stop;
