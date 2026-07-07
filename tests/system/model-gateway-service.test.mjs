@@ -12634,6 +12634,96 @@ test("model gateway preserves supported responses controls and strips rejected c
   ]);
 });
 
+test("model gateway maps modern Chat token limits for GPT-5 adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "modern-chat-token-limit",
+      name: "Modern Chat Token Limit Provider",
+      appScopes: ["codex", "claude-code"],
+      baseUrl: "https://modern-chat-token-limit.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-modern-chat-token-limit-secret" },
+    setActiveScopes: ["codex", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chat_modern_token_limit",
+      object: "chat.completion",
+      created: 1_710_000_055,
+      model: "gpt-5.4",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "token limit ok" },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          input: "use modern chat token limit",
+          max_output_tokens: 77,
+        },
+      });
+      assert.equal(responses.status, 200, responses.body);
+
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.4",
+          max_tokens: 88,
+          messages: [{ role: "user", content: "use modern anthropic chat token limit" }],
+        },
+      });
+      assert.equal(messages.status, 200, messages.body);
+
+      const legacyResponses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: "keep legacy chat token limit",
+          max_output_tokens: 66,
+        },
+      });
+      assert.equal(legacyResponses.status, 200, legacyResponses.body);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls[0].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].body.max_completion_tokens, 77);
+  assert.equal(upstreamCalls[0].body.max_tokens, undefined);
+  assert.equal(upstreamCalls[1].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].body.max_completion_tokens, 88);
+  assert.equal(upstreamCalls[1].body.max_tokens, undefined);
+  assert.equal(upstreamCalls[2].url, "https://modern-chat-token-limit.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[2].body.max_completion_tokens, undefined);
+  assert.equal(upstreamCalls[2].body.max_tokens, 66);
+});
+
 test("model gateway preserves Responses cache and safety controls for Chat providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

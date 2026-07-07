@@ -72,6 +72,7 @@ export function sanitizeOpenAIChatUpstreamBody(
   if (!isRecord(parsed)) return { bodyText, removedFields: [] };
 
   const sanitized: JsonRecord = { ...parsed };
+  normalizeModernChatTokenLimit(sanitized);
   applyChatReasoningOptions(sanitized, sanitized, options.reasoning || null);
   const removedFields: string[] = [];
   for (const field of STRICT_CHAT_INCOMPATIBLE_FIELDS) {
@@ -98,6 +99,18 @@ export function sanitizeOpenAIChatUpstreamBody(
     bodyText: nextBodyText !== bodyText ? nextBodyText : bodyText,
     removedFields,
   };
+}
+
+function normalizeModernChatTokenLimit(request: JsonRecord): void {
+  if (request.max_tokens === undefined || request.max_completion_tokens !== undefined) return;
+  if (!usesModernChatCompletionTokenLimit(request.model)) return;
+  request.max_completion_tokens = request.max_tokens;
+  delete request.max_tokens;
+}
+
+function usesModernChatCompletionTokenLimit(model: unknown): boolean {
+  const name = typeof model === "string" ? model.trim() : "";
+  return /^gpt-5(?:\.|-|$|_)/i.test(name) || /^o[1-9](?:\.|-|$|_)/i.test(name);
 }
 
 function hasFunctionTools(value: unknown): boolean {

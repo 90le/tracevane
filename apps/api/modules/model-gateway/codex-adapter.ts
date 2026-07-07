@@ -119,11 +119,7 @@ export function adaptCodexResponsesRequestToChat(
     "user",
   ]);
 
-  if (request.max_output_tokens !== undefined) {
-    chatRequest.max_tokens = request.max_output_tokens;
-  } else if (request.max_tokens !== undefined) {
-    chatRequest.max_tokens = request.max_tokens;
-  }
+  applyResponsesMaxTokensToChat(chatRequest, request);
   applyResponsesLogprobControlsToChat(chatRequest, request);
 
   const tools = mapResponsesToolsToChat(request.tools);
@@ -853,6 +849,21 @@ function responsesUnsupportedResponseFormatToText(responseFormat: unknown): stri
   if (responseFormat === undefined) return "";
   if (mapChatResponseFormatToChatResponseFormat(responseFormat) !== undefined) return "";
   return `OpenAI Responses unsupported response_format for Chat: ${stringifyCompact(responseFormat)}`;
+}
+
+function applyResponsesMaxTokensToChat(chatRequest: JsonRecord, request: JsonRecord): void {
+  const value = request.max_output_tokens !== undefined ? request.max_output_tokens : request.max_tokens;
+  if (value === undefined) return;
+  if (usesModernChatCompletionTokenLimit(chatRequest.model)) {
+    chatRequest.max_completion_tokens = value;
+  } else {
+    chatRequest.max_tokens = value;
+  }
+}
+
+function usesModernChatCompletionTokenLimit(model: unknown): boolean {
+  const name = stringOrNull(model) || "";
+  return /^gpt-5(?:\.|-|$|_)/i.test(name) || /^o[1-9](?:\.|-|$|_)/i.test(name);
 }
 
 function applyResponsesLogprobControlsToChat(chatRequest: JsonRecord, request: JsonRecord): void {

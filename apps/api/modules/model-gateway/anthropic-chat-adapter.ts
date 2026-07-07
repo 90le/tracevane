@@ -227,7 +227,7 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
     stream: request.stream === true,
   };
 
-  if (request.max_tokens !== undefined) chatRequest.max_tokens = request.max_tokens;
+  applyAnthropicMaxTokensToChat(chatRequest, request);
   if (request.stop_sequences !== undefined) chatRequest.stop = request.stop_sequences;
 
   copyScalarFields(request, chatRequest, [
@@ -1022,6 +1022,20 @@ function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToo
     return { type: "any", disable_parallel_tool_use: true };
   }
   return choice;
+}
+
+function applyAnthropicMaxTokensToChat(chatRequest: JsonRecord, request: JsonRecord): void {
+  if (request.max_tokens === undefined) return;
+  if (usesModernChatCompletionTokenLimit(chatRequest.model)) {
+    chatRequest.max_completion_tokens = request.max_tokens;
+  } else {
+    chatRequest.max_tokens = request.max_tokens;
+  }
+}
+
+function usesModernChatCompletionTokenLimit(model: unknown): boolean {
+  const name = stringOrNull(model) || "";
+  return /^gpt-5(?:\.|-|$|_)/i.test(name) || /^o[1-9](?:\.|-|$|_)/i.test(name);
 }
 
 function mapAnthropicMessagesToChat(request: JsonRecord, options: AnthropicChatRequestAdapterOptions = {}): JsonRecord[] {
