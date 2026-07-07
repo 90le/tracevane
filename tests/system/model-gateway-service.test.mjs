@@ -12778,7 +12778,19 @@ test("model gateway preserves supported responses controls and strips rejected c
           safety_identifier: "user-hash-123",
           seed: 123,
           tool_resources: { file_search: { vector_store_ids: ["vs_chat"] } },
-          web_search_options: { search_context_size: "low" },
+          web_search_options: {
+            search_context_size: "low",
+            user_location: {
+              type: "approximate",
+              approximate: {
+                country: "US",
+                region: "CA",
+                city: "San Francisco",
+                timezone: "America/Los_Angeles",
+              },
+            },
+          },
+          tool_choice: { type: "tool", name: "web_search" },
           extra_body: { provider_hint: "chat-only" },
           stop: ["STOP"],
           store: false,
@@ -12834,7 +12846,7 @@ test("model gateway preserves supported responses controls and strips rejected c
         role: "user",
         content: [{
           type: "input_text",
-          text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 tool_resources={"file_search":{"vector_store_ids":["vs_chat"]}} web_search_options={"search_context_size":"low"} extra_body={"provider_hint":"chat-only"} audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
+          text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 tool_resources={"file_search":{"vector_store_ids":["vs_chat"]}} extra_body={"provider_hint":"chat-only"} audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
         }],
       },
       {
@@ -12860,6 +12872,18 @@ test("model gateway preserves supported responses controls and strips rejected c
     stream_options: { include_usage: true },
     top_logprobs: 3,
     truncation: "auto",
+    tools: [{
+      type: "web_search_preview",
+      search_context_size: "low",
+      user_location: {
+        type: "approximate",
+        country: "US",
+        region: "CA",
+        city: "San Francisco",
+        timezone: "America/Los_Angeles",
+      },
+    }],
+    tool_choice: { type: "web_search_preview" },
   });
   assert.equal("metadata" in upstreamCalls[0].body, false);
   assert.equal(JSON.stringify(upstreamCalls[0].body).includes("chat-responses-key-should-not-leak"), false);
@@ -14445,7 +14469,13 @@ test("model gateway adapts chat completions through native anthropic messages pr
           store: false,
           stream_options: { include_usage: true },
           tool_resources: { file_search: { vector_store_ids: ["vs_anthropic"] } },
-          web_search_options: { search_context_size: "medium" },
+          web_search_options: {
+            search_context_size: "medium",
+            user_location: {
+              type: "approximate",
+              approximate: { country: "JP", city: "Tokyo", timezone: "Asia/Tokyo" },
+            },
+          },
           extra_body: { provider_hint: "anthropic-chat" },
           modalities: ["text"],
           top_logprobs: 2,
@@ -14617,7 +14647,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
       },
       {
         role: "user",
-        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false stream_options={"include_usage":true} tool_resources={"file_search":{"vector_store_ids":["vs_anthropic"]}} web_search_options={"search_context_size":"medium"} extra_body={"provider_hint":"anthropic-chat"} top_logprobs=2',
+        content: 'OpenAI Chat request controls preserved for Anthropic Messages: frequency_penalty=0.1 logit_bias={"123":-5} logprobs=true n=2 presence_penalty=0.2 seed=456 store=false stream_options={"include_usage":true} tool_resources={"file_search":{"vector_store_ids":["vs_anthropic"]}} web_search_options={"search_context_size":"medium","user_location":{"type":"approximate","approximate":{"country":"JP","city":"Tokyo","timezone":"Asia/Tokyo"}}} extra_body={"provider_hint":"anthropic-chat"} top_logprobs=2',
       },
       {
         role: "user",
@@ -14630,15 +14660,22 @@ test("model gateway adapts chat completions through native anthropic messages pr
     verbosity: "high",
     service_tier: "priority",
     stop_sequences: ["END"],
-    tools: [{
-      name: "get_weather",
-      description: "Get weather info OpenAI strict function-calling mode requested: true.",
-      input_schema: {
-        type: "object",
-        properties: { city: { type: "string" } },
-        required: ["city"],
+    tools: [
+      {
+        name: "get_weather",
+        description: "Get weather info OpenAI strict function-calling mode requested: true.",
+        input_schema: {
+          type: "object",
+          properties: { city: { type: "string" } },
+          required: ["city"],
+        },
       },
-    }],
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        user_location: { type: "approximate", country: "JP", city: "Tokyo", timezone: "Asia/Tokyo" },
+      },
+    ],
     tool_choice: { type: "tool", name: "get_weather", disable_parallel_tool_use: true },
     output_config: {
       format: {

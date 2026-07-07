@@ -142,6 +142,7 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   const unsupportedToolChoiceText = chatUnsupportedToolChoiceToAnthropicText(rawToolChoice, {
     tools: request.tools,
     functions: request.functions,
+    webSearchOptions: request.web_search_options,
   });
   if (unsupportedToolChoiceText) anthropicMessages.push({ role: "user", content: unsupportedToolChoiceText });
   const unsupportedResponseFormatText = chatUnsupportedResponseFormatToAnthropicText(request.response_format);
@@ -181,12 +182,13 @@ export function adaptChatCompletionRequestToAnthropicMessages(
     ...mapChatToolsToAnthropic(request.tools),
     ...mapChatFunctionsToAnthropic(request.functions),
   ];
+  mergeChatWebSearchOptionsIntoAnthropicTools(tools, request.web_search_options);
   if (tools.length) anthropicRequest.tools = tools;
 
   const toolChoice = applyChatParallelToolChoiceToAnthropic(
     mapChatToolChoiceToAnthropic(
       rawToolChoice,
-      { tools: request.tools, functions: request.functions },
+      { tools: request.tools, functions: request.functions, webSearchOptions: request.web_search_options },
     ),
     request.parallel_tool_calls,
   );
@@ -910,6 +912,40 @@ function mapChatToolToAnthropic(tool: unknown): JsonRecord | null {
   return mapped;
 }
 
+function mergeChatWebSearchOptionsIntoAnthropicTools(tools: JsonRecord[], webSearchOptions: unknown): void {
+  const mappedOptions = mapChatWebSearchOptionsToAnthropicTool(webSearchOptions);
+  if (!mappedOptions) return;
+  const existing = tools.find((tool) => isAnthropicWebSearchTool(tool));
+  if (!existing) {
+    tools.push(mappedOptions);
+    return;
+  }
+  if (existing.user_location === undefined && mappedOptions.user_location !== undefined) {
+    existing.user_location = mappedOptions.user_location;
+  }
+}
+
+function mapChatWebSearchOptionsToAnthropicTool(webSearchOptions: unknown): JsonRecord | null {
+  if (!isRecord(webSearchOptions)) return null;
+  const mapped: JsonRecord = {
+    type: "web_search_20250305",
+    name: "web_search",
+  };
+  const userLocation = mapChatWebSearchLocationToAnthropic(webSearchOptions.user_location);
+  if (userLocation !== undefined) mapped.user_location = userLocation;
+  return mapped;
+}
+
+function mapChatWebSearchLocationToAnthropic(userLocation: unknown): unknown {
+  if (!isRecord(userLocation)) return userLocation;
+  if (userLocation.type === "approximate" && userLocation.approximate !== undefined) {
+    const approximate = userLocation.approximate;
+    if (!isRecord(approximate)) return userLocation;
+    return { type: "approximate", ...approximate };
+  }
+  return userLocation;
+}
+
 function mapChatCustomToolToAnthropic(tool: JsonRecord): JsonRecord | null {
   const source = isRecord(tool.function) ? tool.function : tool;
   const name = stringOrNull(source.name);
@@ -948,14 +984,14 @@ function mapLegacyChatFunctionCallToToolChoice(functionCall: unknown): unknown {
 
 function mapChatToolChoiceToAnthropic(
   toolChoice: unknown,
-  context: { tools?: unknown; functions?: unknown } = {},
+  context: { tools?: unknown; functions?: unknown; webSearchOptions?: unknown } = {},
 ): unknown {
   if (toolChoice === undefined) return undefined;
   if (toolChoice === "auto" || toolChoice === "none") return { type: toolChoice };
   if (toolChoice === "required") return chatAnthropicCompatibleToolCount(context) > 0 ? { type: "any" } : undefined;
   if (!isRecord(toolChoice)) return undefined;
   if (isOpenAIWebSearchToolType(toolChoice.type)) {
-    return chatToolsIncludeOpenAIWebSearch(context.tools) ? { type: "tool", name: "web_search" } : undefined;
+    return chatOpenAIWebSearchAvailable(context) ? { type: "tool", name: "web_search" } : undefined;
   }
   if (toolChoice.type === "function") {
     const name = (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null)
@@ -969,7 +1005,7 @@ function mapChatToolChoiceToAnthropic(
   }
   if (toolChoice.type === "tool") {
     const name = stringOrNull(toolChoice.name);
-    if (name === "web_search" && chatToolsIncludeOpenAIWebSearch(context.tools)) return { type: "tool", name: "web_search" };
+    if (name === "web_search" && chatOpenAIWebSearchAvailable(context)) return { type: "tool", name: "web_search" };
     return name && chatToolChoiceFunctionNameAvailable(name, context) ? { type: "tool", name } : undefined;
   }
   return undefined;
@@ -988,7 +1024,7 @@ function chatUnsupportedToolsToAnthropicText(tools: unknown): string {
 
 function chatUnsupportedToolChoiceToAnthropicText(
   toolChoice: unknown,
-  context: { tools?: unknown; functions?: unknown } = {},
+  context: { tools?: unknown; functions?: unknown; webSearchOptions?: unknown } = {},
 ): string {
   if (toolChoice === undefined) return "";
   if (mapChatToolChoiceToAnthropic(toolChoice, context) !== undefined) return "";
@@ -1053,17 +1089,18 @@ function chatModalitiesAreTextOnly(value: unknown): boolean {
   return value.every((item) => stringOrNull(item)?.toLowerCase() === "text");
 }
 
-function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown }): number {
+function chatAnthropicCompatibleToolCount(context: { tools?: unknown; functions?: unknown; webSearchOptions?: unknown }): number {
   const toolsCount = Array.isArray(context.tools)
     ? context.tools.filter((tool) => mapChatToolToAnthropic(tool)).length
     : 0;
+  const webSearchOptionsCount = isRecord(context.webSearchOptions) && !chatToolsIncludeOpenAIWebSearch(context.tools) ? 1 : 0;
   const functionsCount = Array.isArray(context.functions)
     ? context.functions.filter((fn) => {
       if (!isRecord(fn)) return false;
       return Boolean(stringOrNull(fn.name));
     }).length
     : 0;
-  return toolsCount + functionsCount;
+  return toolsCount + webSearchOptionsCount + functionsCount;
 }
 
 function chatToolChoiceFunctionNameAvailable(
@@ -1099,6 +1136,10 @@ function chatToolChoiceCustomNameAvailable(name: string, tools: unknown): boolea
 function chatToolsIncludeOpenAIWebSearch(tools: unknown): boolean {
   return Array.isArray(tools)
     && tools.some((tool) => isRecord(tool) && isOpenAIWebSearchToolType(tool.type));
+}
+
+function chatOpenAIWebSearchAvailable(context: { tools?: unknown; webSearchOptions?: unknown }): boolean {
+  return chatToolsIncludeOpenAIWebSearch(context.tools) || isRecord(context.webSearchOptions);
 }
 
 function applyChatParallelToolChoiceToAnthropic(toolChoice: unknown, parallelToolCalls: unknown): unknown {
