@@ -12762,7 +12762,11 @@ test("model gateway preserves supported responses controls and strips rejected c
           frequency_penalty: 0.3,
           logit_bias: { "123": -5 },
           logprobs: true,
-          metadata: { trace_id: "strip-for-codex-responses" },
+          metadata: {
+            trace_id: "strip-for-codex-responses",
+            session_id: "chat-responses-session",
+            api_key: "chat-responses-key-should-not-leak",
+          },
           modalities: ["text", "audio"],
           n: 2,
           prediction: { type: "content", content: "Modern controls preserved." },
@@ -12830,6 +12834,13 @@ test("model gateway preserves supported responses controls and strips rejected c
           text: 'OpenAI Chat request controls preserved for Responses: frequency_penalty=0.3 logit_bias={"123":-5} n=2 prediction={"type":"content","content":"Modern controls preserved."} presence_penalty=0.4 seed=123 audio={"voice":"alloy","format":"mp3"} modalities=["text","audio"]',
         }],
       },
+      {
+        role: "user",
+        content: [{
+          type: "input_text",
+          text: "OpenAI Chat metadata preserved for Responses: trace_id=strip-for-codex-responses session_id=chat-responses-session",
+        }],
+      },
     ],
     stream: false,
     background: true,
@@ -12848,6 +12859,7 @@ test("model gateway preserves supported responses controls and strips rejected c
     truncation: "auto",
   });
   assert.equal("metadata" in upstreamCalls[0].body, false);
+  assert.equal(JSON.stringify(upstreamCalls[0].body).includes("chat-responses-key-should-not-leak"), false);
   assert.equal("audio" in upstreamCalls[0].body, false);
   assert.equal("modalities" in upstreamCalls[0].body, false);
   assert.equal("stop" in upstreamCalls[0].body, false);

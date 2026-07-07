@@ -97,6 +97,10 @@ export function adaptChatCompletionRequestToResponses(
   if (unsupportedRequestControlsText) {
     responsesInput.push({ role: "user", content: [{ type: "input_text", text: unsupportedRequestControlsText }] });
   }
+  const metadataContextText = chatMetadataContextToResponsesText(request.metadata);
+  if (metadataContextText) {
+    responsesInput.push({ role: "user", content: [{ type: "input_text", text: metadataContextText }] });
+  }
 
   const responsesRequest: JsonRecord = {
     model,
@@ -979,6 +983,21 @@ function collectResponseReasoningText(output: unknown[]): string {
     .map(responseOutputItemToReasoningText)
     .filter(Boolean)
     .join("");
+}
+
+function chatMetadataContextToResponsesText(metadata: unknown): string {
+  if (!isRecord(metadata)) return "";
+  const notes = Object.keys(metadata)
+    .filter((field) => field !== "user_id")
+    .filter((field) => !isSensitiveMetadataField(field))
+    .map((field) => `${field}=${stringifyCompact(metadata[field])}`);
+  return notes.length
+    ? `OpenAI Chat metadata preserved for Responses: ${notes.join(" ")}`
+    : "";
+}
+
+function isSensitiveMetadataField(field: string): boolean {
+  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
 }
 
 function responseOutputItemToReasoningText(item: unknown): string {
