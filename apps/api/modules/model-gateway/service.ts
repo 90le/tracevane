@@ -10979,6 +10979,7 @@ export function createModelGatewayService(
           ? adaptCodexResponsesRequestToChat(enriched?.bodyText, {
             allowStreaming: true,
             preserveReasoningEffort: true,
+            suppressPreviousResponseIdContext: (enriched?.restoredCalls || 0) > 0,
             preserveToolOutputContent: true,
             reasoning: provider.reasoning,
           })
@@ -11119,6 +11120,7 @@ export function createModelGatewayService(
         if (enriched.bodyText) codexHistoryRecordBodyText = enriched.bodyText;
         const adapted = adaptCodexResponsesRequestToChat(enriched.bodyText, {
           allowStreaming: useCodexResponsesStreamingAdapter,
+          suppressPreviousResponseIdContext: enriched.restoredCalls > 0,
           reasoning: provider.reasoning,
         });
         codexResponsesChatCustomToolNames = adapted.customToolNames;

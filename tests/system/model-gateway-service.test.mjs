@@ -12901,7 +12901,7 @@ test("model gateway preserves Responses cache and safety controls for Chat provi
   assert.equal(upstreamCalls[0].body.top_logprobs, 4);
   assert.deepEqual(upstreamCalls[0].body.messages, [
     { role: "user", content: "preserve responses cache controls" },
-    { role: "user", content: 'OpenAI Responses request controls preserved for Chat: background=true context_management={"truncation":{"type":"auto"}} conversation=conv_responses_chat_controls include=["reasoning.encrypted_content","message.output_text.logprobs"] max_tool_calls=3 moderation={"type":"auto"} prompt={"id":"pmpt_chat_controls","variables":{"topic":"gateway"}} store=false truncation=auto' },
+    { role: "user", content: 'OpenAI Responses request controls preserved for Chat: background=true context_management={"truncation":{"type":"auto"}} conversation=conv_responses_chat_controls include=["reasoning.encrypted_content","message.output_text.logprobs"] max_tool_calls=3 moderation={"type":"auto"} previous_response_id=resp_previous_chat_controls prompt={"id":"pmpt_chat_controls","variables":{"topic":"gateway"}} store=false truncation=auto' },
   ]);
 
   assert.equal(upstreamCalls[1].url, "https://responses-chat-cache-controls.example.test/v1/chat/completions");
@@ -13866,6 +13866,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
             },
           },
           user: "responses-user-123",
+          previous_response_id: "resp_anthropic_previous",
           max_output_tokens: 256,
           temperature: 0.1,
           prompt_cache_key: "responses-cache-key",
@@ -13983,6 +13984,9 @@ test("model gateway adapts codex responses through native anthropic messages pro
           title: "brief.pdf",
         },
       ],
+    }, {
+      role: "user",
+      content: "OpenAI Responses request controls preserved for Chat: previous_response_id=resp_anthropic_previous",
     }, {
       role: "user",
       content: "OpenAI Chat request controls preserved for Anthropic Messages: prompt_cache_key=responses-cache-key prompt_cache_retention=24h safety_identifier=responses-safety-user",

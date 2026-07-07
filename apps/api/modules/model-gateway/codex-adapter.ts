@@ -25,6 +25,7 @@ export interface CodexResponsesChatRequestAdapterResult {
 export interface CodexResponsesChatRequestAdapterOptions {
   allowStreaming?: boolean;
   preserveReasoningEffort?: boolean;
+  suppressPreviousResponseIdContext?: boolean;
   preserveToolOutputContent?: boolean;
   reasoning?: ModelGatewayProviderReasoning | null;
 }
@@ -83,7 +84,9 @@ export function adaptCodexResponsesRequestToChat(
   if (unsupportedResponseFormatText) {
     messages.push({ role: "user", content: unsupportedResponseFormatText });
   }
-  const unsupportedRequestControlsText = responsesUnsupportedRequestControlsToText(request);
+  const unsupportedRequestControlsText = responsesUnsupportedRequestControlsToText(request, {
+    suppressPreviousResponseId: options.suppressPreviousResponseIdContext,
+  });
   if (unsupportedRequestControlsText) {
     messages.push({ role: "user", content: unsupportedRequestControlsText });
   }
@@ -931,7 +934,10 @@ function applyResponsesLogprobControlsToChat(chatRequest: JsonRecord, request: J
   }
 }
 
-function responsesUnsupportedRequestControlsToText(request: JsonRecord): string {
+function responsesUnsupportedRequestControlsToText(
+  request: JsonRecord,
+  options: { suppressPreviousResponseId?: boolean } = {},
+): string {
   const unsupportedFields = [
     "background",
     "context_management",
@@ -939,6 +945,7 @@ function responsesUnsupportedRequestControlsToText(request: JsonRecord): string 
     "include",
     "max_tool_calls",
     "moderation",
+    ...(options.suppressPreviousResponseId ? [] : ["previous_response_id"]),
     "prompt",
     "store",
     "truncation",
