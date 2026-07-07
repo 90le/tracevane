@@ -7,6 +7,7 @@ import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import "./CodeEditor.css";
 
 import { useTheme } from "@/app/providers";
 import { cn } from "@/design/lib/utils";
@@ -80,7 +81,15 @@ export interface CodeEditorProps {
   onCursorPositionChange?: (position: CodeEditorCursorPosition | null) => void;
   onLanguageChange?: (language: string) => void;
   onSaveShortcut?: () => void;
+  debugBreakpoints?: CodeEditorDebugBreakpoint[];
+  debugStoppedLine?: number | null;
+  onGutterLineClick?: (lineNumber: number) => void;
   className?: string;
+}
+
+export interface CodeEditorDebugBreakpoint {
+  lineNumber: number;
+  enabled?: boolean;
 }
 
 export type CodeEditorThemeMode = "auto" | "light" | "dark";
@@ -133,6 +142,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     onCursorPositionChange,
     onLanguageChange,
     onSaveShortcut,
+    debugBreakpoints = [],
+    debugStoppedLine = null,
+    onGutterLineClick,
     className,
   },
   ref,
@@ -155,6 +167,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   const onCursorPositionChangeRef = React.useRef(onCursorPositionChange);
   const onLanguageChangeRef = React.useRef(onLanguageChange);
   const onSaveShortcutRef = React.useRef(onSaveShortcut);
+  const onGutterLineClickRef = React.useRef(onGutterLineClick);
+  const debugDecorationsRef = React.useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const pendingKeyboardScrollDeltaRef = React.useRef(0);
   const [detectedLanguage, setDetectedLanguage] = React.useState(() => languageForPath(path));
   const [editorKeyboardInset, setEditorKeyboardInset] = React.useState(0);
@@ -182,6 +196,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   React.useEffect(() => {
     onSaveShortcutRef.current = onSaveShortcut;
   }, [onSaveShortcut]);
+
+  React.useEffect(() => {
+    onGutterLineClickRef.current = onGutterLineClick;
+  }, [onGutterLineClick]);
 
   React.useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -323,6 +341,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     });
     editorRef.current = editor;
     modelRef.current = model;
+    debugDecorationsRef.current = editor.createDecorationsCollection();
     setActionDiagnostics(readMonacoActionDiagnostics(editor));
     const saveShortcutDisposable = editor.addAction({
       id: "tracevane.editor.save",
@@ -350,6 +369,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
     const scrollSubscription = editor.onDidScrollChange(() => {
       window.requestAnimationFrame(updateEditorKeyboardInset);
     });
+    const gutterSubscription = editor.onMouseDown((event) => {
+      const type = event.target.type;
+      const isBreakpointTarget = type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+        || type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS;
+      if (!isBreakpointTarget || !event.target.position) return;
+      onGutterLineClickRef.current?.(event.target.position.lineNumber);
+    });
     const frame = requestAnimationFrame(() => editor.layout());
 
     return () => {
@@ -363,6 +389,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       onSelectionChangeRef.current?.(null);
       onCursorPositionChangeRef.current?.(null);
       scrollSubscription.dispose();
+      gutterSubscription.dispose();
+      debugDecorationsRef.current?.clear();
+      debugDecorationsRef.current = null;
       editor.dispose();
       releaseCodeEditorModel(modelLease);
       editorRef.current = null;
@@ -459,6 +488,43 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   }, [editorProfile, minimapEnabled, stickyScrollEnabled, wordWrap]);
 
   React.useEffect(() => {
+    const editor = editorRef.current;
+    const model = modelRef.current;
+    const decorations = debugDecorationsRef.current;
+    if (!editor || !model || !decorations) return;
+    const safeLineCount = model.getLineCount();
+    const nextDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+    for (const breakpoint of debugBreakpoints) {
+      const lineNumber = Math.max(1, Math.min(breakpoint.lineNumber, safeLineCount));
+      nextDecorations.push({
+        range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+        options: {
+          glyphMarginClassName: breakpoint.enabled === false
+            ? "tracevane-debug-breakpoint-glyph tracevane-debug-breakpoint-glyph-disabled"
+            : "tracevane-debug-breakpoint-glyph",
+          glyphMarginHoverMessage: { value: breakpoint.enabled === false ? "Disabled breakpoint" : "Breakpoint" },
+        },
+      });
+    }
+    if (debugStoppedLine && debugStoppedLine > 0) {
+      const lineNumber = Math.max(1, Math.min(debugStoppedLine, safeLineCount));
+      nextDecorations.push({
+        range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+        options: {
+          isWholeLine: true,
+          className: "tracevane-debug-stopped-line",
+          glyphMarginClassName: "tracevane-debug-stopped-glyph",
+          glyphMarginHoverMessage: { value: "Current mock debug stop" },
+        },
+      });
+    }
+    decorations.set(nextDecorations);
+    if (onGutterLineClick || nextDecorations.length > 0) {
+      editor.updateOptions({ glyphMargin: true });
+    }
+  }, [debugBreakpoints, debugStoppedLine, onGutterLineClick]);
+
+  React.useEffect(() => {
     editorRef.current?.updateOptions({ fontSize });
     requestAnimationFrame(() => editorRef.current?.layout());
   }, [fontSize]);
@@ -481,6 +547,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       data-code-editor-minimap={effectiveOptions.minimapEnabled ? "enabled" : "disabled"}
       data-code-editor-sticky-scroll={effectiveOptions.stickyScrollEnabled ? "enabled" : "disabled"}
       data-code-editor-word-wrap={effectiveOptions.wordWrap}
+      data-code-editor-debug-breakpoints={debugBreakpoints.length}
+      data-code-editor-debug-stopped-line={debugStoppedLine ?? ""}
       data-code-editor-supported-action-count={actionDiagnostics.count}
       data-code-editor-supported-actions={actionDiagnostics.ids.join(",")}
     >

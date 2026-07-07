@@ -98,7 +98,8 @@
     "smoke:ide:git-stage": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-git-stage.smoke.mjs",
     "smoke:ide:git-commit": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-git-commit.smoke.mjs",
     "smoke:ide:git-branch-upstream": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-git-branch-upstream.smoke.mjs",
-    "smoke:ide:debug-foundation": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5186} node tests/ide-workbench/ide-debug-foundation.smoke.mjs"
+    "smoke:ide:debug-foundation": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5186} node tests/ide-workbench/ide-debug-foundation.smoke.mjs",
+    "smoke:ide:debug-breakpoints": "TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5187} node tests/ide-workbench/ide-debug-breakpoints.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

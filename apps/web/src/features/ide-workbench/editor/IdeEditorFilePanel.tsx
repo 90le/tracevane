@@ -17,6 +17,7 @@ import { EditorConflictDialog } from "./EditorConflictDialog";
 import type { IdeEditorPreferences } from "./editorPreferences";
 import { classifyFileSurfacePreview } from "@/shared/file-surface";
 import { useLspDiagnostics } from "../lsp";
+import { toggleDebugBreakpoint, useIdeDebugSnapshot } from "../debug";
 
 const IDE_EDITOR_SOFT_LARGE_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -53,6 +54,18 @@ export function IdeEditorFilePanel({
   const read = query.data;
   const metadata = read?.snapshot.metadata;
   const unsupportedReason = read ? unsupportedReasonForRead(read) : null;
+  const debugSnapshot = useIdeDebugSnapshot();
+  const debugBreakpoints = React.useMemo(
+    () => debugSnapshot.breakpoints
+      .filter((breakpoint) => breakpoint.rootId === tab.ref.rootId && breakpoint.path === tab.ref.path)
+      .map((breakpoint) => ({ lineNumber: breakpoint.lineNumber, enabled: breakpoint.enabled })),
+    [debugSnapshot.breakpoints, tab.ref.path, tab.ref.rootId],
+  );
+  const debugStoppedLine = debugSnapshot.activeStoppedLocation
+    && debugSnapshot.activeStoppedLocation.rootId === tab.ref.rootId
+    && debugSnapshot.activeStoppedLocation.path === tab.ref.path
+      ? debugSnapshot.activeStoppedLocation.lineNumber
+      : null;
 
   React.useEffect(() => {
     if (!read || !metadata) return;
@@ -409,6 +422,8 @@ export function IdeEditorFilePanel({
       data-ide-editor-model-uri={editorModelUriString(tab.ref)}
       data-ide-editor-readonly={metadata.readonly ? "true" : "false"}
       data-ide-editor-external-state={tab.externalState ?? "none"}
+      data-ide-editor-debug-breakpoint-count={debugBreakpoints.length}
+      data-ide-editor-debug-stopped-line={debugStoppedLine ?? ""}
       onPointerDown={() => editorRef.current?.focus()}
     >
       <IdeEditorExternalStateBanner
@@ -434,6 +449,16 @@ export function IdeEditorFilePanel({
         readOnly={metadata.readonly}
         profile={metadata.size > IDE_EDITOR_SOFT_LARGE_FILE_BYTES ? "large-readonly" : "normal"}
         minimapEnabled={preferences.minimapEnabled}
+        debugBreakpoints={debugBreakpoints}
+        debugStoppedLine={debugStoppedLine}
+        onGutterLineClick={(lineNumber) => {
+          toggleDebugBreakpoint({
+            rootId: tab.ref.rootId,
+            path: tab.ref.path,
+            lineNumber,
+            column: 1,
+          });
+        }}
         stickyScrollEnabled
         wordWrap="on"
         onChange={markDirtyFromContent}

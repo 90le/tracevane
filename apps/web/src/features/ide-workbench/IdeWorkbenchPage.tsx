@@ -34,7 +34,7 @@ import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
 import { IdeSourceControlView, type IdeGitDecoratedChange, useIdeGitStatus } from "./git";
 import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
-import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView } from "./debug";
+import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView, useIdeDebugSnapshot } from "./debug";
 import { TerminalPanel } from "./terminal";
 import type { IdeExplorerPathEvent } from "./explorer";
 import { useIdeWorkbenchLayoutState } from "./layoutState";
@@ -89,6 +89,7 @@ export function IdeWorkbenchPage() {
   const gitStatus = useIdeGitStatus(rootId, directoryPath);
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
+  const debugSnapshot = useIdeDebugSnapshot();
 
   const openFilePath = React.useCallback(
     (fileRef: { rootId: string; path: string }, options: { pinned?: boolean; reveal?: IdeWorkbenchEditorRevealRange } = {}) => {
@@ -209,6 +210,26 @@ export function IdeWorkbenchPage() {
       },
     );
   }, [openFilePath]);
+
+  const openDebugLocation = React.useCallback((location: { rootId: string; path: string; lineNumber: number; column?: number | null }) => {
+    openFilePath(
+      { rootId: location.rootId, path: location.path },
+      {
+        pinned: true,
+        reveal: { lineNumber: location.lineNumber, column: location.column ?? 1 },
+      },
+    );
+  }, [openFilePath]);
+
+  const lastDebugRevealKeyRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const location = debugSnapshot.activeStoppedLocation;
+    if (!location) return;
+    const key = `${location.sessionId}:${location.rootId}:${location.path}:${location.lineNumber}:${location.column ?? 1}`;
+    if (lastDebugRevealKeyRef.current === key) return;
+    lastDebugRevealKeyRef.current = key;
+    openDebugLocation(location);
+  }, [debugSnapshot.activeStoppedLocation, openDebugLocation]);
 
   const editorGroupsRef = React.useRef(layout.editorGroups);
   React.useEffect(() => {
@@ -525,6 +546,7 @@ export function IdeWorkbenchPage() {
               rootId={rootId}
               cwd={directoryPath}
               onOpenDebugConsole={() => layoutApi.setActivePanelId("debugConsole")}
+              onOpenLocation={openDebugLocation}
             />
           ) : layout.activeActivityId === "explorer" ? (
             <IdeExplorerView

@@ -5,7 +5,9 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
+  DebugBreakpointLocation,
   DebugCreateSessionRequest,
+  DebugSourceLocation,
   DebugGatewayClientEvent,
   DebugGatewayServerEvent,
   DebugProfileDescriptor,
@@ -59,6 +61,8 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
         "output-events",
         "stopped-events",
         "terminate-events",
+        "breakpoint-locations",
+        "stopped-source-location",
       ],
     };
   }
@@ -80,6 +84,11 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
     const validated = validateCreateRequest(config, request);
     const now = new Date().toISOString();
     const id = `debug-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+    const activeLocation = validated.breakpoints.find((breakpoint) => breakpoint.enabled !== false) ?? null;
+    const stoppedReason = activeLocation ? "breakpoint" : "entry";
+    const message = activeLocation
+      ? `Mock debug session stopped at ${activeLocation.path}:${activeLocation.lineNumber}.`
+      : "Mock debug session stopped on entry.";
     const session: DebugSessionDescriptor = {
       id,
       rootId: validated.rootId,
@@ -90,8 +99,9 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       state: "stopped",
       createdAt: now,
       updatedAt: now,
-      stoppedReason: "entry",
-      message: "Mock debug session stopped on entry.",
+      stoppedReason,
+      message,
+      activeLocation,
     };
     sessions.set(id, session);
     emit({ type: "session", session });
@@ -99,10 +109,19 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
       type: "output",
       sessionId: id,
       category: "console",
-      text: `Mock debug session ${session.name} initialized at ${session.cwd || "."}`,
+      text: activeLocation
+        ? `Mock debug session ${session.name} initialized at ${session.cwd || "."}; stopped at ${activeLocation.path}:${activeLocation.lineNumber}`
+        : `Mock debug session ${session.name} initialized at ${session.cwd || "."}`,
       timestamp: now,
     });
-    emit({ type: "stopped", sessionId: id, reason: "entry", threadId: 1, timestamp: now });
+    emit({
+      type: "stopped",
+      sessionId: id,
+      reason: stoppedReason,
+      threadId: 1,
+      timestamp: now,
+      ...(activeLocation ?? {}),
+    });
     return { session };
   }
 
@@ -208,18 +227,58 @@ export function createDebugService(config: TracevaneServerConfig): DebugService 
 function validateCreateRequest(
   config: TracevaneServerConfig,
   request: DebugCreateSessionRequest,
-): { rootId: string; workspaceId: string | null; cwd: string; profileId: string; name: string } {
+): { rootId: string; workspaceId: string | null; cwd: string; profileId: string; name: string; breakpoints: DebugBreakpointLocation[] } {
   const rootId = String(request?.rootId || "").trim();
   if (!rootId) throw new Error("Debug rootId is required");
   const profileId = String(request?.profileId || MOCK_PROFILE_ID).trim() || MOCK_PROFILE_ID;
   if (profileId !== MOCK_PROFILE_ID) throw new Error("Unsupported debug profile");
   const resolved = resolveFilesServiceDirectoryPath(config, rootId, request?.cwd || "");
   const name = String(request?.name || DEBUG_PROFILES[0].label).trim() || DEBUG_PROFILES[0].label;
+  const breakpoints = normalizeBreakpointLocations(config, resolved.root.id, request?.breakpoints);
   return {
     rootId: resolved.root.id,
     workspaceId: String(request?.workspaceId || rootId || "").trim() || null,
     cwd: resolved.relativePath,
     profileId,
     name,
+    breakpoints,
+  };
+}
+
+function normalizeBreakpointLocations(
+  config: TracevaneServerConfig,
+  rootId: string,
+  input: DebugCreateSessionRequest["breakpoints"],
+): DebugBreakpointLocation[] {
+  if (!Array.isArray(input)) return [];
+  const result: DebugBreakpointLocation[] = [];
+  const seen = new Set<string>();
+  for (const item of input) {
+    const normalized = normalizeBreakpointLocation(config, rootId, item);
+    if (!normalized) continue;
+    const key = `${normalized.rootId}:${normalized.path}:${normalized.lineNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result.slice(0, 500);
+}
+
+function normalizeBreakpointLocation(
+  config: TracevaneServerConfig,
+  rootId: string,
+  input: DebugBreakpointLocation | undefined,
+): DebugBreakpointLocation | null {
+  const path = String(input?.path || "").trim().replace(/^\/+/, "");
+  const lineNumber = Math.floor(Number(input?.lineNumber));
+  if (!path || !Number.isFinite(lineNumber) || lineNumber < 1) return null;
+  const directoryPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  resolveFilesServiceDirectoryPath(config, rootId, directoryPath);
+  return {
+    rootId,
+    path,
+    lineNumber,
+    column: input?.column && Number(input.column) > 0 ? Math.floor(Number(input.column)) : 1,
+    enabled: input?.enabled !== false,
   };
 }

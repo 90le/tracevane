@@ -1,5 +1,6 @@
 import { createDebugSession, stopDebugSession } from "@/lib/api/debug";
 import type {
+  DebugBreakpointLocation,
   DebugGatewayServerEvent,
   DebugSessionPayload,
 } from "../../../../../../types/debug";
@@ -9,6 +10,7 @@ export interface IdeDebugCreateInput {
   cwd: string;
   name?: string;
   profileId?: string;
+  breakpoints?: DebugBreakpointLocation[];
 }
 
 export function createIdeDebugSession(input: IdeDebugCreateInput): Promise<DebugSessionPayload> {
@@ -17,6 +19,7 @@ export function createIdeDebugSession(input: IdeDebugCreateInput): Promise<Debug
     cwd: input.cwd,
     name: input.name,
     profileId: input.profileId ?? "mock-node",
+    breakpoints: input.breakpoints,
   });
 }
 

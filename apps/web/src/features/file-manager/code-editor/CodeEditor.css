@@ -1,0 +1,31 @@
+.tracevane-debug-breakpoint-glyph::before {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 4px auto 0;
+  border-radius: 999px;
+  background: var(--red);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red-soft) 70%, transparent);
+}
+
+.tracevane-debug-breakpoint-glyph-disabled::before {
+  background: transparent;
+  border: 1.5px solid var(--red);
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+.tracevane-debug-stopped-line {
+  background: color-mix(in srgb, var(--primary-soft) 72%, transparent);
+}
+
+.tracevane-debug-stopped-glyph::before {
+  content: "▶";
+  display: block;
+  margin-top: 1px;
+  color: var(--primary);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}

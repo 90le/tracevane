@@ -15,6 +15,17 @@ export interface DebugStatusPayload {
   features: string[];
 }
 
+export interface DebugSourceLocation {
+  rootId: string;
+  path: string;
+  lineNumber: number;
+  column?: number | null;
+}
+
+export interface DebugBreakpointLocation extends DebugSourceLocation {
+  enabled?: boolean;
+}
+
 export interface DebugSessionDescriptor {
   id: string;
   rootId: string;
@@ -27,6 +38,7 @@ export interface DebugSessionDescriptor {
   updatedAt: string;
   stoppedReason?: string | null;
   message?: string | null;
+  activeLocation?: DebugSourceLocation | null;
 }
 
 export interface DebugCreateSessionRequest {
@@ -35,6 +47,7 @@ export interface DebugCreateSessionRequest {
   cwd?: string | null;
   profileId?: string | null;
   name?: string | null;
+  breakpoints?: DebugBreakpointLocation[];
 }
 
 export interface DebugStopSessionRequest {
@@ -60,6 +73,6 @@ export type DebugGatewayServerEvent =
   | { type: "sessions"; sessions: DebugSessionDescriptor[] }
   | { type: "session"; session: DebugSessionDescriptor }
   | { type: "output"; sessionId: string; category: "console" | "stdout" | "stderr" | "telemetry"; text: string; timestamp: string }
-  | { type: "stopped"; sessionId: string; reason: string; threadId?: number | null; timestamp: string }
+  | ({ type: "stopped"; sessionId: string; reason: string; threadId?: number | null; timestamp: string } & Partial<DebugSourceLocation>)
   | { type: "terminated"; sessionId: string; reason: string; timestamp: string }
   | { type: "error"; sessionId?: string | null; message: string };

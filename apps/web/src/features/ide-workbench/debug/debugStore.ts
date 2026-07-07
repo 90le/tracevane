@@ -2,7 +2,9 @@ import * as React from "react";
 
 import { appendWorkbenchOutput } from "../output";
 import type {
+  DebugBreakpointLocation,
   DebugGatewayServerEvent,
+  DebugSourceLocation,
   DebugSessionDescriptor,
   DebugStatusPayload,
 } from "../../../../../../types/debug";
@@ -22,6 +24,8 @@ export interface IdeDebugSnapshot {
   status: DebugStatusPayload | null;
   sessions: DebugSessionDescriptor[];
   events: IdeDebugConsoleEvent[];
+  breakpoints: DebugBreakpointLocation[];
+  activeStoppedLocation: (DebugSourceLocation & { sessionId: string; reason: string }) | null;
 }
 
 const MAX_DEBUG_EVENTS = 1_000;
@@ -34,6 +38,8 @@ let snapshot: IdeDebugSnapshot = {
   status: null,
   sessions: [],
   events: [],
+  breakpoints: [],
+  activeStoppedLocation: null,
 };
 
 export function useIdeDebugSnapshot(): IdeDebugSnapshot {
@@ -94,15 +100,42 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
     return;
   }
   if (event.type === "stopped") {
+    const activeStoppedLocation = hasDebugSourceLocation(event)
+      ? {
+          rootId: event.rootId,
+          path: event.path,
+          lineNumber: event.lineNumber,
+          column: event.column ?? 1,
+          sessionId: event.sessionId,
+          reason: event.reason,
+        }
+      : snapshot.activeStoppedLocation;
+    snapshot = { ...snapshot, activeStoppedLocation };
     appendConsoleEvent({
       sessionId: event.sessionId,
       level: "info",
       timestamp: event.timestamp,
-      text: `Debug session stopped: ${event.reason}`,
+      text: hasDebugSourceLocation(event)
+        ? `Debug session stopped: ${event.reason} at ${event.path}:${event.lineNumber}`
+        : `Debug session stopped: ${event.reason}`,
     });
     return;
   }
   if (event.type === "terminated") {
+    const terminatedSession = snapshot.sessions.find((session) => session.id === event.sessionId);
+    snapshot = {
+      ...snapshot,
+      activeStoppedLocation: snapshot.activeStoppedLocation?.sessionId === event.sessionId
+        ? null
+        : snapshot.activeStoppedLocation,
+      sessions: terminatedSession
+        ? snapshot.sessions.map((session) =>
+            session.id === event.sessionId
+              ? { ...session, state: "terminated", stoppedReason: event.reason, updatedAt: event.timestamp }
+              : session,
+          )
+        : snapshot.sessions,
+    };
     appendConsoleEvent({
       sessionId: event.sessionId,
       level: "info",
@@ -116,6 +149,46 @@ export function applyDebugGatewayEvent(event: DebugGatewayServerEvent): void {
 
 export function upsertDebugSession(session: DebugSessionDescriptor): void {
   upsertSession(session);
+}
+
+export function toggleDebugBreakpoint(input: DebugSourceLocation): DebugBreakpointLocation | null {
+  if (!input.rootId || !input.path || input.lineNumber < 1) return null;
+  const existing = snapshot.breakpoints.find((breakpoint) =>
+    sameDebugSourceLocation(breakpoint, input),
+  );
+  const breakpoints = existing
+    ? snapshot.breakpoints.filter((breakpoint) => !sameDebugSourceLocation(breakpoint, input))
+    : [
+        ...snapshot.breakpoints,
+        {
+          rootId: input.rootId,
+          path: input.path,
+          lineNumber: input.lineNumber,
+          column: input.column ?? 1,
+          enabled: true,
+        },
+      ].sort(compareDebugBreakpoints);
+  snapshot = { ...snapshot, breakpoints };
+  emitChanged();
+  return existing ?? breakpoints.find((breakpoint) => sameDebugSourceLocation(breakpoint, input)) ?? null;
+}
+
+export function removeDebugBreakpoint(input: DebugSourceLocation): void {
+  snapshot = {
+    ...snapshot,
+    breakpoints: snapshot.breakpoints.filter((breakpoint) => !sameDebugSourceLocation(breakpoint, input)),
+  };
+  emitChanged();
+}
+
+export function setDebugBreakpointEnabled(input: DebugSourceLocation, enabled: boolean): void {
+  snapshot = {
+    ...snapshot,
+    breakpoints: snapshot.breakpoints.map((breakpoint) =>
+      sameDebugSourceLocation(breakpoint, input) ? { ...breakpoint, enabled } : breakpoint,
+    ),
+  };
+  emitChanged();
 }
 
 function upsertSession(session: DebugSessionDescriptor): void {
@@ -147,4 +220,27 @@ function appendConsoleEvent(input: Omit<IdeDebugConsoleEvent, "id" | "timestamp"
 
 function emitChanged(): void {
   for (const listener of listeners) listener();
+}
+
+function hasDebugSourceLocation(
+  event: DebugGatewayServerEvent,
+): event is Extract<DebugGatewayServerEvent, { type: "stopped" }> & DebugSourceLocation {
+  return event.type === "stopped"
+    && typeof event.rootId === "string"
+    && event.rootId.length > 0
+    && typeof event.path === "string"
+    && event.path.length > 0
+    && typeof event.lineNumber === "number"
+    && Number.isFinite(event.lineNumber)
+    && event.lineNumber > 0;
+}
+
+function sameDebugSourceLocation(a: DebugSourceLocation, b: DebugSourceLocation): boolean {
+  return a.rootId === b.rootId && a.path === b.path && a.lineNumber === b.lineNumber;
+}
+
+function compareDebugBreakpoints(a: DebugBreakpointLocation, b: DebugBreakpointLocation): number {
+  return a.rootId.localeCompare(b.rootId)
+    || a.path.localeCompare(b.path)
+    || a.lineNumber - b.lineNumber;
 }
