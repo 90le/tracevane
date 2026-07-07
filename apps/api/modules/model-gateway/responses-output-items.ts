@@ -1,6 +1,6 @@
 type JsonRecord = Record<string, unknown>;
 
-const RESPONSES_BUILTIN_TOOL_OUTPUT_TYPES = new Set([
+const RESPONSES_BUILTIN_TOOL_ITEM_TYPES = new Set([
   "web_search_call",
   "file_search_call",
   "code_interpreter_call",
@@ -8,6 +8,7 @@ const RESPONSES_BUILTIN_TOOL_OUTPUT_TYPES = new Set([
   "image_generation_call",
   "local_shell_call",
   "computer_call_output",
+  "local_shell_call_output",
 ]);
 
 const RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS = [
@@ -27,14 +28,18 @@ const RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS = [
   "call_id",
 ] as const;
 
-export function isResponsesBuiltinToolOutputItem(item: JsonRecord): boolean {
+export function isResponsesBuiltinToolItem(item: JsonRecord): boolean {
   const type = stringOrNull(item.type);
-  return type ? RESPONSES_BUILTIN_TOOL_OUTPUT_TYPES.has(type) : false;
+  return type ? RESPONSES_BUILTIN_TOOL_ITEM_TYPES.has(type) : false;
 }
 
-export function responsesBuiltinToolOutputItemToText(item: JsonRecord): string {
+export function isResponsesBuiltinToolOutputItem(item: JsonRecord): boolean {
+  return isResponsesBuiltinToolItem(item);
+}
+
+export function responsesBuiltinToolItemToText(item: JsonRecord): string {
   const type = stringOrNull(item.type);
-  if (!type || !RESPONSES_BUILTIN_TOOL_OUTPUT_TYPES.has(type)) return "";
+  if (!type || !RESPONSES_BUILTIN_TOOL_ITEM_TYPES.has(type)) return "";
 
   const summary: JsonRecord = {};
   for (const field of RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS) {
@@ -42,6 +47,10 @@ export function responsesBuiltinToolOutputItemToText(item: JsonRecord): string {
   }
   const body = Object.keys(summary).length ? ` ${stringifyCompact(summary)}` : "";
   return `[OpenAI Responses ${type}${body}]`;
+}
+
+export function responsesBuiltinToolOutputItemToText(item: JsonRecord): string {
+  return responsesBuiltinToolItemToText(item);
 }
 
 function stringifyCompact(value: unknown): string {

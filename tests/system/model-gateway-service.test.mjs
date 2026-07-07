@@ -10021,6 +10021,82 @@ test("model gateway preserves service tier across chat and responses adapters", 
 });
 
 
+test("model gateway preserves Responses built-in tool output input when degrading to chat", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-builtin-tool-output-input",
+      name: "Chat Builtin Tool Output Input Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://chat-builtin-tool-output-input.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-chat-builtin-tool-output-input-secret" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_builtin_tool_output_input",
+      object: "chat.completion",
+      created: 1_710_000_044,
+      model: "gpt-chat",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Saw computer output." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-chat",
+          input: [
+            { role: "user", content: "Continue after the screenshot." },
+            {
+              type: "computer_call_output",
+              call_id: "call_screen",
+              output: { image_url: "https://example.test/screenshot.png" },
+              status: "completed",
+            },
+          ],
+        },
+      });
+      assert.equal(response.status, 200, response.body);
+      assert.equal(response.body.output[0].content[0].text, "Saw computer output.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chat-builtin-tool-output-input.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-chat-builtin-tool-output-input-secret");
+  assert.deepEqual(upstreamCalls[0].body.messages, [
+    { role: "user", content: "Continue after the screenshot." },
+    { role: "user", content: "[OpenAI Responses computer_call_output {\"status\":\"completed\",\"output\":{\"image_url\":\"https://example.test/screenshot.png\"},\"call_id\":\"call_screen\"}]" },
+  ]);
+});
+
 test("model gateway preserves supported responses controls and strips rejected chat-only fields", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

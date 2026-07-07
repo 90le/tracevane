@@ -1,5 +1,6 @@
 import type { ModelGatewayProviderReasoning } from "../../../../types/model-gateway.js";
 import { applyChatReasoningOptions } from "./reasoning-options.js";
+import { isResponsesBuiltinToolItem, responsesBuiltinToolItemToText } from "./responses-output-items.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -331,6 +332,11 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
       content: output,
       tool_call_id: toolCallId,
     };
+  }
+
+  if (isResponsesBuiltinToolItem(item)) {
+    const text = responsesBuiltinToolItemToText(item);
+    return text ? { role: "user", content: text } : null;
   }
 
   if (item.type === "message" || typeof item.role === "string" || item.content !== undefined) {
