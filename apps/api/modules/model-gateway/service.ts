@@ -9947,6 +9947,10 @@ export function createModelGatewayService(
         stream,
         messages: [{ role: "user", content: prompt }],
         ...(scope === "claude-code" ? {
+          metadata: {
+            user_id: "tracevane-gateway-smoke",
+            session_id: "active-route-smoke",
+          },
           tools: [gatewaySmokeToolForAnthropic()],
           tool_choice: { type: "auto" },
         } : {}),

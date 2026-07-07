@@ -7658,6 +7658,10 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
     assert.equal(opencode.ok, true);
     assert.equal(calls[0].body.model, "glm-5.2");
     assert.equal(calls[0].body.stream, true);
+    assert.deepEqual(calls[0].body.metadata, {
+      user_id: "tracevane-gateway-smoke",
+      session_id: "active-route-smoke",
+    });
     assert.ok(Array.isArray(calls[0].body.tools));
     assert.equal(calls[0].body.tools[0].name, "gateway_smoke_tool");
     assert.deepEqual(calls[0].body.tool_choice, { type: "auto" });
