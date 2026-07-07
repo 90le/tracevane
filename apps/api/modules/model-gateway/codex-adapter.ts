@@ -90,6 +90,10 @@ export function adaptCodexResponsesRequestToChat(
   if (unsupportedRequestControlsText) {
     messages.push({ role: "user", content: unsupportedRequestControlsText });
   }
+  const metadataContextText = responsesMetadataContextToChatText(request.metadata);
+  if (metadataContextText) {
+    messages.push({ role: "user", content: metadataContextText });
+  }
   if (!messages.length) {
     messages.push({ role: "user", content: "" });
   }
@@ -953,6 +957,21 @@ function applyResponsesLogprobControlsToChat(chatRequest: JsonRecord, request: J
   if (include.includes("message.output_text.logprobs")) {
     chatRequest.logprobs = true;
   }
+}
+
+function responsesMetadataContextToChatText(metadata: unknown): string {
+  if (!isRecord(metadata)) return "";
+  const notes = Object.keys(metadata)
+    .filter((field) => field !== "user_id")
+    .filter((field) => !isSensitiveMetadataField(field))
+    .map((field) => `${field}=${stringifyCompact(metadata[field])}`);
+  return notes.length
+    ? `OpenAI Responses metadata preserved for Chat adapters: ${notes.join(" ")}`
+    : "";
+}
+
+function isSensitiveMetadataField(field: string): boolean {
+  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
 }
 
 function responsesUnsupportedRequestControlsToText(

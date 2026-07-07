@@ -16648,6 +16648,11 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
             search_context_size: "low",
           }],
           tool_choice: { type: "function", name: "lookup" },
+          metadata: {
+            trace_id: "responses-chat-trace",
+            session_id: "responses-chat-session",
+            api_key: "responses-metadata-key-should-not-leak",
+          },
           stream: false,
           max_output_tokens: 64,
           text: {
@@ -16742,6 +16747,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   assert.equal(upstreamCalls[0].method, "POST");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-codex-adapter-secret");
   assert.equal(upstreamCalls[0].contentType, "application/json");
+  assert.equal(JSON.stringify(JSON.parse(upstreamCalls[0].body)).includes("responses-metadata-key-should-not-leak"), false);
   assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
     model: "gpt-test",
     messages: [
@@ -16767,6 +16773,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         }],
       },
       { role: "user", content: "Next" },
+      { role: "user", content: "OpenAI Responses metadata preserved for Chat adapters: trace_id=responses-chat-trace session_id=responses-chat-session" },
     ],
     stream: false,
     max_tokens: 64,
@@ -21177,6 +21184,7 @@ test("model gateway adapts codex compact requests through openai chat providers"
       { role: "system", content: "Summarize the conversation for handoff." },
       { role: "user", content: "We are building Model Gateway." },
       { role: "assistant", content: "Provider registry and adapter are implemented." },
+      { role: "user", content: "OpenAI Responses metadata preserved for Chat adapters: tracevane_channel_compact=true project_id=codex-main" },
     ],
     stream: false,
     max_tokens: 2048,
