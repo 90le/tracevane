@@ -7060,6 +7060,7 @@ export function createModelGatewayService(
       || normalizeString(readHeader(context?.headers, "x-session-id"))
       || normalizeString(readHeader(context?.headers, "session_id"))
       || normalizeString(readHeader(context?.headers, "x-client-request-id"))
+      || normalizeString(readHeader(context?.headers, "x-claude-code-session-id"))
       || normalizeString(readHeader(context?.headers, "x-codex-session-id"))
       || normalizeString(readHeader(context?.headers, "x-conversation-id"))
       || normalizeString(readHeader(context?.headers, "conversation_id"));

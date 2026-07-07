@@ -2516,7 +2516,7 @@ test("model gateway account pool preserves session affinity and enforces per-acc
       enabled: true,
       category: "official",
       sourceType: "account-backed",
-      appScopes: ["codex"],
+      appScopes: ["codex", "claude-code"],
       baseUrl: "https://chatgpt.com/backend-api/codex",
       apiKeyRef: null,
       apiFormat: "openai_responses",
@@ -2561,7 +2561,7 @@ test("model gateway account pool preserves session affinity and enforces per-acc
         }],
       },
     },
-    setActiveScopes: ["codex"],
+    setActiveScopes: ["codex", "claude-code"],
   });
   const stamp = new Date().toISOString();
   fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
@@ -2608,7 +2608,10 @@ test("model gateway account pool preserves session affinity and enforces per-acc
     const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
     if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
       const requestBody = JSON.parse(String(init.body || "{}"));
-      const text = requestBody.input?.[0]?.content?.[0]?.text || "";
+      const input = requestBody.input;
+      const text = typeof input === "string"
+        ? input
+        : input?.[0]?.content?.[0]?.text || input?.[0]?.content || "";
       upstreamCalls.push({
         accountId: headers.get("chatgpt-account-id"),
         authorization: headers.get("authorization"),
@@ -2647,12 +2650,34 @@ test("model gateway account pool preserves session affinity and enforces per-acc
         headers: { "x-session-id": "beta" },
         body: { model: "gpt-5.5", input: "beta one" },
       });
+      const claudeSession1 = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+          "x-claude-code-session-id": "claude-session-alpha",
+        },
+        body: { model: "gpt-5.5", max_tokens: 16, messages: [{ role: "user", content: "claude session one" }] },
+      });
+      const claudeSession2 = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "x-tracevane-app-scope": "claude-code",
+          "anthropic-version": "2023-06-01",
+          "x-claude-code-session-id": "claude-session-alpha",
+        },
+        body: { model: "gpt-5.5", max_tokens: 16, messages: [{ role: "user", content: "claude session two" }] },
+      });
       assert.equal(alpha1.status, 200);
       assert.equal(alpha2.status, 200);
       assert.equal(beta.status, 200);
+      assert.equal(claudeSession1.status, 200);
+      assert.equal(claudeSession2.status, 200);
       assert.equal(upstreamCalls[1].accountId, upstreamCalls[0].accountId);
       assert.notEqual(upstreamCalls[2].accountId, upstreamCalls[0].accountId);
+      assert.equal(upstreamCalls[4].accountId, upstreamCalls[3].accountId);
       assert.equal(alpha1.headers["x-openclaw-model-gateway-account"], alpha2.headers["x-openclaw-model-gateway-account"]);
+      assert.equal(claudeSession1.headers["x-openclaw-model-gateway-account"], claudeSession2.headers["x-openclaw-model-gateway-account"]);
 
       const holdA = requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
