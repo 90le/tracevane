@@ -112,7 +112,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M11-L External provider dependency hygiene / exact pin readiness.
 - Done: M11-M Pyright external provider guarded implementation plan.
 - Done: M11-N Pyright external provider guarded implementation.
-- Next: M11-O External provider acceptance / heavy provider expansion decision.
+- Done: M11-O External provider acceptance / heavy provider expansion decision.
+- Next: M11-P Dockerfile external provider guarded proof.
 
 ## Required reading by task
 
