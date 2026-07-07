@@ -40,6 +40,12 @@ test("LSP service routes YAML diagnostics through the external language-server p
   fs.writeFileSync(file, content, "utf8");
 
   const service = createLspService(createTracevaneConfig(root));
+  const status = service.getStatus();
+  assert.ok(status.externalProviders.profiles.some((profile) => profile.id === "yaml" && profile.enabled));
+  const yamlStatus = status.externalProviders.statuses.find((entry) => entry.providerId === "yaml");
+  assert.equal(yamlStatus?.status, "stopped");
+  assert.equal(yamlStatus?.reason, "not_started");
+
   const response = await service.diagnoseDocument({
     id: "yaml-proof",
     rootId: "openclaw-root",

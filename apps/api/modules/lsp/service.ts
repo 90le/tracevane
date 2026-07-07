@@ -89,7 +89,7 @@ const WORKSPACE_SYMBOL_EXCLUDED_DIRECTORIES = new Set([
 const WORKSPACE_SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
 
 export interface LspService {
-  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix> };
+  getStatus(): { ok: true; provider: "tracevane-lsp"; websocketPath: string; supportedLanguages: string[]; features: string[]; providers: ReturnType<typeof providerCapabilityMatrix>; externalProviders: ReturnType<typeof externalLanguageServerStatusSnapshot> };
   diagnoseDocument(request: LspDiagnosticsRequest): Promise<LspDiagnosticsResponse>;
   hoverDocument(request: LspPositionRequest): Promise<LspHoverResponse>;
   completeDocument(request: LspCompletionRequest): Promise<LspCompletionResponse>;
@@ -190,6 +190,7 @@ export function createLspService(config: TracevaneServerConfig): LspService {
         supportedLanguages: supportedLanguagesFromRegistry(),
         features: supportedFeaturesFromRegistry(),
         providers: providerCapabilityMatrix(),
+        externalProviders: externalLanguageServerStatusSnapshot(config),
       };
     },
     diagnoseDocument(request) {
@@ -1702,6 +1703,21 @@ async function diagnoseYamlWithExternalLanguageServer(
   } finally {
     await gateway.stop(providerId).catch(() => undefined);
   }
+}
+
+function externalLanguageServerStatusSnapshot(config: TracevaneServerConfig) {
+  const rootPath = path.resolve(path.parse(config.openclawRoot).root || "/");
+  const gateway = createExternalLanguageServerGateway({ rootPath });
+  return {
+    profiles: gateway.listProfiles().map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      languages: profile.languages,
+      capabilities: profile.capabilities,
+      enabled: profile.enabled !== false,
+    })),
+    statuses: gateway.listStatuses(),
+  };
 }
 
 function yamlDiagnosticToTracevaneDiagnostic(diagnostic: unknown): LspDiagnostic {

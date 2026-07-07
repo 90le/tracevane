@@ -39,6 +39,7 @@ interface PendingRequest {
 export class ExternalLanguageServerGateway {
   private readonly profiles: ExternalLanguageServerProfile[];
   private readonly servers = new Map<string, RunningServer>();
+  private readonly lastStates = new Map<string, ExternalLanguageServerState>();
   private nextRequestId = 1;
 
   constructor(private readonly options: ExternalLanguageServerGatewayOptions) {
@@ -62,7 +63,9 @@ export class ExternalLanguageServerGateway {
 
   getStatus(providerId: string): ExternalLanguageServerState {
     const running = this.servers.get(providerId);
-    if (running) return { ...running.state };
+    if (running) return cloneState(running.state);
+    const lastState = this.lastStates.get(providerId);
+    if (lastState) return cloneState(lastState);
     const profile = this.profileById(providerId);
     return {
       providerId,
@@ -72,8 +75,11 @@ export class ExternalLanguageServerGateway {
       pid: null,
       startedAt: null,
       exitedAt: null,
+      lastTransitionAt: null,
       exitCode: null,
       signal: null,
+      lastError: null,
+      stderrTail: [],
     };
   }
 
@@ -101,8 +107,11 @@ export class ExternalLanguageServerGateway {
       pid: null,
       startedAt: new Date().toISOString(),
       exitedAt: null,
+      lastTransitionAt: new Date().toISOString(),
       exitCode: null,
       signal: null,
+      lastError: null,
+      stderrTail: [],
     };
 
     const running: RunningServer = {
@@ -118,6 +127,7 @@ export class ExternalLanguageServerGateway {
         onMessage: (message) => this.handleMessage(running, message),
         onExit: (code, signal) => this.handleExit(running, code, signal),
         onError: (error) => this.handleTransportError(running, error),
+        onStderr: (chunk) => this.handleStderr(running, chunk),
       }),
       pending: new Map(),
       diagnostics: new Map(),
@@ -134,13 +144,16 @@ export class ExternalLanguageServerGateway {
         capabilities: {},
       }, budgets.initializeMs, "initialize_timeout");
       this.notify(profile.id, "initialized", {});
-      state.status = "available";
-      state.reason = "not_started";
-      return { ...state };
+      this.transition(running, "available", "not_started");
+      return cloneState(state);
     } catch (error) {
-      state.status = "degraded";
-      state.reason = reasonFromError(error) ?? "initialize_timeout";
+      this.transition(running, "degraded", reasonFromError(error) ?? "initialize_timeout", {
+        lastError: error instanceof Error ? error.message : String(error),
+      });
       running.transport.kill();
+      this.rejectAllPending(running, reasonFromError(error) ?? "initialize_timeout", "External LSP initialization failed");
+      this.servers.delete(profile.id);
+      this.lastStates.set(profile.id, cloneState(running.state));
       throw error;
     }
   }
@@ -159,8 +172,9 @@ export class ExternalLanguageServerGateway {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         running.pending.delete(id);
-        running.state.status = "degraded";
-        running.state.reason = timeoutReason;
+        this.transition(running, "degraded", timeoutReason, {
+          lastError: `External LSP request timed out: ${method}`,
+        });
         reject(this.withReason(new Error(`External LSP request timed out: ${method}`), timeoutReason));
       }, timeout);
       running.pending.set(id, { method, resolve, reject, timer });
@@ -203,21 +217,18 @@ export class ExternalLanguageServerGateway {
     if (!running) return this.getStatus(providerId);
     running.intentionallyStopping = true;
     try {
-      await this.request(providerId, "shutdown", undefined, running.budgets.shutdownMs).catch(() => undefined);
-      this.notify(providerId, "exit", undefined);
-    } finally {
-      for (const pending of running.pending.values()) {
-        clearTimeout(pending.timer);
-        pending.reject(this.withReason(new Error("External LSP server stopped"), "stopped"));
+      if (running.state.status !== "crashed") {
+        await this.request(providerId, "shutdown", undefined, running.budgets.shutdownMs).catch(() => undefined);
+        this.notify(providerId, "exit", undefined);
       }
-      running.pending.clear();
+    } finally {
+      this.rejectAllPending(running, "stopped", "External LSP server stopped");
       running.transport.kill();
-      running.state.status = "stopped";
-      running.state.reason = "stopped";
-      running.state.exitedAt = running.state.exitedAt ?? new Date().toISOString();
+      this.transition(running, "stopped", "stopped", { exitedAt: running.state.exitedAt ?? new Date().toISOString() });
       this.servers.delete(providerId);
+      this.lastStates.set(providerId, cloneState(running.state));
     }
-    return { ...running.state };
+    return cloneState(running.state);
   }
 
   private profileById(providerId: string): ExternalLanguageServerProfile | null {
@@ -227,6 +238,9 @@ export class ExternalLanguageServerGateway {
   private requireRunning(providerId: string): RunningServer {
     const running = this.servers.get(providerId);
     if (!running) throw new Error(`External LSP server is not running: ${providerId}`);
+    if (running.state.status === "crashed" || running.state.status === "stopped") {
+      throw this.withReason(new Error(`External LSP server is ${running.state.status}: ${providerId}`), running.state.reason);
+    }
     return running;
   }
 
@@ -264,8 +278,7 @@ export class ExternalLanguageServerGateway {
     running.pending.delete(response.id);
     clearTimeout(pending.timer);
     if (response.error) {
-      running.state.status = "degraded";
-      running.state.reason = "request_error";
+      this.transition(running, "degraded", "request_error", { lastError: response.error.message });
       pending.reject(this.withReason(new Error(response.error.message), "request_error"));
       return;
     }
@@ -280,28 +293,66 @@ export class ExternalLanguageServerGateway {
   }
 
   private handleExit(running: RunningServer, code: number | null, signal: NodeJS.Signals | null): void {
-    running.state.exitCode = code;
-    running.state.signal = signal;
-    running.state.exitedAt = new Date().toISOString();
-    running.state.pid = null;
     if (running.intentionallyStopping) {
-      running.state.status = "stopped";
-      running.state.reason = "stopped";
+      this.transition(running, "stopped", "stopped", {
+        exitCode: code,
+        signal,
+        exitedAt: new Date().toISOString(),
+        pid: null,
+      });
+      this.lastStates.set(running.profile.id, cloneState(running.state));
       return;
     }
-    running.state.status = "crashed";
-    running.state.reason = "crashed";
-    for (const pending of running.pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(this.withReason(new Error("External LSP server crashed"), "crashed"));
-    }
-    running.pending.clear();
+    this.transition(running, "crashed", "crashed", {
+      exitCode: code,
+      signal,
+      exitedAt: new Date().toISOString(),
+      pid: null,
+      lastError: "External LSP server crashed",
+    });
+    this.rejectAllPending(running, "crashed", "External LSP server crashed");
+    this.lastStates.set(running.profile.id, cloneState(running.state));
   }
 
   private handleTransportError(running: RunningServer, error: Error): void {
-    running.state.status = "degraded";
-    running.state.reason = "missing_binary";
+    this.transition(running, "degraded", "missing_binary", { lastError: error.message });
     this.options.logger?.error(error);
+  }
+
+  private handleStderr(running: RunningServer, chunk: Buffer): void {
+    const lines = chunk.toString("utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter(Boolean);
+    if (!lines.length) return;
+    running.state.stderrTail = [...running.state.stderrTail, ...lines].slice(-20);
+    running.state.lastTransitionAt = new Date().toISOString();
+  }
+
+  private transition(
+    running: RunningServer,
+    status: ExternalLanguageServerState["status"],
+    reason: ExternalLanguageServerStatusReason,
+    patch: Partial<ExternalLanguageServerState> = {},
+  ): void {
+    Object.assign(running.state, patch, {
+      status,
+      reason,
+      lastTransitionAt: new Date().toISOString(),
+    });
+    this.lastStates.set(running.profile.id, cloneState(running.state));
+  }
+
+  private rejectAllPending(
+    running: RunningServer,
+    reason: ExternalLanguageServerStatusReason,
+    message: string,
+  ): void {
+    for (const pending of running.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(this.withReason(new Error(message), reason));
+    }
+    running.pending.clear();
   }
 
   private withReason(error: unknown, reason: ExternalLanguageServerStatusReason): Error {
@@ -322,6 +373,13 @@ function reasonFromError(error: unknown): ExternalLanguageServerStatusReason | n
     return (error as { reason: ExternalLanguageServerStatusReason }).reason;
   }
   return null;
+}
+
+function cloneState(state: ExternalLanguageServerState): ExternalLanguageServerState {
+  return {
+    ...state,
+    stderrTail: [...state.stderrTail],
+  };
 }
 
 export type { ChildProcessWithoutNullStreams };

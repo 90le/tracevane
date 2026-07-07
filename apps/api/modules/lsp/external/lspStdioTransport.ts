@@ -13,6 +13,7 @@ export interface LspStdioTransportOptions {
   onMessage: (message: LspJsonRpcMessage) => void;
   onExit: (code: number | null, signal: NodeJS.Signals | null) => void;
   onError?: (error: Error) => void;
+  onStderr?: (chunk: Buffer) => void;
 }
 
 export class LspStdioTransport {
@@ -41,7 +42,7 @@ export class LspStdioTransport {
     });
     this.child = child;
     child.stdout.on("data", (chunk) => this.parser.push(chunk));
-    child.stderr.on("data", () => undefined);
+    child.stderr.on("data", (chunk) => this.options.onStderr?.(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
     child.on("error", (error) => this.options.onError?.(error));
     child.on("exit", (code, signal) => {
       this.options.onExit(code, signal);

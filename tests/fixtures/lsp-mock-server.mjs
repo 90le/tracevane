@@ -55,7 +55,13 @@ function handle(message) {
     return;
   }
   if (message.method === "slow/request") return;
+  if (message.method === "stderr/request") {
+    process.stderr.write("mock stderr line\\n");
+    respond(message.id, { ok: true });
+    return;
+  }
   if (message.method === "crash/request") {
+    process.stderr.write("mock crash line\\n");
     process.exit(42);
     return;
   }

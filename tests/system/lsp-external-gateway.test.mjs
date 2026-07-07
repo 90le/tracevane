@@ -75,11 +75,49 @@ test("external LSP gateway marks crashed servers", async () => {
   await assert.rejects(() => gateway.request("mock", "crash/request", {}, 500), /crashed/);
   await waitFor(() => gateway.getStatus("mock").status === "crashed");
   assert.equal(gateway.getStatus("mock").reason, "crashed");
+  assert.equal(gateway.getStatus("mock").exitCode, 42);
+  assert.ok(gateway.getStatus("mock").lastTransitionAt);
+  assert.ok(gateway.getStatus("mock").lastError);
+  assert.ok(gateway.getStatus("mock").stderrTail.some((line) => line.includes("mock crash line")));
+  await assert.rejects(() => gateway.request("mock", "echo/request", {}, 100), /crashed/);
+  const stopped = await gateway.stop("mock");
+  assert.equal(stopped.status, "stopped");
+  assert.equal(gateway.getStatus("mock").status, "stopped");
+  assert.ok(gateway.getStatus("mock").exitedAt);
 });
 
 test("external LSP gateway rejects profile cwd outside workspace root", async () => {
   const gateway = new ExternalLanguageServerGateway({ rootPath: repoRoot, profiles: [mockProfile({ cwd: "../../.." })] });
   await assert.rejects(() => gateway.start("mock"), /workspace root/);
+  assert.equal(gateway.getStatus("mock").status, "stopped");
+});
+
+test("external LSP gateway exposes cloned lifecycle statuses and stderr tail", async () => {
+  const gateway = new ExternalLanguageServerGateway({ rootPath: repoRoot, profiles: [mockProfile()] });
+  const initial = gateway.listStatuses()[0];
+  assert.equal(initial.status, "stopped");
+  assert.deepEqual(initial.stderrTail, []);
+
+  await gateway.start("mock");
+  await gateway.request("mock", "stderr/request", {});
+  await waitFor(() => gateway.getStatus("mock").stderrTail.some((line) => line.includes("mock stderr line")));
+
+  const status = gateway.getStatus("mock");
+  assert.equal(status.status, "available");
+  assert.ok(status.pid);
+  assert.ok(status.startedAt);
+  assert.ok(status.lastTransitionAt);
+  assert.ok(status.stderrTail.some((line) => line.includes("mock stderr line")));
+
+  status.stderrTail.push("mutated outside");
+  assert.equal(gateway.getStatus("mock").stderrTail.includes("mutated outside"), false);
+
+  await gateway.stop("mock");
+  const stopped = gateway.getStatus("mock");
+  assert.equal(stopped.status, "stopped");
+  assert.equal(stopped.reason, "stopped");
+  assert.ok(stopped.exitedAt);
+  assert.ok(stopped.stderrTail.some((line) => line.includes("mock stderr line")));
 });
 
 

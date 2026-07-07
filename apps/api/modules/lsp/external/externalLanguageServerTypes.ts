@@ -48,8 +48,11 @@ export interface ExternalLanguageServerState {
   pid: number | null;
   startedAt: string | null;
   exitedAt: string | null;
+  lastTransitionAt: string | null;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
+  lastError: string | null;
+  stderrTail: string[];
 }
 
 export interface ExternalLanguageServerGatewayOptions {
