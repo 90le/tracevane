@@ -93,7 +93,21 @@ const listMode = args.has('--list');
 const dryRun = args.has('--dry-run');
 const continueOnError = args.has('--continue-on-error');
 const rcWebPort = process.env.TRACEVANE_RC_WEB_PORT || process.env.TRACEVANE_WEB_PORT || '5310';
+const commandTimeoutMs = Number(process.env.TRACEVANE_RC_COMMAND_TIMEOUT_MS || 420_000);
 const SELF_STARTING_SMOKE_PREFIXES = ['smoke:ide:debug-'];
+const SCRIPT_DECLARED_WEB_PORT = new Set([
+  'smoke:ide:git-remote-foundation',
+  'smoke:ide:lsp-diagnostics',
+  'smoke:ide:lsp-interaction',
+  'smoke:ide:lsp-typescript-diagnostics',
+  'smoke:ide:lsp-typescript-interaction',
+  'smoke:ide:lsp-typescript-completion',
+  'smoke:ide:lsp-typescript-references',
+  'smoke:ide:lsp-workspace-edit-foundation',
+  'smoke:ide:lsp-rename-format-code-actions',
+  'smoke:ide:git-branch-stash-foundation',
+  'smoke:ide:git-branch-stash-hardening',
+]);
 
 function usage() {
   console.log(`Tracevane IDE RC smoke matrix runner\n\nUsage:\n  node scripts/ide-rc-matrix.mjs --quick [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --full [--dry-run] [--continue-on-error]\n  node scripts/ide-rc-matrix.mjs --domain=<${Object.keys(GROUPS).join('|')}> [--dry-run]\n  node scripts/ide-rc-matrix.mjs --list [--quick|--full|--domain=<name>]\n\nNotes:\n  - Commands run sequentially through npm scripts.\n  - Full matrix is intentionally long; use --quick for PR gate.\n  - :git-diff-check runs \`git diff --check\`.\n  - Smoke commands default to TRACEVANE_RC_WEB_PORT/TRACEVANE_WEB_PORT or 5310 so local dev servers on 5176 do not contaminate RC evidence.\n  - with_server smoke scripts also receive TRACEVANE_WEB_SMOKE_URL; self-starting debug smokes only receive TRACEVANE_WEB_PORT.\n`);
@@ -150,8 +164,41 @@ function cleanupSmokeArtifacts() {
 
 function runShell(command, env = process.env) {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, stdio: 'inherit', env });
-    child.on('close', (code, signal) => resolve({ code: code ?? 1, signal }));
+    const child = spawn(command, {
+      shell: true,
+      stdio: 'inherit',
+      env,
+      detached: process.platform !== 'win32',
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        if (process.platform === 'win32') {
+          child.kill('SIGTERM');
+        } else {
+          process.kill(-child.pid, 'SIGTERM');
+        }
+      } catch {}
+      setTimeout(() => {
+        try {
+          if (process.platform === 'win32') {
+            child.kill('SIGKILL');
+          } else {
+            process.kill(-child.pid, 'SIGKILL');
+          }
+        } catch {}
+      }, 5_000).unref?.();
+      resolve({ code: 124, signal: 'TIMEOUT' });
+    }, commandTimeoutMs);
+    timer.unref?.();
+    child.on('close', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? 1, signal });
+    });
   });
 }
 
@@ -162,12 +209,13 @@ async function runCommand(command) {
   const isSelfStartingSmoke = SELF_STARTING_SMOKE_PREFIXES.some((prefix) =>
     command.startsWith(prefix),
   );
-  const smokeWebPort = process.env.TRACEVANE_WEB_PORT || rcWebPort;
+  const hasScriptDeclaredWebPort = SCRIPT_DECLARED_WEB_PORT.has(command);
+  const smokeWebPort = process.env.TRACEVANE_WEB_PORT || (hasScriptDeclaredWebPort ? undefined : rcWebPort);
   const commandEnv = isSmokeCommand
     ? {
         ...process.env,
-        TRACEVANE_WEB_PORT: smokeWebPort,
-        ...(isSelfStartingSmoke
+        ...(smokeWebPort ? { TRACEVANE_WEB_PORT: smokeWebPort } : {}),
+        ...(isSelfStartingSmoke || hasScriptDeclaredWebPort
           ? {}
           : {
               TRACEVANE_WEB_SMOKE_URL:
@@ -177,7 +225,7 @@ async function runCommand(command) {
       }
     : process.env;
   const envLabel = isSmokeCommand
-    ? ` TRACEVANE_WEB_PORT=${commandEnv.TRACEVANE_WEB_PORT}${commandEnv.TRACEVANE_WEB_SMOKE_URL ? ` TRACEVANE_WEB_SMOKE_URL=${commandEnv.TRACEVANE_WEB_SMOKE_URL}` : ''}`
+    ? `${commandEnv.TRACEVANE_WEB_PORT ? ` TRACEVANE_WEB_PORT=${commandEnv.TRACEVANE_WEB_PORT}` : ''}${commandEnv.TRACEVANE_WEB_SMOKE_URL ? ` TRACEVANE_WEB_SMOKE_URL=${commandEnv.TRACEVANE_WEB_SMOKE_URL}` : ''}`
     : '';
   console.log(`\n[ide-rc]${envLabel} ${shellCommand}`);
   if (dryRun) return { command, code: 0 };

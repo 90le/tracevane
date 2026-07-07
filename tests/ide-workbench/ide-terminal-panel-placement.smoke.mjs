@@ -221,7 +221,7 @@ async function run() {
     await page.getByRole('button', { name: 'Output' }).click();
     await page.locator('[data-ide-output-panel]').waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('button', { name: 'Debug Console' }).click();
-    await page.locator('[data-ide-debug-console-placeholder]').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-debug-console-panel]').waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.getByRole('button', { name: 'Move Panel Bottom' }).click();
     await waitForPlacement(page, 'bottom');

@@ -97,7 +97,7 @@ async function waitForLedger(sessionId, expected) {
   throw new Error(`Timed out waiting for ledger output ${expected}; last=${JSON.stringify(last)?.slice(0, 2000)}`);
 }
 
-async function createOrResume(sessionId, rootId) {
+async function createOrResume(sessionId, rootId, resume = true) {
   return api('/api/terminal/sessions', {
     method: 'POST',
     body: JSON.stringify({
@@ -111,7 +111,7 @@ async function createOrResume(sessionId, rootId) {
       cols: 100,
       rows: 24,
       pinned: true,
-      resume: true,
+      resume,
     }),
   });
 }
@@ -140,7 +140,7 @@ async function run() {
     const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
     if (!rootId) throw new Error('No root available for durable terminal smoke');
 
-    const descriptor = await createOrResume(sessionId, rootId);
+    const descriptor = await createOrResume(sessionId, rootId, false);
     if (descriptor.durableBackend !== 'tmux') {
       throw new Error(`Expected first descriptor to be tmux-backed, got ${JSON.stringify(descriptor)}`);
     }
