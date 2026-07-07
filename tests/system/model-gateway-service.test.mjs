@@ -14694,6 +14694,149 @@ test("model gateway preserves orphan tool result context before provider adapter
   assert.match(JSON.stringify(upstreamCalls[3].body), /OpenAI Responses tool output missing call_id for Chat Completions/);
 });
 
+test("model gateway preserves unknown Anthropic request blocks before Chat and Responses providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    if (String(url).endsWith("/chat/completions")) {
+      return new Response(JSON.stringify({
+        id: "chatcmpl_unknown_anthropic_request_blocks",
+        created: 1_710_000_050,
+        model: body.model,
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "chat ok" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (String(url).endsWith("/responses")) {
+      return new Response(JSON.stringify({
+        id: "resp_unknown_anthropic_request_blocks",
+        object: "response",
+        created_at: 1_710_000_050,
+        model: body.model,
+        status: "completed",
+        output: [{
+          id: "msg_unknown_anthropic_request_blocks",
+          type: "message",
+          status: "completed",
+          role: "assistant",
+          content: [{ type: "output_text", text: "responses ok" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    throw new Error(`unexpected upstream url ${url}`);
+  };
+
+  const anthropicBody = {
+    model: "claude-native",
+    max_tokens: 128,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "keep anthropic text" },
+          { type: "image", source: { type: "url" } },
+          { type: "document", title: "missing-source.pdf" },
+          { type: "container_upload", filename: "missing-file-id.txt" },
+          { type: "future_block", payload: { value: 42 } },
+          { type: "tool_result", content: "missing tool_use_id result" },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "assistant anthropic text" },
+          { type: "server_tool_use", id: "srv_1", name: "web_search", input: { query: "tracevane" } },
+          { type: "mcp_tool_result", content: "assistant missing mcp id" },
+        ],
+      },
+    ],
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-unknown-request-to-chat",
+          name: "Anthropic Unknown Request To Chat",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-unknown-request-to-chat.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-unknown-request-to-chat" },
+        setActiveScopes: ["claude-code"],
+      });
+      const chat = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: anthropicBody,
+      });
+      assert.equal(chat.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-unknown-request-to-responses",
+          name: "Anthropic Unknown Request To Responses",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-unknown-request-to-responses.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-unknown-request-to-responses" },
+        setActiveScopes: ["claude-code"],
+      });
+      const responses = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: anthropicBody,
+      });
+      assert.equal(responses.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-unknown-request-to-chat.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].body.messages.some((message) => message.role === "tool"), false);
+  const chatMessages = JSON.stringify(upstreamCalls[0].body.messages);
+  assert.match(chatMessages, /keep anthropic text/);
+  assert.match(chatMessages, /assistant anthropic text/);
+  assert.match(chatMessages, /Anthropic Messages unrecognized content block for Chat/);
+  assert.match(chatMessages, /future_block/);
+  assert.match(chatMessages, /server_tool_use/);
+  assert.match(chatMessages, /Anthropic Messages malformed mcp_tool_result for Chat/);
+  assert.match(chatMessages, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
+  assert.match(chatMessages, /missing tool_use_id result/);
+
+  assert.equal(upstreamCalls[1].url, "https://anthropic-unknown-request-to-responses.example.test/v1/responses");
+  const responsesInput = JSON.stringify(upstreamCalls[1].body.input);
+  assert.match(responsesInput, /keep anthropic text/);
+  assert.match(responsesInput, /assistant anthropic text/);
+  assert.match(responsesInput, /Anthropic Messages unrecognized content block for Chat/);
+  assert.match(responsesInput, /future_block/);
+  assert.match(responsesInput, /server_tool_use/);
+  assert.match(responsesInput, /Anthropic Messages malformed mcp_tool_result for Chat/);
+  assert.match(responsesInput, /Anthropic Messages tool_result missing tool_use_id for Chat Completions/);
+  assert.match(responsesInput, /missing tool_use_id result/);
+  assert.equal(JSON.stringify(upstreamCalls[1].body.input).includes('"type":"tool_result"'), false);
+});
+
 test("model gateway preserves unknown responses input parts before Chat and Anthropic providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

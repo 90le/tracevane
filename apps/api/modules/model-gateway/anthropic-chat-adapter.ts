@@ -1030,7 +1030,11 @@ function mapAnthropicMessageToChat(message: unknown, options: AnthropicChatReque
       .map(anthropicMalformedToolUseToChatText)
       .filter(Boolean)
       .join("\n");
-    const messageText = [text, malformedToolUseText].filter(Boolean).join("\n");
+    const unknownContentBlockText = blocks
+      .map(anthropicUnknownContentBlockToChatText)
+      .filter(Boolean)
+      .join("\n");
+    const messageText = [text, malformedToolUseText, unknownContentBlockText].filter(Boolean).join("\n");
     const chatMessage: JsonRecord = {
       role,
       content: messageText || (toolCalls.length ? null : ""),
@@ -1110,17 +1114,18 @@ function anthropicBlocksToChatContent(blocks: JsonRecord[]): unknown {
     }
     if (block.type === "image") {
       const imageUrl = anthropicImageSourceToChatImageUrl(block.source);
-      return imageUrl ? [{ type: "image_url", image_url: { url: imageUrl } }] : [];
+      if (imageUrl) return [{ type: "image_url", image_url: { url: imageUrl } }];
+      return [{ type: "text", text: anthropicUnknownContentBlockToChatText(block) }];
     }
     if (block.type === "document") {
       const filePart = anthropicDocumentToChatFilePart(block);
-      return filePart ? [filePart] : [];
+      return filePart ? [filePart] : [{ type: "text", text: anthropicUnknownContentBlockToChatText(block) }];
     }
     if (block.type === "container_upload") {
       const filePart = anthropicContainerUploadToChatFilePart(block);
-      return filePart ? [filePart] : [];
+      return filePart ? [filePart] : [{ type: "text", text: anthropicUnknownContentBlockToChatText(block) }];
     }
-    const text = anthropicContentToText(block);
+    const text = anthropicContentToText(block) || anthropicUnknownContentBlockToChatText(block);
     return text ? [{ type: "text", text }] : [];
   });
   if (!parts.length) return "";
