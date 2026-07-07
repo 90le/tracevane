@@ -48,6 +48,7 @@ interface FunctionCallState {
   callId: string;
   name: string;
   arguments: string;
+  status: string | null;
   custom: boolean;
   reasoningContent: string | null;
 }
@@ -56,6 +57,7 @@ interface PendingFunctionCallDelta {
   id?: string;
   name?: string;
   arguments: string;
+  status?: string;
 }
 
 interface ReasoningState {
@@ -363,13 +365,15 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
   const id = stringOrNull(toolCallDelta.id) || undefined;
   const name = stringOrNull(fn.name) || undefined;
   const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
+  const status = chatToolCallFinalStatus(toolCallDelta.status);
   const existing = state.functionCalls.get(sourceIndex);
   let pending = state.pendingFunctionCallDeltas.get(sourceIndex);
   if (!existing) {
-    if (id || name || argumentsDelta) {
+    if (id || name || argumentsDelta || status) {
       pending = pending || { arguments: "" };
       if (id) pending.id = id;
       if (name) pending.name = name;
+      if (status) pending.status = status;
       pending.arguments += argumentsDelta;
       state.pendingFunctionCallDeltas.set(sourceIndex, pending);
     }
@@ -386,6 +390,7 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
   if (state.reasoning.text.trim() && !tool.reasoningContent) {
     tool.reasoningContent = state.reasoning.text.trim();
   }
+  if (status || pending?.status) tool.status = status || pending?.status || null;
   ensureFunctionCallAdded(tool, res);
 
   const argumentsToEmit = existing
@@ -437,6 +442,7 @@ function ensureFunctionCall(
       callId,
       name: patch.name,
       arguments: "",
+      status: null,
       custom: state.customToolNames.has(patch.name),
       reasoningContent: null,
     };
@@ -547,11 +553,11 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
       writeSseEvent(res, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: tool.outputIndex,
-        item: functionCallItem(tool, "completed"),
+        item: functionCallItem(tool, functionCallFinalStatus(tool)),
       });
       tool.done = true;
     }
-    output.push(functionCallItem(tool, "completed"));
+    output.push(functionCallItem(tool, functionCallFinalStatus(tool)));
   }
 
   output.sort((a, b) => {
@@ -582,11 +588,12 @@ function flushPendingFunctionCallDeltasAsText(state: StreamingState, res: http.S
 }
 
 function pendingFunctionCallDeltaToText(index: number, pending: PendingFunctionCallDelta): string {
-  if (!pending.id && !pending.name && !pending.arguments) return "";
+  if (!pending.id && !pending.name && !pending.arguments && !pending.status) return "";
   return `OpenAI Chat streaming orphan tool_call delta for Responses at index ${index}: ${stringifyCompact({
     id: pending.id,
     name: pending.name,
     arguments: pending.arguments,
+    status: pending.status,
   })}`;
 }
 
@@ -643,7 +650,7 @@ function currentOutputItems(state: StreamingState): JsonRecord[] {
     });
   }
   for (const tool of [...state.functionCalls.values()].sort((a, b) => a.outputIndex - b.outputIndex)) {
-    output.push(functionCallItem(tool, tool.done ? "completed" : "in_progress"));
+    output.push(functionCallItem(tool, tool.done ? functionCallFinalStatus(tool) : "in_progress"));
   }
   return output;
 }
@@ -682,6 +689,16 @@ function customToolInputFromChatArguments(value: string): string {
     // Fall through to raw text.
   }
   return value;
+}
+
+function chatToolCallFinalStatus(status: unknown): string | null {
+  const value = stringOrNull(status);
+  if (!value || value === "completed" || value === "in_progress") return null;
+  return value;
+}
+
+function functionCallFinalStatus(tool: FunctionCallState): string {
+  return tool.status || "completed";
 }
 
 function reasoningItem(state: StreamingState, status: string): JsonRecord {

@@ -19017,7 +19017,7 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
       "",
       "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_lookup\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"query\\\":\"}}]}}]}",
       "",
-      "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":3,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":2}}}",
+      "data: {\"id\":\"chatcmpl_tool_stream\",\"created\":1710000022,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"status\":\"incomplete\",\"function\":{\"arguments\":\"\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":3,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":2}}}",
       "",
       "data: [DONE]",
       "",
@@ -19062,7 +19062,7 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
       assert.deepEqual(events[6].data.item, {
         id: "fc_call_lookup",
         type: "function_call",
-        status: "completed",
+        status: "incomplete",
         call_id: "call_lookup",
         name: "lookup",
         arguments: "{\"query\":\"docs\"}",
@@ -19072,7 +19072,7 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
       assert.deepEqual(completed.output, [{
         id: "fc_call_lookup",
         type: "function_call",
-        status: "completed",
+        status: "incomplete",
         call_id: "call_lookup",
         name: "lookup",
         arguments: "{\"query\":\"docs\"}",
