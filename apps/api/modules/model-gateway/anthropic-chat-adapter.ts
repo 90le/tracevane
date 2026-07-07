@@ -194,7 +194,7 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
 
   const messages = mapAnthropicMessagesToChat(request, options);
   if (!options.preserveMcpServers) {
-    messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers));
+    messages.push(...mapAnthropicMcpServersToChatContextMessages(request.mcp_servers, request.tools));
   }
   const chatRequest: JsonRecord = {
     model,
@@ -1176,39 +1176,49 @@ function mapAnthropicMcpServersToResponsesTools(mcpServers: unknown, mcpToolsets
   });
 }
 
-function mapAnthropicMcpServersToChatContextMessages(mcpServers: unknown): JsonRecord[] {
-  const contexts = mapAnthropicMcpServersToChatContext(mcpServers);
+function mapAnthropicMcpServersToChatContextMessages(mcpServers: unknown, mcpToolsetsSource?: unknown): JsonRecord[] {
+  const contexts = mapAnthropicMcpServersToChatContext(mcpServers, mcpToolsetsSource);
   return contexts.length ? [{ role: "user", content: contexts.join("\n") }] : [];
 }
 
-function mapAnthropicMcpServersToChatContext(mcpServers: unknown): string[] {
+function mapAnthropicMcpServersToChatContext(mcpServers: unknown, mcpToolsetsSource?: unknown): string[] {
   if (!Array.isArray(mcpServers)) return [];
+  const mcpToolsets = anthropicMcpToolsetsByServerName(mcpToolsetsSource);
+  const hasToolsets = mcpToolsets.size > 0;
   return mcpServers.flatMap((server) => {
     if (!isRecord(server)) return [];
     if (server.type !== "url") return [];
     const toolConfiguration = isRecord(server.tool_configuration) ? server.tool_configuration : null;
-    if (toolConfiguration?.enabled === false) return [];
     const serverLabel = stringOrNull(server.name) || stringOrNull(server.server_label);
     const serverUrl = stringOrNull(server.url) || stringOrNull(server.server_url);
     if (!serverLabel || !serverUrl) return [];
+    const mcpToolset = mcpToolsets.get(serverLabel) || null;
+    if (hasToolsets && !mcpToolset) return [];
+    if (!mcpToolset && toolConfiguration?.enabled === false) return [];
+    const toolsetDefaultConfig = isRecord(mcpToolset?.default_config) ? mcpToolset.default_config : null;
 
     const details = [`server_label=${serverLabel}`, `server_url=${serverUrl}`];
     const description = stringOrNull(server.description) || stringOrNull(server.server_description);
     if (description) details.push(`description=${description}`);
-    const allowedToolsSource = Array.isArray(toolConfiguration?.allowed_tools)
-      ? toolConfiguration.allowed_tools
-      : Array.isArray(server.allowed_tools)
-        ? server.allowed_tools
-        : [];
-    const allowedTools = allowedToolsSource.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    const allowedTools = mcpToolset
+      ? anthropicMcpToolsetAllowedTools(mcpToolset)
+      : anthropicStringArray(Array.isArray(toolConfiguration?.allowed_tools)
+        ? toolConfiguration.allowed_tools
+        : Array.isArray(server.allowed_tools)
+          ? server.allowed_tools
+          : []);
     if (allowedTools.length) details.push(`allowed_tools=${allowedTools.join(",")}`);
+    const disabledTools = mcpToolset ? anthropicMcpToolsetDisabledTools(mcpToolset) : [];
+    if (disabledTools.length) details.push(`disabled_tools=${disabledTools.join(",")}`);
     const requireApproval = server.require_approval ?? toolConfiguration?.require_approval;
     if (requireApproval !== undefined) details.push(`require_approval=${stringifyCompact(requireApproval)}`);
-    const deferLoading = typeof server.defer_loading === "boolean"
-      ? server.defer_loading
-      : typeof toolConfiguration?.defer_loading === "boolean"
-        ? toolConfiguration.defer_loading
-        : undefined;
+    const deferLoading = typeof toolsetDefaultConfig?.defer_loading === "boolean"
+      ? toolsetDefaultConfig.defer_loading
+      : typeof server.defer_loading === "boolean"
+        ? server.defer_loading
+        : typeof toolConfiguration?.defer_loading === "boolean"
+          ? toolConfiguration.defer_loading
+          : undefined;
     if (deferLoading !== undefined) details.push(`defer_loading=${String(deferLoading)}`);
     return [`[Anthropic MCP server ${details.join(" ")}]`];
   });
@@ -1250,6 +1260,16 @@ function anthropicMcpToolsetAllowedTools(toolset: JsonRecord): string[] {
   if (defaultConfig?.enabled !== false || !configs) return [];
   return Object.entries(configs)
     .filter(([, config]) => isRecord(config) && config.enabled === true)
+    .map(([name]) => name)
+    .filter((name) => name.length > 0);
+}
+
+function anthropicMcpToolsetDisabledTools(toolset: JsonRecord): string[] {
+  const defaultConfig = isRecord(toolset.default_config) ? toolset.default_config : null;
+  const configs = isRecord(toolset.configs) ? toolset.configs : null;
+  if (defaultConfig?.enabled === false || !configs) return [];
+  return Object.entries(configs)
+    .filter(([, config]) => isRecord(config) && config.enabled === false)
     .map(([name]) => name)
     .filter((name) => name.length > 0);
 }
