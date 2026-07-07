@@ -438,7 +438,10 @@ function mapResponsesInputItemToChatMessage(
     if (role === "assistant" && reasoningContent) message.reasoning_content = reasoningContent;
     const toolCallId = stringOrNull(item.tool_call_id) || stringOrNull(item.call_id);
     if (role === "tool" && toolCallId) message.tool_call_id = toolCallId;
-    if (role === "tool" && !toolCallId) return null;
+    if (role === "tool" && !toolCallId) return {
+      role: "user",
+      content: `OpenAI Responses tool message missing tool_call_id for Chat Completions: ${stringifyCompact(item)}`,
+    };
     return message;
   }
 
@@ -681,8 +684,12 @@ function contentPartToChatParts(part: unknown): JsonRecord[] {
   if (filePart) return [filePart];
   const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
   if (text) return [{ type: "text", text }];
-  if (Array.isArray(part.content)) return contentToChatParts(part.content);
-  return [];
+  if (Array.isArray(part.content)) {
+    const nested = contentToChatParts(part.content);
+    if (nested.length) return nested;
+  }
+  const fallback = responsesContentPartFallbackToChatText(part);
+  return fallback ? [{ type: "text", text: fallback }] : [];
 }
 
 function imageUrlFromResponsesPart(part: JsonRecord): string | null {
@@ -724,8 +731,16 @@ function contentPartToText(part: unknown): string {
   if (fileReference) return fileReference;
   const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
   if (text) return text;
-  if (Array.isArray(part.content)) return contentToText(part.content);
-  return "";
+  if (Array.isArray(part.content)) {
+    const nested = contentToText(part.content);
+    if (nested) return nested;
+  }
+  return responsesContentPartFallbackToChatText(part);
+}
+
+function responsesContentPartFallbackToChatText(part: JsonRecord): string {
+  const type = stringOrNull(part.type);
+  return type ? `OpenAI Responses unrecognized content part for Chat Completions: ${stringifyCompact(part)}` : "";
 }
 
 function mapResponsesToolsToChat(tools: unknown): JsonRecord[] {
