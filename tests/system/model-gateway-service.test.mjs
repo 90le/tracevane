@@ -1684,7 +1684,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           "anthropic-version": "2023-06-01",
         },
         body: {
-          model: "gpt-5.5",
+          model: "gpt-5.4",
           max_tokens: 128,
           metadata: {
             user_id: "claude-code-cli",
@@ -14160,6 +14160,21 @@ test("model gateway adapts codex responses through native anthropic messages pro
               { type: "input_text", text: "Plan the task.\n" },
               { type: "input_file", file_url: "https://example.test/brief.pdf", filename: "brief.pdf" },
             ],
+          }, {
+            type: "function_call",
+            id: "fc_call_failed_lookup",
+            call_id: "call_failed_lookup",
+            status: "completed",
+            name: "lookup",
+            arguments: "{\"query\":\"docs\"}",
+          }, {
+            type: "function_call_output",
+            call_id: "call_failed_lookup",
+            output: "lookup failed",
+            status: "incomplete",
+          }, {
+            role: "user",
+            content: [{ type: "input_text", text: "Continue after failed lookup." }],
           }],
           tools: [{
             type: "function",
@@ -14299,6 +14314,25 @@ test("model gateway adapts codex responses through native anthropic messages pro
           title: "brief.pdf",
         },
       ],
+    }, {
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: "call_failed_lookup",
+        name: "lookup",
+        input: { query: "docs" },
+      }],
+    }, {
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: "call_failed_lookup",
+        is_error: true,
+        content: "lookup failed",
+      }],
+    }, {
+      role: "user",
+      content: "Continue after failed lookup.",
     }, {
       role: "user",
       content: "OpenAI Responses request controls preserved for Chat: previous_response_id=resp_anthropic_previous",
@@ -19279,6 +19313,7 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
               type: "function_call_output",
               call_id: "call_inline",
               output: "{ \"ok\": true, \"value\": 1 }",
+              status: "incomplete",
             },
           ],
           tools: [{
@@ -19332,6 +19367,7 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
       role: "tool",
       content: "{\"ok\":true,\"value\":1}",
       tool_call_id: "call_inline",
+      is_error: true,
     },
   ]);
 });
@@ -19419,6 +19455,7 @@ test("model gateway restores codex custom tool-call history for follow-up chat a
               type: "custom_tool_call_output",
               call_id: "call_patch",
               output: "Done",
+              status: "incomplete",
             },
             {
               role: "user",
@@ -19458,6 +19495,7 @@ test("model gateway restores codex custom tool-call history for follow-up chat a
       role: "tool",
       content: "Done",
       tool_call_id: "call_patch",
+      is_error: true,
     },
     {
       role: "user",

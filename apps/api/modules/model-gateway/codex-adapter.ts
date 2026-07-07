@@ -467,11 +467,13 @@ function mapResponsesInputItemToChatMessage(
     const output = options.preserveToolOutputContent
       ? contentToChatContent(item.output, "user")
       : canonicalizeJsonStringIfParseable(responsesToolOutputToChatContent(item.output));
-    return {
+    const message: JsonRecord = {
       role: "tool",
       content: output,
       tool_call_id: toolCallId,
     };
+    if (item.status === "incomplete") message.is_error = true;
+    return message;
   }
 
   if (isResponsesBuiltinToolItem(item)) {
