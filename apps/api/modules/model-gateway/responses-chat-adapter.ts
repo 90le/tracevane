@@ -87,6 +87,7 @@ export function adaptChatCompletionRequestToResponses(
   // top_logprobs.
   copyScalarFields(request, responsesRequest, [
     "background",
+    "context_management",
     "conversation",
     "include",
     "max_tool_calls",

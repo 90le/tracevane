@@ -37,6 +37,7 @@ export interface ChatAnthropicRequestAdapterOptions {
 }
 
 export interface AnthropicChatRequestAdapterOptions {
+  preserveContextManagement?: boolean;
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
   preserveServiceTier?: boolean;
@@ -213,6 +214,9 @@ export function adaptAnthropicMessagesRequestToChatCompletion(
   if (options.preserveServiceTier) {
     const serviceTier = mapAnthropicServiceTierToOpenAI(request.service_tier);
     if (serviceTier) chatRequest.service_tier = serviceTier;
+  }
+  if (options.preserveContextManagement && request.context_management !== undefined) {
+    chatRequest.context_management = request.context_management;
   }
 
   const tools = mapAnthropicToolsToChat(request.tools);

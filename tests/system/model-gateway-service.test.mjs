@@ -9545,6 +9545,9 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
         body: {
           model: "gpt-5.4",
           max_tokens: 256,
+          context_management: {
+            edits: [{ type: "clear_tool_uses_20250919" }],
+          },
           mcp_servers: [
             {
               type: "url",
@@ -9588,6 +9591,9 @@ test("model gateway preserves Anthropic MCP blocks through Responses provider", 
   assert.equal(upstreamCalls.length, 1);
   assert.equal(upstreamCalls[0].url, "https://responses-mcp-bridge.example.test/v1/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-mcp-bridge-secret");
+  assert.deepEqual(upstreamCalls[0].body.context_management, {
+    edits: [{ type: "clear_tool_uses_20250919" }],
+  });
   assert.deepEqual(upstreamCalls[0].body.tools, [{
     type: "mcp",
     server_label: "repo-tools",
