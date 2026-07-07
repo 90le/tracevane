@@ -419,6 +419,8 @@ function appendResponsesInputMessages(
       continue;
     }
     if (isRecord(item) && isResponsesToolCallItem(item)) {
+      const metadataText = responsesOutputItemMetadataToChatText(item);
+      if (metadataText) messages.push({ role: "user", content: metadataText });
       const toolCall = mapResponsesToolCallToChatToolCall(item);
       if (toolCall) pendingToolCalls.push(toolCall);
       continue;
@@ -437,6 +439,8 @@ function appendResponsesInputMessages(
         pendingReasoningText = "";
       }
       messages.push(message);
+      const metadataText = responsesOutputItemMetadataToChatText(item);
+      if (metadataText) messages.push({ role: "user", content: metadataText });
     }
   }
   flushPendingToolCalls(messages, pendingToolCalls, pendingReasoningText, pendingReasoningItems);
@@ -489,6 +493,17 @@ function mapResponsesInputItemToChatMessage(
 
   const text = contentToText(item);
   return text ? { role: "user", content: text } : null;
+}
+
+function responsesOutputItemMetadataToChatText(item: unknown): string {
+  if (!isRecord(item) || item.phase === undefined) return "";
+  const fields = ["type", "id", "call_id", "status", "phase"] as const;
+  const notes = fields
+    .filter((field) => item[field] !== undefined)
+    .map((field) => `${field}=${stringifyCompact(item[field])}`);
+  return notes.length
+    ? `OpenAI Responses output item metadata preserved for Chat adapters: ${notes.join(" ")}`
+    : "";
 }
 
 function responsesReasoningItemToText(item: JsonRecord): string {
@@ -1015,6 +1030,7 @@ function mapChatToolCallToResponses(
       name,
       input: customToolInputFromChatArguments(fn.arguments),
     };
+    if (toolCall.phase !== undefined) item.phase = toolCall.phase;
     if (reasoningText) item.reasoning_content = reasoningText;
     return item;
   }
@@ -1026,6 +1042,7 @@ function mapChatToolCallToResponses(
     name,
     arguments: stringOrNull(fn.arguments) || "{}",
   };
+  if (toolCall.phase !== undefined) item.phase = toolCall.phase;
   if (reasoningText) item.reasoning_content = reasoningText;
   return item;
 }

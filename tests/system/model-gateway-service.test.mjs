@@ -15661,6 +15661,23 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
           { type: "future_input", payload: { value: 42 } },
         ],
       },
+      {
+        id: "msg_phase_preamble",
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        phase: "preamble",
+        content: [{ type: "output_text", text: "phase preamble" }],
+      },
+      {
+        id: "fc_phase_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_phase_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+        phase: "tool_call",
+      },
       { role: "tool", content: "orphan responses tool message" },
     ],
   };
@@ -15717,6 +15734,12 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
   assert.match(chatMessages, /future_input/);
   assert.match(chatMessages, /OpenAI Responses tool message missing tool_call_id for Chat Completions/);
   assert.match(chatMessages, /orphan responses tool message/);
+  assert.match(chatMessages, /OpenAI Responses output item metadata preserved for Chat adapters/);
+  assert.match(chatMessages, /id=msg_phase_preamble/);
+  assert.match(chatMessages, /phase=preamble/);
+  assert.match(chatMessages, /id=fc_phase_lookup/);
+  assert.match(chatMessages, /call_id=call_phase_lookup/);
+  assert.match(chatMessages, /phase=tool_call/);
 
   assert.equal(upstreamCalls[1].url, "https://responses-unknown-input-to-anthropic.example.test/v1/messages");
   const anthropicMessages = JSON.stringify(upstreamCalls[1].body.messages);
@@ -15726,6 +15749,12 @@ test("model gateway preserves unknown responses input parts before Chat and Anth
   assert.match(anthropicMessages, /future_input/);
   assert.match(anthropicMessages, /OpenAI Responses tool message missing tool_call_id for Chat Completions/);
   assert.match(anthropicMessages, /orphan responses tool message/);
+  assert.match(anthropicMessages, /OpenAI Responses output item metadata preserved for Chat adapters/);
+  assert.match(anthropicMessages, /id=msg_phase_preamble/);
+  assert.match(anthropicMessages, /phase=preamble/);
+  assert.match(anthropicMessages, /id=fc_phase_lookup/);
+  assert.match(anthropicMessages, /call_id=call_phase_lookup/);
+  assert.match(anthropicMessages, /phase=tool_call/);
   assert.equal(upstreamCalls[1].body.messages.some((message) => (
     Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result")
   )), false);
