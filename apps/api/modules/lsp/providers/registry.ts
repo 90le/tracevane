@@ -202,6 +202,8 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
     languages: [...GO_LANGUAGES],
     capabilities: {
       diagnostics: true,
+      hover: true,
+      definition: true,
     },
   },
   {

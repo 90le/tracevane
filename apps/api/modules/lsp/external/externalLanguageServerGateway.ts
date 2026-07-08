@@ -144,7 +144,11 @@ export class ExternalLanguageServerGateway {
         rootUri: `file://${cwd}`,
         capabilities: {
           workspace: { configuration: true },
-          textDocument: { diagnostic: { dynamicRegistration: false } },
+          textDocument: {
+            diagnostic: { dynamicRegistration: false },
+            hover: { dynamicRegistration: false, contentFormat: ["markdown", "plaintext"] },
+            definition: { dynamicRegistration: false, linkSupport: true },
+          },
         },
       }, budgets.initializeMs, "initialize_timeout");
       this.notify(profile.id, "initialized", {});

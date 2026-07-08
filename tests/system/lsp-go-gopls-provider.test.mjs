@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 import { createLspService } from "../../dist/apps/api/modules/lsp/service.js";
 import {
   createGoGoplsProfile,
+  defineWithGoGopls,
   diagnoseWithGoGopls,
+  hoverWithGoGopls,
 } from "../../dist/apps/api/modules/lsp/toolchain/goGoplsProvider.js";
 import { findGoWorkspaceMarker } from "../../dist/apps/api/modules/lsp/toolchain/goWorkspace.js";
 
@@ -84,10 +86,18 @@ test("Go diagnostics remain skipped until trusted config and workspace marker ex
   const service = createLspService(config);
   const requestPath = filesystemRootRelative(file);
 
-  const unconfigured = await service.diagnoseDocument({ rootId: "openclaw-root", path: requestPath, language: "go", content: fs.readFileSync(file, "utf8") });
+  const content = fs.readFileSync(file, "utf8");
+  const unconfigured = await service.diagnoseDocument({ rootId: "openclaw-root", path: requestPath, language: "go", content });
   assert.equal(unconfigured.provider, "go");
   assert.deepEqual(unconfigured.diagnostics, []);
 
+  const unconfiguredHover = await service.hoverDocument({ rootId: "openclaw-root", path: requestPath, language: "go", content, line: 1, column: 1 });
+  assert.equal(unconfiguredHover.provider, "go");
+  assert.deepEqual(unconfiguredHover.contents, []);
+
+  const unconfiguredDefinition = await service.defineDocument({ rootId: "openclaw-root", path: requestPath, language: "go", content, line: 1, column: 1 });
+  assert.equal(unconfiguredDefinition.provider, "go");
+  assert.deepEqual(unconfiguredDefinition.locations, []);
 
   writeConfig(config, {
     lsp: { toolchains: { go: { gopls: { enabled: true, trusted: true } } } },
@@ -142,4 +152,51 @@ test("Go gopls proof can run through the guarded stdio gateway with an allowlist
   assert.equal(result.marker?.kind, "go.mod");
   assert.equal(result.diagnostics.length, 1);
   assert.equal(result.diagnostics[0].message, "mock diagnostic");
+});
+
+
+test("Go gopls hover and definition proof can run through the guarded stdio gateway", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  trustGoGopls(config);
+  fs.writeFileSync(path.join(root, "go.mod"), "module example.com/tracevane\ngo 1.22\n", "utf8");
+  const content = "package main\nfunc main() {\n}\n";
+  const file = createGoFile(root, "main.go", content);
+  const profile = createGoGoplsProfile({ command: process.execPath, args: [mockServerPath] });
+  const probe = async () => ({ ok: true, status: "configured", versionSummary: "gopls mock v0.0.0", reason: null });
+
+  const hover = await hoverWithGoGopls({
+    config,
+    rootRealPath: root,
+    absolutePath: file,
+    content,
+    version: 1,
+    line: 2,
+    column: 6,
+    profile,
+    probe,
+  });
+
+  assert.equal(hover.skipped, false);
+  assert.equal(hover.status, "configured");
+  assert.match(hover.contents.join("\n"), /mock hover/);
+  assert.deepEqual(hover.range, { startLine: 2, startColumn: 6, endLine: 2, endColumn: 10 });
+
+  const definition = await defineWithGoGopls({
+    config,
+    rootRealPath: root,
+    absolutePath: file,
+    content,
+    version: 1,
+    line: 2,
+    column: 6,
+    profile,
+    probe,
+  });
+
+  assert.equal(definition.skipped, false);
+  assert.equal(definition.status, "configured");
+  assert.equal(definition.locations.length, 1);
+  assert.equal(definition.locations[0].absolutePath, file);
+  assert.deepEqual(definition.locations[0].range, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 13 });
 });

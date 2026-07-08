@@ -38,7 +38,7 @@ function parse() {
 
 function handle(message) {
   if (message.method === "initialize") {
-    respond(message.id, { capabilities: { textDocumentSync: 1, hoverProvider: true } });
+    respond(message.id, { capabilities: { textDocumentSync: 1, hoverProvider: true, definitionProvider: true } });
     return;
   }
   if (message.method === "initialized") return;
@@ -75,6 +75,21 @@ function handle(message) {
         diagnostics: [{ message: "mock diagnostic", severity: 2, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } } }],
       },
     });
+    return;
+  }
+  if (message.method === "textDocument/hover") {
+    respond(message.id, {
+      contents: { kind: "markdown", value: "**mock hover** for Go symbol" },
+      range: { start: { line: 1, character: 5 }, end: { line: 1, character: 9 } },
+    });
+    return;
+  }
+  if (message.method === "textDocument/definition") {
+    const uri = message.params?.textDocument?.uri ?? "file:///mock.go";
+    respond(message.id, [{
+      uri,
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 12 } },
+    }]);
     return;
   }
   if (Object.prototype.hasOwnProperty.call(message, "id")) respond(message.id, null);
