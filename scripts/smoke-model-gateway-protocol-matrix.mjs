@@ -12,6 +12,7 @@ const DEFAULT_GLM_PROVIDER = "glm";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_CODEX_PROVIDER = "codex-account";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const DEFAULT_CODEX_MODELS = ["gpt-5.4", "gpt-5.5", "gpt-5.4-mini"];
 const DEFAULT_CODEX_SCOPES = ["codex", "claude-code", "opencode"];
 
 const execFileAsync = promisify(execFile);
@@ -25,7 +26,9 @@ function parseArgs(argv) {
     glmModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_MODEL || process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_MODEL || DEFAULT_GLM_MODEL,
     codexProvider: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || DEFAULT_CODEX_PROVIDER,
     codexModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || DEFAULT_CODEX_MODEL,
+    codexModelExplicit: Boolean(process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL),
     codexModels: parseCsv(process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODELS || ""),
+    codexModelsExplicit: Boolean(process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODELS),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     stageTimeoutMs: 0,
     stageRetries: nonNegativeInt(process.env.TRACEVANE_GATEWAY_PROTOCOL_STAGE_RETRIES, 0),
@@ -42,10 +45,22 @@ function parseArgs(argv) {
     else if (arg.startsWith("--glm-model=")) options.glmModel = arg.slice("--glm-model=".length);
     else if (arg === "--codex-provider") options.codexProvider = argv[++index] || options.codexProvider;
     else if (arg.startsWith("--codex-provider=")) options.codexProvider = arg.slice("--codex-provider=".length);
-    else if (arg === "--codex-model") options.codexModel = argv[++index] || options.codexModel;
-    else if (arg.startsWith("--codex-model=")) options.codexModel = arg.slice("--codex-model=".length);
-    else if (arg === "--codex-models") options.codexModels = parseCsv(argv[++index] || "");
-    else if (arg.startsWith("--codex-models=")) options.codexModels = parseCsv(arg.slice("--codex-models=".length));
+    else if (arg === "--codex-model") {
+      options.codexModel = argv[++index] || options.codexModel;
+      options.codexModelExplicit = true;
+    }
+    else if (arg.startsWith("--codex-model=")) {
+      options.codexModel = arg.slice("--codex-model=".length);
+      options.codexModelExplicit = true;
+    }
+    else if (arg === "--codex-models") {
+      options.codexModels = parseCsv(argv[++index] || "");
+      options.codexModelsExplicit = true;
+    }
+    else if (arg.startsWith("--codex-models=")) {
+      options.codexModels = parseCsv(arg.slice("--codex-models=".length));
+      options.codexModelsExplicit = true;
+    }
     else if (arg === "--skip-glm") options.skipGlm = true;
     else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(argv[++index], DEFAULT_TIMEOUT_MS);
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
@@ -66,7 +81,11 @@ function parseArgs(argv) {
   options.glmModel = options.glmModel.trim();
   options.codexProvider = options.codexProvider.trim();
   options.codexModel = options.codexModel.trim();
-  options.codexModels = options.codexModels.length ? Array.from(new Set(options.codexModels.map((item) => item.trim()).filter(Boolean))) : [options.codexModel];
+  options.codexModels = options.codexModels.length
+    ? Array.from(new Set(options.codexModels.map((item) => item.trim()).filter(Boolean)))
+    : options.codexModelExplicit && !options.codexModelsExplicit
+      ? [options.codexModel]
+      : DEFAULT_CODEX_MODELS;
   if (!options.glmProvider) throw new Error("--glm-provider is required.");
   if (!options.glmModel) throw new Error("--glm-model is required.");
   if (!options.codexProvider) throw new Error("--codex-provider is required.");
@@ -107,8 +126,8 @@ Options:
   --glm-provider <id>     default: ${DEFAULT_GLM_PROVIDER}
   --glm-model <id>        default: ${DEFAULT_GLM_MODEL}
   --codex-provider <id>   default: ${DEFAULT_CODEX_PROVIDER}
-  --codex-model <id>      default: ${DEFAULT_CODEX_MODEL}
-  --codex-models <csv>    Codex account model matrix; default: --codex-model only
+  --codex-model <id>      single Codex account model override; default primary: ${DEFAULT_CODEX_MODEL}
+  --codex-models <csv>    Codex account model matrix; default: ${DEFAULT_CODEX_MODELS.join(",")}
   --skip-glm             run only Codex account matrix stages
   --timeout-ms <n>        per active-route smoke timeout
   --stage-timeout-ms <n>  per child process watchdog; default: max(${MIN_STAGE_TIMEOUT_MS}, --timeout-ms + ${STAGE_TIMEOUT_GRACE_MS})

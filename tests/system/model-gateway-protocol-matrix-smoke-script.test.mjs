@@ -212,12 +212,22 @@ test("model gateway protocol matrix proves GLM native protocols and Codex accoun
     assert.deepEqual(parsed.protocolProofs.map((proof) => [proof.id, proof.ok, proof.provider, proof.routeId, proof.endpointProfile]), [
       ["anthropic_messages", true, "glm", "anthropic_messages", "coding-anthropic"],
       ["openai_chat_completions", true, "glm", "openai_chat_completions", "coding-chat"],
+      ["codex_account_responses:gpt-5.4", true, "codex-account", "openai_responses", null],
+      ["codex_account_claude_code:gpt-5.4", true, "codex-account", "anthropic_messages", null],
+      ["codex_account_opencode:gpt-5.4", true, "codex-account", "openai_chat_completions", null],
       ["codex_account_responses:gpt-5.5", true, "codex-account", "openai_responses", null],
       ["codex_account_claude_code:gpt-5.5", true, "codex-account", "anthropic_messages", null],
       ["codex_account_opencode:gpt-5.5", true, "codex-account", "openai_chat_completions", null],
+      ["codex_account_responses:gpt-5.4-mini", true, "codex-account", "openai_responses", null],
+      ["codex_account_claude_code:gpt-5.4-mini", true, "codex-account", "anthropic_messages", null],
+      ["codex_account_opencode:gpt-5.4-mini", true, "codex-account", "openai_chat_completions", null],
     ]);
     assert.deepEqual(gateway.activeProviders, {});
-    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 10);
+    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 22);
+    for (const model of ["gpt-5.4", "gpt-5.5", "gpt-5.4-mini"]) {
+      const requestsForModel = gateway.requests.filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.model === model);
+      assert.equal(requestsForModel.length, 33);
+    }
     const codexSmokeRequests = gateway.requests.filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.model === "gpt-5.5");
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "claude-code" && request.body.toolSmoke === true).length, 2);
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "opencode" && request.body.toolResultSmoke === true).length, 2);
@@ -331,6 +341,7 @@ test("model gateway protocol matrix bounds slow child stages and restores routes
       execFileAsync(process.execPath, [
         scriptPath,
         "--endpoint", gateway.endpoint,
+        "--codex-model", "gpt-5.5",
         "--timeout-ms", "250",
         "--stage-timeout-ms", "5000",
         "--json",
@@ -373,6 +384,7 @@ test("model gateway protocol matrix stage watchdog lets the child restore active
       execFileAsync(process.execPath, [
         scriptPath,
         "--endpoint", gateway.endpoint,
+        "--codex-model", "gpt-5.5",
         "--timeout-ms", "5000",
         "--stage-timeout-ms", "500",
         "--json",
