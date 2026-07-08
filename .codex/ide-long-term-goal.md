@@ -3,7 +3,7 @@
 Status: Active execution contract
 Created: 2026-07-08
 Primary docs: `../docs/ide-code-editor-solution/15-远程代码工作台产品聚焦与长期执行机制.md`
-Current next stage: P0 Remote Code Editing Mainline Audit
+Current next stage: P0-B Mainline Gap Audit
 
 ## Goal prompt
 
@@ -44,7 +44,7 @@ For every stage:
 
 ## Current queue
 
-1. P0 Remote Code Editing Mainline Audit: audit end-to-end open/browse/edit/save/conflict/search/problems/git/provider-status behavior from a real remote project workflow.
+1. P0-B Mainline Gap Audit: inspect real/near-real workspace gaps not covered by the P0-A automated baseline.
 2. P1 Mainline Hardening: fix release blockers discovered by P0 with targeted smokes.
 3. P2 UX Simplification: remove or park UI that distracts from the mainline.
 4. Parking-lot review: revisit Go/Rust/clangd/Java deeper interactions only after the remote-code mainline is stable.
@@ -56,3 +56,5 @@ Do not mark the long-term goal complete until Tracevane has a verified release-c
 ## Completed decision updates
 
 - 2026-07-08: M13-I completed. Go/Rust guarded hover + definition proofs are accepted as templates; deeper toolchain rich interactions are parked; next stage is P0 Remote Code Editing Mainline Audit.
+
+- 2026-07-08: P0-A automated mainline validation baseline completed. Typecheck, workbench/editor/save/search/problems/git/terminal smokes passed; next stage is P0-B Mainline Gap Audit.
