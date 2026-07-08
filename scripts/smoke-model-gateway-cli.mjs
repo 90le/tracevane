@@ -69,7 +69,7 @@ function printHelp() {
 Runs isolated Tracevane Gateway CLI startup smoke checks plus Gateway HTTP maturity probes.
 
 Options:
-  --apps <ids>                 Comma-separated app ids: codex,claude-code,claude-code-tool,claude-code-summary,opencode,openclaw,gateway
+  --apps <ids>                 Comma-separated app ids: codex,codex-tool-diagnostic,claude-code,claude-code-tool,claude-code-summary,opencode,opencode-tool-diagnostic,openclaw,gateway
   --target-model <id>          Single model id advertised to real CLIs and isolated Gateway config (default: gpt-5.4)
   --target-models <csv>        Run the same smoke set once per model id, for example gpt-5.4,gpt-5.5,gpt-5.4-mini
   --strict                     Exit non-zero when an installed CLI smoke fails
@@ -213,6 +213,12 @@ async function startMockGateway(targetModel) {
 
 function respondOpenAiResponses(res, body, options = {}) {
   const model = typeof body.model === "string" ? body.model : FALLBACK_MOCK_MODEL;
+  const requestText = collectRequestText(body);
+  const hasCodexToolOutput = requestText.includes("shell_call_output") || requestText.includes("local_shell_call_output") || requestText.includes("codex_tool_diag_call");
+  if (requestText.includes("CODEX_TOOL_DIAGNOSTIC") && !hasCodexToolOutput && !body.stream) {
+    sendJson(res, 200, openAiShellDiagnosticResponse(model));
+    return;
+  }
   if (body.stream) {
     sendSse(res, [
       {
@@ -308,6 +314,28 @@ function respondOpenAiResponses(res, body, options = {}) {
     return;
   }
   sendJson(res, 200, openAiResponseBody(model, options));
+}
+
+function openAiShellDiagnosticResponse(model) {
+  return {
+    id: "resp_cli_codex_tool_diagnostic",
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model,
+    output: [{
+      id: "shell_cli_diag",
+      type: "shell_call",
+      status: "completed",
+      call_id: "codex_tool_diag_call",
+      action: {
+        commands: ["printf GATEWAY_OK"],
+        timeout_ms: 5000,
+        max_output_length: 2000,
+      },
+    }],
+    usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+  };
 }
 
 function openAiResponseBody(model, options = {}) {
@@ -629,6 +657,30 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       expectedModel: targetModel,
     },
     {
+      id: "codex-tool-diagnostic",
+      diagnostic: true,
+      command: "codex",
+      args: [
+        "--ask-for-approval",
+        "never",
+        "--sandbox",
+        "read-only",
+        "exec",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--ignore-rules",
+        "--model",
+        targetModel,
+        "--cd",
+        workDir,
+        "CODEX_TOOL_DIAGNOSTIC: Use a local shell command to print exactly GATEWAY_OK.",
+      ],
+      env,
+      expectedPaths: ["/v1/responses"],
+      expectedModel: targetModel,
+      diagnoseRequests: diagnoseCodexToolRequests,
+    },
+    {
       id: "claude-code",
       command: "claude",
       args: [
@@ -711,6 +763,27 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       expectedModel: targetModel,
     },
     {
+      id: "opencode-tool-diagnostic",
+      diagnostic: true,
+      command: "opencode",
+      args: [
+        "run",
+        "--pure",
+        "--format",
+        "json",
+        "--dangerously-skip-permissions",
+        "--model",
+        `tracevane-gateway/${targetModel}`,
+        "--dir",
+        workDir,
+        "OPENCODE_TOOL_DIAGNOSTIC: Use a local shell command to echo GATEWAY_OK.",
+      ],
+      env,
+      expectedPaths: ["/v1/chat/completions"],
+      expectedModel: targetModel,
+      diagnoseRequests: diagnoseOpenCodeToolRequests,
+    },
+    {
       id: "openclaw",
       command: "openclaw",
       args: includeOpenClawAgent
@@ -723,6 +796,39 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
     },
   ];
   return definitions;
+}
+
+function diagnoseCodexToolRequests({ requests }) {
+  const hasToolOutput = requests.some((request) => Array.isArray(request.body?.input)
+    && request.body.input.some((item) => item?.type === "shell_call_output" || item?.type === "local_shell_call_output"));
+  return {
+    ok: false,
+    errors: hasToolOutput ? [] : ["Codex CLI did not send a shell_call_output/local_shell_call_output follow-up request."],
+    facts: {
+      requestCount: requests.length,
+      hasToolOutput,
+      currentSupport: hasToolOutput ? "candidate" : "unverified",
+    },
+  };
+}
+
+function diagnoseOpenCodeToolRequests({ requests }) {
+  const hasAssistantToolCall = requests.some((request) => Array.isArray(request.body?.messages)
+    && request.body.messages.some((message) => Array.isArray(message?.tool_calls)
+      && message.tool_calls.some((toolCall) => typeof toolCall?.id === "string")));
+  const hasToolResultMessage = requests.some((request) => Array.isArray(request.body?.messages)
+    && request.body.messages.some((message) => message?.role === "tool" && typeof message.tool_call_id === "string"));
+  const hasToolRoundTrip = hasAssistantToolCall && hasToolResultMessage;
+  return {
+    ok: false,
+    errors: hasToolRoundTrip ? [] : ["OpenCode CLI did not expose a standard assistant tool_calls + role=tool follow-up round trip."],
+    facts: {
+      requestCount: requests.length,
+      hasAssistantToolCall,
+      hasToolResultMessage,
+      currentSupport: hasToolRoundTrip ? "candidate" : "unverified",
+    },
+  };
 }
 
 function validateOpenClawAgentOutput({ stdout }, targetModel) {
@@ -820,6 +926,9 @@ async function runCommand(definition, requestStore) {
   const outputValidation = typeof definition.validateOutput === "function"
     ? validateCommandOutput(definition.validateOutput, { stdout, stderr, requests })
     : null;
+  const requestDiagnostic = typeof definition.diagnoseRequests === "function"
+    ? validateCommandOutput(definition.diagnoseRequests, { stdout, stderr, requests })
+    : null;
   const durationMs = Math.max(0, Date.now() - startedAt);
   const passed = !timedOut
     && exit.code === 0
@@ -830,7 +939,7 @@ async function runCommand(definition, requestStore) {
     && (definition.expectedPaths.length ? outputContainsOk || requests.length > 0 : true);
   return {
     id: definition.id,
-    status: passed ? "passed" : "failed",
+    status: definition.diagnostic ? "diagnostic" : (passed ? "passed" : "failed"),
     command: [definition.command, ...definition.args],
     exitCode: exit.code,
     signal: exit.signal,
@@ -845,6 +954,7 @@ async function runCommand(definition, requestStore) {
     minRequestCount,
     requestCount: requests.length,
     outputContainsOk,
+    ...(requestDiagnostic ? { requestDiagnostic } : {}),
     ...(outputValidation ? { outputValidation } : {}),
     stdoutPreview: preview(stdout),
     stderrPreview: preview(stderr),
@@ -1155,7 +1265,7 @@ async function runSmokeForTargetModel(root, options, targetModel) {
         reason: "Gateway HTTP maturity probes were excluded by --apps.",
       };
     return {
-      ok: results.every((result) => result.status === "passed" || result.status === "skipped")
+      ok: results.every((result) => result.status === "passed" || result.status === "skipped" || result.status === "diagnostic")
         && (gatewayMaturity.status === "passed" || gatewayMaturity.status === "skipped"),
       targetModel,
       tempRoot: targetRoot,
