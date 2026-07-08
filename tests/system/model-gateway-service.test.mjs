@@ -1858,6 +1858,9 @@ test("model gateway strips Codex account Responses unsupported request parameter
             { type: "function_call", id: "fc_missing_name", call_id: "call_missing_name", status: "completed", arguments: "{\"query\":\"docs\"}" },
             { type: "function_call_output", id: "fco_missing_call", status: "completed", output: "orphan output" },
             { type: "custom_tool_call", id: "ctc_missing_call", status: "completed", input: "custom input" },
+            { type: "local_shell_call_output", id: "lsco_valid", call_id: "call_local_shell", status: "completed", output: "GATEWAY_OK", unsupported_field: "strip me" },
+            { type: "shell_call_output", id: "sco_valid", call_id: "call_shell", status: "completed", output: "GATEWAY_OK", unsupported_field: "strip me too" },
+            { type: "shell_call_output", id: "sco_missing_call", status: "completed", output: "orphan shell output" },
             { role: "user", content: [{ type: "input_text", text: "Continue after malformed tool history." }] },
           ],
           stream: false,
@@ -2129,10 +2132,22 @@ test("model gateway strips Codex account Responses unsupported request parameter
       || item?.type === "custom_tool_call_output"
     ))
     .map((item) => item.type), []);
+  assert.deepEqual(malformedResponsesHistoryUpstreamBody.input
+    .filter((item) => item?.type === "local_shell_call_output" || item?.type === "shell_call_output")
+    .map((item) => ({
+      type: item.type,
+      call_id: item.call_id,
+      output: item.output,
+      unsupported_field: item.unsupported_field,
+    })), [
+    { type: "local_shell_call_output", call_id: "call_local_shell", output: "GATEWAY_OK", unsupported_field: undefined },
+    { type: "shell_call_output", call_id: "call_shell", output: "GATEWAY_OK", unsupported_field: undefined },
+  ]);
   const malformedResponsesHistoryInput = JSON.stringify(malformedResponsesHistoryUpstreamBody.input);
   assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed function_call input item omitted for Codex account compatibility/);
   assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed function_call_output input item omitted for Codex account compatibility/);
   assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed custom_tool_call input item omitted for Codex account compatibility/);
+  assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed shell_call_output input item omitted for Codex account compatibility/);
   assert.match(malformedResponsesHistoryInput, /Continue after malformed tool history/);
   const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[7].body);
   assert.equal(claudeCodeUpstreamBody.metadata, undefined);
