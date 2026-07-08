@@ -1001,6 +1001,7 @@ export interface ModelGatewayActiveRouteSmokeRequest {
   toolResultSmoke?: boolean;
   compatibilitySmoke?: boolean;
   malformedSmoke?: boolean;
+  errorSmoke?: boolean;
   timeoutMs?: number;
 }
 

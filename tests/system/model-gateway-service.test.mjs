@@ -7880,6 +7880,88 @@ test("model gateway active route smoke uses the client protocol endpoint", async
   }
 });
 
+test("model gateway active route smoke treats structured error probes as success", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+  service.updateClientAuth(undefined, { apiKey: "sk-local-error-smoke" });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-error-smoke",
+      name: "Codex Error Smoke",
+      appScopes: ["codex"],
+      baseUrl: "https://responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-5.4",
+        models: [{ id: "gpt-5.4" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-error-smoke" },
+    setActiveScopes: ["codex"],
+  });
+
+  const originalFetch = globalThis.fetch;
+  const seenBodies = [];
+  const seenHeaders = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    seenBodies.push(body);
+    seenHeaders.push(Object.fromEntries(new Headers(init.headers).entries()));
+    if (body.stream === true) {
+      return new Response('event: error\ndata: {"type":"error","code":"invalid_model","message":"invalid model"}\n\n', {
+        status: 400,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-openclaw-model-gateway-provider": "codex-error-smoke",
+        },
+      });
+    }
+    return new Response(JSON.stringify({
+      error: {
+        code: "invalid_model",
+        message: "invalid model",
+      },
+    }), {
+      status: 400,
+      headers: {
+        "content-type": "application/json",
+        "x-openclaw-model-gateway-provider": "codex-error-smoke",
+      },
+    });
+  };
+
+  try {
+    const jsonError = await service.testActiveRoute(undefined, {
+      scope: "codex",
+      model: "gpt-5.4",
+      errorSmoke: true,
+    });
+    const streamError = await service.testActiveRoute(undefined, {
+      scope: "codex",
+      model: "gpt-5.4",
+      errorSmoke: true,
+      stream: true,
+    });
+
+    assert.equal(jsonError.ok, true);
+    assert.equal(jsonError.statusCode, 400);
+    assert.equal(jsonError.error, null);
+    assert.equal(streamError.ok, true);
+    assert.equal(streamError.statusCode, 400);
+    assert.equal(streamError.error, null);
+    assert.equal(seenBodies[0].model, "gpt-5.4");
+    assert.equal(seenBodies[0].stream, false);
+    assert.equal(seenHeaders[0]["x-tracevane-gateway-smoke-error"], "1");
+    assert.equal(seenBodies[1].model, "gpt-5.4");
+    assert.equal(seenBodies[1].stream, true);
+    assert.equal(seenHeaders[1]["x-tracevane-gateway-smoke-error"], "1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway active route smoke preserves app-selected model when payload omits model", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

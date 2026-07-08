@@ -175,6 +175,8 @@ function stageDefinitions(options) {
       "--stream-compatibility-smoke",
       "--malformed-smoke",
       "--stream-malformed-smoke",
+      "--error-smoke",
+      "--stream-error-smoke",
       "--expect-routes", "codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions",
       "--expect-api-formats", "codex=openai_responses,claude-code=openai_responses,opencode=openai_responses",
     ],
@@ -273,13 +275,14 @@ function stageAttemptSummary(result) {
 
 function failedSmokeSummaries(activeRoutes) {
   const summaries = [];
-  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes", "compatibilitySmokes", "streamCompatibilitySmokes", "malformedSmokes", "streamMalformedSmokes"]) {
+  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes", "compatibilitySmokes", "streamCompatibilitySmokes", "malformedSmokes", "streamMalformedSmokes", "errorSmokes", "streamErrorSmokes"]) {
     for (const smoke of activeRoutes?.[group] || []) {
       if (smoke?.ok) continue;
       summaries.push({
         group,
         scope: smoke?.scope || null,
         status: smoke?.status ?? null,
+        statusCode: smoke?.statusCode ?? null,
         routeId: smoke?.routeId || null,
         apiFormat: smoke?.apiFormat || null,
         transient: Boolean(smoke?.transient),

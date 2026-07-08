@@ -39,6 +39,8 @@ function parseArgs(argv) {
     streamCompatibilitySmoke: false,
     malformedSmoke: false,
     streamMalformedSmoke: false,
+    errorSmoke: false,
+    streamErrorSmoke: false,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -82,6 +84,11 @@ function parseArgs(argv) {
     else if (arg === "--stream-malformed-smoke") {
       options.malformedSmoke = true;
       options.streamMalformedSmoke = true;
+    }
+    else if (arg === "--error-smoke") options.errorSmoke = true;
+    else if (arg === "--stream-error-smoke") {
+      options.errorSmoke = true;
+      options.streamErrorSmoke = true;
     }
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
@@ -166,6 +173,10 @@ Options:
                     verify malformed tool history degrades to safe context
   --stream-malformed-smoke
                     also verify malformed tool history through streaming final text
+  --error-smoke
+                    verify client protocol errors stay structured and are not mistaken for success
+  --stream-error-smoke
+                    also verify structured errors through streaming client responses
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -291,6 +302,8 @@ function createResult(options, provider, originalActiveProviders) {
     streamCompatibilitySmokes: [],
     malformedSmokes: [],
     streamMalformedSmokes: [],
+    errorSmokes: [],
+    streamErrorSmokes: [],
     expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
@@ -700,6 +713,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         toolResultSmoke: Boolean(options.toolResultSmokeRequest),
         compatibilitySmoke: Boolean(options.compatibilitySmokeRequest),
         malformedSmoke: Boolean(options.malformedSmokeRequest),
+        errorSmoke: Boolean(options.errorSmokeRequest),
         ...(typeof options.streamRequest === "boolean" ? { stream: options.streamRequest } : {}),
       }),
       timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
@@ -710,6 +724,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
       attempt,
       attempts: attempt,
       status: 0,
+      statusCode: null,
       ok: false,
       providerId: null,
       routeId: null,
@@ -729,6 +744,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
     attempt,
     attempts: attempt,
     status: result.status,
+    statusCode: typeof result.body?.statusCode === "number" ? result.body.statusCode : null,
     ok: Boolean(result.body?.ok),
     providerId: result.body?.providerId || null,
     routeId: result.body?.route?.routeId || null,
@@ -814,6 +830,14 @@ function printResult(result, json) {
   }
   for (const smoke of result.streamMalformedSmokes || []) {
     console.log(`- ${smoke.scope} stream malformed: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.errorSmokes || []) {
+    console.log(`- ${smoke.scope} error: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.streamErrorSmokes || []) {
+    console.log(`- ${smoke.scope} stream error: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
   }
   if (result.setupFailures.length) {
@@ -1061,6 +1085,18 @@ async function main() {
               result.streamMalformedSmokes.push(await runActiveRouteSmoke(streamMalformedOptions, key, scope));
             }
           }
+          if (options.errorSmoke) {
+            const errorOptions = { ...options, errorSmokeRequest: true };
+            for (const scope of options.scopes) {
+              result.errorSmokes.push(await runActiveRouteSmoke(errorOptions, key, scope));
+            }
+          }
+          if (options.streamErrorSmoke) {
+            const streamErrorOptions = { ...options, errorSmokeRequest: true, streamRequest: true };
+            for (const scope of options.scopes) {
+              result.streamErrorSmokes.push(await runActiveRouteSmoke(streamErrorOptions, key, scope));
+            }
+          }
           addExpectationFailures(result, options);
         }
       }
@@ -1077,6 +1113,8 @@ async function main() {
       && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.length === options.scopes.length)
       && (!options.malformedSmoke || result.malformedSmokes.length === options.scopes.length)
       && (!options.streamMalformedSmoke || result.streamMalformedSmokes.length === options.scopes.length)
+      && (!options.errorSmoke || result.errorSmokes.length === options.scopes.length)
+      && (!options.streamErrorSmoke || result.streamErrorSmokes.length === options.scopes.length)
       && result.preflightFailures.length === 0
       && result.routeSmokes.every((item) => item.ok)
       && (!options.toolSmoke || result.toolSmokes.every((item) => item.ok))
@@ -1087,6 +1125,8 @@ async function main() {
       && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.every((item) => item.ok))
       && (!options.malformedSmoke || result.malformedSmokes.every((item) => item.ok))
       && (!options.streamMalformedSmoke || result.streamMalformedSmokes.every((item) => item.ok))
+      && (!options.errorSmoke || result.errorSmokes.every((item) => item.ok))
+      && (!options.streamErrorSmoke || result.streamErrorSmokes.every((item) => item.ok))
       && result.expectationFailures.length === 0
       && result.setupFailures.length === 0
       && result.restoreFailures.length === 0

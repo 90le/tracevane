@@ -203,6 +203,7 @@ const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wB
 const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
 const MODEL_GATEWAY_SMOKE_SENTINEL = "GATEWAY_OK";
 const MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER = "x-tracevane-gateway-smoke";
+const MODEL_GATEWAY_DIAGNOSTIC_ERROR_SMOKE_HEADER = "x-tracevane-gateway-smoke-error";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
@@ -5030,6 +5031,47 @@ function codexAccountRequestWantsStream(value: string | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+function modelGatewayDiagnosticErrorSmokePayload(routeId: ModelGatewayRouteId | null): Record<string, unknown> {
+  const message = "Tracevane Gateway diagnostic error smoke.";
+  if (routeId === "anthropic_messages" || routeId === "anthropic_messages_count_tokens") {
+    return {
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        code: "model_gateway_error_smoke",
+        message,
+      },
+    };
+  }
+  return {
+    error: {
+      type: "invalid_request_error",
+      code: "model_gateway_error_smoke",
+      message,
+    },
+  };
+}
+
+function sendModelGatewayDiagnosticErrorSmoke(
+  res: http.ServerResponse,
+  routeId: ModelGatewayRouteId | null,
+  stream: boolean,
+): void {
+  const payload = modelGatewayDiagnosticErrorSmokePayload(routeId);
+  if (!stream) {
+    sendJson(res, 400, payload);
+    return;
+  }
+  setCorsHeaders(res);
+  res.statusCode = 400;
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.write("event: error\n");
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  res.end();
 }
 
 type CodexAccountImageGenerationPreparedRequest = {
@@ -10302,7 +10344,9 @@ export function createModelGatewayService(
     toolResultSmoke = false,
     compatibilitySmoke = false,
     malformedSmoke = false,
+    errorSmoke = false,
   ): Record<string, unknown> {
+    if (errorSmoke) return buildGatewayRouteErrorSmokePayload(scope, routeId, model, input, stream);
     if (malformedSmoke) return buildGatewayRouteMalformedSmokePayload(scope, routeId, model, input, stream);
     if (compatibilitySmoke) return buildGatewayRouteCompatibilitySmokePayload(scope, routeId, model, input, stream);
     if (toolResultSmoke) return buildGatewayRouteToolResultSmokePayload(scope, routeId, model, input, stream);
@@ -10533,6 +10577,42 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
   }
 
 
+  function buildGatewayRouteErrorSmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+    stream = false,
+  ): Record<string, unknown> {
+    const prompt = `${input}\nError smoke: this diagnostic request asks the gateway to emit a structured protocol error without contacting upstream.`;
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 64,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-error-smoke",
+        },
+        messages: [{ role: "user", content: prompt }],
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 64,
+        stream,
+        messages: [{ role: "user", content: prompt }],
+      };
+    }
+    return {
+      model,
+      input: prompt,
+      stream,
+      max_output_tokens: 64,
+    };
+  }
+
   function buildGatewayRouteMalformedSmokePayload(
     scope: ModelGatewayAppScope,
     routeId: ModelGatewayRouteId,
@@ -10744,6 +10824,20 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       .join("\n");
   }
 
+  function parseGatewayRouteSmokeError(responseText: string): Record<string, unknown> | null {
+    const parsed = parseJsonObjectOrNull(responseText);
+    if (isRecord(parsed) && isRecord(parsed.error)) return parsed.error;
+    return extractJsonPayloadsFromSseText(responseText)
+      .map(gatewayRouteSmokeErrorPayload)
+      .find((payload): payload is Record<string, unknown> => isRecord(payload)) || null;
+  }
+
+  function gatewayRouteSmokeErrorPayload(payload: unknown): Record<string, unknown> | null {
+    if (!isRecord(payload)) return null;
+    if (isRecord(payload.error)) return payload.error;
+    return payload.type === "error" ? payload : null;
+  }
+
   function gatewayRouteSmokeHasToolCall(routeId: ModelGatewayRouteId, responseText: string): boolean {
     if (responseText.includes("gateway_smoke_tool")) {
       const parsed = parseJsonObjectOrNull(responseText);
@@ -10887,24 +10981,26 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
 
     const endpoint = getLifecycleStatus().endpointPolicy.preferredCliEndpoint;
     const targetUrl = new URL(routePath, `${stripTrailingV1(endpoint)}/`).toString();
+    const toolSmoke = payload.toolSmoke === true;
+    const toolResultSmoke = payload.toolResultSmoke === true;
+    const compatibilitySmoke = payload.compatibilitySmoke === true;
+    const malformedSmoke = payload.malformedSmoke === true;
+    const errorSmoke = payload.errorSmoke === true;
     const headers = new Headers({
       "content-type": "application/json",
       "x-tracevane-app-scope": scope,
       [MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER]: "1",
     });
     if (key) headers.set("authorization", `Bearer ${key}`);
+    if (errorSmoke) headers.set(MODEL_GATEWAY_DIAGNOSTIC_ERROR_SMOKE_HEADER, "1");
     if (scope === "claude-code") {
       headers.set("anthropic-beta", "fine-grained-tool-streaming-2025-05-14");
     }
     const startedAt = nowIso();
     const controller = new AbortController();
-    const toolSmoke = payload.toolSmoke === true;
-    const toolResultSmoke = payload.toolResultSmoke === true;
-    const compatibilitySmoke = payload.compatibilitySmoke === true;
-    const malformedSmoke = payload.malformedSmoke === true;
     const stream = typeof payload.stream === "boolean"
       ? payload.stream
-      : toolSmoke || toolResultSmoke || compatibilitySmoke || malformedSmoke ? false : scope === "claude-code";
+      : toolSmoke || toolResultSmoke || compatibilitySmoke || malformedSmoke || errorSmoke ? false : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -10923,6 +11019,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           toolResultSmoke,
           compatibilitySmoke,
           malformedSmoke,
+          errorSmoke,
         )),
         signal: controller.signal,
       });
@@ -10932,7 +11029,13 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       const contentMatched = new RegExp(`\\b${MODEL_GATEWAY_SMOKE_SENTINEL}\\b`).test(responseTextContent)
         || responseTextContent.replace(/\s+/g, "").includes(MODEL_GATEWAY_SMOKE_SENTINEL);
       const toolMatched = gatewayRouteSmokeHasToolCall(routeId, responseText);
-      const success = response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
+      const parsedError = parseGatewayRouteSmokeError(responseText);
+      const errorMatched = errorSmoke
+        && response.status >= 400
+        && Boolean(parsedError?.code || parsedError?.message || parsedError?.type);
+      const success = errorSmoke
+        ? errorMatched
+        : response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
       const responsePreview = previewText(responseText);
       return {
@@ -10948,8 +11051,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           message: response.status >= 200 && response.status < 300
             ? toolSmoke
               ? `${stream ? "Streaming " : ""}Active route tool smoke did not return gateway_smoke_tool in the client protocol response.`
-              : `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
-            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : malformedSmoke ? "malformed " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
+              : errorSmoke
+                ? `${stream ? "Streaming " : ""}Active route error smoke unexpectedly returned HTTP ${response.status}.`
+                : `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
+            : errorSmoke
+              ? `${stream ? "Streaming " : ""}Active route error smoke returned HTTP ${response.status} without a structured error.${responsePreview ? ` ${responsePreview}` : ""}`
+              : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : malformedSmoke ? "malformed " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
         },
       };
     } catch (error) {
@@ -11500,7 +11607,25 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         || useAnthropicMessagesResponsesProviderAdapter
       );
     const diagnosticSmokeRequest = readHeader(req.headers, MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER) === "1";
+    const diagnosticErrorSmokeRequest = diagnosticSmokeRequest
+      && readHeader(req.headers, MODEL_GATEWAY_DIAGNOSTIC_ERROR_SMOKE_HEADER) === "1";
     const shouldUpdateAccountStateFromRequest = !diagnosticSmokeRequest;
+    if (diagnosticErrorSmokeRequest) {
+      const stream = codexAccountRequestWantsStream(bodyText);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 400,
+        outcome: "failure",
+        errorCode: "model_gateway_error_smoke",
+        errorMessage: "Tracevane Gateway diagnostic error smoke.",
+      }));
+      setSelectedProviderHeaders();
+      sendModelGatewayDiagnosticErrorSmoke(res, decision.routeId, stream);
+      return;
+    }
     if (
       decision.mode === "adapter-required"
       && !useCodexResponsesChatAdapter
