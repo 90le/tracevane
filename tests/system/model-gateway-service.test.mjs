@@ -1657,6 +1657,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           frequency_penalty: 0.1,
           logprobs: true,
           max_tool_calls: 1,
+          max_tokens: 16,
           metadata: {
             trace_id: "claude-code-cli",
             session_id: "metadata-regression",
@@ -1669,7 +1670,9 @@ test("model gateway strips Codex account Responses unsupported request parameter
           reasoning: {
             effort: "low",
             generate_summary: "concise",
+            foo: "unsupported-reasoning-field",
           },
+          response_format: { type: "json_object" },
           thinking: { type: "enabled", budget_tokens: 9000 },
           output_config: { effort: "max" },
           reasoning_effort: "high",
@@ -1704,6 +1707,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
             { type: "computer_use_preview", display_width: 1024, display_height: 768, environment: "browser" },
           ],
           tool_choice: { type: "file_search" },
+          stop: ["STOP_HERE"],
           top_logprobs: 1,
         },
       });
@@ -1813,6 +1817,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.background, undefined);
     assert.equal(upstreamBody.frequency_penalty, undefined);
     assert.equal(upstreamBody.logprobs, undefined);
+    assert.equal(upstreamBody.max_tokens, undefined);
     assert.equal(upstreamBody.max_tool_calls, undefined);
     assert.equal(upstreamBody.metadata, undefined);
     assert.equal(upstreamBody.modalities, undefined);
@@ -1821,9 +1826,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.conversation, undefined);
     assert.equal(upstreamBody.prompt, undefined);
     assert.equal(upstreamBody.reasoning?.generate_summary, undefined);
+    assert.equal(upstreamBody.reasoning?.foo, undefined);
     if (upstreamBody.reasoning?.summary !== undefined) {
       assert.equal(upstreamBody.reasoning?.summary, "concise");
     }
+    assert.equal(upstreamBody.response_format, undefined);
     assert.equal(upstreamBody.thinking, undefined);
     assert.equal(upstreamBody.output_config, undefined);
     assert.equal(upstreamBody.reasoning_effort, undefined);
@@ -1831,6 +1838,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.enable_thinking, undefined);
     assert.equal(upstreamBody.reasoning_split, undefined);
     assert.equal(upstreamBody.seed, undefined);
+    assert.equal(upstreamBody.stop, undefined);
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
     assert.equal(upstreamBody.stream, true);
@@ -1844,7 +1852,15 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.match(JSON.stringify(directUpstreamBody.input), /content-annotation/);
   assert.match(JSON.stringify(directUpstreamBody.input), /message-annotation/);
   assert.match(JSON.stringify(directUpstreamBody.input), /tool-annotation/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses response_format omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /json_object/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses request controls omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /max_tokens/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /STOP_HERE/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses reasoning fields omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-reasoning-field/);
   assert.equal(directUpstreamBody.reasoning?.effort, "low");
+  assert.deepEqual(directUpstreamBody.text, { format: { type: "json_object" } });
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",
     text: "hello",

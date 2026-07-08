@@ -4588,6 +4588,8 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     }
     applyResponsesReasoningOptions(next, next);
     normalizeCodexAccountResponsesReasoning(next);
+    normalizeCodexAccountResponsesResponseFormat(next);
+    preserveCodexAccountUnsupportedRequestControls(next);
 
     next.stream = true;
     next.store = false;
@@ -4604,6 +4606,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       "logprobs",
       "max_output_tokens",
       "max_completion_tokens",
+      "max_tokens",
       "max_tool_calls",
       "modalities",
       "n",
@@ -4628,6 +4631,8 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       "prompt_cache_retention",
       "safety_identifier",
       "stream_options",
+      "response_format",
+      "stop",
     ] as const) {
       delete next[field];
     }
@@ -4656,7 +4661,63 @@ function normalizeCodexAccountResponsesReasoning(value: Record<string, unknown>)
     reasoning.summary = reasoning.generate_summary;
   }
   delete reasoning.generate_summary;
+  const omittedReasoning: Record<string, unknown> = {};
+  for (const key of Object.keys(reasoning)) {
+    if (key === "effort" || key === "summary" || key === "mode") continue;
+    omittedReasoning[key] = reasoning[key];
+    delete reasoning[key];
+  }
   value.reasoning = reasoning;
+  if (Object.keys(omittedReasoning).length) {
+    appendCodexAccountCompatibilityNote(value, "reasoning fields", [omittedReasoning]);
+  }
+}
+
+function normalizeCodexAccountResponsesResponseFormat(value: Record<string, unknown>): void {
+  if (!isRecord(value.response_format)) return;
+  const format = codexAccountTextFormatFromResponseFormat(value.response_format);
+  if (!format) {
+    appendCodexAccountCompatibilityNote(value, "response_format", [value.response_format]);
+    return;
+  }
+  const text = isRecord(value.text) ? { ...value.text } : {};
+  text.format = format;
+  value.text = text;
+  const formatType = normalizeString(format.type);
+  if (formatType === "json_object" || formatType === "json_schema") {
+    appendCodexAccountCompatibilityNote(value, "response_format", [value.response_format]);
+  }
+}
+
+function codexAccountTextFormatFromResponseFormat(source: Record<string, unknown>): Record<string, unknown> | null {
+  const type = normalizeString(source.type);
+  if (type === "text") return { type: "text" };
+  if (type === "json_object") return { type: "json_object" };
+  if (type !== "json_schema") return null;
+  const directSchema = isRecord(source.schema) ? source.schema : null;
+  const nested = isRecord(source.json_schema) ? source.json_schema : null;
+  const schema = directSchema || (isRecord(nested?.schema) ? nested.schema : null);
+  if (!schema) return null;
+  const name = normalizeString(source.name) || normalizeString(nested?.name) || "response_schema";
+  const format: Record<string, unknown> = {
+    type: "json_schema",
+    name,
+    schema,
+  };
+  const description = normalizeString(source.description) || normalizeString(nested?.description);
+  if (description) format.description = description;
+  const strict = typeof source.strict === "boolean" ? source.strict : nested?.strict;
+  if (typeof strict === "boolean") format.strict = strict;
+  return format;
+}
+
+function preserveCodexAccountUnsupportedRequestControls(value: Record<string, unknown>): void {
+  const omitted: Record<string, unknown> = {};
+  if (value.max_tokens !== undefined) omitted.max_tokens = value.max_tokens;
+  if (value.stop !== undefined) omitted.stop = value.stop;
+  if (Object.keys(omitted).length) {
+    appendCodexAccountCompatibilityNote(value, "request controls", [omitted]);
+  }
 }
 
 type CodexAccountStrippedCompatibilityField = {
