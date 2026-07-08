@@ -324,15 +324,12 @@ function openAiShellDiagnosticResponse(model) {
     status: "completed",
     model,
     output: [{
-      id: "shell_cli_diag",
-      type: "shell_call",
+      id: "fc_cli_exec_command_diag",
+      type: "function_call",
       status: "completed",
       call_id: "codex_tool_diag_call",
-      action: {
-        commands: ["printf GATEWAY_OK"],
-        timeout_ms: 5000,
-        max_output_length: 2000,
-      },
+      name: "exec_command",
+      arguments: JSON.stringify({ cmd: "printf GATEWAY_OK" }),
     }],
     usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
   };
@@ -477,8 +474,63 @@ function respondChatCompletions(res, body) {
     });
     return;
   }
+  const hasToolResult = Array.isArray(body.messages)
+    && body.messages.some((message) => message?.role === "tool");
+  const toolNames = Array.isArray(body.tools) ? body.tools.map(getToolName).filter((name) => typeof name === "string") : [];
+  const shouldCallTool = toolNames.length > 0
+    && !hasToolResult
+    && (requestText.includes("Please call lookup") || requestText.includes("OPENCODE_TOOL_DIAGNOSTIC"));
+  const toolName = toolNames.includes("bash") ? "bash" : (toolNames.includes("lookup") ? "lookup" : toolNames[0]);
+  const toolArguments = toolName === "bash"
+    ? JSON.stringify({ command: "printf GATEWAY_OK" })
+    : JSON.stringify({ query: "docs" });
   if (body.stream) {
     const created = Math.floor(Date.now() / 1000);
+    if (shouldCallTool) {
+      sendSse(res, [
+        {
+          data: {
+            id: "chatcmpl_cli_tool_smoke",
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+          },
+        },
+        {
+          data: {
+            id: "chatcmpl_cli_tool_smoke",
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  id: "call_gateway_cli_tool_diag",
+                  type: "function",
+                  function: { name: toolName, arguments: toolArguments },
+                }],
+              },
+              finish_reason: null,
+            }],
+          },
+        },
+        {
+          data: {
+            id: "chatcmpl_cli_tool_smoke",
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+          },
+        },
+        { data: "[DONE]" },
+      ]);
+      return;
+    }
     sendSse(res, [
       {
         data: {
@@ -512,20 +564,16 @@ function respondChatCompletions(res, body) {
     ]);
     return;
   }
-  const hasToolResult = Array.isArray(body.messages)
-    && body.messages.some((message) => message?.role === "tool");
-  const shouldCallTool = Array.isArray(body.tools)
-    && requestText.includes("Please call lookup");
   const message = shouldCallTool
     ? {
       role: "assistant",
       content: null,
       tool_calls: [{
-        id: "call_lookup",
+        id: "call_gateway_cli_tool_diag",
         type: "function",
         function: {
-          name: "lookup",
-          arguments: "{\"query\":\"docs\"}",
+          name: toolName,
+          arguments: toolArguments,
         },
       }],
     }
@@ -967,16 +1015,32 @@ async function runCommand(definition, requestStore) {
 function summarizeGatewayRequest(request) {
   const messages = Array.isArray(request.body?.messages) ? request.body.messages : [];
   const input = Array.isArray(request.body?.input) ? request.body.input : [];
+  const tools = Array.isArray(request.body?.tools) ? request.body.tools : [];
   return {
     path: request.path,
     model: typeof request.body?.model === "string" ? request.body.model : null,
     messageRoles: messages.map((message) => message?.role || null),
+    userTextPreview: preview(messages
+      .filter((message) => message?.role === "user")
+      .map((message) => collectRequestText(message?.content))
+      .filter(Boolean)
+      .join("\n")),
     hasToolCalls: messages.some((message) => Array.isArray(message?.tool_calls)),
     toolCallIds: messages.flatMap((message) => Array.isArray(message?.tool_calls)
       ? message.tool_calls.map((toolCall) => toolCall?.id).filter((id) => typeof id === "string")
       : []),
     inputTypes: input.map((item) => item?.type || item?.role || null),
+    toolCount: tools.length,
+    toolNames: tools.map(getToolName).filter((name) => typeof name === "string"),
   };
+}
+
+function getToolName(tool) {
+  if (!tool || typeof tool !== "object") return null;
+  if (typeof tool.name === "string") return tool.name;
+  if (typeof tool.function?.name === "string") return tool.function.name;
+  if (typeof tool.type === "string") return tool.type;
+  return null;
 }
 
 function validateCommandOutput(validateOutput, context) {
