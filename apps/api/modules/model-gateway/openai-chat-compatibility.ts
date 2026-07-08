@@ -15,6 +15,7 @@ export interface OpenAIChatCompatibilityResult {
 
 export interface OpenAIResponsesCompatibilityOptions {
   allowMetadata?: boolean;
+  preserveMetadataAsInputContext?: boolean;
 }
 
 export interface OpenAIResponsesCompatibilityResult {
@@ -86,6 +87,9 @@ export function sanitizeOpenAIResponsesUpstreamBody(
   for (const field of STRICT_RESPONSES_INCOMPATIBLE_FIELDS) {
     if (field === "metadata" && options.allowMetadata) continue;
     if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+      if (field === "metadata" && options.preserveMetadataAsInputContext) {
+        appendResponsesMetadataContext(sanitized, sanitized[field]);
+      }
       delete sanitized[field];
       removedFields.push(field);
     }
@@ -140,6 +144,41 @@ export function sanitizeOpenAIChatUpstreamBody(
     bodyText: nextBodyText !== bodyText ? nextBodyText : bodyText,
     removedFields,
   };
+}
+
+
+function appendResponsesMetadataContext(request: JsonRecord, metadata: unknown): void {
+  const safe = safeMetadataRecord(metadata);
+  if (!safe) return;
+  const text = `[OpenAI Responses metadata omitted for upstream compatibility: ${JSON.stringify(safe)}]`;
+  const contextItem = {
+    type: "message",
+    role: "developer",
+    content: [{ type: "input_text", text }],
+  };
+  if (Array.isArray(request.input)) {
+    request.input = [...request.input, contextItem];
+    return;
+  }
+  if (typeof request.input === "string") {
+    request.input = [
+      { role: "user", content: [{ type: "input_text", text: request.input }] },
+      contextItem,
+    ];
+    return;
+  }
+  request.input = [contextItem];
+}
+
+function safeMetadataRecord(metadata: unknown): JsonRecord | null {
+  if (!isRecord(metadata)) return null;
+  const safe: JsonRecord = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (/api[_-]?key|authorization|bearer|cookie|credential|password|secret|token/i.test(key)) continue;
+    if (value === undefined) continue;
+    safe[key] = value;
+  }
+  return Object.keys(safe).length ? safe : null;
 }
 
 function normalizeModernChatTokenLimit(request: JsonRecord): void {

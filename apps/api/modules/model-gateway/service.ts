@@ -11782,8 +11782,9 @@ export function createModelGatewayService(
     }
     const sanitizedOpenAIResponses = provider.apiFormat === "openai_responses"
       ? sanitizeOpenAIResponsesUpstreamBody(upstreamBodyText, {
-        allowMetadata: isCodexAccountBackedProvider(provider)
-          || metadataBoolean(provider.metadata, ["openaiResponsesMetadataPassthrough", "openai_responses_metadata_passthrough"], false),
+        allowMetadata: !isCodexAccountBackedProvider(provider)
+          && metadataBoolean(provider.metadata, ["openaiResponsesMetadataPassthrough", "openai_responses_metadata_passthrough"], false),
+        preserveMetadataAsInputContext: isCodexAccountBackedProvider(provider),
       })
       : { bodyText: upstreamBodyText, removedFields: [] };
     upstreamBodyText = sanitizedOpenAIResponses.bodyText ?? upstreamBodyText;

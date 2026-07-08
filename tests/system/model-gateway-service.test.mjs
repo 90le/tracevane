@@ -2102,6 +2102,8 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.equal(disabledParallelToolCallsUpstreamBody.parallel_tool_calls, false);
   assert.deepEqual(disabledParallelToolCallsUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
   const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[6].body);
+  assert.equal(claudeCodeUpstreamBody.metadata, undefined);
+  assert.equal(containsObjectKey(claudeCodeUpstreamBody, "metadata"), false);
   assert.equal(JSON.stringify(claudeCodeUpstreamBody.tools || []).includes('"type":"mcp"'), false);
   assert.equal(JSON.stringify(claudeCodeUpstreamBody.input).includes('"type":"input_file"'), false);
   const claudeCodeInputText = JSON.stringify(claudeCodeUpstreamBody.input);
