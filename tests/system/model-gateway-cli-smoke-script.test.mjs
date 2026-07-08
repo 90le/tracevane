@@ -71,9 +71,13 @@ if (app === "opencode") {
 throw new Error("Unexpected fake CLI command: " + app);
 `;
 
-function writeFakeCli(binDir, name) {
+const fakeNoRequestCliSource = `#!/usr/bin/env node
+console.log("GATEWAY_OK");
+`;
+
+function writeFakeCli(binDir, name, source = fakeCliSource) {
   const file = path.join(binDir, name);
-  fs.writeFileSync(file, fakeCliSource, "utf8");
+  fs.writeFileSync(file, source, "utf8");
   fs.chmodSync(file, 0o755);
 }
 
@@ -143,4 +147,51 @@ test("gateway CLI smoke records diagnostic transport and request evidence", asyn
     ]);
     assert.deepEqual(openCodeDiagnostic.requestSummaries[0].messageRoles.slice(0, 2), ["system", "user"]);
   }
+});
+
+test("gateway CLI diagnostic strict mode fails when transport evidence is missing", async (t) => {
+  if (!fs.existsSync(distEntry)) {
+    t.skip("npm run build:api is required before the CLI smoke script system test");
+    return;
+  }
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-cli-smoke-no-request-test-"));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+  const binDir = path.join(tempRoot, "bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  writeFakeCli(binDir, "codex", fakeNoRequestCliSource);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      scriptPath,
+      "--apps",
+      "codex-tool-diagnostic",
+      "--target-model",
+      "gpt-5.4",
+      "--strict",
+    ], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
+      },
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+    }),
+    (error) => {
+      assert.equal(error.code, 1);
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      const diagnostic = parsed.results.find((result) => result.id === "codex-tool-diagnostic");
+      assert.equal(diagnostic.status, "diagnostic");
+      assert.equal(diagnostic.transportOk, false);
+      assert.deepEqual(diagnostic.hitPaths, []);
+      assert.deepEqual(diagnostic.requestedModels, []);
+      assert.equal(diagnostic.modelMatches, false);
+      assert.equal(diagnostic.requestCount, 0);
+      assert.equal(diagnostic.outputContainsOk, true);
+      assert.equal(diagnostic.requestDiagnostic.facts.currentSupport, "unverified");
+      return true;
+    },
+  );
 });

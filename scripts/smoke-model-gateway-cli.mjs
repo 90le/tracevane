@@ -103,8 +103,8 @@ function createTracevaneConfig(root) {
   };
 }
 
-function commandExists(command) {
-  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(command)}`], { encoding: "utf8" });
+function commandExists(command, env = process.env) {
+  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(command)}`], { encoding: "utf8", env });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
@@ -884,7 +884,7 @@ function parseJsonFromOutput(output) {
 }
 
 async function runCommand(definition, requestStore) {
-  const executable = commandExists(definition.command);
+  const executable = commandExists(definition.command, definition.env);
   if (!executable) {
     return {
       id: definition.id,
