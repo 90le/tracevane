@@ -1767,6 +1767,33 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(nestedFunctionToolChoice.status, 200);
       assert.equal(nestedFunctionToolChoice.body.id, "resp_metadata");
 
+      const incompatibleStrictTool = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "Use echo.",
+          tools: [{
+            type: "function",
+            name: "echo_probe",
+            parameters: {
+              type: "object",
+              properties: {
+                value: { type: "string" },
+                metadata: { type: "string" },
+              },
+              required: ["value"],
+              additionalProperties: false,
+            },
+            strict: true,
+          }],
+          tool_choice: { type: "function", name: "echo_probe" },
+          stream: false,
+        },
+      });
+      assert.equal(incompatibleStrictTool.status, 200);
+      assert.equal(incompatibleStrictTool.body.id, "resp_metadata");
+
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -1848,7 +1875,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 4);
+  assert.equal(upstreamCalls.length, 5);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -1964,6 +1991,20 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.deepEqual(thinkingOnlyUpstreamBody.reasoning, { effort: "high" });
   const nestedFunctionToolChoiceUpstreamBody = JSON.parse(upstreamCalls[2].body);
   assert.deepEqual(nestedFunctionToolChoiceUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
+  const incompatibleStrictToolUpstreamBody = JSON.parse(upstreamCalls[3].body);
+  assert.deepEqual(incompatibleStrictToolUpstreamBody.tools, [{
+    type: "function",
+    name: "echo_probe",
+    parameters: {
+      type: "object",
+      properties: {
+        value: { type: "string" },
+        metadata: { type: "string" },
+      },
+      required: ["value"],
+      additionalProperties: false,
+    },
+  }]);
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {

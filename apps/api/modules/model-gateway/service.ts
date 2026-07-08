@@ -4495,7 +4495,29 @@ function normalizeCodexAccountResponsesToolAtPath(source: unknown): unknown {
     normalized.parameters = normalized.input_schema;
   }
   delete normalized.input_schema;
+  normalizeCodexAccountResponsesFunctionStrictCompatibility(normalized);
   return normalized;
+}
+
+function normalizeCodexAccountResponsesFunctionStrictCompatibility(tool: Record<string, unknown>): void {
+  if (tool.strict !== true) return;
+  if (isCodexAccountOpenAIStrictJsonSchema(tool.parameters)) return;
+  delete tool.strict;
+}
+
+function isCodexAccountOpenAIStrictJsonSchema(schema: unknown): boolean {
+  if (Array.isArray(schema)) return schema.every(isCodexAccountOpenAIStrictJsonSchema);
+  if (!isRecord(schema)) return true;
+
+  const properties = isRecord(schema.properties) ? schema.properties : null;
+  if (properties && Object.keys(properties).length > 0) {
+    const required = Array.isArray(schema.required) ? schema.required : null;
+    if (schema.additionalProperties !== false || !required) return false;
+    const requiredNames = new Set(required.filter((item): item is string => typeof item === "string"));
+    if (!Object.keys(properties).every((key) => requiredNames.has(key))) return false;
+  }
+
+  return Object.values(schema).every(isCodexAccountOpenAIStrictJsonSchema);
 }
 
 function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unknown>): void {
