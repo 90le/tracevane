@@ -783,7 +783,8 @@ M7.z-J：LSP / Git / Debug enhancement acceptance closeout（已完成）。
 97. M12-J：Go / gopls toolchain provider runtime proof plan（已完成）
 98. M12-K：Go / gopls guarded runtime proof（已完成）
 99. M12-L：Toolchain provider acceptance / next toolchain decision（已完成）
-100. M12-M：Rust / rust-analyzer runtime proof plan（下一步）
+100. M12-M：Rust / rust-analyzer runtime proof plan（已完成）
+101. M12-N：Rust / rust-analyzer guarded diagnostics proof（下一步）
 ```
 
 ### M11-J 已完成：External Provider Installer / Version Policy Plan
@@ -1047,7 +1048,7 @@ M12-F 已完成，记录见 [`archive/m12-f-framework-provider-acceptance-toolch
   - C/C++ `clangd` 需要 clangd binary、compile_commands.json / compile_flags.txt 与 compiler/toolchain 语义。
 - 定义 M12-G 先做 toolchain provider status / configuration foundation，不直接启动 heavy runtime server。
 
-M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan，M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision；下一步 M12-M 进入 Rust / rust-analyzer runtime proof plan。
+M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan，M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；下一步 M12-N 进入 Rust / rust-analyzer guarded diagnostics proof。
 
 
 ### M12-G 已完成：Toolchain Provider Status / Configuration Foundation Plan
@@ -1062,7 +1063,7 @@ M12-G 已完成，记录见 [`archive/m12-g-toolchain-provider-status-configurat
 - 定义 IDE Provider Status UI 的 Toolchain section：默认只展示候选、状态、原因和下一步，不自动发现、不自动安装。
 - 定义 M12-H 最小实现：只增加 read-only candidate/status skeleton，全部默认 `notConfigured`，不读取 PATH、不启动 server、不接 diagnostics。
 
-M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision；下一步 M12-M 进入 Rust / rust-analyzer runtime proof plan。
+M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；下一步 M12-N 进入 Rust / rust-analyzer guarded diagnostics proof。
 
 ### M12-H 已完成：Toolchain Provider Status Skeleton Guarded Implementation
 
@@ -1078,7 +1079,7 @@ M12-H 已完成，记录见 [`archive/m12-h-toolchain-provider-status-skeleton-s
 - system test 与 provider status smoke 覆盖 no PATH probe / no runtime start policy 与 UI 可见性。
 ```
 
-M12-H 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary discovery、PATH probe、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics 或 rich LSP capability runtime、修改 `/api/lsp/diagnostics` routing、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision；下一步 M12-M 进入 Rust / rust-analyzer runtime proof plan。
+M12-H 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary discovery、PATH probe、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics 或 rich LSP capability runtime、修改 `/api/lsp/diagnostics` routing、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；下一步 M12-N 进入 Rust / rust-analyzer guarded diagnostics proof。
 
 ### M12-I 已完成：Toolchain Provider Configuration / Trust UI Foundation
 
@@ -1094,4 +1095,48 @@ M12-I 已完成，记录见 [`archive/m12-i-toolchain-provider-configuration-tru
 - system test 覆盖 allowlisted profile、trust gate 和 runtime override 拒绝。
 ```
 
-M12-I 不做：启动 gopls/rust-analyzer/JDT LS/clangd、PATH/binary/version 探测、Go/Rust/Java/C/C++ diagnostics/rich interactions、修改 `/api/lsp/diagnostics` routing、前端 command override、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision；下一步 M12-M 进入 Rust / rust-analyzer runtime proof plan。
+M12-I 不做：启动 gopls/rust-analyzer/JDT LS/clangd、PATH/binary/version 探测、Go/Rust/Java/C/C++ diagnostics/rich interactions、修改 `/api/lsp/diagnostics` routing、前端 command override、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；下一步 M12-N 进入 Rust / rust-analyzer guarded diagnostics proof。
+
+
+### M12-J 已完成：Go / gopls Toolchain Provider Runtime Proof Plan
+
+M12-J 已完成，记录见 [`archive/m12-j-go-gopls-runtime-proof-plan.md`](./archive/m12-j-go-gopls-runtime-proof-plan.md)。这是 Go/gopls runtime 前的 docs-only proof plan，定义 trusted config、go.work/go.mod marker、bounded version probe、diagnostics proof 与 CI skip/manual 策略。
+
+M12-J 不做：安装或启动 `gopls`、PATH 探测、auto install、Go diagnostics runtime routing、Go rich interactions、Rust/Java/C/C++ runtime、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。
+
+### M12-K 已完成：Go / gopls Guarded Runtime Proof
+
+M12-K 已完成，记录见 [`archive/m12-k-go-gopls-guarded-runtime-summary.md`](./archive/m12-k-go-gopls-guarded-runtime-summary.md)。本阶段接入 Go diagnostics runtime proof：trusted OpenClaw config + allowlisted workspace profile + go.work/go.mod marker + bounded `gopls version` probe 全部通过后，才通过 existing external stdio gateway 等待 diagnostics。
+
+M12-K 不做：安装 `gopls`、PATH 自动发现、前端 command/args/env/cwd override、Go rich interactions、Rust/Java/clangd runtime proof、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。
+
+### M12-L 已完成：Toolchain Provider Acceptance / Next Toolchain Decision
+
+M12-L 已完成，记录见 [`archive/m12-l-toolchain-provider-acceptance-decision.md`](./archive/m12-l-toolchain-provider-acceptance-decision.md)。本阶段验收 M12-G 到 M12-K 的 toolchain-backed provider gate，并决定下一步进入 Rust / rust-analyzer runtime proof plan。
+
+验收口径：
+
+```txt
+- M12-G/H/I 的 status/config/trust gate 已可作为 heavy toolchain provider 的统一入口。
+- M12-J/K 已完成 Go/gopls docs plan + guarded diagnostics proof。
+- 当前 runtimeProofProviderIds 仅允许 Go；Rust/Java/clangd 保持 status-only。
+- 缺配置、未信任、缺 marker、缺 binary 或 probe failure 都必须 degraded/skip，不允许破坏普通 LSP route。
+```
+
+M12-L 不做：Rust/Java/clangd runtime implementation、Go rich interactions、toolchain binary auto install/discovery、前端 command override、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。
+
+### M12-M 已完成：Rust / rust-analyzer Runtime Proof Plan
+
+M12-M 已完成，记录见 [`archive/m12-m-rust-analyzer-runtime-proof-plan.md`](./archive/m12-m-rust-analyzer-runtime-proof-plan.md)。这是 docs-only research / implementation plan：基于 rust-analyzer 官方 installation、configuration、security 与 rustup component 文档，定义 Rust 作为第二个 toolchain-backed provider 的受控 runtime proof 策略。
+
+验收口径：
+
+```txt
+- 确认 rust-analyzer 需要系统 binary 与 Rust 标准库源码；Tracevane 不自动安装 rust-analyzer/rust-src。
+- 确认 rust-analyzer/Cargo 可能运行 cargo metadata、build scripts、proc macros、check on save；Rust runtime 必须保持 trusted workspace gate。
+- M12-N marker 策略限定为 nearest Cargo.toml 或 rust-project.json，不运行 cargo metadata 进行探测。
+- M12-N version probe 限定为 trusted config + marker 后的 server-side `rust-analyzer --version` bounded probe。
+- M12-N diagnostics proof 复用 existing external gateway、toolchain status/config gate 与 mock stdio proof；缺配置、未信任、缺 marker、缺 binary/probe failure 都 degraded skip。
+```
+
+M12-M 不做：安装/启动 `rust-analyzer`、Rust diagnostics runtime routing、PATH discovery、auto install、Cargo metadata 探测、用户 command/args/env/cwd override、Rust rich interactions、Java/clangd runtime、Go rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。下一步 M12-N 进入 Rust / rust-analyzer guarded diagnostics proof。
