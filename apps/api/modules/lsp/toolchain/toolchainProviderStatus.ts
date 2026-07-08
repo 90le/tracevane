@@ -136,8 +136,9 @@ const TOOLCHAIN_PROVIDER_TEMPLATES: ToolchainProviderTemplate[] = [
     allowedProfiles: [{ profileId: "workspace", label: "Workspace clangd", binary: "clangd", description: "Use a trusted workspace clangd profile after explicit configuration." }],
     defaultNextAction: "Configure a trusted workspace clangd profile and compile_commands policy before enabling C/C++ language service runtime.",
     defaultNotes: [
-      "M12-I reads config state only; it does not inspect PATH or launch clangd.",
-      "Future enablement must treat compile_commands.json and build-system discovery as workspace-trust-sensitive.",
+      "M12-Q enables only a guarded clangd diagnostics proof for trusted workspace profiles.",
+      "Status reporting does not inspect PATH; diagnostics runtime probes only after explicit trusted configuration.",
+      "Runtime startup must pass cwd/root guard, compile_commands.json/compile_flags.txt/.clangd marker, and bounded version checks before diagnostics routing.",
     ],
   },
 ];
@@ -150,7 +151,7 @@ export function toolchainProviderStatusSnapshot(config: TracevaneServerConfig): 
       readOnly: true,
       probesRuntimePath: false,
       startsLanguageServers: true,
-      runtimeProofProviderIds: ["go", "rust"],
+      runtimeProofProviderIds: ["go", "rust", "clangd"],
       acceptsFrontendCommandOverrides: false,
       acceptsOnlyAllowlistedProfiles: true,
       configSource: "openclaw-config",
@@ -226,6 +227,7 @@ function statusFromConfig(config: ToolchainProviderConfigState): ToolchainProvid
 function nextActionFromConfig(template: ToolchainProviderTemplate, config: ToolchainProviderConfigState, status: ToolchainProviderStatus): string {
   if (status === "configured" && template.providerId === "go") return `${template.label} has a trusted allowlisted profile. M12-K permits guarded diagnostics proof for Go files with go.work/go.mod markers.`;
   if (status === "configured" && template.providerId === "rust") return `${template.label} has a trusted allowlisted profile. M12-N permits guarded diagnostics proof for Rust files with Cargo.toml/rust-project.json markers.`;
+  if (status === "configured" && template.providerId === "clangd") return `${template.label} has a trusted allowlisted profile. M12-Q permits guarded diagnostics proof for C/C++ files with compile_commands.json/compile_flags.txt/.clangd markers.`;
   if (status === "configured") return `${template.label} has a trusted allowlisted profile. Runtime startup remains gated until provider-specific proof is implemented.`;
   if (status === "disabledByTrust") return `Mark ${template.configurationKey}.trusted=true only after the workspace is explicitly trusted.`;
   if (status === "unavailable") return config.rejectedReason ?? `Fix ${template.configurationKey} before enabling this provider.`;

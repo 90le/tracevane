@@ -44,6 +44,7 @@ import { externalProviderMetadataForProfile } from "./external/externalProviderM
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 import { diagnoseWithGoGopls, goExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/goGoplsProvider.js";
 import { diagnoseWithRustAnalyzer, rustExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/rustAnalyzerProvider.js";
+import { diagnoseWithClangd, clangdExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/clangdProvider.js";
 import { toolchainProviderStatusSnapshot } from "./toolchain/toolchainProviderStatus.js";
 
 const LSP_WS_PATH = "/ws/lsp";
@@ -1823,6 +1824,16 @@ async function diagnoseDocument(
       version: request.version ?? 1,
     });
     return responseFor(request, resolved.root.id, resolved.relativePath, "rust", language, result.diagnostics.map((diagnostic) => rustExternalDiagnosticToTracevaneDiagnostic(diagnostic)));
+  }
+  if (provider?.id === "clangd") {
+    const result = await diagnoseWithClangd({
+      config,
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    });
+    return responseFor(request, resolved.root.id, resolved.relativePath, "clangd", language, result.diagnostics.map((diagnostic) => clangdExternalDiagnosticToTracevaneDiagnostic(diagnostic)));
   }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }

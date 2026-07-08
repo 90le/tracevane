@@ -50,7 +50,7 @@ test("LSP status exposes guarded toolchain provider candidates without runtime p
   assert.equal(status.toolchainProviders?.policy?.readOnly, true);
   assert.equal(status.toolchainProviders?.policy?.probesRuntimePath, false);
   assert.equal(status.toolchainProviders?.policy?.startsLanguageServers, true);
-  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go", "rust"]);
+  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go", "rust", "clangd"]);
   assert.equal(status.toolchainProviders?.policy?.acceptsFrontendCommandOverrides, false);
   assert.equal(status.toolchainProviders?.policy?.acceptsOnlyAllowlistedProfiles, true);
   assert.equal(status.toolchainProviders?.policy?.configSource, "openclaw-config");
