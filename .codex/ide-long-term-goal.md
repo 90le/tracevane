@@ -3,7 +3,7 @@
 Status: Active execution contract
 Created: 2026-07-08
 Primary docs: `../docs/ide-code-editor-solution/15-远程代码工作台产品聚焦与长期执行机制.md`
-Current next stage: P1-A-5 Persistence / terminal clipboard checklist
+Current next stage: P1 TS/JS Web Stack Experience Hardening
 
 ## Goal prompt
 
@@ -52,10 +52,11 @@ For every stage:
 
 ## Current queue
 
-1. P1-A-5 Persistence / terminal clipboard checklist: verify layout/open-tab/terminal persistence boundaries and close terminal clipboard/file-paste mainline checks.
-2. P1 remaining product hardening slices after persistence/clipboard acceptance.
-3. P2 UX Simplification: remove or park UI that distracts from the mainline.
-4. Parking-lot review: revisit Go/Rust/clangd/Java deeper interactions only after the remote-code mainline is stable.
+1. P1 TS/JS Web Stack Experience Hardening: verify and improve TypeScript / JavaScript / JSON / HTML / CSS / ESLint high-frequency editing workflows.
+2. P2 Search / Quick Open / Symbols UX Improvement.
+3. P3 Save / Conflict / Dirty State Hardening, including durable unsaved draft content policy.
+4. P4 Git Minimal Loop Polish.
+5. Parking-lot review: revisit Go/Rust/clangd/Java deeper interactions only after the remote-code mainline is stable.
 
 ## Stop condition
 
@@ -78,3 +79,5 @@ Do not mark the long-term goal complete until Tracevane has a verified release-c
 - 2026-07-08: P1-A-3 Editor edge-files workflow completed. Added `smoke:ide:editor-edge-files` covering Monaco text, readonly, truncated large text, shared image preview, binary Hex preview, small initial Hex loading, explicit load-more, and deleted opened tab handling; next stage is P1-A-4 Responsive layout workflow.
 
 - 2026-07-08: P1-A-4 Responsive layout workflow completed. Added `smoke:ide:responsive-mainline` covering 390px mobile Explorer overlay, EditorDock open, Search, Source Control, Run/Debug, Problems/Output/Terminal panel switching, and no horizontal overflow; next stage is P1-A-5 Persistence / terminal clipboard checklist.
+
+- 2026-07-08: P1-A-5 Persistence / terminal clipboard checklist completed. Added `smoke:ide:mainline-persistence` covering Explorer directory, open dirty editor tab, panel placement, reset-layout preservation and terminal descriptor persistence; documented terminal clipboard desktop release checklist; next stage is P1 TS/JS Web Stack Experience Hardening.

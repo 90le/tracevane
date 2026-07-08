@@ -139,6 +139,27 @@ async function assertWithinViewport(page, selector, label) {
   }
 }
 
+async function assertExplorerScrolls(page) {
+  const scroll = page.locator('[data-ide-explorer-scroll]').first();
+  await scroll.waitFor({ state: 'visible', timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const element = document.querySelector('[data-ide-explorer-scroll]');
+    return element && element.scrollHeight > element.clientHeight + 24;
+  }, null, { timeout: 30_000 });
+  const before = await scroll.evaluate((element) => element.scrollTop);
+  await scroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await page.waitForFunction(
+    (selector) => {
+      const element = document.querySelector(selector);
+      return Boolean(element && element.scrollTop > 0);
+    },
+    '[data-ide-explorer-scroll]',
+    { timeout: 10_000 },
+  );
+  const after = await scroll.evaluate((element) => element.scrollTop);
+  if (after <= before) throw new Error(`Explorer list did not scroll: before=${before}, after=${after}`);
+}
+
 async function run() {
   const summary = await api('/api/files/summary');
   const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
@@ -156,6 +177,9 @@ async function run() {
   await cleanup(rootId, [smokeDir]);
   await ensureDirectory(rootId, smokeDir);
   await createFile(rootId, filePath, `export const marker = "${needle}";\n`);
+  for (let index = 0; index < 72; index += 1) {
+    await createFile(rootId, `${smokeDir}/scroll-fixture-${String(index).padStart(2, '0')}.ts`, `export const item${index} = ${index};\n`);
+  }
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
     method: 'PUT',
     body: JSON.stringify({ layout, terminalLayouts: {} }),
@@ -181,7 +205,9 @@ async function run() {
     await page.locator('[data-ide-explorer]').waitFor({ state: 'visible', timeout: 30_000 });
     await assertNoHorizontalOverflow(page, 'initial mobile workbench');
     await assertWithinViewport(page, '[data-ide-sidebar-shell]', 'mobile sidebar overlay');
+    await assertExplorerScrolls(page);
 
+    await page.locator(nodeSelector(filePath)).first().scrollIntoViewIfNeeded();
     await page.locator(nodeSelector(filePath)).first().click();
     await page.locator(tabSelector(filePath)).first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator(`[data-ide-monaco-editor-panel][data-ide-editor-file-path="${cssAttr(filePath)}"]`).first().waitFor({ state: 'visible', timeout: 30_000 });

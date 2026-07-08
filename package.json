@@ -144,7 +144,8 @@
     "test:system:lsp-clangd-provider": "npm run build:api && node --test tests/system/lsp-clangd-provider.test.mjs",
     "test:system:lsp-java-jdtls-provider": "npm run build:api && node --test tests/system/lsp-java-jdtls-provider.test.mjs",
     "smoke:ide:editor-edge-files": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-edge-files.smoke.mjs",
-    "smoke:ide:responsive-mainline": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-responsive-mainline.smoke.mjs"
+    "smoke:ide:responsive-mainline": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-responsive-mainline.smoke.mjs",
+    "smoke:ide:mainline-persistence": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-mainline-persistence.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

@@ -629,7 +629,7 @@ export function IdeWorkbenchPage() {
         onTogglePanel={layoutApi.togglePanel}
         onOpenCommandPalette={openCommandPalette}
       />
-      <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] border-b border-line" data-ide-main-area>
+      <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] overflow-hidden border-b border-line" data-ide-main-area>
         <ActivityBar
           activeActivityId={layout.activeActivityId}
           onSelect={(activityId) => {
@@ -658,7 +658,7 @@ export function IdeWorkbenchPage() {
           ) : null}
           <div
             className={cn(
-              "col-start-1 row-start-1 min-h-0 min-w-0",
+              "col-start-1 row-start-1 min-h-0 min-w-0 overflow-hidden",
               sidebarOverlay && "absolute inset-y-0 left-0 z-30 w-[min(320px,calc(100vw-44px))] max-w-[calc(100vw-44px)] overflow-hidden shadow-2xl",
             )}
             data-ide-sidebar-shell

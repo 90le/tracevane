@@ -617,7 +617,7 @@ export function IdeExplorerView({
 
   return (
     <aside
-      className="group/ide-explorer grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-r border-line bg-panel"
+      className="group/ide-explorer grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-line bg-panel"
       data-ide-sidebar
       data-ide-explorer
       tabIndex={0}
@@ -701,7 +701,7 @@ export function IdeExplorerView({
         </div>
       </div>
       <div
-        className="min-h-0 overflow-auto p-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] group-hover/ide-explorer:[scrollbar-color:var(--line)_transparent] group-focus-within/ide-explorer:[scrollbar-color:var(--line)_transparent] [&::-webkit-scrollbar]:size-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent group-hover/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line group-focus-within/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line"
+        className="h-full min-h-0 overflow-auto overscroll-contain p-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] group-hover/ide-explorer:[scrollbar-color:var(--line)_transparent] group-focus-within/ide-explorer:[scrollbar-color:var(--line)_transparent] [&::-webkit-scrollbar]:size-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent group-hover/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line group-focus-within/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line"
         data-ide-explorer-scroll
       >
         <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-muted" data-ide-explorer-path-row>

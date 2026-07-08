@@ -40,7 +40,7 @@ Default parking lot unless explicitly justified by the mainline:
 - Terminal advanced view movement / layout features.
 - Deeper Go/Rust/Java/clangd rich interactions beyond current proofs.
 
-M13-I completed the product pivot decision. P0-A automated mainline validation baseline, P0-B gap audit, P1-A hardening plan, and P1-A-1 stale copy cleanup are complete. Current recommended next stage: P1-A-5 Persistence / terminal clipboard checklist.
+M13-I completed the product pivot decision. P0-A automated mainline validation baseline, P0-B gap audit, P1-A hardening plan, and P1-A-1 stale copy cleanup are complete. Current recommended next stage: P1 TS/JS Web Stack Experience Hardening.
 
 ## Current stage map
 
@@ -181,7 +181,8 @@ M13-I completed the product pivot decision. P0-A automated mainline validation b
 - Done: P1-A-2 Explorer mainline workflow.
 - Done: P1-A-3 Editor edge-files workflow.
 - Done: P1-A-4 Responsive layout workflow.
-- Next: P1-A-5 Persistence / terminal clipboard checklist.
+- Done: P1-A-5 Persistence / terminal clipboard checklist.
+- Next: P1 TS/JS Web Stack Experience Hardening.
 
 ## Required reading by task
 
