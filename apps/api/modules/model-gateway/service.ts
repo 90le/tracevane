@@ -4322,20 +4322,34 @@ function codexAccountCallIdFromFunctionCallItem(source: Record<string, unknown>)
 
 function normalizeCodexAccountResponsesInputItem(source: unknown): unknown {
   if (!isRecord(source)) return source;
-  if (source.type !== "function_call") {
-    const normalized: Record<string, unknown> = source.role === "system" ? { ...source, role: "developer" } : { ...source };
-    if (Array.isArray(normalized.content)) {
-      normalized.content = normalized.content.map(normalizeCodexAccountResponsesContentPart);
-    }
-    return normalized;
+  const itemType = normalizeString(source.type);
+  if (itemType === "function_call" || itemType === "custom_tool_call") {
+    const callId = codexAccountCallIdFromFunctionCallItem(source);
+    const name = normalizeString(source.name);
+    if (!callId || !name) return codexAccountUnsupportedInputItemNote(itemType, source);
+    return {
+      ...source,
+      id: codexAccountFunctionCallItemId(callId),
+      call_id: callId,
+    };
   }
-  const callId = codexAccountCallIdFromFunctionCallItem(source);
-  if (!callId) return source;
-  return {
-    ...source,
-    id: codexAccountFunctionCallItemId(callId),
-    call_id: callId,
-  };
+  if (itemType === "function_call_output" || itemType === "custom_tool_call_output") {
+    const callId = normalizeString(source.call_id);
+    if (!callId) return codexAccountUnsupportedInputItemNote(itemType, source);
+    return {
+      ...source,
+      call_id: callId,
+    };
+  }
+  const normalized: Record<string, unknown> = source.role === "system" ? { ...source, role: "developer" } : { ...source };
+  if (Array.isArray(normalized.content)) {
+    normalized.content = normalized.content.map(normalizeCodexAccountResponsesContentPart);
+  }
+  return normalized;
+}
+
+function codexAccountUnsupportedInputItemNote(type: string, source: unknown): Record<string, unknown> {
+  return codexAccountInputMessageFromText(`[OpenAI Responses malformed ${type} input item omitted for Codex account compatibility: ${stringifyCompact(codexAccountSafeCompatibilityValue(source))}]`);
 }
 
 function normalizeCodexAccountResponsesContentPart(source: unknown): unknown {
@@ -10287,7 +10301,9 @@ export function createModelGatewayService(
     toolSmoke = false,
     toolResultSmoke = false,
     compatibilitySmoke = false,
+    malformedSmoke = false,
   ): Record<string, unknown> {
+    if (malformedSmoke) return buildGatewayRouteMalformedSmokePayload(scope, routeId, model, input, stream);
     if (compatibilitySmoke) return buildGatewayRouteCompatibilitySmokePayload(scope, routeId, model, input, stream);
     if (toolResultSmoke) return buildGatewayRouteToolResultSmokePayload(scope, routeId, model, input, stream);
     if (toolSmoke) return buildGatewayRouteToolSmokePayload(scope, routeId, model, input, stream);
@@ -10516,6 +10532,78 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
     };
   }
 
+
+  function buildGatewayRouteMalformedSmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+    stream = false,
+  ): Record<string, unknown> {
+    const finalPrompt = `${input}\nMalformed smoke: treat malformed tool history as inert context only. Do not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-malformed-smoke",
+        },
+        messages: [{
+          role: "user",
+          content: [
+            { type: "tool_use", name: "gateway_smoke_tool", input: { value: MODEL_GATEWAY_SMOKE_SENTINEL } },
+            { type: "tool_result", content: MODEL_GATEWAY_SMOKE_SENTINEL },
+            { type: "text", text: finalPrompt },
+          ],
+        }],
+        tools: [gatewaySmokeToolForAnthropic()],
+        tool_choice: { type: "auto" },
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        messages: [
+          { role: "assistant", content: null, tool_calls: [{ type: "function", function: { arguments: JSON.stringify({ value: MODEL_GATEWAY_SMOKE_SENTINEL }) } }] },
+          { role: "tool", content: MODEL_GATEWAY_SMOKE_SENTINEL },
+          { role: "function", content: MODEL_GATEWAY_SMOKE_SENTINEL },
+          { role: "user", content: finalPrompt },
+        ],
+        tools: [gatewaySmokeToolForChat()],
+        tool_choice: "auto",
+      };
+    }
+    return {
+      model,
+      input: [
+        { type: "function_call", status: "completed", arguments: JSON.stringify({ value: MODEL_GATEWAY_SMOKE_SENTINEL }) },
+        { type: "function_call", id: "fc_gateway_smoke_missing_name", call_id: "call_gateway_smoke_missing_name", status: "completed", arguments: JSON.stringify({ value: MODEL_GATEWAY_SMOKE_SENTINEL }) },
+        { type: "function_call_output", id: "fco_gateway_smoke_missing_call", status: "completed", output: MODEL_GATEWAY_SMOKE_SENTINEL },
+        { type: "custom_tool_call", id: "ctc_gateway_smoke_missing_call", status: "completed", input: MODEL_GATEWAY_SMOKE_SENTINEL },
+        { role: "user", content: [{ type: "input_text", text: finalPrompt }] },
+      ],
+      stream,
+      max_output_tokens: 256,
+      tools: [{
+        type: "function",
+        name: "gateway_smoke_tool",
+        description: "A no-op tool used only to verify malformed tool history degradation.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      }],
+      tool_choice: "auto",
+    };
+  }
 
   function buildGatewayRouteToolResultSmokePayload(
     scope: ModelGatewayAppScope,
@@ -10813,9 +10901,10 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
     const toolSmoke = payload.toolSmoke === true;
     const toolResultSmoke = payload.toolResultSmoke === true;
     const compatibilitySmoke = payload.compatibilitySmoke === true;
+    const malformedSmoke = payload.malformedSmoke === true;
     const stream = typeof payload.stream === "boolean"
       ? payload.stream
-      : toolSmoke || toolResultSmoke || compatibilitySmoke ? false : scope === "claude-code";
+      : toolSmoke || toolResultSmoke || compatibilitySmoke || malformedSmoke ? false : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -10833,6 +10922,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           toolSmoke,
           toolResultSmoke,
           compatibilitySmoke,
+          malformedSmoke,
         )),
         signal: controller.signal,
       });
@@ -10859,7 +10949,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             ? toolSmoke
               ? `${stream ? "Streaming " : ""}Active route tool smoke did not return gateway_smoke_tool in the client protocol response.`
               : `${stream ? "Streaming " : ""}Active route smoke did not return ${MODEL_GATEWAY_SMOKE_SENTINEL} in the client protocol response.`
-            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
+            : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : malformedSmoke ? "malformed " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
         },
       };
     } catch (error) {

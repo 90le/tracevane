@@ -1848,6 +1848,24 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(disabledParallelToolCalls.status, 200);
       assert.equal(disabledParallelToolCalls.body.id, "resp_metadata");
 
+      const malformedResponsesHistory = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: [
+            { type: "function_call", status: "completed", arguments: "{\"query\":\"docs\"}" },
+            { type: "function_call", id: "fc_missing_name", call_id: "call_missing_name", status: "completed", arguments: "{\"query\":\"docs\"}" },
+            { type: "function_call_output", id: "fco_missing_call", status: "completed", output: "orphan output" },
+            { type: "custom_tool_call", id: "ctc_missing_call", status: "completed", input: "custom input" },
+            { role: "user", content: [{ type: "input_text", text: "Continue after malformed tool history." }] },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(malformedResponsesHistory.status, 200);
+      assert.equal(malformedResponsesHistory.body.id, "resp_metadata");
+
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -1943,7 +1961,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 7);
+  assert.equal(upstreamCalls.length, 8);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -2101,7 +2119,22 @@ test("model gateway strips Codex account Responses unsupported request parameter
   const disabledParallelToolCallsUpstreamBody = JSON.parse(upstreamCalls[5].body);
   assert.equal(disabledParallelToolCallsUpstreamBody.parallel_tool_calls, false);
   assert.deepEqual(disabledParallelToolCallsUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
-  const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[6].body);
+  const malformedResponsesHistoryUpstreamBody = JSON.parse(upstreamCalls[6].body);
+  assert.equal(Array.isArray(malformedResponsesHistoryUpstreamBody.input), true);
+  assert.deepEqual(malformedResponsesHistoryUpstreamBody.input
+    .filter((item) => (
+      item?.type === "function_call"
+      || item?.type === "function_call_output"
+      || item?.type === "custom_tool_call"
+      || item?.type === "custom_tool_call_output"
+    ))
+    .map((item) => item.type), []);
+  const malformedResponsesHistoryInput = JSON.stringify(malformedResponsesHistoryUpstreamBody.input);
+  assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed function_call input item omitted for Codex account compatibility/);
+  assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed function_call_output input item omitted for Codex account compatibility/);
+  assert.match(malformedResponsesHistoryInput, /OpenAI Responses malformed custom_tool_call input item omitted for Codex account compatibility/);
+  assert.match(malformedResponsesHistoryInput, /Continue after malformed tool history/);
+  const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[7].body);
   assert.equal(claudeCodeUpstreamBody.metadata, undefined);
   assert.equal(containsObjectKey(claudeCodeUpstreamBody, "metadata"), false);
   assert.equal(JSON.stringify(claudeCodeUpstreamBody.tools || []).includes('"type":"mcp"'), false);

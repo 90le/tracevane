@@ -37,6 +37,8 @@ function parseArgs(argv) {
     streamToolResultSmoke: false,
     compatibilitySmoke: false,
     streamCompatibilitySmoke: false,
+    malformedSmoke: false,
+    streamMalformedSmoke: false,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -75,6 +77,11 @@ function parseArgs(argv) {
     else if (arg === "--stream-compatibility-smoke") {
       options.compatibilitySmoke = true;
       options.streamCompatibilitySmoke = true;
+    }
+    else if (arg === "--malformed-smoke") options.malformedSmoke = true;
+    else if (arg === "--stream-malformed-smoke") {
+      options.malformedSmoke = true;
+      options.streamMalformedSmoke = true;
     }
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
@@ -155,6 +162,10 @@ Options:
                     verify metadata/cache_control/MCP/container/annotation cleanup
   --stream-compatibility-smoke
                     also verify compatibility cleanup through streaming final text
+  --malformed-smoke
+                    verify malformed tool history degrades to safe context
+  --stream-malformed-smoke
+                    also verify malformed tool history through streaming final text
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -278,6 +289,8 @@ function createResult(options, provider, originalActiveProviders) {
     streamToolResultSmokes: [],
     compatibilitySmokes: [],
     streamCompatibilitySmokes: [],
+    malformedSmokes: [],
+    streamMalformedSmokes: [],
     expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
@@ -686,6 +699,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         toolSmoke: Boolean(options.toolSmokeRequest),
         toolResultSmoke: Boolean(options.toolResultSmokeRequest),
         compatibilitySmoke: Boolean(options.compatibilitySmokeRequest),
+        malformedSmoke: Boolean(options.malformedSmokeRequest),
         ...(typeof options.streamRequest === "boolean" ? { stream: options.streamRequest } : {}),
       }),
       timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
@@ -792,6 +806,14 @@ function printResult(result, json) {
   }
   for (const smoke of result.streamCompatibilitySmokes || []) {
     console.log(`- ${smoke.scope} stream compatibility: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.malformedSmokes || []) {
+    console.log(`- ${smoke.scope} malformed: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.streamMalformedSmokes || []) {
+    console.log(`- ${smoke.scope} stream malformed: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
   }
   if (result.setupFailures.length) {
@@ -1027,6 +1049,18 @@ async function main() {
               result.streamCompatibilitySmokes.push(await runActiveRouteSmoke(streamCompatibilityOptions, key, scope));
             }
           }
+          if (options.malformedSmoke) {
+            const malformedOptions = { ...options, malformedSmokeRequest: true };
+            for (const scope of options.scopes) {
+              result.malformedSmokes.push(await runActiveRouteSmoke(malformedOptions, key, scope));
+            }
+          }
+          if (options.streamMalformedSmoke) {
+            const streamMalformedOptions = { ...options, malformedSmokeRequest: true, streamRequest: true };
+            for (const scope of options.scopes) {
+              result.streamMalformedSmokes.push(await runActiveRouteSmoke(streamMalformedOptions, key, scope));
+            }
+          }
           addExpectationFailures(result, options);
         }
       }
@@ -1041,6 +1075,8 @@ async function main() {
       && (!options.streamToolResultSmoke || result.streamToolResultSmokes.length === options.scopes.length)
       && (!options.compatibilitySmoke || result.compatibilitySmokes.length === options.scopes.length)
       && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.length === options.scopes.length)
+      && (!options.malformedSmoke || result.malformedSmokes.length === options.scopes.length)
+      && (!options.streamMalformedSmoke || result.streamMalformedSmokes.length === options.scopes.length)
       && result.preflightFailures.length === 0
       && result.routeSmokes.every((item) => item.ok)
       && (!options.toolSmoke || result.toolSmokes.every((item) => item.ok))
@@ -1049,6 +1085,8 @@ async function main() {
       && (!options.streamToolResultSmoke || result.streamToolResultSmokes.every((item) => item.ok))
       && (!options.compatibilitySmoke || result.compatibilitySmokes.every((item) => item.ok))
       && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.every((item) => item.ok))
+      && (!options.malformedSmoke || result.malformedSmokes.every((item) => item.ok))
+      && (!options.streamMalformedSmoke || result.streamMalformedSmokes.every((item) => item.ok))
       && result.expectationFailures.length === 0
       && result.setupFailures.length === 0
       && result.restoreFailures.length === 0

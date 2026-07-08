@@ -223,6 +223,8 @@ test("model gateway protocol matrix proves GLM native protocols and Codex accoun
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "opencode" && request.body.toolResultSmoke === true).length, 2);
     assert.equal(codexSmokeRequests.filter((request) => request.body.compatibilitySmoke === true).length, 6);
     assert.equal(codexSmokeRequests.filter((request) => request.body.compatibilitySmoke === true && request.body.stream === true).length, 3);
+    assert.equal(codexSmokeRequests.filter((request) => request.body.malformedSmoke === true).length, 6);
+    assert.equal(codexSmokeRequests.filter((request) => request.body.malformedSmoke === true && request.body.stream === true).length, 3);
   } finally {
     await gateway.close();
   }

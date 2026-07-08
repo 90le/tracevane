@@ -289,6 +289,45 @@ test("model gateway active route smoke can run compatibility cleanup probes", as
   }
 });
 
+test("model gateway active route smoke can run malformed tool history probes", async () => {
+  const gateway = await startMockGateway();
+  try {
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex,claude-code,opencode",
+      "--malformed-smoke",
+      "--stream-malformed-smoke",
+      "--json",
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.malformedSmokes.map((probe) => [probe.scope, probe.ok]), [
+      ["codex", true],
+      ["claude-code", true],
+      ["opencode", true],
+    ]);
+    assert.deepEqual(parsed.streamMalformedSmokes.map((probe) => [probe.scope, probe.ok]), [
+      ["codex", true],
+      ["claude-code", true],
+      ["opencode", true],
+    ]);
+    const malformedRequests = gateway.requests
+      .filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.malformedSmoke === true);
+    assert.deepEqual(malformedRequests.map((request) => [request.body.scope, request.body.stream === true]), [
+      ["codex", false],
+      ["claude-code", false],
+      ["opencode", false],
+      ["codex", true],
+      ["claude-code", true],
+      ["opencode", true],
+    ]);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    await gateway.close();
+  }
+});
+
 test("model gateway active route smoke waits on a lock before mutating active providers", async () => {
   const gateway = await startMockGateway();
   const lock = makeTempLockDir();
