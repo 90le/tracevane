@@ -1870,7 +1870,13 @@ test("model gateway strips Codex account Responses unsupported request parameter
             authorization_token: "claude-mcp-secret-token",
             tool_configuration: { enabled: true, allowed_tools: ["read_file", "search"] },
           }],
-          messages: [{ role: "user", content: "hello" }],
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "hello" },
+              { type: "container_upload", file_id: "file_anthropic_container_123", filename: "claude-artifact.txt" },
+            ],
+          }],
           stream: false,
         },
       });
@@ -2097,10 +2103,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.deepEqual(disabledParallelToolCallsUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
   const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[6].body);
   assert.equal(JSON.stringify(claudeCodeUpstreamBody.tools || []).includes('"type":"mcp"'), false);
+  assert.equal(JSON.stringify(claudeCodeUpstreamBody.input).includes('"type":"input_file"'), false);
   const claudeCodeInputText = JSON.stringify(claudeCodeUpstreamBody.input);
   assert.match(claudeCodeInputText, /Anthropic MCP server/);
   assert.match(claudeCodeInputText, /repo-tools/);
   assert.match(claudeCodeInputText, /mcp\.example\.test/);
+  assert.match(claudeCodeInputText, /claude-artifact\.txt/);
   assert.equal(claudeCodeInputText.includes("claude-mcp-secret-token"), false);
   assert.equal(claudeCodeInputText.includes("authorization_token"), false);
   assert.equal(claudeCodeInputText.includes('"authorization"'), false);

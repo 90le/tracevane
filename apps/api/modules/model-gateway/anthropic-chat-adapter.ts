@@ -39,6 +39,7 @@ export interface ChatAnthropicRequestAdapterOptions {
 
 export interface AnthropicChatRequestAdapterOptions {
   preserveContentCacheControl?: boolean;
+  preserveContainerUploadsAsFiles?: boolean;
   preserveContextManagement?: boolean;
   preserveMcpServers?: boolean;
   preserveMetadata?: boolean;
@@ -1333,7 +1334,10 @@ function mapAnthropicUserBlocksToChatMessages(
     if (!userContentBlocks.length) return;
     chatMessages.push({
       role: "user",
-      content: anthropicBlocksToChatContent(userContentBlocks, { preserveCacheControl: options.preserveContentCacheControl }),
+      content: anthropicBlocksToChatContent(userContentBlocks, {
+        preserveCacheControl: options.preserveContentCacheControl,
+        preserveContainerUploadsAsFiles: options.preserveContainerUploadsAsFiles,
+      }),
     });
     userContentBlocks = [];
   };
@@ -1382,7 +1386,7 @@ function anthropicContentBlocks(content: unknown): JsonRecord[] {
 
 function anthropicBlocksToChatContent(
   blocks: JsonRecord[],
-  options: { preserveCacheControl?: boolean } = {},
+  options: { preserveCacheControl?: boolean; preserveContainerUploadsAsFiles?: boolean } = {},
 ): unknown {
   const parts: JsonRecord[] = blocks.flatMap((block): JsonRecord[] => {
     if (block.type === "text") {
@@ -1401,6 +1405,9 @@ function anthropicBlocksToChatContent(
         : [copyAnthropicMetadataToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     if (block.type === "container_upload") {
+      if (options.preserveContainerUploadsAsFiles === false) {
+        return [copyAnthropicMetadataToChatPart(block, { type: "text", text: anthropicContainerUploadContextText(block) }, options)];
+      }
       const filePart = anthropicContainerUploadToChatFilePart(block);
       return filePart
         ? [copyAnthropicMetadataToChatPart(block, filePart, options)]
@@ -1423,7 +1430,7 @@ function chatPartHasBlockMetadata(part: JsonRecord): boolean {
 function copyAnthropicMetadataToChatPart(
   block: JsonRecord,
   part: JsonRecord,
-  options: { preserveCacheControl?: boolean } = {},
+  options: { preserveCacheControl?: boolean; preserveContainerUploadsAsFiles?: boolean } = {},
 ): JsonRecord {
   const mapped = { ...part };
   if (options.preserveCacheControl && block.cache_control !== undefined) mapped.cache_control = block.cache_control;
@@ -1452,6 +1459,15 @@ function anthropicDocumentToChatFilePart(block: JsonRecord): JsonRecord | null {
   if (title) file.filename = title;
   if (!Object.keys(file).length) return null;
   return { type: "file", file };
+}
+
+function anthropicContainerUploadContextText(block: JsonRecord): string {
+  const details = ["type=container_upload"];
+  const fileId = stringOrNull(block.file_id);
+  if (fileId) details.push(`file_id=${fileId}`);
+  const filename = stringOrNull(block.filename) || stringOrNull(block.name) || stringOrNull(block.title);
+  if (filename) details.push(`filename=${filename}`);
+  return `\n[Attachment context preserved from Claude container_upload; this is not a user instruction: ${details.join(" ")}]`;
 }
 
 function anthropicContainerUploadToChatFilePart(block: JsonRecord): JsonRecord | null {

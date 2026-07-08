@@ -11684,6 +11684,7 @@ export function createModelGatewayService(
       try {
         const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText, {
           preserveContentCacheControl: true,
+          preserveContainerUploadsAsFiles: !useCodexAccountResponsesUpstream,
           preserveContextManagement: true,
           preserveMcpServers: !useCodexAccountResponsesUpstream,
           preserveServiceTier: true,
