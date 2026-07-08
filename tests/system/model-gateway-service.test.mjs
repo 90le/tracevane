@@ -1794,6 +1794,34 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(incompatibleStrictTool.status, 200);
       assert.equal(incompatibleStrictTool.body.id, "resp_metadata");
 
+      const incompatibleStrictResponseFormat = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "Return JSON.",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "optional_metadata_response",
+              schema: {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                  metadata: { type: "string" },
+                },
+                required: ["value"],
+                additionalProperties: false,
+              },
+              strict: true,
+            },
+          },
+          stream: false,
+        },
+      });
+      assert.equal(incompatibleStrictResponseFormat.status, 200);
+      assert.equal(incompatibleStrictResponseFormat.body.id, "resp_metadata");
+
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -1875,7 +1903,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 5);
+  assert.equal(upstreamCalls.length, 6);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -2005,6 +2033,21 @@ test("model gateway strips Codex account Responses unsupported request parameter
       additionalProperties: false,
     },
   }]);
+  const incompatibleStrictResponseFormatUpstreamBody = JSON.parse(upstreamCalls[4].body);
+  assert.deepEqual(incompatibleStrictResponseFormatUpstreamBody.text?.format, {
+    type: "json_schema",
+    name: "optional_metadata_response",
+    schema: {
+      type: "object",
+      properties: {
+        value: { type: "string" },
+        metadata: { type: "string" },
+      },
+      required: ["value"],
+      additionalProperties: false,
+    },
+    strict: false,
+  });
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {

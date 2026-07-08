@@ -4814,6 +4814,7 @@ function normalizeCodexAccountResponsesResponseFormat(value: Record<string, unkn
 function normalizeCodexAccountResponsesText(value: Record<string, unknown>): void {
   if (!isRecord(value.text)) return;
   const text: Record<string, unknown> = { ...value.text };
+  normalizeCodexAccountResponsesTextFormatStrictCompatibility(text);
   const omittedText: Record<string, unknown> = {};
   for (const key of Object.keys(text)) {
     if (key === "format" || key === "verbosity") continue;
@@ -4825,6 +4826,15 @@ function normalizeCodexAccountResponsesText(value: Record<string, unknown>): voi
   if (Object.keys(omittedText).length) {
     appendCodexAccountCompatibilityNote(value, "text fields", [omittedText]);
   }
+}
+
+function normalizeCodexAccountResponsesTextFormatStrictCompatibility(text: Record<string, unknown>): void {
+  if (!isRecord(text.format)) return;
+  const format: Record<string, unknown> = { ...text.format };
+  if (format.strict === true && !isCodexAccountOpenAIStrictJsonSchema(format.schema)) {
+    format.strict = false;
+  }
+  text.format = format;
 }
 
 function codexAccountTextFormatFromResponseFormat(source: Record<string, unknown>): Record<string, unknown> | null {
