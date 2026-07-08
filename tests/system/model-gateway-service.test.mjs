@@ -9327,6 +9327,11 @@ test("model gateway protocol matrix forwards native openai responses and guards 
             {
               role: "assistant",
               content: "I will save a note.",
+              annotations: [{
+                type: "url_citation",
+                url: "https://example.test/chat-history",
+                title: "Chat History",
+              }],
               reasoning_details: [{
                 id: "rs_chat_history",
                 type: "reasoning",
@@ -9436,7 +9441,17 @@ test("model gateway protocol matrix forwards native openai responses and guards 
             {
               role: "user",
               content: [
-                { type: "text", text: "anthropic please" },
+                {
+                  type: "text",
+                  text: "anthropic please",
+                  citations: [{
+                    type: "web_search_result_location",
+                    url: "https://example.test/anthropic-input",
+                    title: "Anthropic Input",
+                    start_char_index: 0,
+                    end_char_index: 17,
+                  }],
+                },
                 {
                   type: "document",
                   source: { type: "url", url: "https://example.test/spec.pdf" },
@@ -9583,7 +9598,18 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         summary: [{ type: "summary_text", text: "Need to save a durable note." }],
         encrypted_content: "encrypted-chat-history-reasoning",
       },
-      { role: "assistant", content: [{ type: "output_text", text: "I will save a note." }] },
+      {
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          text: "I will save a note.",
+          annotations: [{
+            type: "url_citation",
+            url: "https://example.test/chat-history",
+            title: "Chat History",
+          }],
+        }],
+      },
       {
         type: "function_call",
         id: "fc_call_note",
@@ -9646,6 +9672,10 @@ test("model gateway protocol matrix forwards native openai responses and guards 
         role: "user",
         content: [
           { type: "input_text", text: "anthropic please" },
+          {
+            type: "input_text",
+            text: 'OpenAI Chat content part annotations preserved for Responses: [{"type":"url_citation","url":"https://example.test/anthropic-input","title":"Anthropic Input","start_index":0,"end_index":17}]',
+          },
           { type: "input_file", file_url: "https://example.test/spec.pdf", filename: "spec.pdf" },
         ],
       },

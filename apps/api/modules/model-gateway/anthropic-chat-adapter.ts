@@ -1387,43 +1387,50 @@ function anthropicBlocksToChatContent(
   const parts: JsonRecord[] = blocks.flatMap((block): JsonRecord[] => {
     if (block.type === "text") {
       const text = stringOrNull(block.text);
-      return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text }, options)] : [];
+      return text ? [copyAnthropicMetadataToChatPart(block, { type: "text", text }, options)] : [];
     }
     if (block.type === "image") {
       const imageUrl = anthropicImageSourceToChatImageUrl(block.source);
-      if (imageUrl) return [copyAnthropicCacheControlToChatPart(block, { type: "image_url", image_url: { url: imageUrl } }, options)];
-      return [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
+      if (imageUrl) return [copyAnthropicMetadataToChatPart(block, { type: "image_url", image_url: { url: imageUrl } }, options)];
+      return [copyAnthropicMetadataToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     if (block.type === "document") {
       const filePart = anthropicDocumentToChatFilePart(block);
       return filePart
-        ? [copyAnthropicCacheControlToChatPart(block, filePart, options)]
-        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
+        ? [copyAnthropicMetadataToChatPart(block, filePart, options)]
+        : [copyAnthropicMetadataToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     if (block.type === "container_upload") {
       const filePart = anthropicContainerUploadToChatFilePart(block);
       return filePart
-        ? [copyAnthropicCacheControlToChatPart(block, filePart, options)]
-        : [copyAnthropicCacheControlToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
+        ? [copyAnthropicMetadataToChatPart(block, filePart, options)]
+        : [copyAnthropicMetadataToChatPart(block, { type: "text", text: anthropicUnknownContentBlockToChatText(block) }, options)];
     }
     const text = anthropicContentToText(block) || anthropicUnknownContentBlockToChatText(block);
-    return text ? [copyAnthropicCacheControlToChatPart(block, { type: "text", text }, options)] : [];
+    return text ? [copyAnthropicMetadataToChatPart(block, { type: "text", text }, options)] : [];
   });
   if (!parts.length) return "";
-  if (parts.every((part) => part.type === "text") && !parts.some((part) => part.cache_control !== undefined)) {
+  if (parts.every((part) => part.type === "text") && !parts.some(chatPartHasBlockMetadata)) {
     return parts.map((part) => stringOrNull(part.text) || "").join("");
   }
   return parts;
 }
 
-function copyAnthropicCacheControlToChatPart(
+function chatPartHasBlockMetadata(part: JsonRecord): boolean {
+  return part.cache_control !== undefined || part.annotations !== undefined;
+}
+
+function copyAnthropicMetadataToChatPart(
   block: JsonRecord,
   part: JsonRecord,
   options: { preserveCacheControl?: boolean } = {},
 ): JsonRecord {
-  return options.preserveCacheControl && block.cache_control !== undefined
-    ? { ...part, cache_control: block.cache_control }
-    : part;
+  const mapped = { ...part };
+  if (options.preserveCacheControl && block.cache_control !== undefined) mapped.cache_control = block.cache_control;
+  if (Array.isArray(block.citations) && block.citations.length) {
+    mapped.annotations = block.citations.filter(isRecord).map(mapAnthropicCitationToChatAnnotation);
+  }
+  return mapped;
 }
 
 function anthropicDocumentToChatFilePart(block: JsonRecord): JsonRecord | null {

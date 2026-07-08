@@ -351,7 +351,11 @@ function mapChatMessageToResponsesInput(message: unknown): JsonRecord[] {
     items.push(...chatMessageReasoningToResponsesItems(message));
     items.push(...chatMcpToolBlocksToResponsesItems(message.mcp_tool_blocks));
   }
-  const content = chatContentToResponsesContent(message.content, role);
+  const content = attachChatMessageAnnotationsToResponsesContent(
+    chatContentToResponsesContent(message.content, role),
+    message.annotations,
+    role,
+  );
   const legacyFunctionCall = role === "assistant" ? mapLegacyChatFunctionCallMessageToResponses(message.function_call) : null;
   const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   if (content.length || (!hasToolCalls && !legacyFunctionCall)) {
@@ -513,6 +517,7 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
         const detail = stringOrNull(image?.detail) || stringOrNull(part.detail);
         if (detail) imagePart.detail = detail;
         parts.push(imagePart);
+        appendChatAnnotationsNoteForResponses(parts, part.annotations, role, textType);
         appendChatCacheControlNoteForResponses(parts, part, textType);
       } else {
         parts.push(chatContentPartFallbackToResponsesText(part, textType));
@@ -523,6 +528,7 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       const imagePart = chatInputImagePartToResponsesInputImage(part);
       if (imagePart) {
         parts.push(imagePart);
+        appendChatAnnotationsNoteForResponses(parts, part.annotations, role, textType);
         appendChatCacheControlNoteForResponses(parts, part, textType);
       } else {
         parts.push(chatContentPartFallbackToResponsesText(part, textType));
@@ -533,6 +539,7 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
       const fileParts = chatFilePartToResponsesInputParts(part);
       if (fileParts.length) {
         parts.push(...fileParts);
+        appendChatAnnotationsNoteForResponses(parts, part.annotations, role, textType);
         appendChatCacheControlNoteForResponses(parts, part, textType);
       } else {
         parts.push(chatContentPartFallbackToResponsesText(part, textType));
@@ -547,13 +554,52 @@ function chatContentToResponsesContent(content: unknown, role: string): JsonReco
     }
     const text = chatContentPartToText(part);
     if (text) {
-      parts.push({ type: textType, text });
+      const textPart: JsonRecord = { type: textType, text };
+      attachChatPartAnnotationsToResponsesTextPart(textPart, part.annotations, role);
+      parts.push(textPart);
+      appendChatAnnotationsNoteForResponses(parts, part.annotations, role, textType);
       appendChatCacheControlNoteForResponses(parts, part, textType);
     } else if (type) {
       parts.push(chatContentPartFallbackToResponsesText(part, textType));
     }
   }
   return parts;
+}
+
+function attachChatMessageAnnotationsToResponsesContent(content: JsonRecord[], annotations: unknown, role: string): JsonRecord[] {
+  if (!Array.isArray(annotations) || !annotations.length) return content;
+  const textPart = content.find((part) => part.type === (role === "assistant" ? "output_text" : "input_text"));
+  if (!textPart) return content;
+  attachChatPartAnnotationsToResponsesTextPart(textPart, annotations, role);
+  if (role === "assistant") return content;
+  const note = chatAnnotationsNoteForResponses(annotations, "input_text");
+  return note ? [...content, note] : content;
+}
+
+function attachChatPartAnnotationsToResponsesTextPart(part: JsonRecord, annotations: unknown, role: string): void {
+  if (role !== "assistant" || !Array.isArray(annotations) || !annotations.length) return;
+  const mapped = annotations.filter(isRecord);
+  if (!mapped.length) return;
+  part.annotations = [
+    ...(Array.isArray(part.annotations) ? part.annotations.filter(isRecord) : []),
+    ...mapped,
+  ];
+}
+
+function appendChatAnnotationsNoteForResponses(parts: JsonRecord[], annotations: unknown, role: string, textType: string): void {
+  if (role === "assistant") return;
+  const note = chatAnnotationsNoteForResponses(annotations, textType);
+  if (note) parts.push(note);
+}
+
+function chatAnnotationsNoteForResponses(annotations: unknown, textType: string): JsonRecord | null {
+  if (!Array.isArray(annotations) || !annotations.length) return null;
+  const mapped = annotations.filter(isRecord);
+  if (!mapped.length) return null;
+  return {
+    type: textType,
+    text: `OpenAI Chat content part annotations preserved for Responses: ${stringifyCompact(mapped)}`,
+  };
 }
 
 function chatContentPartFallbackToResponsesText(part: JsonRecord, textType: string): JsonRecord {
