@@ -19,6 +19,29 @@ Tracevane is building two related but separate editing products:
 
 Both products share lower-level core services, not full product shells.
 
+
+## Product focus overlay
+
+From M13-I onward, default prioritization shifts from IDE parity and provider expansion to the remote code editing mainline. Use `docs/ide-code-editor-solution/15-远程代码工作台产品聚焦与长期执行机制.md` as the product decision overlay.
+
+Default priority order:
+
+1. Open/browse/edit/save/conflict/dirty/readonly/large-file safety.
+2. Search, Quick Open, symbols, Problems, diagnostics, hover and definition.
+3. Mainstream Web stack quality: TS/JS/JSON/HTML/CSS/ESLint.
+4. Minimal Git loop: status/diff/stage/commit.
+5. Provider status, trust, allowlist, root guard and degraded reasons.
+
+Default parking lot unless explicitly justified by the mainline:
+
+- Full browser VS Code parity.
+- Dangerous Git flows: force push, merge, rebase, complex conflict wizard.
+- Heavy Debug parity.
+- Terminal advanced view movement / layout features.
+- Deeper Go/Rust/Java/clangd rich interactions beyond current proofs.
+
+Current recommended next stage: M13-I Toolchain Rich Interaction Acceptance / Product Pivot Decision, then P0 Remote Code Editing Mainline Audit.
+
 ## Current stage map
 
 - Done: M1 Online Editor base.
@@ -150,13 +173,13 @@ Both products share lower-level core services, not full product shells.
 - Done: M13-F Toolchain Rich Interaction Acceptance / Next Provider Decision.
 - Done: M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan.
 - Done: M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation.
-- Next: M13-I Toolchain Rich Interaction Acceptance / Next Capability Decision.
+- Next: M13-I Toolchain Rich Interaction Acceptance / Product Pivot Decision.
 
 ## Required reading by task
 
 Always read these before changing matching scope:
 
-- Overall editor/IDE direction: `docs/ide-code-editor-solution/00-README.md`, `08-实施阶段验收与风险.md`.
+- Overall editor/IDE direction: `docs/ide-code-editor-solution/00-README.md`, `15-远程代码工作台产品聚焦与长期执行机制.md`, `08-实施阶段验收与风险.md`.
 - File Manager Online Editor / File Surface: `03-文件管理器在线编辑器方案.md`, `10-monaco-first-online-editor-strategy.md`, `12-file-surface-unification-and-monaco-gap-plan.md`.
 - Completed Mini Explorer / Shared Explorer Core record: `13-mini-explorer-shared-explorer-plan.md`, plus `01`, `02`, `05`, `06`.
 - IDE Workbench layout / IDE Editor Foundation: `04-独立IDE工作台方案.md`, `05-前端实现方案.md`, `09-IDE参考行为与术语对照.md`, `archive/m5y-a-ide-editor-foundation-plan.md`, `archive/m5y-execution-summary.md`, `archive/m5y-g-editor-preview-statusbar-hex-summary.md`, and `archive/m5y-h-layout-reset-empty-action-summary.md`.
