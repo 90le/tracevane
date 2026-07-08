@@ -804,7 +804,7 @@ function diagnoseCodexToolRequests({ requests }) {
   const hasToolOutput = requests.some((request) => Array.isArray(request.body?.input)
     && request.body.input.some((item) => item?.type === "shell_call_output" || item?.type === "local_shell_call_output"));
   return {
-    ok: false,
+    ok: hasToolOutput,
     errors: hasToolOutput ? [] : ["Codex CLI did not send a shell_call_output/local_shell_call_output follow-up request."],
     facts: {
       requestCount: requests.length,
@@ -822,7 +822,7 @@ function diagnoseOpenCodeToolRequests({ requests }) {
     && request.body.messages.some((message) => message?.role === "tool" && typeof message.tool_call_id === "string"));
   const hasToolRoundTrip = hasAssistantToolCall && hasToolResultMessage;
   return {
-    ok: false,
+    ok: hasToolRoundTrip,
     errors: hasToolRoundTrip ? [] : ["OpenCode CLI did not expose a standard assistant tool_calls + role=tool follow-up round trip."],
     facts: {
       requestCount: requests.length,
