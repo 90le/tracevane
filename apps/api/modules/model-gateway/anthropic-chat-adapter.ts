@@ -682,7 +682,10 @@ function chatToolResultMessageToAnthropicBlock(toolUseId: string, message: JsonR
   const block: JsonRecord = {
     type: "tool_result",
     tool_use_id: toolUseId,
-    content: chatToolResultContentToAnthropicContent(message.content),
+    content: attachChatAnnotationsToAnthropicToolResultContent(
+      chatToolResultContentToAnthropicContent(message.content),
+      message.annotations,
+    ),
   };
   if (message.is_error === true) block.is_error = true;
   return block;
@@ -726,6 +729,20 @@ function chatReasoningDetailsToAnthropicBlocks(details: unknown): JsonRecord[] {
     if (detail.type === "redacted_thinking" && stringOrNull(detail.data)) return [{ ...detail }];
     return [];
   });
+}
+
+function attachChatAnnotationsToAnthropicToolResultContent(content: string | JsonRecord[], annotations: unknown): string | JsonRecord[] {
+  if (!Array.isArray(annotations) || !annotations.length) return content;
+  if (typeof content === "string") {
+    if (!content) return content;
+    const block: JsonRecord = { type: "text", text: content };
+    copyChatAnnotationsToAnthropicTextBlock(annotations, block);
+    return shouldCollapseAnthropicTextContent([block]) ? content : [block];
+  }
+  const textBlock = content.find((block) => block.type === "text");
+  if (!textBlock) return content;
+  copyChatAnnotationsToAnthropicTextBlock(annotations, textBlock);
+  return content;
 }
 
 function chatToolResultContentToAnthropicContent(content: unknown): string | JsonRecord[] {

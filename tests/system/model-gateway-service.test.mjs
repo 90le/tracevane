@@ -17240,6 +17240,13 @@ test("model gateway preserves Chat tool-result cache controls through Anthropic 
               { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
               { type: "image_url", image_url: { url: "https://example.test/weather.png" }, cache_control: { type: "ephemeral" } },
             ],
+            annotations: [{
+              type: "url_citation",
+              url: "https://example.test/weather-source",
+              title: "Weather Source",
+              start_index: 0,
+              end_index: 8,
+            }],
           }],
           tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
         },
@@ -17258,7 +17265,20 @@ test("model gateway preserves Chat tool-result cache controls through Anthropic 
     type: "tool_result",
     tool_use_id: "call_lookup",
     content: [
-      { type: "text", text: "weather:", cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: "weather:",
+        cache_control: { type: "ephemeral" },
+        citations: [{
+          type: "web_search_result_location",
+          url: "https://example.test/weather-source",
+          title: "Weather Source",
+          start_index: 0,
+          end_index: 8,
+          start_char_index: 0,
+          end_char_index: 8,
+        }],
+      },
       { type: "image", source: { type: "url", url: "https://example.test/weather.png" }, cache_control: { type: "ephemeral" } },
     ],
   }]);
