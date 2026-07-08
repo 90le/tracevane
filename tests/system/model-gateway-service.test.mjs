@@ -1622,7 +1622,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
               url: "https://example.test/message-annotation",
               title: "message annotation",
             }],
-            metadata: { turn_id: "nested-message-metadata" },
+            metadata: { turn_id: "nested-message-metadata", api_key: "nested-message-secret" },
             content: [{
               type: "input_text",
               text: "hello",
@@ -1633,7 +1633,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
                 title: "content annotation",
               }],
               cache_control: { type: "ephemeral" },
-              metadata: { part_id: "nested-content-metadata" },
+              metadata: { part_id: "nested-content-metadata", authorization: "nested-content-secret" },
             }, {
               type: "text",
               text: "chat-style text part",
@@ -1663,6 +1663,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           metadata: {
             trace_id: "claude-code-cli",
             session_id: "metadata-regression",
+            api_key: "top-level-secret",
           },
           modalities: ["text"],
           n: 1,
@@ -1872,7 +1873,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(upstreamBody.foo, undefined);
     assert.equal(containsObjectKey(upstreamBody, "foo"), false);
-    assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
+    assert.equal(containsObjectKey(upstreamBody, "cache_control"), false);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
@@ -1889,6 +1890,16 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses request controls omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /max_tokens/);
   assert.match(JSON.stringify(directUpstreamBody.input), /STOP_HERE/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /claude-code-cli/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /metadata-regression/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses input metadata omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /nested-message-metadata/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /nested-content-metadata/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses input cache_control omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /ephemeral/);
+  assert.equal(JSON.stringify(directUpstreamBody.input).includes("top-level-secret"), false);
+  assert.equal(JSON.stringify(directUpstreamBody.input).includes("nested-message-secret"), false);
+  assert.equal(JSON.stringify(directUpstreamBody.input).includes("nested-content-secret"), false);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses reasoning fields omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-reasoning-field/);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses text fields omitted for Codex account compatibility/);

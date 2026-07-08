@@ -4713,6 +4713,19 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     if (strippedAnnotations.length) {
       appendCodexAccountCompatibilityNote(next, "input annotations", strippedAnnotations);
     }
+    const strippedMetadata = strippedCompatibilityFields
+      .filter((item) => item.field === "metadata")
+      .map((item) => ({ path: item.path, metadata: codexAccountSafeMetadata(item.value) }))
+      .filter((item) => item.metadata !== null);
+    if (strippedMetadata.length) {
+      appendCodexAccountCompatibilityNote(next, "input metadata", strippedMetadata);
+    }
+    const strippedCacheControl = strippedCompatibilityFields
+      .filter((item) => item.field === "cache_control")
+      .map((item) => ({ path: item.path, cache_control: item.value }));
+    if (strippedCacheControl.length) {
+      appendCodexAccountCompatibilityNote(next, "input cache_control", strippedCacheControl);
+    }
 
     return JSON.stringify(next);
   } catch {
@@ -4797,9 +4810,25 @@ function preserveCodexAccountUnsupportedRequestControls(value: Record<string, un
   const omitted: Record<string, unknown> = {};
   if (value.max_tokens !== undefined) omitted.max_tokens = value.max_tokens;
   if (value.stop !== undefined) omitted.stop = value.stop;
+  const safeMetadata = codexAccountSafeMetadata(value.metadata);
+  if (safeMetadata) omitted.metadata = safeMetadata;
   if (Object.keys(omitted).length) {
     appendCodexAccountCompatibilityNote(value, "request controls", [omitted]);
   }
+}
+
+function codexAccountSafeMetadata(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const metadata: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isSensitiveCodexAccountCompatibilityField(key)) continue;
+    metadata[key] = item;
+  }
+  return Object.keys(metadata).length ? metadata : null;
+}
+
+function isSensitiveCodexAccountCompatibilityField(field: string): boolean {
+  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
 }
 
 const CODEX_ACCOUNT_RESPONSES_TOP_LEVEL_FIELDS = new Set([
@@ -11635,7 +11664,8 @@ export function createModelGatewayService(
     }
     const sanitizedOpenAIResponses = provider.apiFormat === "openai_responses"
       ? sanitizeOpenAIResponsesUpstreamBody(upstreamBodyText, {
-        allowMetadata: metadataBoolean(provider.metadata, ["openaiResponsesMetadataPassthrough", "openai_responses_metadata_passthrough"], false),
+        allowMetadata: isCodexAccountBackedProvider(provider)
+          || metadataBoolean(provider.metadata, ["openaiResponsesMetadataPassthrough", "openai_responses_metadata_passthrough"], false),
       })
       : { bodyText: upstreamBodyText, removedFields: [] };
     upstreamBodyText = sanitizedOpenAIResponses.bodyText ?? upstreamBodyText;
