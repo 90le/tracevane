@@ -1360,4 +1360,21 @@ M13-F 已完成，记录见 [`archive/m13-f-toolchain-rich-interaction-acceptanc
 - Rust 是下一 provider，因为 M12-N 已有 diagnostics guard，且能验证该模板跨 toolchain 复用。
 ```
 
-M13-F 不做：Rust hover/definition runtime、Go completion/references/rename/formatting/codeAction、clangd/Java rich interactions、installer/discovery、provider marketplace、新 UI、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。下一步进入 M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan。
+M13-F 不做：Rust hover/definition runtime、Go completion/references/rename/formatting/codeAction、clangd/Java rich interactions、installer/discovery、provider marketplace、新 UI、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。M13-G 已完成 Rust / rust-analyzer Hover + Definition Guarded Proof Plan，下一步进入 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation。
+
+
+### M13-G 已完成：Rust / rust-analyzer Hover + Definition Guarded Proof Plan
+
+M13-G 已完成，记录见 [`archive/m13-g-rust-analyzer-hover-definition-plan.md`](./archive/m13-g-rust-analyzer-hover-definition-plan.md)。本阶段是 docs-only research/plan：基于 rust-analyzer 官方 security/configuration 与 LSP 3.17 契约，规划 Rust hover/definition 如何复用 M12-N diagnostics guard 与 M13-E Go rich interaction 模板。
+
+验收口径：
+
+```txt
+- M13-H 只实现 Rust hover + definition，不做 completion/references/rename/formatting/codeAction。
+- Rust request 必须经过 trusted config、Cargo.toml/rust-project.json marker、root/path guard、binary/version guard 和 timeout budget。
+- procMacro/buildScripts/cargo metadata 风险继续由 explicit trusted workspace boundary 约束。
+- mock stdio proof 覆盖 hover/definition request/response/routing；真实 rust-analyzer 仍为 optional manual evidence。
+- 无配置、无 marker、无 binary、unsupported version 或 request failure 不失败 IDE，只返回 degraded/empty feature response。
+```
+
+M13-G 不做：runtime implementation、启动 rust-analyzer、修改 hover/definition API shape、新增 UI、installer/discovery、linkedProjects/workspace.discoverConfig UI、Rust completion/references/rename/formatting/codeAction/semantic tokens、clangd/Java rich interactions、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。下一步进入 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation。

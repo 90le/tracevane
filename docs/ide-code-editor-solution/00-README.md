@@ -207,6 +207,7 @@
 | [archive/m13-d-go-gopls-hover-definition-plan.md](./archive/m13-d-go-gopls-hover-definition-plan.md)                                           | M13-D Go / gopls Hover + Definition Guarded Proof Plan，规划复用现有 hover/definition API、M12-K Go diagnostics guard、external gateway 与 mock stdio proof，下一步进入 M13-E guarded implementation                                                                               |
 | [archive/m13-e-go-gopls-hover-definition-summary.md](./archive/m13-e-go-gopls-hover-definition-summary.md)                                     | M13-E Go / gopls Hover + Definition Guarded Implementation，接入现有 hover/definition API、M12-K Go guard 与 external gateway，完成 Go hover/definition mock stdio proof；下一步进入 M13-F rich interaction acceptance / next provider decision |
 | [archive/m13-f-toolchain-rich-interaction-acceptance-decision.md](./archive/m13-f-toolchain-rich-interaction-acceptance-decision.md)             | M13-F Toolchain Rich Interaction Acceptance / Next Provider Decision，验收 Go/gopls hover+definition guard 模板，并选择 M13-G Rust / rust-analyzer hover+definition proof plan 作为下一步 |
+| [archive/m13-g-rust-analyzer-hover-definition-plan.md](./archive/m13-g-rust-analyzer-hover-definition-plan.md)                                   | M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan，核验 rust-analyzer hover/definition、安全配置与 M12-N guard，规划 M13-H guarded implementation |
 
 ## 推荐技术选型
 
@@ -438,3 +439,19 @@ M13-F 已完成，记录见 [`archive/m13-f-toolchain-rich-interaction-acceptanc
 ```
 
 M13-F 决定下一步进入 M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan。Rust 已有 M12-N diagnostics guard，可验证 M13-E 模板是否能迁移到第二个 toolchain provider；但 rust-analyzer 的 Cargo metadata、build scripts、proc macros 风险更高，因此 M13-G 先做 docs-only plan，不直接实现 runtime。
+
+### M13-G 已完成：Rust / rust-analyzer Hover + Definition Guarded Proof Plan
+
+M13-G 已完成，记录见 [`archive/m13-g-rust-analyzer-hover-definition-plan.md`](./archive/m13-g-rust-analyzer-hover-definition-plan.md)。本阶段不改 runtime，而是核验 rust-analyzer 官方安全/配置契约与 LSP hover/definition routes，规划如何复用 M12-N Rust diagnostics guard 与 M13-E Go rich interaction 模板。
+
+验收口径：
+
+```txt
+- Rust rich interactions 继续复用现有 /api/lsp/hover 与 /api/lsp/definition。
+- M13-H 应抽取 shared Rust guarded session helper，复用 trusted config、Cargo.toml/rust-project.json marker、bounded version probe、external gateway 与 root guard。
+- hover/definition request failure、缺配置、缺 marker、缺 binary、unsupported version 必须 degraded/empty。
+- definition location 必须过滤 workspace 外 URI；sysroot/external crate preview 后置。
+- proc macro/build script/cargo metadata 风险继续由 explicit trusted workspace boundary 约束。
+```
+
+M13-G 不做 Rust runtime implementation、completion/references/rename/formatting/codeAction/semantic tokens、toolchain install/discovery、linkedProjects/workspace.discoverConfig UI、第二套 API 或 File Manager Online Editor 产品壳变更。下一步进入 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation。
