@@ -4635,7 +4635,13 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
 
     normalizeCodexAccountResponsesToolsAndChoice(next);
 
-    stripCodexAccountResponsesUnsupportedFields(next);
+    const strippedCompatibilityFields = stripCodexAccountResponsesUnsupportedFields(next);
+    const strippedAnnotations = strippedCompatibilityFields
+      .filter((item) => item.field === "annotations")
+      .map((item) => ({ path: item.path, annotations: item.value }));
+    if (strippedAnnotations.length) {
+      appendCodexAccountCompatibilityNote(next, "input annotations", strippedAnnotations);
+    }
 
     return JSON.stringify(next);
   } catch {
@@ -4653,21 +4659,39 @@ function normalizeCodexAccountResponsesReasoning(value: Record<string, unknown>)
   value.reasoning = reasoning;
 }
 
-function stripCodexAccountResponsesUnsupportedFields(value: unknown): void {
+type CodexAccountStrippedCompatibilityField = {
+  field: "annotations" | "cache_control" | "metadata";
+  path: string;
+  value: unknown;
+};
+
+function stripCodexAccountResponsesUnsupportedFields(
+  value: unknown,
+  path = "$",
+): CodexAccountStrippedCompatibilityField[] {
+  const stripped: CodexAccountStrippedCompatibilityField[] = [];
   if (Array.isArray(value)) {
-    for (const item of value) stripCodexAccountResponsesUnsupportedFields(item);
-    return;
+    value.forEach((item, index) => {
+      stripped.push(...stripCodexAccountResponsesUnsupportedFields(item, `${path}[${index}]`));
+    });
+    return stripped;
   }
-  if (!isRecord(value)) return;
-  // Anthropic prompt-caching hints and client metadata can appear on nested
-  // message/content/tool objects after CLI or compatibility translations, but
-  // the Codex account Responses backend rejects those object-local fields as
-  // unknown/unsupported parameters. Strip them recursively before forwarding.
-  delete value.cache_control;
-  delete value.metadata;
-  for (const item of Object.values(value)) {
-    stripCodexAccountResponsesUnsupportedFields(item);
+  if (!isRecord(value)) return stripped;
+  // Anthropic prompt-caching hints, client metadata, and response annotations can
+  // appear on nested message/content/tool objects after CLI or compatibility
+  // translations, but the Codex account Responses backend rejects those
+  // object-local fields as unknown/unsupported parameters. Strip them
+  // recursively before forwarding.
+  for (const field of ["cache_control", "metadata", "annotations"] as const) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) {
+      stripped.push({ field, path: `${path}.${field}`, value: value[field] });
+      delete value[field];
+    }
   }
+  for (const [key, item] of Object.entries(value)) {
+    stripped.push(...stripCodexAccountResponsesUnsupportedFields(item, `${path}.${key}`));
+  }
+  return stripped;
 }
 
 function codexAccountRequestWantsStream(value: string | undefined): boolean {

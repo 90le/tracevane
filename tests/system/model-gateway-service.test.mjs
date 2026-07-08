@@ -1616,10 +1616,20 @@ test("model gateway strips Codex account Responses unsupported request parameter
           model: "gpt-5.4",
           input: [{
             role: "user",
+            annotations: [{
+              type: "url_citation",
+              url: "https://example.test/message-annotation",
+              title: "message annotation",
+            }],
             metadata: { turn_id: "nested-message-metadata" },
             content: [{
               type: "input_text",
               text: "hello",
+              annotations: [{
+                type: "url_citation",
+                url: "https://example.test/content-annotation",
+                title: "content annotation",
+              }],
               cache_control: { type: "ephemeral" },
               metadata: { part_id: "nested-content-metadata" },
             }, {
@@ -1680,7 +1690,16 @@ test("model gateway strips Codex account Responses unsupported request parameter
                 additionalProperties: false,
               },
             },
-            { type: "file_search", vector_store_ids: ["vs_unsupported"], metadata: { tool_id: "nested-tool-metadata" } },
+            {
+              type: "file_search",
+              vector_store_ids: ["vs_unsupported"],
+              annotations: [{
+                type: "url_citation",
+                url: "https://example.test/tool-annotation",
+                title: "tool annotation",
+              }],
+              metadata: { tool_id: "nested-tool-metadata" },
+            },
             { type: "code_interpreter", container: { type: "auto" } },
             { type: "computer_use_preview", display_width: 1024, display_height: 768, environment: "browser" },
           ],
@@ -1820,6 +1839,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
   assert.equal(containsObjectKey(directUpstreamBody, "metadata"), false);
+  assert.equal(containsObjectKey(directUpstreamBody, "annotations"), false);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses input annotations omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /content-annotation/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /message-annotation/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /tool-annotation/);
   assert.equal(directUpstreamBody.reasoning?.effort, "low");
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",
