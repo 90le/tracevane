@@ -172,6 +172,7 @@ function stageDefinitions(options) {
       "--tool-result-smoke",
       "--stream-tool-result-smoke",
       "--compatibility-smoke",
+      "--stream-compatibility-smoke",
       "--expect-routes", "codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions",
       "--expect-api-formats", "codex=openai_responses,claude-code=openai_responses,opencode=openai_responses",
     ],
