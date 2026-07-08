@@ -43,7 +43,7 @@ import { findExternalLanguageServerProfile } from "./external/externalProviderPr
 import { externalProviderMetadataForProfile } from "./external/externalProviderMetadata.js";
 import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, providerSupports, supportedFeaturesFromRegistry, supportedLanguagesFromRegistry } from "./providers/registry.js";
 import { defineWithGoGopls, diagnoseWithGoGopls, goExternalDiagnosticToTracevaneDiagnostic, hoverWithGoGopls } from "./toolchain/goGoplsProvider.js";
-import { diagnoseWithRustAnalyzer, rustExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/rustAnalyzerProvider.js";
+import { defineWithRustAnalyzer, diagnoseWithRustAnalyzer, hoverWithRustAnalyzer, rustExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/rustAnalyzerProvider.js";
 import { diagnoseWithClangd, clangdExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/clangdProvider.js";
 import { diagnoseWithJavaJdtls, javaExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/javaJdtlsProvider.js";
 import { toolchainProviderStatusSnapshot } from "./toolchain/toolchainProviderStatus.js";
@@ -297,6 +297,16 @@ async function hoverDocument(
       line: request.line,
       column: request.column,
     });
+  } else if (provider?.id === "rust") {
+    hover = await hoverWithRustAnalyzer({
+      config,
+      rootRealPath: validated.rootRealPath,
+      absolutePath: validated.absolutePath,
+      content: validated.content,
+      version: request.version ?? 1,
+      line: request.line,
+      column: request.column,
+    });
   } else {
     throw unsupportedLspFeatureError("hover", validated.language);
   }
@@ -364,6 +374,28 @@ async function defineDocument(
     locations = [];
   } else if (provider?.id === "go") {
     const result = await defineWithGoGopls({
+      config,
+      rootRealPath: validated.rootRealPath,
+      absolutePath: validated.absolutePath,
+      content: validated.content,
+      version: request.version ?? 1,
+      line: request.line,
+      column: request.column,
+    });
+    locations = result.locations.flatMap((location) => {
+      const relativePath = relativePathInsideRoot(validated.rootRealPath, location.absolutePath);
+      if (!relativePath) return [];
+      return [{
+        rootId: validated.rootId,
+        path: relativePath,
+        startLine: location.range.startLine,
+        startColumn: location.range.startColumn,
+        endLine: location.range.endLine,
+        endColumn: location.range.endColumn,
+      }];
+    });
+  } else if (provider?.id === "rust") {
+    const result = await defineWithRustAnalyzer({
       config,
       rootRealPath: validated.rootRealPath,
       absolutePath: validated.absolutePath,

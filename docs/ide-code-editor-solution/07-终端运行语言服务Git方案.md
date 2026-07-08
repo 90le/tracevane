@@ -1343,7 +1343,7 @@ M13-E 已完成，记录见 [`archive/m13-e-go-gopls-hover-definition-summary.md
 - system test 覆盖 no-config empty response 与 mock hover/definition proof。
 ```
 
-M13-E 不做：Go completion/references/rename/formatting/codeAction、Rust/clangd/Java rich interactions、toolchain install/download/PATH discovery、GOPATH fallback、go env/go list/module download UX、新 UI 或第二套 LSP/Files/Search API。M13-F 已完成 Toolchain Rich Interaction Acceptance / Next Provider Decision，下一步进入 M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan。
+M13-E 不做：Go completion/references/rename/formatting/codeAction、Rust/clangd/Java rich interactions、toolchain install/download/PATH discovery、GOPATH fallback、go env/go list/module download UX、新 UI 或第二套 LSP/Files/Search API。M13-F 已完成 Toolchain Rich Interaction Acceptance / Next Provider Decision，后续已完成 M13-G Rust / rust-analyzer Hover + Definition Guarded Proof Plan 与 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation；下一步进入 M13-I Toolchain Rich Interaction Acceptance / Next Capability Decision。
 
 
 ### M13-F 已完成：Toolchain Rich Interaction Acceptance / Next Provider Decision
@@ -1360,7 +1360,7 @@ M13-F 已完成，记录见 [`archive/m13-f-toolchain-rich-interaction-acceptanc
 - Rust 是下一 provider，因为 M12-N 已有 diagnostics guard，且能验证该模板跨 toolchain 复用。
 ```
 
-M13-F 不做：Rust hover/definition runtime、Go completion/references/rename/formatting/codeAction、clangd/Java rich interactions、installer/discovery、provider marketplace、新 UI、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。M13-G 已完成 Rust / rust-analyzer Hover + Definition Guarded Proof Plan，下一步进入 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation。
+M13-F 不做：Rust hover/definition runtime、Go completion/references/rename/formatting/codeAction、clangd/Java rich interactions、installer/discovery、provider marketplace、新 UI、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。M13-G 与 M13-H 均已完成；下一步进入 M13-I Toolchain Rich Interaction Acceptance / Next Capability Decision。
 
 
 ### M13-G 已完成：Rust / rust-analyzer Hover + Definition Guarded Proof Plan
@@ -1377,4 +1377,19 @@ M13-G 已完成，记录见 [`archive/m13-g-rust-analyzer-hover-definition-plan.
 - 无配置、无 marker、无 binary、unsupported version 或 request failure 不失败 IDE，只返回 degraded/empty feature response。
 ```
 
-M13-G 不做：runtime implementation、启动 rust-analyzer、修改 hover/definition API shape、新增 UI、installer/discovery、linkedProjects/workspace.discoverConfig UI、Rust completion/references/rename/formatting/codeAction/semantic tokens、clangd/Java rich interactions、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。下一步进入 M13-H Rust / rust-analyzer Hover + Definition Guarded Implementation。
+M13-G 不做：runtime implementation、启动 rust-analyzer、修改 hover/definition API shape、新增 UI、installer/discovery、linkedProjects/workspace.discoverConfig UI、Rust completion/references/rename/formatting/codeAction/semantic tokens、clangd/Java rich interactions、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。M13-H 已完成 Rust / rust-analyzer Hover + Definition Guarded Implementation，下一步进入 M13-I Toolchain Rich Interaction Acceptance / Next Capability Decision。
+
+
+### M13-H 已完成：Rust / rust-analyzer Hover + Definition Guarded Implementation
+
+M13-H 已完成，记录见 [`archive/m13-h-rust-analyzer-hover-definition-summary.md`](./archive/m13-h-rust-analyzer-hover-definition-summary.md)。本阶段把 M13-G 的 docs-only plan 落地为 runtime：Rust provider 复用 M12-N diagnostics guard 与 M13-E Go/gopls rich interaction 模板，在现有 `/api/lsp/hover` 和 `/api/lsp/definition` route 上提供 guarded Rust hover + definition。
+
+验收点：
+
+- Rust provider registry capability 明确为 diagnostics + hover + definition。
+- `rustAnalyzerProvider` 共享 trusted config、Cargo marker、bounded `rust-analyzer --version` probe、external stdio gateway 与 degraded empty result。
+- `/api/lsp/hover` 支持 Rust hover contents/range。
+- `/api/lsp/definition` 支持 Rust definition locations，并继续 root-guard root 外路径。
+- mock stdio proof 覆盖 Rust hover 与 definition request/response。
+
+M13-H 不做：Rust completion/references/rename/formatting/codeAction/semantic tokens、rust-analyzer installer/download/PATH discovery、rustup/rust-src 管理、Cargo metadata/proc macro/build script UX、linkedProjects/workspace.discoverConfig UI、clangd/Java rich interactions、第二套 LSP/Files/Search API 或 File Manager Online Editor 产品壳变更。下一步进入 M13-I Toolchain Rich Interaction Acceptance / Next Capability Decision。

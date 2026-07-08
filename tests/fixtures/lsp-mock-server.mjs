@@ -79,7 +79,7 @@ function handle(message) {
   }
   if (message.method === "textDocument/hover") {
     respond(message.id, {
-      contents: { kind: "markdown", value: "**mock hover** for Go symbol" },
+      contents: { kind: "markdown", value: "**mock hover** symbol" },
       range: { start: { line: 1, character: 5 }, end: { line: 1, character: 9 } },
     });
     return;

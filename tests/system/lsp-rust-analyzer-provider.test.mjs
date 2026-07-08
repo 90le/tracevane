@@ -8,9 +8,12 @@ import { fileURLToPath } from "node:url";
 import { createLspService } from "../../dist/apps/api/modules/lsp/service.js";
 import {
   createRustAnalyzerProfile,
+  defineWithRustAnalyzer,
   diagnoseWithRustAnalyzer,
+  hoverWithRustAnalyzer,
   probeRustAnalyzerVersion,
 } from "../../dist/apps/api/modules/lsp/toolchain/rustAnalyzerProvider.js";
+import { providerForLanguage } from "../../dist/apps/api/modules/lsp/providers/registry.js";
 import { findRustWorkspaceMarker } from "../../dist/apps/api/modules/lsp/toolchain/rustWorkspace.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -143,4 +146,46 @@ test("Rust analyzer proof can run through the guarded stdio gateway with an allo
   assert.equal(result.marker?.kind, "Cargo.toml");
   assert.equal(result.diagnostics.length, 1);
   assert.equal(result.diagnostics[0].message, "mock diagnostic");
+});
+
+
+test("Rust provider registry advertises guarded hover and definition after the rich interaction proof", () => {
+  const provider = providerForLanguage("rust");
+  assert.equal(provider?.id, "rust");
+  assert.equal(provider?.capabilities.diagnostics, true);
+  assert.equal(provider?.capabilities.hover, true);
+  assert.equal(provider?.capabilities.definition, true);
+});
+
+test("Rust analyzer hover and definition proof can run through the guarded stdio gateway", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  trustRustAnalyzer(config);
+  fs.writeFileSync(path.join(root, "Cargo.toml"), "[package]\nname = \"tracevane\"\nversion = \"0.0.0\"\nedition = \"2021\"\n", "utf8");
+  const file = createRustFile(root, "src/main.rs");
+  const commonInput = {
+    config,
+    rootRealPath: root,
+    absolutePath: file,
+    content: fs.readFileSync(file, "utf8"),
+    version: 1,
+    line: 2,
+    column: 6,
+    profile: createRustAnalyzerProfile({ command: process.execPath, args: [mockServerPath] }),
+    probe: async () => ({ ok: true, status: "configured", versionSummary: "rust-analyzer mock v0.0.0", reason: null }),
+  };
+
+  const hover = await hoverWithRustAnalyzer(commonInput);
+  assert.equal(hover.skipped, false);
+  assert.equal(hover.status, "configured");
+  assert.equal(hover.marker?.kind, "Cargo.toml");
+  assert.match(hover.contents.join("\n"), /mock hover/);
+  assert.deepEqual(hover.range, { startLine: 2, startColumn: 6, endLine: 2, endColumn: 10 });
+
+  const definition = await defineWithRustAnalyzer(commonInput);
+  assert.equal(definition.skipped, false);
+  assert.equal(definition.status, "configured");
+  assert.equal(definition.locations.length, 1);
+  assert.equal(definition.locations[0].absolutePath, file);
+  assert.deepEqual(definition.locations[0].range, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 13 });
 });
