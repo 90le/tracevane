@@ -78,10 +78,10 @@ async function run() {
     }
   }
   if (status.toolchainProviders?.policy?.probesRuntimePath !== false || status.toolchainProviders?.policy?.startsLanguageServers !== true) {
-    throw new Error(`Toolchain provider policy must expose guarded Go runtime proof only: ${JSON.stringify(status.toolchainProviders)}`);
+    throw new Error(`Toolchain provider policy must expose guarded Go/Rust runtime proof only: ${JSON.stringify(status.toolchainProviders)}`);
   }
-  if (JSON.stringify(status.toolchainProviders?.policy?.runtimeProofProviderIds ?? []) !== JSON.stringify(['go'])) {
-    throw new Error(`Expected Go-only toolchain runtime proof policy: ${JSON.stringify(status.toolchainProviders)}`);
+  if (JSON.stringify(status.toolchainProviders?.policy?.runtimeProofProviderIds ?? []) !== JSON.stringify(['go', 'rust'])) {
+    throw new Error(`Expected Go/Rust toolchain runtime proof policy: ${JSON.stringify(status.toolchainProviders)}`);
   }
   const yamlProfile = status.externalProviders?.profiles?.find((profile) => profile.id === 'yaml');
   if (!yamlProfile?.enabled) {

@@ -50,7 +50,7 @@ test("LSP status exposes guarded toolchain provider candidates without runtime p
   assert.equal(status.toolchainProviders?.policy?.readOnly, true);
   assert.equal(status.toolchainProviders?.policy?.probesRuntimePath, false);
   assert.equal(status.toolchainProviders?.policy?.startsLanguageServers, true);
-  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go"]);
+  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go", "rust"]);
   assert.equal(status.toolchainProviders?.policy?.acceptsFrontendCommandOverrides, false);
   assert.equal(status.toolchainProviders?.policy?.acceptsOnlyAllowlistedProfiles, true);
   assert.equal(status.toolchainProviders?.policy?.configSource, "openclaw-config");
@@ -83,7 +83,7 @@ test("LSP toolchain status accepts only trusted allowlisted profile config", () 
     lsp: {
       toolchains: {
         go: { gopls: { enabled: true, trusted: true, profileId: "workspace" } },
-        rust: { rustAnalyzer: { enabled: true, trusted: false, profileId: "workspace" } },
+        rust: { rustAnalyzer: { enabled: true, trusted: true, profileId: "workspace" } },
         java: { jdtls: { enabled: true, trusted: true, profileId: "custom" } },
         cxx: { clangd: { enabled: true, trusted: true, profileId: "workspace", command: "/usr/bin/clangd" } },
       },
@@ -103,11 +103,11 @@ test("LSP toolchain status accepts only trusted allowlisted profile config", () 
   assert.match(go.nextAction, /guarded diagnostics proof/i);
 
   const rust = byId.get("rust");
-  assert.equal(rust.status, "disabledByTrust");
-  assert.equal(rust.configured, false);
+  assert.equal(rust.status, "configured");
+  assert.equal(rust.configured, true);
   assert.equal(rust.config.enabled, true);
-  assert.equal(rust.config.trusted, false);
-  assert.match(rust.nextAction, /trusted=true/i);
+  assert.equal(rust.config.trusted, true);
+  assert.match(rust.nextAction, /M12-N permits guarded diagnostics proof/i);
 
   const java = byId.get("java");
   assert.equal(java.status, "unavailable");
