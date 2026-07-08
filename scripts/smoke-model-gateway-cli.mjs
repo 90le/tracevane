@@ -20,6 +20,7 @@ function parseArgs(argv) {
     includeOpenClawAgent: false,
     apps: null,
     targetModel: process.env.TRACEVANE_GATEWAY_CLI_SMOKE_MODEL || DEFAULT_TARGET_MODEL,
+    targetModelsRaw: process.env.TRACEVANE_GATEWAY_CLI_SMOKE_MODELS || null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -30,6 +31,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--apps=")) options.apps = arg.slice("--apps=".length).split(",").map((item) => item.trim()).filter(Boolean);
     else if (arg === "--target-model") options.targetModel = argv[++index] || "";
     else if (arg.startsWith("--target-model=")) options.targetModel = arg.slice("--target-model=".length);
+    else if (arg === "--target-models") options.targetModelsRaw = argv[++index] || "";
+    else if (arg.startsWith("--target-models=")) options.targetModelsRaw = arg.slice("--target-models=".length);
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -37,7 +40,11 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  options.targetModel = normalizeTargetModel(options.targetModel);
+  options.targetModels = options.targetModelsRaw === null
+    ? [normalizeTargetModel(options.targetModel)]
+    : normalizeTargetModels(options.targetModelsRaw);
+  options.targetModel = options.targetModels[0];
+  delete options.targetModelsRaw;
   return options;
 }
 
@@ -47,6 +54,15 @@ function normalizeTargetModel(value) {
   return model;
 }
 
+function normalizeTargetModels(value) {
+  const models = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!models.length) throw new Error("--target-models must include at least one model id.");
+  return [...new Set(models)];
+}
+
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-cli.mjs [options]
 
@@ -54,7 +70,8 @@ Runs isolated Tracevane Gateway CLI startup smoke checks plus Gateway HTTP matur
 
 Options:
   --apps <ids>                 Comma-separated app ids: codex,claude-code,claude-code-tool,claude-code-summary,opencode,openclaw,gateway
-  --target-model <id>          Model id advertised to real CLIs and isolated Gateway config (default: gpt-5.4)
+  --target-model <id>          Single model id advertised to real CLIs and isolated Gateway config (default: gpt-5.4)
+  --target-models <csv>        Run the same smoke set once per model id, for example gpt-5.4,gpt-5.5,gpt-5.4-mini
   --strict                     Exit non-zero when an installed CLI smoke fails
   --include-openclaw-agent     Also try openclaw agent --local, not only config startup
   --keep-temp                  Keep the temporary HOME/state directory
@@ -1076,46 +1093,43 @@ function stringOrNull(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
-  const tempParent = path.join(process.cwd(), ".tmp");
-  fs.mkdirSync(tempParent, { recursive: true });
-  const root = fs.mkdtempSync(path.join(tempParent, "tracevane-gateway-cli-smoke-"));
-  const deadline = setTimeout(() => {
-    console.error("CLI smoke timed out.");
-    process.exit(2);
-  }, SCRIPT_TIMEOUT_MS);
+function safePathSegment(value) {
+  return String(value).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "model";
+}
+
+async function runSmokeForTargetModel(root, options, targetModel) {
+  const targetRoot = options.targetModels.length === 1 ? root : path.join(root, safePathSegment(targetModel));
+  fs.mkdirSync(targetRoot, { recursive: true });
   let mockGateway;
   try {
-    mockGateway = await startMockGateway(options.targetModel);
-    const prepared = await prepareIsolatedConfig(root, mockGateway, options.targetModel);
-    const workDir = path.join(root, "workspace");
+    mockGateway = await startMockGateway(targetModel);
+    const prepared = await prepareIsolatedConfig(targetRoot, mockGateway, targetModel);
+    const workDir = path.join(targetRoot, "workspace");
     fs.mkdirSync(workDir, { recursive: true });
-    fs.writeFileSync(path.join(workDir, "README.md"), "# CLI smoke workspace\n", "utf8");
+    fs.writeFileSync(path.join(workDir, "README.md"), `# CLI smoke workspace for ${targetModel}\n`, "utf8");
     const definitions = smokeDefinitions({
       ...prepared,
       workDir,
       mockGateway,
       includeOpenClawAgent: options.includeOpenClawAgent,
-      targetModel: options.targetModel,
+      targetModel,
     }).filter((definition) => !options.apps || options.apps.includes(definition.id));
     const results = [];
     for (const definition of definitions) {
       results.push(await runCommand(definition, mockGateway.requests));
     }
     const gatewayMaturity = !options.apps || options.apps.includes("gateway")
-      ? await runGatewayMaturityProbes(prepared.context, mockGateway, options.targetModel)
+      ? await runGatewayMaturityProbes(prepared.context, mockGateway, targetModel)
       : {
         id: "gateway",
         status: "skipped",
         reason: "Gateway HTTP maturity probes were excluded by --apps.",
       };
-    const summary = {
+    return {
       ok: results.every((result) => result.status === "passed" || result.status === "skipped")
         && (gatewayMaturity.status === "passed" || gatewayMaturity.status === "skipped"),
-      strict: options.strict,
-      tempRoot: root,
-      targetModel: options.targetModel,
+      targetModel,
+      tempRoot: targetRoot,
       mockGatewayEndpoint: mockGateway.endpoint,
       tracevaneGatewayEndpoint: gatewayMaturity.baseUrl ? `${gatewayMaturity.baseUrl}/v1` : null,
       results,
@@ -1126,12 +1140,44 @@ async function main() {
         model: typeof request.body?.model === "string" ? request.body.model : null,
       })),
     };
+  } finally {
+    if (mockGateway) await mockGateway.close();
+  }
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const tempParent = path.join(process.cwd(), ".tmp");
+  fs.mkdirSync(tempParent, { recursive: true });
+  const root = fs.mkdtempSync(path.join(tempParent, "tracevane-gateway-cli-smoke-"));
+  const deadline = setTimeout(() => {
+    console.error("CLI smoke timed out.");
+    process.exit(2);
+  }, SCRIPT_TIMEOUT_MS * Math.max(1, options.targetModels.length));
+  try {
+    const modelRuns = [];
+    for (const targetModel of options.targetModels) {
+      modelRuns.push(await runSmokeForTargetModel(root, options, targetModel));
+    }
+    const ok = modelRuns.every((run) => run.ok);
+    const summary = modelRuns.length === 1
+      ? {
+        ok,
+        strict: options.strict,
+        ...modelRuns[0],
+      }
+      : {
+        ok,
+        strict: options.strict,
+        tempRoot: root,
+        targetModels: options.targetModels,
+        modelRuns,
+      };
     console.log(JSON.stringify(summary, null, 2));
     if (!options.keepTemp) fs.rmSync(root, { recursive: true, force: true });
     if (options.strict && !summary.ok) process.exitCode = 1;
   } finally {
     clearTimeout(deadline);
-    if (mockGateway) await mockGateway.close();
   }
 }
 
