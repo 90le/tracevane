@@ -142,7 +142,8 @@
     "test:system:lsp-go-gopls-provider": "npm run build:api && node --test tests/system/lsp-go-gopls-provider.test.mjs",
     "test:system:lsp-rust-analyzer-provider": "npm run build:api && node --test tests/system/lsp-rust-analyzer-provider.test.mjs",
     "test:system:lsp-clangd-provider": "npm run build:api && node --test tests/system/lsp-clangd-provider.test.mjs",
-    "test:system:lsp-java-jdtls-provider": "npm run build:api && node --test tests/system/lsp-java-jdtls-provider.test.mjs"
+    "test:system:lsp-java-jdtls-provider": "npm run build:api && node --test tests/system/lsp-java-jdtls-provider.test.mjs",
+    "smoke:ide:editor-edge-files": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-edge-files.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

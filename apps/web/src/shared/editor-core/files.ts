@@ -4,6 +4,12 @@ import type { EditorFileRef, EditorReadResult, EditorSaveRequest, EditorSaveResu
 import { editorDocumentId, editorTitleForPath } from "./identity";
 import { languageForPath } from "./language";
 
+function isReadonlyByPermissions(permissions: string | null | undefined): boolean {
+  if (!permissions) return false;
+  const symbolic = permissions.trim();
+  return symbolic.length >= 4 && !symbolic.slice(1).includes("w");
+}
+
 export async function readEditorFile(
   ref: EditorFileRef,
   signal?: AbortSignal,
@@ -19,7 +25,7 @@ export async function readEditorFile(
       metadata: {
         name: raw.name || editorTitleForPath(raw.path),
         language: languageForPath(raw.path),
-        readonly: !raw.editable,
+        readonly: !raw.editable || isReadonlyByPermissions(raw.permissions),
         textLike: raw.textLike,
         truncated: raw.truncated,
         size: raw.size,

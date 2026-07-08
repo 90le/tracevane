@@ -50,3 +50,4 @@
 - `00-README.md` 不再链接该文件作为当前入口。
 - 该文件不是某个阶段的唯一验收证据。
 - 删除不会让历史 commit / PR / 阶段总结失去可追溯性。
+- [p1-a-3-editor-edge-files-summary.md](./p1-a-3-editor-edge-files-summary.md) — P1-A-3 Editor edge-files workflow: Monaco text/readonly/large/deleted/media/binary Hex edge-file acceptance.

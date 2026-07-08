@@ -627,6 +627,16 @@ function filePermissionsSymbolic(stat: fs.Stats, kind: FileEntryKind): string {
   return `${typePrefix}${bits.map(([bit, label]) => ((stat.mode & bit) ? label : "-")).join("")}`;
 }
 
+function isWritableFile(absolutePath: string, stat: fs.Stats): boolean {
+  if ((stat.mode & 0o222) === 0) return false;
+  try {
+    fs.accessSync(absolutePath, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function statNumericOwner(stat: fs.Stats, key: "uid" | "gid"): number | null {
   const value = stat[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -3477,7 +3487,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
       const textLike = isTextLike(resolved.absolutePath, initialSample);
       const offset = textLike ? clampReadOffset(options.offset, stat.size) : 0;
       const readLimitBytes = clampReadLimit(options.limit);
-      const editable = textLike && offset === 0 && stat.size <= MAX_TEXT_FILE_BYTES;
+      const editable = textLike && offset === 0 && stat.size <= MAX_TEXT_FILE_BYTES && isWritableFile(resolved.absolutePath, stat);
       const maxBytes = textLike ? Math.min(readLimitBytes, Math.max(0, stat.size - offset)) : 0;
       const content =
         textLike

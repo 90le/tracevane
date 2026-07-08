@@ -154,6 +154,7 @@ interface Point {
   y: number;
 }
 
+const HEX_PREVIEW_INITIAL_BYTES = 32 * 1024;
 const HEX_PREVIEW_MAX_BYTES = 512 * 1024;
 const HEX_BYTES_PER_ROW = 16;
 
@@ -176,22 +177,31 @@ function HexPreviewEditor({
   const [query, setQuery] = React.useState("");
   const [mode, setMode] = React.useState<"text" | "hex">("hex");
   const [matchOffset, setMatchOffset] = React.useState<number | null>(null);
+  const [readLimit, setReadLimit] = React.useState(() => Math.min(HEX_PREVIEW_INITIAL_BYTES, Math.max(0, size || 0) || HEX_PREVIEW_INITIAL_BYTES));
   const rows = React.useMemo(() => bytesToHexRows(bytes), [bytes]);
-  const truncated = Number.isFinite(size) && size > HEX_PREVIEW_MAX_BYTES;
+  const loadedBytes = bytes?.length ?? 0;
+  const boundedSize = Number.isFinite(size) && size > 0 ? size : HEX_PREVIEW_MAX_BYTES;
+  const canLoadMore = loadedBytes > 0 && loadedBytes < Math.min(boundedSize, HEX_PREVIEW_MAX_BYTES);
+  const truncated = Number.isFinite(size) && size > loadedBytes;
+
+  React.useEffect(() => {
+    setReadLimit(Math.min(HEX_PREVIEW_INITIAL_BYTES, Math.max(0, size || 0) || HEX_PREVIEW_INITIAL_BYTES));
+  }, [src, size]);
 
   React.useEffect(() => {
     const controller = new AbortController();
+    const nextLimit = Math.max(1, Math.min(readLimit, HEX_PREVIEW_MAX_BYTES));
     setLoading(true);
     setError(null);
     setBytes(null);
     fetch(src, {
       signal: controller.signal,
-      headers: { Range: `bytes=0-${HEX_PREVIEW_MAX_BYTES - 1}` },
+      headers: { Range: `bytes=0-${nextLimit - 1}` },
     })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const buffer = await response.arrayBuffer();
-        setBytes(new Uint8Array(buffer).slice(0, HEX_PREVIEW_MAX_BYTES));
+        setBytes(new Uint8Array(buffer).slice(0, nextLimit));
       })
       .catch((nextError) => {
         if (controller.signal.aborted) return;
@@ -201,7 +211,7 @@ function HexPreviewEditor({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [src]);
+  }, [readLimit, src]);
 
   React.useEffect(() => {
     if (!bytes || !query.trim()) {
@@ -226,6 +236,8 @@ function HexPreviewEditor({
       data-file-surface-binary
       data-file-surface-hex-editor
       data-file-surface-hex-readonly="true"
+      data-file-surface-hex-loaded-bytes={loadedBytes}
+      data-file-surface-hex-read-limit={readLimit}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2 text-xs">
         <span className="inline-flex min-w-0 items-center gap-1 font-medium text-ink-strong">
@@ -271,8 +283,19 @@ function HexPreviewEditor({
           ) : null}
           <span className="ml-auto">
             {bytes ? `${formatFileSize(bytes.length)} loaded` : "未加载"}
-            {truncated ? ` / ${formatFileSize(size)} truncated` : ""}
+            {truncated ? ` / ${formatFileSize(size)} total` : ""}
           </span>
+          {canLoadMore ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setReadLimit((value) => Math.min(value * 2, HEX_PREVIEW_MAX_BYTES, boundedSize))}
+              disabled={loading}
+              data-file-surface-hex-load-more
+            >
+              加载更多
+            </Button>
+          ) : null}
         </div>
         <div className="min-h-0 overflow-auto bg-canvas p-3 font-mono text-xs leading-5 text-ink" data-file-surface-hex-viewport>
           {loading ? (
