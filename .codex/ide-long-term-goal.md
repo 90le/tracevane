@@ -3,7 +3,7 @@
 Status: Active execution contract
 Created: 2026-07-08
 Primary docs: `../docs/ide-code-editor-solution/15-远程代码工作台产品聚焦与长期执行机制.md`
-Current next stage: P1-A-2 Explorer mainline workflow
+Current next stage: P1-A-3 Editor edge-files workflow
 
 ## Goal prompt
 
@@ -52,8 +52,8 @@ For every stage:
 
 ## Current queue
 
-1. P1-A-2 Explorer mainline workflow: validate and harden long-directory Explorer use, keyboard copy/cut/paste, drag move, upload dialog and terminal path insertion.
-2. P1-A remaining hardening slices: editor edge files, responsive layout, persistence, and terminal clipboard checklist.
+1. P1-A-3 Editor edge-files workflow: validate Monaco text, readonly, large-file, deleted, media, binary/hex and unsupported fallback boundaries in one mainline acceptance slice.
+2. P1-A remaining hardening slices: responsive layout, persistence, and terminal clipboard checklist.
 3. P2 UX Simplification: remove or park UI that distracts from the mainline.
 4. Parking-lot review: revisit Go/Rust/clangd/Java deeper interactions only after the remote-code mainline is stable.
 
@@ -71,4 +71,6 @@ Do not mark the long-term goal complete until Tracevane has a verified release-c
 
 - 2026-07-08: P1-A Mainline UX Hardening Plan completed. Next implementation slice is P1-A-1 user-facing stale copy cleanup, followed by Explorer, editor edge-file, responsive, persistence and terminal clipboard hardening checks.
 
-- 2026-07-08: P1-A-1 stale copy cleanup completed. IDE user-visible copy no longer exposes stale M/P stage names or placeholder language in the audited workbench surfaces; next stage is P1-A-2 Explorer mainline workflow.
+- 2026-07-08: P1-A-1 stale copy cleanup completed. IDE user-visible copy no longer exposes stale M/P stage names or placeholder language in the audited workbench surfaces; P1-A-2 Explorer mainline workflow is complete; next stage is P1-A-3 Editor edge-files workflow.
+
+- 2026-07-08: P1-A-2 Explorer mainline workflow completed. Added `smoke:ide:explorer-mainline` covering long-directory scrolling, keyboard copy/cut/paste, pointer drag move, upload dialog reuse, and terminal path insertion; next stage is P1-A-3 Editor edge-files workflow.

@@ -33,7 +33,7 @@
 - `m8*`–`m10*`：RC 稳定化、Git 历史能力、semantic tokens / workspace symbols 记录。
 - `m11*`–`m13*`：多语言 provider、external language server、toolchain provider 与 rich interaction 记录。
 - `p0*`：M13-I 产品 pivot 之后的远程代码工作台主链路验证、缺口审计与 P1 hardening 输入。
-- `p1*`：主链路 UX hardening 计划、验收和后续修复记录。
+- `p1*`：主链路 UX hardening 计划、验收和后续修复记录，包括 Explorer mainline workflow 自动化验收。
 
 ## 删除 / 归档判断
 
