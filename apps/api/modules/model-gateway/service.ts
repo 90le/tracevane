@@ -4396,6 +4396,64 @@ function normalizeCodexAccountResponsesInputFilePart(source: Record<string, unkn
   return codexAccountUnsupportedContentPartNote(source);
 }
 
+const CODEX_ACCOUNT_RESPONSES_INPUT_ITEM_FIELDS_BY_TYPE: Record<string, Set<string>> = {
+  message: new Set(["id", "type", "role", "status", "content"]),
+  function_call: new Set(["id", "type", "status", "call_id", "name", "arguments"]),
+  function_call_output: new Set(["id", "type", "status", "call_id", "output"]),
+  custom_tool_call: new Set(["id", "type", "status", "call_id", "name", "input"]),
+  custom_tool_call_output: new Set(["id", "type", "status", "call_id", "output"]),
+};
+
+const CODEX_ACCOUNT_RESPONSES_CONTENT_PART_FIELDS_BY_TYPE: Record<string, Set<string>> = {
+  input_text: new Set(["type", "text"]),
+  output_text: new Set(["type", "text", "annotations", "logprobs"]),
+  input_image: new Set(["type", "image_url", "file_id", "detail"]),
+  input_file: new Set(["type", "file_id", "file_url", "file_data", "filename"]),
+  refusal: new Set(["type", "refusal"]),
+  computer_screenshot: new Set(["type", "image_url", "file_id", "detail"]),
+  summary_text: new Set(["type", "text"]),
+};
+
+const CODEX_ACCOUNT_RESPONSES_IMAGE_DETAILS = new Set(["low", "high", "auto", "original"]);
+
+function normalizeCodexAccountResponsesInputFields(value: Record<string, unknown>): void {
+  if (!Array.isArray(value.input)) return;
+  const omitted: Array<{ path: string; value: unknown }> = [];
+  value.input.forEach((item, itemIndex) => {
+    if (!isRecord(item)) return;
+    const itemType = normalizeString(item.type) || (item.role !== undefined ? "message" : "");
+    const allowedItemFields = CODEX_ACCOUNT_RESPONSES_INPUT_ITEM_FIELDS_BY_TYPE[itemType];
+    if (allowedItemFields) {
+      for (const key of Object.keys(item)) {
+        if (allowedItemFields.has(key) || key === "annotations" || key === "cache_control" || key === "metadata") continue;
+        omitted.push({ path: `input[${itemIndex}].${key}`, value: item[key] });
+        delete item[key];
+      }
+    }
+    if (!Array.isArray(item.content)) return;
+    item.content.forEach((part, partIndex) => {
+      if (!isRecord(part)) return;
+      const partType = normalizeString(part.type);
+      const allowedPartFields = CODEX_ACCOUNT_RESPONSES_CONTENT_PART_FIELDS_BY_TYPE[partType];
+      if (allowedPartFields) {
+        for (const key of Object.keys(part)) {
+          if (allowedPartFields.has(key) || key === "annotations" || key === "cache_control" || key === "metadata") continue;
+          omitted.push({ path: `input[${itemIndex}].content[${partIndex}].${key}`, value: part[key] });
+          delete part[key];
+        }
+      }
+      const detail = normalizeString(part.detail);
+      if (detail && !CODEX_ACCOUNT_RESPONSES_IMAGE_DETAILS.has(detail)) {
+        omitted.push({ path: `input[${itemIndex}].content[${partIndex}].detail`, value: part.detail });
+        delete part.detail;
+      }
+    });
+  });
+  if (omitted.length) {
+    appendCodexAccountCompatibilityNote(value, "input fields", omitted);
+  }
+}
+
 function codexAccountUnsupportedContentPartNote(source: unknown): Record<string, unknown> {
   return {
     type: "input_text",
@@ -4591,6 +4649,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     if (Array.isArray(next.input)) {
       next.input = next.input.map(normalizeCodexAccountResponsesInputItem);
     }
+    normalizeCodexAccountResponsesInputFields(next);
     applyResponsesReasoningOptions(next, next);
     normalizeCodexAccountResponsesReasoning(next);
     normalizeCodexAccountResponsesResponseFormat(next);

@@ -1616,6 +1616,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           model: "gpt-5.4",
           input: [{
             role: "user",
+            foo: "unsupported-input-item-field",
             annotations: [{
               type: "url_citation",
               url: "https://example.test/message-annotation",
@@ -1625,6 +1626,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
             content: [{
               type: "input_text",
               text: "hello",
+              foo: "unsupported-content-part-field",
               annotations: [{
                 type: "url_citation",
                 url: "https://example.test/content-annotation",
@@ -1637,7 +1639,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
               text: "chat-style text part",
             }, {
               type: "image_url",
-              image_url: { url: "data:image/png;base64,iVBORw0KGgo=", detail: "low" },
+              image_url: { url: "data:image/png;base64,iVBORw0KGgo=", detail: "super" },
             }, {
               type: "file",
               url: "https://example.test/readme.txt",
@@ -1869,6 +1871,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.stop, undefined);
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(upstreamBody.foo, undefined);
+    assert.equal(containsObjectKey(upstreamBody, "foo"), false);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
@@ -1892,6 +1895,10 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-text-field/);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses top-level fields omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-top-level-field/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses input fields omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-input-item-field/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-content-part-field/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /super/);
   assert.equal(directUpstreamBody.reasoning?.effort, "low");
   assert.deepEqual(directUpstreamBody.text, { verbosity: "low", format: { type: "json_object" } });
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
@@ -1903,7 +1910,6 @@ test("model gateway strips Codex account Responses unsupported request parameter
   }, {
     type: "input_image",
     image_url: "data:image/png;base64,iVBORw0KGgo=",
-    detail: "low",
   }, {
     type: "input_file",
     file_url: "https://example.test/readme.txt",
