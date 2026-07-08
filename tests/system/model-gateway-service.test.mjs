@@ -1822,6 +1822,30 @@ test("model gateway strips Codex account Responses unsupported request parameter
       assert.equal(incompatibleStrictResponseFormat.status, 200);
       assert.equal(incompatibleStrictResponseFormat.body.id, "resp_metadata");
 
+      const disabledParallelToolCalls = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "Use one lookup only.",
+          parallel_tool_calls: false,
+          tools: [{
+            type: "function",
+            name: "echo_probe",
+            parameters: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          }],
+          tool_choice: { type: "function", name: "echo_probe" },
+          stream: false,
+        },
+      });
+      assert.equal(disabledParallelToolCalls.status, 200);
+      assert.equal(disabledParallelToolCalls.body.id, "resp_metadata");
+
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -1903,7 +1927,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 6);
+  assert.equal(upstreamCalls.length, 7);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -1939,6 +1963,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.input?.[0]?.cache_control, undefined);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
+    if (JSON.stringify(upstreamBody.input).includes("Use one lookup only.")) {
+      assert.equal(upstreamBody.parallel_tool_calls, false);
+    } else {
+      assert.equal(upstreamBody.parallel_tool_calls, true);
+    }
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
@@ -2048,6 +2077,9 @@ test("model gateway strips Codex account Responses unsupported request parameter
     },
     strict: false,
   });
+  const disabledParallelToolCallsUpstreamBody = JSON.parse(upstreamCalls[5].body);
+  assert.equal(disabledParallelToolCallsUpstreamBody.parallel_tool_calls, false);
+  assert.deepEqual(disabledParallelToolCallsUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {

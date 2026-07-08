@@ -4701,7 +4701,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
 
     next.stream = true;
     next.store = false;
-    next.parallel_tool_calls = true;
+    if (next.parallel_tool_calls !== false) next.parallel_tool_calls = true;
     const include = Array.isArray(next.include)
       ? next.include.map((item) => normalizeString(item)).filter(Boolean)
       : [];
