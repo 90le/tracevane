@@ -1,4 +1,4 @@
-export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte" | "go" | "rust" | "clangd";
+export type TracevaneLspProviderId = "json" | "typescript" | "html" | "css" | "yaml" | "bash" | "pyright" | "dockerfile" | "markdown" | "eslint" | "vue" | "svelte" | "go" | "rust" | "java" | "clangd";
 export type TracevaneLspProviderMode = "in-process" | "external" | "fallback";
 export type TracevaneLspProviderStatus = "available" | "degraded" | "unavailable";
 
@@ -37,6 +37,7 @@ export const VUE_PROVIDER_SOURCE = "@vue/language-server";
 export const SVELTE_PROVIDER_SOURCE = "svelte-language-server";
 export const GO_PROVIDER_SOURCE = "gopls";
 export const RUST_PROVIDER_SOURCE = "rust-analyzer";
+export const JAVA_PROVIDER_SOURCE = "Eclipse JDT LS";
 export const CLANGD_PROVIDER_SOURCE = "clangd";
 
 export const TYPESCRIPT_LANGUAGES = new Set(["typescript", "typescriptreact", "javascript", "javascriptreact"]);
@@ -51,6 +52,7 @@ export const VUE_LANGUAGES = new Set(["vue"]);
 export const SVELTE_LANGUAGES = new Set(["svelte"]);
 export const GO_LANGUAGES = new Set(["go"]);
 export const RUST_LANGUAGES = new Set(["rust"]);
+export const JAVA_LANGUAGES = new Set(["java"]);
 export const CLANGD_LANGUAGES = new Set(["c", "cpp"]);
 
 export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
@@ -208,6 +210,17 @@ export const TRACEVANE_LSP_PROVIDERS: TracevaneLspProviderDescriptor[] = [
     mode: "external",
     status: "available",
     languages: [...RUST_LANGUAGES],
+    capabilities: {
+      diagnostics: true,
+    },
+  },
+
+  {
+    id: "java",
+    source: JAVA_PROVIDER_SOURCE,
+    mode: "external",
+    status: "available",
+    languages: [...JAVA_LANGUAGES],
     capabilities: {
       diagnostics: true,
     },

@@ -140,7 +140,8 @@
     "test:system:lsp-toolchain-provider-status": "npm run build:api && node --test tests/system/lsp-toolchain-provider-status.test.mjs",
     "test:system:lsp-go-gopls-provider": "npm run build:api && node --test tests/system/lsp-go-gopls-provider.test.mjs",
     "test:system:lsp-rust-analyzer-provider": "npm run build:api && node --test tests/system/lsp-rust-analyzer-provider.test.mjs",
-    "test:system:lsp-clangd-provider": "npm run build:api && node --test tests/system/lsp-clangd-provider.test.mjs"
+    "test:system:lsp-clangd-provider": "npm run build:api && node --test tests/system/lsp-clangd-provider.test.mjs",
+    "test:system:lsp-java-jdtls-provider": "npm run build:api && node --test tests/system/lsp-java-jdtls-provider.test.mjs"
   },
   "author": "binbin",
   "license": "MIT",

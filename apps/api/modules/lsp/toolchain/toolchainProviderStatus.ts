@@ -121,8 +121,9 @@ const TOOLCHAIN_PROVIDER_TEMPLATES: ToolchainProviderTemplate[] = [
     allowedProfiles: [{ profileId: "workspace", label: "Workspace JDT LS", binary: "jdtls", description: "Use a trusted workspace JDT LS profile after explicit configuration." }],
     defaultNextAction: "Configure a trusted workspace JDT LS profile and workspace data directory before enabling Java language service runtime.",
     defaultNotes: [
-      "M12-I reads config state only; it does not inspect PATH or launch Eclipse JDT LS.",
-      "Future enablement must isolate JDT LS workspace storage per trusted Tracevane root.",
+      "M12-T enables only a guarded Java/JDT LS diagnostics proof for trusted workspace profiles.",
+      "Status reporting does not inspect PATH; diagnostics runtime probes only after explicit trusted configuration.",
+      "Runtime startup must pass marker, Java 21+, launcher jar, platform config, and per-workspace -data guards before diagnostics routing.",
     ],
   },
   {
@@ -151,7 +152,7 @@ export function toolchainProviderStatusSnapshot(config: TracevaneServerConfig): 
       readOnly: true,
       probesRuntimePath: false,
       startsLanguageServers: true,
-      runtimeProofProviderIds: ["go", "rust", "clangd"],
+      runtimeProofProviderIds: ["go", "rust", "clangd", "java"],
       acceptsFrontendCommandOverrides: false,
       acceptsOnlyAllowlistedProfiles: true,
       configSource: "openclaw-config",
@@ -228,6 +229,7 @@ function nextActionFromConfig(template: ToolchainProviderTemplate, config: Toolc
   if (status === "configured" && template.providerId === "go") return `${template.label} has a trusted allowlisted profile. M12-K permits guarded diagnostics proof for Go files with go.work/go.mod markers.`;
   if (status === "configured" && template.providerId === "rust") return `${template.label} has a trusted allowlisted profile. M12-N permits guarded diagnostics proof for Rust files with Cargo.toml/rust-project.json markers.`;
   if (status === "configured" && template.providerId === "clangd") return `${template.label} has a trusted allowlisted profile. M12-Q permits guarded diagnostics proof for C/C++ files with compile_commands.json/compile_flags.txt/.clangd markers.`;
+  if (status === "configured" && template.providerId === "java") return `${template.label} has a trusted allowlisted profile. M12-T permits guarded diagnostics proof for Java files with pom.xml, Gradle, or .project markers.`;
   if (status === "configured") return `${template.label} has a trusted allowlisted profile. Runtime startup remains gated until provider-specific proof is implemented.`;
   if (status === "disabledByTrust") return `Mark ${template.configurationKey}.trusted=true only after the workspace is explicitly trusted.`;
   if (status === "unavailable") return config.rejectedReason ?? `Fix ${template.configurationKey} before enabling this provider.`;

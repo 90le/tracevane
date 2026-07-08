@@ -45,6 +45,7 @@ import { TS_PROVIDER_SOURCE, providerCapabilityMatrix, providerForLanguage, prov
 import { diagnoseWithGoGopls, goExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/goGoplsProvider.js";
 import { diagnoseWithRustAnalyzer, rustExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/rustAnalyzerProvider.js";
 import { diagnoseWithClangd, clangdExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/clangdProvider.js";
+import { diagnoseWithJavaJdtls, javaExternalDiagnosticToTracevaneDiagnostic } from "./toolchain/javaJdtlsProvider.js";
 import { toolchainProviderStatusSnapshot } from "./toolchain/toolchainProviderStatus.js";
 
 const LSP_WS_PATH = "/ws/lsp";
@@ -1835,6 +1836,16 @@ async function diagnoseDocument(
     });
     return responseFor(request, resolved.root.id, resolved.relativePath, "clangd", language, result.diagnostics.map((diagnostic) => clangdExternalDiagnosticToTracevaneDiagnostic(diagnostic)));
   }
+  if (provider?.id === "java") {
+    const result = await diagnoseWithJavaJdtls({
+      config,
+      rootRealPath: resolved.root.realPath,
+      absolutePath: resolved.absolutePath,
+      content,
+      version: request.version ?? 1,
+    });
+    return responseFor(request, resolved.root.id, resolved.relativePath, "java", language, result.diagnostics.map((diagnostic) => javaExternalDiagnosticToTracevaneDiagnostic(diagnostic)));
+  }
   return responseFor(request, resolved.root.id, resolved.relativePath, "json", language, []);
 }
 
@@ -2066,6 +2077,7 @@ function clampOffset(value: number, length: number): number {
 function normalizeLanguage(language: string | null | undefined, targetPath: string, content: string): string {
   const raw = String(language || "").trim().toLowerCase();
   if (raw === "json") return "json";
+  if (raw === "java") return "java";
   if (raw === "vue") return "vue";
   if (raw === "svelte") return "svelte";
   if (raw === "html" || raw === "htm") return "html";
@@ -2079,6 +2091,7 @@ function normalizeLanguage(language: string | null | undefined, targetPath: stri
   if (/\.d\.ts$/i.test(targetPath)) return "typescript";
   if (/\.jsx$/i.test(targetPath)) return "javascriptreact";
   if (/\.m?js$/i.test(targetPath) || /\.cjs$/i.test(targetPath)) return "javascript";
+  if (/\.java$/i.test(targetPath)) return "java";
   if (/\.vue$/i.test(targetPath)) return "vue";
   if (/\.svelte$/i.test(targetPath)) return "svelte";
   if (/\.html?$/i.test(targetPath)) return "html";
