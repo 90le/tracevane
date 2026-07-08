@@ -34,6 +34,7 @@ function sleep(ms) {
 async function startMockGateway(options = {}) {
   const requests = [];
   const activeProviders = {};
+  let failedFirstCodexRouteSmoke = false;
   const server = http.createServer(async (req, res) => {
     const rawBody = await readRequestBody(req);
     let body = {};
@@ -130,6 +131,22 @@ async function startMockGateway(options = {}) {
         return;
       }
       if (providerId === "codex-account" && ["codex", "claude-code", "opencode"].includes(body.scope)) {
+        if (options.failFirstCodexRouteSmoke && !failedFirstCodexRouteSmoke && body.scope === "codex" && !body.toolSmoke && !body.toolResultSmoke) {
+          failedFirstCodexRouteSmoke = true;
+          sendJson(res, 502, {
+            ok: false,
+            providerId,
+            route: {
+              routeId: "openai_responses",
+              mode: "passthrough",
+              endpointProfile: null,
+              provider: { apiFormat: "openai_responses" },
+              upstreamUrl: "https://chatgpt.com/backend-api/codex/responses",
+            },
+            error: { code: "mock_first_stage_failure", message: "first stage attempt failed" },
+          });
+          return;
+        }
         const routeId = body.scope === "codex"
           ? "openai_responses"
           : body.scope === "claude-code"
@@ -242,6 +259,30 @@ test("model gateway protocol matrix can expand Codex account proofs across multi
       "codex_account_opencode:gpt-5.4-mini",
     ]);
     assert.equal(parsed.stages.length, 4);
+    assert.deepEqual(gateway.activeProviders, {});
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix can retry a failed stage and preserve attempt evidence", async () => {
+  const gateway = await startMockGateway({ failFirstCodexRouteSmoke: true });
+  try {
+    const parsed = await runScript(["--endpoint", gateway.endpoint, "--skip-glm", "--codex-model", "gpt-5.4", "--stage-retries", "1", "--json"]);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.stages.length, 1);
+    assert.equal(parsed.stages[0].ok, true);
+    assert.equal(parsed.stages[0].attempt, 2);
+    assert.equal(parsed.stages[0].attempts, 2);
+    assert.equal(parsed.stages[0].previousAttempts.length, 1);
+    assert.equal(parsed.stages[0].previousAttempts[0].ok, false);
+    assert.equal(parsed.stages[0].previousAttempts[0].failedSmokes[0].scope, "codex");
+    assert.equal(parsed.stages[0].previousAttempts[0].failedSmokes[0].status, 502);
+    assert.deepEqual(parsed.protocolProofs.map((proof) => [proof.id, proof.ok]), [
+      ["codex_account_responses:gpt-5.4", true],
+      ["codex_account_claude_code:gpt-5.4", true],
+      ["codex_account_opencode:gpt-5.4", true],
+    ]);
     assert.deepEqual(gateway.activeProviders, {});
   } finally {
     await gateway.close();

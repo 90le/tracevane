@@ -28,6 +28,7 @@ function parseArgs(argv) {
     codexModels: parseCsv(process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODELS || ""),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     stageTimeoutMs: 0,
+    stageRetries: nonNegativeInt(process.env.TRACEVANE_GATEWAY_PROTOCOL_STAGE_RETRIES, 0),
     skipGlm: false,
     json: false,
   };
@@ -50,6 +51,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
     else if (arg === "--stage-timeout-ms") options.stageTimeoutMs = positiveInt(argv[++index], 0);
     else if (arg.startsWith("--stage-timeout-ms=")) options.stageTimeoutMs = positiveInt(arg.slice("--stage-timeout-ms=".length), 0);
+    else if (arg === "--stage-retries") options.stageRetries = nonNegativeInt(argv[++index], 0);
+    else if (arg.startsWith("--stage-retries=")) options.stageRetries = nonNegativeInt(arg.slice("--stage-retries=".length), 0);
     else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -81,6 +84,11 @@ function positiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function defaultStageTimeoutMs(timeoutMs) {
   const parsed = positiveInt(timeoutMs, DEFAULT_TIMEOUT_MS);
   return Math.max(MIN_STAGE_TIMEOUT_MS, parsed + STAGE_TIMEOUT_GRACE_MS);
@@ -104,6 +112,7 @@ Options:
   --skip-glm             run only Codex account matrix stages
   --timeout-ms <n>        per active-route smoke timeout
   --stage-timeout-ms <n>  per child process watchdog; default: max(${MIN_STAGE_TIMEOUT_MS}, --timeout-ms + ${STAGE_TIMEOUT_GRACE_MS})
+  --stage-retries <n>     retry a failed matrix stage; default: 0
   --json                  machine-readable output
   -h, --help              Show this help
 `);
@@ -175,6 +184,25 @@ function stageDefinitions(options) {
 }
 
 async function runActiveRoutesStage(options, stage) {
+  const attempts = [];
+  const maxAttempts = 1 + options.stageRetries;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = await runActiveRoutesStageOnce(options, stage, attempt, maxAttempts);
+    attempts.push(stageAttemptSummary(result));
+    if (result.ok || attempt >= maxAttempts) {
+      return {
+        ...result,
+        attempt,
+        attempts: maxAttempts,
+        previousAttempts: attempts.slice(0, -1),
+      };
+    }
+    await sleep(Math.min(1_000 * attempt, 3_000));
+  }
+  throw new Error("unreachable stage retry loop");
+}
+
+async function runActiveRoutesStageOnce(options, stage, attempt, attempts) {
   const args = [
     activeRoutesScript,
     "--endpoint", options.endpoint,
@@ -195,6 +223,8 @@ async function runActiveRoutesStage(options, stage) {
       id: stage.id,
       label: stage.label,
       ok: true,
+      attempt,
+      attempts,
       expectedProofs: stage.expectedProofs,
       activeRoutes: JSON.parse(result.stdout),
     };
@@ -210,6 +240,8 @@ async function runActiveRoutesStage(options, stage) {
       id: stage.id,
       label: stage.label,
       ok: false,
+      attempt,
+      attempts,
       expectedProofs: stage.expectedProofs,
       activeRoutes: parsed,
       error: {
@@ -220,6 +252,43 @@ async function runActiveRoutesStage(options, stage) {
       },
     };
   }
+}
+
+function stageAttemptSummary(result) {
+  return {
+    attempt: result.attempt,
+    ok: result.ok,
+    error: result.error || null,
+    activeRoutesOk: Boolean(result.activeRoutes?.ok),
+    failedSmokes: failedSmokeSummaries(result.activeRoutes),
+    expectationFailures: result.activeRoutes?.expectationFailures || [],
+    setupFailures: result.activeRoutes?.setupFailures || [],
+    restoreFailures: result.activeRoutes?.restoreFailures || [],
+  };
+}
+
+function failedSmokeSummaries(activeRoutes) {
+  const summaries = [];
+  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes"]) {
+    for (const smoke of activeRoutes?.[group] || []) {
+      if (smoke?.ok) continue;
+      summaries.push({
+        group,
+        scope: smoke?.scope || null,
+        status: smoke?.status ?? null,
+        routeId: smoke?.routeId || null,
+        apiFormat: smoke?.apiFormat || null,
+        transient: Boolean(smoke?.transient),
+        error: smoke?.error || null,
+        responsePreview: typeof smoke?.responsePreview === "string" ? smoke.responsePreview.slice(0, 500) : null,
+      });
+    }
+  }
+  return summaries;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function protocolProofs(stages) {
