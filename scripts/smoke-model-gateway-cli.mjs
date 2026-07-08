@@ -841,12 +841,28 @@ async function runCommand(definition, requestStore) {
     hitPaths,
     requestedModels,
     modelMatches,
+    requestSummaries: requests.map(summarizeGatewayRequest),
     minRequestCount,
     requestCount: requests.length,
     outputContainsOk,
     ...(outputValidation ? { outputValidation } : {}),
     stdoutPreview: preview(stdout),
     stderrPreview: preview(stderr),
+  };
+}
+
+function summarizeGatewayRequest(request) {
+  const messages = Array.isArray(request.body?.messages) ? request.body.messages : [];
+  const input = Array.isArray(request.body?.input) ? request.body.input : [];
+  return {
+    path: request.path,
+    model: typeof request.body?.model === "string" ? request.body.model : null,
+    messageRoles: messages.map((message) => message?.role || null),
+    hasToolCalls: messages.some((message) => Array.isArray(message?.tool_calls)),
+    toolCallIds: messages.flatMap((message) => Array.isArray(message?.tool_calls)
+      ? message.tool_calls.map((toolCall) => toolCall?.id).filter((id) => typeof id === "string")
+      : []),
+    inputTypes: input.map((item) => item?.type || item?.role || null),
   };
 }
 
