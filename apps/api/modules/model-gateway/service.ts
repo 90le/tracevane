@@ -4861,8 +4861,40 @@ function codexAccountTextFormatFromResponseFormat(source: Record<string, unknown
 
 function preserveCodexAccountUnsupportedRequestControls(value: Record<string, unknown>): void {
   const omitted: Record<string, unknown> = {};
-  if (value.max_tokens !== undefined) omitted.max_tokens = value.max_tokens;
-  if (value.stop !== undefined) omitted.stop = value.stop;
+  for (const field of [
+    "background",
+    "frequency_penalty",
+    "logprobs",
+    "max_output_tokens",
+    "max_completion_tokens",
+    "max_tokens",
+    "max_tool_calls",
+    "modalities",
+    "n",
+    "presence_penalty",
+    "prompt",
+    "seed",
+    "temperature",
+    "top_p",
+    "top_logprobs",
+    "truncation",
+    "thinking",
+    "output_config",
+    "reasoning_effort",
+    "reasoningEffort",
+    "enable_thinking",
+    "reasoning_split",
+    "context_management",
+    "conversation",
+    "user",
+    "previous_response_id",
+    "prompt_cache_retention",
+    "safety_identifier",
+    "stream_options",
+    "stop",
+  ] as const) {
+    if (value[field] !== undefined) omitted[field] = value[field];
+  }
   const safeMetadata = codexAccountSafeMetadata(value.metadata);
   if (safeMetadata) omitted.metadata = safeMetadata;
   if (Object.keys(omitted).length) {

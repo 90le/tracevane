@@ -1688,6 +1688,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           reasoning_split: true,
           seed: 123,
           stream: false,
+          temperature: 0.2,
           tools: [
             {
               type: "function",
@@ -1724,6 +1725,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           tool_choice: { type: "file_search" },
           stop: ["STOP_HERE"],
           top_logprobs: 1,
+          top_p: 0.7,
           foo: "unsupported-top-level-field",
         },
       });
@@ -1982,6 +1984,11 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.match(JSON.stringify(directUpstreamBody.input), /json_object/);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses request controls omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /max_tokens/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /max_tool_calls/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /temperature/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /top_p/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /seed/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /conversation/);
   assert.match(JSON.stringify(directUpstreamBody.input), /STOP_HERE/);
   assert.match(JSON.stringify(directUpstreamBody.input), /claude-code-cli/);
   assert.match(JSON.stringify(directUpstreamBody.input), /metadata-regression/);
