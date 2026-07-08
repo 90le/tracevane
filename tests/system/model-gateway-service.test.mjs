@@ -1862,6 +1862,14 @@ test("model gateway strips Codex account Responses unsupported request parameter
             session_id: "metadata-regression",
           },
           conversation: "conv_unsupported_claude_code",
+          mcp_servers: [{
+            type: "url",
+            name: "repo-tools",
+            url: "https://mcp.example.test/sse",
+            description: "Repository tools",
+            authorization_token: "claude-mcp-secret-token",
+            tool_configuration: { enabled: true, allowed_tools: ["read_file", "search"] },
+          }],
           messages: [{ role: "user", content: "hello" }],
           stream: false,
         },
@@ -2087,6 +2095,15 @@ test("model gateway strips Codex account Responses unsupported request parameter
   const disabledParallelToolCallsUpstreamBody = JSON.parse(upstreamCalls[5].body);
   assert.equal(disabledParallelToolCallsUpstreamBody.parallel_tool_calls, false);
   assert.deepEqual(disabledParallelToolCallsUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
+  const claudeCodeUpstreamBody = JSON.parse(upstreamCalls[6].body);
+  assert.equal(JSON.stringify(claudeCodeUpstreamBody.tools || []).includes('"type":"mcp"'), false);
+  const claudeCodeInputText = JSON.stringify(claudeCodeUpstreamBody.input);
+  assert.match(claudeCodeInputText, /Anthropic MCP server/);
+  assert.match(claudeCodeInputText, /repo-tools/);
+  assert.match(claudeCodeInputText, /mcp\.example\.test/);
+  assert.equal(claudeCodeInputText.includes("claude-mcp-secret-token"), false);
+  assert.equal(claudeCodeInputText.includes("authorization_token"), false);
+  assert.equal(claudeCodeInputText.includes('"authorization"'), false);
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {

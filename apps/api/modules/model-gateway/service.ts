@@ -4577,8 +4577,7 @@ function isCodexAccountSupportedResponsesToolType(type: string): boolean {
   return type === "function"
     || type === "custom"
     || type === "web_search"
-    || type === "image_generation"
-    || type === "mcp";
+    || type === "image_generation";
 }
 
 function isCodexAccountSupportedToolChoice(
@@ -4659,15 +4658,27 @@ function estimateAnthropicMessagesStructuralOverhead(value: unknown): number {
 
 function appendCodexAccountCompatibilityNote(value: Record<string, unknown>, label: string, omitted: unknown[]): void {
   const input = Array.isArray(value.input) ? [...value.input] : [];
+  const safeOmitted = omitted.map(codexAccountSafeCompatibilityValue);
   input.push({
     type: "message",
     role: "developer",
     content: [{
       type: "input_text",
-      text: `[OpenAI Responses ${label} omitted for Codex account compatibility: ${omitted.map(stringifyCompact).join("; ")}]`,
+      text: `[OpenAI Responses ${label} omitted for Codex account compatibility: ${safeOmitted.map(stringifyCompact).join("; ")}]`,
     }],
   });
   value.input = input;
+}
+
+function codexAccountSafeCompatibilityValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(codexAccountSafeCompatibilityValue);
+  if (!isRecord(value)) return value;
+  const safe: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isSensitiveCodexAccountCompatibilityField(key)) continue;
+    safe[key] = codexAccountSafeCompatibilityValue(item);
+  }
+  return safe;
 }
 
 function stringifyCompact(value: unknown): string {
@@ -4675,6 +4686,18 @@ function stringifyCompact(value: unknown): string {
     return JSON.stringify(value);
   } catch {
     return String(value);
+  }
+}
+
+function isLikelyOpenAIResponsesRequestJsonText(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) return false;
+    if (parsed.input !== undefined || parsed.instructions !== undefined || parsed.include !== undefined || parsed.store !== undefined) return true;
+    return Array.isArray(parsed.tools) && !Array.isArray(parsed.messages);
+  } catch {
+    return false;
   }
 }
 
@@ -4913,7 +4936,7 @@ function codexAccountSafeMetadata(value: unknown): Record<string, unknown> | nul
 }
 
 function isSensitiveCodexAccountCompatibilityField(field: string): boolean {
-  return /(?:authorization|token|secret|api[_-]?key|headers?)/i.test(field);
+  return /(?:authorization|secret|api[_-]?key|headers?|password|credential|bearer|(?:^|[_-])(?:access|refresh|id|auth)?[_-]?token(?:$|[_-]))/i.test(field);
 }
 
 const CODEX_ACCOUNT_RESPONSES_TOP_LEVEL_FIELDS = new Set([
@@ -11259,7 +11282,11 @@ export function createModelGatewayService(
     const useAnthropicMessagesCountTokensLocalAdapter = decision.routeId === "anthropic_messages_count_tokens"
       && provider.apiFormat !== "anthropic_messages";
     const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
-      && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
+      && (
+        normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses")
+        || useChatResponsesAdapter
+        || useAnthropicMessagesResponsesProviderAdapter
+      );
     const diagnosticSmokeRequest = readHeader(req.headers, MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER) === "1";
     const shouldUpdateAccountStateFromRequest = !diagnosticSmokeRequest;
     if (
@@ -11658,7 +11685,7 @@ export function createModelGatewayService(
         const chatAdapted = adaptAnthropicMessagesRequestToChatCompletion(bodyText, {
           preserveContentCacheControl: true,
           preserveContextManagement: true,
-          preserveMcpServers: true,
+          preserveMcpServers: !useCodexAccountResponsesUpstream,
           preserveServiceTier: true,
           preserveToolResultContent: true,
           preserveToolResultError: true,
@@ -11777,7 +11804,7 @@ export function createModelGatewayService(
       }
     }
     if (isCodexAccountBackedProvider(provider)) {
-      if (useCodexAccountResponsesUpstream) {
+      if (useCodexAccountResponsesUpstream || isLikelyOpenAIResponsesRequestJsonText(upstreamBodyText)) {
         upstreamBodyText = normalizeCodexAccountResponsesRequestInJsonText(upstreamBodyText);
         headers.set("content-type", "application/json");
         headers.set("accept", "text/event-stream");
