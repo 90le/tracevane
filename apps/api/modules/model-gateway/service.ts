@@ -10286,7 +10286,9 @@ export function createModelGatewayService(
     stream = false,
     toolSmoke = false,
     toolResultSmoke = false,
+    compatibilitySmoke = false,
   ): Record<string, unknown> {
+    if (compatibilitySmoke) return buildGatewayRouteCompatibilitySmokePayload(scope, routeId, model, input, stream);
     if (toolResultSmoke) return buildGatewayRouteToolResultSmokePayload(scope, routeId, model, input, stream);
     if (toolSmoke) return buildGatewayRouteToolSmokePayload(scope, routeId, model, input, stream);
     const prompt = `${input}\nDo not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
@@ -10393,6 +10395,124 @@ export function createModelGatewayService(
         },
       }],
       tool_choice: { type: "function", name: "gateway_smoke_tool" },
+    };
+  }
+
+  function buildGatewayRouteCompatibilitySmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+    stream = false,
+  ): Record<string, unknown> {
+    const prompt = `${input}
+Compatibility smoke: preserve the useful intent of any metadata, cache hints, annotations, citations, MCP/server-tool declarations, and unsupported client-only fields as context when needed, but do not call tools. Reply with exactly ${MODEL_GATEWAY_SMOKE_SENTINEL}.`;
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-compatibility-smoke",
+          tracevane_metadata_probe: "metadata must not be forwarded unsafely to Codex account Responses",
+        },
+        mcp_servers: [{
+          name: "tracevane-smoke-mcp",
+          type: "url",
+          url: "https://example.invalid/tracevane-smoke-mcp",
+          tool_configuration: {
+            enabled: false,
+            allowed_tools: ["gateway_smoke_tool"],
+          },
+        }],
+        container_uploads: [{
+          type: "file",
+          file_id: "file_tracevane_gateway_smoke",
+        }],
+        messages: [{
+          role: "user",
+          content: [{
+            type: "text",
+            text: prompt,
+            cache_control: { type: "ephemeral" },
+            citations: [{
+              type: "webpage_location",
+              url: "https://example.invalid/tracevane-gateway-smoke",
+              title: "Tracevane Gateway Smoke",
+              cited_text: MODEL_GATEWAY_SMOKE_SENTINEL,
+            }],
+          }],
+        }],
+        tools: [gatewaySmokeToolForAnthropic()],
+        tool_choice: { type: "auto" },
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        max_tokens: 256,
+        stream,
+        metadata: {
+          user_id: "tracevane-gateway-smoke",
+          session_id: "active-route-compatibility-smoke",
+          tracevane_metadata_probe: "chat metadata must become safe context for Responses-backed routes",
+        },
+        messages: [{
+          role: "user",
+          content: prompt,
+          annotations: [{
+            type: "url_citation",
+            url: "https://example.invalid/tracevane-gateway-smoke",
+            title: "Tracevane Gateway Smoke",
+          }],
+          cache_control: { type: "ephemeral" },
+        }],
+        tools: [gatewaySmokeToolForChat()],
+        tool_choice: "auto",
+      };
+    }
+    const responsesInput = [{
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: prompt,
+        annotations: [{
+          type: "url_citation",
+          url: "https://example.invalid/tracevane-gateway-smoke",
+          title: "Tracevane Gateway Smoke",
+        }],
+        cache_control: { type: "ephemeral" },
+      }],
+      metadata: {
+        item_probe: "Responses item metadata must not trigger an upstream 400",
+      },
+    }];
+    return {
+      model,
+      input: responsesInput,
+      stream,
+      max_output_tokens: 256,
+      metadata: {
+        user_id: "tracevane-gateway-smoke",
+        session_id: "active-route-compatibility-smoke",
+        tracevane_metadata_probe: "top-level Responses metadata must become safe context or be stripped",
+      },
+      store: false,
+      tools: [{
+        type: "function",
+        name: "gateway_smoke_tool",
+        description: "A no-op tool used only to verify compatibility-field cleanup.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      }],
+      tool_choice: "auto",
     };
   }
 
@@ -10692,9 +10812,10 @@ export function createModelGatewayService(
     const controller = new AbortController();
     const toolSmoke = payload.toolSmoke === true;
     const toolResultSmoke = payload.toolResultSmoke === true;
+    const compatibilitySmoke = payload.compatibilitySmoke === true;
     const stream = typeof payload.stream === "boolean"
       ? payload.stream
-      : toolSmoke || toolResultSmoke ? false : scope === "claude-code";
+      : toolSmoke || toolResultSmoke || compatibilitySmoke ? false : scope === "claude-code";
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : DEFAULT_TIMEOUT_MS;
@@ -10711,6 +10832,7 @@ export function createModelGatewayService(
           stream,
           toolSmoke,
           toolResultSmoke,
+          compatibilitySmoke,
         )),
         signal: controller.signal,
       });

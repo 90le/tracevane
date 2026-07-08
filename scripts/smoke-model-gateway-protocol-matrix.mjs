@@ -171,6 +171,7 @@ function stageDefinitions(options) {
       "--stream-tool-smoke",
       "--tool-result-smoke",
       "--stream-tool-result-smoke",
+      "--compatibility-smoke",
       "--expect-routes", "codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions",
       "--expect-api-formats", "codex=openai_responses,claude-code=openai_responses,opencode=openai_responses",
     ],
@@ -269,7 +270,7 @@ function stageAttemptSummary(result) {
 
 function failedSmokeSummaries(activeRoutes) {
   const summaries = [];
-  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes"]) {
+  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes", "compatibilitySmokes", "streamCompatibilitySmokes"]) {
     for (const smoke of activeRoutes?.[group] || []) {
       if (smoke?.ok) continue;
       summaries.push({

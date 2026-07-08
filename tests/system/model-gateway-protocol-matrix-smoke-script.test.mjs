@@ -221,6 +221,7 @@ test("model gateway protocol matrix proves GLM native protocols and Codex accoun
     const codexSmokeRequests = gateway.requests.filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.model === "gpt-5.5");
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "claude-code" && request.body.toolSmoke === true).length, 2);
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "opencode" && request.body.toolResultSmoke === true).length, 2);
+    assert.equal(codexSmokeRequests.filter((request) => request.body.compatibilitySmoke === true).length, 3);
   } finally {
     await gateway.close();
   }

@@ -35,6 +35,8 @@ function parseArgs(argv) {
     streamToolSmoke: false,
     toolResultSmoke: false,
     streamToolResultSmoke: false,
+    compatibilitySmoke: false,
+    streamCompatibilitySmoke: false,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -68,6 +70,11 @@ function parseArgs(argv) {
     else if (arg === "--stream-tool-result-smoke") {
       options.toolResultSmoke = true;
       options.streamToolResultSmoke = true;
+    }
+    else if (arg === "--compatibility-smoke") options.compatibilitySmoke = true;
+    else if (arg === "--stream-compatibility-smoke") {
+      options.compatibilitySmoke = true;
+      options.streamCompatibilitySmoke = true;
     }
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
@@ -144,6 +151,10 @@ Options:
                     verify a prior gateway_smoke_tool result can produce final text
   --stream-tool-result-smoke
                     also verify tool-result history through streaming final text
+  --compatibility-smoke
+                    verify metadata/cache_control/MCP/container/annotation cleanup
+  --stream-compatibility-smoke
+                    also verify compatibility cleanup through streaming final text
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -265,6 +276,8 @@ function createResult(options, provider, originalActiveProviders) {
     streamToolSmokes: [],
     toolResultSmokes: [],
     streamToolResultSmokes: [],
+    compatibilitySmokes: [],
+    streamCompatibilitySmokes: [],
     expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
@@ -672,6 +685,7 @@ async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
         input: options.input,
         toolSmoke: Boolean(options.toolSmokeRequest),
         toolResultSmoke: Boolean(options.toolResultSmokeRequest),
+        compatibilitySmoke: Boolean(options.compatibilitySmokeRequest),
         ...(typeof options.streamRequest === "boolean" ? { stream: options.streamRequest } : {}),
       }),
       timeoutMs: activeRouteSmokeRequestTimeoutMs(options.timeoutMs),
@@ -770,6 +784,14 @@ function printResult(result, json) {
   }
   for (const smoke of result.streamToolResultSmokes || []) {
     console.log(`- ${smoke.scope} stream tool result: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.compatibilitySmokes || []) {
+    console.log(`- ${smoke.scope} compatibility: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
+    if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
+  }
+  for (const smoke of result.streamCompatibilitySmokes || []) {
+    console.log(`- ${smoke.scope} stream compatibility: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
   }
   if (result.setupFailures.length) {
@@ -993,6 +1015,18 @@ async function main() {
               result.streamToolResultSmokes.push(await runActiveRouteSmoke(streamToolResultOptions, key, scope));
             }
           }
+          if (options.compatibilitySmoke) {
+            const compatibilityOptions = { ...options, compatibilitySmokeRequest: true };
+            for (const scope of options.scopes) {
+              result.compatibilitySmokes.push(await runActiveRouteSmoke(compatibilityOptions, key, scope));
+            }
+          }
+          if (options.streamCompatibilitySmoke) {
+            const streamCompatibilityOptions = { ...options, compatibilitySmokeRequest: true, streamRequest: true };
+            for (const scope of options.scopes) {
+              result.streamCompatibilitySmokes.push(await runActiveRouteSmoke(streamCompatibilityOptions, key, scope));
+            }
+          }
           addExpectationFailures(result, options);
         }
       }
@@ -1005,12 +1039,16 @@ async function main() {
       && (!options.streamToolSmoke || result.streamToolSmokes.length === options.scopes.length)
       && (!options.toolResultSmoke || result.toolResultSmokes.length === options.scopes.length)
       && (!options.streamToolResultSmoke || result.streamToolResultSmokes.length === options.scopes.length)
+      && (!options.compatibilitySmoke || result.compatibilitySmokes.length === options.scopes.length)
+      && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.length === options.scopes.length)
       && result.preflightFailures.length === 0
       && result.routeSmokes.every((item) => item.ok)
       && (!options.toolSmoke || result.toolSmokes.every((item) => item.ok))
       && (!options.streamToolSmoke || result.streamToolSmokes.every((item) => item.ok))
       && (!options.toolResultSmoke || result.toolResultSmokes.every((item) => item.ok))
       && (!options.streamToolResultSmoke || result.streamToolResultSmokes.every((item) => item.ok))
+      && (!options.compatibilitySmoke || result.compatibilitySmokes.every((item) => item.ok))
+      && (!options.streamCompatibilitySmoke || result.streamCompatibilitySmokes.every((item) => item.ok))
       && result.expectationFailures.length === 0
       && result.setupFailures.length === 0
       && result.restoreFailures.length === 0

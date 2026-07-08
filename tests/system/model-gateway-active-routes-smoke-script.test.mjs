@@ -263,6 +263,32 @@ test("model gateway active route smoke restores active providers after success",
   }
 });
 
+test("model gateway active route smoke can run compatibility cleanup probes", async () => {
+  const gateway = await startMockGateway();
+  try {
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex,claude-code,opencode",
+      "--compatibility-smoke",
+      "--json",
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.compatibilitySmokes.map((probe) => [probe.scope, probe.ok]), [
+      ["codex", true],
+      ["claude-code", true],
+      ["opencode", true],
+    ]);
+    const compatibilityRequests = gateway.requests
+      .filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.compatibilitySmoke === true);
+    assert.deepEqual(compatibilityRequests.map((request) => request.body.scope), ["codex", "claude-code", "opencode"]);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    await gateway.close();
+  }
+});
+
 test("model gateway active route smoke waits on a lock before mutating active providers", async () => {
   const gateway = await startMockGateway();
   const lock = makeTempLockDir();
