@@ -144,7 +144,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M12-U Toolchain provider acceptance / heavy provider closeout.
 - Done: M13-A Toolchain Provider Post-Diagnostics Roadmap Plan.
 - Done: M13-B Toolchain Provider Status / Setup Guidance UX Foundation.
-- Next: M13-C Single Provider Rich Interaction Proof Decision.
+- Done: M13-C Single Provider Rich Interaction Proof Decision.
+- Next: M13-D Go / gopls Hover + Definition Guarded Proof Plan.
 
 ## Required reading by task
 
