@@ -1616,10 +1616,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
           model: "gpt-5.4",
           input: [{
             role: "user",
+            metadata: { turn_id: "nested-message-metadata" },
             content: [{
               type: "input_text",
               text: "hello",
               cache_control: { type: "ephemeral" },
+              metadata: { part_id: "nested-content-metadata" },
             }, {
               type: "text",
               text: "chat-style text part",
@@ -1678,7 +1680,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
                 additionalProperties: false,
               },
             },
-            { type: "file_search", vector_store_ids: ["vs_unsupported"] },
+            { type: "file_search", vector_store_ids: ["vs_unsupported"], metadata: { tool_id: "nested-tool-metadata" } },
             { type: "code_interpreter", container: { type: "auto" } },
             { type: "computer_use_preview", display_width: 1024, display_height: 768, environment: "browser" },
           ],
@@ -1817,6 +1819,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
+  assert.equal(containsObjectKey(directUpstreamBody, "metadata"), false);
   assert.equal(directUpstreamBody.reasoning?.effort, "low");
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",

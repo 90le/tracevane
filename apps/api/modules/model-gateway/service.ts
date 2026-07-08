@@ -4659,11 +4659,12 @@ function stripCodexAccountResponsesUnsupportedFields(value: unknown): void {
     return;
   }
   if (!isRecord(value)) return;
-  // Anthropic prompt-caching hints are block-local and not part of the OpenAI
-  // Responses input schema. Strip them before forwarding to the Codex account
-  // backend so Claude Code cache_control blocks do not trigger unsupported
-  // parameter errors.
+  // Anthropic prompt-caching hints and client metadata can appear on nested
+  // message/content/tool objects after CLI or compatibility translations, but
+  // the Codex account Responses backend rejects those object-local fields as
+  // unknown/unsupported parameters. Strip them recursively before forwarding.
   delete value.cache_control;
+  delete value.metadata;
   for (const item of Object.values(value)) {
     stripCodexAccountResponsesUnsupportedFields(item);
   }
