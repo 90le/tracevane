@@ -17,6 +17,14 @@
 - 如果旧文件与当前主线冲突，以 `../00-README.md`、`../15-远程代码工作台产品聚焦与长期执行机制.md`、`.codex/project-context.md` 和 `.codex/ide-long-term-goal.md` 为准。
 - 新阶段完成后，只在本目录新增对应的 plan/summary/decision 归档；不要把新进度继续追加到旧阶段文件。
 
+
+## 当前处置结论
+
+- `.codex/ide-long-term-goal.md` 与 `.codex/project-context.md` 已作为长期 goal 和当前阶段指针的权威文件；阶段切换时更新它们，不重建每个短阶段的 runtime goal。
+- `docs/ide-code-editor-solution/00`–`15` 暂不删除：它们仍是当前主线入口。
+- 已完成阶段的 `m*`、`p*` 计划、总结、验收和决策继续归档在本目录；旧文件中的“下一步”只代表当时语境，不覆盖当前阶段。
+- 新增阶段总结时优先添加到本目录，并在 `00-README.md`、`.codex/project-context.md` 和 `.codex/ide-long-term-goal.md` 指向新的当前入口。
+
 ## 当前归档结构
 
 - `m1*`–`m2*`：File Manager Online Editor 与 Unified File Surface 初期执行记录。

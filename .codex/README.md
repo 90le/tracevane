@@ -15,6 +15,16 @@ This directory stores project-local Codex/OMX guidance for this Tracevane worksp
 
 The IDE/editor plan is detailed enough that agents must not improvise from generic IDE memory. Agents should first read `ide-long-term-goal.md`, classify the target stage, read the relevant docs, then implement only that stage's scope and verification gates.
 
+
+## Long-term goal lifecycle
+
+The Tracevane IDE workstream uses two layers:
+
+1. **Runtime Codex goal**: one broad active goal for the long-running product push. Do not create a fresh runtime goal for every M/P slice while one is active.
+2. **Repository goal files**: `.codex/ide-long-term-goal.md` and `.codex/project-context.md` carry the live stage pointer, current queue, completed decisions, and next handoff. These files must be updated whenever a stage completes.
+
+If the runtime goal text contains an older starting phrase, prefer `.codex/ide-long-term-goal.md` for the current stage. This keeps the tool goal stable while the project advances through many small committed slices.
+
 ## Project config policy
 
 Keep `.codex/config.toml` conservative. Prefer durable behavior in `AGENTS.md`; use config only for documented Codex settings such as instruction budget and subagent fan-out. Do not set project-local models, providers, credentials, approval policy, sandbox mode, MCP servers, or hooks unless the team explicitly decides to own that behavior in-repo.

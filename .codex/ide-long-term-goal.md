@@ -7,7 +7,15 @@ Current next stage: P1-A-2 Explorer mainline workflow
 
 ## Goal prompt
 
-Tracevane IDE 长期推进：以“远程项目在线代码工作台”为产品主线，持续完成未收口阶段；每个阶段必须先更新/核对 `.codex` 项目上下文与 `docs/ide-code-editor-solution` 文档架构，必要时归档/删除过期计划，随后实施最小可验证切片，运行对应验证，提交 Lore commit，并更新下一阶段入口。当前从 M13-I Toolchain Rich Interaction Acceptance / Product Pivot Decision 开始，完成后转入 P0 Remote Code Editing Mainline Audit。
+Tracevane IDE 长期推进：以“远程项目在线代码工作台”为产品主线，持续完成未收口阶段；每个阶段必须先更新/核对 `.codex` 项目上下文与 `docs/ide-code-editor-solution` 文档架构，必要时归档/删除过期计划，随后实施最小可验证切片，运行对应验证，提交 Lore commit，并更新下一阶段入口。
+
+
+## Goal lifecycle
+
+- The active Codex goal can be created by the agent when the user asks for a long-running Tracevane IDE goal and no active goal exists.
+- Once the runtime goal exists, do not recreate it for every stage. Keep the runtime goal broad and update this file's `Current next stage`, `.codex/project-context.md`, `docs/ide-code-editor-solution/00-README.md`, and the active stage/archive docs instead.
+- If the runtime goal objective text mentions an older starting point, treat this file's `Current next stage` as the live handoff pointer. The objective remains the durable umbrella; stage movement is tracked in repository files and Lore commits.
+- Create a replacement runtime goal only after the old long-term goal is truly complete, blocked under the goal rules, or explicitly retired by the user.
 
 ## Product north star
 
