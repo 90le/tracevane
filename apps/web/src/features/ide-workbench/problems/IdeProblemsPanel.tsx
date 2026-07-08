@@ -55,7 +55,7 @@ export function IdeProblemsPanel({
         <div className="grid min-h-0 place-items-center p-4" data-ide-problems-empty>
           <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center text-sm text-muted">
             <div className="font-medium text-ink-strong">当前没有 Problems</div>
-            <div className="mt-1 text-xs">M6-E 提供结构化问题面板基础；LSP diagnostics、Git 和 Debug 后续阶段接入。</div>
+            <div className="mt-1 text-xs">当前没有发现问题。语言服务、搜索、Git 或调试产生的问题会显示在这里。</div>
           </div>
         </div>
       )}

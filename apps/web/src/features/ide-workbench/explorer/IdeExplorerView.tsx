@@ -689,7 +689,7 @@ export function IdeExplorerView({
           }} disabled={activeUpload}>
             <Upload />
           </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton label="快速过滤（预留）" onClick={() => toast.info("快速过滤将在 M6 Search 阶段接入", { description: "当前保留入口，不抢先实现搜索索引。" })}>
+          <ExplorerToolbarIconButton label="快速过滤" onClick={() => toast.info("快速过滤暂不可用", { description: "请先使用 Search 视图查找文件或内容。" })}>
             <Search />
           </ExplorerToolbarIconButton>
           <ExplorerToolbarIconButton label="刷新" onClick={() => void refreshDirectory()}>
@@ -1268,7 +1268,7 @@ function DeleteDialog({
           </div>
           {openedTabs.length ? (
             <div className="rounded border border-amber/30 bg-amber-soft p-3 text-xs text-amber" data-ide-explorer-open-tab-delete-warning>
-              此项目命中 {openedTabs.length} 个已打开 placeholder tab，其中 {dirtyCount} 个标记 dirty。删除后 tab 不会静默关闭，只会标记为 deleted。
+              此项目命中 {openedTabs.length} 个已打开标签页，其中 {dirtyCount} 个有未保存修改。删除后标签页不会静默关闭，会标记为已删除。
             </div>
           ) : null}
           <label className="grid gap-1 text-xs text-muted">

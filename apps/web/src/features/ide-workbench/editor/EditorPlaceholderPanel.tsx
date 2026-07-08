@@ -81,7 +81,7 @@ export function EditorPlaceholderPanel({
             "inline-flex items-center justify-center",
           )}
         >
-          IDE editor placeholder
+          编辑器分组
         </div>
       </div>
     </div>

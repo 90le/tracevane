@@ -60,7 +60,7 @@ export function IdeOutputPanel() {
           <div className="grid h-full min-h-40 place-items-center text-center text-sm text-muted" data-ide-output-empty>
             <div className="rounded-md border border-dashed border-line bg-panel px-4 py-3">
               <div className="font-medium text-ink-strong">当前 Output channel 没有日志</div>
-              <div className="mt-1 text-xs">M6-E 提供 channel/log 基础；真实任务、LSP、Git、Debug 输出后续接入。</div>
+              <div className="mt-1 text-xs">还没有输出日志。运行任务、语言服务、Git 或调试操作后会在这里显示。</div>
             </div>
           </div>
         )}

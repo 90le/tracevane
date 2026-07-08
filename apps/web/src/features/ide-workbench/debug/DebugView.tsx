@@ -349,7 +349,7 @@ export function IdeDebugView({
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-empty>
-            还没有 Debug session。当前阶段只提供 mock provider 骨架，用于验证 Gateway / Debug View / Debug Console 闭环。
+            还没有 Debug session。请选择可用的启动配置后开始调试。
           </div>
         )}
         <div className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Call Stack</div>

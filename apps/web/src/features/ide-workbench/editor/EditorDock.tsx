@@ -199,7 +199,7 @@ export function EditorDock({
         kind: "split-placeholder",
         title: direction === "right" ? "Split Right 占位" : "Split Down 占位",
         description:
-          "M5.y-C 继续保留 Dockview 分裂占位；真实多编辑组内容共享与完整拖拽进入 M5.y-D。",
+          "已创建新的编辑器分组。请从资源管理器打开文件，或从已有标签页右键拆分。",
       },
       position: referencePanel
         ? { referencePanel, direction }
@@ -706,7 +706,7 @@ function filePanelParams(
       kind: "git-diff",
       tab,
       title: tab.title,
-      description: "M7-E-A Git diff panel；复用 Git API 和 Monaco Diff，只展示差异，不执行 stage/commit。",
+      description: "Git diff 只显示当前文件差异；暂存、取消暂存和提交请在 Source Control 中完成。",
     };
   }
   return {
@@ -714,7 +714,7 @@ function filePanelParams(
     tab,
     title: tab.title,
     description:
-      "M5.y-C 已将该文件打开到 Dockview editor panel；Monaco 内容由 editor-core/Files API 负责读写，Dockview 只保存布局 metadata。",
+      "该文件已在编辑器中打开。内容读写由文件服务负责，布局只保存窗口和标签状态。",
   };
 }
 

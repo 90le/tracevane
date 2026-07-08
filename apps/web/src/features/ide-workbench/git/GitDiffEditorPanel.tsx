@@ -85,7 +85,7 @@ export function GitDiffEditorPanel({ tab }: GitDiffEditorPanelProps) {
         ) : error ? (
           <GitDiffState title="无法读取 Git diff" description={error} tone="danger" />
         ) : payload?.binary ? (
-          <GitDiffState title="二进制文件暂不显示 Monaco diff" description={payload.message || "该变更包含二进制内容；M7-E-A 只提供文本 diff 基础。"} tone="muted" />
+          <GitDiffState title="二进制文件不显示文本差异" description={payload.message || "该变更包含二进制内容；当前仅显示文本差异。"} tone="muted" />
         ) : canRenderMonacoDiff ? (
           <MonacoDiffPanel
             original={payload.originalContent ?? ""}

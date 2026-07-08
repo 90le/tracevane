@@ -143,7 +143,7 @@ export function IdeEditorFilePanel({
       return false;
     }
     if (tab.externalState === "deleted") {
-      toast.warning("磁盘文件已删除", { description: "当前 dirty 内容已保留；恢复/另存将在后续阶段接入。" });
+      toast.warning("磁盘文件已删除", { description: "未保存内容仍保留在当前标签页；请复制内容或另存到新的文件路径。" });
       return false;
     }
     if (!read || unsupportedReason) return true;
@@ -316,7 +316,7 @@ export function IdeEditorFilePanel({
         tone="warning"
         icon={<AlertTriangle />}
         title="文件已删除"
-        description="该文件路径已被删除或移动（deleted）。M5.y-B 只显示读取边界；dirty 内容保护和恢复流程将在 M5.y-C/M5.y-D 接入。"
+        description="该文件路径已被删除或移动。当前标签页仍保留状态；如有未保存内容，请复制或另存后再关闭。"
         path={tab.ref.path}
       />
     );
@@ -328,7 +328,7 @@ export function IdeEditorFilePanel({
         tone="loading"
         icon={<FileText />}
         title="正在读取文件"
-        description="通过 shared/editor-core 复用现有 Files API 读取内容。"
+        description="正在通过文件服务读取内容。"
         path={tab.ref.path}
         dataState="loading"
       />
@@ -394,7 +394,7 @@ export function IdeEditorFilePanel({
       <IdeEditorStatePanel
         tone="muted"
         icon={<FileQuestion />}
-        title="暂不在 IDE Editor 中编辑此文件"
+        title="此文件不能作为文本编辑"
         description={unsupportedReason}
         path={tab.ref.path}
         dataState="unsupported"
@@ -538,7 +538,7 @@ function unsupportedReasonForRead(read: EditorReadResult): string | null {
   const { snapshot, raw } = read;
   const metadata = snapshot.metadata;
   if (metadata.truncated || raw.truncated) {
-    return "该文件读取结果已被截断，M5.y-B 暂不在 IDE 中编辑截断内容，避免误保存不完整文件。大文件/分段读取策略将在后续阶段补齐。";
+    return "该文件读取结果已被截断。为避免误保存不完整内容，当前以只读方式处理，请使用预览或下载方式查看完整文件。";
   }
   if (raw.content == null) {
     return "文件内容为空或后端未返回可编辑文本内容。";

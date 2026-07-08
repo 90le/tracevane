@@ -841,10 +841,10 @@ function LspExternalProviderStatusDialog({
               <section className="grid gap-2" data-ide-lsp-toolchain-provider-section>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div>
-                    <div className="font-semibold text-ink">Toolchain provider candidates</div>
-                    <div className="text-muted">M12-H 只读候选状态：不探测 PATH，不启动 Go/Rust/Java/clangd language server。</div>
+                    <div className="font-semibold text-ink">工具链候选</div>
+                    <div className="text-muted">这些工具链需要工作区配置或本机环境支持；未配置时不会自动启动。</div>
                   </div>
-                  <span className="rounded border border-warning/30 bg-warning/10 px-2 py-0.5 text-2xs text-warning">status skeleton</span>
+                  <span className="rounded border border-warning/30 bg-warning/10 px-2 py-0.5 text-2xs text-warning">状态候选</span>
                 </div>
                 <div className="grid gap-2" data-ide-lsp-toolchain-provider-list>
                   {toolchainCandidates.map((candidate) => (
@@ -1188,7 +1188,7 @@ function ActivityBar({
           aria-label={IDE_ACTIVITY_LABELS[item.id]}
           title={
             item.disabled
-              ? `${IDE_ACTIVITY_LABELS[item.id]}（后续阶段）`
+              ? `${IDE_ACTIVITY_LABELS[item.id]}（暂不可用）`
               : IDE_ACTIVITY_LABELS[item.id]
           }
           onClick={() => onSelect(item.id)}
@@ -1213,7 +1213,7 @@ function IdePendingActivityView({ hidden, title }: { hidden: boolean; title: str
     <aside className="grid min-h-0 min-w-0 place-items-center border-r border-line bg-panel p-4" data-ide-sidebar data-ide-pending-activity>
       <div className="rounded-lg border border-dashed border-line bg-canvas px-4 py-3 text-center text-sm text-muted">
         <div className="font-semibold text-ink-strong">{title}</div>
-        <div className="mt-1 text-xs">该视图将在后续阶段接入。</div>
+        <div className="mt-1 text-xs">该视图暂不可用。</div>
       </div>
     </aside>
   );
