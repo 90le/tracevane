@@ -626,6 +626,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       ],
       env,
       expectedPaths: ["/v1/responses", "/v1/responses/compact"],
+      expectedModel: targetModel,
     },
     {
       id: "claude-code",
@@ -644,6 +645,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       ],
       env,
       expectedPaths: ["/v1/messages"],
+      expectedModel: targetModel,
     },
     {
       id: "claude-code-tool",
@@ -668,6 +670,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       ],
       env,
       expectedPaths: ["/v1/messages"],
+      expectedModel: targetModel,
       minRequestCount: 2,
     },
     {
@@ -687,6 +690,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       ],
       env,
       expectedPaths: ["/v1/messages"],
+      expectedModel: targetModel,
     },
     {
       id: "opencode",
@@ -704,6 +708,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       ],
       env,
       expectedPaths: ["/v1/chat/completions"],
+      expectedModel: targetModel,
     },
     {
       id: "openclaw",
@@ -713,6 +718,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         : ["models", "status", "--json"],
       env,
       expectedPaths: includeOpenClawAgent ? ["/v1/chat/completions"] : [],
+      expectedModel: includeOpenClawAgent ? targetModel : null,
       validateOutput: includeOpenClawAgent ? (context) => validateOpenClawAgentOutput(context, targetModel) : undefined,
     },
   ];
@@ -777,6 +783,7 @@ async function runCommand(definition, requestStore) {
       status: "skipped",
       reason: `${definition.command} is not installed or not on PATH.`,
       expectedPaths: definition.expectedPaths,
+      expectedModel: definition.expectedModel || null,
     };
   }
   const beforeCount = requestStore.length;
@@ -804,6 +811,8 @@ async function runCommand(definition, requestStore) {
   clearTimeout(timeout);
   const requests = requestStore.slice(beforeCount);
   const hitPaths = [...new Set(requests.map((request) => request.path))];
+  const requestedModels = [...new Set(requests.map((request) => request.body?.model).filter((model) => typeof model === "string"))];
+  const modelMatches = !definition.expectedModel || (requestedModels.length > 0 && requestedModels.every((model) => model === definition.expectedModel));
   const minRequestCount = definition.minRequestCount ?? (definition.expectedPaths.length ? 1 : 0);
   const expectedHit = !definition.expectedPaths.length
     || definition.expectedPaths.some((expectedPath) => hitPaths.includes(expectedPath));
@@ -816,6 +825,7 @@ async function runCommand(definition, requestStore) {
     && exit.code === 0
     && expectedHit
     && requests.length >= minRequestCount
+    && modelMatches
     && (!outputValidation || outputValidation.ok)
     && (definition.expectedPaths.length ? outputContainsOk || requests.length > 0 : true);
   return {
@@ -827,7 +837,10 @@ async function runCommand(definition, requestStore) {
     timedOut,
     durationMs,
     expectedPaths: definition.expectedPaths,
+    expectedModel: definition.expectedModel || null,
     hitPaths,
+    requestedModels,
+    modelMatches,
     minRequestCount,
     requestCount: requests.length,
     outputContainsOk,
