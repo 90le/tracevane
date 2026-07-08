@@ -7,12 +7,13 @@ This directory stores project-local Codex/OMX guidance for this Tracevane worksp
 - `../AGENTS.md` is the auto-loaded project guardrail for Codex agents.
 - `config.toml` is the conservative project-local Codex config layer.
 - `project-context.md` is the compact Tracevane IDE/editor implementation brief referenced by `AGENTS.md`.
+- `ide-long-term-goal.md` is the active long-term product/execution goal for the Tracevane IDE workstream.
 - `../docs/ide-code-editor-solution/` is the implementation contract for File Manager Online Editor, File Surface, Mini Explorer, IDE Workbench, terminal, LSP/Git/debug and theme adaptation.
 - `../DESIGN.md`, `../docs/界面设计守则.md`, and `../apps/web/src/design/theme.css` are the visual source of truth.
 
 ## Why this exists
 
-The IDE/editor plan is detailed enough that agents must not improvise from generic IDE memory. Agents should first classify the target stage, read the relevant docs, then implement only that stage's scope and verification gates.
+The IDE/editor plan is detailed enough that agents must not improvise from generic IDE memory. Agents should first read `ide-long-term-goal.md`, classify the target stage, read the relevant docs, then implement only that stage's scope and verification gates.
 
 ## Project config policy
 
