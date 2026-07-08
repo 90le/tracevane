@@ -10,9 +10,8 @@ const SCRIPT_TIMEOUT_MS = 180_000;
 const COMMAND_TIMEOUT_MS = 45_000;
 const LOCAL_GATEWAY_KEY = "sk-local-cli-smoke";
 const UPSTREAM_KEY = "sk-upstream-cli-smoke";
-const DEFAULT_MODEL = "model-a";
-const ALT_MODEL = "model-b";
-const ALIAS_MODEL = "alias-b";
+const DEFAULT_TARGET_MODEL = "gpt-5.4";
+const FALLBACK_MOCK_MODEL = "model-a";
 
 function parseArgs(argv) {
   const options = {
@@ -20,6 +19,7 @@ function parseArgs(argv) {
     keepTemp: false,
     includeOpenClawAgent: false,
     apps: null,
+    targetModel: process.env.TRACEVANE_GATEWAY_CLI_SMOKE_MODEL || DEFAULT_TARGET_MODEL,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -28,6 +28,8 @@ function parseArgs(argv) {
     else if (arg === "--include-openclaw-agent") options.includeOpenClawAgent = true;
     else if (arg === "--apps") options.apps = (argv[++index] || "").split(",").map((item) => item.trim()).filter(Boolean);
     else if (arg.startsWith("--apps=")) options.apps = arg.slice("--apps=".length).split(",").map((item) => item.trim()).filter(Boolean);
+    else if (arg === "--target-model") options.targetModel = argv[++index] || "";
+    else if (arg.startsWith("--target-model=")) options.targetModel = arg.slice("--target-model=".length);
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -35,7 +37,14 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
+  options.targetModel = normalizeTargetModel(options.targetModel);
   return options;
+}
+
+function normalizeTargetModel(value) {
+  const model = String(value || "").trim();
+  if (!model) throw new Error("--target-model must not be empty.");
+  return model;
 }
 
 function printHelp() {
@@ -45,6 +54,7 @@ Runs isolated Tracevane Gateway CLI startup smoke checks plus Gateway HTTP matur
 
 Options:
   --apps <ids>                 Comma-separated app ids: codex,claude-code,claude-code-tool,claude-code-summary,opencode,openclaw,gateway
+  --target-model <id>          Model id advertised to real CLIs and isolated Gateway config (default: gpt-5.4)
   --strict                     Exit non-zero when an installed CLI smoke fails
   --include-openclaw-agent     Also try openclaw agent --local, not only config startup
   --keep-temp                  Keep the temporary HOME/state directory
@@ -117,7 +127,7 @@ function sendSse(res, events) {
   res.end();
 }
 
-async function startMockGateway() {
+async function startMockGateway(targetModel) {
   const requests = [];
   const server = http.createServer(async (req, res) => {
     const bodyText = await readRequestBody(req);
@@ -138,7 +148,7 @@ async function startMockGateway() {
     if (req.method === "GET" && url.pathname === "/v1/models") {
       sendJson(res, 200, {
         object: "list",
-        data: [DEFAULT_MODEL, ALT_MODEL].map((id) => ({
+        data: [targetModel].map((id) => ({
           id,
           object: "model",
           created: 0,
@@ -185,7 +195,7 @@ async function startMockGateway() {
 }
 
 function respondOpenAiResponses(res, body, options = {}) {
-  const model = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
+  const model = typeof body.model === "string" ? body.model : FALLBACK_MOCK_MODEL;
   if (body.stream) {
     sendSse(res, [
       {
@@ -306,7 +316,7 @@ function openAiResponseBody(model, options = {}) {
 }
 
 function respondAnthropicMessages(res, body) {
-  const model = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
+  const model = typeof body.model === "string" ? body.model : FALLBACK_MOCK_MODEL;
   const requestText = collectRequestText(body);
   const hasToolResult = requestText.includes("tool_result");
   const shouldCallBash = Array.isArray(body.tools)
@@ -409,7 +419,7 @@ function respondAnthropicMessages(res, body) {
 }
 
 function respondChatCompletions(res, body) {
-  const model = typeof body.model === "string" ? body.model : DEFAULT_MODEL;
+  const model = typeof body.model === "string" ? body.model : FALLBACK_MOCK_MODEL;
   const requestText = collectRequestText(body);
   if (requestText.includes("FORCE_UPSTREAM_ERROR")) {
     sendJson(res, 429, {
@@ -500,7 +510,7 @@ function collectRequestText(value) {
   return Object.values(value).map(collectRequestText).join("\n");
 }
 
-async function prepareIsolatedConfig(root, mockGateway) {
+async function prepareIsolatedConfig(root, mockGateway, targetModel) {
   const { createTracevaneContext } = await import("../dist/apps/api/index.js");
   const config = createTracevaneConfig(root);
   fs.mkdirSync(config.projectRoot, { recursive: true });
@@ -523,8 +533,8 @@ async function prepareIsolatedConfig(root, mockGateway) {
       apiFormat: "openai_chat",
       authStrategy: "bearer",
       models: {
-        defaultModel: DEFAULT_MODEL,
-        models: [{ id: DEFAULT_MODEL }, { id: ALT_MODEL, aliases: [ALIAS_MODEL] }],
+        defaultModel: targetModel,
+        models: [{ id: targetModel }],
       },
     },
     secret: { apiKey: UPSTREAM_KEY },
@@ -532,12 +542,12 @@ async function prepareIsolatedConfig(root, mockGateway) {
   service.updateClientAuth(undefined, { apiKey: LOCAL_GATEWAY_KEY });
   service.updateAppConnectionProfile(undefined, {
     profile: {
-      model: DEFAULT_MODEL,
+      model: targetModel,
       appModels: {
-        codex: ALT_MODEL,
-        "claude-code": DEFAULT_MODEL,
-        opencode: ALIAS_MODEL,
-        openclaw: DEFAULT_MODEL,
+        codex: targetModel,
+        "claude-code": targetModel,
+        opencode: targetModel,
+        openclaw: targetModel,
       },
       contextWindow: 128000,
       autoCompactTokenLimit: 100000,
@@ -576,7 +586,7 @@ function baseSmokeEnv(homeDir, config, mockGateway) {
   };
 }
 
-function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenClawAgent }) {
+function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenClawAgent, targetModel }) {
   const env = baseSmokeEnv(homeDir, config, mockGateway);
   const definitions = [
     {
@@ -592,7 +602,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--ephemeral",
         "--ignore-rules",
         "--model",
-        ALT_MODEL,
+        targetModel,
         "--cd",
         workDir,
         "Reply exactly GATEWAY_OK. Do not use tools.",
@@ -609,7 +619,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--output-format",
         "json",
         "--model",
-        DEFAULT_MODEL,
+        targetModel,
         "--settings",
         path.join(homeDir, ".claude", "settings.json"),
         "--no-session-persistence",
@@ -627,7 +637,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--output-format",
         "json",
         "--model",
-        DEFAULT_MODEL,
+        targetModel,
         "--settings",
         path.join(homeDir, ".claude", "settings.json"),
         "--no-session-persistence",
@@ -652,7 +662,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--output-format",
         "json",
         "--model",
-        DEFAULT_MODEL,
+        targetModel,
         "--settings",
         path.join(homeDir, ".claude", "settings.json"),
         "--no-session-persistence",
@@ -670,7 +680,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--format",
         "json",
         "--model",
-        `tracevane-gateway/${ALIAS_MODEL}`,
+        `tracevane-gateway/${targetModel}`,
         "--dir",
         workDir,
         "Reply exactly GATEWAY_OK.",
@@ -682,17 +692,17 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       id: "openclaw",
       command: "openclaw",
       args: includeOpenClawAgent
-        ? ["agent", "--agent", "main", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `tracevane-gateway/${DEFAULT_MODEL}`, "--timeout", "30"]
+        ? ["agent", "--agent", "main", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `tracevane-gateway/${targetModel}`, "--timeout", "30"]
         : ["models", "status", "--json"],
       env,
       expectedPaths: includeOpenClawAgent ? ["/v1/chat/completions"] : [],
-      validateOutput: includeOpenClawAgent ? validateOpenClawAgentOutput : undefined,
+      validateOutput: includeOpenClawAgent ? (context) => validateOpenClawAgentOutput(context, targetModel) : undefined,
     },
   ];
   return definitions;
 }
 
-function validateOpenClawAgentOutput({ stdout }) {
+function validateOpenClawAgentOutput({ stdout }, targetModel) {
   const parsed = parseJsonFromOutput(stdout);
   const agentMeta = parsed?.meta?.agentMeta;
   const usage = agentMeta?.usage;
@@ -703,7 +713,7 @@ function validateOpenClawAgentOutput({ stdout }) {
     : "";
   if (!payloadText.includes("GATEWAY_OK")) errors.push("OpenClaw JSON payload did not include GATEWAY_OK.");
   if (agentMeta?.provider !== "tracevane-gateway") errors.push(`OpenClaw agent provider was ${String(agentMeta?.provider || "<missing>")}.`);
-  if (agentMeta?.model !== DEFAULT_MODEL) errors.push(`OpenClaw agent model was ${String(agentMeta?.model || "<missing>")}.`);
+  if (agentMeta?.model !== targetModel) errors.push(`OpenClaw agent model was ${String(agentMeta?.model || "<missing>")}.`);
   if (usage?.input !== 8 || usage?.output !== 2 || usage?.total !== 10) {
     errors.push("OpenClaw usage summary did not preserve input/output/total tokens.");
   }
@@ -875,7 +885,7 @@ async function startHttpServer(handler) {
   };
 }
 
-async function runGatewayMaturityProbes(context, mockGateway) {
+async function runGatewayMaturityProbes(context, mockGateway, targetModel) {
   const server = await startTracevaneGatewayServer(context);
   const startedAt = Date.now();
   const beforeCount = mockGateway.requests.length;
@@ -885,7 +895,7 @@ async function runGatewayMaturityProbes(context, mockGateway) {
       method: "POST",
       headers,
       body: {
-        model: ALT_MODEL,
+        model: targetModel,
         input: "Summarize compact maturity.",
         stream: false,
       },
@@ -898,7 +908,7 @@ async function runGatewayMaturityProbes(context, mockGateway) {
       method: "POST",
       headers,
       body: {
-        model: ALT_MODEL,
+        model: targetModel,
         input: [{ role: "user", content: "Please call lookup." }],
         tools: [{
           type: "function",
@@ -924,7 +934,7 @@ async function runGatewayMaturityProbes(context, mockGateway) {
       method: "POST",
       headers,
       body: {
-        model: ALT_MODEL,
+        model: targetModel,
         previous_response_id: firstTool.body.id,
         input: [{
           type: "function_call_output",
@@ -947,7 +957,7 @@ async function runGatewayMaturityProbes(context, mockGateway) {
       method: "POST",
       headers,
       body: {
-        model: ALT_MODEL,
+        model: targetModel,
         input: "FORCE_UPSTREAM_ERROR",
         stream: false,
       },
@@ -1077,8 +1087,8 @@ async function main() {
   }, SCRIPT_TIMEOUT_MS);
   let mockGateway;
   try {
-    mockGateway = await startMockGateway();
-    const prepared = await prepareIsolatedConfig(root, mockGateway);
+    mockGateway = await startMockGateway(options.targetModel);
+    const prepared = await prepareIsolatedConfig(root, mockGateway, options.targetModel);
     const workDir = path.join(root, "workspace");
     fs.mkdirSync(workDir, { recursive: true });
     fs.writeFileSync(path.join(workDir, "README.md"), "# CLI smoke workspace\n", "utf8");
@@ -1087,13 +1097,14 @@ async function main() {
       workDir,
       mockGateway,
       includeOpenClawAgent: options.includeOpenClawAgent,
+      targetModel: options.targetModel,
     }).filter((definition) => !options.apps || options.apps.includes(definition.id));
     const results = [];
     for (const definition of definitions) {
       results.push(await runCommand(definition, mockGateway.requests));
     }
     const gatewayMaturity = !options.apps || options.apps.includes("gateway")
-      ? await runGatewayMaturityProbes(prepared.context, mockGateway)
+      ? await runGatewayMaturityProbes(prepared.context, mockGateway, options.targetModel)
       : {
         id: "gateway",
         status: "skipped",
@@ -1104,6 +1115,7 @@ async function main() {
         && (gatewayMaturity.status === "passed" || gatewayMaturity.status === "skipped"),
       strict: options.strict,
       tempRoot: root,
+      targetModel: options.targetModel,
       mockGatewayEndpoint: mockGateway.endpoint,
       tracevaneGatewayEndpoint: gatewayMaturity.baseUrl ? `${gatewayMaturity.baseUrl}/v1` : null,
       results,
