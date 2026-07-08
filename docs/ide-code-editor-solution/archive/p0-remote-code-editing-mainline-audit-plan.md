@@ -2,7 +2,7 @@
 
 ## 状态
 
-进行中。承接 M13-I 产品 pivot 决策。P0-A 自动化主链路 baseline 已完成，见 [`p0-a-mainline-validation-baseline-summary.md`](./p0-a-mainline-validation-baseline-summary.md)；下一步进入 P0-B Mainline Gap Audit。
+已完成。承接 M13-I 产品 pivot 决策。P0-A 自动化主链路 baseline 已完成，见 [`p0-a-mainline-validation-baseline-summary.md`](./p0-a-mainline-validation-baseline-summary.md)；P0-B 缺口审计已完成，见 [`p0-b-mainline-gap-audit-summary.md`](./p0-b-mainline-gap-audit-summary.md)。下一步进入 P1-A Mainline UX Hardening Plan。
 
 ## 目标
 
@@ -78,7 +78,7 @@
 
 ## 输出物
 
-P0-A 已产出自动化 baseline。完整 P0 audit 完成后还必须产出：
+P0-A 已产出自动化 baseline；P0-B 已产出 gap audit summary。完整 P0 audit 已产出：
 
 1. P0 blocker list：会导致无法完成远程改代码主链路、丢数据、误保存、白屏或安全越界的问题。
 2. P1 friction list：高频但不阻塞的体验问题。

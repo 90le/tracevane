@@ -24,6 +24,7 @@
 - `m6*`–`m7z*`：Watcher/Search/Problems/Output、LSP/Git/Debug 记录。
 - `m8*`–`m10*`：RC 稳定化、Git 历史能力、semantic tokens / workspace symbols 记录。
 - `m11*`–`m13*`：多语言 provider、external language server、toolchain provider 与 rich interaction 记录。
+- `p0*`：M13-I 产品 pivot 之后的远程代码工作台主链路验证、缺口审计与 P1 hardening 输入。
 
 ## 删除 / 归档判断
 
