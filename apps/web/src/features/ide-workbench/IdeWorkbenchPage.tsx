@@ -937,6 +937,19 @@ function ExternalProviderStatusRow({
 
 
 function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProviderCandidate }) {
+  const [copied, setCopied] = React.useState(false);
+  const setup = candidate.setupGuidance;
+  const handleCopySetup = React.useCallback(async () => {
+    if (!setup?.copyableHint) return;
+    try {
+      await navigator.clipboard.writeText(setup.copyableHint);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }, [setup?.copyableHint]);
+
   return (
     <article
       className="grid gap-2 rounded-lg border border-line bg-panel p-3 text-sm"
@@ -969,6 +982,51 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
       <div className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-muted" data-ide-lsp-toolchain-provider-next-action>
         {candidate.nextAction}
       </div>
+      {setup ? (
+        <div className="grid gap-2 rounded border border-line bg-canvas p-2 text-xs text-muted" data-ide-lsp-toolchain-setup-guidance>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-semibold text-ink">Setup guidance</div>
+              <div className="mt-1" data-ide-lsp-toolchain-setup-summary>{setup.summary}</div>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={handleCopySetup} data-ide-lsp-toolchain-copy-guidance>
+              {copied ? "已复制" : "复制建议"}
+            </Button>
+          </div>
+          <div className="grid gap-1 md:grid-cols-2">
+            <div data-ide-lsp-toolchain-required-runtime>
+              <div className="font-medium text-ink">Required runtime</div>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {setup.requiredRuntime.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+            <div data-ide-lsp-toolchain-workspace-markers>
+              <div className="font-medium text-ink">Workspace markers</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {setup.workspaceMarkers.map((marker) => <span key={marker} className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-2xs text-subtle">{marker}</span>)}
+              </div>
+            </div>
+          </div>
+          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded border border-line bg-panel-2 p-2 font-mono text-2xs text-subtle [scrollbar-width:thin]" data-ide-lsp-toolchain-config-hint>{setup.configurationHint}</pre>
+          <div className="grid gap-1" data-ide-lsp-toolchain-degraded-reasons>
+            <div className="font-medium text-ink">Degraded reasons</div>
+            {setup.degradedReasons.map((item) => (
+              <div key={`${item.status}-${item.reason}`} className="rounded border border-line bg-panel-2 p-1.5">
+                <span className="font-mono text-2xs text-subtle">{item.status}</span>: {item.reason} <span className="text-ink">{item.action}</span>
+              </div>
+            ))}
+          </div>
+          {setup.docs.length ? (
+            <div className="flex flex-wrap gap-2" data-ide-lsp-toolchain-doc-links>
+              {setup.docs.map((doc) => (
+                <a key={doc.url} href={doc.url} target="_blank" rel="noreferrer" className="rounded border border-line bg-panel-2 px-2 py-1 text-2xs text-primary hover:bg-panel-3" data-ide-lsp-toolchain-doc-link>
+                  {doc.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {candidate.notes.length ? (
         <ul className="list-disc space-y-1 pl-5 text-xs text-muted" data-ide-lsp-toolchain-provider-notes>
           {candidate.notes.map((note) => <li key={note}>{note}</li>)}
@@ -977,7 +1035,6 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
     </article>
   );
 }
-
 
 function formatLspCapabilities(capabilities: ExternalLspProviderProfile["capabilities"]): string {
   if (Array.isArray(capabilities)) return capabilities.join(", ") || "--";

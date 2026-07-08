@@ -1,14 +1,10 @@
 import * as React from "react";
 
 export type ExternalLspProviderRuntimeStatus =
-  | "available"
-  | "starting"
-  | "stopped"
-  | "crashed"
-  | "degraded"
-  | "unavailable";
+  "available" | "starting" | "stopped" | "crashed" | "degraded" | "unavailable";
 
-export type ExternalLspProviderInstallStatus = "installed" | "missing" | "disabled" | "degraded" | string;
+export type ExternalLspProviderInstallStatus =
+  "installed" | "missing" | "disabled" | "degraded" | string;
 
 export interface ExternalLspProviderInstallSummary {
   status: ExternalLspProviderInstallStatus;
@@ -47,7 +43,6 @@ export interface ExternalLspProviderMetadata {
   } | null;
 }
 
-
 export type ToolchainLspProviderStatus =
   | "notConfigured"
   | "configured"
@@ -75,6 +70,27 @@ export interface ToolchainLspProviderConfigState {
   rejectedReason: string | null;
 }
 
+export interface ToolchainLspProviderDocLink {
+  label: string;
+  url: string;
+}
+
+export interface ToolchainLspProviderDegradedReason {
+  status: ToolchainLspProviderStatus | string;
+  reason: string;
+  action: string;
+}
+
+export interface ToolchainLspProviderSetupGuidance {
+  summary: string;
+  requiredRuntime: string[];
+  workspaceMarkers: string[];
+  configurationHint: string;
+  docs: ToolchainLspProviderDocLink[];
+  degradedReasons: ToolchainLspProviderDegradedReason[];
+  copyableHint: string;
+}
+
 export interface ToolchainLspProviderCandidate {
   providerId: string;
   label: string;
@@ -86,6 +102,7 @@ export interface ToolchainLspProviderCandidate {
   capabilities: string[];
   nextAction: string;
   notes: string[];
+  setupGuidance?: ToolchainLspProviderSetupGuidance;
   allowedProfiles?: ToolchainLspProviderAllowedProfile[];
   config?: ToolchainLspProviderConfigState;
 }
@@ -132,7 +149,8 @@ export interface LspStatusResponse {
   };
 }
 
-export type ExternalLspProviderStatusTone = "available" | "attention" | "stopped" | "none";
+export type ExternalLspProviderStatusTone =
+  "available" | "attention" | "stopped" | "none";
 
 export interface ExternalLspProviderStatusSummary {
   label: string;
@@ -143,7 +161,9 @@ export interface ExternalLspProviderStatusSummary {
   attentionCount: number;
 }
 
-export async function requestLspStatus(options: { signal?: AbortSignal } = {}): Promise<LspStatusResponse> {
+export async function requestLspStatus(
+  options: { signal?: AbortSignal } = {},
+): Promise<LspStatusResponse> {
   const response = await fetch("/api/lsp/status", {
     headers: { Accept: "application/json" },
     signal: options.signal,
@@ -151,13 +171,18 @@ export async function requestLspStatus(options: { signal?: AbortSignal } = {}): 
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const message = typeof data?.message === "string" ? data.message : `LSP status failed: ${response.status}`;
+    const message =
+      typeof data?.message === "string"
+        ? data.message
+        : `LSP status failed: ${response.status}`;
     throw new Error(message);
   }
   return data as LspStatusResponse;
 }
 
-export function summarizeExternalLspProviders(status: LspStatusResponse | null | undefined): ExternalLspProviderStatusSummary {
+export function summarizeExternalLspProviders(
+  status: LspStatusResponse | null | undefined,
+): ExternalLspProviderStatusSummary {
   const profiles = status?.externalProviders?.profiles ?? [];
   const statuses = status?.externalProviders?.statuses ?? [];
   if (profiles.length === 0) {
@@ -171,19 +196,30 @@ export function summarizeExternalLspProviders(status: LspStatusResponse | null |
     };
   }
 
-  const activeCount = statuses.filter((item) => item.status === "available" || item.status === "starting").length;
-  const attentionCount = statuses.filter((item) => item.status === "crashed" || item.status === "degraded" || item.status === "unavailable").length;
-  const stoppedCount = statuses.filter((item) => item.status === "stopped").length;
-  const tone: ExternalLspProviderStatusTone = attentionCount > 0
-    ? "attention"
-    : activeCount > 0
-      ? "available"
-      : "stopped";
-  const statusLabel = attentionCount > 0
-    ? `${attentionCount} attention`
-    : activeCount > 0
-      ? `${activeCount} active`
-      : `${stoppedCount || profiles.length} stopped`;
+  const activeCount = statuses.filter(
+    (item) => item.status === "available" || item.status === "starting",
+  ).length;
+  const attentionCount = statuses.filter(
+    (item) =>
+      item.status === "crashed" ||
+      item.status === "degraded" ||
+      item.status === "unavailable",
+  ).length;
+  const stoppedCount = statuses.filter(
+    (item) => item.status === "stopped",
+  ).length;
+  const tone: ExternalLspProviderStatusTone =
+    attentionCount > 0
+      ? "attention"
+      : activeCount > 0
+        ? "available"
+        : "stopped";
+  const statusLabel =
+    attentionCount > 0
+      ? `${attentionCount} attention`
+      : activeCount > 0
+        ? `${activeCount} active`
+        : `${stoppedCount || profiles.length} stopped`;
 
   return {
     label: `LSP: ${statusLabel}`,

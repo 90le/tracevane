@@ -143,7 +143,8 @@ Both products share lower-level core services, not full product shells.
 - Done: M12-T Java / Eclipse JDT LS guarded diagnostics proof.
 - Done: M12-U Toolchain provider acceptance / heavy provider closeout.
 - Done: M13-A Toolchain Provider Post-Diagnostics Roadmap Plan.
-- Next: M13-B Toolchain Provider Status / Setup Guidance UX Foundation.
+- Done: M13-B Toolchain Provider Status / Setup Guidance UX Foundation.
+- Next: M13-C Single Provider Rich Interaction Proof Decision.
 
 ## Required reading by task
 

@@ -110,11 +110,7 @@ Shell / Container / Remote Workspace
 
 ```ts
 type TerminalSessionStatus =
-  | "connecting"
-  | "running"
-  | "exited"
-  | "error"
-  | "disconnected";
+  "connecting" | "running" | "exited" | "error" | "disconnected";
 
 type TerminalSession = {
   id: string;
@@ -929,7 +925,6 @@ Git：
 - 可以查看单文件 diff。
 ```
 
-
 ### M5.x-C Terminal Profiles / Shell Selection 补充
 
 - `profileId` 与 `shell` 由前端从现有 `/api/terminal/profiles` 读取并传给现有 Terminal Gateway / sessions API；后端继续执行 `KNOWN_TERMINAL_PROFILE_IDS` 与 `ALLOWED_TERMINAL_SHELLS` 校验。
@@ -1006,7 +1001,6 @@ M12-C 已完成，记录见 [`archive/m12-c-vue-external-provider-summary.md`](.
 
 M12-C 明确不做：Svelte provider、Go/Rust/Java/C/C++ heavy toolchain provider、Vue hover/completion/definition/references/semantic tokens/formatting/code action、完整 Volar TypeScript plugin bridge、替换现有 TS/JS provider、auto install、system binary discovery、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步 M12-D 进入 Svelte dependency compatibility / TypeScript peer policy plan。
 
-
 ### M12-D 已完成：Svelte Dependency Compatibility / TypeScript Peer Policy Plan
 
 M12-D 已完成，记录见 [`archive/m12-d-svelte-typescript-peer-policy-plan.md`](./archive/m12-d-svelte-typescript-peer-policy-plan.md)。本阶段只做 Svelte provider 的依赖兼容与 TypeScript peer 策略，不安装 `svelte-language-server`，不启用 runtime provider。
@@ -1022,7 +1016,6 @@ M12-D 已完成，记录见 [`archive/m12-d-svelte-typescript-peer-policy-plan.m
 
 M12-D 明确不做：安装 `svelte-language-server`、启用 Svelte runtime provider、升级 TypeScript、改 TS/JS provider、Svelte hover/completion/definition/formatting/codeAction、Go/Rust/Java/C/C++ provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-E 已完成 Svelte external provider guarded diagnostics proof；下一步 M12-F 进入 framework provider acceptance / heavy toolchain policy decision。
 
-
 ### M12-E 已完成：Svelte External Provider Guarded Diagnostics Proof
 
 M12-E 已完成，记录见 [`archive/m12-e-svelte-external-provider-summary.md`](./archive/m12-e-svelte-external-provider-summary.md)。本阶段把 Svelte 作为第二个 framework external provider proof 接入现有 external LSP gateway：`svelte-language-server@0.18.3` exact-pin、server-side allowlist profile、provider metadata/status、`.svelte` language routing 与 diagnostics response contract 已落地。
@@ -1037,7 +1030,6 @@ M12-E 已完成，记录见 [`archive/m12-e-svelte-external-provider-summary.md`
 - `tests/system/lsp-svelte-provider.test.mjs` 覆盖 gateway lifecycle、profile allowlist、status metadata 与 diagnostics route。
 
 M12-E 仍不做：Svelte hover/completion/definition/references/semantic tokens/formatting/code action、Svelte project config parity、完整 SvelteKit/Vite workspace semantics、TypeScript 升级、TS/JS provider 替换、Go/Rust/Java/C/C++ heavy toolchain provider、system binary discovery、auto install、npx、用户自定义 provider command/env/runtime/cwd/options、第二套 LSP/Files/Search API、Git force/merge/rebase、Debug parity、Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-F 已完成 framework provider acceptance / heavy toolchain policy decision；下一步 M12-G 进入 Toolchain provider status / configuration foundation plan。
-
 
 ### M12-F 已完成：Framework Provider Acceptance / Heavy Toolchain Policy Decision
 
@@ -1055,8 +1047,7 @@ M12-F 已完成，记录见 [`archive/m12-f-framework-provider-acceptance-toolch
   - C/C++ `clangd` 需要 clangd binary、compile_commands.json / compile_flags.txt 与 compiler/toolchain 语义。
 - 定义 M12-G 先做 toolchain provider status / configuration foundation，不直接启动 heavy runtime server。
 
-M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan，M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-F 不做：安装 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、启动 heavy language server、Go/Rust/Java/C/C++ diagnostics、Svelte/Vue rich interactions、第二套 LSP/Files/Search API、Terminal/Git/Debug 新能力或 File Manager Online Editor 产品壳变更。M12-G 已完成 Toolchain provider status / configuration foundation plan，M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-G 已完成：Toolchain Provider Status / Configuration Foundation Plan
 
@@ -1070,7 +1061,7 @@ M12-G 已完成，记录见 [`archive/m12-g-toolchain-provider-status-configurat
 - 定义 IDE Provider Status UI 的 Toolchain section：默认只展示候选、状态、原因和下一步，不自动发现、不自动安装。
 - 定义 M12-H 最小实现：只增加 read-only candidate/status skeleton，全部默认 `notConfigured`，不读取 PATH、不启动 server、不接 diagnostics。
 
-M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+M12-G 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary auto-discovery、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics、修改 `/api/lsp/diagnostics` routing、Vue/Svelte rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-H 已完成 Toolchain provider status skeleton guarded implementation，M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-H 已完成：Toolchain Provider Status Skeleton Guarded Implementation
 
@@ -1086,7 +1077,7 @@ M12-H 已完成，记录见 [`archive/m12-h-toolchain-provider-status-skeleton-s
 - system test 与 provider status smoke 覆盖 no PATH probe / no runtime start policy 与 UI 可见性。
 ```
 
-M12-H 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary discovery、PATH probe、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics 或 rich LSP capability runtime、修改 `/api/lsp/diagnostics` routing、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+M12-H 不做：安装或启动 gopls/rust-analyzer/JDT LS/clangd、system binary discovery、PATH probe、auto install、npx、用户自定义任意 command/env/runtime/cwd/options、Go/Rust/Java/C/C++ diagnostics 或 rich LSP capability runtime、修改 `/api/lsp/diagnostics` routing、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-I 已完成 Toolchain provider configuration / trust UI foundation，M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-I 已完成：Toolchain Provider Configuration / Trust UI Foundation
 
@@ -1102,8 +1093,7 @@ M12-I 已完成，记录见 [`archive/m12-i-toolchain-provider-configuration-tru
 - system test 覆盖 allowlisted profile、trust gate 和 runtime override 拒绝。
 ```
 
-M12-I 不做：启动 gopls/rust-analyzer/JDT LS/clangd、PATH/binary/version 探测、Go/Rust/Java/C/C++ diagnostics/rich interactions、修改 `/api/lsp/diagnostics` routing、前端 command override、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-I 不做：启动 gopls/rust-analyzer/JDT LS/clangd、PATH/binary/version 探测、Go/Rust/Java/C/C++ diagnostics/rich interactions、修改 `/api/lsp/diagnostics` routing、前端 command override、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-J 已完成 Go / gopls toolchain provider runtime proof plan，M12-K 已完成 Go / gopls guarded runtime proof，M12-L 已完成 Toolchain provider acceptance / next toolchain decision，M12-M 已完成 Rust / rust-analyzer runtime proof plan；M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-J 已完成：Go / gopls Toolchain Provider Runtime Proof Plan
 
@@ -1146,8 +1136,7 @@ M12-M 已完成，记录见 [`archive/m12-m-rust-analyzer-runtime-proof-plan.md`
 - M12-N diagnostics proof 复用 existing external gateway、toolchain status/config gate 与 mock stdio proof；缺配置、未信任、缺 marker、缺 binary/probe failure 都 degraded skip。
 ```
 
-M12-M 不做：安装/启动 `rust-analyzer`、Rust diagnostics runtime routing、PATH discovery、auto install、Cargo metadata 探测、用户 command/args/env/cwd override、Rust rich interactions、Java/clangd runtime、Go rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-M 不做：安装/启动 `rust-analyzer`、Rust diagnostics runtime routing、PATH discovery、auto install、Cargo metadata 探测、用户 command/args/env/cwd override、Rust rich interactions、Java/clangd runtime、Go rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力。M12-N 已完成 Rust / rust-analyzer guarded diagnostics proof；M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-N 已完成：Rust / rust-analyzer Guarded Diagnostics Proof
 
@@ -1163,8 +1152,7 @@ M12-N 已完成，记录见 [`archive/m12-n-rust-analyzer-guarded-runtime-summar
 - Mock stdio system test 覆盖 didOpen -> publishDiagnostics -> Tracevane diagnostics shape。
 ```
 
-M12-N 不做：安装/下载 `rust-analyzer`、PATH discovery、auto install、Cargo metadata 探测、用户 command/args/env/cwd override、Rust rich interactions、Java/JDT LS runtime、clangd runtime、Go rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-N 不做：安装/下载 `rust-analyzer`、PATH discovery、auto install、Cargo metadata 探测、用户 command/args/env/cwd override、Rust rich interactions、Java/JDT LS runtime、clangd runtime、Go rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-O 已完成 Toolchain provider acceptance / next heavy provider decision；M12-P 已完成 C/C++ / clangd runtime proof plan；M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-O 已完成：Toolchain Provider Acceptance / Next Heavy Provider Decision
 
@@ -1196,7 +1184,7 @@ M12-P 已完成，记录见 [`archive/m12-p-clangd-runtime-proof-plan.md`](./arc
 - M12-Q diagnostics proof 复用 toolchain status/config gate、existing external gateway 与 mock stdio proof；缺配置、未信任、缺 marker、缺 binary/probe failure 都 degraded empty diagnostics。
 ```
 
-M12-P 不做：安装/启动 `clangd`、PATH discovery、auto install、CMake/Bear/Bazel/Meson/Ninja/Make invocation、`--query-driver`、用户 command/args/env/cwd override、C/C++ rich interactions、Java/JDT LS runtime、Go/Rust rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+M12-P 不做：安装/启动 `clangd`、PATH discovery、auto install、CMake/Bear/Bazel/Meson/Ninja/Make invocation、`--query-driver`、用户 command/args/env/cwd override、C/C++ rich interactions、Java/JDT LS runtime、Go/Rust rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-Q 已完成 C/C++ / clangd guarded diagnostics proof；M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-Q 已完成：C/C++ / clangd Guarded Diagnostics Proof
 
@@ -1212,7 +1200,7 @@ M12-Q 已完成，记录见 [`archive/m12-q-clangd-guarded-runtime-summary.md`](
 - Mock stdio system test 覆盖 didOpen -> publishDiagnostics -> Tracevane diagnostics shape。
 ```
 
-M12-Q 不做：安装/下载 `clangd`、PATH discovery、auto install、CMake/Bear/Bazel/Meson/Ninja/Make invocation、`--query-driver`、用户 command/args/env/cwd override、C/C++ rich interactions、Java/JDT LS runtime、Go/Rust rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+M12-Q 不做：安装/下载 `clangd`、PATH discovery、auto install、CMake/Bear/Bazel/Meson/Ninja/Make invocation、`--query-driver`、用户 command/args/env/cwd override、C/C++ rich interactions、Java/JDT LS runtime、Go/Rust rich interactions、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-R 已完成 Toolchain provider acceptance / Java JDT LS decision；M12-S 已完成 Java / Eclipse JDT LS runtime proof plan；M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-R 已完成：Toolchain Provider Acceptance / Java JDT LS Decision
 
@@ -1245,7 +1233,7 @@ M12-S 已完成，记录见 [`archive/m12-s-java-jdtls-runtime-proof-plan.md`](.
 - Maven/Gradle import、dependency resolution、annotation processing 和 indexing 必须处于 trusted workspace/profile/budget gate 下。
 ```
 
-M12-S 不做：Java diagnostics runtime implementation、启动 JDT LS 或 Java process、JDT LS distribution 下载/安装、JDK 安装或 PATH 自动发现、Maven/Gradle task runner、standalone Java file 默认启动策略、Java rich interactions、Java debug/test runner、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+M12-S 不做：Java diagnostics runtime implementation、启动 JDT LS 或 Java process、JDT LS distribution 下载/安装、JDK 安装或 PATH 自动发现、Maven/Gradle task runner、standalone Java file 默认启动策略、Java rich interactions、Java debug/test runner、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-T 已完成 Java / Eclipse JDT LS guarded diagnostics proof；M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-T 已完成：Java / Eclipse JDT LS Guarded Diagnostics Proof
 
@@ -1262,8 +1250,7 @@ M12-T 已完成，记录见 [`archive/m12-t-java-jdtls-guarded-runtime-summary.m
 - Mock stdio system test 覆盖 didOpen -> publishDiagnostics -> Tracevane diagnostics shape。
 ```
 
-M12-T 不做：JDT LS distribution 下载/安装、JDK 安装或 PATH discovery、Maven/Gradle task runner、standalone Java file 默认启动策略、Java rich interactions、Java debug/test runner、package explorer、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-T 不做：JDT LS distribution 下载/安装、JDK 安装或 PATH discovery、Maven/Gradle task runner、standalone Java file 默认启动策略、Java rich interactions、Java debug/test runner、package explorer、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M12-U 已完成 Toolchain provider acceptance / heavy provider closeout；M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M12-U 已完成：Toolchain Provider Acceptance / Heavy Provider Closeout
 
@@ -1279,8 +1266,7 @@ M12-U 已完成，记录见 [`archive/m12-u-toolchain-provider-acceptance-closeo
 - External language server gateway 仍是唯一 stdio runtime 边界，不新增第二套 LSP/Files/Search API。
 ```
 
-M12-U 不做：toolchain install/download/discovery、Go/Rust/C/C++/Java rich LSP interactions、build-system generation/import UI、JDT LS package explorer、LSP server marketplace、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
-
+M12-U 不做：toolchain install/download/discovery、Go/Rust/C/C++/Java rich LSP interactions、build-system generation/import UI、JDT LS package explorer、LSP server marketplace、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。M13-A 已完成 Toolchain Provider Post-Diagnostics Roadmap Plan；M13-B 已完成 Toolchain Provider Status / Setup Guidance UX Foundation；下一步进入 M13-C Single Provider Rich Interaction Proof Decision。
 
 ### M13-A 已完成：Toolchain Provider Post-Diagnostics Roadmap Plan
 
@@ -1297,3 +1283,18 @@ M13-A 已完成，记录见 [`archive/m13-a-toolchain-post-diagnostics-roadmap-p
 ```
 
 M13-A 不做：Go/Rust/clangd/Java hover/completion/definition/references/rename/formatting/code action runtime、toolchain install/download/discovery、自动写 OpenClaw config、Maven/Gradle import UI、clangd compile DB generator、Cargo metadata/proc macro UX implementation、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步进入 M13-B Toolchain Provider Status / Setup Guidance UX Foundation。
+
+### M13-B 已完成：Toolchain Provider Status / Setup Guidance UX Foundation
+
+M13-B 已完成，记录见 [`archive/m13-b-toolchain-provider-status-guidance-summary.md`](./archive/m13-b-toolchain-provider-status-guidance-summary.md)。本阶段把 M13-A 的 status/setup guidance 路线落到现有 LSP status API 与 IDE Provider Status UI：Go / gopls、Rust / rust-analyzer、C/C++ / clangd、Java / Eclipse JDT LS 均提供 required runtime、workspace markers、OpenClaw config hint、degraded reasons、官方 docs link 和 copyable guidance。
+
+验收口径：
+
+```txt
+- 复用现有 /api/lsp/status，不新增 provider setup API。
+- Provider Status UI 只读展示 setup guidance，不安装、不启动、不写配置。
+- status JSON 和 IDE smoke 均覆盖 setupGuidance / config hint / degraded reasons / docs link。
+- runtime policy 继续禁止 PATH status probe、frontend command override 和 auto install。
+```
+
+M13-B 不做：toolchain install/download/discovery、PATH 自动探测、自动写 OpenClaw config、Go/Rust/clangd/Java rich LSP runtime、Maven/Gradle import UI、clangd compile DB generator、Cargo metadata/proc macro UX implementation、第二套 LSP/Files/Search API、Git/Debug/Terminal 新能力或 File Manager Online Editor 产品壳变更。下一步进入 M13-C Single Provider Rich Interaction Proof Decision。

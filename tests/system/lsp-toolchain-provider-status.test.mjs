@@ -7,7 +7,9 @@ import test from "node:test";
 import { createLspService } from "../../dist/apps/api/modules/lsp/service.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-lsp-toolchain-status-"));
+  return fs.mkdtempSync(
+    path.join(os.tmpdir(), "tracevane-lsp-toolchain-status-"),
+  );
 }
 
 function createTracevaneConfig(root) {
@@ -35,11 +37,20 @@ function createTracevaneConfig(root) {
 
 function writeConfig(config, payload) {
   fs.mkdirSync(path.dirname(config.openclawConfigFile), { recursive: true });
-  fs.writeFileSync(config.openclawConfigFile, JSON.stringify(payload, null, 2), "utf8");
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    JSON.stringify(payload, null, 2),
+    "utf8",
+  );
 }
 
 function toolchainById(status) {
-  return new Map((status.toolchainProviders?.candidates ?? []).map((candidate) => [candidate.providerId, candidate]));
+  return new Map(
+    (status.toolchainProviders?.candidates ?? []).map((candidate) => [
+      candidate.providerId,
+      candidate,
+    ]),
+  );
 }
 
 test("LSP status exposes guarded toolchain provider candidates without runtime probing", () => {
@@ -50,10 +61,24 @@ test("LSP status exposes guarded toolchain provider candidates without runtime p
   assert.equal(status.toolchainProviders?.policy?.readOnly, true);
   assert.equal(status.toolchainProviders?.policy?.probesRuntimePath, false);
   assert.equal(status.toolchainProviders?.policy?.startsLanguageServers, true);
-  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, ["go", "rust", "clangd", "java"]);
-  assert.equal(status.toolchainProviders?.policy?.acceptsFrontendCommandOverrides, false);
-  assert.equal(status.toolchainProviders?.policy?.acceptsOnlyAllowlistedProfiles, true);
-  assert.equal(status.toolchainProviders?.policy?.configSource, "openclaw-config");
+  assert.deepEqual(status.toolchainProviders?.policy?.runtimeProofProviderIds, [
+    "go",
+    "rust",
+    "clangd",
+    "java",
+  ]);
+  assert.equal(
+    status.toolchainProviders?.policy?.acceptsFrontendCommandOverrides,
+    false,
+  );
+  assert.equal(
+    status.toolchainProviders?.policy?.acceptsOnlyAllowlistedProfiles,
+    true,
+  );
+  assert.equal(
+    status.toolchainProviders?.policy?.configSource,
+    "openclaw-config",
+  );
 
   for (const [providerId, binary, language] of [
     ["go", "gopls", "go"],
@@ -63,17 +88,105 @@ test("LSP status exposes guarded toolchain provider candidates without runtime p
   ]) {
     const candidate = byId.get(providerId);
     assert.ok(candidate, `expected ${providerId} toolchain candidate`);
-    assert.equal(candidate.status, "notConfigured", `${providerId} must stay notConfigured until user config exists`);
-    assert.equal(candidate.configured, false, `${providerId} must not be auto-configured`);
-    assert.equal(candidate.config.configSource, "none", `${providerId} should report missing config source`);
-    assert.equal(candidate.config.trusted, false, `${providerId} must not infer trust`);
-    assert.equal(candidate.requiredBinary, binary, `${providerId} binary should be descriptive metadata only`);
-    assert.ok(candidate.languages.includes(language), `${providerId} should declare ${language} language coverage`);
-    assert.ok(candidate.configurationKey.startsWith("lsp.toolchains."), `${providerId} should expose future config key`);
-    assert.match(candidate.nextAction, /Configure a trusted workspace/i, `${providerId} next action should require trusted config`);
-    assert.ok(candidate.notes.some((note) => /does not inspect PATH/i.test(note)), `${providerId} should document no PATH probing`);
-    assert.deepEqual(candidate.config.acceptedProfileIds, ["workspace"], `${providerId} should expose allowlisted profile ids`);
+    assert.equal(
+      candidate.status,
+      "notConfigured",
+      `${providerId} must stay notConfigured until user config exists`,
+    );
+    assert.equal(
+      candidate.configured,
+      false,
+      `${providerId} must not be auto-configured`,
+    );
+    assert.equal(
+      candidate.config.configSource,
+      "none",
+      `${providerId} should report missing config source`,
+    );
+    assert.equal(
+      candidate.config.trusted,
+      false,
+      `${providerId} must not infer trust`,
+    );
+    assert.equal(
+      candidate.requiredBinary,
+      binary,
+      `${providerId} binary should be descriptive metadata only`,
+    );
+    assert.ok(
+      candidate.languages.includes(language),
+      `${providerId} should declare ${language} language coverage`,
+    );
+    assert.ok(
+      candidate.configurationKey.startsWith("lsp.toolchains."),
+      `${providerId} should expose future config key`,
+    );
+    assert.match(
+      candidate.nextAction,
+      /Configure a trusted workspace/i,
+      `${providerId} next action should require trusted config`,
+    );
+    assert.ok(
+      candidate.notes.some((note) => /does not inspect PATH/i.test(note)),
+      `${providerId} should document no PATH probing`,
+    );
+    assert.deepEqual(
+      candidate.config.acceptedProfileIds,
+      ["workspace"],
+      `${providerId} should expose allowlisted profile ids`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.summary,
+      `${providerId} should expose setup summary`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.configurationHint?.includes('"trusted": true'),
+      `${providerId} should expose trusted config hint`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.configurationHint?.includes(
+        '"profileId": "workspace"',
+      ),
+      `${providerId} should expose workspace profile config hint`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.copyableHint?.includes(
+        candidate.configurationKey,
+      ),
+      `${providerId} should expose copyable setup guidance`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.docs?.length >= 1,
+      `${providerId} should expose official docs link metadata`,
+    );
+    assert.ok(
+      candidate.setupGuidance?.degradedReasons?.some(
+        (item) => item.status === "disabledByTrust",
+      ),
+      `${providerId} should explain trust degraded status`,
+    );
   }
+
+  assert.ok(
+    byId.get("go")?.setupGuidance?.workspaceMarkers.includes("go.mod"),
+    "Go guidance should mention go.mod",
+  );
+  assert.ok(
+    byId.get("rust")?.setupGuidance?.workspaceMarkers.includes("Cargo.toml"),
+    "Rust guidance should mention Cargo.toml",
+  );
+  assert.ok(
+    byId
+      .get("clangd")
+      ?.setupGuidance?.workspaceMarkers.includes("compile_commands.json"),
+    "clangd guidance should mention compile_commands.json",
+  );
+  assert.ok(
+    byId
+      .get("java")
+      ?.setupGuidance?.requiredRuntime.some((item) => /Java 21/i.test(item)),
+    "Java guidance should mention Java 21+",
+  );
 });
 
 test("LSP toolchain status accepts only trusted allowlisted profile config", () => {
@@ -83,9 +196,22 @@ test("LSP toolchain status accepts only trusted allowlisted profile config", () 
     lsp: {
       toolchains: {
         go: { gopls: { enabled: true, trusted: true, profileId: "workspace" } },
-        rust: { rustAnalyzer: { enabled: true, trusted: true, profileId: "workspace" } },
+        rust: {
+          rustAnalyzer: {
+            enabled: true,
+            trusted: true,
+            profileId: "workspace",
+          },
+        },
         java: { jdtls: { enabled: true, trusted: true, profileId: "custom" } },
-        cxx: { clangd: { enabled: true, trusted: true, profileId: "workspace", command: "/usr/bin/clangd" } },
+        cxx: {
+          clangd: {
+            enabled: true,
+            trusted: true,
+            profileId: "workspace",
+            command: "/usr/bin/clangd",
+          },
+        },
       },
     },
   });
@@ -118,5 +244,15 @@ test("LSP toolchain status accepts only trusted allowlisted profile config", () 
   assert.equal(clangd.status, "unavailable");
   assert.equal(clangd.configured, false);
   assert.match(clangd.config.rejectedReason, /Runtime override key 'command'/i);
-  assert.ok(clangd.notes.some((note) => /command\/args\/env\/cwd overrides are rejected/i.test(note)));
+  assert.ok(
+    clangd.notes.some((note) =>
+      /command\/args\/env\/cwd overrides are rejected/i.test(note),
+    ),
+  );
+  assert.ok(clangd.setupGuidance.copyableHint.includes("no PATH probing"));
+  assert.ok(
+    clangd.setupGuidance.degradedReasons.some((item) =>
+      /override/i.test(item.action),
+    ),
+  );
 });
