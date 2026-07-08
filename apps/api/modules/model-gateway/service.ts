@@ -4452,6 +4452,11 @@ function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unkn
     const toolChoice: Record<string, unknown> = { ...value.tool_choice };
     const normalizedType = normalizeCodexAccountBuiltinToolType(toolChoice.type);
     if (normalizedType) toolChoice.type = normalizedType;
+    const nestedFunctionName = isRecord(toolChoice.function) ? normalizeString(toolChoice.function.name) : "";
+    if (!normalizeString(toolChoice.name) && nestedFunctionName) {
+      toolChoice.name = nestedFunctionName;
+    }
+    delete toolChoice.function;
     if (Array.isArray(toolChoice.tools)) {
       toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountBuiltinToolAtPath);
     }
@@ -4589,6 +4594,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     applyResponsesReasoningOptions(next, next);
     normalizeCodexAccountResponsesReasoning(next);
     normalizeCodexAccountResponsesResponseFormat(next);
+    normalizeCodexAccountResponsesText(next);
     preserveCodexAccountUnsupportedRequestControls(next);
 
     next.stream = true;
@@ -4639,6 +4645,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
     if (normalizeString(next.service_tier) !== "priority") delete next.service_tier;
 
     normalizeCodexAccountResponsesToolsAndChoice(next);
+    stripCodexAccountUnsupportedTopLevelFields(next);
 
     const strippedCompatibilityFields = stripCodexAccountResponsesUnsupportedFields(next);
     const strippedAnnotations = strippedCompatibilityFields
@@ -4689,6 +4696,22 @@ function normalizeCodexAccountResponsesResponseFormat(value: Record<string, unkn
   }
 }
 
+function normalizeCodexAccountResponsesText(value: Record<string, unknown>): void {
+  if (!isRecord(value.text)) return;
+  const text: Record<string, unknown> = { ...value.text };
+  const omittedText: Record<string, unknown> = {};
+  for (const key of Object.keys(text)) {
+    if (key === "format" || key === "verbosity") continue;
+    omittedText[key] = text[key];
+    delete text[key];
+  }
+  if (Object.keys(text).length) value.text = text;
+  else delete value.text;
+  if (Object.keys(omittedText).length) {
+    appendCodexAccountCompatibilityNote(value, "text fields", [omittedText]);
+  }
+}
+
 function codexAccountTextFormatFromResponseFormat(source: Record<string, unknown>): Record<string, unknown> | null {
   const type = normalizeString(source.type);
   if (type === "text") return { type: "text" };
@@ -4717,6 +4740,35 @@ function preserveCodexAccountUnsupportedRequestControls(value: Record<string, un
   if (value.stop !== undefined) omitted.stop = value.stop;
   if (Object.keys(omitted).length) {
     appendCodexAccountCompatibilityNote(value, "request controls", [omitted]);
+  }
+}
+
+const CODEX_ACCOUNT_RESPONSES_TOP_LEVEL_FIELDS = new Set([
+  "include",
+  "input",
+  "instructions",
+  "model",
+  "parallel_tool_calls",
+  "prompt_cache_key",
+  "reasoning",
+  "service_tier",
+  "store",
+  "stream",
+  "text",
+  "tool_choice",
+  "tool_usage",
+  "tools",
+]);
+
+function stripCodexAccountUnsupportedTopLevelFields(value: Record<string, unknown>): void {
+  const omitted: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    if (CODEX_ACCOUNT_RESPONSES_TOP_LEVEL_FIELDS.has(key)) continue;
+    omitted[key] = value[key];
+    delete value[key];
+  }
+  if (Object.keys(omitted).length) {
+    appendCodexAccountCompatibilityNote(value, "top-level fields", [omitted]);
   }
 }
 

@@ -1673,6 +1673,10 @@ test("model gateway strips Codex account Responses unsupported request parameter
             foo: "unsupported-reasoning-field",
           },
           response_format: { type: "json_object" },
+          text: {
+            verbosity: "low",
+            foo: "unsupported-text-field",
+          },
           thinking: { type: "enabled", budget_tokens: 9000 },
           output_config: { effort: "max" },
           reasoning_effort: "high",
@@ -1709,6 +1713,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
           tool_choice: { type: "file_search" },
           stop: ["STOP_HERE"],
           top_logprobs: 1,
+          foo: "unsupported-top-level-field",
         },
       });
       assert.equal(response.status, 200);
@@ -1727,6 +1732,29 @@ test("model gateway strips Codex account Responses unsupported request parameter
       });
       assert.equal(thinkingOnly.status, 200);
       assert.equal(thinkingOnly.body.id, "resp_metadata");
+
+      const nestedFunctionToolChoice = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "codex" },
+        body: {
+          model: "gpt-5.4",
+          input: "Use echo.",
+          tools: [{
+            type: "function",
+            name: "echo_probe",
+            parameters: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "echo_probe" } },
+          stream: false,
+        },
+      });
+      assert.equal(nestedFunctionToolChoice.status, 200);
+      assert.equal(nestedFunctionToolChoice.body.id, "resp_metadata");
 
       const claudeCode = await requestJson(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -1809,7 +1837,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls.length, 4);
   for (const upstreamCall of upstreamCalls) {
     assert.equal(upstreamCall.accountId, "acct_metadata");
     assert.equal(upstreamCall.authorization, "Bearer codex-metadata-access");
@@ -1840,6 +1868,7 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.seed, undefined);
     assert.equal(upstreamBody.stop, undefined);
     assert.equal(upstreamBody.top_logprobs, undefined);
+    assert.equal(upstreamBody.foo, undefined);
     assert.equal(JSON.stringify(upstreamBody).includes("cache_control"), false);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
@@ -1859,8 +1888,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.match(JSON.stringify(directUpstreamBody.input), /STOP_HERE/);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses reasoning fields omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-reasoning-field/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses text fields omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-text-field/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses top-level fields omitted for Codex account compatibility/);
+  assert.match(JSON.stringify(directUpstreamBody.input), /unsupported-top-level-field/);
   assert.equal(directUpstreamBody.reasoning?.effort, "low");
-  assert.deepEqual(directUpstreamBody.text, { format: { type: "json_object" } });
+  assert.deepEqual(directUpstreamBody.text, { verbosity: "low", format: { type: "json_object" } });
   assert.deepEqual(directUpstreamBody.input[0].content.slice(0, 5), [{
     type: "input_text",
     text: "hello",
@@ -1897,6 +1930,8 @@ test("model gateway strips Codex account Responses unsupported request parameter
   assert.equal(JSON.stringify(directUpstreamBody).includes("computer_use_preview"), true);
   const thinkingOnlyUpstreamBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(thinkingOnlyUpstreamBody.reasoning, { effort: "high" });
+  const nestedFunctionToolChoiceUpstreamBody = JSON.parse(upstreamCalls[2].body);
+  assert.deepEqual(nestedFunctionToolChoiceUpstreamBody.tool_choice, { type: "function", name: "echo_probe" });
 });
 
 test("model gateway strips Claude Code metadata from generic OpenAI Responses providers", async () => {
