@@ -1695,7 +1695,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
               description: "Echo probe",
               parameters: {
                 type: "object",
-                properties: { value: { type: "string" } },
+                properties: {
+                  value: { type: "string" },
+                  metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation." },
+                  cache_control: { type: "string", description: "Tool argument named cache_control must survive strict sanitation." },
+                  annotations: { type: "array", items: { type: "string" } },
+                },
                 required: ["value"],
                 additionalProperties: false,
               },
@@ -1873,14 +1878,15 @@ test("model gateway strips Codex account Responses unsupported request parameter
     assert.equal(upstreamBody.top_logprobs, undefined);
     assert.equal(upstreamBody.foo, undefined);
     assert.equal(containsObjectKey(upstreamBody, "foo"), false);
-    assert.equal(containsObjectKey(upstreamBody, "cache_control"), false);
+    assert.equal(upstreamBody.input?.[0]?.cache_control, undefined);
     assert.equal(upstreamBody.stream, true);
     assert.equal(upstreamBody.store, false);
     assert.ok(upstreamBody.include.includes("reasoning.encrypted_content"));
   }
   const directUpstreamBody = JSON.parse(upstreamCalls[0].body);
-  assert.equal(containsObjectKey(directUpstreamBody, "metadata"), false);
-  assert.equal(containsObjectKey(directUpstreamBody, "annotations"), false);
+  assert.equal(directUpstreamBody.metadata, undefined);
+  assert.equal(containsObjectKey(directUpstreamBody.input[0], "metadata"), false);
+  assert.equal(containsObjectKey(directUpstreamBody.input[0], "annotations"), false);
   assert.match(JSON.stringify(directUpstreamBody.input), /OpenAI Responses input annotations omitted for Codex account compatibility/);
   assert.match(JSON.stringify(directUpstreamBody.input), /content-annotation/);
   assert.match(JSON.stringify(directUpstreamBody.input), /message-annotation/);
@@ -1936,7 +1942,12 @@ test("model gateway strips Codex account Responses unsupported request parameter
     description: "Echo probe",
     parameters: {
       type: "object",
-      properties: { value: { type: "string" } },
+      properties: {
+        value: { type: "string" },
+        metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation." },
+        cache_control: { type: "string", description: "Tool argument named cache_control must survive strict sanitation." },
+        annotations: { type: "array", items: { type: "string" } },
+      },
       required: ["value"],
       additionalProperties: false,
     },

@@ -4871,6 +4871,7 @@ function stripCodexAccountResponsesUnsupportedFields(
   path = "$",
 ): CodexAccountStrippedCompatibilityField[] {
   const stripped: CodexAccountStrippedCompatibilityField[] = [];
+  if (isCodexAccountSchemaCompatibilityPath(path)) return stripped;
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
       stripped.push(...stripCodexAccountResponsesUnsupportedFields(item, `${path}[${index}]`));
@@ -4893,6 +4894,10 @@ function stripCodexAccountResponsesUnsupportedFields(
     stripped.push(...stripCodexAccountResponsesUnsupportedFields(item, `${path}.${key}`));
   }
   return stripped;
+}
+
+function isCodexAccountSchemaCompatibilityPath(path: string): boolean {
+  return /(?:^|\.)(?:parameters|input_schema|schema)(?:$|\.|\[)/.test(path);
 }
 
 function codexAccountRequestWantsStream(value: string | undefined): boolean {
