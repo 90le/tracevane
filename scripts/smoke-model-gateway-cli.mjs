@@ -625,6 +625,8 @@ function baseSmokeEnv(homeDir, config, mockGateway) {
     ANTHROPIC_BASE_URL: mockGateway.endpoint.replace(/\/v1\/?$/i, ""),
     ANTHROPIC_API_KEY: LOCAL_GATEWAY_KEY,
     OPENAI_API_KEY: LOCAL_GATEWAY_KEY,
+    TRACEVANE_GATEWAY_CLI_SMOKE_ENDPOINT: mockGateway.endpoint,
+    TRACEVANE_GATEWAY_CLI_SMOKE_KEY: LOCAL_GATEWAY_KEY,
     NO_COLOR: "1",
     CI: "1",
     TERM: "dumb",
@@ -940,6 +942,7 @@ async function runCommand(definition, requestStore) {
   return {
     id: definition.id,
     status: definition.diagnostic ? "diagnostic" : (passed ? "passed" : "failed"),
+    transportOk: passed,
     command: [definition.command, ...definition.args],
     exitCode: exit.code,
     signal: exit.signal,
@@ -1236,6 +1239,12 @@ function safePathSegment(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "model";
 }
 
+function isAcceptableSmokeResult(result) {
+  return result.status === "passed"
+    || result.status === "skipped"
+    || (result.status === "diagnostic" && result.transportOk === true);
+}
+
 async function runSmokeForTargetModel(root, options, targetModel) {
   const targetRoot = options.targetModels.length === 1 ? root : path.join(root, safePathSegment(targetModel));
   fs.mkdirSync(targetRoot, { recursive: true });
@@ -1265,7 +1274,7 @@ async function runSmokeForTargetModel(root, options, targetModel) {
         reason: "Gateway HTTP maturity probes were excluded by --apps.",
       };
     return {
-      ok: results.every((result) => result.status === "passed" || result.status === "skipped" || result.status === "diagnostic")
+      ok: results.every(isAcceptableSmokeResult)
         && (gatewayMaturity.status === "passed" || gatewayMaturity.status === "skipped"),
       targetModel,
       tempRoot: targetRoot,
