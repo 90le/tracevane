@@ -33,7 +33,7 @@
 - `m8*`–`m10*`：RC 稳定化、Git 历史能力、semantic tokens / workspace symbols 记录。
 - `m11*`–`m13*`：多语言 provider、external language server、toolchain provider 与 rich interaction 记录。
 - `p0*`：M13-I 产品 pivot 之后的远程代码工作台主链路验证、缺口审计与 P1 hardening 输入。
-- `p1*`：主链路 UX hardening 计划、验收和后续修复记录，包括 Explorer mainline workflow 自动化验收。
+- `p1*`：主链路 UX hardening 计划、验收和后续修复记录，包括 Explorer、Editor edge-files 与 Responsive layout 自动化验收。
 
 ## 删除 / 归档判断
 
@@ -51,3 +51,5 @@
 - 该文件不是某个阶段的唯一验收证据。
 - 删除不会让历史 commit / PR / 阶段总结失去可追溯性。
 - [p1-a-3-editor-edge-files-summary.md](./p1-a-3-editor-edge-files-summary.md) — P1-A-3 Editor edge-files workflow: Monaco text/readonly/large/deleted/media/binary Hex edge-file acceptance.
+
+- [p1-a-4-responsive-layout-summary.md](./p1-a-4-responsive-layout-summary.md) — P1-A-4 Responsive layout workflow: narrow/mobile Explorer overlay, Editor/Search/Git/Run/Panel no-overflow acceptance.

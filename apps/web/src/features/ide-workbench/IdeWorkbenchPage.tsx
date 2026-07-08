@@ -80,6 +80,24 @@ interface IdeEditorCloseRequest {
   dirtyTabs: IdeWorkbenchEditorTab[];
 }
 
+function useIsNarrowWorkbenchLayout() {
+  const [isNarrow, setIsNarrow] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 720px)").matches;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 720px)");
+    const update = () => setIsNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isNarrow;
+}
+
 export function IdeWorkbenchPage() {
   const { workspaceId } = useParams();
   const summary = useFilesSummaryQuery();
@@ -92,6 +110,7 @@ export function IdeWorkbenchPage() {
   const layoutApi = useIdeWorkbenchLayoutState(rootId || "pending-root");
   const { layout } = layoutApi;
   const directoryPath = layout.explorer.directoryPath;
+  const isNarrowWorkbench = useIsNarrowWorkbenchLayout();
   const gitStatus = useIdeGitStatus(rootId, directoryPath);
   const [closeRequest, setCloseRequest] = React.useState<IdeEditorCloseRequest | null>(null);
   const [closeSaving, setCloseSaving] = React.useState(false);
@@ -432,6 +451,11 @@ export function IdeWorkbenchPage() {
   const activeTab = activeGroup?.tabs.find(
     (tab) => tab.id === activeGroup.activeTabId,
   ) ?? null;
+  const sidebarHidden = layout.sideBar.collapsed || !layout.sideBar.visible;
+  const sidebarOverlay = isNarrowWorkbench && !sidebarHidden;
+  const sidebarGridTemplateColumns = sidebarHidden || sidebarOverlay
+    ? "0px minmax(0,1fr)"
+    : `clamp(220px, ${layout.sideBar.width}px, calc(100vw - 44px)) minmax(0,1fr)`;
 
   const saveActiveEditorTab = React.useCallback(() => {
     if (!activeTab) return;
@@ -543,6 +567,56 @@ export function IdeWorkbenchPage() {
     onEvent: handleWorkbenchFileEvent,
   });
 
+  const sidebarView = layout.activeActivityId === "search" ? (
+    <IdeSearchView
+      hidden={sidebarHidden}
+      rootId={rootId}
+      rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+      directoryPath={directoryPath}
+      onOpenResult={openSearchResult}
+    />
+  ) : layout.activeActivityId === "git" ? (
+    <IdeSourceControlView
+      hidden={sidebarHidden}
+      rootId={rootId}
+      rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+      git={gitStatus}
+      onOpenDiff={openGitChangeDiff}
+    />
+  ) : layout.activeActivityId === "run" ? (
+    <IdeDebugView
+      hidden={sidebarHidden}
+      rootId={rootId}
+      cwd={directoryPath}
+      activeFile={activeTab && activeTab.mode !== "git-diff" ? activeTab.ref : null}
+      onOpenDebugConsole={() => layoutApi.setActivePanelId("debugConsole")}
+      onOpenLocation={openDebugLocation}
+    />
+  ) : layout.activeActivityId === "explorer" ? (
+    <IdeExplorerView
+      hidden={sidebarHidden}
+      rootId={rootId}
+      rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
+      rootAbsolutePath={root?.absolutePath}
+      directoryPath={directoryPath}
+      activeRootId={activeTab?.ref.rootId}
+      activePath={activeTab?.ref.path}
+      openTabs={openTabs}
+      gitDecorations={gitStatus.byPath}
+      onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
+      onOpenEntry={openEntry}
+      onPathEvent={(event) => {
+        handleExplorerPathEvent(event);
+        gitStatus.refresh();
+      }}
+    />
+  ) : (
+    <IdePendingActivityView
+      hidden={sidebarHidden}
+      title={IDE_ACTIVITY_LABELS[layout.activeActivityId]}
+    />
+  );
+
   return (
     <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
       <DebugGatewayBridge rootId={rootId} cwd={directoryPath} enabled={Boolean(rootId)} />
@@ -569,61 +643,30 @@ export function IdeWorkbenchPage() {
         <div
           className="relative grid min-h-0 min-w-0"
           style={{
-            gridTemplateColumns: layout.sideBar.collapsed
-              ? "0px minmax(0,1fr)"
-              : `clamp(220px, ${layout.sideBar.width}px, calc(100vw - 44px)) minmax(0,1fr)`,
+            gridTemplateColumns: sidebarGridTemplateColumns,
           }}
+          data-ide-workbench-narrow={isNarrowWorkbench ? "true" : "false"}
         >
-          {layout.activeActivityId === "search" ? (
-            <IdeSearchView
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              rootId={rootId}
-              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-              directoryPath={directoryPath}
-              onOpenResult={openSearchResult}
+          {sidebarOverlay ? (
+            <button
+              type="button"
+              aria-label="关闭侧边栏覆盖层"
+              className="absolute inset-0 z-20 bg-canvas/55 backdrop-blur-[1px]"
+              onClick={layoutApi.toggleSidebar}
+              data-ide-sidebar-overlay-scrim
             />
-          ) : layout.activeActivityId === "git" ? (
-            <IdeSourceControlView
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              rootId={rootId}
-              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-              git={gitStatus}
-              onOpenDiff={openGitChangeDiff}
-            />
-          ) : layout.activeActivityId === "run" ? (
-            <IdeDebugView
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              rootId={rootId}
-              cwd={directoryPath}
-              activeFile={activeTab && activeTab.mode !== "git-diff" ? activeTab.ref : null}
-              onOpenDebugConsole={() => layoutApi.setActivePanelId("debugConsole")}
-              onOpenLocation={openDebugLocation}
-            />
-          ) : layout.activeActivityId === "explorer" ? (
-            <IdeExplorerView
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              rootId={rootId}
-              rootLabel={root?.labelZh ?? root?.labelEn ?? rootId}
-              rootAbsolutePath={root?.absolutePath}
-              directoryPath={directoryPath}
-              activeRootId={activeTab?.ref.rootId}
-              activePath={activeTab?.ref.path}
-              openTabs={openTabs}
-              gitDecorations={gitStatus.byPath}
-              onDirectoryPathChange={layoutApi.setExplorerDirectoryPath}
-              onOpenEntry={openEntry}
-              onPathEvent={(event) => {
-                handleExplorerPathEvent(event);
-                gitStatus.refresh();
-              }}
-            />
-          ) : (
-            <IdePendingActivityView
-              hidden={layout.sideBar.collapsed || !layout.sideBar.visible}
-              title={IDE_ACTIVITY_LABELS[layout.activeActivityId]}
-            />
-          )}
-          {!layout.sideBar.collapsed && layout.sideBar.visible ? (
+          ) : null}
+          <div
+            className={cn(
+              "col-start-1 row-start-1 min-h-0 min-w-0",
+              sidebarOverlay && "absolute inset-y-0 left-0 z-30 w-[min(320px,calc(100vw-44px))] max-w-[calc(100vw-44px)] overflow-hidden shadow-2xl",
+            )}
+            data-ide-sidebar-shell
+            data-ide-sidebar-overlay={sidebarOverlay ? "true" : "false"}
+          >
+            {sidebarView}
+          </div>
+          {!sidebarHidden && !sidebarOverlay ? (
             <SidebarResizeHandle
               left={layout.sideBar.width}
               width={layout.sideBar.width}

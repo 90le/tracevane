@@ -669,7 +669,7 @@ export function IdeExplorerView({
           <div className="truncate text-sm font-semibold text-ink-strong">资源管理器</div>
           <div className="truncate text-xs text-subtle">{rootLabel || "Workspace Explorer"}</div>
         </div>
-        <div className="absolute right-2 top-2 flex max-w-[calc(100%-1rem)] items-center gap-1 overflow-x-auto rounded-md bg-panel/95 opacity-0 shadow-sm transition-opacity [scrollbar-width:none] group-hover/ide-explorer:opacity-100 group-focus-within/ide-explorer:opacity-100 [&::-webkit-scrollbar]:hidden">
+        <div className="absolute right-2 top-2 flex max-w-[calc(100%-1rem)] items-center gap-1 overflow-x-auto rounded-md bg-panel/95 opacity-100 shadow-sm transition-opacity [scrollbar-width:none] sm:opacity-0 group-hover/ide-explorer:opacity-100 group-focus-within/ide-explorer:opacity-100 [&::-webkit-scrollbar]:hidden">
           <ExplorerToolbarIconButton
             label="新建文件"
             onClick={() => setFlow({ kind: "new-file", directoryPath: directory.location.directoryPath })}

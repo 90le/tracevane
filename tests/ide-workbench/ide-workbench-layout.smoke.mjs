@@ -305,6 +305,11 @@ async function run() {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 30_000 });
     await assertNoHorizontalOverflow(page, 'mobile IDE workbench');
+    const mobileSidebarScrim = page.locator('[data-ide-sidebar-overlay-scrim]');
+    if (await mobileSidebarScrim.isVisible().catch(() => false)) {
+      await page.mouse.click(370, 120);
+      await page.waitForFunction(() => document.querySelector('[data-ide-sidebar-shell]')?.getAttribute('data-ide-sidebar-overlay') === 'false', null, { timeout: 30_000 });
+    }
     await page.getByRole('button', { name: 'Move Panel Right' }).click();
     await page.locator('[data-ide-panel][data-ide-panel-placement="right"]').waitFor({ state: 'visible', timeout: 30_000 });
     await assertNoHorizontalOverflow(page, 'mobile IDE workbench with right panel');
