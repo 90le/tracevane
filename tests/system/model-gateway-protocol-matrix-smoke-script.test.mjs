@@ -78,7 +78,7 @@ async function startMockGateway(options = {}) {
             sourceType: "account-backed",
             apiFormat: "openai_responses",
             appScopes: ["codex", "claude-code", "opencode", "openclaw"],
-            models: { defaultModel: "gpt-5.5", models: [{ id: "gpt-5.5" }] },
+            models: { defaultModel: "gpt-5.5", models: [{ id: "gpt-5.5" }, { id: "gpt-5.4" }, { id: "gpt-5.4-mini" }] },
             endpointProfiles: [],
           },
         ],
@@ -129,18 +129,23 @@ async function startMockGateway(options = {}) {
         });
         return;
       }
-      if (providerId === "codex-account" && body.scope === "codex") {
+      if (providerId === "codex-account" && ["codex", "claude-code", "opencode"].includes(body.scope)) {
+        const routeId = body.scope === "codex"
+          ? "openai_responses"
+          : body.scope === "claude-code"
+            ? "anthropic_messages"
+            : "openai_chat_completions";
         sendJson(res, 200, {
           ok: true,
           providerId,
           route: {
-            routeId: "openai_responses",
-            mode: "passthrough",
+            routeId,
+            mode: body.scope === "codex" ? "passthrough" : "adapter-required",
             endpointProfile: null,
             provider: { apiFormat: "openai_responses" },
             upstreamUrl: "https://chatgpt.com/backend-api/codex/responses",
           },
-          responsePreview: "GATEWAY_OK",
+          responsePreview: body.toolSmoke || body.toolResultSmoke ? "gateway_smoke_tool GATEWAY_OK" : "GATEWAY_OK",
         });
         return;
       }
@@ -190,10 +195,54 @@ test("model gateway protocol matrix proves GLM native protocols and Codex accoun
     assert.deepEqual(parsed.protocolProofs.map((proof) => [proof.id, proof.ok, proof.provider, proof.routeId, proof.endpointProfile]), [
       ["anthropic_messages", true, "glm", "anthropic_messages", "coding-anthropic"],
       ["openai_chat_completions", true, "glm", "openai_chat_completions", "coding-chat"],
-      ["codex_account_responses", true, "codex-account", "openai_responses", null],
+      ["codex_account_responses:gpt-5.5", true, "codex-account", "openai_responses", null],
+      ["codex_account_claude_code:gpt-5.5", true, "codex-account", "anthropic_messages", null],
+      ["codex_account_opencode:gpt-5.5", true, "codex-account", "openai_chat_completions", null],
     ]);
     assert.deepEqual(gateway.activeProviders, {});
-    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 6);
+    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 10);
+    const codexSmokeRequests = gateway.requests.filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.model === "gpt-5.5");
+    assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "claude-code" && request.body.toolSmoke === true).length, 2);
+    assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "opencode" && request.body.toolResultSmoke === true).length, 2);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix can run Codex account proofs without GLM stages", async () => {
+  const gateway = await startMockGateway();
+  try {
+    const parsed = await runScript(["--endpoint", gateway.endpoint, "--skip-glm", "--codex-model", "gpt-5.4", "--json"]);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.protocolProofs.map((proof) => proof.id), [
+      "codex_account_responses:gpt-5.4",
+      "codex_account_claude_code:gpt-5.4",
+      "codex_account_opencode:gpt-5.4",
+    ]);
+    assert.equal(parsed.stages.length, 1);
+    assert.deepEqual(gateway.activeProviders, {});
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix can expand Codex account proofs across multiple models", async () => {
+  const gateway = await startMockGateway();
+  try {
+    const parsed = await runScript(["--endpoint", gateway.endpoint, "--codex-models", "gpt-5.4,gpt-5.4-mini", "--json"]);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.protocolProofs.map((proof) => proof.id), [
+      "anthropic_messages",
+      "openai_chat_completions",
+      "codex_account_responses:gpt-5.4",
+      "codex_account_claude_code:gpt-5.4",
+      "codex_account_opencode:gpt-5.4",
+      "codex_account_responses:gpt-5.4-mini",
+      "codex_account_claude_code:gpt-5.4-mini",
+      "codex_account_opencode:gpt-5.4-mini",
+    ]);
+    assert.equal(parsed.stages.length, 4);
+    assert.deepEqual(gateway.activeProviders, {});
   } finally {
     await gateway.close();
   }
@@ -260,7 +309,7 @@ test("model gateway protocol matrix bounds slow child stages and restores routes
           "model_gateway_active_route_smoke_request_failed",
         );
         assert.equal(parsed.stages[1].ok, true);
-        assert.equal(parsed.stages[2].ok, true);
+        assert.equal(parsed.stages[2].ok, false);
         assert.deepEqual(gateway.activeProviders, {});
         return true;
       },
@@ -297,7 +346,7 @@ test("model gateway protocol matrix stage watchdog lets the child restore active
         assert.equal(parsed.stages[0].ok, false);
         assert.equal(parsed.stages[0].error.timeoutMs, 500);
         assert.equal(parsed.stages[1].ok, true);
-        assert.equal(parsed.stages[2].ok, true);
+        assert.equal(parsed.stages[2].ok, false);
         assert.deepEqual(gateway.activeProviders, {});
         return true;
       },

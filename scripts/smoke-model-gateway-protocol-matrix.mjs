@@ -12,6 +12,7 @@ const DEFAULT_GLM_PROVIDER = "glm";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_CODEX_PROVIDER = "codex-account";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const DEFAULT_CODEX_SCOPES = ["codex", "claude-code", "opencode"];
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -24,8 +25,10 @@ function parseArgs(argv) {
     glmModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_MODEL || process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_MODEL || DEFAULT_GLM_MODEL,
     codexProvider: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || DEFAULT_CODEX_PROVIDER,
     codexModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || DEFAULT_CODEX_MODEL,
+    codexModels: parseCsv(process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODELS || ""),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     stageTimeoutMs: 0,
+    skipGlm: false,
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -40,6 +43,9 @@ function parseArgs(argv) {
     else if (arg.startsWith("--codex-provider=")) options.codexProvider = arg.slice("--codex-provider=".length);
     else if (arg === "--codex-model") options.codexModel = argv[++index] || options.codexModel;
     else if (arg.startsWith("--codex-model=")) options.codexModel = arg.slice("--codex-model=".length);
+    else if (arg === "--codex-models") options.codexModels = parseCsv(argv[++index] || "");
+    else if (arg.startsWith("--codex-models=")) options.codexModels = parseCsv(arg.slice("--codex-models=".length));
+    else if (arg === "--skip-glm") options.skipGlm = true;
     else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(argv[++index], DEFAULT_TIMEOUT_MS);
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
     else if (arg === "--stage-timeout-ms") options.stageTimeoutMs = positiveInt(argv[++index], 0);
@@ -57,12 +63,17 @@ function parseArgs(argv) {
   options.glmModel = options.glmModel.trim();
   options.codexProvider = options.codexProvider.trim();
   options.codexModel = options.codexModel.trim();
+  options.codexModels = options.codexModels.length ? Array.from(new Set(options.codexModels.map((item) => item.trim()).filter(Boolean))) : [options.codexModel];
   if (!options.glmProvider) throw new Error("--glm-provider is required.");
   if (!options.glmModel) throw new Error("--glm-model is required.");
   if (!options.codexProvider) throw new Error("--codex-provider is required.");
   if (!options.codexModel) throw new Error("--codex-model is required.");
   if (!options.stageTimeoutMs) options.stageTimeoutMs = defaultStageTimeoutMs(options.timeoutMs);
   return options;
+}
+
+function parseCsv(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function positiveInt(value, fallback) {
@@ -81,7 +92,7 @@ function printHelp() {
 Verifies the current release protocol matrix through active-route smoke:
   - GLM Coding Chat covers OpenAI Chat-compatible / OpenCode.
   - GLM Coding Anthropic covers Anthropic Messages / Claude Code.
-  - Codex account covers the official Codex Responses account route.
+  - Codex account covers Codex / Claude Code / OpenCode via Responses-backed adapters.
 
 Options:
   --endpoint <url>        default: ${DEFAULT_ENDPOINT}
@@ -89,6 +100,8 @@ Options:
   --glm-model <id>        default: ${DEFAULT_GLM_MODEL}
   --codex-provider <id>   default: ${DEFAULT_CODEX_PROVIDER}
   --codex-model <id>      default: ${DEFAULT_CODEX_MODEL}
+  --codex-models <csv>    Codex account model matrix; default: --codex-model only
+  --skip-glm             run only Codex account matrix stages
   --timeout-ms <n>        per active-route smoke timeout
   --stage-timeout-ms <n>  per child process watchdog; default: max(${MIN_STAGE_TIMEOUT_MS}, --timeout-ms + ${STAGE_TIMEOUT_GRACE_MS})
   --json                  machine-readable output
@@ -97,58 +110,68 @@ Options:
 }
 
 function stageDefinitions(options) {
-  return [
-    {
-      id: "glm-anthropic-messages",
-      label: "GLM native Anthropic Messages proof",
-      provider: options.glmProvider,
-      model: options.glmModel,
-      args: [
-        "--provider", options.glmProvider,
-        "--model", options.glmModel,
-        "--scopes", "claude-code",
-        "--expect-endpoints", "claude-code=coding-anthropic",
-        "--expect-routes", "claude-code=anthropic_messages",
-        "--expect-api-formats", "claude-code=anthropic_messages",
-      ],
-      expectedProofs: [
-        { id: "anthropic_messages", scope: "claude-code", provider: options.glmProvider, endpointProfile: "coding-anthropic" },
-      ],
-    },
-    {
-      id: "glm-chat-completions",
-      label: "GLM native Chat Completions proof",
-      provider: options.glmProvider,
-      model: options.glmModel,
-      args: [
-        "--provider", options.glmProvider,
-        "--model", options.glmModel,
-        "--scopes", "opencode",
-        "--expect-endpoints", "opencode=coding-chat",
-        "--expect-routes", "opencode=openai_chat_completions",
-        "--expect-api-formats", "opencode=openai_chat",
-      ],
-      expectedProofs: [
-        { id: "openai_chat_completions", scope: "opencode", provider: options.glmProvider, endpointProfile: "coding-chat" },
-      ],
-    },
-    {
-      id: "codex-account-responses",
-      label: "Codex account official Responses proof",
-      provider: options.codexProvider,
-      model: options.codexModel,
-      args: [
-        "--provider", options.codexProvider,
-        "--model", options.codexModel,
-        "--scopes", "codex",
-        "--expect-routes", "codex=openai_responses",
-        "--expect-api-formats", "codex=openai_responses",
-      ],
-      expectedProofs: [
-        { id: "codex_account_responses", scope: "codex", provider: options.codexProvider, endpointProfile: null },
-      ],
-    },
-  ];
+  const stages = [];
+  if (!options.skipGlm) {
+    stages.push(
+      {
+        id: "glm-anthropic-messages",
+        label: "GLM native Anthropic Messages proof",
+        provider: options.glmProvider,
+        model: options.glmModel,
+        args: [
+          "--provider", options.glmProvider,
+          "--model", options.glmModel,
+          "--scopes", "claude-code",
+          "--expect-endpoints", "claude-code=coding-anthropic",
+          "--expect-routes", "claude-code=anthropic_messages",
+          "--expect-api-formats", "claude-code=anthropic_messages",
+        ],
+        expectedProofs: [
+          { id: "anthropic_messages", scope: "claude-code", provider: options.glmProvider, endpointProfile: "coding-anthropic" },
+        ],
+      },
+      {
+        id: "glm-chat-completions",
+        label: "GLM native Chat Completions proof",
+        provider: options.glmProvider,
+        model: options.glmModel,
+        args: [
+          "--provider", options.glmProvider,
+          "--model", options.glmModel,
+          "--scopes", "opencode",
+          "--expect-endpoints", "opencode=coding-chat",
+          "--expect-routes", "opencode=openai_chat_completions",
+          "--expect-api-formats", "opencode=openai_chat",
+        ],
+        expectedProofs: [
+          { id: "openai_chat_completions", scope: "opencode", provider: options.glmProvider, endpointProfile: "coding-chat" },
+        ],
+      },
+    );
+  }
+  stages.push(...options.codexModels.map((model) => ({
+    id: `codex-account-three-client-${model}`,
+    label: `Codex account three-client proof (${model})`,
+    provider: options.codexProvider,
+    model,
+    args: [
+      "--provider", options.codexProvider,
+      "--model", model,
+      "--scopes", DEFAULT_CODEX_SCOPES.join(","),
+      "--tool-smoke",
+      "--stream-tool-smoke",
+      "--tool-result-smoke",
+      "--stream-tool-result-smoke",
+      "--expect-routes", "codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions",
+      "--expect-api-formats", "codex=openai_responses,claude-code=openai_responses,opencode=openai_responses",
+    ],
+    expectedProofs: [
+      { id: `codex_account_responses:${model}`, scope: "codex", provider: options.codexProvider, endpointProfile: null, model },
+      { id: `codex_account_claude_code:${model}`, scope: "claude-code", provider: options.codexProvider, endpointProfile: null, model },
+      { id: `codex_account_opencode:${model}`, scope: "opencode", provider: options.codexProvider, endpointProfile: null, model },
+    ],
+  })));
+  return stages;
 }
 
 async function runActiveRoutesStage(options, stage) {
