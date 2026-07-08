@@ -1691,18 +1691,21 @@ test("model gateway strips Codex account Responses unsupported request parameter
           tools: [
             {
               type: "function",
-              name: "echo_probe",
-              description: "Echo probe",
-              parameters: {
-                type: "object",
-                properties: {
-                  value: { type: "string" },
-                  metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation." },
-                  cache_control: { type: "string", description: "Tool argument named cache_control must survive strict sanitation." },
-                  annotations: { type: "array", items: { type: "string" } },
+              function: {
+                name: "echo_probe",
+                description: "Echo probe",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    value: { type: "string" },
+                    metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation.", properties: {}, additionalProperties: false },
+                    cache_control: { type: "string", description: "Tool argument named cache_control must survive strict sanitation." },
+                    annotations: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["value", "metadata", "cache_control", "annotations"],
+                  additionalProperties: false,
                 },
-                required: ["value"],
-                additionalProperties: false,
+                strict: true,
               },
             },
             {
@@ -1944,13 +1947,14 @@ test("model gateway strips Codex account Responses unsupported request parameter
       type: "object",
       properties: {
         value: { type: "string" },
-        metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation." },
+        metadata: { type: "object", description: "Tool argument named metadata must survive strict sanitation.", properties: {}, additionalProperties: false },
         cache_control: { type: "string", description: "Tool argument named cache_control must survive strict sanitation." },
         annotations: { type: "array", items: { type: "string" } },
       },
-      required: ["value"],
+      required: ["value", "metadata", "cache_control", "annotations"],
       additionalProperties: false,
     },
+    strict: true,
   }]);
   assert.equal(directUpstreamBody.tool_choice, undefined);
   assert.equal(JSON.stringify(directUpstreamBody).includes("file_search"), true);

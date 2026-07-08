@@ -4477,6 +4477,27 @@ function normalizeCodexAccountBuiltinToolAtPath(source: unknown): unknown {
   };
 }
 
+function normalizeCodexAccountResponsesToolAtPath(source: unknown): unknown {
+  const builtinNormalized = normalizeCodexAccountBuiltinToolAtPath(source);
+  if (!isRecord(builtinNormalized)) return builtinNormalized;
+  const type = normalizeString(builtinNormalized.type);
+  if (type !== "function") return builtinNormalized;
+  const nestedFunction = isRecord(builtinNormalized.function) ? builtinNormalized.function : null;
+  const normalized: Record<string, unknown> = { ...builtinNormalized };
+  if (nestedFunction) {
+    if (!normalizeString(normalized.name)) normalized.name = nestedFunction.name;
+    if (normalized.description === undefined && nestedFunction.description !== undefined) normalized.description = nestedFunction.description;
+    if (normalized.parameters === undefined && nestedFunction.parameters !== undefined) normalized.parameters = nestedFunction.parameters;
+    if (normalized.strict === undefined && nestedFunction.strict !== undefined) normalized.strict = nestedFunction.strict;
+    delete normalized.function;
+  }
+  if (normalized.parameters === undefined && normalized.input_schema !== undefined) {
+    normalized.parameters = normalized.input_schema;
+  }
+  delete normalized.input_schema;
+  return normalized;
+}
+
 function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unknown>): void {
   const supportedToolNames = new Set<string>();
   const supportedToolTypes = new Set<string>();
@@ -4485,7 +4506,7 @@ function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unkn
   if (Array.isArray(value.tools)) {
     const tools: unknown[] = [];
     for (const tool of value.tools) {
-      const normalized = normalizeCodexAccountBuiltinToolAtPath(tool);
+      const normalized = normalizeCodexAccountResponsesToolAtPath(tool);
       if (!isRecord(normalized)) {
         omittedTools.push(tool);
         continue;
@@ -4516,7 +4537,7 @@ function normalizeCodexAccountResponsesToolsAndChoice(value: Record<string, unkn
     }
     delete toolChoice.function;
     if (Array.isArray(toolChoice.tools)) {
-      toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountBuiltinToolAtPath);
+      toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountResponsesToolAtPath);
     }
     if (isCodexAccountSupportedToolChoice(toolChoice, supportedToolTypes, supportedToolNames)) {
       value.tool_choice = toolChoice;
