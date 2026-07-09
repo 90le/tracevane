@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
+import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import {
   Dialog,
@@ -65,6 +66,12 @@ import {
   type ProviderOnboardingMode,
   type ProviderSeed,
 } from "./ProviderOnboardingChooser";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
 
 type Section = "guide" | "basic" | "endpoint" | "models" | "advanced";
 
@@ -81,6 +88,12 @@ const API_FORMAT_LABEL: Record<ModelGatewayApiFormat, string> = {
   openai_responses: "responses",
   anthropic_messages: "messages",
   gemini_native: "native",
+};
+
+const CONFIG_COMPARISON: GatewayComparison = {
+  label: "草稿",
+  tone: "primary",
+  direction: "flat",
 };
 
 // --- Editable form models --------------------------------------------------
@@ -676,15 +689,27 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   if (isCreate && !onboardingChosen) {
     return (
       <div className="grid gap-4">
-        <div className="flex items-start gap-3">
-          <Button variant="ghost" size="icon" onClick={() => goToView("providers")} title="返回" aria-label="返回">
-            <ArrowLeft />
-          </Button>
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-ink-strong">添加 Provider</h2>
-            <p className="text-sm text-muted">先选择新建方式：快速连接、供应商目录、本地服务、账号登录或高级手动。</p>
+        <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+          <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--violet)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+            <Button variant="ghost" size="icon" onClick={() => goToView("providers")} title="返回" aria-label="返回">
+              <ArrowLeft />
+            </Button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">Configuration Studio</Badge>
+                <Badge variant="ok">向导优先</Badge>
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold text-ink-strong">添加 Provider</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                选择一种接入方式；普通 API Provider 只需要名称、Base URL 和密钥，协议、模型和能力可以由探测结果自动填充。
+              </p>
+            </div>
+            <div className="hidden rounded-sm border border-line bg-panel px-3 py-2 text-right text-xs text-muted sm:block">
+              <span className="block font-medium text-ink-strong">推荐流程</span>
+              <span>选择方式 → 探测 → 保存 → 绑定客户端</span>
+            </div>
           </div>
-        </div>
+        </section>
         <ProviderOnboardingChooser
           selectedMode={onboardingMode}
           onSelectMode={setOnboardingMode}
@@ -1277,33 +1302,102 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
     </>
   );
 
+  const providerDisplayName = provider?.name || form.name.trim() || "New Provider";
+  const endpointProfileCount = form.endpoints.length;
+  const enabledEndpointProfileCount = form.endpoints.filter((endpoint) => endpoint.enabled).length;
+  const modelCount = form.models.filter((model) => model.id.trim()).length;
+  const activeRouteCount = activeRoutesForProvider.length;
+  const capabilityCount = capabilitySummary.length;
+  const configRiskCount = validation.errors.length + configWarnings.length;
+
   return (
     <div className="grid gap-4">
-      {/* Subpage head */}
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={leaveToList} title="返回" aria-label="返回">
-          <ArrowLeft />
-        </Button>
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-ink-strong">
-            {isCreate ? "新建 API Provider" : `配置 · ${provider?.name ?? ""}`}
-          </h2>
-          <p className="text-sm text-muted">
-            baseUrl / 协议 / 模型 / 网络 / 推理。保存前内联校验，危险变更需确认。
-          </p>
-        </div>
-        {isCreate && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto shrink-0"
-            onClick={() => setOnboardingChosen(false)}
-          >
+      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+          <Button variant="ghost" size="icon" onClick={leaveToList} title="返回" aria-label="返回">
             <ArrowLeft />
-            返回添加方式
           </Button>
-        )}
-      </div>
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3">
+            <GatewayMark identity={providerIdentityFromText(providerDisplayName)} size="lg" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={form.enabled ? "ok" : "mute"}>{form.enabled ? "启用" : "停用"}</Badge>
+                <Badge variant={isDirty ? "warn" : "outline"}>{isDirty ? "有未保存更改" : "已同步"}</Badge>
+                {configRiskCount > 0 && <Badge variant="warn">{configRiskCount} 个风险</Badge>}
+              </div>
+              <h2 className="mt-2 truncate text-2xl font-semibold text-ink-strong" title={providerDisplayName}>
+                {isCreate ? "新建 API Provider" : `配置 · ${providerDisplayName}`}
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                baseUrl / 协议 / 模型 / endpoint / 网络 / 推理集中编辑；保存前内联校验，危险操作留在高级分区。
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            {isCreate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOnboardingChosen(false)}
+              >
+                <ArrowLeft />
+                返回添加方式
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDetect}
+              disabled={detectMutation.isPending}
+            >
+              <ScanSearch />
+              {detectMutation.isPending ? "探测中…" : "探测/识别配置"}
+            </Button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+          <GatewayMetricCard
+            icon={<Box />}
+            tone="primary"
+            label="模型目录"
+            value={`${modelCount}`}
+            sub={`最大上下文 ${compactTokenCount(maxContext)} · 输出 ${compactTokenCount(maxOutput)}`}
+            accent={recommendedDefault ?? "no default"}
+            meter={modelCount > 0 ? 1 : 0}
+            comparison={CONFIG_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Plug />}
+            tone="teal"
+            label="Endpoint"
+            value={endpointProfileCount > 0 ? `${enabledEndpointProfileCount}/${endpointProfileCount}` : "默认"}
+            sub={endpointProfileCount > 0 ? `${endpointProfileCount - enabledEndpointProfileCount} 停用` : form.baseUrl || "尚未填写 Base URL"}
+            accent={API_FORMAT_LABEL[form.apiFormat]}
+            meter={endpointProfileCount > 0 ? enabledEndpointProfileCount / endpointProfileCount : form.baseUrl ? 1 : 0}
+            comparison={CONFIG_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Route />}
+            tone="violet"
+            label="活跃路由"
+            value={`${activeRouteCount}`}
+            sub={provider ? "当前 Provider 承接的客户端 scope" : "保存后可绑定客户端"}
+            accent={provider ? "routes" : "new"}
+            meter={provider && activeRouteCount > 0 ? 1 : 0}
+            comparison={CONFIG_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Brain />}
+            tone="primary"
+            label="能力"
+            value={`${capabilityCount}`}
+            sub={(capabilitySummary.length ? capabilitySummary : ["仅文本或未知能力"]).join(" · ")}
+            accent={form.supportsThinking || form.supportsEffort ? "reasoning" : "basic"}
+            meter={capabilityCount > 0 || form.supportsThinking || form.supportsEffort ? 1 : 0}
+            comparison={CONFIG_COMPARISON}
+          />
+        </div>
+      </section>
 
       {/* Section nav */}
       <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="配置分区">
@@ -1324,16 +1418,6 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
             {label}
           </button>
         ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto"
-          onClick={handleDetect}
-          disabled={detectMutation.isPending}
-        >
-          <ScanSearch />
-          {detectMutation.isPending ? "探测中…" : "探测/识别配置"}
-        </Button>
       </nav>
 
       {/* Section body */}

@@ -282,8 +282,12 @@ test("Provider config create mode starts with user-facing add methods", () => {
   const chooser = read(`${VIEWS_DIR}/ProviderOnboardingChooser.tsx`);
   assert.match(config, /type Section = "guide" \| "basic" \| "endpoint" \| "models" \| "advanced"/);
   assert.match(config, /添加 Provider/);
+  assert.match(config, /Configuration Studio/);
   assert.match(config, /返回添加方式/);
   assert.match(config, /ProviderOnboardingChooser/);
+  assert.match(config, /GatewayMetricCard/);
+  assert.match(config, /GatewayMark/);
+  assert.match(config, /providerIdentityFromText/);
   assert.match(chooser, /快速连接 API Provider/);
   assert.match(chooser, /从供应商目录添加/);
   assert.match(chooser, /连接本地 \/ 自托管服务/);
