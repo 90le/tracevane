@@ -1129,12 +1129,43 @@ export interface ModelGatewayActiveRouteStatus {
   warning: string | null;
 }
 
+export interface ModelGatewayProvidersSummary {
+  providers: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    healthy: number;
+    degraded: number;
+    openCircuitProviders: number;
+    openCircuits: number;
+    accountBacked: number;
+    endpointProfiles: number;
+    enabledEndpointProfiles: number;
+    declaredModels: number;
+  };
+  accounts: {
+    total: number;
+    ready: number;
+    attention: number;
+  };
+  routes: {
+    total: number;
+    ready: number;
+    fixed: number;
+    auto: number;
+    fallback: number;
+    missing: number;
+    alertCount: number;
+  };
+}
+
 export interface ModelGatewayProvidersResponse {
   ok: true;
   providers: ModelGatewayProviderView[];
   activeProviders: Partial<Record<ModelGatewayAppScope, string>>;
   activeRoutes: ModelGatewayActiveRouteStatus[];
   activeRouteAlerts: string[];
+  summary: ModelGatewayProvidersSummary;
   paths: {
     registry: string;
     secrets: string;

@@ -96,6 +96,7 @@ import {
   type ModelGatewayProviderTestRequest,
   type ModelGatewayProviderTestResponse,
   type ModelGatewayProviderView,
+  type ModelGatewayProvidersSummary,
   type ModelGatewayProxySource,
   type ModelGatewayProvidersResponse,
   type ModelGatewayRegistryState,
@@ -9368,12 +9369,67 @@ export function createModelGatewayService(
       activeRouteAlerts: activeRoutes
         .filter((route) => route.warning || route.state === "missing")
         .map((route) => route.warning || route.message),
+      summary: buildProvidersSummary(registry, activeRoutes),
       paths: {
         registry: paths.registry,
         secrets: paths.secrets,
         runtime: paths.runtime,
       },
     };
+  }
+
+  function buildProvidersSummary(
+    registry: ModelGatewayRegistryState,
+    activeRoutes: ModelGatewayActiveRouteStatus[],
+  ): ModelGatewayProvidersSummary {
+    const enabledProviders = registry.providers.filter((provider) => provider.enabled);
+    const providerAccounts = registry.providers.flatMap((provider) => provider.accountProvider?.accounts ?? []);
+    const routeCounts = activeRoutes.reduce((counts, route) => {
+      counts[route.state] += 1;
+      return counts;
+    }, {
+      fixed: 0,
+      auto: 0,
+      fallback: 0,
+      missing: 0,
+    } satisfies Record<ModelGatewayActiveRouteStatus["state"], number>);
+    return {
+      providers: {
+        total: registry.providers.length,
+        enabled: enabledProviders.length,
+        disabled: registry.providers.length - enabledProviders.length,
+        healthy: registry.providers.filter((provider) => providerHasHealthyRoutingSurface(provider)).length,
+        degraded: registry.providers.filter((provider) => providerHasDegradedHealth(provider)).length,
+        openCircuitProviders: registry.providers.filter((provider) => providerOpenCircuitCount(provider) > 0).length,
+        openCircuits: registry.providers.reduce((sum, provider) => sum + providerOpenCircuitCount(provider), 0),
+        accountBacked: registry.providers.filter((provider) => provider.sourceType === "account-backed").length,
+        endpointProfiles: registry.providers.reduce((sum, provider) => sum + provider.endpointProfiles.length, 0),
+        enabledEndpointProfiles: registry.providers.reduce((sum, provider) => sum + enabledEndpointProfiles(provider).length, 0),
+        declaredModels: registry.providers.reduce((sum, provider) => sum + providerDeclaredModelCount(provider), 0),
+      },
+      accounts: {
+        total: providerAccounts.length,
+        ready: providerAccounts.filter((account) => accountAvailableForRouting(account)).length,
+        attention: providerAccounts.filter((account) => !accountAvailableForRouting(account)).length,
+      },
+      routes: {
+        total: activeRoutes.length,
+        ready: routeCounts.fixed + routeCounts.auto + routeCounts.fallback,
+        fixed: routeCounts.fixed,
+        auto: routeCounts.auto,
+        fallback: routeCounts.fallback,
+        missing: routeCounts.missing,
+        alertCount: activeRoutes.filter((route) => route.warning || route.state === "missing").length,
+      },
+    };
+  }
+
+  function providerDeclaredModelCount(provider: ModelGatewayProvider): number {
+    const providerModels = provider.models.models.length;
+    const endpointModels = provider.endpointProfiles.reduce((sum, profile) => (
+      sum + (profile.models?.models.length ?? 0)
+    ), 0);
+    return providerModels + endpointModels;
   }
 
   function defaultRouteIdForScope(scope: ModelGatewayAppScope): ModelGatewayRouteId {

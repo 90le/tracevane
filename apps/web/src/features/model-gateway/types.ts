@@ -116,6 +116,7 @@ export type {
   ModelGatewayRuntimeResponse,
   ModelGatewayUsageLedgerResponse,
   ModelGatewayProvidersResponse,
+  ModelGatewayProvidersSummary,
   ModelGatewayProviderSecretResponse,
   ModelGatewayClientAuthResponse,
   ModelGatewayProviderDetectResponse,

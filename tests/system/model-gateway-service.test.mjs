@@ -8000,6 +8000,14 @@ test("model gateway provider list reports active route fallback and disabled act
   assert.equal(codexRoute?.resolvedProviderId, "route-backup");
   assert.match(codexRoute?.warning || "", /route-primary.*circuit is open/);
   assert.ok(listed.activeRouteAlerts.some((alert) => /route-primary.*circuit is open/.test(alert)));
+  assert.equal(listed.summary.providers.total, 2);
+  assert.equal(listed.summary.providers.enabled, 2);
+  assert.equal(listed.summary.providers.openCircuitProviders, 1);
+  assert.equal(listed.summary.accounts.total, 0);
+  assert.equal(listed.summary.routes.total, listed.activeRoutes.length);
+  assert.equal(listed.summary.routes.fallback, 1);
+  assert.equal(listed.summary.routes.missing, listed.activeRoutes.length - 1);
+  assert.equal(listed.summary.routes.alertCount, listed.activeRouteAlerts.length);
 
   service.setActiveProvider(undefined, {
     scope: "codex",
