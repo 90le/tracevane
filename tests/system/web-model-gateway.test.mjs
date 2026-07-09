@@ -253,6 +253,12 @@ test("Providers view runs Codex login as a tracked dialog flow", () => {
 
 test("Providers view aggregates endpoint risk and smokes every active scope for that provider", () => {
   const providers = read(`${VIEWS_DIR}/ProvidersView.tsx`);
+  assert.match(providers, /providersQuery\.data\?\.summary/);
+  assert.match(providers, /GatewayMetricCard/);
+  assert.match(providers, /GatewayMark/);
+  assert.match(providers, /providerIdentityFromText/);
+  assert.match(providers, /providerRows/);
+  assert.match(providers, /providerStatusRank/);
   assert.match(providers, /activeRoutesForProvider/);
   assert.match(providers, /route\.resolvedProviderId === provider\.id/);
   assert.match(providers, /smokeMutation\.mutate\(\{ scope, model: route\.resolvedModel \?\? undefined \}/);

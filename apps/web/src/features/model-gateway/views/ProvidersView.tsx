@@ -46,6 +46,12 @@ import {
   type ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
 
 const API_FORMAT_LABEL: Record<ModelGatewayApiFormat, string> = {
   openai_chat: "openai",
@@ -58,6 +64,12 @@ const SOURCE_TYPE_LABEL: Record<ModelGatewayProviderSourceType, string> = {
   "api-key": "API Key",
   "account-backed": "账号制",
   "external-relay": "中继",
+};
+
+const LIVE_COMPARISON: GatewayComparison = {
+  label: "实时",
+  tone: "primary",
+  direction: "flat",
 };
 
 /** Status pill built only from live provider health + enabled state. */
@@ -113,6 +125,14 @@ function providerStatus(provider: ModelGatewayProviderView): {
     return { variant: "warn", label: "部分异常" };
   }
   return { variant: "ok", label: "在线" };
+}
+
+function providerStatusRank(provider: ModelGatewayProviderView): number {
+  const status = providerStatus(provider);
+  if (status.variant === "bad") return 0;
+  if (status.variant === "warn") return 1;
+  if (status.variant === "mute") return 2;
+  return 3;
 }
 
 function providerStatusDetail(provider: ModelGatewayProviderView): string {
@@ -408,38 +428,109 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
 
   const providers = providersQuery.data?.providers ?? [];
   const activeRoutes = providersQuery.data?.activeRoutes ?? [];
+  const summary = providersQuery.data?.summary;
+  const providerCounts = summary?.providers;
+  const routeCounts = summary?.routes;
+  const accountCounts = summary?.accounts;
+  const providerRows = [...providers].sort((left, right) => (
+    providerStatusRank(left) - providerStatusRank(right)
+    || left.failover.priority - right.failover.priority
+    || left.name.localeCompare(right.name)
+  ));
+  const enabledProviders = providerCounts?.enabled ?? providers.filter((provider) => provider.enabled).length;
+  const healthyProviders = providerCounts?.healthy ?? providers.filter((provider) => providerStatus(provider).variant === "ok").length;
+  const providerTotal = providerCounts?.total ?? providers.length;
+  const routeReady = routeCounts?.ready ?? activeRoutes.filter((route) => route.state !== "missing").length;
+  const routeTotal = routeCounts?.total ?? activeRoutes.length;
+  const openCircuits = providerCounts?.openCircuits ?? providers.reduce((sum, provider) => {
+    const endpointRisk = endpointProfileRisk(provider);
+    return sum + (provider.health.circuitState === "open" ? 1 : 0) + endpointRisk.open;
+  }, 0);
+  const endpointProfiles = providerCounts?.endpointProfiles ?? providers.reduce((sum, provider) => sum + (provider.endpointProfiles?.length ?? 0), 0);
+  const readyAccounts = accountCounts?.ready ?? providers.reduce((sum, provider) => sum + accountProviderRisk(provider).ready, 0);
+  const totalAccounts = accountCounts?.total ?? providers.reduce((sum, provider) => sum + accountProviderRisk(provider).total, 0);
+  const attentionAccounts = accountCounts?.attention ?? Math.max(0, totalAccounts - readyAccounts);
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="grid gap-4">
-      {/* Page head + the two SEPARATE create entry points (IA contract). */}
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-ink-strong">Provider</h2>
-          <p className="text-sm text-muted">
-            列表优先：身份 / 类型 / 状态与常用动作。深度配置进子页面，删除在配置页危险区。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => goToView("providercfg", { create: true })}
-          >
-            <KeyRound />
-            添加 Provider
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleCodexLogin}
-            disabled={codexLoginMutation.isPending}
-          >
-            <Bot />
-            {codexLoginMutation.isPending ? "发起中…" : "Codex 账户登录"}
-          </Button>
-        </div>
-      </div>
+        <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+          <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--teal)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={openCircuits > 0 ? "warn" : "ok"}>
+                  {openCircuits > 0 ? `${openCircuits} 个熔断点` : "Provider 路由可用"}
+                </Badge>
+                <Badge variant="outline">{enabledProviders} 个启用</Badge>
+              </div>
+              <h2 className="mt-3 text-2xl font-semibold text-ink-strong">服务商控制台</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+                管理 API Key、账号制 Provider、协议端点和当前活跃路由；列表优先展示状态、模型、scope 与常用动作。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => goToView("providercfg", { create: true })}
+              >
+                <KeyRound />
+                添加 Provider
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleCodexLogin}
+                disabled={codexLoginMutation.isPending}
+              >
+                <Bot />
+                {codexLoginMutation.isPending ? "发起中…" : "Codex 账户登录"}
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+            <GatewayMetricCard
+              icon={<Settings2 />}
+              tone="teal"
+              label="Provider 健康"
+              value={`${healthyProviders}/${providerTotal}`}
+              sub={`${enabledProviders} 启用 · ${openCircuits} 熔断`}
+              accent={`${providerRows.length} total`}
+              meter={providerTotal > 0 ? healthyProviders / providerTotal : 0}
+              comparison={LIVE_COMPARISON}
+            />
+            <GatewayMetricCard
+              icon={<Activity />}
+              tone="primary"
+              label="活跃路由"
+              value={`${routeReady}/${routeTotal}`}
+              sub={`${routeCounts?.fallback ?? 0} 降级 · ${routeCounts?.missing ?? 0} 未配置`}
+              accent={`${providersQuery.data?.activeRouteAlerts.length ?? 0} 告警`}
+              meter={routeTotal > 0 ? routeReady / routeTotal : 0}
+              comparison={LIVE_COMPARISON}
+            />
+            <GatewayMetricCard
+              icon={<Users />}
+              tone="violet"
+              label="账号池"
+              value={totalAccounts > 0 ? `${readyAccounts}/${totalAccounts}` : "0"}
+              sub={totalAccounts > 0 ? `${attentionAccounts} 个账号需处理` : "当前为 API Key / 中继 Provider"}
+              accent={totalAccounts > 0 ? "accounts" : "none"}
+              meter={totalAccounts > 0 ? readyAccounts / totalAccounts : 1}
+              comparison={LIVE_COMPARISON}
+            />
+            <GatewayMetricCard
+              icon={<FlaskConical />}
+              tone="primary"
+              label="端点配置"
+              value={`${endpointProfiles}`}
+              sub={`${providerCounts?.declaredModels ?? 0} 个声明模型`}
+              accent="profiles"
+              meter={endpointProfiles > 0 ? 1 : 0}
+              comparison={LIVE_COMPARISON}
+            />
+          </div>
+        </section>
 
       {providers.length === 0 ? (
         <EmptyState
@@ -457,37 +548,40 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {providers.map((provider) => {
+            {providerRows.map((provider) => {
               const status = providerStatus(provider);
               const isAccountProvider = Boolean(provider.accountProvider);
               const providerActiveRoutes = activeRoutesForProvider(provider, activeRoutes);
               return (
                 <TableRow key={provider.id}>
                   <TableCell>
-                    <div className="grid min-w-0 gap-0.5">
-                      <strong className="truncate text-base text-ink-strong">
-                        {provider.name}
-                      </strong>
-                      <span className="truncate text-sm text-muted">
-                        {providerIdentitySub(provider)}
-                      </span>
-                      {providerActiveRoutes.length > 0 && (
-                        <span className="flex flex-wrap gap-1 pt-1">
-                          {providerActiveRoutes.map((route) => (
-                            <Badge
-                              key={route.scope}
-                              variant={route.state === "fallback" ? "warn" : "outline"}
-                              title={[
-                                route.message,
-                                route.resolvedModel ? `model=${route.resolvedModel}` : null,
-                              ].filter(Boolean).join(" · ")}
-                            >
-                              {route.scope}
-                              {route.resolvedModel ? ` · ${route.resolvedModel}` : ""}
-                            </Badge>
-                          ))}
+                    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+                      <GatewayMark identity={providerIdentityFromText(provider.name || provider.id)} size="lg" />
+                      <div className="grid min-w-0 gap-0.5">
+                        <strong className="truncate text-base text-ink-strong">
+                          {provider.name}
+                        </strong>
+                        <span className="truncate text-sm text-muted">
+                          {providerIdentitySub(provider)}
                         </span>
-                      )}
+                        {providerActiveRoutes.length > 0 && (
+                          <span className="flex flex-wrap gap-1 pt-1">
+                            {providerActiveRoutes.map((route) => (
+                              <Badge
+                                key={route.scope}
+                                variant={route.state === "fallback" ? "warn" : "outline"}
+                                title={[
+                                  route.message,
+                                  route.resolvedModel ? `model=${route.resolvedModel}` : null,
+                                ].filter(Boolean).join(" · ")}
+                              >
+                                {route.scope}
+                                {route.resolvedModel ? ` · ${route.resolvedModel}` : ""}
+                              </Badge>
+                            ))}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
