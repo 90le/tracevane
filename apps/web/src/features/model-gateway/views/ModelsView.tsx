@@ -1,5 +1,15 @@
 import * as React from "react";
-import { Box, Check, Loader2, Pencil, Search, X } from "lucide-react";
+import {
+  Box,
+  Brain,
+  Check,
+  Layers3,
+  Loader2,
+  Pencil,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -29,6 +39,13 @@ import type {
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
 import { formatModelTokenBudget } from "../budget-format";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  ModelLogo,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
 
 /** A model entry flattened with its owning provider so writes target the right PUT. */
 interface AggregatedModel {
@@ -46,6 +63,12 @@ const FEATURE_LABEL: Partial<Record<keyof ModelGatewayModelFeatures, string>> = 
   streaming: "streaming",
   responses: "responses",
   imageGeneration: "image",
+};
+
+const LIVE_COMPARISON: GatewayComparison = {
+  label: "实时",
+  tone: "primary",
+  direction: "flat",
 };
 
 function featureBadges(features?: ModelGatewayModelFeatures): string[] {
@@ -124,14 +147,24 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
   const allRows = React.useMemo(() => aggregateModels(providers), [providers]);
   const q = search.trim().toLowerCase();
   const rows = React.useMemo(() => {
-    if (!q) return allRows;
-    return allRows.filter(
+    const filtered = !q ? allRows : allRows.filter(
       (r) =>
         r.model.id.toLowerCase().includes(q) ||
         (r.model.aliases ?? []).some((a) => a.toLowerCase().includes(q)) ||
         r.providerName.toLowerCase().includes(q),
     );
+    return [...filtered].sort((left, right) => (
+      left.providerName.localeCompare(right.providerName)
+      || Number(right.isDefault) - Number(left.isDefault)
+      || left.model.id.localeCompare(right.model.id)
+    ));
   }, [allRows, q]);
+  const enabledProviderCount = providers.filter((provider) => provider.enabled).length;
+  const defaultModelCount = allRows.filter((row) => row.isDefault).length;
+  const capabilityRows = allRows.filter((row) => featureBadges(row.model.features).length > 0).length;
+  const maxContextWindow = allRows.reduce<number | null>((max, row) => (
+    row.model.contextWindow == null ? max : Math.max(max ?? 0, row.model.contextWindow)
+  ), null);
 
   const findProvider = (providerId: string) =>
     providers.find((p) => p.id === providerId) ?? null;
@@ -215,30 +248,74 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold text-ink-strong">模型</h2>
-        <p className="text-sm text-muted">
-          已启用 Provider 暴露的模型与 alias。行内编辑 alias、设为该 Provider 默认。
-        </p>
-      </div>
-
-      {allRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索模型 id / alias / Provider"
-              className="pl-8"
-              aria-label="搜索模型"
-            />
+      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.45fr)] lg:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="ok">{enabledProviderCount} 个 Provider 启用</Badge>
+              <Badge variant="outline">{defaultModelCount} 个默认模型</Badge>
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold text-ink-strong">模型目录</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+              已启用 Provider 暴露的模型、alias、上下文预算和能力声明。这里维护的是路由目录，不做虚构模型能力。
+            </p>
           </div>
-          <span className="text-xs text-subtle">
-            {q ? `${rows.length} / ${allRows.length}` : `${allRows.length} 个模型`}
-          </span>
+          {allRows.length > 0 && (
+            <div className="relative min-w-0">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索模型 id / alias / Provider"
+                className="pl-8"
+                aria-label="搜索模型"
+              />
+            </div>
+          )}
         </div>
-      )}
+        <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+          <GatewayMetricCard
+            icon={<Box />}
+            tone="primary"
+            label="模型总数"
+            value={`${allRows.length}`}
+            sub={q ? `当前匹配 ${rows.length} 个` : "已启用 Provider 的模型目录"}
+            accent={q ? "filtered" : "all"}
+            meter={allRows.length > 0 ? 1 : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Layers3 />}
+            tone="teal"
+            label="Provider 覆盖"
+            value={`${enabledProviderCount}`}
+            sub={`${providers.length} 个 Provider，${enabledProviderCount} 个启用`}
+            accent="providers"
+            meter={providers.length > 0 ? enabledProviderCount / providers.length : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Sparkles />}
+            tone="violet"
+            label="默认模型"
+            value={`${defaultModelCount}`}
+            sub="每个 Provider 的默认路由候选"
+            accent="default"
+            meter={enabledProviderCount > 0 ? defaultModelCount / enabledProviderCount : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Brain />}
+            tone="primary"
+            label="能力声明"
+            value={`${capabilityRows}`}
+            sub={`最大上下文 ${formatModelTokenBudget(maxContextWindow) ?? "未声明"}`}
+            accent="features"
+            meter={allRows.length > 0 ? capabilityRows / allRows.length : 0}
+            comparison={LIVE_COMPARISON}
+          />
+        </div>
+      </section>
 
       {allRows.length === 0 ? (
         <EmptyState
@@ -272,9 +349,7 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                 <TableRow key={row.key}>
                   <TableCell>
                     <div className="flex min-w-0 items-start gap-2.5">
-                      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-3.5">
-                        <Box />
-                      </span>
+                      <ModelLogo model={row.model.id} size="md" />
                       <div className="grid min-w-0 gap-1">
                         <strong className="truncate text-base text-ink-strong">
                           {row.model.label || row.model.id}
@@ -331,7 +406,13 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                   </TableCell>
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">Provider</span>
-                    <span className="text-sm text-muted">{row.providerName}</span>
+                    <span className="inline-grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+                      <GatewayMark
+                        identity={providerIdentityFromText(row.providerName)}
+                        size="sm"
+                      />
+                      <span className="truncate text-sm text-muted">{row.providerName}</span>
+                    </span>
                   </TableCell>
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">上下文 / 输出</span>

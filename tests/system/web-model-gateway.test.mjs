@@ -345,6 +345,14 @@ test("Account pool view exposes account readiness controls from live provider ac
 
 test("Models view surfaces declared model context and output budgets", () => {
   const models = read(`${VIEWS_DIR}/ModelsView.tsx`);
+  assert.match(models, /GatewayMetricCard/);
+  assert.match(models, /ModelLogo/);
+  assert.match(models, /GatewayMark/);
+  assert.match(models, /providerIdentityFromText/);
+  assert.match(models, /模型目录/);
+  assert.match(models, /enabledProviderCount/);
+  assert.match(models, /defaultModelCount/);
+  assert.match(models, /capabilityRows/);
   assert.match(models, /contextWindow/);
   assert.match(models, /maxOutputTokens/);
   assert.match(models, /上下文 \/ 输出/);
