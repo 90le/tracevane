@@ -103,6 +103,7 @@ test("every view consumes the real query hooks via @/lib/query/model-gateway", (
 
 test("Usage view shows charted usage with request/token sort controls", () => {
   const usage = read(`${VIEWS_DIR}/UsageView.tsx`);
+  const gatewayUi = read(`${VIEWS_DIR}/GatewayUi.tsx`);
   assert.match(usage, /useModelGatewayUsageQuery/);
   // Rows come from the API payload, not a hard-coded array.
   assert.match(usage, /usage(Query)?\.data/);
@@ -142,9 +143,14 @@ test("Usage view shows charted usage with request/token sort controls", () => {
   assert.match(usage, /每日趋势/);
   assert.match(usage, /统计口径/);
   assert.match(usage, /Provider usage 优先入账/);
-  assert.match(usage, /modelIdentity/);
+  assert.match(usage, /GatewayMetricCard/);
   assert.match(usage, /ModelLogo/);
   assert.match(usage, /ProviderPill/);
+  assert.match(gatewayUi, /modelIdentity/);
+  assert.match(gatewayUi, /GatewayMark/);
+  assert.match(gatewayUi, /GatewayPill/);
+  assert.match(gatewayUi, /ComparisonBadge/);
+  assert.match(gatewayUi, /GatewayMetricCard/);
   assert.match(usage, /min-\[520px\]:grid-cols-2/);
   assert.match(usage, /xl:grid-cols-4/);
   assert.doesNotMatch(usage, /<Table/);
