@@ -18,8 +18,14 @@ export class CodexResponsesChatAdapterError extends Error {
 export interface CodexResponsesChatRequestAdapterResult {
   chatRequest: JsonRecord;
   customToolNames: string[];
+  namespaceToolNamesByChatName: Record<string, CodexResponsesChatNamespaceToolName>;
   model: string | null;
   stream: boolean;
+}
+
+export interface CodexResponsesChatNamespaceToolName {
+  namespace: string;
+  name: string;
 }
 
 export interface CodexResponsesChatRequestAdapterOptions {
@@ -129,6 +135,7 @@ export function adaptCodexResponsesRequestToChat(
   applyResponsesMaxTokensToChat(chatRequest, request);
   applyResponsesLogprobControlsToChat(chatRequest, request);
 
+  const namespaceToolNamesByChatName = collectResponsesNamespaceToolNamesByChatName(request.tools);
   const tools = mapResponsesToolsToChat(request.tools);
   applyResponsesWebSearchOptionsToChat(chatRequest, request.tools);
   if (tools.length) chatRequest.tools = tools;
@@ -152,6 +159,7 @@ export function adaptCodexResponsesRequestToChat(
   return {
     chatRequest,
     customToolNames,
+    namespaceToolNamesByChatName,
     model,
     stream,
   };
@@ -160,7 +168,10 @@ export function adaptCodexResponsesRequestToChat(
 export function adaptChatCompletionToCodexResponse(
   chatCompletion: unknown,
   fallbackModel: string | null,
-  options: { customToolNames?: Iterable<string> } = {},
+  options: {
+    customToolNames?: Iterable<string>;
+    namespaceToolNamesByChatName?: Record<string, CodexResponsesChatNamespaceToolName>;
+  } = {},
 ): JsonRecord {
   if (!isRecord(chatCompletion)) {
     throw new CodexResponsesChatAdapterError(
@@ -198,8 +209,9 @@ export function adaptChatCompletionToCodexResponse(
   }
 
   const customToolNames = new Set(options.customToolNames || []);
+  const namespaceToolNamesByChatName = options.namespaceToolNamesByChatName || {};
   for (const toolCall of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
-    const mapped = mapChatToolCallToResponses(toolCall, reasoningText, customToolNames);
+    const mapped = mapChatToolCallToResponses(toolCall, reasoningText, customToolNames, namespaceToolNamesByChatName);
     if (mapped) output.push(mapped);
   }
   const additionalChoicesText = chatAdditionalChoicesToResponsesText(chatCompletion);
@@ -554,11 +566,12 @@ function mapResponsesToolCallToChatToolCall(item: JsonRecord): JsonRecord | null
   const callId = stringOrNull(item.call_id) || stringOrNull(item.id);
   const name = stringOrNull(item.name);
   if (!callId || !name) return null;
+  const namespace = stringOrNull(item.namespace);
   const toolCall: JsonRecord = {
     id: callId,
     type: "function",
     function: {
-      name,
+      name: namespace ? chatNameForNamespaceTool(namespace, name) : name,
       arguments: item.type === "custom_tool_call"
         ? canonicalizeCustomToolInput(item.input)
         : canonicalizeToolArguments(item.arguments),
@@ -827,6 +840,7 @@ function responsesContentPartFallbackToChatText(part: JsonRecord): string {
 function mapResponsesToolsToChat(tools: unknown): JsonRecord[] {
   if (!Array.isArray(tools)) return [];
   return tools.flatMap((tool) => {
+    if (isRecord(tool) && tool.type === "namespace") return flattenResponsesNamespaceToolsToChat(tool);
     const mapped = mapResponsesToolToChat(tool);
     return mapped ? [mapped] : [];
   });
@@ -838,6 +852,71 @@ function collectResponsesCustomToolNames(tools: unknown): string[] {
     .filter((tool): tool is JsonRecord => isRecord(tool) && tool.type === "custom")
     .map((tool) => stringOrNull(tool.name) || (isRecord(tool.function) ? stringOrNull(tool.function.name) : null))
     .filter((name): name is string => Boolean(name));
+}
+
+function collectResponsesNamespaceToolNamesByChatName(tools: unknown): Record<string, CodexResponsesChatNamespaceToolName> {
+  const entries: Record<string, CodexResponsesChatNamespaceToolName> = {};
+  if (!Array.isArray(tools)) return entries;
+  for (const tool of tools) {
+    if (!isRecord(tool) || tool.type !== "namespace") continue;
+    const namespace = stringOrNull(tool.name) || stringOrNull(tool.namespace);
+    if (!namespace || !Array.isArray(tool.tools)) continue;
+    for (const nestedTool of tool.tools) {
+      const source = isRecord(nestedTool) && isRecord(nestedTool.function) ? nestedTool.function : nestedTool;
+      if (!isRecord(source)) continue;
+      const name = stringOrNull(source.name);
+      if (name) entries[chatNameForNamespaceTool(namespace, name)] = { namespace, name };
+    }
+  }
+  return entries;
+}
+
+function flattenResponsesNamespaceToolsToChat(tool: JsonRecord): JsonRecord[] {
+  const namespace = stringOrNull(tool.name) || stringOrNull(tool.namespace);
+  if (!namespace || !Array.isArray(tool.tools)) return [];
+  return tool.tools.flatMap((nestedTool) => {
+    const mapped = mapResponsesNamespacedToolToChat(namespace, nestedTool);
+    return mapped ? [mapped] : [];
+  });
+}
+
+function mapResponsesNamespacedToolToChat(namespace: string, tool: unknown): JsonRecord | null {
+  if (!isRecord(tool)) return null;
+  const source = isRecord(tool.function) ? tool.function : tool;
+  const name = stringOrNull(source.name);
+  if (!name) return null;
+  const fn: JsonRecord = { name: chatNameForNamespaceTool(namespace, name) };
+  const description = stringOrNull(source.description);
+  fn.description = description ? `[Responses namespace:${namespace}] ${description}` : `OpenAI Responses namespace tool ${namespace}.${name}`;
+  if (source.parameters !== undefined) fn.parameters = source.parameters;
+  if (typeof source.strict === "boolean") fn.strict = source.strict;
+  return { type: "function", function: fn };
+}
+
+function mapResponsesToolSearchToChat(tool: JsonRecord): JsonRecord {
+  const fn: JsonRecord = {
+    name: "openai_tool_search",
+    description: stringOrNull(tool.description) || "Compatibility fallback for OpenAI Responses tool_search. Search the available deferred tools by query.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for discovering deferred tools." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  };
+  if (typeof tool.strict === "boolean") fn.strict = tool.strict;
+  return { type: "function", function: fn };
+}
+
+function chatNameForNamespaceTool(namespace: string, name: string): string {
+  return `${sanitizeChatToolNamePart(namespace)}__${sanitizeChatToolNamePart(name)}`;
+}
+
+function sanitizeChatToolNamePart(value: string): string {
+  const sanitized = value.trim().replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+  return sanitized || "tool";
 }
 
 function applyResponsesWebSearchOptionsToChat(chatRequest: JsonRecord, tools: unknown): void {
@@ -873,6 +952,8 @@ function mapResponsesWebSearchLocationToChat(userLocation: unknown): unknown {
 
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
+  if (tool.type === "namespace") return null;
+  if (tool.type === "tool_search") return mapResponsesToolSearchToChat(tool);
   if (isOpenAIWebSearchToolType(tool.type)) return { ...tool };
   if (tool.type === "file_search") return mapResponsesFileSearchToolToChat(tool);
   if (tool.type !== "function" && tool.type !== "custom") return null;
@@ -1058,6 +1139,8 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
   if (toolChoice.type === "file_search") return { type: "function", function: { name: "file_search" } };
   if (toolChoice.type === "function") {
     const name = stringOrNull(toolChoice.name) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null);
+    const namespace = stringOrNull(toolChoice.namespace) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.namespace) : null);
+    if (namespace && name) return { type: "function", function: { name: chatNameForNamespaceTool(namespace, name) } };
     return name ? { type: "function", function: { name } } : undefined;
   }
   if (toolChoice.type === "custom") {
@@ -1088,12 +1171,28 @@ function mapChatToolCallToResponses(
   toolCall: unknown,
   reasoningText: string | null,
   customToolNames: Set<string> = new Set(),
+  namespaceToolNamesByChatName: Record<string, CodexResponsesChatNamespaceToolName> = {},
 ): JsonRecord | null {
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
   if (!name) return null;
   const id = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
+  const namespaced = namespaceToolNamesByChatName[name];
+  if (namespaced) {
+    const item: JsonRecord = {
+      type: "function_call",
+      id,
+      call_id: id,
+      status: stringOrNull(toolCall.status) || "completed",
+      namespace: namespaced.namespace,
+      name: namespaced.name,
+      arguments: stringOrNull(fn.arguments) || "{}",
+    };
+    if (toolCall.phase !== undefined) item.phase = toolCall.phase;
+    if (reasoningText) item.reasoning_content = reasoningText;
+    return item;
+  }
   if (customToolNames.has(name)) {
     const item: JsonRecord = {
       type: "custom_tool_call",

@@ -18,6 +18,7 @@ export interface CodexStreamErrorEnvelope {
 
 export interface CodexStreamingAdapterOptions {
   customToolNames?: Iterable<string>;
+  namespaceToolNamesByChatName?: Record<string, { namespace: string; name: string }>;
 }
 
 export class ModelGatewayCodexStreamAdapterError extends Error {
@@ -50,6 +51,7 @@ interface FunctionCallState {
   arguments: string;
   status: string | null;
   custom: boolean;
+  namespace?: { namespace: string; name: string };
   reasoningContent: string | null;
 }
 
@@ -79,6 +81,7 @@ interface StreamingState {
   nextOutputIndex: number;
   inlineThinkActive: boolean;
   customToolNames: Set<string>;
+  namespaceToolNamesByChatName: Record<string, { namespace: string; name: string }>;
   completedOutput: JsonRecord[];
   reasoning: ReasoningState;
   text: TextState;
@@ -144,6 +147,7 @@ function createStreamingState(fallbackModel: string | null, options: CodexStream
     nextOutputIndex: 0,
     inlineThinkActive: false,
     customToolNames: new Set(options.customToolNames || []),
+    namespaceToolNamesByChatName: options.namespaceToolNamesByChatName || {},
     completedOutput: [],
     reasoning: {
       added: false,
@@ -444,6 +448,7 @@ function ensureFunctionCall(
       arguments: "",
       status: null,
       custom: state.customToolNames.has(patch.name),
+      namespace: state.namespaceToolNamesByChatName[patch.name],
       reasoningContent: null,
     };
     state.nextOutputIndex += 1;
@@ -456,6 +461,7 @@ function ensureFunctionCall(
   }
   if (patch.name) tool.name = patch.name;
   if (patch.name && state.customToolNames.has(patch.name)) tool.custom = true;
+  if (patch.name && state.namespaceToolNamesByChatName[patch.name]) tool.namespace = state.namespaceToolNamesByChatName[patch.name];
   return tool;
 }
 
@@ -673,9 +679,10 @@ function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
     type: "function_call",
     status,
     call_id: tool.callId,
-    name: tool.name,
+    name: tool.namespace?.name || tool.name,
     arguments: tool.arguments || "{}",
   };
+  if (tool.namespace) item.namespace = tool.namespace.namespace;
   if (tool.reasoningContent) item.reasoning_content = tool.reasoningContent;
   return item;
 }

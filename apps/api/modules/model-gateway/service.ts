@@ -11854,6 +11854,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
     let codexHistoryRecordBodyText = bodyText;
     let requestModelForLog = resolvedModel || requestModel;
     let codexResponsesChatCustomToolNames: string[] = [];
+    let codexResponsesChatNamespaceToolNamesByChatName: Record<string, { namespace: string; name: string }> = {};
     let responsesAdapterStopSequences: string[] = [];
     let responsesAdapterAllowToolCalls = true;
     let chatAdapterLegacyFunctionCalls = false;
@@ -11943,7 +11944,10 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             reasoning: provider.reasoning,
           })
           : null;
-        if (codexToChat) codexResponsesChatCustomToolNames = codexToChat.customToolNames;
+        if (codexToChat) {
+          codexResponsesChatCustomToolNames = codexToChat.customToolNames;
+          codexResponsesChatNamespaceToolNamesByChatName = codexToChat.namespaceToolNamesByChatName;
+        }
         const chatRequestBodyText = codexToChat
           ? JSON.stringify(codexToChat.chatRequest)
           : bodyText;
@@ -12085,6 +12089,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           reasoning: provider.reasoning,
         });
         codexResponsesChatCustomToolNames = adapted.customToolNames;
+        codexResponsesChatNamespaceToolNamesByChatName = adapted.namespaceToolNamesByChatName;
         upstreamBodyText = JSON.stringify(adapted.chatRequest);
         requestModelForLog = adapted.model || requestModel;
         headers.set("content-type", "application/json");
@@ -12261,6 +12266,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           const streamingBody = observeReadableStreamFirstChunk(upstream.body, markFirstByte);
           const streamingAdapterOptions = {
             customToolNames: codexResponsesChatCustomToolNames,
+            namespaceToolNamesByChatName: codexResponsesChatNamespaceToolNamesByChatName,
             stopSequences: responsesAdapterStopSequences,
             allowToolCalls: responsesAdapterAllowToolCalls,
             legacyFunctionCalls: chatAdapterLegacyFunctionCalls,
@@ -12699,6 +12705,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           adaptedResponse = useCodexResponsesAnthropicAdapter
             ? adaptChatCompletionToCodexResponse(chatCompletion, requestModelForLog, {
               customToolNames: codexResponsesChatCustomToolNames,
+              namespaceToolNamesByChatName: codexResponsesChatNamespaceToolNamesByChatName,
             })
             : chatCompletion;
         } catch (error) {
@@ -12836,6 +12843,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         try {
           adaptedResponse = adaptChatCompletionToCodexResponse(JSON.parse(responseText) as unknown, requestModelForLog, {
             customToolNames: codexResponsesChatCustomToolNames,
+            namespaceToolNamesByChatName: codexResponsesChatNamespaceToolNamesByChatName,
           });
         } catch (error) {
           const adapterError = error instanceof CodexResponsesChatAdapterError
