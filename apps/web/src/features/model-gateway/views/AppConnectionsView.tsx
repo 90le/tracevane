@@ -72,6 +72,18 @@ import type {
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
 import { formatModelBudgetPair } from "../budget-format";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
+
+const LIVE_COMPARISON: GatewayComparison = {
+  label: "实时",
+  tone: "primary",
+  direction: "flat",
+};
 
 /** Status pill from live `configured` + issues. */
 function connectionStatus(connection: ModelGatewayAppConnection): {
@@ -624,6 +636,9 @@ function ConnectionRow({
 }: ConnectionRowProps) {
   const status = connectionStatus(connection);
   const budget = routeBudgetSummary(activeRoute, providers);
+  const routeProviderIdentity = activeRoute?.resolvedProviderName
+    ? providerIdentityFromText(activeRoute.resolvedProviderName)
+    : null;
   const routeLine = activeRoute
     ? [
       activeRoute.resolvedProviderName,
@@ -639,25 +654,35 @@ function ConnectionRow({
       className={cn(highlighted && "scroll-mt-24")}
     >
       <TableCell>
-        <div className="grid min-w-0 gap-0.5">
-          <strong className="truncate text-base text-ink-strong">{connection.label}</strong>
-          <code className="truncate font-mono text-sm text-muted" title={connection.target.path}>
-            {connection.target.path}
-          </code>
-          <span className="flex flex-wrap items-center gap-1.5 text-xs text-subtle">
-            <Badge variant="outline">{connection.appScope}</Badge>
-            <span className="inline-flex items-center gap-1">
-              <Route className="size-3" />
-              {connection.protocol}
+        <div className="flex min-w-0 items-start gap-2.5">
+          <GatewayMark identity={providerIdentityFromText(connection.label)} size="md" />
+          <div className="grid min-w-0 gap-1">
+            <strong className="truncate text-base text-ink-strong">{connection.label}</strong>
+            <code className="truncate font-mono text-sm text-muted" title={connection.target.path}>
+              {connection.target.path}
+            </code>
+            <span className="flex flex-wrap items-center gap-1.5 text-xs text-subtle">
+              <Badge variant="outline">{connection.appScope}</Badge>
+              <span className="inline-flex items-center gap-1">
+                <Route className="size-3" />
+                {connection.protocol}
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <ServerCog className="size-3" />
+                <span className="truncate" title={connection.endpoint}>{connection.endpoint}</span>
+              </span>
             </span>
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <ServerCog className="size-3" />
-              <span className="truncate" title={connection.endpoint}>{connection.endpoint}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+              {routeProviderIdentity ? (
+                <GatewayMark identity={routeProviderIdentity} size="sm" />
+              ) : (
+                <Route className="size-3 shrink-0 text-subtle" />
+              )}
+              <span className="truncate" title={routeLine}>
+                实际路由：{routeLine}
+              </span>
             </span>
-          </span>
-          <span className="truncate text-xs text-muted" title={routeLine}>
-            实际路由：{routeLine}
-          </span>
+          </div>
         </div>
       </TableCell>
       <TableCell>
@@ -867,6 +892,11 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
   const availableModels = data?.availableModels ?? [];
   const activeRoutes = providersQuery.data?.activeRoutes ?? [];
   const providerList = providersQuery.data?.providers ?? [];
+  const configuredConnectionCount = connections.filter((connection) => connection.configured).length;
+  const attentionConnectionCount = connections.filter(
+    (connection) => !connection.configured || connection.issues.length > 0,
+  ).length;
+  const writableConnectionCount = connections.filter((connection) => connection.canApply).length;
 
   const detailConnection = detailId
     ? connections.find((c) => c.id === detailId) ?? null
@@ -930,12 +960,78 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <div>
-        <h2 className="text-lg font-semibold text-ink-strong">客户端接入</h2>
-        <p className="text-sm text-muted">
-          把网关路由应用到本地 CLI 客户端（写入配置文件，先看差异再确认，支持源文件编辑与多版本回滚）。每行显示 Agent scope、协议、Gateway endpoint 和当前实际 active route，避免配置写入后测错客户端路由。应用 / 回滚为危险写操作：会先备份目标文件，操作前后均展示目标路径、差异与备份/恢复证据。
-        </p>
-      </div>
+      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="ok">{configuredConnectionCount} 个已应用</Badge>
+              <Badge variant={attentionConnectionCount > 0 ? "warn" : "outline"}>
+                {attentionConnectionCount} 个待处理
+              </Badge>
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold text-ink-strong">客户端接入控制台</h2>
+            <p className="mt-1 max-w-4xl text-sm leading-6 text-muted">
+              把网关路由应用到本地 CLI 客户端。每行展示 Agent scope、协议、Gateway endpoint 和当前实际 active route；写入、编辑和回滚仍先展示差异与备份证据。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void connectionsQuery.refetch();
+              void providersQuery.refetch();
+            }}
+          >
+            <RotateCcw />
+            刷新状态
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+          <GatewayMetricCard
+            icon={<Route />}
+            tone="primary"
+            label="客户端入口"
+            value={`${connections.length}`}
+            sub="Codex / Claude Code / OpenCode / OpenClaw"
+            accent="clients"
+            meter={connections.length > 0 ? 1 : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<CheckCircle2 />}
+            tone="teal"
+            label="已应用配置"
+            value={`${configuredConnectionCount}`}
+            sub={`${connections.length} 个入口中已写入网关路由`}
+            accent="applied"
+            meter={connections.length > 0 ? configuredConnectionCount / connections.length : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<AlertTriangle />}
+            tone="violet"
+            label="待处理"
+            value={`${attentionConnectionCount}`}
+            sub={`${writableConnectionCount} 个入口当前可写入`}
+            accent="risk"
+            meter={connections.length > 0 ? attentionConnectionCount / connections.length : 0}
+            comparison={{
+              ...LIVE_COMPARISON,
+              tone: attentionConnectionCount > 0 ? "warn" : "good",
+            }}
+          />
+          <GatewayMetricCard
+            icon={<ServerCog />}
+            tone="primary"
+            label="可选模型"
+            value={`${availableModels.length}`}
+            sub="客户端可绑定的网关模型目录"
+            accent="models"
+            meter={availableModels.length > 0 ? 1 : 0}
+            comparison={LIVE_COMPARISON}
+          />
+        </div>
+      </section>
 
       {connections.length === 0 ? (
         <EmptyState
@@ -943,7 +1039,13 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
           description="未检测到可接入的客户端（Codex / Claude Code / OpenCode / OpenClaw）。"
         />
       ) : (
-        <Table>
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[46%]" />
+            <col className="w-[20%]" />
+            <col className="w-[12%]" />
+            <col />
+          </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead>客户端 / 配置文件</TableHead>

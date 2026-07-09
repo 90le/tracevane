@@ -366,6 +366,13 @@ test("App Connections view links client config rows to active route diagnostics"
   const apps = read(`${VIEWS_DIR}/AppConnectionsView.tsx`);
   assert.match(apps, /useModelGatewayAppConnectionsQuery/);
   assert.match(apps, /useModelGatewayProvidersQuery/);
+  assert.match(apps, /GatewayMetricCard/);
+  assert.match(apps, /GatewayMark/);
+  assert.match(apps, /providerIdentityFromText/);
+  assert.match(apps, /客户端接入控制台/);
+  assert.match(apps, /configuredConnectionCount/);
+  assert.match(apps, /attentionConnectionCount/);
+  assert.match(apps, /writableConnectionCount/);
   assert.match(apps, /activeRouteForConnection/);
   assert.match(apps, /route\.scope === connection\.appScope/);
   assert.match(apps, /connection\.appScope/);
@@ -373,4 +380,6 @@ test("App Connections view links client config rows to active route diagnostics"
   assert.match(apps, /connection\.endpoint/);
   assert.match(apps, /实际路由/);
   assert.match(apps, /formatModelBudgetPair/);
+  assert.match(apps, /<Table className="table-fixed">/);
+  assert.match(apps, /<colgroup>/);
 });
