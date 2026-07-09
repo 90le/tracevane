@@ -3,9 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
+import type { ModelGatewayService } from "../model-gateway/service.js";
 import type {
   GitBranchSummary,
   GitCommitDetailPayload,
+  GitCommitMessagePayload,
   GitBlamePayload,
   GitCommitSummary,
   GitDiffPayload,
@@ -26,6 +28,9 @@ const GIT_BRANCH_LIMIT = 120;
 const GIT_DIFF_MAX_CHARS = 220_000;
 const GIT_DIFF_CONTENT_MAX_CHARS = 1_000_000;
 const GIT_DIFF_MAX_BUFFER = 4 * 1024 * 1024;
+const GIT_COMMIT_MESSAGE_DIFF_MAX_CHARS = 80_000;
+const GIT_COMMIT_MESSAGE_UNTRACKED_FILE_MAX_CHARS = 20_000;
+const GIT_COMMIT_MESSAGE_PROMPT_VERSION = "tracevane-git-commit-message-v1";
 
 interface GitRootContext {
   id: string;
@@ -39,12 +44,15 @@ export interface GitService {
   getCommit(rootId: string, directoryPath: string | undefined, hash?: string): GitCommitDetailPayload;
   getGraph(rootId: string, directoryPath: string | undefined, limit?: number, includeAll?: boolean, filePath?: string): GitGraphPayload;
   getBlame(rootId: string, directoryPath: string | undefined, filePath?: string): GitBlamePayload;
+  generateCommitMessage(rootId: string, directoryPath: string | undefined, staged?: boolean, model?: string): Promise<GitCommitMessagePayload>;
   initRepository(rootId: string, directoryPath?: string): GitStatusPayload;
   stagePaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
   unstagePaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
+  discardPaths(rootId: string, directoryPath: string | undefined, paths?: string[]): GitStatusPayload;
   commit(rootId: string, directoryPath: string | undefined, message?: string): GitStatusPayload;
   createBranch(rootId: string, directoryPath: string | undefined, name?: string, checkout?: boolean, from?: string): GitStatusPayload;
   checkout(rootId: string, directoryPath: string | undefined, target?: string, detach?: boolean): GitStatusPayload;
+  revertCommit(rootId: string, directoryPath: string | undefined, hash?: string): GitStatusPayload;
   deleteBranch(rootId: string, directoryPath: string | undefined, name?: string, force?: boolean): GitStatusPayload;
   renameBranch(rootId: string, directoryPath: string | undefined, oldName?: string, newName?: string): GitStatusPayload;
   setBranchUpstream(rootId: string, directoryPath: string | undefined, branch?: string, upstream?: string, unset?: boolean): GitStatusPayload;
@@ -189,6 +197,11 @@ function truncateGitDiff(diff: string): { diff: string; truncated: boolean } {
   };
 }
 
+function truncateText(value: string, maxChars: number): { text: string; truncated: boolean } {
+  if (value.length <= maxChars) return { text: value, truncated: false };
+  return { text: value.slice(0, maxChars), truncated: true };
+}
+
 function isBinaryDiff(diff: string): boolean {
   return /(?:Binary files .* differ|GIT binary patch)/.test(diff);
 }
@@ -226,6 +239,126 @@ function readWorkingTreeFile(repositoryRoot: string, filePath: string): { conten
     return { content: null, binary: true, truncated: false };
   }
   return contentFromBuffer(fs.readFileSync(absolutePath));
+}
+
+function diffPathLabel(filePath: string): string {
+  return filePath.replace(/\t/g, "\\t").replace(/\r?\n/g, " ");
+}
+
+function buildUntrackedDiff(repositoryRoot: string, filePath: string): { diff: string; truncated: boolean } {
+  const content = readWorkingTreeFile(repositoryRoot, filePath);
+  if (content.binary || content.content === null) {
+    return {
+      diff: [
+        `diff --git a/${diffPathLabel(filePath)} b/${diffPathLabel(filePath)}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/${diffPathLabel(filePath)}`,
+        "@@",
+        "+Binary or non-text content omitted from commit message context.",
+      ].join("\n"),
+      truncated: content.truncated,
+    };
+  }
+  const truncated = truncateText(content.content, GIT_COMMIT_MESSAGE_UNTRACKED_FILE_MAX_CHARS);
+  const lines = truncated.text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => `+${line}`)
+    .join("\n");
+  return {
+    diff: [
+      `diff --git a/${diffPathLabel(filePath)} b/${diffPathLabel(filePath)}`,
+      "new file mode 100644",
+      "--- /dev/null",
+      `+++ b/${diffPathLabel(filePath)}`,
+      "@@",
+      lines,
+      truncated.truncated ? "+...untracked file content truncated..." : "",
+    ].filter(Boolean).join("\n"),
+    truncated: content.truncated || truncated.truncated,
+  };
+}
+
+function changeListLine(change: GitFileChange): string {
+  return [
+    change.status || change.kind,
+    change.path,
+    change.previousPath ? `(from ${change.previousPath})` : "",
+    change.staged ? "[staged]" : "",
+    change.unstaged || change.kind === "untracked" ? "[working-tree]" : "",
+  ].filter(Boolean).join(" ");
+}
+
+function countChangeKinds(changes: GitFileChange[]): string {
+  const counts = changes.reduce<Record<string, number>>((acc, change) => {
+    acc[change.kind] = (acc[change.kind] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(counts)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([kind, count]) => `${kind}:${count}`)
+    .join(", ");
+}
+
+function commonChangeArea(changes: GitFileChange[]): string {
+  const parts = changes
+    .map((change) => change.path.split("/").filter(Boolean))
+    .filter((segments) => segments.length > 0);
+  if (!parts.length) return "workspace changes";
+  const prefix: string[] = [];
+  for (let index = 0; index < parts[0].length - 1; index += 1) {
+    const candidate = parts[0][index];
+    if (parts.every((segments) => segments[index] === candidate)) {
+      prefix.push(candidate);
+    } else {
+      break;
+    }
+  }
+  if (prefix.length) return prefix.slice(0, 3).join("/");
+  const top = parts[0][0];
+  if (top && changes.every((change) => change.path.startsWith(`${top}/`))) return top;
+  return "workspace changes";
+}
+
+function fallbackCommitMessage(changes: GitFileChange[], branch: string, staged: boolean, truncated: boolean): string {
+  const dominantKind = changes.reduce<Record<string, number>>((acc, change) => {
+    acc[change.kind] = (acc[change.kind] || 0) + 1;
+    return acc;
+  }, {});
+  const mainKind = Object.entries(dominantKind).sort((left, right) => right[1] - left[1])[0]?.[0] || "modified";
+  const verbByKind: Record<string, string> = {
+    added: "Add",
+    copied: "Add",
+    deleted: "Remove",
+    modified: "Update",
+    renamed: "Reorganize",
+    untracked: "Add",
+    conflicted: "Resolve",
+    unknown: "Update",
+  };
+  const subject = `${verbByKind[mainKind] || "Update"} ${commonChangeArea(changes)}`;
+  return [
+    subject.slice(0, 72),
+    "",
+    `- Summarize ${staged ? "staged" : "working tree"} changes on ${branch || "HEAD"}.`,
+    `- Files: ${changes.length}${countChangeKinds(changes) ? ` (${countChangeKinds(changes)})` : ""}.`,
+    ...changes.slice(0, 6).map((change) => `- ${changeListLine(change)}`),
+    changes.length > 6 ? `- ...and ${changes.length - 6} more file changes.` : "",
+    truncated ? "- Diff context was truncated before generating this message." : "",
+  ].filter(Boolean).join("\n");
+}
+
+function sanitizeGeneratedCommitMessage(value: string): string {
+  let message = value.replace(/\r\n/g, "\n").trim();
+  message = message.replace(/^```(?:\w+)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  message = message.replace(/^commit message:\s*/i, "").trim();
+  const lines = message.split("\n");
+  while (lines.length && !lines[0]?.trim()) lines.shift();
+  if (lines[0] && lines[0].length > 120) {
+    lines[0] = lines[0].slice(0, 120).trimEnd();
+  }
+  return lines.join("\n").slice(0, 4_000).trim();
 }
 
 function readGitObject(repositoryRoot: string, spec: string): { content: string | null; binary: boolean; truncated: boolean } {
@@ -786,6 +919,98 @@ function parseCommitDetail(
   };
 }
 
+function buildCommitMessageContext(
+  repositoryRoot: string,
+  status: GitStatusPayload,
+  requestedStaged = false,
+): {
+  staged: boolean;
+  files: GitFileChange[];
+  diff: string;
+  truncated: boolean;
+} {
+  const stagedFiles = status.changes.filter((change) => change.staged);
+  const staged = requestedStaged === true && stagedFiles.length > 0;
+  const files = staged ? stagedFiles : status.changes;
+  if (!files.length) {
+    return {
+      staged,
+      files,
+      diff: "",
+      truncated: false,
+    };
+  }
+
+  const diffParts: string[] = [];
+  let truncated = false;
+  const trackedDiff = runGitForDiff(repositoryRoot, [
+    "diff",
+    "--no-color",
+    "--find-renames",
+    "--find-copies",
+    ...(staged ? ["--cached"] : []),
+    "--",
+  ]);
+  if (trackedDiff.trim()) diffParts.push(trackedDiff.trimEnd());
+
+  if (!staged) {
+    for (const change of files) {
+      if (change.kind !== "untracked") continue;
+      try {
+        const untracked = buildUntrackedDiff(repositoryRoot, normalizeRepositoryPath(change.path));
+        diffParts.push(untracked.diff);
+        truncated = truncated || untracked.truncated;
+      } catch (error) {
+        diffParts.push([
+          `diff --git a/${diffPathLabel(change.path)} b/${diffPathLabel(change.path)}`,
+          "new file mode 100644",
+          `+Unable to read untracked file for commit context: ${error instanceof Error ? error.message : "unknown error"}`,
+        ].join("\n"));
+      }
+    }
+  }
+
+  const diff = diffParts.join("\n\n");
+  const limited = truncateText(diff, GIT_COMMIT_MESSAGE_DIFF_MAX_CHARS);
+  return {
+    staged,
+    files,
+    diff: limited.text,
+    truncated: truncated || limited.truncated,
+  };
+}
+
+function buildCommitMessageSystemPrompt(): string {
+  return [
+    "You generate Tracevane Git commit messages from real git diff context.",
+    "Output only the commit message text. Do not wrap it in Markdown fences.",
+    "Use English.",
+    "First line: concise present-tense intent, 72 characters or fewer when possible.",
+    "Body: add a blank line, then 1-4 bullets or short sentences when useful.",
+    "Do not claim tests, issue numbers, reviewers, or behavior not visible in the diff.",
+    "Prefer product intent over a raw file list, but stay grounded in the provided diff.",
+  ].join("\n");
+}
+
+function buildCommitMessagePrompt(
+  status: GitStatusPayload,
+  context: ReturnType<typeof buildCommitMessageContext>,
+): string {
+  return [
+    `Repository branch: ${status.branch || "HEAD"}`,
+    `Scope: ${context.staged ? "staged changes only" : "working tree changes"}`,
+    `Files changed: ${context.files.length}`,
+    `Change kinds: ${countChangeKinds(context.files) || "none"}`,
+    context.truncated ? "Note: diff context is truncated." : "Note: full captured diff context follows.",
+    "",
+    "Changed files:",
+    ...context.files.map((change) => `- ${changeListLine(change)}`),
+    "",
+    "Unified diff:",
+    context.diff || "(No textual diff was available; use the changed file list only.)",
+  ].join("\n");
+}
+
 function emptyGitStatus(rootId: string, directoryPath: string, message: string): GitStatusPayload {
   return {
     checkedAt: toIsoNow(),
@@ -806,7 +1031,10 @@ function emptyGitStatus(rootId: string, directoryPath: string, message: string):
   };
 }
 
-export function createGitService(config: TracevaneServerConfig): GitService {
+export function createGitService(
+  config: TracevaneServerConfig,
+  options: { modelGateway?: ModelGatewayService } = {},
+): GitService {
   const buildStatus = (rootId: string, directoryPath = ""): GitStatusPayload => {
     const resolved = resolveGitDirectory(config, rootId, directoryPath);
     let repositoryRoot = "";
@@ -988,6 +1216,121 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       }
     },
 
+    async generateCommitMessage(rootId: string, directoryPath = "", staged = false, model = ""): Promise<GitCommitMessagePayload> {
+      const resolved = resolveGitDirectory(config, rootId, directoryPath);
+      try {
+        const repositoryRoot = runGit(resolved.absolutePath, ["rev-parse", "--show-toplevel"]).trim();
+        const status = buildStatus(resolved.root.id, resolved.relativePath);
+        const context = buildCommitMessageContext(repositoryRoot, status, staged === true);
+        if (!context.files.length) {
+          return {
+            checkedAt: toIsoNow(),
+            rootId: resolved.root.id,
+            directoryPath: resolved.relativePath,
+            repositoryRoot,
+            available: false,
+            message: "No Git changes are available to summarize.",
+            commitMessage: "",
+            source: "local-fallback",
+            model: null,
+            providerId: null,
+            staged: context.staged,
+            files: [],
+            truncated: false,
+            promptVersion: GIT_COMMIT_MESSAGE_PROMPT_VERSION,
+          };
+        }
+
+        const fallback = fallbackCommitMessage(
+          context.files,
+          status.branch,
+          context.staged,
+          context.truncated,
+        );
+        if (!options.modelGateway) {
+          return {
+            checkedAt: toIsoNow(),
+            rootId: resolved.root.id,
+            directoryPath: resolved.relativePath,
+            repositoryRoot,
+            available: true,
+            message: "Model Gateway is not available; generated a local diff summary.",
+            commitMessage: fallback,
+            source: "local-fallback",
+            model: null,
+            providerId: null,
+            staged: context.staged,
+            files: context.files,
+            truncated: context.truncated,
+            promptVersion: GIT_COMMIT_MESSAGE_PROMPT_VERSION,
+          };
+        }
+
+        const generation = await options.modelGateway.generateText(undefined, {
+          scope: "codex",
+          model: model || undefined,
+          system: buildCommitMessageSystemPrompt(),
+          input: buildCommitMessagePrompt(status, context),
+          maxOutputTokens: 700,
+          temperature: 0.2,
+          timeoutMs: 12_000,
+        });
+        const generated = sanitizeGeneratedCommitMessage(generation.text);
+        if (generation.ok && generated) {
+          return {
+            checkedAt: toIsoNow(),
+            rootId: resolved.root.id,
+            directoryPath: resolved.relativePath,
+            repositoryRoot,
+            available: true,
+            message: null,
+            commitMessage: generated,
+            source: "model-gateway",
+            model: generation.model,
+            providerId: generation.providerId,
+            staged: context.staged,
+            files: context.files,
+            truncated: context.truncated,
+            promptVersion: GIT_COMMIT_MESSAGE_PROMPT_VERSION,
+          };
+        }
+
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot,
+          available: true,
+          message: generation.error?.message || "Model Gateway did not return a usable commit message; generated a local diff summary.",
+          commitMessage: fallback,
+          source: "local-fallback",
+          model: generation.model,
+          providerId: generation.providerId,
+          staged: context.staged,
+          files: context.files,
+          truncated: context.truncated,
+          promptVersion: GIT_COMMIT_MESSAGE_PROMPT_VERSION,
+        };
+      } catch (error) {
+        return {
+          checkedAt: toIsoNow(),
+          rootId: resolved.root.id,
+          directoryPath: resolved.relativePath,
+          repositoryRoot: null,
+          available: false,
+          message: error instanceof Error ? error.message : "Git commit message generation is unavailable.",
+          commitMessage: "",
+          source: "local-fallback",
+          model: null,
+          providerId: null,
+          staged: staged === true,
+          files: [],
+          truncated: false,
+          promptVersion: GIT_COMMIT_MESSAGE_PROMPT_VERSION,
+        };
+      }
+    },
+
     initRepository(rootId: string, directoryPath = ""): GitStatusPayload {
       const resolved = resolveGitDirectory(config, rootId, directoryPath);
       runGit(resolved.absolutePath, ["init"]);
@@ -1007,6 +1350,30 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       runGit(repositoryRoot, normalizedPaths.length
         ? ["restore", "--staged", "--", ...normalizedPaths]
         : ["restore", "--staged", "--", "."]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    discardPaths(rootId: string, directoryPath = "", paths?: string[]): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const normalizedPaths = normalizeRepositoryPaths(paths);
+      if (!normalizedPaths.length) {
+        throw new Error("Discard requires at least one path");
+      }
+      const trackedPaths = normalizedPaths.filter((filePath) => {
+        try {
+          runGit(repositoryRoot, ["ls-files", "--error-unmatch", "--", filePath]);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      const untrackedPaths = normalizedPaths.filter((filePath) => !trackedPaths.includes(filePath));
+      if (trackedPaths.length) {
+        runGit(repositoryRoot, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...trackedPaths]);
+      }
+      if (untrackedPaths.length) {
+        runGit(repositoryRoot, ["clean", "-fd", "--", ...untrackedPaths]);
+      }
       return buildStatus(resolved.root.id, resolved.relativePath);
     },
 
@@ -1030,6 +1397,13 @@ export function createGitService(config: TracevaneServerConfig): GitService {
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       const normalizedTarget = normalizeGitRefName(target, "Checkout target");
       runGit(repositoryRoot, detach ? ["checkout", "--detach", normalizedTarget] : ["checkout", normalizedTarget]);
+      return buildStatus(resolved.root.id, resolved.relativePath);
+    },
+
+    revertCommit(rootId: string, directoryPath = "", hash = ""): GitStatusPayload {
+      const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
+      const normalizedHash = normalizeGitRefName(hash, "Commit hash");
+      runGit(repositoryRoot, ["revert", "--no-edit", normalizedHash]);
       return buildStatus(resolved.root.id, resolved.relativePath);
     },
 

@@ -163,6 +163,8 @@ export interface FilesSearchParams {
   regex?: boolean;
   /** Safe result limit for this search request. */
   limit?: number;
+  /** Result kind filter. Directories can still be traversed when kind=file. */
+  kind?: "file" | "directory" | "all";
 }
 
 export interface FilesWatchSnapshotParams {
@@ -196,6 +198,7 @@ export function searchFiles(
   if (params.caseSensitive != null) search.set("caseSensitive", params.caseSensitive ? "true" : "false");
   if (params.regex != null) search.set("regex", params.regex ? "true" : "false");
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.kind && params.kind !== "all") search.set("kind", params.kind);
   return apiRequest<FilesSearchPayload>(`${BASE}/search?${search.toString()}`, {
     signal,
   });

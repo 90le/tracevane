@@ -33,6 +33,7 @@ import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
   useChannelConnectorsConfigQuery,
+  useManageChannelConnectorsDaemonServiceMutation,
   useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import { toast } from "@/design/ui/sonner";
@@ -59,6 +60,7 @@ export function RoutesView({
 }: ChannelConnectorsViewProps) {
   const configQuery = useChannelConnectorsConfigQuery();
   const saveMutation = useSaveChannelConnectorsConfigMutation();
+  const applyMutation = useManageChannelConnectorsDaemonServiceMutation();
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] =
     React.useState<ChannelConnectorPlatformBinding | null>(null);
@@ -142,9 +144,32 @@ export function RoutesView({
       },
       {
         onSuccess: () => {
-          toast.success("已删除副本路由", { description: deleteTarget.id });
-          setDeleteTarget(null);
-          void configQuery.refetch();
+          applyMutation.mutate(
+            { action: "reload", apply: true, reloadMode: "when-idle" },
+            {
+              onSuccess: (result) => {
+                const reload = result.reload;
+                if (reload?.status === "applied") {
+                  toast.success("已删除副本路由并应用", { description: deleteTarget.id });
+                } else if (reload?.status === "pending") {
+                  toast.info("已删除副本路由，等待任务结束后应用", {
+                    description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
+                  });
+                } else {
+                  toast.error("已删除副本路由，但尚未应用到 IM 守护", {
+                    description: reload?.error || reload?.restartRequiredReason || deleteTarget.id,
+                  });
+                }
+                setDeleteTarget(null);
+                void configQuery.refetch();
+              },
+              onError: (error) => {
+                toast.error("已删除副本路由，但应用失败", { description: error.message });
+                setDeleteTarget(null);
+                void configQuery.refetch();
+              },
+            },
+          );
         },
         onError: (error) =>
           toast.error("删除路由失败", { description: error.message }),
@@ -197,8 +222,8 @@ export function RoutesView({
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-ink-strong">绑定路由</h2>
           <p className="text-sm text-muted">
-            每条 IM 来源独立决定
-            Agent、模型、启动目录、权限和会话策略；一个平台账号可以复制出多条路由。
+            Agent Profile 可被多个渠道复用；绑定路由把平台账号、IM
+            来源和可选覆盖策略连接起来。
           </p>
         </div>
         <Input
@@ -247,7 +272,7 @@ export function RoutesView({
       {filtered.length === 0 ? (
         <EmptyState
           title="暂无绑定路由"
-          description="先创建平台账号；一个账号可复制出多条绑定路由，分别匹配不同群/私聊/目录/Agent。"
+          description="先创建平台账号；一个账号可复制出多条来源路由，同一个 Agent Profile 也可被多个渠道绑定。"
           action={
             <Button
               variant="primary"
@@ -382,7 +407,7 @@ export function RoutesView({
                         variant="ghost"
                         size="sm"
                         onClick={() => duplicateRoute(binding)}
-                        disabled={saveMutation.isPending}
+                        disabled={saveMutation.isPending || applyMutation.isPending}
                       >
                         <Copy />
                         复制路由
@@ -405,7 +430,7 @@ export function RoutesView({
                         }
                         onClick={() => setDeleteTarget(binding)}
                         disabled={
-                          saveMutation.isPending || !isCopiedRoute(binding)
+                          saveMutation.isPending || applyMutation.isPending || !isCopiedRoute(binding)
                         }
                         title={
                           isCopiedRoute(binding)
@@ -457,7 +482,7 @@ export function RoutesView({
               variant="ghost"
               size="sm"
               onClick={() => setDeleteTarget(null)}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || applyMutation.isPending}
             >
               取消
             </Button>
@@ -467,11 +492,12 @@ export function RoutesView({
               onClick={deleteRoute}
               disabled={
                 saveMutation.isPending ||
+                applyMutation.isPending ||
                 !deleteTarget ||
                 !isCopiedRoute(deleteTarget)
               }
             >
-              {saveMutation.isPending ? "删除中…" : "确认删除副本路由"}
+              {saveMutation.isPending || applyMutation.isPending ? "删除中…" : "确认删除副本路由"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -229,6 +231,21 @@ test("model gateway protocol matrix proves GLM native protocols and Codex accoun
       assert.equal(requestsForModel.length, 33);
     }
     const codexSmokeRequests = gateway.requests.filter((request) => request.path === "/api/model-gateway/active-route-smoke" && request.body.model === "gpt-5.5");
+    for (const scope of ["codex", "claude-code", "opencode"]) {
+      const requestsForScope = codexSmokeRequests.filter((request) => request.body.scope === scope);
+      assert.equal(requestsForScope.filter((request) =>
+        request.body.toolSmoke === false
+        && request.body.toolResultSmoke === false
+        && request.body.compatibilitySmoke === false
+        && request.body.malformedSmoke === false
+        && request.body.errorSmoke === false
+        && request.body.stream === undefined
+      ).length, 1);
+      for (const flag of ["toolSmoke", "toolResultSmoke", "compatibilitySmoke", "malformedSmoke", "errorSmoke"]) {
+        assert.equal(requestsForScope.filter((request) => request.body[flag] === true).length, 2);
+        assert.equal(requestsForScope.filter((request) => request.body[flag] === true && request.body.stream === true).length, 1);
+      }
+    }
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "claude-code" && request.body.toolSmoke === true).length, 2);
     assert.equal(codexSmokeRequests.filter((request) => request.body.scope === "opencode" && request.body.toolResultSmoke === true).length, 2);
     assert.equal(codexSmokeRequests.filter((request) => request.body.compatibilitySmoke === true).length, 6);
@@ -255,6 +272,37 @@ test("model gateway protocol matrix can run Codex account proofs without GLM sta
     assert.equal(parsed.stages.length, 1);
     assert.deepEqual(gateway.activeProviders, {});
   } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway protocol matrix writes JSON and Markdown acceptance reports", async () => {
+  const gateway = await startMockGateway();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-protocol-report-"));
+  try {
+    const reportFile = path.join(root, "acceptance.json");
+    const markdownReport = path.join(root, "acceptance.md");
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--skip-glm",
+      "--codex-model", "gpt-5.4",
+      "--report-file", reportFile,
+      "--markdown-report", markdownReport,
+      "--json",
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.acceptanceSummary.routeProofs.length, 3);
+    assert.equal(parsed.acceptanceSummary.smokeGroups.routeSmokes.total, 3);
+    assert.equal(parsed.acceptanceSummary.smokeGroups.routeSmokes.failed, 0);
+    assert.ok(parsed.acceptanceSummary.attachmentAndDegradationBoundaries.some((item) => item.status === "path-handoff"));
+    const reportJson = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+    assert.deepEqual(reportJson.acceptanceSummary.routeProofs.map((proof) => proof.agentScope), ["codex", "claude-code", "opencode"]);
+    const markdown = fs.readFileSync(markdownReport, "utf8");
+    assert.match(markdown, /Model Gateway Protocol Acceptance Report/);
+    assert.match(markdown, /\| Agent scope \| Provider \| Model \| Route \|/);
+    assert.match(markdown, /Attachment And Degradation Boundaries/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
     await gateway.close();
   }
 });

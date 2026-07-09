@@ -11,6 +11,7 @@ import type {
   ModelGatewayRollbackAppConnectionRequest,
   ModelGatewayProviderAccountUpdateRequest,
   ModelGatewayProviderDetectRequest,
+  ModelGatewayProviderHealthResetRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
   ModelGatewaySetProviderSecretRequest,
@@ -65,6 +66,15 @@ function sendModelGatewayUnsupportedEndpoint(
   alternatives: string[] = [],
 ): void {
   sendJson(res, 501, modelGatewayEndpointUnsupportedPayload(endpoint, alternatives));
+}
+
+function queryParam(req: { url?: string }, name: string): string | null {
+  try {
+    const url = new URL(req.url || "/", "http://tracevane.local");
+    return url.searchParams.get(name);
+  } catch {
+    return null;
+  }
 }
 
 function registerUnsupportedEndpoint(
@@ -124,9 +134,13 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     }
   });
 
-  router.get("/api/model-gateway/usage", (_req, res, routeCtx) => {
+  router.get("/api/model-gateway/usage", (req, res, routeCtx) => {
     try {
-      sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger());
+      sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger({
+        range: queryParam(req, "range"),
+        dateFrom: queryParam(req, "dateFrom"),
+        dateTo: queryParam(req, "dateTo"),
+      }));
     } catch (error) {
       sendModelGatewayError(res, error);
     }
@@ -392,6 +406,15 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
           ? 501
           : 502;
       sendJson(res, statusCode, result);
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/providers/:providerId/health/reset", async (req, res, routeCtx, params) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayProviderHealthResetRequest>(req);
+      sendJson(res, 200, routeCtx.services.modelGateway.resetProviderHealth(req, params.providerId, payload));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

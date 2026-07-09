@@ -73,14 +73,14 @@ export function createTracevaneContext(
     terminal,
   });
   const files = createFilesService(options.config);
-  const git = createGitService(options.config);
-  const ideWorkbench = createIdeWorkbenchService(options.config);
-  const lsp = createLspService(options.config);
-  const debug = createDebugService(options.config);
   const modelGateway = createModelGatewayService(
     options.config,
     options.modelGatewayOptions,
   );
+  const git = createGitService(options.config, { modelGateway });
+  const ideWorkbench = createIdeWorkbenchService(options.config);
+  const lsp = createLspService(options.config);
+  const debug = createDebugService(options.config);
   const openclawRecovery = createOpenClawRecoveryService(options.config);
   const services: TracevaneServices = {
     agents,

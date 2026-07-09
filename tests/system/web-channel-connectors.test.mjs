@@ -81,7 +81,8 @@ test("Channel Connectors accounts view supports account CRUD and verified smoke 
 test("Channel Connectors route view keeps routing separate from platform credentials", () => {
   const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
   assert.match(routes, /绑定路由/);
-  assert.match(routes, /一个平台账号可以复制出多条路由/);
+  assert.match(routes, /Agent Profile 可被多个渠道复用/);
+  assert.match(routes, /一个账号可复制出多条来源路由/);
   assert.match(routes, /复制路由/);
   assert.match(routes, /已复制为停用路由/);
   assert.match(routes, /setEditing\(created \?\? nextBinding\)/);
@@ -99,9 +100,29 @@ test("Channel Connectors account and route editors use wide Sheets with platform
   const editor = read(`${VIEWS_DIR}/BindingEditor.tsx`);
   assert.match(editor, /SheetContent/);
   assert.match(editor, /860px/);
+  assert.match(editor, /SecretInput/);
+  assert.match(editor, /useChannelConnectorBindingSecretsQuery/);
+  assert.match(editor, /useStartFeishuAppRegistrationMutation/);
+  assert.match(editor, /useFeishuAppRegistrationQuery/);
+  assert.match(editor, /FeishuRegistrationPanel/);
+  assert.match(editor, /扫码创建 \/ 绑定/);
+  assert.match(editor, /生成扫码绑定/);
+  assert.match(editor, /已复制扫码链接/);
+  assert.match(editor, /App ID \/ App Secret 已回填/);
+  assert.match(editor, /applyRevealedSecret/);
+  assert.match(editor, /SECRET_MASK/);
+  assert.match(editor, /显示明文/);
+  assert.doesNotMatch(editor, /替换/);
   assert.match(editor, /App Secret/);
   assert.match(editor, /Bot Token/);
   assert.match(editor, /EncodingAESKey/);
+  assert.match(editor, /运行与平台高级配置/);
+  assert.match(editor, /Agent 会话驱动/);
+  assert.match(editor, /飞书 API URL/);
+  assert.match(editor, /进度卡片条目数/);
+  assert.match(editor, /暂存 URL 附件/);
+  assert.match(editor, /附件最大体积/);
+  assert.match(editor, /只放当前表单尚未覆盖的扩展字段/);
   assert.match(editor, /高级 metadata JSON/);
   assert.match(editor, /\[redacted\]/);
   assert.match(editor, /编辑绑定路由/);
@@ -219,13 +240,13 @@ test("Channel Connectors deliveries expose global concurrency and queue policy",
   assert.match(sessions, /maxConcurrentTurns/);
   assert.match(sessions, /queueMaxRecords/);
   assert.match(sessions, /不同会话竞争这个全局槽位/);
-  assert.match(sessions, /保存并重启/);
-  assert.match(sessions, /action: "restart", apply: true, runCommands: true/);
+  assert.match(sessions, /保存并应用/);
+  assert.match(sessions, /action: "reload", apply: true, reloadMode: "when-idle"/);
   assert.match(sessions, /useManageChannelConnectorsDaemonServiceMutation/);
   assert.match(sessions, /运行中已同步/);
   assert.match(sessions, /已保存，需重启/);
   assert.match(sessions, /policyNotice/);
-  assert.match(sessions, /已保存并重启 IM 守护；新的并发\/队列策略已写入 daemon 配置/);
+  assert.match(sessions, /已保存并热重载 IM 守护；新的并发\/队列策略已生效/);
 });
 
 test("Channel Connectors deliveries keeps hooks before loading guards", () => {

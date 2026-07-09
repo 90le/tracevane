@@ -77,9 +77,15 @@ export function getModelGatewayRuntime(
 
 /** GET /api/model-gateway/usage */
 export function getModelGatewayUsage(
+  options?: { range?: "week" | "all" | "custom" | null; dateFrom?: string | null; dateTo?: string | null },
   signal?: AbortSignal,
 ): Promise<ModelGatewayUsageLedgerResponse> {
-  return apiRequest<ModelGatewayUsageLedgerResponse>(`${BASE}/usage`, { signal });
+  const params = new URLSearchParams();
+  if (options?.range) params.set("range", options.range);
+  if (options?.dateFrom) params.set("dateFrom", options.dateFrom);
+  if (options?.dateTo) params.set("dateTo", options.dateTo);
+  const query = params.toString();
+  return apiRequest<ModelGatewayUsageLedgerResponse>(`${BASE}/usage${query ? `?${query}` : ""}`, { signal });
 }
 
 /** GET /api/model-gateway/models — browser-safe gateway model catalog. */

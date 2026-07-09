@@ -216,6 +216,31 @@ export interface ModelGatewayProviderHealth {
   consecutiveFailures: number;
 }
 
+export type ModelGatewayProxySource = "account" | "provider" | "environment" | "none";
+
+export interface ModelGatewayNetworkErrorDiagnostics {
+  errorName: string | null;
+  message: string;
+  causeName: string | null;
+  causeCode: string | null;
+  causeMessage: string | null;
+  causeErrno: number | string | null;
+  causeSyscall: string | null;
+  causeAddress: string | null;
+  causePort: number | null;
+  proxy: {
+    source: ModelGatewayProxySource;
+    url: string | null;
+    scheme: string | null;
+    host: string | null;
+    port: number | null;
+  };
+}
+
+export interface ModelGatewayErrorDiagnostics {
+  network?: ModelGatewayNetworkErrorDiagnostics;
+}
+
 export interface ModelGatewayProviderFailover {
   enabled: boolean;
   priority: number;
@@ -533,31 +558,20 @@ export interface ModelGatewayRuntimeRequestLogEntry {
 export interface ModelGatewayModelUsageRow {
   model: string;
   requestCount: number;
-  meteredRequestCount: number;
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  cacheReadRequestCount: number;
-  cacheCreationRequestCount: number;
-  latestRequestAt: string | null;
 }
 
-export interface ModelGatewayUsageBreakdownRow {
-  key: string;
-  label: string;
+export interface ModelGatewayUsageDateBucket {
+  date: string;
   requestCount: number;
-  meteredRequestCount: number;
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  cacheReadRequestCount: number;
-  cacheCreationRequestCount: number;
-  latestRequestAt: string | null;
 }
+
+export type ModelGatewayUsageRange = "week" | "all" | "custom";
 
 export interface ModelGatewayRuntimeState {
   version: 1;
@@ -992,6 +1006,22 @@ export interface ModelGatewayProviderTestRequest {
   timeoutMs?: number;
 }
 
+export interface ModelGatewayProviderHealthResetRequest {
+  endpointProfileId?: string;
+  includeEndpointProfiles?: boolean;
+}
+
+export interface ModelGatewayProviderHealthResetResponse {
+  ok: true;
+  providerId: string;
+  checkedAt: string;
+  reset: {
+    provider: boolean;
+    endpointProfiles: string[];
+  };
+  provider: ModelGatewayProviderView;
+}
+
 export interface ModelGatewayActiveRouteSmokeRequest {
   scope?: ModelGatewayAppScope;
   model?: string;
@@ -1016,6 +1046,7 @@ export interface ModelGatewayProviderTestResponse {
   error: {
     code: string;
     message: string;
+    diagnostics?: ModelGatewayErrorDiagnostics;
   } | null;
 }
 
@@ -1180,28 +1211,16 @@ export interface ModelGatewayUsageLedgerResponse {
   checkedAt: string;
   totals: {
     requestCount: number;
-    meteredRequestCount: number;
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
-    cacheReadTokens: number;
-    cacheCreationTokens: number;
-    cacheReadRequestCount: number;
-    cacheCreationRequestCount: number;
   };
   models: ModelGatewayModelUsageRow[];
-  providers: ModelGatewayUsageBreakdownRow[];
-  appScopes: ModelGatewayUsageBreakdownRow[];
-  readWindow: {
-    entryCount: number;
-    readLimit: number;
-    readByteLimit: number;
-    readBytes: number;
-    ledgerSizeBytes: number;
-    truncated: boolean;
-  };
-  paths: {
-    ledger: string;
+  daily: ModelGatewayUsageDateBucket[];
+  query: {
+    range: ModelGatewayUsageRange;
+    dateFrom: string | null;
+    dateTo: string | null;
   };
 }
 

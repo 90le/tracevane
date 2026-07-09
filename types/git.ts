@@ -159,6 +159,10 @@ export interface GitPathActionRequest extends GitRepositoryRequest {
   paths?: string[];
 }
 
+export interface GitDiscardRequest extends GitRepositoryRequest {
+  paths?: string[];
+}
+
 export interface GitDiffRequest extends GitRepositoryRequest {
   file?: string;
   previousFile?: string;
@@ -184,6 +188,28 @@ export interface GitCommitRequest extends GitRepositoryRequest {
   message?: string;
 }
 
+export interface GitCommitMessageRequest extends GitRepositoryRequest {
+  staged?: boolean;
+  model?: string;
+}
+
+export interface GitCommitMessagePayload {
+  checkedAt: string;
+  rootId: string;
+  directoryPath: string;
+  repositoryRoot: string | null;
+  available: boolean;
+  message: string | null;
+  commitMessage: string;
+  source: "model-gateway" | "local-fallback";
+  model: string | null;
+  providerId: string | null;
+  staged: boolean;
+  files: GitFileChange[];
+  truncated: boolean;
+  promptVersion: string;
+}
+
 export interface GitCreateBranchRequest extends GitRepositoryRequest {
   name?: string;
   checkout?: boolean;
@@ -193,6 +219,10 @@ export interface GitCreateBranchRequest extends GitRepositoryRequest {
 export interface GitCheckoutRequest extends GitRepositoryRequest {
   target?: string;
   detach?: boolean;
+}
+
+export interface GitRevertCommitRequest extends GitRepositoryRequest {
+  hash?: string;
 }
 
 export interface GitDeleteBranchRequest extends GitRepositoryRequest {

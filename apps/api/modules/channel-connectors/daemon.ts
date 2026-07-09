@@ -31,6 +31,9 @@ import type {
   ChannelConnectorOctoInboundRequest,
   ChannelConnectorPlatformBinding,
   ChannelConnectorsDaemonRuntimeConfig,
+  ChannelConnectorsDaemonReloadMode,
+  ChannelConnectorsDaemonReloadResponse,
+  ChannelConnectorsDaemonReloadState,
 } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
@@ -624,6 +627,7 @@ interface ChannelDaemonState {
     outboundFileErrors?: string[];
   }>;
   autoCompacts: ChannelDaemonAutoCompactRecord[];
+  reload: ChannelConnectorsDaemonReloadState;
 }
 
 interface ChannelDaemonOctoHistoryCutoffRecord {
@@ -1537,6 +1541,16 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     activeRuns: [],
     agentRuns: [],
     autoCompacts: [],
+    reload: {
+      status: "idle",
+      mode: null,
+      requestedAt: null,
+      appliedAt: null,
+      activeRunsAtRequest: null,
+      activeTurnsAtRequest: null,
+      configUpdatedAt: null,
+      error: null,
+    },
   };
 }
 
@@ -2334,7 +2348,13 @@ async function acquireChannelSessionAgentRun(
   };
 }
 
-function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): http.Server {
+function startHttp(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  state: ChannelDaemonState,
+  handlers: {
+    reload: (payload: { mode?: ChannelConnectorsDaemonReloadMode | null }) => Promise<ChannelConnectorsDaemonReloadResponse>;
+  },
+): http.Server {
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
       const feishuStates = Object.values(state.feishuConnections);
@@ -2391,6 +2411,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         agentRuns: state.agentRuns,
         autoCompacts: state.autoCompacts || [],
         pendingAgentRuns: summarizePendingAgentRuns(config),
+        reload: state.reload,
       }));
       return;
     }
@@ -2402,6 +2423,23 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
           message: error instanceof Error ? error.message : "Agent session management failed.",
         });
       });
+      return;
+    }
+    if ((req.url || "").split("?")[0] === "/reload") {
+      if (req.method !== "POST") {
+        sendDaemonJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      parseRequestJson<{ mode?: ChannelConnectorsDaemonReloadMode | null }>(req)
+        .then((payload) => handlers.reload(payload || {}))
+        .then((body) => sendDaemonJson(res, 200, body))
+        .catch((error) => {
+          sendDaemonJson(res, 500, {
+            ok: false,
+            error: "daemon_reload_failed",
+            message: error instanceof Error ? error.message : "Daemon reload failed.",
+          });
+        });
       return;
     }
     res.statusCode = 404;
@@ -13188,6 +13226,78 @@ function dropPendingAgentRunsBecauseQueuesAreDisabled(
   }
 }
 
+function reloadActiveCounts(state: ChannelDaemonState): { activeRuns: number; activeTurns: number } {
+  return {
+    activeRuns: state.activeRuns.length,
+    activeTurns: channelAgentSessionDriverPool.policy().activeTurns,
+  };
+}
+
+function isReloadIdle(state: ChannelDaemonState): boolean {
+  const counts = reloadActiveCounts(state);
+  return counts.activeRuns <= 0 && counts.activeTurns <= 0;
+}
+
+function restartRequiredReasonForHotReload(
+  current: ChannelConnectorsDaemonRuntimeConfig,
+  next: ChannelConnectorsDaemonRuntimeConfig,
+): string | null {
+  if (JSON.stringify(current.management) !== JSON.stringify(next.management)) return "management endpoint changed";
+  if (JSON.stringify(current.paths) !== JSON.stringify(next.paths)) return "runtime paths changed";
+  return null;
+}
+
+function updateReloadedDaemonState(
+  state: ChannelDaemonState,
+  config: ChannelConnectorsDaemonRuntimeConfig,
+): void {
+  state.management = config.management;
+  state.projects = config.projects.map((project) => ({
+    id: project.id,
+    agent: project.agent,
+    platformBindings: project.platformBindings.length,
+  }));
+  state.agentSessionDriver = buildAgentSessionDriverState(config);
+}
+
+function replaceRuntimeConfigInPlace(
+  target: ChannelConnectorsDaemonRuntimeConfig,
+  next: ChannelConnectorsDaemonRuntimeConfig,
+): void {
+  target.version = next.version;
+  target.management = next.management;
+  target.paths = next.paths;
+  target.gateway = next.gateway;
+  target.agentSessionPolicy = next.agentSessionPolicy;
+  target.projects = next.projects;
+}
+
+function daemonReloadResponse(
+  input: {
+    state: ChannelDaemonState;
+    mode: ChannelConnectorsDaemonReloadMode;
+    status: ChannelConnectorsDaemonReloadResponse["status"];
+    configUpdatedAt?: string | null;
+    appliedAt?: string | null;
+    restartRequiredReason?: string | null;
+    error?: string | null;
+  },
+): ChannelConnectorsDaemonReloadResponse {
+  const counts = reloadActiveCounts(input.state);
+  return {
+    ok: input.status === "applied" || input.status === "pending",
+    checkedAt: new Date().toISOString(),
+    status: input.status,
+    mode: input.mode,
+    activeRuns: counts.activeRuns,
+    activeTurns: counts.activeTurns,
+    configUpdatedAt: input.configUpdatedAt || null,
+    appliedAt: input.appliedAt || null,
+    restartRequiredReason: input.restartRequiredReason || null,
+    error: input.error || null,
+  };
+}
+
 async function main(): Promise<void> {
   const configPath = configPathFromArgv(process.argv.slice(2));
   const config = readConfig(configPath);
@@ -13205,7 +13315,6 @@ async function main(): Promise<void> {
   const state = createDaemonState(config);
   flushRuntime(config, state);
   appendLog(config.paths.log, "Tracevane native Channel Connectors daemon started");
-  const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const feishuClients: WSClient[] = [];
@@ -13217,38 +13326,214 @@ async function main(): Promise<void> {
   const feishuTimelines: ChannelDaemonFeishuTimelineRegistry = new Map();
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
+  let feishuStartupGeneration = 0;
+  let pendingReloadTimer: NodeJS.Timeout | null = null;
+  let reloadInFlight: Promise<ChannelConnectorsDaemonReloadResponse> | null = null;
+
+  const stopPlatformConnections = (reason: string): void => {
+    feishuStartupGeneration += 1;
+    if (feishuWatchdog) {
+      clearInterval(feishuWatchdog);
+      feishuWatchdog = null;
+    }
+    for (const controller of feishuClientAbortControllers.splice(0)) controller.abort();
+    for (const timer of octoRestHeartbeatTimers.splice(0)) clearInterval(timer);
+    for (const socket of sockets.splice(0)) socket.disconnect();
+    for (const client of feishuClients.splice(0)) client.close({ force: true });
+    for (const group of feishuGroups.splice(0)) releaseFeishuGroupLock(config, group);
+    octoTimelines.clear();
+    feishuTimelines.clear();
+    state.octoConnections = {};
+    state.feishuConnections = {};
+    appendLog(config.paths.log, "Channel platform connections stopped", { reason });
+    markRuntimeDirty(config, state);
+  };
+
+  const startFeishuConnectionLoop = (): void => {
+    const generation = ++feishuStartupGeneration;
+    void (async () => {
+      let attempt = 0;
+      while (generation === feishuStartupGeneration) {
+        try {
+          const timer = await startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuTimelines, feishuGroups);
+          if (generation !== feishuStartupGeneration) {
+            if (timer) clearInterval(timer);
+            return;
+          }
+          feishuWatchdog = timer;
+          return;
+        } catch (error) {
+          if (generation !== feishuStartupGeneration) return;
+          attempt += 1;
+          const delayMs = Math.min(30_000 * 2 ** Math.min(attempt - 1, 4), 300_000);
+          appendLog(config.paths.log, "Feishu connection startup failed, retrying", {
+            error: error instanceof Error ? error.message : String(error),
+            attempt,
+            retryInMs: delayMs,
+          });
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    })();
+  };
+
+  const startPlatformConnections = (): void => {
+    void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
+      appendLog(config.paths.log, "Octo connection startup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    startFeishuConnectionLoop();
+  };
+
+  const applyReloadNow = (mode: ChannelConnectorsDaemonReloadMode): Promise<ChannelConnectorsDaemonReloadResponse> => {
+    if (reloadInFlight) return reloadInFlight;
+    reloadInFlight = (async () => {
+      const requestedAt = state.reload.requestedAt || new Date().toISOString();
+      const counts = reloadActiveCounts(state);
+      state.reload = {
+        status: "applying",
+        mode,
+        requestedAt,
+        appliedAt: null,
+        activeRunsAtRequest: counts.activeRuns,
+        activeTurnsAtRequest: counts.activeTurns,
+        configUpdatedAt: state.reload.configUpdatedAt,
+        error: null,
+      };
+      markRuntimeDirty(config, state);
+      let nextConfig: ChannelConnectorsDaemonRuntimeConfig;
+      try {
+        nextConfig = readConfig(configPath);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        state.reload = {
+          ...state.reload,
+          status: "failed",
+          error: message,
+        };
+        markRuntimeDirty(config, state);
+        appendLog(config.paths.log, "Channel daemon hot reload failed to read config", { error: message });
+        return daemonReloadResponse({ state, mode, status: "failed", error: message });
+      }
+
+      const restartRequiredReason = restartRequiredReasonForHotReload(config, nextConfig);
+      if (restartRequiredReason) {
+        state.reload = {
+          status: "restart-required",
+          mode,
+          requestedAt,
+          appliedAt: null,
+          activeRunsAtRequest: counts.activeRuns,
+          activeTurnsAtRequest: counts.activeTurns,
+          configUpdatedAt: null,
+          error: restartRequiredReason,
+        };
+        markRuntimeDirty(config, state);
+        appendLog(config.paths.log, "Channel daemon hot reload requires restart", { reason: restartRequiredReason });
+        return daemonReloadResponse({
+          state,
+          mode,
+          status: "restart-required",
+          restartRequiredReason,
+          error: restartRequiredReason,
+        });
+      }
+
+      stopPlatformConnections("config-reload");
+      replaceRuntimeConfigInPlace(config, nextConfig);
+      channelAgentSessionDriverPool.configurePolicy({
+        idleTimeoutMs: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS")
+          ?? config.agentSessionPolicy?.idleTimeoutMs,
+        maxSessions: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_MAX_SESSIONS")
+          ?? config.agentSessionPolicy?.maxSessions,
+        maxConcurrentTurns: config.agentSessionPolicy?.maxConcurrentTurns,
+        queueMaxRecords: config.agentSessionPolicy?.queueMaxRecords,
+        busyStrategy: config.agentSessionPolicy?.busyStrategy,
+      });
+      if ((config.agentSessionPolicy?.busyStrategy || "reject") !== "queue") {
+        dropPendingAgentRunsBecauseQueuesAreDisabled(config);
+      }
+      updateReloadedDaemonState(state, config);
+      startPlatformConnections();
+      const appliedAt = new Date().toISOString();
+      state.reload = {
+        status: "applied",
+        mode,
+        requestedAt,
+        appliedAt,
+        activeRunsAtRequest: counts.activeRuns,
+        activeTurnsAtRequest: counts.activeTurns,
+        configUpdatedAt: null,
+        error: null,
+      };
+      markRuntimeDirty(config, state);
+      appendLog(config.paths.log, "Channel daemon hot reload applied", {
+        mode,
+        projects: config.projects.length,
+        platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
+      });
+      return daemonReloadResponse({ state, mode, status: "applied", appliedAt });
+    })().finally(() => {
+      reloadInFlight = null;
+    });
+    return reloadInFlight;
+  };
+
+  const schedulePendingReload = (): void => {
+    if (pendingReloadTimer) return;
+    pendingReloadTimer = setInterval(() => {
+      if (!isReloadIdle(state)) return;
+      if (pendingReloadTimer) {
+        clearInterval(pendingReloadTimer);
+        pendingReloadTimer = null;
+      }
+      void applyReloadNow("when-idle");
+    }, 1000);
+    pendingReloadTimer.unref();
+  };
+
+  const handleReload = async (
+    payload: { mode?: ChannelConnectorsDaemonReloadMode | null },
+  ): Promise<ChannelConnectorsDaemonReloadResponse> => {
+    const mode = payload.mode === "immediate" ? "immediate" : "when-idle";
+    const counts = reloadActiveCounts(state);
+    if (mode === "when-idle" && !isReloadIdle(state)) {
+      let configUpdatedAt: string | null = null;
+      try {
+        configUpdatedAt = normalizeString((readConfig(configPath) as { updatedAt?: string }).updatedAt) || null;
+      } catch {
+        configUpdatedAt = null;
+      }
+      state.reload = {
+        status: "pending",
+        mode,
+        requestedAt: new Date().toISOString(),
+        appliedAt: null,
+        activeRunsAtRequest: counts.activeRuns,
+        activeTurnsAtRequest: counts.activeTurns,
+        configUpdatedAt,
+        error: null,
+      };
+      schedulePendingReload();
+      markRuntimeDirty(config, state);
+      appendLog(config.paths.log, "Channel daemon hot reload deferred until idle", counts);
+      return daemonReloadResponse({ state, mode, status: "pending", configUpdatedAt });
+    }
+    return applyReloadNow(mode);
+  };
+
+  const server = startHttp(config, state, { reload: handleReload });
 
   if ((config.agentSessionPolicy?.busyStrategy || "reject") !== "queue") {
     dropPendingAgentRunsBecauseQueuesAreDisabled(config);
   }
 
-  void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
-    appendLog(config.paths.log, "Octo connection startup failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  });
-  void (async () => {
-    let attempt = 0;
-    while (true) {
-      try {
-        const timer = await startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuTimelines, feishuGroups);
-        feishuWatchdog = timer;
-        return;
-      } catch (error) {
-        attempt += 1;
-        const delayMs = Math.min(30_000 * 2 ** Math.min(attempt - 1, 4), 300_000);
-        appendLog(config.paths.log, "Feishu connection startup failed, retrying", {
-          error: error instanceof Error ? error.message : String(error),
-          attempt,
-          retryInMs: delayMs,
-        });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-  })();
+  startPlatformConnections();
 
   const stop = () => {
     appendLog(config.paths.log, "Tracevane native Channel Connectors daemon stopping");
+    if (pendingReloadTimer) clearInterval(pendingReloadTimer);
     if (feishuWatchdog) clearInterval(feishuWatchdog);
     if (agentSessionReaper) clearInterval(agentSessionReaper);
     for (const entry of activeRunCancels.values()) entry.controller.abort();

@@ -1278,7 +1278,7 @@ function DeleteDialog({
 }) {
   const [busy, setBusy] = React.useState(false);
 
-  async function confirm() {
+  async function runDeleteConfirm() {
     setBusy(true);
     try {
       await onConfirm();
@@ -1316,7 +1316,7 @@ function DeleteDialog({
           </Button>
           <Button
             variant="danger"
-            onClick={() => void confirm()}
+            onClick={() => void runDeleteConfirm()}
             disabled={busy}
           >
             {busy ? "处理中…" : "移入回收站"}

@@ -12,6 +12,7 @@ const DEFAULT_INPUT = "Reply with GATEWAY_OK only.";
 const DEFAULT_LOCK_TIMEOUT_MS = 300_000;
 const DEFAULT_LOCK_STALE_MS = 30 * 60_000;
 const DEFAULT_SMOKE_RETRIES = 1;
+const DEFAULT_SMOKE_DELAY_MS = 0;
 const MAX_ACTIVE_ROUTE_SMOKE_REQUEST_GRACE_MS = 5_000;
 const SIGNAL_CLEANUP_TIMEOUT_MS = 5_000;
 const SIGNAL_EXIT_CODES = {
@@ -31,6 +32,7 @@ function parseArgs(argv) {
     temporaryEnable: false,
     lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
     smokeRetries: DEFAULT_SMOKE_RETRIES,
+    smokeDelayMs: nonNegativeInt(process.env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_DELAY_MS, DEFAULT_SMOKE_DELAY_MS),
     toolSmoke: false,
     streamToolSmoke: false,
     toolResultSmoke: false,
@@ -65,6 +67,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--lock-timeout-ms=")) options.lockTimeoutMs = nonNegativeInt(arg.slice("--lock-timeout-ms=".length), DEFAULT_LOCK_TIMEOUT_MS);
     else if (arg === "--smoke-retries") options.smokeRetries = nonNegativeInt(argv[++index], DEFAULT_SMOKE_RETRIES);
     else if (arg.startsWith("--smoke-retries=")) options.smokeRetries = nonNegativeInt(arg.slice("--smoke-retries=".length), DEFAULT_SMOKE_RETRIES);
+    else if (arg === "--smoke-delay-ms") options.smokeDelayMs = nonNegativeInt(argv[++index], DEFAULT_SMOKE_DELAY_MS);
+    else if (arg.startsWith("--smoke-delay-ms=")) options.smokeDelayMs = nonNegativeInt(arg.slice("--smoke-delay-ms=".length), DEFAULT_SMOKE_DELAY_MS);
     else if (arg === "--tool-smoke") options.toolSmoke = true;
     else if (arg === "--stream-tool-smoke") {
       options.toolSmoke = true;
@@ -158,6 +162,8 @@ Options:
                     wait this long for the local active-route smoke lock
   --smoke-retries <n>
                     retry transient active-route smoke fetch failures; default: ${DEFAULT_SMOKE_RETRIES}
+  --smoke-delay-ms <n>
+                    wait between active-route smoke requests; useful for rate-limited upstreams
   --tool-smoke     additionally force a real gateway_smoke_tool call per scope
   --stream-tool-smoke
                     also force gateway_smoke_tool through streaming client responses
@@ -699,6 +705,29 @@ async function runActiveRouteSmoke(options, key, scope) {
   return lastSmoke;
 }
 
+async function runActiveRouteSmokeWithDelay(options, key, scope, result) {
+  if (options.smokeDelayMs > 0 && countActiveRouteSmokeResults(result) > 0) {
+    await sleep(options.smokeDelayMs);
+  }
+  return runActiveRouteSmoke(options, key, scope);
+}
+
+function countActiveRouteSmokeResults(result) {
+  return [
+    "routeSmokes",
+    "toolSmokes",
+    "streamToolSmokes",
+    "toolResultSmokes",
+    "streamToolResultSmokes",
+    "compatibilitySmokes",
+    "streamCompatibilitySmokes",
+    "malformedSmokes",
+    "streamMalformedSmokes",
+    "errorSmokes",
+    "streamErrorSmokes",
+  ].reduce((total, key) => total + (Array.isArray(result[key]) ? result[key].length : 0), 0);
+}
+
 async function runActiveRouteSmokeOnce(options, key, scope, attempt) {
   let result;
   try {
@@ -767,7 +796,17 @@ function isTransientActiveRouteSmokeFailure(smoke) {
 
 function isTransientActiveRouteSmokeText(value) {
   const text = String(value || "").toLowerCase();
-  return text.includes("fetch failed") || text.includes("econnreset") || text.includes("etimedout");
+  return text.includes("fetch failed")
+    || text.includes("econnreset")
+    || text.includes("etimedout")
+    || text.includes("rate_limit")
+    || text.includes("rate limit")
+    || text.includes("too many requests")
+    || text.includes("访问量过大")
+    || text.includes("速率限制")
+    || text.includes("稍后再试")
+    || text.includes('"code":"1302"')
+    || text.includes("'code':'1302'");
 }
 
 function activeProviderValue(activeProviders, scope) {
@@ -1035,66 +1074,66 @@ async function main() {
         }
         if (result.setupFailures.length === 0) {
           for (const scope of options.scopes) {
-            result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
+            result.routeSmokes.push(await runActiveRouteSmokeWithDelay(options, key, scope, result));
           }
           if (options.toolSmoke) {
             const toolOptions = { ...options, toolSmokeRequest: true };
             for (const scope of options.scopes) {
-              result.toolSmokes.push(await runActiveRouteSmoke(toolOptions, key, scope));
+              result.toolSmokes.push(await runActiveRouteSmokeWithDelay(toolOptions, key, scope, result));
             }
           }
           if (options.streamToolSmoke) {
             const streamToolOptions = { ...options, toolSmokeRequest: true, streamRequest: true };
             for (const scope of options.scopes) {
-              result.streamToolSmokes.push(await runActiveRouteSmoke(streamToolOptions, key, scope));
+              result.streamToolSmokes.push(await runActiveRouteSmokeWithDelay(streamToolOptions, key, scope, result));
             }
           }
           if (options.toolResultSmoke) {
             const toolResultOptions = { ...options, toolResultSmokeRequest: true };
             for (const scope of options.scopes) {
-              result.toolResultSmokes.push(await runActiveRouteSmoke(toolResultOptions, key, scope));
+              result.toolResultSmokes.push(await runActiveRouteSmokeWithDelay(toolResultOptions, key, scope, result));
             }
           }
           if (options.streamToolResultSmoke) {
             const streamToolResultOptions = { ...options, toolResultSmokeRequest: true, streamRequest: true };
             for (const scope of options.scopes) {
-              result.streamToolResultSmokes.push(await runActiveRouteSmoke(streamToolResultOptions, key, scope));
+              result.streamToolResultSmokes.push(await runActiveRouteSmokeWithDelay(streamToolResultOptions, key, scope, result));
             }
           }
           if (options.compatibilitySmoke) {
             const compatibilityOptions = { ...options, compatibilitySmokeRequest: true };
             for (const scope of options.scopes) {
-              result.compatibilitySmokes.push(await runActiveRouteSmoke(compatibilityOptions, key, scope));
+              result.compatibilitySmokes.push(await runActiveRouteSmokeWithDelay(compatibilityOptions, key, scope, result));
             }
           }
           if (options.streamCompatibilitySmoke) {
             const streamCompatibilityOptions = { ...options, compatibilitySmokeRequest: true, streamRequest: true };
             for (const scope of options.scopes) {
-              result.streamCompatibilitySmokes.push(await runActiveRouteSmoke(streamCompatibilityOptions, key, scope));
+              result.streamCompatibilitySmokes.push(await runActiveRouteSmokeWithDelay(streamCompatibilityOptions, key, scope, result));
             }
           }
           if (options.malformedSmoke) {
             const malformedOptions = { ...options, malformedSmokeRequest: true };
             for (const scope of options.scopes) {
-              result.malformedSmokes.push(await runActiveRouteSmoke(malformedOptions, key, scope));
+              result.malformedSmokes.push(await runActiveRouteSmokeWithDelay(malformedOptions, key, scope, result));
             }
           }
           if (options.streamMalformedSmoke) {
             const streamMalformedOptions = { ...options, malformedSmokeRequest: true, streamRequest: true };
             for (const scope of options.scopes) {
-              result.streamMalformedSmokes.push(await runActiveRouteSmoke(streamMalformedOptions, key, scope));
+              result.streamMalformedSmokes.push(await runActiveRouteSmokeWithDelay(streamMalformedOptions, key, scope, result));
             }
           }
           if (options.errorSmoke) {
             const errorOptions = { ...options, errorSmokeRequest: true };
             for (const scope of options.scopes) {
-              result.errorSmokes.push(await runActiveRouteSmoke(errorOptions, key, scope));
+              result.errorSmokes.push(await runActiveRouteSmokeWithDelay(errorOptions, key, scope, result));
             }
           }
           if (options.streamErrorSmoke) {
             const streamErrorOptions = { ...options, errorSmokeRequest: true, streamRequest: true };
             for (const scope of options.scopes) {
-              result.streamErrorSmokes.push(await runActiveRouteSmoke(streamErrorOptions, key, scope));
+              result.streamErrorSmokes.push(await runActiveRouteSmokeWithDelay(streamErrorOptions, key, scope, result));
             }
           }
           addExpectationFailures(result, options);

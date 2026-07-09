@@ -7,25 +7,32 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  cancelFeishuAppRegistration,
+  getChannelConnectorBindingSecrets,
   getChannelConnectorsAgentSessions,
   getChannelConnectorsConfig,
   getChannelConnectorsDaemonConfig,
   getChannelConnectorsDaemonLogs,
   getChannelConnectorsDaemonService,
   getChannelConnectorsStatus,
+  getFeishuAppRegistration,
   manageChannelConnectorsAgentSessions,
   manageChannelConnectorsDaemonService,
   runChannelConnectorsCommandAction,
   runFeishuTransportSmoke,
   runOctoTransportSmoke,
   saveChannelConnectorsConfig,
+  startFeishuAppRegistration,
 } from "../api/channel-connectors";
 import type { ApiError } from "../api/errors";
 import type {
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorAgentSessionDriverStatusResponse,
+  ChannelConnectorBindingSecretsResponse,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandActionResponse,
+  ChannelConnectorFeishuAppRegistrationSessionResponse,
+  ChannelConnectorFeishuAppRegistrationStartRequest,
   ChannelConnectorFeishuTransportSmokeRequest,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeRequest,
@@ -51,6 +58,10 @@ export const channelConnectorsKeys = {
   all: ["channel-connectors"] as const,
   status: () => ["channel-connectors", "status"] as const,
   config: () => ["channel-connectors", "config"] as const,
+  bindingSecrets: (bindingId: string) =>
+    ["channel-connectors", "binding-secrets", bindingId] as const,
+  feishuRegistration: (sessionId: string) =>
+    ["channel-connectors", "feishu-registration", sessionId] as const,
   daemonConfig: () => ["channel-connectors", "daemon-config"] as const,
   daemonService: () => ["channel-connectors", "daemon-service"] as const,
   daemonLogs: () => ["channel-connectors", "daemon-logs"] as const,
@@ -88,6 +99,30 @@ export function useChannelConnectorsConfigQuery(
     queryKey: channelConnectorsKeys.config(),
     queryFn: ({ signal }) => getChannelConnectorsConfig(signal),
     ...options,
+  });
+}
+
+export function useChannelConnectorBindingSecretsQuery(
+  bindingId: string | null | undefined,
+  options?: QueryOpts<ChannelConnectorBindingSecretsResponse>,
+) {
+  return useQuery<ChannelConnectorBindingSecretsResponse, ApiError>({
+    queryKey: channelConnectorsKeys.bindingSecrets(bindingId ?? ""),
+    queryFn: ({ signal }) => getChannelConnectorBindingSecrets(bindingId ?? "", signal),
+    ...options,
+    enabled: Boolean(bindingId) && (options?.enabled ?? true),
+  });
+}
+
+export function useFeishuAppRegistrationQuery(
+  sessionId: string | null | undefined,
+  options?: QueryOpts<ChannelConnectorFeishuAppRegistrationSessionResponse>,
+) {
+  return useQuery<ChannelConnectorFeishuAppRegistrationSessionResponse, ApiError>({
+    queryKey: channelConnectorsKeys.feishuRegistration(sessionId ?? ""),
+    queryFn: ({ signal }) => getFeishuAppRegistration(sessionId ?? "", signal),
+    ...options,
+    enabled: Boolean(sessionId) && (options?.enabled ?? true),
   });
 }
 
@@ -157,6 +192,38 @@ export function useSaveChannelConnectorsConfigMutation(
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.config() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+export function useStartFeishuAppRegistrationMutation(
+  options?: MutationOpts<
+    ChannelConnectorFeishuAppRegistrationSessionResponse,
+    ChannelConnectorFeishuAppRegistrationStartRequest | void
+  >,
+) {
+  return useMutation<
+    ChannelConnectorFeishuAppRegistrationSessionResponse,
+    ApiError,
+    ChannelConnectorFeishuAppRegistrationStartRequest | void
+  >({
+    mutationFn: (payload) => startFeishuAppRegistration(payload ?? {}),
+    ...options,
+  });
+}
+
+export function useCancelFeishuAppRegistrationMutation(
+  options?: MutationOpts<ChannelConnectorFeishuAppRegistrationSessionResponse, string>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ChannelConnectorFeishuAppRegistrationSessionResponse, ApiError, string>({
+    mutationFn: (sessionId) => cancelFeishuAppRegistration(sessionId),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({
+        queryKey: channelConnectorsKeys.feishuRegistration(args[0].sessionId),
+      });
       options?.onSuccess?.(...args);
     },
   });

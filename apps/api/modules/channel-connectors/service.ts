@@ -2,7 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { registerApp } from "@larksuiteoapi/node-sdk";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
@@ -17,6 +19,9 @@ import {
   type ChannelConnectorsDaemonPlan,
   type ChannelConnectorsDaemonRequest,
   type ChannelConnectorsDaemonResponse,
+  type ChannelConnectorsDaemonReloadMode,
+  type ChannelConnectorsDaemonReloadResponse,
+  type ChannelConnectorsDaemonReloadState,
   type ChannelConnectorsDaemonRuntimeConfig,
   type ChannelConnectorsDaemonRuntimeAutoCompactRecord,
   type ChannelConnectorsDaemonRuntimePendingAgentRunEvent,
@@ -36,6 +41,10 @@ import {
   type ChannelConnectorFeishuTransportResult,
   type ChannelConnectorFeishuTransportSmokeRequest,
   type ChannelConnectorFeishuTransportSmokeResponse,
+  type ChannelConnectorFeishuAppRegistrationSessionResponse,
+  type ChannelConnectorFeishuAppRegistrationStartRequest,
+  type ChannelConnectorFeishuAppRegistrationStatus,
+  type ChannelConnectorFeishuAppRegistrationTenant,
   type ChannelConnectorInboundAttachment,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
@@ -47,6 +56,7 @@ import {
   type ChannelConnectorAgentId,
   type ChannelConnectorAgentSessionActionRequest,
   type ChannelConnectorAgentSessionDriverStatusResponse,
+  type ChannelConnectorBindingSecretsResponse,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformBinding,
   type ChannelConnectorPlatformId,
@@ -174,6 +184,7 @@ const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
   "start",
   "stop",
   "restart",
+  "reload",
   "status",
 ];
 const MANAGEMENT_PORT = 18797;
@@ -197,10 +208,12 @@ const DEFAULT_AGENT_SESSION_POLICY = {
 export type ChannelConnectorsDaemonCommandRunner = (
   command: ChannelConnectorsDaemonCommand,
 ) => Promise<ChannelConnectorsDaemonCommandResult>;
+export type ChannelConnectorFeishuRegisterAppRunner = typeof registerApp;
 
 export interface ChannelConnectorsServiceOptions {
   homeDir?: string;
   commandRunner?: ChannelConnectorsDaemonCommandRunner;
+  feishuRegisterApp?: ChannelConnectorFeishuRegisterAppRunner;
   now?: () => Date;
 }
 
@@ -208,7 +221,11 @@ export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   getPublicNativeConfig(): ChannelConnectorsNativeConfigResponse;
+  getBindingSecrets(bindingId: string): ChannelConnectorBindingSecretsResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
+  startFeishuAppRegistration(payload?: ChannelConnectorFeishuAppRegistrationStartRequest): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse>;
+  getFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
+  cancelFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
   getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): Promise<ChannelConnectorCommandSurfaceResponse>;
   handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
   dispatchFeishuWebhook(payload?: ChannelConnectorFeishuWebhookRequest): Promise<ChannelConnectorFeishuWebhookResponse>;
@@ -221,6 +238,20 @@ export interface ChannelConnectorsService {
   getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
   manageAgentSessions(payload?: ChannelConnectorAgentSessionActionRequest): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
   getDaemonLogs(limit?: number): ChannelConnectorsLogsResponse;
+}
+
+interface FeishuAppRegistrationSession {
+  sessionId: string;
+  tenant: ChannelConnectorFeishuAppRegistrationTenant;
+  status: ChannelConnectorFeishuAppRegistrationStatus;
+  qrUrl: string | null;
+  expiresAtMs: number | null;
+  intervalSeconds: number | null;
+  result: ChannelConnectorFeishuAppRegistrationSessionResponse["result"];
+  error: string | null;
+  abortController: AbortController;
+  createdAtMs: number;
+  updatedAtMs: number;
 }
 
 interface ChannelConnectorsPaths {
@@ -340,6 +371,35 @@ function gatewayEndpoint(): string {
 function normalizeString(value: unknown, fallback = ""): string {
   const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed || fallback;
+}
+
+function normalizeFeishuRegistrationTenant(
+  value: unknown,
+): ChannelConnectorFeishuAppRegistrationTenant {
+  return normalizeString(value).toLowerCase() === "lark" ? "lark" : "feishu";
+}
+
+function feishuRegistrationApiUrl(
+  tenant: ChannelConnectorFeishuAppRegistrationTenant,
+): string {
+  return tenant === "lark" ? "https://open.larksuite.com" : "https://open.feishu.cn";
+}
+
+function feishuRegistrationDomain(
+  tenant: ChannelConnectorFeishuAppRegistrationTenant,
+): string {
+  return tenant === "lark" ? "accounts.larksuite.com" : "accounts.feishu.cn";
+}
+
+function feishuRegistrationErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return normalizeString(error, "Feishu app registration failed.");
+  }
+  const record = error as { code?: unknown; description?: unknown; message?: unknown };
+  const code = normalizeString(record.code);
+  const description = normalizeString(record.description);
+  const message = normalizeString(record.message);
+  return [code, description || message].filter(Boolean).join(": ") || "Feishu app registration failed.";
 }
 
 function slugify(value: string, fallback: string): string {
@@ -644,6 +704,7 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
       records: [],
       recentEvents: [],
     },
+    reload: null,
     error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
   };
 }
@@ -840,6 +901,68 @@ function normalizeDaemonPendingAgentRunStatus(
   };
 }
 
+function normalizeDaemonReloadMode(value: unknown): ChannelConnectorsDaemonReloadMode | null {
+  return value === "immediate" || value === "when-idle" ? value : null;
+}
+
+function normalizeDaemonReloadState(value: unknown): ChannelConnectorsDaemonReloadState | null {
+  if (!isRecord(value)) return null;
+  const status = value.status === "idle"
+    || value.status === "pending"
+    || value.status === "applying"
+    || value.status === "applied"
+    || value.status === "restart-required"
+    || value.status === "failed"
+    ? value.status
+    : null;
+  if (!status) return null;
+  return {
+    status,
+    mode: normalizeDaemonReloadMode(value.mode),
+    requestedAt: nullableString(value.requestedAt),
+    appliedAt: nullableString(value.appliedAt),
+    activeRunsAtRequest: nullableNumber(value.activeRunsAtRequest),
+    activeTurnsAtRequest: nullableNumber(value.activeTurnsAtRequest),
+    configUpdatedAt: nullableString(value.configUpdatedAt),
+    error: nullableString(value.error),
+  };
+}
+
+function normalizeDaemonReloadResponse(value: unknown): ChannelConnectorsDaemonReloadResponse {
+  if (!isRecord(value)) {
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      status: "failed",
+      mode: "when-idle",
+      activeRuns: 0,
+      activeTurns: 0,
+      configUpdatedAt: null,
+      appliedAt: null,
+      restartRequiredReason: null,
+      error: "Channel daemon reload returned an invalid payload",
+    };
+  }
+  const status = value.status === "pending"
+    || value.status === "applied"
+    || value.status === "restart-required"
+    || value.status === "failed"
+    ? value.status
+    : "failed";
+  return {
+    ok: value.ok === true,
+    checkedAt: nullableString(value.checkedAt) || new Date().toISOString(),
+    status,
+    mode: normalizeDaemonReloadMode(value.mode) || "when-idle",
+    activeRuns: nullableNumber(value.activeRuns) ?? 0,
+    activeTurns: nullableNumber(value.activeTurns) ?? 0,
+    configUpdatedAt: nullableString(value.configUpdatedAt),
+    appliedAt: nullableString(value.appliedAt),
+    restartRequiredReason: nullableString(value.restartRequiredReason),
+    error: nullableString(value.error),
+  };
+}
+
 async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelConnectorsDaemonRuntimeStatus> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
@@ -881,10 +1004,53 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
       agentRuns: arrayCount(body.agentRuns),
       autoCompacts,
       pendingAgentRuns,
+      reload: normalizeDaemonReloadState(body.reload),
       error: null,
     };
   } catch (error) {
     return runtimeStatusError(checkedAt, error);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestDaemonReload(
+  payload: { mode: ChannelConnectorsDaemonReloadMode },
+): Promise<ChannelConnectorsDaemonReloadResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${managementEndpoint()}/reload`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = text;
+    }
+    if (!response.ok) {
+      const message = isRecord(body) ? normalizeString(body.message) || normalizeString(body.error) : "";
+      throw new Error(message || `Channel daemon reload failed with HTTP ${response.status}`);
+    }
+    return normalizeDaemonReloadResponse(body);
+  } catch (error) {
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      status: "failed",
+      mode: payload.mode,
+      activeRuns: 0,
+      activeTurns: 0,
+      configUpdatedAt: null,
+      appliedAt: null,
+      restartRequiredReason: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -1025,11 +1191,16 @@ function buildRuntimeConfig(
 function isSensitiveMetadataKey(key: string): boolean {
   const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
   return normalized === "apikey"
+    || normalized === "aeskey"
     || normalized === "appsecret"
     || normalized === "botsecret"
     || normalized === "bottoken"
     || normalized === "clientsecret"
+    || normalized === "encodingaeskey"
+    || normalized === "encryptkey"
     || normalized === "imtoken"
+    || normalized === "password"
+    || normalized === "privatekey"
     || normalized === "secret"
     || normalized === "tenantaccesstoken"
     || normalized === "token"
@@ -1094,6 +1265,18 @@ function redactNativeConfig(nativeConfig: ChannelConnectorsNativeConfig): Channe
       metadata: redactSensitiveMetadata(binding.metadata) as Record<string, unknown> | undefined,
     })),
   };
+}
+
+function extractBindingSecrets(
+  binding: ChannelConnectorPlatformBinding,
+): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const [key, value] of Object.entries(binding.metadata ?? {})) {
+    if (!isSensitiveMetadataKey(key)) continue;
+    const secret = normalizeString(value);
+    if (secret) secrets[key] = secret;
+  }
+  return secrets;
 }
 
 function redactRuntimeConfig(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): ChannelConnectorsDaemonRuntimeConfig {
@@ -1394,11 +1577,11 @@ function isConfigCurrent(configPreview: ChannelConnectorsDaemonConfigResponse): 
 }
 
 function actionWritesFiles(action: ChannelConnectorsDaemonAction): boolean {
-  return action === "install" || action === "ensure-running" || action === "start" || action === "restart";
+  return action === "install" || action === "ensure-running" || action === "start" || action === "restart" || action === "reload";
 }
 
 function blockingReason(plan: ChannelConnectorsDaemonPlan, action: ChannelConnectorsDaemonAction): string | null {
-  if (action === "preview" || action === "status" || action === "stop") return null;
+  if (action === "preview" || action === "status" || action === "stop" || action === "reload") return null;
   if (!plan.supported) return "unsupported_supervisor";
   if (!fs.existsSync(plan.daemonEntry)) return "native_daemon_entry_missing";
   return null;
@@ -2399,6 +2582,8 @@ export function createChannelConnectorsService(
   const paths = () => resolveChannelConnectorsPaths(config, options.homeDir);
   const runCommand = (command: ChannelConnectorsDaemonCommand) =>
     options.commandRunner ? options.commandRunner(command) : runDefaultCommand(command);
+  const registerFeishuApp = options.feishuRegisterApp ?? registerApp;
+  const feishuAppRegistrationSessions = new Map<string, FeishuAppRegistrationSession>();
 
   function currentConfigFull(): ChannelConnectorsDaemonConfigResponse {
     return buildConfigResponse(config, paths(), now());
@@ -2416,6 +2601,20 @@ export function createChannelConnectorsService(
     return buildPublicNativeConfigResponse(config, paths(), now());
   }
 
+  function getBindingSecrets(bindingId: string): ChannelConnectorBindingSecretsResponse {
+    const id = normalizeString(bindingId);
+    if (!id) throw new Error("Channel Connectors binding id is required.");
+    const nativeConfig = readNativeConfig(config, paths(), now());
+    const binding = nativeConfig.platformBindings.find((item) => item.id === id);
+    if (!binding) throw new Error(`Channel Connectors binding not found: ${id}`);
+    return {
+      ok: true,
+      checkedAt: now().toISOString(),
+      bindingId: id,
+      secrets: extractBindingSecrets(binding),
+    };
+  }
+
   function saveNativeConfig(payload: ChannelConnectorsSaveNativeConfigRequest = {}): ChannelConnectorsNativeConfigResponse {
     if (!payload.config) throw new Error("Channel Connectors config payload is required.");
     const resolvedPaths = paths();
@@ -2431,6 +2630,165 @@ export function createChannelConnectorsService(
       supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
       permissionModes: [...PERMISSION_MODES],
     };
+  }
+
+  function feishuRegistrationTerminal(status: ChannelConnectorFeishuAppRegistrationStatus): boolean {
+    return status === "succeeded" || status === "failed" || status === "cancelled" || status === "expired";
+  }
+
+  function cleanupFeishuAppRegistrationSessions(): void {
+    const nowMs = now().getTime();
+    for (const [sessionId, session] of feishuAppRegistrationSessions) {
+      if (
+        session.expiresAtMs !== null
+        && nowMs > session.expiresAtMs + 5_000
+        && !feishuRegistrationTerminal(session.status)
+      ) {
+        session.status = "expired";
+        session.error = "QR code expired.";
+        session.updatedAtMs = nowMs;
+        session.abortController.abort();
+      }
+      if (feishuRegistrationTerminal(session.status) && nowMs - session.updatedAtMs > 10 * 60_000) {
+        feishuAppRegistrationSessions.delete(sessionId);
+      }
+    }
+  }
+
+  function feishuAppRegistrationResponse(
+    session: FeishuAppRegistrationSession,
+  ): ChannelConnectorFeishuAppRegistrationSessionResponse {
+    return {
+      ok: true,
+      checkedAt: now().toISOString(),
+      sessionId: session.sessionId,
+      status: session.status,
+      tenant: session.tenant,
+      qrUrl: session.qrUrl,
+      expiresAt: session.expiresAtMs === null ? null : new Date(session.expiresAtMs).toISOString(),
+      intervalSeconds: session.intervalSeconds,
+      result: session.result,
+      error: session.error,
+    };
+  }
+
+  function getFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse {
+    cleanupFeishuAppRegistrationSessions();
+    const id = normalizeString(sessionId);
+    if (!id) throw new Error("Feishu registration session id is required.");
+    const session = feishuAppRegistrationSessions.get(id);
+    if (!session) throw new Error(`Feishu registration session not found: ${id}`);
+    return feishuAppRegistrationResponse(session);
+  }
+
+  function cancelFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse {
+    cleanupFeishuAppRegistrationSessions();
+    const id = normalizeString(sessionId);
+    if (!id) throw new Error("Feishu registration session id is required.");
+    const session = feishuAppRegistrationSessions.get(id);
+    if (!session) throw new Error(`Feishu registration session not found: ${id}`);
+    if (!feishuRegistrationTerminal(session.status)) {
+      session.status = "cancelled";
+      session.error = null;
+      session.updatedAtMs = now().getTime();
+      session.abortController.abort();
+    }
+    return feishuAppRegistrationResponse(session);
+  }
+
+  async function startFeishuAppRegistration(
+    payload: ChannelConnectorFeishuAppRegistrationStartRequest = {},
+  ): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse> {
+    cleanupFeishuAppRegistrationSessions();
+    const requestedTenant = normalizeFeishuRegistrationTenant(payload.tenant);
+    const sessionId = randomUUID();
+    const abortController = new AbortController();
+    const nowMs = now().getTime();
+    const session: FeishuAppRegistrationSession = {
+      sessionId,
+      tenant: requestedTenant,
+      status: "polling",
+      qrUrl: null,
+      expiresAtMs: null,
+      intervalSeconds: null,
+      result: null,
+      error: null,
+      abortController,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    };
+    feishuAppRegistrationSessions.set(sessionId, session);
+
+    let qrReady = false;
+    let resolveQrReady: (() => void) | null = null;
+    let rejectQrReady: ((error: unknown) => void) | null = null;
+    const qrReadyPromise = new Promise<void>((resolve, reject) => {
+      resolveQrReady = resolve;
+      rejectQrReady = reject;
+    });
+
+    const registrationPromise = registerFeishuApp({
+      domain: feishuRegistrationDomain(requestedTenant),
+      larkDomain: feishuRegistrationDomain("lark"),
+      source: "tracevane-channel-connectors",
+      signal: abortController.signal,
+      appPreset: {
+        name: normalizeString(payload.appName, "Tracevane Agent"),
+        desc: normalizeString(payload.appDescription, "Tracevane local coding agent bridge."),
+      },
+      onQRCodeReady(info) {
+        qrReady = true;
+        session.status = "qr-ready";
+        session.qrUrl = info.url;
+        session.expiresAtMs = now().getTime() + Math.max(1, info.expireIn) * 1000;
+        session.updatedAtMs = now().getTime();
+        resolveQrReady?.();
+      },
+      onStatusChange(info) {
+        if (feishuRegistrationTerminal(session.status)) return;
+        if (info.status === "slow_down") {
+          session.status = "slow-down";
+          session.intervalSeconds = typeof info.interval === "number" ? info.interval : session.intervalSeconds;
+        } else if (info.status === "domain_switched") {
+          session.status = "domain-switched";
+          session.tenant = "lark";
+        } else {
+          session.status = "polling";
+        }
+        session.updatedAtMs = now().getTime();
+      },
+    });
+
+    void registrationPromise.then((result) => {
+      const tenant = result.user_info?.tenant_brand === "lark" ? "lark" : "feishu";
+      session.tenant = tenant;
+      session.status = "succeeded";
+      session.result = {
+        appId: result.client_id,
+        appSecret: result.client_secret,
+        tenant,
+        apiUrl: feishuRegistrationApiUrl(tenant),
+        userOpenId: normalizeString(result.user_info?.open_id) || null,
+      };
+      session.error = null;
+      session.updatedAtMs = now().getTime();
+    }).catch((error: unknown) => {
+      if (session.status === "cancelled" || session.status === "expired") return;
+      const code = typeof error === "object" && error ? normalizeString((error as { code?: unknown }).code) : "";
+      session.status = code === "expired_token" ? "expired" : "failed";
+      session.error = feishuRegistrationErrorMessage(error);
+      session.updatedAtMs = now().getTime();
+      if (!qrReady) rejectQrReady?.(error);
+    });
+
+    try {
+      await qrReadyPromise;
+    } catch (error) {
+      feishuAppRegistrationSessions.delete(sessionId);
+      throw new Error(feishuRegistrationErrorMessage(error));
+    }
+
+    return feishuAppRegistrationResponse(session);
   }
 
   async function getCommandSurface(payload: ChannelConnectorCommandSurfaceRequest = {}): Promise<ChannelConnectorCommandSurfaceResponse> {
@@ -3588,6 +3946,7 @@ export function createChannelConnectorsService(
       templateWritten?: boolean;
       configWritten?: boolean;
       commandsRun?: ChannelConnectorsDaemonCommandResult[];
+      reload?: ChannelConnectorsDaemonReloadResponse | null;
       skippedReason?: string | null;
       diagnostics?: string[];
     },
@@ -3595,10 +3954,11 @@ export function createChannelConnectorsService(
     const plan = createChannelConnectorsDaemonPlan(config, options);
     const configPreview = currentConfigFull();
     const commandsRun = input.commandsRun || [];
+    const reload = input.reload || null;
     const installed = fs.existsSync(plan.selectedTemplate.servicePath);
     const serviceManager = summarizeManager(plan, commandsRun);
     return {
-      ok: input.skippedReason ? false : commandsRun.every((result) => result.ok),
+      ok: input.skippedReason ? false : commandsRun.every((result) => result.ok) && (reload ? reload.ok : true),
       checkedAt: now().toISOString(),
       action: input.action,
       applied: input.applied === true,
@@ -3612,6 +3972,7 @@ export function createChannelConnectorsService(
       config: redactConfigResponse(configPreview),
       commandsRun,
       serviceManager,
+      reload,
       diagnostics: input.diagnostics || [],
     };
   }
@@ -3683,12 +4044,17 @@ export function createChannelConnectorsService(
       if (action !== "stop") commandsRun.push(...await runStatusCommands(plan));
     }
 
+    const reload = action === "reload"
+      ? await requestDaemonReload({ mode: payload.reloadMode || "when-idle" })
+      : null;
+
     return response({
       action,
-      applied: templateWritten || configWritten || commandsRun.length > 0,
+      applied: templateWritten || configWritten || commandsRun.length > 0 || reload?.status === "applied" || reload?.status === "pending",
       templateWritten,
       configWritten,
       commandsRun,
+      reload,
       diagnostics,
     });
   }
@@ -3760,7 +4126,11 @@ export function createChannelConnectorsService(
     getStatus,
     getNativeConfig: currentNativeConfig,
     getPublicNativeConfig: currentPublicNativeConfig,
+    getBindingSecrets,
     saveNativeConfig,
+    startFeishuAppRegistration,
+    getFeishuAppRegistration,
+    cancelFeishuAppRegistration,
     getCommandSurface,
     handleCommandAction,
     dispatchFeishuWebhook,

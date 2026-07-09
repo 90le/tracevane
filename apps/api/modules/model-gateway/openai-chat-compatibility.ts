@@ -60,6 +60,7 @@ export function sanitizeAnthropicMessagesUpstreamBody(
       removedFields.push(field);
     }
   }
+  sanitizeAnthropicMessagesMalformedToolHistory(sanitized, removedFields);
 
   const nextBodyText = JSON.stringify(sanitized);
   return {
@@ -138,6 +139,7 @@ export function sanitizeOpenAIChatUpstreamBody(
       }
     }
   }
+  sanitizeOpenAIChatMalformedToolHistory(sanitized, removedFields);
 
   const nextBodyText = JSON.stringify(sanitized);
   return {
@@ -181,6 +183,103 @@ function safeMetadataRecord(metadata: unknown): JsonRecord | null {
   return Object.keys(safe).length ? safe : null;
 }
 
+function sanitizeAnthropicMessagesMalformedToolHistory(
+  request: JsonRecord,
+  removedFields: string[],
+): void {
+  if (!Array.isArray(request.messages)) return;
+  let changed = false;
+  const messages = request.messages.map((message) => {
+    if (!isRecord(message) || !Array.isArray(message.content)) return message;
+    const role = typeof message.role === "string" ? message.role : "";
+    let contentChanged = false;
+    const content = message.content.map((part) => {
+      if (!isRecord(part)) return part;
+      const type = typeof part.type === "string" ? part.type : "";
+      if (type === "tool_use") {
+        if (role === "assistant" && nonEmptyString(part.id) && nonEmptyString(part.name)) return part;
+        contentChanged = true;
+        return textBlock(`Anthropic Messages malformed tool_use for Anthropic Messages: ${stringifyCompact(part)}`);
+      }
+      if (type === "tool_result") {
+        if (role === "user" && nonEmptyString(part.tool_use_id)) return part;
+        contentChanged = true;
+        return textBlock(`Anthropic Messages malformed tool_result for Anthropic Messages: ${stringifyCompact(part)}`);
+      }
+      if (type === "mcp_tool_use") {
+        if (role === "assistant" && nonEmptyString(part.id) && nonEmptyString(part.name)) return part;
+        contentChanged = true;
+        return textBlock(`Anthropic Messages malformed mcp_tool_use for Anthropic Messages: ${stringifyCompact(part)}`);
+      }
+      if (type === "mcp_tool_result") {
+        if (role === "user" && nonEmptyString(part.tool_use_id)) return part;
+        contentChanged = true;
+        return textBlock(`Anthropic Messages malformed mcp_tool_result for Anthropic Messages: ${stringifyCompact(part)}`);
+      }
+      return part;
+    });
+    if (!contentChanged) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  if (!changed) return;
+  request.messages = messages;
+  pushOnce(removedFields, "messages.malformed_tool_history");
+}
+
+function sanitizeOpenAIChatMalformedToolHistory(
+  request: JsonRecord,
+  removedFields: string[],
+): void {
+  if (!Array.isArray(request.messages)) return;
+  let changed = false;
+  const messages = request.messages.map((message) => {
+    if (!isRecord(message)) return message;
+    const role = typeof message.role === "string" ? message.role : "";
+    if (role === "tool" && !nonEmptyString(message.tool_call_id)) {
+      changed = true;
+      return {
+        role: "user",
+        content: `OpenAI Chat tool message missing tool_call_id for Chat Completions: ${stringifyCompact(message)}`,
+      };
+    }
+    if (role === "function" && !nonEmptyString(message.name)) {
+      changed = true;
+      return {
+        role: "user",
+        content: `OpenAI Chat function message missing name for Chat Completions: ${stringifyCompact(message)}`,
+      };
+    }
+    if (role !== "assistant") return message;
+
+    const nextMessage: JsonRecord = { ...message };
+    const notes: string[] = [];
+    if (isRecord(nextMessage.function_call) && !isValidChatFunctionCall(nextMessage.function_call)) {
+      notes.push(`OpenAI Chat malformed function_call for Chat Completions: ${stringifyCompact(nextMessage.function_call)}`);
+      delete nextMessage.function_call;
+    }
+    if (Array.isArray(nextMessage.tool_calls)) {
+      const validToolCalls = nextMessage.tool_calls.filter((toolCall) => {
+        if (isValidChatToolCall(toolCall)) return true;
+        notes.push(`OpenAI Chat malformed tool_call for Chat Completions: ${stringifyCompact(toolCall)}`);
+        return false;
+      });
+      if (validToolCalls.length) {
+        nextMessage.tool_calls = validToolCalls;
+      } else {
+        delete nextMessage.tool_calls;
+      }
+    }
+    if (!notes.length) return message;
+    nextMessage.content = appendChatContentNotes(nextMessage.content, notes);
+    changed = true;
+    return nextMessage;
+  });
+  if (!changed) return;
+  request.messages = messages;
+  pushOnce(removedFields, "messages.malformed_tool_history");
+}
+
 function normalizeModernChatTokenLimit(request: JsonRecord): void {
   if (request.max_tokens === undefined) return;
   if (!usesModernChatCompletionTokenLimit(request.model)) return;
@@ -206,6 +305,50 @@ function shouldKeepToolReasoningFields(
   if (config?.supportsEffort === true) return true;
   const model = typeof request.model === "string" ? request.model.trim() : "";
   return /^glm[-_]?5(?:\.|$|[-_:/\s\[])/i.test(model);
+}
+
+function appendChatContentNotes(content: unknown, notes: string[]): unknown {
+  if (!notes.length) return content;
+  if (typeof content === "string" && content) return [content, ...notes].join("\n");
+  if (typeof content === "string") return notes.join("\n");
+  if (Array.isArray(content)) return [
+    ...content,
+    ...notes.map((text) => ({ type: "text", text })),
+  ];
+  if (content === null || content === undefined) return notes.join("\n");
+  return [stringifyCompact(content), ...notes].join("\n");
+}
+
+function isValidChatFunctionCall(value: unknown): boolean {
+  return isRecord(value) && nonEmptyString(value.name);
+}
+
+function isValidChatToolCall(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (!nonEmptyString(value.id)) return false;
+  if (value.type !== undefined && value.type !== "function") return false;
+  if (!isRecord(value.function)) return false;
+  return nonEmptyString(value.function.name) && typeof value.function.arguments === "string";
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function pushOnce(values: string[], value: string): void {
+  if (!values.includes(value)) values.push(value);
+}
+
+function stringifyCompact(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function textBlock(text: string): JsonRecord {
+  return { type: "text", text };
 }
 
 function isRecord(value: unknown): value is JsonRecord {

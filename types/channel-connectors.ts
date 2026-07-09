@@ -855,7 +855,42 @@ export type ChannelConnectorsDaemonAction =
   | "start"
   | "stop"
   | "restart"
+  | "reload"
   | "status";
+
+export type ChannelConnectorsDaemonReloadMode = "when-idle" | "immediate";
+
+export type ChannelConnectorsDaemonReloadStatus =
+  | "idle"
+  | "pending"
+  | "applying"
+  | "applied"
+  | "restart-required"
+  | "failed";
+
+export interface ChannelConnectorsDaemonReloadState {
+  status: ChannelConnectorsDaemonReloadStatus;
+  mode: ChannelConnectorsDaemonReloadMode | null;
+  requestedAt: string | null;
+  appliedAt: string | null;
+  activeRunsAtRequest: number | null;
+  activeTurnsAtRequest: number | null;
+  configUpdatedAt: string | null;
+  error: string | null;
+}
+
+export interface ChannelConnectorsDaemonReloadResponse {
+  ok: boolean;
+  checkedAt: string;
+  status: Exclude<ChannelConnectorsDaemonReloadStatus, "idle" | "applying">;
+  mode: ChannelConnectorsDaemonReloadMode;
+  activeRuns: number;
+  activeTurns: number;
+  configUpdatedAt: string | null;
+  appliedAt: string | null;
+  restartRequiredReason: string | null;
+  error: string | null;
+}
 
 export interface ChannelConnectorsDaemonCommand {
   label: string;
@@ -987,6 +1022,52 @@ export interface ChannelConnectorsSaveNativeConfigRequest {
   config?: ChannelConnectorsNativeConfig;
 }
 
+export interface ChannelConnectorBindingSecretsResponse {
+  ok: true;
+  checkedAt: string;
+  bindingId: string;
+  secrets: Record<string, string>;
+}
+
+export type ChannelConnectorFeishuAppRegistrationTenant = "feishu" | "lark";
+
+export type ChannelConnectorFeishuAppRegistrationStatus =
+  | "qr-ready"
+  | "polling"
+  | "slow-down"
+  | "domain-switched"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export interface ChannelConnectorFeishuAppRegistrationStartRequest {
+  tenant?: ChannelConnectorFeishuAppRegistrationTenant;
+  appName?: string | null;
+  appDescription?: string | null;
+}
+
+export interface ChannelConnectorFeishuAppRegistrationResult {
+  appId: string;
+  appSecret: string;
+  tenant: ChannelConnectorFeishuAppRegistrationTenant;
+  apiUrl: string;
+  userOpenId: string | null;
+}
+
+export interface ChannelConnectorFeishuAppRegistrationSessionResponse {
+  ok: true;
+  checkedAt: string;
+  sessionId: string;
+  status: ChannelConnectorFeishuAppRegistrationStatus;
+  tenant: ChannelConnectorFeishuAppRegistrationTenant;
+  qrUrl: string | null;
+  expiresAt: string | null;
+  intervalSeconds: number | null;
+  result: ChannelConnectorFeishuAppRegistrationResult | null;
+  error: string | null;
+}
+
 export interface ChannelConnectorsDaemonTemplate {
   supervisor: ChannelConnectorsSupervisorKind;
   platform: "linux" | "macos" | "windows" | "unknown";
@@ -1031,6 +1112,7 @@ export interface ChannelConnectorsDaemonRequest {
   action?: ChannelConnectorsDaemonAction;
   apply?: boolean;
   runCommands?: boolean;
+  reloadMode?: ChannelConnectorsDaemonReloadMode;
 }
 
 export interface ChannelConnectorsDaemonResponse {
@@ -1048,6 +1130,7 @@ export interface ChannelConnectorsDaemonResponse {
   config: ChannelConnectorsDaemonConfigResponse;
   commandsRun: ChannelConnectorsDaemonCommandResult[];
   serviceManager: ChannelConnectorsDaemonManagerStatus;
+  reload: ChannelConnectorsDaemonReloadResponse | null;
   diagnostics: string[];
 }
 
@@ -1279,6 +1362,7 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   agentRuns: number | null;
   autoCompacts: ChannelConnectorsDaemonRuntimeAutoCompactRecord[];
   pendingAgentRuns: ChannelConnectorsDaemonRuntimePendingAgentRunStatus;
+  reload: ChannelConnectorsDaemonReloadState | null;
   error: string | null;
 }
 

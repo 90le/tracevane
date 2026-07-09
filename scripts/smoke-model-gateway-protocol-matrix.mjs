@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
@@ -14,6 +15,19 @@ const DEFAULT_CODEX_PROVIDER = "codex-account";
 const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const DEFAULT_CODEX_MODELS = ["gpt-5.4", "gpt-5.5", "gpt-5.4-mini"];
 const DEFAULT_CODEX_SCOPES = ["codex", "claude-code", "opencode"];
+const SMOKE_GROUPS = [
+  "routeSmokes",
+  "toolSmokes",
+  "streamToolSmokes",
+  "toolResultSmokes",
+  "streamToolResultSmokes",
+  "compatibilitySmokes",
+  "streamCompatibilitySmokes",
+  "malformedSmokes",
+  "streamMalformedSmokes",
+  "errorSmokes",
+  "streamErrorSmokes",
+];
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -34,6 +48,8 @@ function parseArgs(argv) {
     stageRetries: nonNegativeInt(process.env.TRACEVANE_GATEWAY_PROTOCOL_STAGE_RETRIES, 0),
     skipGlm: false,
     json: false,
+    reportFile: "",
+    markdownReport: "",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -68,6 +84,10 @@ function parseArgs(argv) {
     else if (arg.startsWith("--stage-timeout-ms=")) options.stageTimeoutMs = positiveInt(arg.slice("--stage-timeout-ms=".length), 0);
     else if (arg === "--stage-retries") options.stageRetries = nonNegativeInt(argv[++index], 0);
     else if (arg.startsWith("--stage-retries=")) options.stageRetries = nonNegativeInt(arg.slice("--stage-retries=".length), 0);
+    else if (arg === "--report-file") options.reportFile = argv[++index] || "";
+    else if (arg.startsWith("--report-file=")) options.reportFile = arg.slice("--report-file=".length);
+    else if (arg === "--markdown-report") options.markdownReport = argv[++index] || "";
+    else if (arg.startsWith("--markdown-report=")) options.markdownReport = arg.slice("--markdown-report=".length);
     else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -132,6 +152,9 @@ Options:
   --timeout-ms <n>        per active-route smoke timeout
   --stage-timeout-ms <n>  per child process watchdog; default: max(${MIN_STAGE_TIMEOUT_MS}, --timeout-ms + ${STAGE_TIMEOUT_GRACE_MS})
   --stage-retries <n>     retry a failed matrix stage; default: 0
+  --report-file <path>    write the full machine-readable acceptance report JSON
+  --markdown-report <path>
+                          write a human-readable acceptance report
   --json                  machine-readable output
   -h, --help              Show this help
 `);
@@ -294,7 +317,7 @@ function stageAttemptSummary(result) {
 
 function failedSmokeSummaries(activeRoutes) {
   const summaries = [];
-  for (const group of ["routeSmokes", "toolSmokes", "streamToolSmokes", "toolResultSmokes", "streamToolResultSmokes", "compatibilitySmokes", "streamCompatibilitySmokes", "malformedSmokes", "streamMalformedSmokes", "errorSmokes", "streamErrorSmokes"]) {
+  for (const group of SMOKE_GROUPS) {
     for (const smoke of activeRoutes?.[group] || []) {
       if (smoke?.ok) continue;
       summaries.push({
@@ -311,6 +334,176 @@ function failedSmokeSummaries(activeRoutes) {
     }
   }
   return summaries;
+}
+
+function smokeGroupSummary(stages) {
+  const groups = {};
+  for (const group of SMOKE_GROUPS) {
+    groups[group] = {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      scopes: {},
+    };
+  }
+  for (const stage of stages) {
+    for (const group of SMOKE_GROUPS) {
+      for (const smoke of stage.activeRoutes?.[group] || []) {
+        groups[group].total += 1;
+        if (smoke?.ok) groups[group].passed += 1;
+        else groups[group].failed += 1;
+        const scope = smoke?.scope || "unknown";
+        groups[group].scopes[scope] = groups[group].scopes[scope] || { total: 0, passed: 0, failed: 0 };
+        groups[group].scopes[scope].total += 1;
+        if (smoke?.ok) groups[group].scopes[scope].passed += 1;
+        else groups[group].scopes[scope].failed += 1;
+      }
+    }
+  }
+  return groups;
+}
+
+function buildAcceptanceSummary(proofs, stages) {
+  const smokeGroups = smokeGroupSummary(stages);
+  const routeProofs = proofs.map((proof) => ({
+    agentScope: proof.scope,
+    provider: proof.provider,
+    model: proof.model || null,
+    routeId: proof.routeId,
+    mode: proof.mode,
+    apiFormat: proof.apiFormat,
+    endpointProfile: proof.endpointProfile,
+    status: proof.ok
+      ? proof.mode === "passthrough" ? "native-or-passthrough" : "adapted-or-endpoint-profile"
+      : "failed",
+  }));
+  return {
+    completenessRule: "Release-ready means every route/tool/MCP/attachment cell is native, adapted-lossless, adapted-degraded, path-handoff, direct-upload, or unsupported-explicit. Unknown is not accepted.",
+    routeProofs,
+    smokeGroups,
+    toolFlowProofs: [
+      { group: "toolSmokes", requirement: "model emits a tool call in each client protocol", ...smokeGroups.toolSmokes },
+      { group: "streamToolSmokes", requirement: "streaming model emits a tool call in each client protocol", ...smokeGroups.streamToolSmokes },
+      { group: "toolResultSmokes", requirement: "client tool result returns to the model without losing call identity", ...smokeGroups.toolResultSmokes },
+      { group: "streamToolResultSmokes", requirement: "streaming client tool result returns to the model", ...smokeGroups.streamToolResultSmokes },
+    ],
+    mcpAndCompatibilityProofs: [
+      { group: "compatibilitySmokes", requirement: "MCP/container/cache/annotation fields are preserved, summarized, cleaned, or explicitly degraded", ...smokeGroups.compatibilitySmokes },
+      { group: "streamCompatibilitySmokes", requirement: "streaming compatibility cleanup keeps a valid client response", ...smokeGroups.streamCompatibilitySmokes },
+      { group: "malformedSmokes", requirement: "malformed tool/MCP history degrades into safe context instead of crashing", ...smokeGroups.malformedSmokes },
+      { group: "streamMalformedSmokes", requirement: "streaming malformed history also degrades safely", ...smokeGroups.streamMalformedSmokes },
+      { group: "errorSmokes", requirement: "structured client errors stay structured", ...smokeGroups.errorSmokes },
+      { group: "streamErrorSmokes", requirement: "streaming structured errors stay structured", ...smokeGroups.streamErrorSmokes },
+    ],
+    attachmentAndDegradationBoundaries: [
+      {
+        capability: "CLI image attachment",
+        status: "path-handoff",
+        proofMode: "channel-connector contract",
+        requirement: "CLI argv/event evidence must show the local image path handoff; it is not a Gateway model upload.",
+      },
+      {
+        capability: "Gateway image input",
+        status: "direct-upload",
+        proofMode: "service vision smoke",
+        requirement: "Request body must use protocol-native image content, not a local path string.",
+      },
+      {
+        capability: "ordinary file attachment",
+        status: "path-handoff-or-direct-upload",
+        proofMode: "acceptance matrix",
+        requirement: "Local path handoff and Responses input_file/file-id/base64/URL upload are separate cells.",
+      },
+      {
+        capability: "large file",
+        status: "path-handoff-or-direct-upload",
+        proofMode: "acceptance matrix",
+        requirement: "Must prove truncation/summary/file API behavior and user-visible errors.",
+      },
+      {
+        capability: "image sent to non-vision model",
+        status: "adapted-degraded-or-unsupported-explicit",
+        proofMode: "channel-connector degradation contract",
+        requirement: "Must emit a visible fallback reason; never claim the model saw the image.",
+      },
+      {
+        capability: "video/audio",
+        status: "path-handoff-or-unsupported-explicit",
+        proofMode: "acceptance matrix",
+        requirement: "Audio direct support requires real audio file upload endpoint evidence; Codex account audio remains explicit unsupported.",
+      },
+    ],
+  };
+}
+
+function writeReportFile(filePath, content) {
+  if (!filePath) return;
+  const resolved = path.resolve(filePath);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, content);
+}
+
+function markdownTable(rows, columns) {
+  const header = `| ${columns.map((column) => column.label).join(" | ")} |`;
+  const divider = `| ${columns.map(() => "---").join(" | ")} |`;
+  const body = rows.map((row) => `| ${columns.map((column) => markdownCell(row[column.key])).join(" | ")} |`);
+  return [header, divider, ...body].join("\n");
+}
+
+function markdownCell(value) {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value).replace(/\|/g, "\\|").replace(/\s+/g, " ");
+}
+
+function buildMarkdownReport(result) {
+  const smokeRows = Object.entries(result.acceptanceSummary.smokeGroups).map(([group, summary]) => ({
+    group,
+    total: summary.total,
+    passed: summary.passed,
+    failed: summary.failed,
+  }));
+  return [
+    "# Model Gateway Protocol Acceptance Report",
+    "",
+    `Checked at: ${result.checkedAt}`,
+    `Endpoint: ${result.endpoint}`,
+    `Result: ${result.ok ? "PASS" : "FAIL"}`,
+    "",
+    "## Agent Route Proofs",
+    "",
+    markdownTable(result.acceptanceSummary.routeProofs, [
+      { key: "agentScope", label: "Agent scope" },
+      { key: "provider", label: "Provider" },
+      { key: "model", label: "Model" },
+      { key: "routeId", label: "Route" },
+      { key: "mode", label: "Mode" },
+      { key: "apiFormat", label: "API format" },
+      { key: "status", label: "Status" },
+    ]),
+    "",
+    "## Tool And MCP Smoke",
+    "",
+    markdownTable(smokeRows, [
+      { key: "group", label: "Smoke group" },
+      { key: "total", label: "Total" },
+      { key: "passed", label: "Passed" },
+      { key: "failed", label: "Failed" },
+    ]),
+    "",
+    "## Attachment And Degradation Boundaries",
+    "",
+    markdownTable(result.acceptanceSummary.attachmentAndDegradationBoundaries, [
+      { key: "capability", label: "Capability" },
+      { key: "status", label: "Status" },
+      { key: "proofMode", label: "Proof mode" },
+      { key: "requirement", label: "Requirement" },
+    ]),
+    "",
+    "## Completeness Rule",
+    "",
+    result.acceptanceSummary.completenessRule,
+    "",
+  ].join("\n");
 }
 
 function sleep(ms) {
@@ -355,6 +548,7 @@ async function main() {
     stages.push(await runActiveRoutesStage(options, stage));
   }
   const proofs = protocolProofs(stages);
+  const acceptanceSummary = buildAcceptanceSummary(proofs, stages);
   const result = {
     ok: stages.every((stage) => stage.ok) && proofs.every((proof) => proof.ok),
     endpoint: options.endpoint,
@@ -362,8 +556,11 @@ async function main() {
     timeoutMs: options.timeoutMs,
     stageTimeoutMs: options.stageTimeoutMs,
     protocolProofs: proofs,
+    acceptanceSummary,
     stages,
   };
+  writeReportFile(options.reportFile, `${JSON.stringify(result, null, 2)}\n`);
+  writeReportFile(options.markdownReport, buildMarkdownReport(result));
   printResult(result, options.json);
   if (!result.ok) process.exitCode = 1;
 }

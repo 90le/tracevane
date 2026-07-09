@@ -1,4 +1,5 @@
 import {
+  ArrowUp,
   Copy,
   ExternalLink,
   File as FileIcon,
@@ -19,16 +20,8 @@ import {
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
+import { ActionDialog, TextInputDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
 import { toast } from "@/design/ui/sonner";
 import { UploadManagerDialog } from "@/features/file-manager/file-tools/UploadManagerDialog";
@@ -48,6 +41,7 @@ import {
   explorerPasteDestinationForEntry,
   explorerNodeKey,
   explorerParentPath,
+  explorerPathSegments,
   joinExplorerPath,
   normalizeExplorerPath,
   readExplorerTransferPayload,
@@ -160,9 +154,12 @@ export function IdeExplorerView({
   const uploadHandleRef = React.useRef<UploadBatchHandle | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const folderInputRef = React.useRef<HTMLInputElement | null>(null);
+  const pathInputRef = React.useRef<HTMLInputElement | null>(null);
   const uploadTargetDirectoryRef = React.useRef<string>(directoryPath);
   const explorerActiveRef = React.useRef(false);
   const selectedEntryRef = React.useRef<ExplorerEntry | null>(null);
+  const [editingPath, setEditingPath] = React.useState(false);
+  const [pathInput, setPathInput] = React.useState("");
   const treeState = useExplorerTreeState();
   const { revealPath, select, setExpandedKeys, toggleExpanded } = treeState;
   const directory = useExplorerDirectory({
@@ -178,6 +175,44 @@ export function IdeExplorerView({
         : null,
     [activePath, activeRootId, rootId],
   );
+  const displayPath = React.useMemo(
+    () => joinAbsolutePath(rootAbsolutePath, directory.location.directoryPath),
+    [directory.location.directoryPath, rootAbsolutePath],
+  );
+
+  React.useEffect(() => {
+    if (!editingPath) setPathInput(displayPath);
+  }, [displayPath, editingPath]);
+
+  React.useEffect(() => {
+    if (!editingPath) return;
+    const frame = requestAnimationFrame(() => {
+      pathInputRef.current?.focus();
+      pathInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingPath]);
+
+  const enterPathEditMode = React.useCallback(() => {
+    setPathInput(displayPath);
+    setEditingPath(true);
+  }, [displayPath]);
+
+  const restorePathInput = React.useCallback(() => {
+    setPathInput(displayPath);
+    setEditingPath(false);
+  }, [displayPath]);
+
+  const jumpToPathInput = React.useCallback(() => {
+    const resolved = resolveIdeExplorerPathInput(pathInput, rootAbsolutePath);
+    if (!resolved.ok) {
+      toast.error("路径不在当前工作区内", { description: resolved.message });
+      pathInputRef.current?.focus();
+      return;
+    }
+    onDirectoryPathChange(resolved.path);
+    setEditingPath(false);
+  }, [onDirectoryPathChange, pathInput, rootAbsolutePath]);
 
   React.useEffect(() => {
     selectedEntryRef.current = selectedEntry;
@@ -704,23 +739,23 @@ export function IdeExplorerView({
         className="h-full min-h-0 overflow-auto overscroll-contain p-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] group-hover/ide-explorer:[scrollbar-color:var(--line)_transparent] group-focus-within/ide-explorer:[scrollbar-color:var(--line)_transparent] [&::-webkit-scrollbar]:size-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent group-hover/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line group-focus-within/ide-explorer:[&::-webkit-scrollbar-thumb]:bg-line"
         data-ide-explorer-scroll
       >
-        <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-muted" data-ide-explorer-path-row>
-          <span className="min-w-0 flex-1 truncate rounded-sm bg-panel-2 px-2 py-1 font-mono" title={directory.absolutePath} data-ide-explorer-path>
+        <div className="mb-2 min-w-0 text-xs text-muted" data-ide-explorer-path-row>
+          <span className="sr-only" data-ide-explorer-path>
             {directory.location.directoryPath || "/"}
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={!directory.parentPath}
-            onClick={() => {
-              const parent = explorerParentPath(directory.location.directoryPath);
-              if (parent != null) onDirectoryPathChange(parent);
-            }}
-            data-ide-explorer-parent
-          >
-            上级
-          </Button>
+          <IdeExplorerPathBar
+            directoryPath={directory.location.directoryPath}
+            displayPath={displayPath}
+            parentPath={directory.parentPath}
+            editingPath={editingPath}
+            pathInput={pathInput}
+            pathInputRef={pathInputRef}
+            onEnterEditMode={enterPathEditMode}
+            onPathInputChange={setPathInput}
+            onPathInputJump={jumpToPathInput}
+            onPathInputRestore={restorePathInput}
+            onNavigateToDirectory={onDirectoryPathChange}
+          />
         </div>
         {directory.isLoading ? (
           <ExplorerLoadingState className="min-h-full" title="正在加载工作区文件…" />
@@ -841,6 +876,172 @@ export function IdeExplorerView({
       ) : null}
     </aside>
   );
+}
+
+interface IdeExplorerPathBarProps {
+  directoryPath: string;
+  displayPath: string;
+  parentPath: string | null;
+  editingPath: boolean;
+  pathInput: string;
+  pathInputRef: React.RefObject<HTMLInputElement | null>;
+  onEnterEditMode: () => void;
+  onPathInputChange: (value: string) => void;
+  onPathInputJump: () => void;
+  onPathInputRestore: () => void;
+  onNavigateToDirectory: (path: string) => void;
+}
+
+function IdeExplorerPathBar({
+  directoryPath,
+  displayPath,
+  parentPath,
+  editingPath,
+  pathInput,
+  pathInputRef,
+  onEnterEditMode,
+  onPathInputChange,
+  onPathInputJump,
+  onPathInputRestore,
+  onNavigateToDirectory,
+}: IdeExplorerPathBarProps) {
+  const breadcrumbs = React.useMemo(
+    () => compactIdePathBreadcrumbs(directoryPath),
+    [directoryPath],
+  );
+
+  return (
+    <div
+      role="group"
+      aria-label="IDE 资源管理器路径地址栏"
+      className="flex min-w-0 items-center gap-1 rounded-sm border border-line bg-panel px-1 py-0.5 shadow-sm focus-within:shadow-[var(--ring)]"
+      title={displayPath}
+      data-ide-explorer-path-bar
+      onDoubleClick={onEnterEditMode}
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "l") {
+          event.preventDefault();
+          onEnterEditMode();
+        }
+      }}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7 shrink-0 text-muted hover:text-primary"
+        disabled={!parentPath}
+        onClick={() => {
+          const parent = explorerParentPath(directoryPath);
+          if (parent != null) onNavigateToDirectory(parent);
+        }}
+        aria-label="上级目录"
+        title="上级目录"
+        data-ide-explorer-parent
+      >
+        <ArrowUp className="size-3.5" />
+      </Button>
+      {editingPath ? (
+        <input
+          ref={pathInputRef}
+          value={pathInput}
+          onChange={(event) => onPathInputChange(event.target.value)}
+          onBlur={onPathInputRestore}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onPathInputJump();
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onPathInputRestore();
+            }
+          }}
+          className="min-w-[120px] flex-1 rounded-sm bg-panel-2 px-2 py-1 font-mono text-xs text-ink-strong outline-none"
+          placeholder="输入路径，Enter 跳转"
+          title="输入当前工作区内的绝对路径或相对路径"
+          aria-label="编辑资源管理器路径，按 Enter 跳转"
+          data-ide-explorer-path-input
+        />
+      ) : (
+        <div
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          data-ide-explorer-path-breadcrumb
+        >
+          {!directoryPath ? (
+            <button
+              type="button"
+              onClick={() => onNavigateToDirectory("")}
+              className="inline-flex h-6 shrink-0 items-center rounded-sm bg-primary-soft px-1.5 font-medium text-primary outline-none focus-visible:shadow-[var(--ring)]"
+              title="root"
+              data-ide-explorer-path-root
+            >
+              root
+            </button>
+          ) : null}
+          {directoryPath && breadcrumbs.collapsed ? (
+            <button
+              type="button"
+              onClick={onEnterEditMode}
+              className="inline-flex h-6 shrink-0 items-center rounded-sm px-1 font-semibold text-subtle outline-none hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)]"
+              title="中间路径已省略，点击输入完整路径"
+              aria-label="中间路径已省略"
+              data-ide-explorer-path-ellipsis
+            >
+              ...
+            </button>
+          ) : null}
+          {breadcrumbs.items.map((crumb, index) => (
+            <React.Fragment key={crumb.path || crumb.label}>
+              {directoryPath ? <span className="shrink-0 text-subtle">/</span> : null}
+              <button
+                type="button"
+                onClick={() => onNavigateToDirectory(crumb.path)}
+                className={cn(
+                  "inline-flex h-6 min-w-0 shrink items-center rounded-sm px-1.5 font-mono text-2xs outline-none hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)]",
+                  index === breadcrumbs.items.length - 1
+                    ? "max-w-[74px] bg-primary-soft font-semibold text-primary"
+                    : "max-w-[58px] text-muted",
+                )}
+                title={crumb.path || "root"}
+                data-ide-explorer-path-current={index === breadcrumbs.items.length - 1 ? "true" : undefined}
+                data-ide-explorer-path-crumb
+              >
+                <span className="min-w-0 truncate">{crumb.label}</span>
+              </button>
+            </React.Fragment>
+          ))}
+          <button
+            type="button"
+            onClick={onEnterEditMode}
+            className="ml-auto grid size-6 shrink-0 place-items-center rounded-sm text-subtle outline-none hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)]"
+            title="点击输入路径，或按 Ctrl/⌘+L"
+            aria-label="输入路径跳转"
+            data-ide-explorer-path-enter-edit
+          >
+            <Pencil className="size-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function compactIdePathBreadcrumbs(path: string): {
+  collapsed: boolean;
+  items: Array<{ label: string; path: string }>;
+} {
+  const segments = explorerPathSegments(path);
+  if (!segments.length) return { collapsed: false, items: [] };
+  const start = Math.max(0, segments.length - 2);
+  return {
+    collapsed: start > 0,
+    items: segments.slice(start).map((segment, index) => ({
+      label: segment,
+      path: segments.slice(0, start + index + 1).join("/"),
+    })),
+  };
 }
 
 function GitDecorationBadge({ decoration }: { decoration: IdeGitDecoration }) {
@@ -1175,56 +1376,31 @@ function NameDialog({
   onCancel: () => void;
   onConfirm: (name: string) => Promise<void> | void;
 }) {
-  const [value, setValue] = React.useState(initialName);
   const [busy, setBusy] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
-  React.useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-  async function submit() {
-    const name = value.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    try {
-      await onConfirm(name);
-    } catch {
-      // useExplorerCommands/fileOperations already surface toasts.
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent data-ide-explorer-name-dialog>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <DialogBody>
-          <Input
-            ref={inputRef}
-            value={value}
-            placeholder={placeholder}
-            onChange={(event) => setValue(event.target.value)}
-            onInput={(event) => setValue(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submit();
-              }
-            }}
-            data-ide-explorer-name-input
-          />
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>取消</Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={busy || !value.trim()}>
-            {busy ? "处理中…" : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <TextInputDialog
+      open
+      title={title}
+      description={description}
+      icon={<Pencil />}
+      label="名称"
+      initialValue={initialName}
+      placeholder={placeholder}
+      confirmLabel={confirmLabel}
+      busy={busy}
+      inputDataAttr="explorer-name"
+      contentDataAttr="explorer-name"
+      validate={(name) => (!name ? "请输入名称" : null)}
+      onCancel={onCancel}
+      onConfirm={(name) => {
+        setBusy(true);
+        Promise.resolve(onConfirm(name))
+          .catch(() => {
+            // useExplorerCommands/fileOperations already surface toasts.
+          })
+          .finally(() => setBusy(false));
+      }}
+    />
   );
 }
 
@@ -1255,13 +1431,23 @@ function DeleteDialog({
     }
   }
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent data-ide-explorer-delete-dialog>
-        <DialogHeader>
-          <DialogTitle>删除项目</DialogTitle>
-          <DialogDescription>{entry.path}</DialogDescription>
-        </DialogHeader>
-        <DialogBody className="grid gap-3 text-sm">
+    <ActionDialog
+      open
+      title="删除项目"
+      description={<span className="font-mono">{entry.path}</span>}
+      icon={<Trash2 />}
+      tone="danger"
+      contentDataAttr="explorer-delete"
+      onOpenChange={(open) => { if (!open && !busy) onCancel(); }}
+      footer={(
+        <>
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>取消</Button>
+          <Button variant="danger" size="sm" onClick={() => void submit()} disabled={busy || confirmText !== "DELETE"}>
+            {busy ? "处理中…" : permanent ? "永久删除" : "移入回收站"}
+          </Button>
+        </>
+      )}
+    >
           <div className="rounded border border-red/20 bg-red-soft p-3 text-red">
             <div className="font-semibold">危险操作</div>
             <div className="mt-1 text-xs">默认移入回收站；勾选永久删除才会直接从文件系统移除。</div>
@@ -1291,15 +1477,7 @@ function DeleteDialog({
             />
             <span><strong className="text-red">永久删除</strong>：跳过回收站。</span>
           </label>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>取消</Button>
-          <Button variant="danger" onClick={() => void submit()} disabled={busy || confirmText !== "DELETE"}>
-            {busy ? "处理中…" : permanent ? "永久删除" : "移入回收站"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </ActionDialog>
   );
 }
 
@@ -1328,9 +1506,55 @@ function pathTouchesTarget(targetPath: string, targetKind: FileEntrySummary["kin
 
 function joinAbsolutePath(rootAbsolutePath: string | undefined, relativePath: string): string {
   if (!rootAbsolutePath) return normalizeExplorerPath(relativePath);
-  const root = rootAbsolutePath.replace(/[\\/]+$/, "");
+  const root = normalizeAbsolutePath(rootAbsolutePath);
   const child = normalizeExplorerPath(relativePath);
-  return child ? `${root}/${child}` : root;
+  if (!child) return root;
+  return root === "/" ? `/${child}` : `${root}/${child}`;
+}
+
+function resolveIdeExplorerPathInput(
+  value: string,
+  rootAbsolutePath: string | undefined,
+): { ok: true; path: string } | { ok: false; message: string } {
+  const input = value.trim();
+  if (!input || input === "/") return { ok: true, path: "" };
+
+  const normalizedRoot = rootAbsolutePath ? normalizeAbsolutePath(rootAbsolutePath) : "";
+  let relativePath = "";
+  if (input.startsWith("/")) {
+    const normalizedInput = normalizeAbsolutePath(input);
+    if (!normalizedRoot) {
+      relativePath = normalizedInput.replace(/^\/+/, "");
+    } else if (normalizedRoot === "/") {
+      relativePath = normalizedInput.replace(/^\/+/, "");
+    } else if (normalizedInput === normalizedRoot) {
+      relativePath = "";
+    } else if (normalizedInput.startsWith(`${normalizedRoot}/`)) {
+      relativePath = normalizedInput.slice(normalizedRoot.length).replace(/^\/+/, "");
+    } else {
+      return {
+        ok: false,
+        message: `请输入 ${normalizedRoot} 内的路径。`,
+      };
+    }
+  } else {
+    relativePath = input;
+  }
+
+  const normalizedRelative = normalizeExplorerPath(relativePath);
+  if (explorerPathSegments(normalizedRelative).includes("..")) {
+    return {
+      ok: false,
+      message: "路径不能包含 .. 片段。",
+    };
+  }
+  return { ok: true, path: normalizedRelative };
+}
+
+function normalizeAbsolutePath(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (!normalized || normalized === ".") return "/";
+  return normalized.length > 1 ? normalized.replace(/\/$/g, "") : normalized;
 }
 
 function dispatchTerminalInsertPath(path: string): void {

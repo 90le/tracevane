@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
+import { TextInputDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
 import { DragFloatingPreview } from "@/shared/explorer-ui";
 import type { TerminalProfileDescriptor } from "@/features/cli-agents/types";
@@ -69,6 +70,7 @@ export function TerminalTabs({
   const [draggingTabId, setDraggingTabId] = React.useState<string | null>(null);
   const [dropIndicator, setDropIndicator] = React.useState<{ targetTabId: string; placement: "before" | "after" } | null>(null);
   const [dragPreview, setDragPreview] = React.useState<{ x: number; y: number; label: string; width: number; paneCount: number } | null>(null);
+  const [renameTab, setRenameTab] = React.useState<TerminalTabRecord | null>(null);
   const suppressNextClickRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -100,12 +102,8 @@ export function TerminalTabs({
   }, []);
 
   const renameTabFromMenu = React.useCallback((tab: TerminalTabRecord) => {
-    const nextTitle = window.prompt("重命名终端标签", tab.title);
-    if (nextTitle === null) return;
-    const normalized = nextTitle.trim();
-    if (!normalized || normalized === tab.title) return;
-    onRenameTab(tab, normalized);
-  }, [onRenameTab]);
+    setRenameTab(tab);
+  }, []);
 
   const beginPointerTabDrag = React.useCallback((tab: TerminalTabRecord, event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
@@ -384,6 +382,32 @@ export function TerminalTabs({
           />
         </div>
       ) : null}
+      <TextInputDialog
+        open={Boolean(renameTab)}
+        title="重命名终端"
+        description={renameTab ? `为“${renameTab.title}”设置新的终端标签名。` : undefined}
+        icon={<Pencil />}
+        label="标签名"
+        initialValue={renameTab?.title ?? ""}
+        placeholder="输入终端标签名"
+        confirmLabel="重命名"
+        inputDataAttr="terminal-rename"
+        contentDataAttr="terminal-rename"
+        validate={(value) => {
+          if (!value) return "请输入标签名";
+          if (value.length > 80) return "标签名不能超过 80 个字符";
+          return null;
+        }}
+        onCancel={() => setRenameTab(null)}
+        onConfirm={(value) => {
+          if (!renameTab || value === renameTab.title) {
+            setRenameTab(null);
+            return;
+          }
+          onRenameTab(renameTab, value);
+          setRenameTab(null);
+        }}
+      />
     </div>
   );
 }

@@ -6,16 +6,19 @@ import type {
   GitCheckoutRequest,
   GitBlameRequest,
   GitCommitDetailRequest,
+  GitCommitMessageRequest,
   GitDeleteBranchRequest,
   GitGraphRequest,
   GitCommitRequest,
   GitCreateBranchRequest,
+  GitDiscardRequest,
   GitDiffRequest,
   GitPathActionRequest,
   GitPublishBranchRequest,
   GitRenameBranchRequest,
   GitRemoteActionRequest,
   GitRepositoryRequest,
+  GitRevertCommitRequest,
   GitStashActionRequest,
   GitStashSaveRequest,
   GitSetUpstreamRequest,
@@ -148,9 +151,28 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
     sendJson(res, 200, routeCtx.services.git.unstagePaths(payload.rootId || "", payload.path || "", payload.paths));
   });
 
+  router.post("/api/git/discard", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitDiscardRequest>(req);
+    sendJson(res, 200, routeCtx.services.git.discardPaths(payload.rootId || "", payload.path || "", payload.paths));
+  });
+
   router.post("/api/git/commit", async (req, res, routeCtx) => {
     const payload = await parseJsonBody<GitCommitRequest>(req);
     sendJson(res, 200, routeCtx.services.git.commit(payload.rootId || "", payload.path || "", payload.message || ""));
+  });
+
+  router.post("/api/git/commit-message", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitCommitMessageRequest>(req);
+    sendJson(
+      res,
+      200,
+      await routeCtx.services.git.generateCommitMessage(
+        payload.rootId || "",
+        payload.path || "",
+        payload.staged === true,
+        payload.model || "",
+      ),
+    );
   });
 
   router.post("/api/git/branches", async (req, res, routeCtx) => {
@@ -178,6 +200,19 @@ export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiCont
         payload.path || "",
         payload.target || "",
         payload.detach === true,
+      ),
+    );
+  });
+
+  router.post("/api/git/revert", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<GitRevertCommitRequest>(req);
+    sendJson(
+      res,
+      200,
+      routeCtx.services.git.revertCommit(
+        payload.rootId || "",
+        payload.path || "",
+        payload.hash || "",
       ),
     );
   });

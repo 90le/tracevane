@@ -4,6 +4,7 @@ import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorCommandActionRequest,
+  ChannelConnectorFeishuAppRegistrationStartRequest,
   ChannelConnectorFeishuWebhookRequest,
   ChannelConnectorFeishuTransportSmokeRequest,
   ChannelConnectorCommandSurfaceRequest,
@@ -37,11 +38,44 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
     }
   });
 
+  router.get("/api/channel-connectors/config/bindings/:bindingId/secrets", (_req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.channelConnectors.getBindingSecrets(params.bindingId));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
   router.put("/api/channel-connectors/config", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorsSaveNativeConfigRequest>(req);
       routeCtx.services.channelConnectors.saveNativeConfig(payload);
       sendJson(res, 200, routeCtx.services.channelConnectors.getPublicNativeConfig());
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/accounts/feishu/registration/start", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorFeishuAppRegistrationStartRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.startFeishuAppRegistration(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.get("/api/channel-connectors/accounts/feishu/registration/:sessionId", (_req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.channelConnectors.getFeishuAppRegistration(params.sessionId));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/accounts/feishu/registration/:sessionId/cancel", (_req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.channelConnectors.cancelFeishuAppRegistration(params.sessionId));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

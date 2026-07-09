@@ -158,8 +158,47 @@ import {
   listChannelConnectorPlatformSkills,
 } from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
 
+function assertPrivateFileModeSupported(parentDir) {
+  const probeDir = fs.mkdtempSync(path.join(parentDir, "tracevane-mode-check-"));
+  const probeFile = path.join(probeDir, "secret.json");
+  try {
+    fs.writeFileSync(probeFile, "{}", { mode: 0o600 });
+    fs.chmodSync(probeFile, 0o600);
+    return (fs.statSync(probeFile).mode & 0o777) === 0o600;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probeDir, { recursive: true, force: true });
+  }
+}
+
+function resolvePrivateModeTempRoot() {
+  const candidates = [
+    process.env.TRACEVANE_TEST_TMPDIR,
+    process.env.TEST_TMPDIR,
+    process.platform === "win32" ? "" : "/tmp",
+    os.tmpdir(),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true });
+      if (assertPrivateFileModeSupported(candidate)) return candidate;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error("Channel Connectors system tests require a temp directory that preserves chmod(0600); set TRACEVANE_TEST_TMPDIR.");
+}
+
+const PRIVATE_MODE_TEMP_ROOT = resolvePrivateModeTempRoot();
+const TRACEVANE_PACKAGE_VERSION = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8")).version;
+
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-connectors-"));
+  return fs.mkdtempSync(path.join(PRIVATE_MODE_TEMP_ROOT, "tracevane-channel-connectors-"));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function feishuDeleteModeCheckerName(sessionId) {
@@ -227,6 +266,51 @@ function requestJson(url, options = {}) {
     req.end();
   });
 }
+
+test("Feishu app registration sessions expose QR status and returned credentials", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createChannelConnectorsService(config, {
+    homeDir: root,
+    feishuRegisterApp: async (options) => {
+      assert.equal(options.domain, "accounts.feishu.cn");
+      assert.equal(options.larkDomain, "accounts.larksuite.com");
+      assert.equal(options.source, "tracevane-channel-connectors");
+      assert.equal(options.appPreset.name, "Tracevane Test");
+      options.onQRCodeReady({
+        url: "https://accounts.feishu.cn/qrcode/test",
+        expireIn: 600,
+      });
+      options.onStatusChange({ status: "polling" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return {
+        client_id: "cli_tracevane_test",
+        client_secret: "sec_tracevane_test",
+        user_info: { open_id: "ou_tracevane", tenant_brand: "lark" },
+      };
+    },
+  });
+
+  const started = await service.startFeishuAppRegistration({
+    tenant: "feishu",
+    appName: "Tracevane Test",
+  });
+  assert.equal(started.ok, true);
+  assert.equal(started.tenant, "feishu");
+  assert.equal(started.qrUrl, "https://accounts.feishu.cn/qrcode/test");
+  assert.equal(started.result, null);
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const completed = service.getFeishuAppRegistration(started.sessionId);
+  assert.equal(completed.status, "succeeded");
+  assert.deepEqual(completed.result, {
+    appId: "cli_tracevane_test",
+    appSecret: "sec_tracevane_test",
+    tenant: "lark",
+    apiUrl: "https://open.larksuite.com",
+    userOpenId: "ou_tracevane",
+  });
+});
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -1470,6 +1554,7 @@ test("native Channel Connectors store persists agent profiles and derives daemon
           metadata: {
             apiUrl: "https://im.example.test/api",
             botToken: "test-token",
+            encryptKey: "encrypt-key",
           },
         },
       ],
@@ -1493,16 +1578,29 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.deepEqual(preview.config.projects[0].platformBindings[0].disabledCommands, ["whoami", "deploy"]);
   assert.equal(saved.config.platformBindings[0].metadata.botToken, "test-token");
   assert.equal(preview.config.projects[0].platformBindings[0].metadata.botToken, "[redacted]");
+  assert.equal(preview.config.projects[0].platformBindings[0].metadata.encryptKey, "[redacted]");
   assert.match(preview.preview, /"botToken": "\[redacted\]"/);
+  assert.match(preview.preview, /"encryptKey": "\[redacted\]"/);
   assert.doesNotMatch(preview.preview, /test-token/);
+  assert.doesNotMatch(preview.preview, /encrypt-key/);
 
   const publicConfig = service.getPublicNativeConfig();
   assert.equal(publicConfig.config.platformBindings[0].metadata.botToken, "[redacted]");
+  assert.equal(publicConfig.config.platformBindings[0].metadata.encryptKey, "[redacted]");
   assert.doesNotMatch(JSON.stringify(publicConfig), /test-token/);
+  assert.doesNotMatch(JSON.stringify(publicConfig), /encrypt-key/);
+
+  const secrets = service.getBindingSecrets("octo-bot-a");
+  assert.equal(secrets.bindingId, "octo-bot-a");
+  assert.deepEqual(secrets.secrets, {
+    botToken: "test-token",
+    encryptKey: "encrypt-key",
+  });
 
   service.saveNativeConfig({ config: publicConfig.config });
   const afterRedactedRoundTrip = service.getNativeConfig();
   assert.equal(afterRedactedRoundTrip.config.platformBindings[0].metadata.botToken, "test-token");
+  assert.equal(afterRedactedRoundTrip.config.platformBindings[0].metadata.encryptKey, "encrypt-key");
 
   service.saveNativeConfig({
     config: {
@@ -1535,11 +1633,13 @@ test("native Channel Connectors store persists agent profiles and derives daemon
 test("native Channel Connectors daemon restart writes the latest saved runtime config", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
   const daemonEntry = path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
   fs.mkdirSync(path.dirname(daemonEntry), { recursive: true });
   fs.writeFileSync(daemonEntry, "// test daemon entry\n");
   const commands = [];
   const service = createChannelConnectorsService(config, {
+    homeDir,
     now: () => new Date("2026-06-06T08:00:00.000Z"),
     commandRunner: async (command) => {
       commands.push(command);
@@ -1579,6 +1679,69 @@ test("native Channel Connectors daemon restart writes the latest saved runtime c
   assert.equal(runtimeConfig.agentSessionPolicy.busyStrategy, "queue");
   assert.equal(runtimeConfig.agentSessionPolicy.maxConcurrentTurns, 2);
   assert.equal(runtimeConfig.agentSessionPolicy.queueMaxRecords, 77);
+});
+
+test("native Channel Connectors daemon reload writes config and asks daemon to apply when idle", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createChannelConnectorsService(config, {
+    homeDir,
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const originalFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, options = {}) => {
+    seen.push({ url: String(url), options });
+    return new Response(JSON.stringify({
+      ok: true,
+      checkedAt: "2026-06-06T08:00:00.000Z",
+      status: "pending",
+      mode: "when-idle",
+      activeRuns: 1,
+      activeTurns: 0,
+      configUpdatedAt: null,
+      appliedAt: null,
+      restartRequiredReason: null,
+      error: null,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        agentSessionPolicy: {
+          ...initial.agentSessionPolicy,
+          maxConcurrentTurns: 3,
+          busyStrategy: "queue",
+        },
+      },
+    });
+
+    const reload = await service.manageDaemonService({
+      action: "reload",
+      apply: true,
+      runCommands: false,
+      reloadMode: "when-idle",
+    });
+    assert.equal(reload.ok, true);
+    assert.equal(reload.configWritten, true);
+    assert.equal(reload.commandsRun.length, 0);
+    assert.equal(reload.reload?.status, "pending");
+    assert.equal(reload.reload?.activeRuns, 1);
+    assert.equal(seen.length, 1);
+    assert.match(seen[0].url, /\/reload$/);
+    assert.equal(JSON.parse(String(seen[0].options.body)).mode, "when-idle");
+    const runtimeConfig = JSON.parse(fs.readFileSync(reload.config.configPath, "utf8"));
+    assert.equal(runtimeConfig.agentSessionPolicy.busyStrategy, "queue");
+    assert.equal(runtimeConfig.agentSessionPolicy.maxConcurrentTurns, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {
@@ -5937,7 +6100,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(version.ok, true);
   assert.equal(version.action, "show");
   assert.match(version.replyText, /Tracevane Channel Version/);
-  assert.match(version.replyText, /Tracevane: 0\.1\.70/);
+  assert.match(version.replyText, new RegExp(`Tracevane: ${escapeRegExp(TRACEVANE_PACKAGE_VERSION)}`));
   assert.match(version.replyText, /Node: v/);
   assert.match(version.replyText, /Platform: /);
   assert.match(version.replyText, /Binding: octo-codex \(octo\)/);

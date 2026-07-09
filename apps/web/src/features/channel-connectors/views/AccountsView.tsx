@@ -35,6 +35,7 @@ import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
   useChannelConnectorsConfigQuery,
+  useManageChannelConnectorsDaemonServiceMutation,
   useRunFeishuTransportSmokeMutation,
   useRunOctoTransportSmokeMutation,
   useSaveChannelConnectorsConfigMutation,
@@ -101,6 +102,7 @@ function credentialState(binding: ChannelConnectorPlatformBinding): {
 export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
   const configQuery = useChannelConnectorsConfigQuery();
   const saveMutation = useSaveChannelConnectorsConfigMutation();
+  const applyMutation = useManageChannelConnectorsDaemonServiceMutation();
   const feishuSmoke = useRunFeishuTransportSmokeMutation();
   const octoSmoke = useRunOctoTransportSmokeMutation();
 
@@ -213,9 +215,32 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
       },
       {
         onSuccess: () => {
-          toast.success("已删除平台账号", { description: deleteTarget.id });
-          setDeleteTarget(null);
-          void configQuery.refetch();
+          applyMutation.mutate(
+            { action: "reload", apply: true, reloadMode: "when-idle" },
+            {
+              onSuccess: (result) => {
+                const reload = result.reload;
+                if (reload?.status === "applied") {
+                  toast.success("已删除平台账号并应用", { description: deleteTarget.id });
+                } else if (reload?.status === "pending") {
+                  toast.info("已删除平台账号，等待任务结束后应用", {
+                    description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
+                  });
+                } else {
+                  toast.error("已删除平台账号，但尚未应用到 IM 守护", {
+                    description: reload?.error || reload?.restartRequiredReason || deleteTarget.id,
+                  });
+                }
+                setDeleteTarget(null);
+                void configQuery.refetch();
+              },
+              onError: (error) => {
+                toast.error("已删除平台账号，但应用失败", { description: error.message });
+                setDeleteTarget(null);
+                void configQuery.refetch();
+              },
+            },
+          );
         },
         onError: (error) =>
           toast.error("删除失败", { description: error.message }),
@@ -433,7 +458,7 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
               variant="ghost"
               size="sm"
               onClick={() => setDeleteTarget(null)}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || applyMutation.isPending}
             >
               取消
             </Button>
@@ -441,9 +466,9 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
               variant="danger"
               size="sm"
               onClick={deleteAccount}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || applyMutation.isPending}
             >
-              {saveMutation.isPending ? "删除中…" : "确认删除"}
+              {saveMutation.isPending || applyMutation.isPending ? "删除中…" : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

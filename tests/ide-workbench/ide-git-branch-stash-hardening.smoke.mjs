@@ -170,6 +170,7 @@ async function run() {
       await page.locator('[data-ide-activity-bar]').getByRole('button', { name: 'Source Control' }).click();
       await page.locator('[data-ide-source-control-view]').waitFor({ state: 'visible', timeout: 30_000 });
 
+      await page.locator('[data-ide-source-control-section-toggle="branches"]').click();
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="main"][data-ide-source-control-branch-current="true"]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-branch-name]').fill('bad branch');
       await page.locator('[data-ide-source-control-branch-error]').filter({ hasText: '分支名不能包含空白' }).waitFor({ state: 'visible', timeout: 30_000 });
@@ -180,6 +181,7 @@ async function run() {
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="hardening/ui-created"][data-ide-source-control-branch-current="false"]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="main"][data-ide-source-control-branch-current="true"]').waitFor({ state: 'visible', timeout: 30_000 });
 
+      await page.locator('[data-ide-source-control-section-toggle="stashes"]').click();
       await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: 'hardening manual stash' }).waitFor({ state: 'visible', timeout: 30_000 });
       if (await page.locator('[data-ide-source-control-save-stash]').isEnabled()) throw new Error('Clean repo should disable save stash');
       page.once('dialog', async (dialog) => {

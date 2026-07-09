@@ -1,83 +1,279 @@
-import { ArrowDownToLine, ArrowUpFromLine, Coins, Database, Percent, Send } from "lucide-react";
-
-import { cn } from "@/design/lib/utils";
-import { Badge } from "@/design/ui/badge";
-import { Button } from "@/design/ui/button";
+import * as React from "react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/design/ui/table";
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  Coins,
+  Gauge,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  X,
+} from "lucide-react";
+
+import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
 
-import {
-  useModelGatewayStatusQuery,
-  useModelGatewayUsageQuery,
-} from "@/lib/query/model-gateway";
+import { useModelGatewayUsageQuery } from "@/lib/query/model-gateway";
 import type { ModelGatewayViewProps } from "./types";
 
-/** Compact number formatter (12_400 → "12.4k", 3_800_000 → "3.8M"). */
+type UsageSortKey = "requests" | "total" | "input" | "output";
+type UsageRange = "week" | "all" | "custom";
+
+type UsageMetricRow = {
+  model: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type UsageDailyRow = {
+  date: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type UsageDateQuery = {
+  range: UsageRange;
+  dateFrom: string | null;
+  dateTo: string | null;
+};
+
+type UsageComparison = {
+  label: string;
+  tone: "good" | "warn" | "muted" | "primary";
+  direction: "up" | "down" | "flat";
+};
+
+const SORT_OPTIONS: Array<{ key: UsageSortKey; label: string }> = [
+  { key: "requests", label: "次数" },
+  { key: "total", label: "总 token" },
+  { key: "input", label: "输入" },
+  { key: "output", label: "输出" },
+];
+
+const RANGE_OPTIONS: Array<{ key: UsageRange; label: string }> = [
+  { key: "week", label: "最近一周" },
+  { key: "all", label: "全部" },
+  { key: "custom", label: "指定日期" },
+];
+
 function compact(value: number): string {
-  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(
-    value,
-  );
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-/** Latency cell: render evidence or a `-` placeholder when null/missing. */
-function latency(ms: number | null | undefined): string {
-  if (ms == null) return "-";
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.round(ms)}ms`;
+function numberText(value: number): string {
+  return new Intl.NumberFormat("en").format(value);
 }
 
 function percent(value: number): string {
-  if (!Number.isFinite(value)) return "-";
-  return `${Math.round(value * 100)}%`;
+  if (!Number.isFinite(value)) return "0%";
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
-function ratio(numerator: number, denominator: number): string {
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return "-";
-  return `${(numerator / denominator).toFixed(1)}×`;
+function metricValue(row: UsageMetricRow, sortKey: UsageSortKey): number {
+  if (sortKey === "requests") return row.requestCount;
+  if (sortKey === "input") return row.inputTokens;
+  if (sortKey === "output") return row.outputTokens;
+  return row.totalTokens;
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  const date = new Date(value);
+function dateLabel(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-const BAR_COLORS = [
-  "var(--primary)",
-  "var(--teal)",
-  "var(--violet)",
-  "var(--amber)",
-  "var(--green)",
-];
+function dateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function addDays(value: Date, days: number): Date {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function inclusiveDayCount(dateFrom: string, dateTo: string): number {
+  const start = parseDateKey(dateFrom);
+  const end = parseDateKey(dateTo);
+  if (!start || !end || start > end) return 0;
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+}
+
+function dateKeysBetween(dateFrom: string | null | undefined, dateTo: string | null | undefined): string[] {
+  if (!dateFrom || !dateTo) return [];
+  const start = new Date(`${dateFrom}T00:00:00`);
+  const end = new Date(`${dateTo}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+  const keys: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end && keys.length < 45) {
+    const year = cursor.getFullYear();
+    const month = `${cursor.getMonth() + 1}`.padStart(2, "0");
+    const day = `${cursor.getDate()}`.padStart(2, "0");
+    keys.push(`${year}-${month}-${day}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
+}
+
+function fillDailyRows(
+  rows: UsageDailyRow[],
+  query: { range: UsageRange; dateFrom: string | null; dateTo: string | null } | undefined,
+): UsageDailyRow[] {
+  if (!query || query.range === "all") return rows;
+  const known = new Map(rows.map((row) => [row.date, row]));
+  const keys = dateKeysBetween(query.dateFrom, query.dateTo);
+  if (!keys.length) return rows;
+  return keys.map((date) => known.get(date) || {
+    date,
+    requestCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  });
+}
+
+function rangeLabel(query: UsageDateQuery | undefined): string {
+  if (!query) return "最近一周";
+  if (query.range === "all") return "全部历史";
+  if (query.range === "custom") {
+    if (query.dateFrom && query.dateTo) return `${query.dateFrom} - ${query.dateTo}`;
+    return "指定日期";
+  }
+  return `${query.dateFrom || "-"} - ${query.dateTo || "-"}`;
+}
+
+function comparisonWindow(query: UsageDateQuery | undefined): { dateFrom: string; dateTo: string; label: string } | null {
+  if (!query || query.range === "all" || !query.dateFrom || !query.dateTo) return null;
+  const days = inclusiveDayCount(query.dateFrom, query.dateTo);
+  const start = parseDateKey(query.dateFrom);
+  if (!start || days <= 0) return null;
+  const previousTo = addDays(start, -1);
+  const previousFrom = addDays(previousTo, -(days - 1));
+  return {
+    dateFrom: dateKey(previousFrom),
+    dateTo: dateKey(previousTo),
+    label: query.range === "week" && days === 7 ? "较前一周" : "较上期",
+  };
+}
+
+function compareUsage(current: number, previous: number | null | undefined, label: string | null): UsageComparison {
+  if (!label || previous == null) {
+    return { label: "等待对比", tone: "muted", direction: "flat" };
+  }
+  if (previous <= 0) {
+    if (current <= 0) return { label: `${label} 持平`, tone: "muted", direction: "flat" };
+    return { label: `${label} 新增`, tone: "warn", direction: "up" };
+  }
+  const change = (current - previous) / previous;
+  if (Math.abs(change) < 0.005) return { label: `${label} 持平`, tone: "muted", direction: "flat" };
+  return {
+    label: `${label} ${Math.round(Math.abs(change) * 100)}%`,
+    tone: change < 0 ? "good" : "warn",
+    direction: change < 0 ? "down" : "up",
+  };
+}
+
+function modelIdentity(model: string): {
+  label: string;
+  mark: string;
+  tone: "openai" | "anthropic" | "qwen" | "gemini" | "deepseek" | "local" | "generic";
+} {
+  const value = model.toLowerCase();
+  if (/(^|[\W_])(gpt|o\d|openai|codex)/.test(value)) return { label: "openai", mark: "AI", tone: "openai" };
+  if (/claude|anthropic/.test(value)) return { label: "anthropic", mark: "A", tone: "anthropic" };
+  if (/qwen|通义/.test(value)) return { label: "qwen", mark: "Q", tone: "qwen" };
+  if (/gemini|google/.test(value)) return { label: "gemini", mark: "G", tone: "gemini" };
+  if (/deepseek/.test(value)) return { label: "deepseek", mark: "D", tone: "deepseek" };
+  if (/llama|ollama|local|lmstudio|vllm/.test(value)) return { label: "local", mark: "L", tone: "local" };
+  return { label: "model", mark: model.slice(0, 1).toUpperCase() || "M", tone: "generic" };
+}
 
 export function UsageView(_props: ModelGatewayViewProps) {
-  const usageQuery = useModelGatewayUsageQuery();
-  const statusQuery = useModelGatewayStatusQuery();
+  const [sortKey, setSortKey] = React.useState<UsageSortKey>("total");
+  const [usageRange, setUsageRange] = React.useState<UsageRange>("week");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
+  const usageQuery = useModelGatewayUsageQuery({
+    range: usageRange,
+    dateFrom: usageRange === "custom" ? dateFrom || null : null,
+    dateTo: usageRange === "custom" ? dateTo || null : null,
+  });
+
+  const usage = usageQuery.data;
+  const previousWindow = React.useMemo(() => comparisonWindow(usage?.query), [usage?.query]);
+  const previousUsageQuery = useModelGatewayUsageQuery(
+    {
+      range: "custom",
+      dateFrom: previousWindow?.dateFrom ?? null,
+      dateTo: previousWindow?.dateTo ?? null,
+    },
+    { enabled: Boolean(previousWindow) },
+  );
+  const totals = usage?.totals;
+  const previousTotals = previousUsageQuery.data?.totals;
+  const models = usage?.models ?? [];
+  const daily = fillDailyRows(usage?.daily ?? [], usage?.query);
+  const chartRows = React.useMemo(() => (
+    models
+      .map((model) => ({
+        ...model,
+        totalTokens: model.totalTokens ?? model.inputTokens + model.outputTokens,
+      }))
+      .sort((left, right) => (
+        metricValue(right, sortKey) - metricValue(left, sortKey)
+        || right.requestCount - left.requestCount
+        || right.totalTokens - left.totalTokens
+        || left.model.localeCompare(right.model)
+      ))
+  ), [models, sortKey]);
+  const maxMetric = chartRows.reduce((max, row) => Math.max(max, metricValue(row, sortKey)), 0);
+  const maxDailyTokens = daily.reduce((max, row) => Math.max(max, row.totalTokens), 0);
+  const hasUsage = (totals?.requestCount ?? 0) > 0 || models.length > 0 || daily.some((row) => row.requestCount > 0);
+  const inputShare = totals && totals.totalTokens > 0 ? totals.inputTokens / totals.totalTokens : 0;
+  const outputShare = totals && totals.totalTokens > 0 ? totals.outputTokens / totals.totalTokens : 0;
+  const largestModelTokens = chartRows[0]?.totalTokens ?? 0;
+  const largestModelShare = totals && totals.totalTokens > 0 ? largestModelTokens / totals.totalTokens : 0;
+  const comparisonLabel = previousWindow?.label ?? null;
+  const requestCompare = compareUsage(totals?.requestCount ?? 0, previousTotals?.requestCount, comparisonLabel);
+  const totalCompare = compareUsage(totals?.totalTokens ?? 0, previousTotals?.totalTokens, comparisonLabel);
+  const inputCompare = compareUsage(totals?.inputTokens ?? 0, previousTotals?.inputTokens, comparisonLabel);
+  const outputCompare = compareUsage(totals?.outputTokens ?? 0, previousTotals?.outputTokens, comparisonLabel);
 
   if (usageQuery.isLoading) {
     return (
       <div className="grid gap-4" role="status" aria-busy="true">
-        <div className="grid gap-2">
-          <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-4 w-2/3" />
+        <div className="rounded-md border border-line bg-panel p-4 shadow-sm">
+          <Skeleton className="h-7 w-32" />
+          <Skeleton className="mt-2 h-4 w-2/3" />
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Skeleton className="h-[76px]" />
-          <Skeleton className="h-[76px]" />
-          <Skeleton className="h-[76px]" />
-          <Skeleton className="h-[76px]" />
+        <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-[104px]" />
+          <Skeleton className="h-[104px]" />
+          <Skeleton className="h-[104px]" />
+          <Skeleton className="h-[104px]" />
         </div>
-        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-96 w-full" />
       </div>
     );
   }
@@ -96,365 +292,566 @@ export function UsageView(_props: ModelGatewayViewProps) {
     );
   }
 
-  const usage = usageQuery.data;
-  const totals = usage?.totals;
-  const models = usage?.models ?? [];
-  const providerRows = usage?.providers ?? [];
-  const appScopeRows = usage?.appScopes ?? [];
-  const tokenRows = models;
-  const requestRows = [...models].sort((left, right) => (
-    right.requestCount - left.requestCount
-    || right.meteredRequestCount - left.meteredRequestCount
-    || right.totalTokens - left.totalTokens
-    || left.model.localeCompare(right.model)
-  ));
-  const readWindow = usage?.readWindow;
-  const latestUsageRequestAt = tokenRows
-    .map((row) => row.latestRequestAt)
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
-
-  // Latency comes from the runtime usage summary (status), shown as `-` when absent.
-  const latencySummary = statusQuery.data?.runtime.usageSummary.latency;
-  const runtimeLogSize = statusQuery.data?.runtime.requestLogSize ?? 0;
-  const runtimeUsage = statusQuery.data?.runtime.usageSummary.usage;
-
-  const hasUsage = (totals?.requestCount ?? 0) > 0 || models.length > 0;
-  const maxRequests = requestRows.reduce((max, m) => Math.max(max, m.requestCount), 0);
-  const meteredCoverage =
-    totals && totals.requestCount > 0
-      ? totals.meteredRequestCount / totals.requestCount
-      : 0;
-  const cacheFieldsAvailable =
-    typeof totals?.cacheReadTokens === "number"
-    && typeof totals?.cacheCreationTokens === "number";
-  const cacheReadTokens = cacheFieldsAvailable ? totals.cacheReadTokens : 0;
-  const cacheCreationTokens = cacheFieldsAvailable ? totals.cacheCreationTokens : 0;
-  const cacheReadRequestCount = cacheFieldsAvailable ? (totals.cacheReadRequestCount ?? 0) : 0;
-  const cacheCreationRequestCount = cacheFieldsAvailable ? (totals.cacheCreationRequestCount ?? 0) : 0;
-  const cacheEvidenceTokens = cacheReadTokens + cacheCreationTokens;
-  const cacheReadToInput = ratio(cacheReadTokens, totals?.inputTokens ?? 0);
-  const runtimeCacheReadTokens = runtimeUsage?.cacheReadTokens ?? 0;
-  const runtimeCacheCreationTokens = runtimeUsage?.cacheCreationTokens ?? 0;
-
   return (
     <div className="grid gap-4">
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
-        <p className="text-sm text-muted">
-          请求与 token 来自用量账本；延迟来自最近 runtime 请求窗口。未返回 usage 的请求只计入请求数，不猜 token；缓存字段只来自 provider usage。
-        </p>
-      </div>
+      <UsageHeader
+        queryLabel={rangeLabel(usage?.query)}
+        usageRange={usageRange}
+        setUsageRange={setUsageRange}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        setDateFrom={setDateFrom}
+        setDateTo={setDateTo}
+        requestCount={totals?.requestCount ?? 0}
+      />
 
-      {/* KPI grid — values from API totals or zero */}
-      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 xl:grid-cols-4">
         <Kpi
           icon={<Send />}
-          label="请求"
-          value={compact(totals?.requestCount ?? 0)}
-          sub={`${compact(totals?.meteredRequestCount ?? 0)} metered`}
+          tone="primary"
+          label="请求次数"
+          value={numberText(totals?.requestCount ?? 0)}
+          sub={`${rangeLabel(usage?.query)} · 已入账`}
+          accent={`${numberText(totals?.requestCount ?? 0)} 次`}
+          comparison={requestCompare}
         />
-        <Kpi icon={<Coins />} label="tokens" value={compact(totals?.totalTokens ?? 0)} />
+        <Kpi
+          icon={<Coins />}
+          tone="violet"
+          label="总 token"
+          value={numberText(totals?.totalTokens ?? 0)}
+          sub={`最大模型占比 ${percent(largestModelShare)}`}
+          accent={percent(largestModelShare)}
+          comparison={totalCompare}
+        />
         <Kpi
           icon={<ArrowDownToLine />}
-          label="输入"
-          value={compact(totals?.inputTokens ?? 0)}
+          tone="primary"
+          label="输入消耗"
+          value={numberText(totals?.inputTokens ?? 0)}
+          sub={`输入占比 ${percent(inputShare)}`}
+          accent={percent(inputShare)}
+          meter={inputShare}
+          comparison={inputCompare}
         />
         <Kpi
           icon={<ArrowUpFromLine />}
-          label="输出"
-          value={compact(totals?.outputTokens ?? 0)}
-        />
-        <Kpi
-          icon={<Percent />}
-          label="计量覆盖"
-          value={percent(meteredCoverage)}
-          sub="usage 返回率"
-        />
-        <Kpi
-          icon={<Database />}
-          label="缓存证据"
-          value={cacheFieldsAvailable ? compact(cacheEvidenceTokens) : "未暴露"}
-          sub={cacheFieldsAvailable
-            ? `读 ${compact(cacheReadTokens)} · 写 ${compact(cacheCreationTokens)}`
-            : `runtime 读 ${compact(runtimeCacheReadTokens)}`}
+          tone="teal"
+          label="输出消耗"
+          value={numberText(totals?.outputTokens ?? 0)}
+          sub={`输出占比 ${percent(outputShare)}`}
+          accent={percent(outputShare)}
+          meter={outputShare}
+          comparison={outputCompare}
         />
       </div>
-
-      <section className="rounded-md border border-line bg-panel-2 p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant={readWindow?.truncated ? "warn" : "ok"}>
-            {readWindow?.truncated ? "账本窗口已截断" : "账本窗口完整"}
-          </Badge>
-          <span className="text-muted">
-            读取 {compact(readWindow?.entryCount ?? 0)} / 限制 {compact(readWindow?.readLimit ?? 0)} 条
-          </span>
-          <span className="text-muted">
-            · {compact(readWindow?.readBytes ?? 0)}B / {compact(readWindow?.ledgerSizeBytes ?? 0)}B
-          </span>
-          <span className="text-muted">
-            · 最新请求 {formatDateTime(latestUsageRequestAt)}
-          </span>
-        </div>
-      </section>
 
       {!hasUsage ? (
         <section className="rounded-md border border-line bg-panel shadow-sm">
           <EmptyState
             title="暂无用量记录"
-            description="网关尚未记录任何请求。产生流量后，模型用量与延迟分布会显示在这里。"
+            description="当前日期范围内没有请求记录。产生流量或调整筛选后，请求次数和 token 消耗会显示在这里。"
           />
         </section>
       ) : (
         <>
-          <section className="grid gap-3 rounded-md border border-line bg-panel p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <h3 className="text-md font-semibold text-ink-strong">缓存证据口径</h3>
-              <p className="mt-1 text-sm text-muted">
-                OpenAI 的 cached_tokens 与 Anthropic 的 cache_read/cache_creation 字段语义不同；这里仅展示
-                provider 返回的缓存读写证据，不做账单折扣、成本或命中率估算。
-              </p>
-              {!cacheFieldsAvailable && (
-                <p className="mt-2 text-sm text-amber">
-                  当前 /usage 响应未暴露缓存账本字段；最近 runtime 窗口显示 cache read {compact(runtimeCacheReadTokens)}
-                  、cache write {compact(runtimeCacheCreationTokens)}。重启/升级网关 daemon 后，账本维度会显示完整缓存证据。
-                </p>
-              )}
-              {cacheFieldsAvailable && cacheEvidenceTokens === 0 && (
-                <p className="mt-2 text-sm text-amber">
-                  当前账本窗口没有正向缓存证据。这不等于缓存功能关闭；可能是 provider 未回传 cache 字段、请求少于缓存门槛、
-                  前缀不稳定，或当前 read window 内没有命中/写入。
-                </p>
-              )}
-            </div>
-            <div className="grid grid-cols-1 gap-2 text-center min-[420px]:grid-cols-3">
-              <LatCell label="cache read" value={compact(cacheReadTokens)} />
-              <LatCell label="cache write" value={compact(cacheCreationTokens)} />
-              <LatCell label="read/input" value={cacheReadToInput} />
-            </div>
-            <div className="grid grid-cols-1 gap-2 text-center min-[420px]:grid-cols-2 md:col-span-2 md:grid-cols-4">
-              <LatCell label="read req" value={cacheFieldsAvailable ? compact(cacheReadRequestCount) : "-"} />
-              <LatCell label="write req" value={cacheFieldsAvailable ? compact(cacheCreationRequestCount) : "-"} />
-              <LatCell label="runtime read" value={compact(runtimeCacheReadTokens)} />
-              <LatCell label="runtime write" value={compact(runtimeCacheCreationTokens)} />
-            </div>
-          </section>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownPanel
-              title="按 Agent scope"
-              sub="从 usage ledger 的 appScope 聚合，直接定位是哪类客户端产生流量。"
-              rows={appScopeRows}
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.9fr)]">
+            <ModelRankingPanel
+              rows={chartRows}
+              sortKey={sortKey}
+              setSortKey={setSortKey}
+              maxMetric={maxMetric}
+              totalTokens={totals?.totalTokens ?? 0}
             />
-            <BreakdownPanel
-              title="按 Provider"
-              sub="从 usage ledger 的 providerId/providerName 聚合，定位流量实际落到哪个服务商。"
-              rows={providerRows}
+            <DailyTrendPanel
+              rows={daily}
+              maxTokens={maxDailyTokens}
+              queryLabel={rangeLabel(usage?.query)}
             />
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-            {/* Model request distribution bars: deliberately sorted by request count. */}
-            <section className="rounded-md border border-line bg-panel shadow-sm">
-              <div className="border-b border-line px-4 py-3">
-                <h3 className="text-md font-semibold text-ink-strong">按模型分布</h3>
-                <span className="text-sm text-subtle">请求次数占比，按请求数排序</span>
-              </div>
-              <div className="grid min-w-0 gap-2.5 p-4">
-                {requestRows.map((m, idx) => {
-                  const pct = maxRequests > 0 ? (m.requestCount / maxRequests) * 100 : 0;
-                  return (
-                    <div key={m.model} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <i
-                          className="size-2.5 shrink-0 rounded-full"
-                          style={{ background: BAR_COLORS[idx % BAR_COLORS.length] }}
-                        />
-                        <span className="truncate text-sm text-ink">{m.model}</span>
-                      </span>
-                      <span className="text-sm tabular-nums text-muted">
-                        {compact(m.requestCount)}
-                      </span>
-                      <div className="col-span-2 h-1.5 overflow-hidden rounded-full bg-panel-3">
-                        <i
-                          className="block h-full rounded-full"
-                          style={{
-                            width: `${Math.max(pct, 2)}%`,
-                            background: BAR_COLORS[idx % BAR_COLORS.length],
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Latency distribution — `-` when no evidence */}
-            <aside className="rounded-md border border-line bg-panel shadow-sm">
-              <div className="border-b border-line px-4 py-3">
-                <h3 className="text-md font-semibold text-ink-strong">延迟分布</h3>
-                <span className="text-sm text-subtle">最近 runtime 窗口 · {compact(runtimeLogSize)} 条</span>
-              </div>
-              <div className="grid grid-cols-1 gap-2 p-4 min-[420px]:grid-cols-3">
-                <LatCell label="p50" value={latency(latencySummary?.p50Ms)} />
-                <LatCell label="p95" value={latency(latencySummary?.p95Ms)} />
-                <LatCell label="p99" value={latency(latencySummary?.p99Ms)} />
-                <LatCell label="首字节 p95" value={latency(latencySummary?.firstByte.p95Ms)} />
-                <LatCell label="平均" value={latency(latencySummary?.averageMs)} />
-                <LatCell label="最大" value={latency(latencySummary?.maxMs)} />
-              </div>
-            </aside>
-          </div>
-
-          {/* 模型 / 请求次数 / Token 消耗 table */}
-          <section className="grid gap-2">
-            <div>
-              <h3 className="text-md font-semibold text-ink-strong">Token 消耗排行</h3>
-              <p className="text-sm text-muted">
-                按 total tokens 排序；未 metered 请求不会被估算 token。
-              </p>
-            </div>
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>模型</TableHead>
-                  <TableHead className="text-right">请求次数</TableHead>
-                  <TableHead className="hidden text-right md:table-cell">Metered</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">输入 Token</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">输出 Token</TableHead>
-                  <TableHead className="hidden text-right md:table-cell">缓存命中</TableHead>
-                  <TableHead className="hidden text-right md:table-cell">缓存写入</TableHead>
-                  <TableHead className="text-right">Token 消耗</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">最新请求</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokenRows.map((m) => (
-                  <TableRow key={m.model}>
-                    <TableCell className="max-w-[260px] break-all font-medium text-ink-strong">
-                      {m.model}
-                      <span className="mt-1 block text-xs font-normal tabular-nums text-muted md:hidden">
-                        metered {compact(m.meteredRequestCount)} · cache {compact(m.cacheReadTokens)} / {compact(m.cacheCreationTokens)}
-                      </span>
-                      <span className="mt-1 block text-xs font-normal tabular-nums text-muted lg:hidden">
-                        最新 {formatDateTime(m.latestRequestAt)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
-                      {compact(m.requestCount)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
-                      {compact(m.meteredRequestCount)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted lg:table-cell">
-                      {compact(m.inputTokens)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted lg:table-cell">
-                      {compact(m.outputTokens)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
-                      {compact(m.cacheReadTokens)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted md:table-cell">
-                      {compact(m.cacheCreationTokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-ink">
-                      {compact(m.totalTokens)}
-                    </TableCell>
-                    <TableCell className="hidden text-right text-xs tabular-nums text-muted lg:table-cell">
-                      {formatDateTime(m.latestRequestAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </section>
+          <MeteringPanel
+            requestCount={totals?.requestCount ?? 0}
+            queryLabel={rangeLabel(usage?.query)}
+            modelCount={models.length}
+          />
         </>
       )}
     </div>
   );
 }
 
-function BreakdownPanel({
-  title,
-  sub,
-  rows,
+function UsageHeader({
+  queryLabel,
+  usageRange,
+  setUsageRange,
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
+  requestCount,
 }: {
-  title: string;
-  sub: string;
-  rows: Array<{
-    key: string;
-    label: string;
-    requestCount: number;
-    meteredRequestCount: number;
-    totalTokens: number;
-    cacheReadTokens: number;
-    cacheReadRequestCount?: number;
-  }>;
+  queryLabel: string;
+  usageRange: UsageRange;
+  setUsageRange: (range: UsageRange) => void;
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (value: string) => void;
+  setDateTo: (value: string) => void;
+  requestCount: number;
 }) {
   return (
-    <section className="rounded-md border border-line bg-panel shadow-sm">
-      <div className="border-b border-line px-4 py-3">
-        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        <span className="text-sm text-subtle">{sub}</span>
+    <section className="grid gap-4 rounded-md border border-line bg-panel p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
+          <span className="inline-flex items-center gap-1 rounded-sm border border-primary-line bg-primary-soft px-2 py-1 text-xs font-medium text-primary">
+            <ShieldCheck className="size-3.5" />
+            统计完整
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs text-muted">
+            <CalendarDays className="size-3.5" />
+            {queryLabel}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          模型路由的请求与 token 账本。优先采信 provider usage；缺失时自动估算输入和输出，确保每次请求都进入账本。
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">
+            <CheckCircle2 className="size-3.5 text-green" />
+            已入账 {numberText(requestCount)} 次
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">
+            <Sparkles className="size-3.5 text-primary" />
+            本地估算兜底已启用
+          </span>
+        </div>
       </div>
-      <div className="grid gap-2 p-4">
-        {rows.length === 0 ? (
-          <span className="text-sm text-muted">暂无该维度数据。</span>
-        ) : (
-          rows.slice(0, 8).map((row) => (
-            <div key={row.key} className="grid gap-1 rounded-sm border border-line bg-panel-2 p-2.5">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <strong className="truncate text-sm text-ink-strong" title={row.label}>
-                  {row.label}
-                </strong>
-                <Badge variant={row.meteredRequestCount > 0 ? "ok" : "mute"}>
-                  {compact(row.requestCount)} req
-                </Badge>
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
-                <span>metered {compact(row.meteredRequestCount)}</span>
-                <span>tokens {compact(row.totalTokens)}</span>
-                <span>cache read {compact(row.cacheReadTokens)}</span>
-                <span>cache req {compact(row.cacheReadRequestCount ?? 0)}</span>
-              </div>
-            </div>
-          ))
+
+      <div className="grid gap-2 lg:justify-items-end">
+        <div className="flex flex-wrap gap-1 rounded-md border border-line bg-panel-2 p-1" aria-label="日期范围">
+          {RANGE_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={usageRange === option.key}
+              className={[
+                "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                usageRange === option.key
+                  ? "bg-primary text-primary-ink shadow-sm"
+                  : "text-muted hover:bg-panel-3 hover:text-ink",
+              ].join(" ")}
+              onClick={() => {
+                setUsageRange(option.key);
+                if (option.key !== "custom") {
+                  setDateFrom("");
+                  setDateTo("");
+                }
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {usageRange === "custom" && (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="grid gap-1 text-xs text-subtle">
+              开始日期
+              <input
+                type="date"
+                value={dateFrom}
+                className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+                onChange={(event) => setDateFrom(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-xs text-subtle">
+              结束日期
+              <input
+                type="date"
+                value={dateTo}
+                className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+                onChange={(event) => setDateTo(event.target.value)}
+              />
+            </label>
+            {(dateFrom || dateTo) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+              >
+                <X className="size-3.5" />
+                清除
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </section>
   );
 }
 
-function Kpi({
-  icon,
-  label,
-  value,
-  sub,
+function ModelRankingPanel({
+  rows,
+  sortKey,
+  setSortKey,
+  maxMetric,
+  totalTokens,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
+  rows: UsageMetricRow[];
+  sortKey: UsageSortKey;
+  setSortKey: (key: UsageSortKey) => void;
+  maxMetric: number;
+  totalTokens: number;
 }) {
   return (
-    <div className="rounded-md border border-line bg-panel p-3.5 shadow-sm">
-      <span className="flex items-center gap-1.5 text-xs text-subtle [&_svg]:size-3.5">
-        {icon}
-        {label}
-      </span>
-      <div className="mt-1.5 text-2xl font-semibold text-ink-strong tabular-nums">{value}</div>
-      {sub && <span className="mt-1 block text-xs text-muted">{sub}</span>}
+    <section className="grid min-w-0 gap-3 rounded-md border border-line bg-panel p-4 shadow-sm">
+      <div className="flex flex-col gap-3 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 text-md font-semibold text-ink-strong">
+            <BarChart3 className="size-4 text-primary" />
+            模型排行
+          </h3>
+          <p className="text-sm text-muted">按当前指标降序排列，条形按输入/输出拆分。</p>
+        </div>
+        <div className="flex flex-wrap gap-1 rounded-md border border-line bg-panel-2 p-1" aria-label="用量排序">
+          {SORT_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              aria-pressed={sortKey === option.key}
+              className={[
+                "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                sortKey === option.key
+                  ? "bg-primary text-primary-ink shadow-sm"
+                  : "text-muted hover:bg-panel-3 hover:text-ink",
+              ].join(" ")}
+              onClick={() => setSortKey(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-[minmax(130px,1fr)_58px_66px_66px_minmax(150px,0.9fr)_52px] gap-2 border-y border-line bg-panel-2/60 px-3 py-2 text-xs font-medium text-subtle min-[900px]:grid">
+        <span>模型</span>
+        <span className="text-right">次数</span>
+        <span className="text-right">输入</span>
+        <span className="text-right">输出</span>
+        <span>token 分布</span>
+        <span className="text-right">占比</span>
+      </div>
+
+      <div className="grid gap-2" aria-label="模型用量图表">
+        {rows.map((row, index) => (
+          <UsageModelRow
+            key={row.model}
+            row={row}
+            rank={index + 1}
+            value={metricValue(row, sortKey)}
+            maxValue={maxMetric}
+            share={totalTokens > 0 ? row.totalTokens / totalTokens : 0}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function UsageModelRow({
+  row,
+  rank,
+  value,
+  maxValue,
+  share,
+}: {
+  row: UsageMetricRow;
+  rank: number;
+  value: number;
+  maxValue: number;
+  share: number;
+}) {
+  const width = maxValue > 0 ? Math.max(3, (value / maxValue) * 100) : 0;
+  return (
+    <div className="grid min-w-0 gap-3 rounded-sm border border-line bg-panel-2 p-3 transition-colors hover:border-primary-line hover:bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel-2))] min-[900px]:grid-cols-[minmax(130px,1fr)_58px_66px_66px_minmax(150px,0.9fr)_52px] min-[900px]:gap-2 min-[900px]:items-center">
+      <div className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-2.5">
+        <span className="grid size-5 place-items-center rounded-full bg-primary text-[10px] font-semibold tabular-nums text-primary-ink">
+          {rank}
+        </span>
+        <ModelLogo model={row.model} />
+        <span className="min-w-0">
+          <strong className="block truncate text-sm text-ink-strong" title={row.model}>{row.model}</strong>
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs tabular-nums text-muted">
+            <ProviderPill model={row.model} />
+            <span>{compact(row.requestCount)} 次 · {compact(row.totalTokens)} total</span>
+          </span>
+        </span>
+      </div>
+      <MetricCell value={row.requestCount} />
+      <MetricCell value={row.inputTokens} />
+      <MetricCell value={row.outputTokens} />
+      <StackedTokenBar
+        inputTokens={row.inputTokens}
+        outputTokens={row.outputTokens}
+        totalTokens={row.totalTokens}
+        width={width}
+      />
+      <div className="text-right text-sm font-semibold tabular-nums text-ink-strong">{percent(share)}</div>
     </div>
   );
 }
 
-function LatCell({ label, value }: { label: string; value: string }) {
+function DailyTrendPanel({
+  rows,
+  maxTokens,
+  queryLabel,
+}: {
+  rows: UsageDailyRow[];
+  maxTokens: number;
+  queryLabel: string;
+}) {
+  const activeRows = rows.filter((row) => row.requestCount > 0);
   return (
-    <div className={cn("rounded-sm border border-line bg-panel-2 px-3 py-2 text-center")}>
-      <span className="block text-xs text-subtle">{label}</span>
-      <strong className="block text-md text-ink-strong tabular-nums">{value}</strong>
+    <section className="grid gap-3 rounded-md border border-line bg-panel p-4 shadow-sm">
+      <div className="min-w-0">
+        <h3 className="flex items-center gap-2 text-md font-semibold text-ink-strong">
+          <CalendarDays className="size-4 text-primary" />
+          每日趋势
+        </h3>
+        <p className="text-sm text-muted">{queryLabel} · 输入/输出 token 分布。</p>
+      </div>
+
+      <div className="grid min-h-[196px] grid-cols-[auto_minmax(0,1fr)] gap-3">
+        <div className="grid content-between py-1 text-right text-xs tabular-nums text-subtle">
+          <span>{compact(maxTokens)}</span>
+          <span>{compact(Math.round(maxTokens / 2))}</span>
+          <span>0</span>
+        </div>
+        <div className="relative grid grid-cols-[repeat(auto-fit,minmax(26px,1fr))] items-end gap-2 border-l border-b border-line pl-3 pb-2 before:pointer-events-none before:absolute before:inset-x-3 before:top-1/2 before:border-t before:border-dashed before:border-line" aria-label="每日用量图表">
+          {rows.map((row) => (
+            <DailyBar key={row.date} row={row} maxTokens={maxTokens} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-2 text-xs text-muted">
+        <LegendSwatch className="bg-primary" label="输入" />
+        <LegendSwatch className="bg-teal" label="输出" />
+        <span className="tabular-nums">有请求日期 {numberText(activeRows.length)} 天</span>
+      </div>
+    </section>
+  );
+}
+
+function DailyBar({ row, maxTokens }: { row: UsageDailyRow; maxTokens: number }) {
+  const height = maxTokens > 0 ? Math.max(row.totalTokens > 0 ? 10 : 3, (row.totalTokens / maxTokens) * 142) : 3;
+  const inputShare = row.totalTokens > 0 ? (row.inputTokens / row.totalTokens) * 100 : 0;
+  const outputShare = row.totalTokens > 0 ? (row.outputTokens / row.totalTokens) * 100 : 0;
+  const showInputLabel = row.inputTokens > 0 && inputShare >= 18;
+  const showOutputLabel = row.outputTokens > 0 && outputShare >= 18;
+  return (
+    <div className="relative z-[1] grid min-w-0 justify-items-center gap-2">
+      <div className="flex h-[150px] w-full max-w-9 items-end justify-center">
+        <div
+          className={[
+            "flex w-full max-w-7 flex-col-reverse overflow-hidden rounded-[7px] bg-panel-3 ring-1 ring-line transition-transform",
+            row.totalTokens > 0 ? "shadow-sm hover:-translate-y-0.5" : "",
+          ].join(" ")}
+          title={`${row.date} · ${numberText(row.totalTokens)} tokens · ${numberText(row.requestCount)} 次`}
+          style={{ height }}
+        >
+          <span className="grid w-full place-items-center bg-primary text-[10px] font-semibold tabular-nums text-primary-ink" style={{ height: `${inputShare}%` }}>
+            {showInputLabel ? compact(row.inputTokens) : null}
+          </span>
+          <span className="grid w-full place-items-center bg-teal text-[10px] font-semibold tabular-nums text-white" style={{ height: `${outputShare}%` }}>
+            {showOutputLabel ? compact(row.outputTokens) : null}
+          </span>
+        </div>
+      </div>
+      <span className="max-w-full truncate text-[10px] tabular-nums text-subtle" title={row.date}>{dateLabel(row.date)}</span>
+    </div>
+  );
+}
+
+function MeteringPanel({
+  requestCount,
+  queryLabel,
+  modelCount,
+}: {
+  requestCount: number;
+  queryLabel: string;
+  modelCount: number;
+}) {
+  return (
+    <section className="grid gap-3 rounded-md border border-line bg-panel p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <h3 className="flex items-center gap-2 text-md font-semibold text-ink-strong">
+          <Gauge className="size-4 text-primary" />
+          统计口径
+        </h3>
+        <p className="text-sm text-muted">
+          Provider usage 优先入账；无 usage 的成功请求使用本地 token 估算，失败请求保留输入估算、输出记 0。
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 text-xs text-muted min-[520px]:grid-cols-3">
+        <MeteringChip label="入账请求" value={`${numberText(requestCount)} 次`} />
+        <MeteringChip label="覆盖模型" value={`${numberText(modelCount)} 个`} />
+        <MeteringChip label="筛选范围" value={queryLabel} />
+      </div>
+    </section>
+  );
+}
+
+function StackedTokenBar({
+  inputTokens,
+  outputTokens,
+  totalTokens,
+  width,
+}: {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  width: number;
+}) {
+  const inputShare = totalTokens > 0 ? (inputTokens / totalTokens) * 100 : 0;
+  const outputShare = totalTokens > 0 ? (outputTokens / totalTokens) * 100 : 0;
+  return (
+    <div className="min-w-0">
+      <div className="h-3 overflow-hidden rounded-full bg-panel-3">
+        <div className="flex h-full rounded-full" style={{ width: `${width}%` }}>
+          <span className="h-full bg-primary" style={{ width: `${inputShare}%` }} />
+          <span className="h-full bg-teal" style={{ width: `${outputShare}%` }} />
+        </div>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-muted">
+        <span>输入 {compact(inputTokens)}</span>
+        <span>输出 {compact(outputTokens)}</span>
+      </div>
+    </div>
+  );
+}
+
+function MetricCell({ value }: { value: number }) {
+  return <div className="hidden text-right text-sm tabular-nums text-ink min-[900px]:block">{compact(value)}</div>;
+}
+
+function LegendSwatch({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`size-2.5 rounded-full ${className}`} />
+      {label}
+    </span>
+  );
+}
+
+function MeteringChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-sm border border-line bg-panel-2 px-3 py-2">
+      <span className="block text-subtle">{label}</span>
+      <strong className="mt-0.5 block max-w-[180px] truncate text-sm font-semibold text-ink-strong" title={value}>{value}</strong>
+    </div>
+  );
+}
+
+function ModelLogo({ model }: { model: string }) {
+  const identity = modelIdentity(model);
+  const className = {
+    openai: "border-primary-line bg-primary-soft text-primary",
+    anthropic: "border-amber-soft bg-amber-soft text-amber",
+    qwen: "border-violet-soft bg-violet-soft text-violet",
+    gemini: "border-primary-line bg-panel text-primary",
+    deepseek: "border-teal-soft bg-teal-soft text-teal",
+    local: "border-line bg-panel-3 text-muted",
+    generic: "border-line bg-panel text-ink",
+  }[identity.tone];
+  return (
+    <span className={`grid size-8 place-items-center rounded-[8px] border text-xs font-semibold ${className}`} title={identity.label}>
+      {identity.mark}
+    </span>
+  );
+}
+
+function ProviderPill({ model }: { model: string }) {
+  const identity = modelIdentity(model);
+  const className = {
+    openai: "bg-primary-soft text-primary",
+    anthropic: "bg-amber-soft text-amber",
+    qwen: "bg-violet-soft text-violet",
+    gemini: "bg-primary-soft text-primary",
+    deepseek: "bg-teal-soft text-teal",
+    local: "bg-panel-3 text-muted",
+    generic: "bg-panel-3 text-muted",
+  }[identity.tone];
+  return (
+    <span className={`rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium leading-none ${className}`}>
+      {identity.label}
+    </span>
+  );
+}
+
+function ComparisonBadge({ comparison }: { comparison: UsageComparison }) {
+  const toneClass = {
+    good: "text-green",
+    warn: "text-amber",
+    muted: "text-muted",
+    primary: "text-primary",
+  }[comparison.tone];
+  const Icon = comparison.direction === "down" ? TrendingDown : comparison.direction === "up" ? TrendingUp : null;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium tabular-nums ${toneClass}`}>
+      {Icon ? <Icon className="size-3.5" /> : null}
+      {comparison.label}
+    </span>
+  );
+}
+
+function Kpi({
+  icon,
+  tone,
+  label,
+  value,
+  sub,
+  accent,
+  meter,
+  comparison,
+}: {
+  icon: React.ReactNode;
+  tone: "primary" | "teal" | "violet";
+  label: string;
+  value: string;
+  sub: string;
+  accent: string;
+  meter?: number;
+  comparison: UsageComparison;
+}) {
+  const toneClass = {
+    primary: "bg-primary-soft text-primary border-primary-line",
+    teal: "bg-teal-soft text-teal border-transparent",
+    violet: "bg-violet-soft text-violet border-transparent",
+  }[tone];
+  const meterClass = tone === "teal" ? "bg-teal" : tone === "violet" ? "bg-violet" : "bg-primary";
+  const meterWidth = `${Math.max(3, Math.min(100, (meter ?? 1) * 100))}%`;
+  return (
+    <div className="grid min-h-[116px] grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-md border border-line bg-panel p-3.5 shadow-sm transition-colors hover:border-primary-line">
+      <span className={`mt-1 grid size-10 place-items-center rounded-full border [&_svg]:size-5 ${toneClass}`}>{icon}</span>
+      <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-xs font-medium text-subtle">{label}</span>
+          <span className={`rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums ${toneClass}`}>{accent}</span>
+        </div>
+        <div className="mt-1 text-2xl font-semibold text-ink-strong tabular-nums">{value}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <span>{sub}</span>
+          <ComparisonBadge comparison={comparison} />
+        </div>
+      </div>
+      <div className="col-span-2 h-1.5 overflow-hidden rounded-full bg-panel-3">
+        <span className={`block h-full rounded-full ${meterClass}`} style={{ width: meterWidth }} />
+      </div>
     </div>
   );
 }

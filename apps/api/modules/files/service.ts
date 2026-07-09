@@ -137,6 +137,7 @@ interface FileSearchOptions {
   caseSensitive?: boolean;
   regex?: boolean;
   limit?: number;
+  resultKind?: FileEntryKind | "all";
 }
 
 const TEXT_FILE_EXTENSIONS = new Set([
@@ -1607,6 +1608,10 @@ function clampSearchLimit(value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_SEARCH_LIMIT;
   return Math.max(1, Math.min(MAX_SEARCH_LIMIT, Math.floor(numeric)));
+}
+
+function readSearchResultKind(value: unknown): FileEntryKind | "all" {
+  return value === "file" || value === "directory" ? value : "all";
 }
 
 function searchContentIndex(
@@ -3535,6 +3540,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
         caseSensitive: Boolean(options.caseSensitive),
         regex: Boolean(options.regex),
         limit: clampSearchLimit(options.limit),
+        resultKind: readSearchResultKind(options.resultKind),
       };
       const searchLimit = searchOptions.limit;
       if (!normalizedQuery) {
@@ -3579,7 +3585,7 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
       const visited = new Set<string>();
       const seenPaths = new Set<string>();
       const results: FilesSearchPayload["results"] = [];
-      const indexed = searchOptions.regex
+      const indexed = searchOptions.regex || searchOptions.resultKind === "directory"
         ? { candidateCount: 0, results: [] }
         : searchContentIndex(
             config,
@@ -3636,13 +3642,15 @@ export function createFilesService(config: TracevaneServerConfig): FilesService 
               continue;
             }
             seenPaths.add(summary.path);
-            results.push({
-              ...summary,
-              directoryPath: current.relativePath,
-              matchKind: nameMatches ? "name" : "content",
-              snippet: contentSnippet,
-            });
-            if (results.length >= searchLimit) break;
+            if (searchOptions.resultKind === "all" || summary.kind === searchOptions.resultKind) {
+              results.push({
+                ...summary,
+                directoryPath: current.relativePath,
+                matchKind: nameMatches ? "name" : "content",
+                snippet: contentSnippet,
+              });
+              if (results.length >= searchLimit) break;
+            }
           }
           if (recursive && summary.kind === "directory") {
             queue.push({

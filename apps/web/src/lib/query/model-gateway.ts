@@ -89,7 +89,13 @@ export const modelGatewayKeys = {
   all: ["model-gateway"] as const,
   status: () => ["model-gateway", "status"] as const,
   runtime: () => ["model-gateway", "runtime"] as const,
-  usage: () => ["model-gateway", "usage"] as const,
+  usage: (filters?: { range?: "week" | "all" | "custom" | null; dateFrom?: string | null; dateTo?: string | null }) => [
+    "model-gateway",
+    "usage",
+    filters?.range ?? "week",
+    filters?.dateFrom ?? null,
+    filters?.dateTo ?? null,
+  ] as const,
   models: () => ["model-gateway", "models"] as const,
   clientAuth: () => ["model-gateway", "client-auth"] as const,
   providers: () => ["model-gateway", "providers"] as const,
@@ -136,11 +142,12 @@ export function useModelGatewayRuntimeQuery(
 }
 
 export function useModelGatewayUsageQuery(
+  filters?: { range?: "week" | "all" | "custom" | null; dateFrom?: string | null; dateTo?: string | null },
   options?: QueryOpts<ModelGatewayUsageLedgerResponse>,
 ) {
   return useQuery<ModelGatewayUsageLedgerResponse, ApiError>({
-    queryKey: modelGatewayKeys.usage(),
-    queryFn: ({ signal }) => getModelGatewayUsage(signal),
+    queryKey: modelGatewayKeys.usage(filters),
+    queryFn: ({ signal }) => getModelGatewayUsage(filters, signal),
     ...options,
   });
 }

@@ -72,11 +72,15 @@ import {
   type ModelGatewayProviderDetectProtocolResult,
   type ModelGatewayProviderDetectRequest,
   type ModelGatewayProviderDetectResponse,
+  type ModelGatewayProviderHealthResetRequest,
+  type ModelGatewayProviderHealthResetResponse,
   type ModelGatewayProviderFailover,
   type ModelGatewayProviderHealth,
   type ModelGatewayProviderInput,
   type ModelGatewayModelListResponse,
   type ModelGatewayModelListItem,
+  type ModelGatewayErrorDiagnostics,
+  type ModelGatewayNetworkErrorDiagnostics,
   type ModelGatewayProviderAccountRefreshResponse,
   type ModelGatewayProviderAccountUpdateRequest,
   type ModelGatewayProviderAccountUpdateResponse,
@@ -92,6 +96,7 @@ import {
   type ModelGatewayProviderTestRequest,
   type ModelGatewayProviderTestResponse,
   type ModelGatewayProviderView,
+  type ModelGatewayProxySource,
   type ModelGatewayProvidersResponse,
   type ModelGatewayRegistryState,
   type ModelGatewayRollbackAppConnectionRequest,
@@ -105,8 +110,9 @@ import {
   type ModelGatewayRuntimeLatencySummary,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
+  type ModelGatewayUsageDateBucket,
+  type ModelGatewayUsageRange,
   type ModelGatewayModelUsageRow,
-  type ModelGatewayUsageBreakdownRow,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
@@ -560,6 +566,34 @@ function runtimeUsageForRoute(routeId: ModelGatewayRouteId | null, value: unknow
     hasMediaSignal = true;
   }
   return extracted || hasMediaSignal ? usage : null;
+}
+
+function runtimeUsageForSuccessfulRequest(
+  routeId: ModelGatewayRouteId | null,
+  requestBodyText: string | undefined,
+  responseValue: unknown,
+): ModelGatewayRuntimeUsage {
+  return runtimeUsageForAttemptedRequest(routeId, requestBodyText, responseValue, { estimateOutputFallback: true });
+}
+
+function runtimeUsageForAttemptedRequest(
+  routeId: ModelGatewayRouteId | null,
+  requestBodyText: string | undefined,
+  responseValue?: unknown,
+  options: { estimateOutputFallback?: boolean } = {},
+): ModelGatewayRuntimeUsage {
+  const providerUsage = responseValue === undefined ? null : runtimeUsageForRoute(routeId, responseValue);
+  if (providerUsage) return providerUsage;
+  const inputTokens = requestBodyText === undefined ? 0 : estimateInputTokensForRoute(routeId, requestBodyText);
+  const outputTokens = options.estimateOutputFallback && responseValue !== undefined
+    ? estimateOutputTokensFromResponse(responseValue)
+    : 0;
+  return {
+    ...zeroRuntimeUsage(),
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+  };
 }
 
 function zeroRuntimeUsage(): ModelGatewayRuntimeUsage {
@@ -2376,7 +2410,7 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     outcome,
     errorCode: normalizeString(value.errorCode) || null,
     errorMessage: normalizeString(value.errorMessage) || null,
-    usage: normalizeRuntimeUsage(value.usage),
+    usage: normalizeRuntimeUsage(value.usage) || zeroRuntimeUsage(),
   };
 }
 
@@ -3407,6 +3441,7 @@ function buildProviderTestPayload(
           ],
         }],
         stream: false,
+        store: false,
         max_output_tokens: 32,
       };
     }
@@ -4007,6 +4042,11 @@ function withProxyNetwork(proxyUrl: string | null | undefined, init: RequestInit
   };
 }
 
+type GatewayProxySelection = {
+  proxyUrl: string | null;
+  source: ModelGatewayProxySource;
+};
+
 function modelGatewayEnvProxyUrl(targetUrl: string): string | null {
   let protocol = "";
   try {
@@ -4021,6 +4061,148 @@ function modelGatewayEnvProxyUrl(targetUrl: string): string | null {
   return normalizeString(env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || env.ALL_PROXY || env.all_proxy) || null;
 }
 
+function gatewayUpstreamProxySelection(
+  provider: ModelGatewayProvider,
+  targetUrl: string,
+  account?: ModelGatewayAccountEntry | null,
+): GatewayProxySelection {
+  if (isCodexAccountBackedProvider(provider)) {
+    const accountProxy = normalizeString(account?.proxyUrl || "");
+    if (accountProxy) return { proxyUrl: accountProxy, source: "account" };
+    const providerProxy = normalizeString(provider.network.proxyUrl || "");
+    if (providerProxy) return { proxyUrl: providerProxy, source: "provider" };
+    const envProxy = modelGatewayEnvProxyUrl(targetUrl);
+    if (envProxy) return { proxyUrl: envProxy, source: "environment" };
+    return { proxyUrl: null, source: "none" };
+  }
+  const providerProxy = normalizeString(provider.network.proxyUrl || "");
+  return providerProxy
+    ? { proxyUrl: providerProxy, source: "provider" }
+    : { proxyUrl: null, source: "none" };
+}
+
+function codexAccountAuthProxySelection(
+  targetUrl: string,
+  account?: ModelGatewayAccountEntry | null,
+): GatewayProxySelection {
+  const accountProxy = normalizeString(account?.proxyUrl || "");
+  if (accountProxy) return { proxyUrl: accountProxy, source: "account" };
+  const envProxy = modelGatewayEnvProxyUrl(targetUrl);
+  if (envProxy) return { proxyUrl: envProxy, source: "environment" };
+  return { proxyUrl: null, source: "none" };
+}
+
+function redactProxyUrl(proxyUrl: string | null | undefined): string | null {
+  const raw = normalizeString(proxyUrl || "");
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.username) parsed.username = "***";
+    if (parsed.password) parsed.password = "***";
+    return parsed.toString();
+  } catch {
+    return raw.replace(/\/\/([^:@/\s]+):([^@/\s]+)@/g, "//***:***@");
+  }
+}
+
+function sanitizedDiagnosticText(value: unknown, proxyUrl: string | null): string | null {
+  const raw = normalizeString(typeof value === "string" ? value : value == null ? "" : String(value));
+  if (!raw) return null;
+  const redactedProxyUrl = redactProxyUrl(proxyUrl);
+  let text = raw;
+  if (proxyUrl && redactedProxyUrl) {
+    text = text.split(proxyUrl).join(redactedProxyUrl);
+  }
+  if (proxyUrl) {
+    try {
+      const parsed = new URL(proxyUrl);
+      for (const secret of [parsed.username, parsed.password].filter(Boolean)) {
+        text = text.split(secret).join("***");
+        text = text.split(decodeURIComponent(secret)).join("***");
+      }
+    } catch {
+      // Best-effort credential redaction only.
+    }
+  }
+  return text.slice(0, 500);
+}
+
+function proxyDiagnostics(selection: GatewayProxySelection): ModelGatewayNetworkErrorDiagnostics["proxy"] {
+  const proxyUrl = normalizeString(selection.proxyUrl || "");
+  if (!proxyUrl) {
+    return {
+      source: selection.source,
+      url: null,
+      scheme: null,
+      host: null,
+      port: null,
+    };
+  }
+  try {
+    const parsed = new URL(proxyUrl);
+    return {
+      source: selection.source,
+      url: redactProxyUrl(proxyUrl),
+      scheme: parsed.protocol.replace(/:$/u, "") || null,
+      host: parsed.hostname || null,
+      port: parsed.port ? Number(parsed.port) : null,
+    };
+  } catch {
+    return {
+      source: selection.source,
+      url: redactProxyUrl(proxyUrl),
+      scheme: null,
+      host: null,
+      port: null,
+    };
+  }
+}
+
+function errorRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function errorCauseRecord(error: unknown): Record<string, unknown> | null {
+  if (!isRecord(error)) return null;
+  return errorRecord(error.cause);
+}
+
+function networkErrorDiagnostics(error: unknown, selection: GatewayProxySelection): ModelGatewayErrorDiagnostics {
+  const cause = errorCauseRecord(error);
+  const causePort = typeof cause?.port === "number"
+    ? cause.port
+    : typeof cause?.port === "string" && /^\d+$/u.test(cause.port)
+      ? Number(cause.port)
+      : null;
+  const network: ModelGatewayNetworkErrorDiagnostics = {
+    errorName: error instanceof Error ? error.name : null,
+    message: sanitizedDiagnosticText(error instanceof Error ? error.message : error, selection.proxyUrl) || "Network request failed.",
+    causeName: typeof cause?.name === "string" ? cause.name : null,
+    causeCode: typeof cause?.code === "string" ? cause.code : null,
+    causeMessage: sanitizedDiagnosticText(cause?.message, selection.proxyUrl),
+    causeErrno: typeof cause?.errno === "number" || typeof cause?.errno === "string" ? cause.errno : null,
+    causeSyscall: typeof cause?.syscall === "string" ? cause.syscall : null,
+    causeAddress: typeof cause?.address === "string" ? cause.address : typeof cause?.hostname === "string" ? cause.hostname : null,
+    causePort,
+    proxy: proxyDiagnostics(selection),
+  };
+  return { network };
+}
+
+function errorMessageWithNetworkDiagnostics(
+  fallbackMessage: string,
+  diagnostics: ModelGatewayErrorDiagnostics,
+): string {
+  const network = diagnostics.network;
+  if (!network) return fallbackMessage;
+  const details = [
+    network.causeCode,
+    network.causeAddress && network.causePort ? `${network.causeAddress}:${network.causePort}` : network.causeAddress,
+    network.proxy.url ? `via ${network.proxy.source} proxy ${network.proxy.url}` : null,
+  ].filter(Boolean);
+  return details.length ? `${fallbackMessage} (${details.join("; ")})` : fallbackMessage;
+}
+
 function withProviderNetwork(provider: ModelGatewayProvider, init: RequestInit): FetchInitWithDispatcher {
   return withProxyNetwork(provider.network.proxyUrl, init, `provider '${provider.id}'`);
 }
@@ -4031,14 +4213,12 @@ function withGatewayUpstreamNetwork(
   targetUrl: string,
   account?: ModelGatewayAccountEntry | null,
 ): FetchInitWithDispatcher {
-  if (isCodexAccountBackedProvider(provider)) {
-    return withProxyNetwork(
-      account?.proxyUrl || provider.network.proxyUrl || modelGatewayEnvProxyUrl(targetUrl),
-      init,
-      account ? `Codex account '${account.id}' upstream request` : `provider '${provider.id}' upstream request`,
-    );
-  }
-  return withProviderNetwork(provider, init);
+  const selection = gatewayUpstreamProxySelection(provider, targetUrl, account);
+  return withProxyNetwork(
+    selection.proxyUrl,
+    init,
+    account ? `Codex account '${account.id}' upstream request` : `provider '${provider.id}' upstream request`,
+  );
 }
 
 function withCodexAccountAuthNetwork(
@@ -4046,8 +4226,9 @@ function withCodexAccountAuthNetwork(
   targetUrl: string,
   account?: ModelGatewayAccountEntry | null,
 ): FetchInitWithDispatcher {
+  const selection = codexAccountAuthProxySelection(targetUrl, account);
   return withProxyNetwork(
-    account?.proxyUrl || modelGatewayEnvProxyUrl(targetUrl),
+    selection.proxyUrl,
     init,
     account ? `Codex account '${account.id}' auth request` : "Codex account auth request",
   );
@@ -4161,15 +4342,17 @@ function extractTextFromContentParts(value: unknown): string[] {
   });
 }
 
-function extractProviderTestText(provider: ModelGatewayProvider, responseText: string): string | null {
-  const parsed = parseJsonObjectOrNull(responseText);
-  if (!parsed) return previewText(responseText);
-
+function extractProviderTestTextFromPayload(provider: ModelGatewayProvider, parsed: Record<string, unknown>): string | null {
   if (provider.apiFormat === "openai_responses") {
+    if (normalizeString(parsed.type) === "response.output_text.delta") {
+      const deltaText = normalizeString(parsed.delta);
+      if (deltaText) return deltaText;
+    }
+    const response = isRecord(parsed.response) ? parsed.response : parsed;
     const outputText = normalizeString(parsed.output_text);
     if (outputText) return outputText;
-    if (Array.isArray(parsed.output)) {
-      const texts = parsed.output.flatMap((item) => isRecord(item)
+    if (Array.isArray(response.output)) {
+      const texts = response.output.flatMap((item) => isRecord(item)
         ? extractTextFromContentParts(item.content)
         : []);
       if (texts.length) return texts.join("\n");
@@ -4177,6 +4360,10 @@ function extractProviderTestText(provider: ModelGatewayProvider, responseText: s
   }
 
   if (provider.apiFormat === "anthropic_messages") {
+    if (normalizeString(parsed.type) === "content_block_delta" && isRecord(parsed.delta)) {
+      const deltaText = normalizeString(parsed.delta.text);
+      if (deltaText) return deltaText;
+    }
     const texts = extractTextFromContentParts(parsed.content);
     if (texts.length) return texts.join("\n");
   }
@@ -4193,6 +4380,19 @@ function extractProviderTestText(provider: ModelGatewayProvider, responseText: s
     if (texts.length) return texts.join("\n");
   }
 
+  return null;
+}
+
+function extractProviderTestText(provider: ModelGatewayProvider, responseText: string): string | null {
+  const direct = parseJsonObjectOrNull(responseText);
+  const candidates = [
+    ...(direct ? [direct] : []),
+    ...extractJsonPayloadsFromSseText(responseText).filter(isRecord),
+  ];
+  const texts = candidates
+    .map((candidate) => extractProviderTestTextFromPayload(provider, candidate))
+    .filter((text): text is string => Boolean(text));
+  if (texts.length) return texts.join("\n");
   return previewText(responseText);
 }
 
@@ -4345,9 +4545,11 @@ function normalizeCodexAccountResponsesInputItem(source: unknown): unknown {
   if (itemType === "local_shell_call_output") {
     const itemId = normalizeString(source.id);
     if (!itemId) return codexAccountUnsupportedInputItemNote(itemType, source);
+    const callId = normalizeString(source.call_id);
     return {
       ...source,
       id: itemId,
+      ...(callId ? { call_id: callId } : {}),
     };
   }
   const normalized: Record<string, unknown> = source.role === "system" ? { ...source, role: "developer" } : { ...source };
@@ -4425,7 +4627,7 @@ const CODEX_ACCOUNT_RESPONSES_INPUT_ITEM_FIELDS_BY_TYPE: Record<string, Set<stri
   function_call_output: new Set(["id", "type", "status", "call_id", "output"]),
   custom_tool_call: new Set(["id", "type", "status", "call_id", "name", "input"]),
   custom_tool_call_output: new Set(["id", "type", "status", "call_id", "output"]),
-  local_shell_call_output: new Set(["id", "type", "status", "output"]),
+  local_shell_call_output: new Set(["id", "type", "status", "call_id", "output"]),
   shell_call_output: new Set(["id", "type", "status", "call_id", "output"]),
 };
 
@@ -4633,6 +4835,27 @@ function estimateAnthropicMessagesCountTokens(bodyText: string | undefined): num
   return Math.max(1, estimateTextTokens(text) + structuralOverhead);
 }
 
+function estimateInputTokensForRoute(routeId: ModelGatewayRouteId | null, bodyText: string | undefined): number {
+  if (routeId === "anthropic_messages") return estimateAnthropicMessagesCountTokens(bodyText);
+  if (!bodyText) return 1;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return estimateTextTokens(bodyText);
+  }
+  if (!isRecord(parsed)) return estimateTextTokens(bodyText);
+  const tokenBearingPayload: Record<string, unknown> = {};
+  for (const key of ["input", "messages", "prompt", "instructions", "system", "tools", "tool_choice", "response_format"] as const) {
+    if (parsed[key] !== undefined) tokenBearingPayload[key] = parsed[key];
+  }
+  const text = collectTokenEstimateText(tokenBearingPayload).join("\n");
+  const messages = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
+  const inputItems = Array.isArray(parsed.input) ? parsed.input.length : 0;
+  const tools = Array.isArray(parsed.tools) ? parsed.tools.length : 0;
+  return Math.max(1, estimateTextTokens(text) + 4 + messages * 4 + inputItems * 4 + tools * 12);
+}
+
 function anthropicCountTokensEstimatePayload(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const payload: Record<string, unknown> = {};
@@ -4649,6 +4872,44 @@ function estimateTextTokens(text: string): number {
   const nonAsciiChars = normalized.replace(/[\x00-\x7F]/g, "").length;
   const punctuation = normalized.match(/[^\sA-Za-z0-9_\x80-\uFFFF]/g)?.length || 0;
   return Math.max(1, Math.ceil(normalized.length / 4), asciiWords + Math.ceil(nonAsciiChars / 2) + Math.ceil(punctuation / 2));
+}
+
+function estimateOutputTokensFromResponse(value: unknown): number {
+  const payload = outputTokenEstimatePayload(value);
+  const text = collectTokenEstimateText(payload).join("\n");
+  if (!text.trim()) return 0;
+  return estimateTextTokens(text);
+}
+
+function outputTokenEstimatePayload(value: unknown): unknown {
+  if (typeof value === "string") {
+    const direct = parseJsonObjectOrNull(value);
+    if (direct) return outputTokenEstimatePayload(direct);
+    const ssePayloads = extractJsonPayloadsFromSseText(value);
+    if (ssePayloads.length) return ssePayloads.map(outputTokenEstimatePayload);
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(outputTokenEstimatePayload);
+  if (!isRecord(value)) return value ?? "";
+  if (isRecord(value.response)) return outputTokenEstimatePayload(value.response);
+  const type = normalizeString(value.type);
+  if (type === "response.output_text.delta") return value.delta;
+  if (type === "content_block_delta" && isRecord(value.delta)) return value.delta.text;
+  if (type === "message_delta" && isRecord(value.usage)) return "";
+  if (value.output_text !== undefined) return value.output_text;
+  if (Array.isArray(value.output)) return value.output;
+  if (Array.isArray(value.choices)) {
+    return value.choices.map((choice) => {
+      if (!isRecord(choice)) return choice;
+      if (isRecord(choice.message)) return choice.message.content;
+      if (isRecord(choice.delta)) return choice.delta.content ?? choice.delta.tool_calls;
+      return choice.text;
+    });
+  }
+  if (Array.isArray(value.content)) return value.content;
+  if (value.text !== undefined) return value.text;
+  if (value.arguments !== undefined) return value.arguments;
+  return value;
 }
 
 function collectTokenEstimateText(value: unknown): string[] {
@@ -5605,6 +5866,15 @@ function streamAdapterErrorEnvelope(error: unknown): { message: string; type?: s
   return null;
 }
 
+const requestLogUsageFallbacks = new WeakMap<ModelGatewayRouteDecision, ModelGatewayRuntimeUsage>();
+
+function setRequestLogUsageFallback(
+  route: ModelGatewayRouteDecision,
+  usage: ModelGatewayRuntimeUsage,
+): void {
+  requestLogUsageFallbacks.set(route, usage);
+}
+
 function requestLogEntry(options: {
   kind: ModelGatewayRuntimeRequestLogEntry["kind"];
   startedAt: string;
@@ -5647,7 +5917,7 @@ function requestLogEntry(options: {
     outcome: options.outcome,
     errorCode: options.errorCode || null,
     errorMessage: options.errorMessage || null,
-    usage: options.usage || null,
+    usage: options.usage ?? requestLogUsageFallbacks.get(options.route) ?? zeroRuntimeUsage(),
   };
 }
 
@@ -6292,6 +6562,37 @@ interface AnthropicModelListResponse {
   last_id: string | null;
 }
 
+export interface ModelGatewayGenerateTextRequest {
+  scope?: ModelGatewayAppScope;
+  model?: string;
+  system?: string;
+  input: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  timeoutMs?: number;
+}
+
+export interface ModelGatewayGenerateTextResponse {
+  ok: boolean;
+  checkedAt: string;
+  text: string;
+  model: string | null;
+  providerId: string | null;
+  statusCode: number | null;
+  latencyMs: number;
+  route: ModelGatewayRouteDecision | null;
+  error: {
+    code: string;
+    message: string;
+  } | null;
+}
+
+export interface ModelGatewayUsageLedgerOptions {
+  range?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}
+
 export interface ModelGatewayService {
   getStatus(): ModelGatewayStatusResponse;
   listProviders(): ModelGatewayProvidersResponse;
@@ -6309,7 +6610,7 @@ export interface ModelGatewayService {
   listGatewayAnthropicModels(req?: http.IncomingMessage): AnthropicModelListResponse;
   getGatewayAnthropicModel(req: http.IncomingMessage | undefined, modelId: string): AnthropicModelInfo;
   getRuntime(): ModelGatewayRuntimeResponse;
-  getUsageLedger(): ModelGatewayUsageLedgerResponse;
+  getUsageLedger(options?: ModelGatewayUsageLedgerOptions): ModelGatewayUsageLedgerResponse;
   getDaemonService(): Promise<ModelGatewayDaemonServiceResponse>;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
@@ -6322,6 +6623,8 @@ export interface ModelGatewayService {
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
   getProviderSecret(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProviderSecretResponse;
   setProviderSecret(req: http.IncomingMessage | undefined, providerId: string, payload: ModelGatewaySetProviderSecretRequest): ModelGatewayProviderView;
+  resetProviderHealth(req: http.IncomingMessage | undefined, providerId: string, payload?: ModelGatewayProviderHealthResetRequest): ModelGatewayProviderHealthResetResponse;
+  generateText(req: http.IncomingMessage | undefined, payload: ModelGatewayGenerateTextRequest): Promise<ModelGatewayGenerateTextResponse>;
   testActiveRoute(req: http.IncomingMessage | undefined, payload?: ModelGatewayActiveRouteSmokeRequest): Promise<ModelGatewayProviderTestResponse>;
   testProvider(req: http.IncomingMessage | undefined, providerId: string, payload?: ModelGatewayProviderTestRequest): Promise<ModelGatewayProviderTestResponse>;
   resolveRouteDecision(method: string, requestedPath: string, headers?: HeaderMap, requestedModel?: string | null): ModelGatewayRouteDecision;
@@ -6671,16 +6974,13 @@ export function createModelGatewayService(
 
   function readUsageLedgerEntries(limit = MAX_USAGE_LEDGER_READ_ENTRIES): {
     entries: ModelGatewayRuntimeRequestLogEntry[];
-    truncated: boolean;
-    readBytes: number;
-    totalBytes: number;
   } {
     if (!fs.existsSync(paths.usageLedger)) {
-      return { entries: [], truncated: false, readBytes: 0, totalBytes: 0 };
+      return { entries: [] };
     }
     const stat = fs.statSync(paths.usageLedger);
     if (!stat.isFile() || stat.size <= 0) {
-      return { entries: [], truncated: false, readBytes: 0, totalBytes: stat.size || 0 };
+      return { entries: [] };
     }
     const bytesToRead = Math.min(stat.size, MAX_USAGE_LEDGER_READ_BYTES);
     const fd = fs.openSync(paths.usageLedger, "r");
@@ -6706,80 +7006,90 @@ export function createModelGatewayService(
           return [];
         }
       });
-      return {
-        entries,
-        truncated: bytesToRead < stat.size || selectedLines.length < lines.length,
-        readBytes: bytesToRead,
-        totalBytes: stat.size,
-      };
+      return { entries };
     } finally {
       fs.closeSync(fd);
     }
   }
 
-  function usageLedgerEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
-    const value = Date.parse(entry.finishedAt || entry.startedAt || "");
-    return Number.isFinite(value) ? value : 0;
+  function normalizeUsageDateFilter(value: string | null | undefined): string | null {
+    const raw = normalizeString(value || "");
+    if (!raw) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/u.test(raw)) return raw;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return null;
+    return localUsageDateKey(date);
+  }
+
+  function normalizeUsageRange(value: string | null | undefined): ModelGatewayUsageRange | null {
+    if (value === "week" || value === "all" || value === "custom") return value;
+    return null;
+  }
+
+  function localUsageDateKey(value: Date): string {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, "0");
+    const day = `${value.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function usageDefaultWeekDateFrom(now = new Date()): string {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 6);
+    return localUsageDateKey(start);
+  }
+
+  function resolveUsageDateQuery(options: ModelGatewayUsageLedgerOptions): ModelGatewayUsageLedgerResponse["query"] {
+    const hasCustomDates = Boolean(normalizeString(options.dateFrom || "") || normalizeString(options.dateTo || ""));
+    const range = normalizeUsageRange(options.range) || (hasCustomDates ? "custom" : "week");
+    if (range === "all") {
+      return { range, dateFrom: null, dateTo: null };
+    }
+    if (range === "custom") {
+      return {
+        range,
+        dateFrom: normalizeUsageDateFilter(options.dateFrom),
+        dateTo: normalizeUsageDateFilter(options.dateTo),
+      };
+    }
+    return {
+      range,
+      dateFrom: usageDefaultWeekDateFrom(),
+      dateTo: localUsageDateKey(new Date()),
+    };
+  }
+
+  function usageEntryDateKey(entry: ModelGatewayRuntimeRequestLogEntry): string | null {
+    const timestamp = Date.parse(entry.finishedAt || entry.startedAt || "");
+    if (!Number.isFinite(timestamp)) return null;
+    return localUsageDateKey(new Date(timestamp));
+  }
+
+  function usageEntryWithinDateRange(
+    entry: ModelGatewayRuntimeRequestLogEntry,
+    dateFrom: string | null,
+    dateTo: string | null,
+  ): boolean {
+    const dateKey = usageEntryDateKey(entry);
+    if (!dateKey) return false;
+    if (dateFrom && dateKey < dateFrom) return false;
+    if (dateTo && dateKey > dateTo) return false;
+    return true;
   }
 
   function summarizeUsageLedgerModels(
     entries: ModelGatewayRuntimeRequestLogEntry[],
     modelBucketForEntry: RuntimeUsageModelResolver,
-  ): Pick<ModelGatewayUsageLedgerResponse, "totals" | "models" | "providers" | "appScopes"> {
+  ): Pick<ModelGatewayUsageLedgerResponse, "totals" | "models" | "daily"> {
     const totals: ModelGatewayUsageLedgerResponse["totals"] = {
       requestCount: entries.length,
-      meteredRequestCount: 0,
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      cacheReadRequestCount: 0,
-      cacheCreationRequestCount: 0,
     };
     const models = new Map<string, ModelGatewayModelUsageRow>();
-    const providers = new Map<string, ModelGatewayUsageBreakdownRow>();
-    const appScopes = new Map<string, ModelGatewayUsageBreakdownRow>();
-    const touchBreakdown = (
-      map: Map<string, ModelGatewayUsageBreakdownRow>,
-      key: string,
-      label: string,
-      entry: ModelGatewayRuntimeRequestLogEntry,
-    ) => {
-      let breakdown = map.get(key);
-      if (!breakdown) {
-        breakdown = {
-          key,
-          label,
-          requestCount: 0,
-          meteredRequestCount: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadRequestCount: 0,
-          cacheCreationRequestCount: 0,
-          latestRequestAt: null,
-        };
-        map.set(key, breakdown);
-      }
-      breakdown.requestCount += 1;
-      const finishedAt = entry.finishedAt || entry.startedAt || null;
-      if (finishedAt && (!breakdown.latestRequestAt || usageLedgerEntryTime(entry) >= Date.parse(breakdown.latestRequestAt))) {
-        breakdown.latestRequestAt = finishedAt;
-      }
-      if (entry.usage) {
-        breakdown.meteredRequestCount += 1;
-        breakdown.inputTokens += entry.usage.inputTokens || 0;
-        breakdown.outputTokens += entry.usage.outputTokens || 0;
-        breakdown.totalTokens += entry.usage.totalTokens || 0;
-        breakdown.cacheReadTokens += entry.usage.cacheReadTokens || 0;
-        breakdown.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
-        if ((entry.usage.cacheReadTokens || 0) > 0) breakdown.cacheReadRequestCount += 1;
-        if ((entry.usage.cacheCreationTokens || 0) > 0) breakdown.cacheCreationRequestCount += 1;
-      }
-    };
+    const daily = new Map<string, ModelGatewayUsageDateBucket>();
     for (const entry of entries) {
       const bucket = modelBucketForEntry(entry);
       let row = models.get(bucket.key);
@@ -6787,72 +7097,53 @@ export function createModelGatewayService(
         row = {
           model: bucket.label || bucket.key || "unknown model",
           requestCount: 0,
-          meteredRequestCount: 0,
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadRequestCount: 0,
-          cacheCreationRequestCount: 0,
-          latestRequestAt: null,
         };
         models.set(bucket.key, row);
       }
       row.requestCount += 1;
-      const finishedAt = entry.finishedAt || entry.startedAt || null;
-      if (finishedAt && (!row.latestRequestAt || usageLedgerEntryTime(entry) >= Date.parse(row.latestRequestAt))) {
-        row.latestRequestAt = finishedAt;
+
+      const dateKey = usageEntryDateKey(entry);
+      let dateBucket: ModelGatewayUsageDateBucket | null = null;
+      if (dateKey) {
+        dateBucket = daily.get(dateKey) || null;
+        if (!dateBucket) {
+          dateBucket = {
+            date: dateKey,
+            requestCount: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+          };
+          daily.set(dateKey, dateBucket);
+        }
+        dateBucket.requestCount += 1;
       }
 
       if (entry.usage) {
-        row.meteredRequestCount += 1;
         row.inputTokens += entry.usage.inputTokens || 0;
         row.outputTokens += entry.usage.outputTokens || 0;
-        row.totalTokens += entry.usage.totalTokens || 0;
-        row.cacheReadTokens += entry.usage.cacheReadTokens || 0;
-        row.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
-        if ((entry.usage.cacheReadTokens || 0) > 0) row.cacheReadRequestCount += 1;
-        if ((entry.usage.cacheCreationTokens || 0) > 0) row.cacheCreationRequestCount += 1;
-        totals.meteredRequestCount += 1;
+        row.totalTokens += entry.usage.totalTokens || ((entry.usage.inputTokens || 0) + (entry.usage.outputTokens || 0));
         totals.inputTokens += entry.usage.inputTokens || 0;
         totals.outputTokens += entry.usage.outputTokens || 0;
-        totals.totalTokens += entry.usage.totalTokens || 0;
-        totals.cacheReadTokens += entry.usage.cacheReadTokens || 0;
-        totals.cacheCreationTokens += entry.usage.cacheCreationTokens || 0;
-        if ((entry.usage.cacheReadTokens || 0) > 0) totals.cacheReadRequestCount += 1;
-        if ((entry.usage.cacheCreationTokens || 0) > 0) totals.cacheCreationRequestCount += 1;
+        totals.totalTokens += entry.usage.totalTokens || ((entry.usage.inputTokens || 0) + (entry.usage.outputTokens || 0));
+        if (dateBucket) {
+          dateBucket.inputTokens += entry.usage.inputTokens || 0;
+          dateBucket.outputTokens += entry.usage.outputTokens || 0;
+          dateBucket.totalTokens += entry.usage.totalTokens || ((entry.usage.inputTokens || 0) + (entry.usage.outputTokens || 0));
+        }
       }
-      touchBreakdown(
-        providers,
-        entry.providerId || "unknown-provider",
-        entry.providerName || entry.providerId || "unknown provider",
-        entry,
-      );
-      touchBreakdown(
-        appScopes,
-        entry.appScope || "unknown-scope",
-        entry.appScope || "unknown scope",
-        entry,
-      );
     }
-    const orderBreakdown = (rows: Map<string, ModelGatewayUsageBreakdownRow>) => [...rows.values()].sort((left, right) => (
-      right.totalTokens - left.totalTokens
-      || right.meteredRequestCount - left.meteredRequestCount
-      || right.requestCount - left.requestCount
-      || left.label.localeCompare(right.label)
-    ));
-
     return {
       totals,
       models: [...models.values()].sort((left, right) => (
         right.totalTokens - left.totalTokens
-        || right.meteredRequestCount - left.meteredRequestCount
         || right.requestCount - left.requestCount
         || left.model.localeCompare(right.model)
       )),
-      providers: orderBreakdown(providers),
-      appScopes: orderBreakdown(appScopes),
+      daily: [...daily.values()].sort((left, right) => left.date.localeCompare(right.date)),
     };
   }
 
@@ -6918,6 +7209,84 @@ export function createModelGatewayService(
       if (endpointProfileId) target.updatedAt = stamp;
       return true;
     });
+  }
+
+  function resetHealthState(value: unknown): ModelGatewayProviderHealth {
+    const current = normalizeHealth(value);
+    return {
+      ...current,
+      circuitState: "closed",
+      lastFailureAt: null,
+      retryAfterUntil: null,
+      lastLatencyMs: null,
+      lastError: null,
+      consecutiveFailures: 0,
+    };
+  }
+
+  function resetProviderHealth(
+    req: http.IncomingMessage | undefined,
+    providerId: string,
+    payload: ModelGatewayProviderHealthResetRequest = {},
+  ): ModelGatewayProviderHealthResetResponse {
+    requireManagement(req);
+    const registry = readRegistry();
+    const provider = findProvider(registry, providerId);
+    if (!provider) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+    const endpointProfileId = normalizeString(payload.endpointProfileId || "");
+    if (endpointProfileId && !provider.endpointProfiles.some((profile) => profile.id === endpointProfileId)) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_endpoint_profile_not_found",
+        `Model Gateway endpoint profile '${endpointProfileId}' was not found on provider '${providerId}'.`,
+        404,
+      );
+    }
+
+    let providerReset = false;
+    const endpointProfilesReset: string[] = [];
+    const includeEndpointProfiles = payload.includeEndpointProfiles !== false;
+    patchRawProvider(providerId, (rawProvider, stamp) => {
+      if (endpointProfileId) {
+        const endpointProfiles = Array.isArray(rawProvider.endpointProfiles) ? rawProvider.endpointProfiles : [];
+        const target = endpointProfiles.find((profile): profile is Record<string, unknown> => (
+          isRecord(profile) && normalizeString(profile.id) === endpointProfileId
+        )) || null;
+        if (!target) return false;
+        target.health = resetHealthState(target.health);
+        target.updatedAt = stamp;
+        endpointProfilesReset.push(endpointProfileId);
+        return true;
+      }
+      rawProvider.health = resetHealthState(rawProvider.health);
+      providerReset = true;
+      if (includeEndpointProfiles) {
+        const endpointProfiles = Array.isArray(rawProvider.endpointProfiles) ? rawProvider.endpointProfiles : [];
+        for (const profile of endpointProfiles) {
+          if (!isRecord(profile)) continue;
+          profile.health = resetHealthState(profile.health);
+          profile.updatedAt = stamp;
+          const id = normalizeString(profile.id);
+          if (id) endpointProfilesReset.push(id);
+        }
+      }
+      return true;
+    });
+    const updatedProvider = findProvider(readRegistry(), providerId);
+    if (!updatedProvider) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+    return {
+      ok: true,
+      providerId,
+      checkedAt: nowIso(),
+      reset: {
+        provider: providerReset,
+        endpointProfiles: endpointProfilesReset,
+      },
+      provider: toProviderView(updatedProvider),
+    };
   }
 
   function secretSummary(ref: string | null): ModelGatewaySecretSummary | null {
@@ -8264,34 +8633,20 @@ export function createModelGatewayService(
     };
   }
 
-  function getUsageLedger(): ModelGatewayUsageLedgerResponse {
-    const {
-      entries: readableEntries,
-      truncated,
-      readBytes,
-      totalBytes,
-    } = readUsageLedgerEntries();
+  function getUsageLedger(options: ModelGatewayUsageLedgerOptions = {}): ModelGatewayUsageLedgerResponse {
+    const { entries: readableEntries } = readUsageLedgerEntries();
+    const query = resolveUsageDateQuery(options);
+    const filteredEntries = readableEntries.filter((entry) => usageEntryWithinDateRange(entry, query.dateFrom, query.dateTo));
     const registry = readRegistry();
     const modelBucketForEntry = createRuntimeUsageModelResolver(registry);
-    const summary = summarizeUsageLedgerModels(readableEntries, modelBucketForEntry);
+    const summary = summarizeUsageLedgerModels(filteredEntries, modelBucketForEntry);
     return {
       ok: true,
       checkedAt: nowIso(),
       totals: summary.totals,
       models: summary.models,
-      providers: summary.providers,
-      appScopes: summary.appScopes,
-      readWindow: {
-        entryCount: readableEntries.length,
-        readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
-        readByteLimit: MAX_USAGE_LEDGER_READ_BYTES,
-        readBytes,
-        ledgerSizeBytes: totalBytes,
-        truncated,
-      },
-      paths: {
-        ledger: paths.usageLedger,
-      },
+      daily: summary.daily,
+      query,
     };
   }
 
@@ -10373,8 +10728,6 @@ export function createModelGatewayService(
             user_id: "tracevane-gateway-smoke",
             session_id: "active-route-smoke",
           },
-          tools: [gatewaySmokeToolForAnthropic()],
-          tool_choice: { type: "auto" },
         } : {}),
       };
     }
@@ -10384,10 +10737,6 @@ export function createModelGatewayService(
         max_tokens: 256,
         stream,
         messages: [{ role: "user", content: prompt }],
-        ...(scope === "opencode" ? {
-          tools: [gatewaySmokeToolForChat()],
-          tool_choice: "auto",
-        } : {}),
       };
     }
     if (routeId === "openai_responses_compact") {
@@ -10514,8 +10863,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             }],
           }],
         }],
-        tools: [gatewaySmokeToolForAnthropic()],
-        tool_choice: { type: "auto" },
       };
     }
     if (routeId === "openai_chat_completions") {
@@ -10538,8 +10885,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           }],
           cache_control: { type: "ephemeral" },
         }],
-        tools: [gatewaySmokeToolForChat()],
-        tool_choice: "auto",
       };
     }
     const responsesInput = [{
@@ -10569,20 +10914,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         tracevane_metadata_probe: "top-level Responses metadata must become safe context or be stripped",
       },
       store: false,
-      tools: [{
-        type: "function",
-        name: "gateway_smoke_tool",
-        description: "A no-op tool used only to verify compatibility-field cleanup.",
-        parameters: {
-          type: "object",
-          properties: {
-            value: { type: "string" },
-          },
-          required: ["value"],
-          additionalProperties: false,
-        },
-      }],
-      tool_choice: "auto",
     };
   }
 
@@ -10648,8 +10979,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             { type: "text", text: finalPrompt },
           ],
         }],
-        tools: [gatewaySmokeToolForAnthropic()],
-        tool_choice: { type: "auto" },
       };
     }
     if (routeId === "openai_chat_completions") {
@@ -10663,8 +10992,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           { role: "function", content: MODEL_GATEWAY_SMOKE_SENTINEL },
           { role: "user", content: finalPrompt },
         ],
-        tools: [gatewaySmokeToolForChat()],
-        tool_choice: "auto",
       };
     }
     return {
@@ -10678,20 +11005,6 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       ],
       stream,
       max_output_tokens: 256,
-      tools: [{
-        type: "function",
-        name: "gateway_smoke_tool",
-        description: "A no-op tool used only to verify malformed tool history degradation.",
-        parameters: {
-          type: "object",
-          properties: {
-            value: { type: "string" },
-          },
-          required: ["value"],
-          additionalProperties: false,
-        },
-      }],
-      tool_choice: "auto",
     };
   }
 
@@ -10935,6 +11248,217 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
     return extractProviderTestText({ apiFormat: "openai_responses" } as ModelGatewayProvider, responseText) || "";
   }
 
+  function buildGatewayGenerateTextPayload(
+    routeId: ModelGatewayRouteId,
+    model: string,
+    system: string,
+    input: string,
+    maxOutputTokens: number,
+    temperature: number | null,
+  ): Record<string, unknown> {
+    const common = temperature === null ? {} : { temperature };
+    if (routeId === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: maxOutputTokens,
+        stream: false,
+        ...(system ? { system } : {}),
+        messages: [{ role: "user", content: input }],
+        ...common,
+      };
+    }
+    if (routeId === "openai_chat_completions") {
+      return {
+        model,
+        stream: false,
+        max_tokens: maxOutputTokens,
+        messages: [
+          ...(system ? [{ role: "system", content: system }] : []),
+          { role: "user", content: input },
+        ],
+        ...common,
+      };
+    }
+    const responsesInput = system
+      ? `${system}\n\n${input}`
+      : input;
+    return {
+      model,
+      input: responsesInput,
+      stream: false,
+      max_output_tokens: maxOutputTokens,
+      store: false,
+      ...common,
+    };
+  }
+
+  async function generateText(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayGenerateTextRequest,
+  ): Promise<ModelGatewayGenerateTextResponse> {
+    requireManagement(req);
+    const scope = MODEL_GATEWAY_APP_SCOPES.includes(payload.scope as ModelGatewayAppScope)
+      ? payload.scope as ModelGatewayAppScope
+      : "codex";
+    const routeId = defaultRouteIdForScope(scope);
+    const routePath = ROUTES[routeId].paths[0] || "/v1/responses";
+    const registry = readRegistry();
+    const requestedModel = normalizeString(payload.model)
+      || appConnectionRequestedModelForScope(registry, scope)
+      || gatewayAgentModelIds()[0]
+      || null;
+    const headersForDecision = {
+      "x-tracevane-app-scope": scope,
+    };
+    const decision = resolveRouteDecision("POST", routePath, headersForDecision, requestedModel);
+    const providerId = decision.provider?.id || null;
+    const model = requestedModel
+      || decision.model?.resolved
+      || decision.model?.requested
+      || null;
+    if (!model) {
+      return {
+        ok: false,
+        checkedAt: nowIso(),
+        text: "",
+        model: null,
+        providerId,
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        error: {
+          code: "model_gateway_model_missing",
+          message: "No Model Gateway model is available for text generation.",
+        },
+      };
+    }
+    if (!decision.provider || decision.mode === "missing-provider") {
+      return {
+        ok: false,
+        checkedAt: nowIso(),
+        text: "",
+        model,
+        providerId,
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        error: {
+          code: "model_gateway_active_route_missing",
+          message: decision.reason || `No active route provider is available for ${scope}.`,
+        },
+      };
+    }
+    const key = readGatewayClientSecret();
+    if (registry.clientAuth.enabled && !key) {
+      return {
+        ok: false,
+        checkedAt: nowIso(),
+        text: "",
+        model,
+        providerId,
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        error: {
+          code: "model_gateway_client_key_missing",
+          message: "Gateway client auth is enabled but no local Gateway key is available.",
+        },
+      };
+    }
+    const input = normalizeString(payload.input);
+    if (!input) {
+      return {
+        ok: false,
+        checkedAt: nowIso(),
+        text: "",
+        model,
+        providerId,
+        statusCode: null,
+        latencyMs: 0,
+        route: decision,
+        error: {
+          code: "model_gateway_input_required",
+          message: "Text generation input is required.",
+        },
+      };
+    }
+
+    const endpoint = getLifecycleStatus().endpointPolicy.preferredCliEndpoint;
+    const targetUrl = new URL(routePath, `${stripTrailingV1(endpoint)}/`).toString();
+    const headers = new Headers({
+      "content-type": "application/json",
+      "x-tracevane-app-scope": scope,
+      "x-tracevane-internal-purpose": "git-commit-message",
+    });
+    if (key) headers.set("authorization", `Bearer ${key}`);
+    if (scope === "claude-code") {
+      headers.set("anthropic-beta", "fine-grained-tool-streaming-2025-05-14");
+    }
+    const maxOutputTokens = Math.max(64, Math.min(2_000, Math.floor(Number(payload.maxOutputTokens || 700))));
+    const temperature = typeof payload.temperature === "number" && Number.isFinite(payload.temperature)
+      ? Math.max(0, Math.min(2, payload.temperature))
+      : null;
+    const timeoutMs = typeof payload.timeoutMs === "number"
+      ? Math.max(1_000, Math.floor(payload.timeoutMs))
+      : DEFAULT_TIMEOUT_MS;
+    const startedAt = nowIso();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(buildGatewayGenerateTextPayload(
+          routeId,
+          model,
+          normalizeString(payload.system),
+          input,
+          maxOutputTokens,
+          temperature,
+        )),
+        signal: controller.signal,
+      });
+      const responseText = await response.text();
+      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const text = extractGatewayRouteSmokeText(routeId, responseText).trim();
+      const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
+      const success = response.status >= 200 && response.status < 300 && Boolean(text);
+      return {
+        ok: success,
+        checkedAt: nowIso(),
+        text: success ? text : "",
+        model,
+        providerId: responseProviderId,
+        statusCode: response.status,
+        latencyMs,
+        route: decision,
+        error: success ? null : {
+          code: "model_gateway_text_generation_failed",
+          message: response.status >= 200 && response.status < 300
+            ? "Model Gateway returned an empty text response."
+            : `Model Gateway returned HTTP ${response.status}.${previewText(responseText) ? ` ${previewText(responseText)}` : ""}`,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        checkedAt: nowIso(),
+        text: "",
+        model,
+        providerId,
+        statusCode: null,
+        latencyMs: Math.max(0, Date.now() - Date.parse(startedAt)),
+        route: decision,
+        error: {
+          code: "model_gateway_text_generation_failed",
+          message: error instanceof Error ? error.message : "Model Gateway text generation failed.",
+        },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function testActiveRoute(
     req: http.IncomingMessage | undefined,
     payload: ModelGatewayActiveRouteSmokeRequest = {},
@@ -11043,6 +11567,9 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       const errorMatched = errorSmoke
         && response.status >= 400
         && Boolean(parsedError?.code || parsedError?.message || parsedError?.type);
+      const smokeDiagnostics = isRecord(parsedError?.diagnostics)
+        ? parsedError.diagnostics as ModelGatewayErrorDiagnostics
+        : undefined;
       const success = errorSmoke
         ? errorMatched
         : response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
@@ -11067,9 +11594,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             : errorSmoke
               ? `${stream ? "Streaming " : ""}Active route error smoke returned HTTP ${response.status} without a structured error.${responsePreview ? ` ${responsePreview}` : ""}`
               : `${stream ? "Streaming " : ""}Active route ${toolSmoke ? "tool " : toolResultSmoke ? "tool result " : malformedSmoke ? "malformed " : ""}smoke returned HTTP ${response.status}.${responsePreview ? ` ${responsePreview}` : ""}`,
+          ...(smokeDiagnostics ? { diagnostics: smokeDiagnostics } : {}),
         },
       };
     } catch (error) {
+      const diagnostics = networkErrorDiagnostics(error, { proxyUrl: null, source: "none" });
+      const rawMessage = error instanceof Error ? error.message : "Active route smoke request failed.";
       return {
         ok: false,
         providerId,
@@ -11080,7 +11610,8 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         responsePreview: null,
         error: {
           code: "model_gateway_active_route_smoke_failed",
-          message: error instanceof Error ? error.message : "Active route smoke request failed.",
+          message: errorMessageWithNetworkDiagnostics(rawMessage, diagnostics),
+          diagnostics,
         },
       };
     } finally {
@@ -11263,15 +11794,15 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       testKind,
     ));
     if (
-      testKind !== "vision"
-      && isCodexAccountBackedProvider(effectiveProvider)
+      isCodexAccountBackedProvider(effectiveProvider)
       && normalizePathname(route.upstreamUrl || route.upstreamPath || "").endsWith("/responses")
     ) {
       requestBody = normalizeCodexAccountResponsesRequestInJsonText(requestBody) || requestBody;
       headers.set("accept", "text/event-stream");
     }
+    setRequestLogUsageFallback(route, runtimeUsageForAttemptedRequest(routeId, requestBody));
+    const upstreamUrl = route.upstreamUrl || effectiveProvider.baseUrl;
     try {
-      const upstreamUrl = route.upstreamUrl || effectiveProvider.baseUrl;
       const response = await fetch(upstreamUrl, withGatewayUpstreamNetwork(effectiveProvider, {
         method: "POST",
         headers,
@@ -11308,7 +11839,9 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           ? "model_gateway_provider_vision_smoke_failed"
           : "model_gateway_provider_test_failed",
         errorMessage,
-        usage: success ? runtimeUsageForRoute(routeId, responseText) : null,
+        usage: success
+          ? runtimeUsageForSuccessfulRequest(routeId, requestBody, responseText)
+          : runtimeUsageForAttemptedRequest(routeId, requestBody, responseText),
       }));
       return {
         ok: success,
@@ -11329,7 +11862,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       };
     } catch (error) {
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
-      const message = error instanceof Error ? error.message : "Provider test request failed.";
+      const diagnostics = networkErrorDiagnostics(
+        error,
+        gatewayUpstreamProxySelection(effectiveProvider, upstreamUrl, selectedAccountForTest),
+      );
+      const rawMessage = error instanceof Error ? error.message : "Provider test request failed.";
+      const message = errorMessageWithNetworkDiagnostics(rawMessage, diagnostics);
       if (testKind !== "vision") {
         updateProviderHealth(provider.id, false, latencyMs, message, endpointProfile?.id || null);
       }
@@ -11358,6 +11896,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             ? "model_gateway_provider_vision_smoke_failed"
             : "model_gateway_provider_test_failed",
           message,
+          diagnostics,
         },
       };
     } finally {
@@ -11503,6 +12042,13 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       ...resolveRouteDecision(req.method || "GET", req.url || "/", req.headers, requestModel),
       clientKeyHash,
     };
+    setRequestLogUsageFallback(
+      decision,
+      runtimeUsageForAttemptedRequest(
+        decision.routeId,
+        bodyText ?? (body.byteLength ? body.toString("utf8") : undefined),
+      ),
+    );
     if (decision.mode === "unsupported") {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -12166,6 +12712,13 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         upstreamBodyText = normalizeCodexAccountInstructionsInJsonText(upstreamBodyText);
       }
     }
+    const requestBodyTextForUsage = upstreamBodyText !== undefined
+      ? upstreamBodyText
+      : upstreamBodyBuffer ? Buffer.from(upstreamBodyBuffer).toString("utf8") : undefined;
+    setRequestLogUsageFallback(
+      decision,
+      runtimeUsageForAttemptedRequest(decision.routeId, requestBodyTextForUsage),
+    );
 
     try {
       const upstream = await fetch(decision.upstreamUrl, withGatewayUpstreamNetwork(provider, {
@@ -12292,7 +12845,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             firstByteMs: firstByteMsForLog(),
             errorCode: null,
             errorMessage: null,
-            usage: runtimeUsageForRoute(decision.routeId, streamingResult),
+            usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, streamingResult),
           }));
         } catch (error) {
           const streamError = streamAdapterErrorEnvelope(error);
@@ -12384,10 +12937,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         res.setHeader("Connection", "keep-alive");
         setSelectedProviderHeaders();
         const streamUpstreamError: { current: { message: string; type: string; code: string } | null } = { current: null };
+        const streamUsagePayloads: unknown[] = [];
         try {
           await pipeReadableStreamToServerResponse(upstream.body, res, {
             onFirstChunk: markFirstByte,
             onJsonPayload: (payload) => {
+              streamUsagePayloads.push(payload);
               if (streamUpstreamError.current) return;
               const error = responsesStreamErrorFromPayload(payload);
               if (!error) return;
@@ -12421,6 +12976,9 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             firstByteMs: firstByteMsForLog(),
             errorCode: observedStreamError?.code || null,
             errorMessage: observedStreamError?.message || null,
+            usage: observedStreamError
+              ? runtimeUsageForAttemptedRequest(decision.routeId, requestBodyTextForUsage, streamUsagePayloads)
+              : runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, streamUsagePayloads),
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : "Codex account Responses stream passthrough failed.";
@@ -12487,6 +13045,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
+            usage: runtimeUsageForAttemptedRequest(decision.routeId, requestBodyTextForUsage, responseText),
           }));
           setSelectedProviderHeaders();
           sendJson(res, upstream.status, normalizedError);
@@ -12569,7 +13128,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -12630,7 +13189,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -12688,7 +13247,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -12753,7 +13312,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         if (useCodexResponsesAnthropicSyntheticStreamingAdapter) {
@@ -12832,7 +13391,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -12888,7 +13447,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
-          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
+          usage: runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -12913,8 +13472,8 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         errorCode: healthSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
         errorMessage: passthroughErrorMessage,
         usage: upstream.status >= 200 && upstream.status < 300
-          ? runtimeUsageForRoute(decision.routeId, responseText)
-          : null,
+          ? runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, responseText)
+          : runtimeUsageForAttemptedRequest(decision.routeId, requestBodyTextForUsage, responseText),
       }));
       setCorsHeaders(res);
       res.statusCode = upstream.status;
@@ -12928,7 +13487,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       res.end(responseBody);
     } catch (error) {
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
-      const message = error instanceof Error ? error.message : "Model Gateway upstream request failed.";
+      const rawMessage = error instanceof Error ? error.message : "Model Gateway upstream request failed.";
+      const diagnostics = networkErrorDiagnostics(
+        error,
+        gatewayUpstreamProxySelection(provider, decision.upstreamUrl || provider.baseUrl, selectedAccountForRequest),
+      );
+      const message = errorMessageWithNetworkDiagnostics(rawMessage, diagnostics);
       updateSelectedProviderHealth(false, latencyMs, message);
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -12944,6 +13508,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         error: {
           code: "model_gateway_upstream_failed",
           message,
+          diagnostics,
           decision,
         },
       });
@@ -12982,6 +13547,8 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
     setActiveProvider,
     getProviderSecret,
     setProviderSecret,
+    resetProviderHealth,
+    generateText,
     testActiveRoute,
     testProvider,
     resolveRouteDecision,

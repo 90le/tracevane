@@ -28,8 +28,42 @@ import {
   writeCodexResponsesSseFromResponse,
 } from "../../dist/apps/api/modules/model-gateway/protocol-streaming.js";
 
+function assertPrivateFileModeSupported(parentDir) {
+  const probeDir = fs.mkdtempSync(path.join(parentDir, "tracevane-mode-check-"));
+  const probeFile = path.join(probeDir, "secret.json");
+  try {
+    fs.writeFileSync(probeFile, "{}", { mode: 0o600 });
+    fs.chmodSync(probeFile, 0o600);
+    return (fs.statSync(probeFile).mode & 0o777) === 0o600;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probeDir, { recursive: true, force: true });
+  }
+}
+
+function resolvePrivateModeTempRoot() {
+  const candidates = [
+    process.env.TRACEVANE_TEST_TMPDIR,
+    process.env.TEST_TMPDIR,
+    process.platform === "win32" ? "" : "/tmp",
+    os.tmpdir(),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true });
+      if (assertPrivateFileModeSupported(candidate)) return candidate;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error("Model Gateway system tests require a temp directory that preserves chmod(0600); set TRACEVANE_TEST_TMPDIR.");
+}
+
+const PRIVATE_MODE_TEMP_ROOT = resolvePrivateModeTempRoot();
+
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-model-gateway-"));
+  return fs.mkdtempSync(path.join(PRIVATE_MODE_TEMP_ROOT, "tracevane-model-gateway-"));
 }
 
 function createTracevaneConfig(root) {
@@ -428,7 +462,7 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.equal(revealed.secret.masked, "sk-t...3456");
 });
 
-test("model gateway usage ledger summarizes every model by requests and tokens", () => {
+test("model gateway usage ledger summarizes requests and token usage by model and date", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
@@ -459,6 +493,10 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   });
 
   const now = Date.now();
+  const localDateKey = (time) => {
+    const date = new Date(time);
+    return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, "0")}-${`${date.getDate()}`.padStart(2, "0")}`;
+  };
   const entry = (overrides) => ({
     id: overrides.id,
     kind: "gateway-request",
@@ -569,91 +607,168 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
   const usage = service.getUsageLedger();
   assert.equal(usage.ok, true);
   assert.match(usage.checkedAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.equal(usage.readWindow.entryCount, entries.length);
-  assert.equal(usage.readWindow.readLimit, 20_000);
-  assert.equal(usage.readWindow.readByteLimit, 16 * 1024 * 1024);
-  assert.ok(usage.readWindow.readBytes > 0);
-  assert.equal(usage.readWindow.ledgerSizeBytes, usage.readWindow.readBytes);
-  assert.equal(usage.readWindow.truncated, false);
-  assert.equal(usage.totals.requestCount, entries.length);
-  assert.equal(usage.totals.meteredRequestCount, 16);
+  assert.equal(usage.totals.requestCount, 17);
   assert.equal(usage.totals.inputTokens, 130);
   assert.equal(usage.totals.outputTokens, 5);
   assert.equal(usage.totals.totalTokens, 135);
-  assert.equal(usage.totals.cacheReadTokens, 2);
-  assert.equal(usage.totals.cacheCreationTokens, 3);
-  assert.equal(usage.totals.cacheReadRequestCount, 1);
-  assert.equal(usage.totals.cacheCreationRequestCount, 1);
-  assert.equal(usage.models.length, 18);
-  assert.equal(usage.providers.length, 2);
-  assert.equal(usage.appScopes.length, 3);
+  assert.equal(usage.models.length, 17);
+  assert.equal(usage.daily.reduce((sum, row) => sum + row.requestCount, 0), 17);
+  assert.deepEqual(usage.query, {
+    range: "week",
+    dateFrom: localDateKey(now - (6 * 24 * 60 * 60 * 1000)),
+    dateTo: localDateKey(now),
+  });
+
+  const allUsage = service.getUsageLedger({ range: "all" });
+  assert.equal(allUsage.totals.requestCount, entries.length);
+  assert.equal(allUsage.models.length, 18);
+  assert.deepEqual(allUsage.query, { range: "all", dateFrom: null, dateTo: null });
 
   const byModel = new Map(usage.models.map((item) => [item.model, item]));
   assert.deepEqual(
     {
       requestCount: byModel.get("model-a")?.requestCount,
-      meteredRequestCount: byModel.get("model-a")?.meteredRequestCount,
       inputTokens: byModel.get("model-a")?.inputTokens,
       outputTokens: byModel.get("model-a")?.outputTokens,
       totalTokens: byModel.get("model-a")?.totalTokens,
-      cacheReadTokens: byModel.get("model-a")?.cacheReadTokens,
-      cacheCreationTokens: byModel.get("model-a")?.cacheCreationTokens,
-      cacheReadRequestCount: byModel.get("model-a")?.cacheReadRequestCount,
-      cacheCreationRequestCount: byModel.get("model-a")?.cacheCreationRequestCount,
     },
     {
       requestCount: 1,
-      meteredRequestCount: 1,
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
-      cacheReadTokens: 2,
-      cacheCreationTokens: 3,
-      cacheReadRequestCount: 1,
-      cacheCreationRequestCount: 1,
     },
   );
   assert.equal(byModel.get("model-b")?.requestCount, 1);
-  assert.equal(byModel.get("model-b")?.totalTokens, 0);
-  assert.equal(byModel.get("model-c")?.requestCount, 1);
-  assert.equal(byModel.get("model-c")?.totalTokens, 0);
-  assert.equal(byModel.get("model-extra-15")?.totalTokens, 15);
-  const byProvider = new Map(usage.providers.map((item) => [item.key, item]));
-  assert.deepEqual(
-    {
-      label: byProvider.get("usage-p1")?.label,
-      requestCount: byProvider.get("usage-p1")?.requestCount,
-      meteredRequestCount: byProvider.get("usage-p1")?.meteredRequestCount,
-      totalTokens: byProvider.get("usage-p1")?.totalTokens,
-      cacheReadTokens: byProvider.get("usage-p1")?.cacheReadTokens,
-      cacheCreationTokens: byProvider.get("usage-p1")?.cacheCreationTokens,
-      cacheReadRequestCount: byProvider.get("usage-p1")?.cacheReadRequestCount,
-      cacheCreationRequestCount: byProvider.get("usage-p1")?.cacheCreationRequestCount,
-    },
-    {
-      label: "Usage P1",
-      requestCount: 2,
-      meteredRequestCount: 1,
-      totalTokens: 15,
-      cacheReadTokens: 2,
-      cacheCreationTokens: 3,
-      cacheReadRequestCount: 1,
-      cacheCreationRequestCount: 1,
-    },
-  );
-  assert.equal(byProvider.get("usage-p2")?.requestCount, 16);
-  assert.equal(byProvider.get("usage-p2")?.totalTokens, 120);
-  const byScope = new Map(usage.appScopes.map((item) => [item.key, item]));
-  assert.equal(byScope.get("codex")?.requestCount, 16);
-  assert.equal(byScope.get("codex")?.totalTokens, 135);
-  assert.equal(byScope.get("claude-code")?.requestCount, 1);
-  assert.equal(byScope.get("claude-code")?.totalTokens, 0);
-  assert.equal(byScope.get("opencode")?.requestCount, 1);
-  assert.equal(byScope.get("opencode")?.totalTokens, 0);
+  assert.equal(byModel.get("model-b")?.inputTokens, 0);
+  assert.equal(byModel.get("model-b")?.outputTokens, 0);
+  assert.equal(byModel.has("model-c"), false);
+  const allByModel = new Map(allUsage.models.map((item) => [item.model, item]));
+  assert.equal(allByModel.get("model-c")?.requestCount, 1);
+  assert.equal(allByModel.get("model-c")?.inputTokens, 0);
+  assert.equal(byModel.get("model-extra-15")?.inputTokens, 15);
+  const recentDate = localDateKey(now - 10_000);
+  const filteredUsage = service.getUsageLedger({ range: "custom", dateFrom: recentDate, dateTo: recentDate });
+  assert.deepEqual(filteredUsage.query, { range: "custom", dateFrom: recentDate, dateTo: recentDate });
+  assert.equal(filteredUsage.totals.requestCount, 17);
+  assert.equal(filteredUsage.totals.totalTokens, 135);
+  assert.deepEqual(filteredUsage.daily.map((row) => [row.date, row.requestCount, row.totalTokens]), [
+    [recentDate, 17, 135],
+  ]);
+  assert.equal("providers" in usage, false);
+  assert.equal("appScopes" in usage, false);
+  assert.equal("readWindow" in usage, false);
+  assert.equal("paths" in usage, false);
   assert.ok(!JSON.stringify(usage).includes("sk-usage-client-a"));
   assert.equal("entries" in usage, false);
   assert.equal("archiveIndex" in usage, false);
-  assert.equal("query" in usage, false);
+});
+
+test("model gateway estimates token usage when provider omits usage", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "usage-estimate",
+      name: "Usage Estimate",
+      appScopes: ["openclaw"],
+      baseUrl: "https://usage-estimate.example/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "none",
+      models: {
+        defaultModel: "estimate-model",
+        models: [{ id: "estimate-model" }],
+      },
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_no_usage",
+    model: "estimate-model",
+    choices: [{ message: { role: "assistant", content: "estimated output" }, finish_reason: "stop" }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    const result = await service.testProvider(undefined, "usage-estimate", {
+      routeId: "openai_chat_completions",
+      appScope: "openclaw",
+      model: "estimate-model",
+      input: "Estimate this request when upstream omits usage.",
+    });
+    assert.equal(result.ok, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const usage = service.getUsageLedger();
+  assert.equal(usage.totals.requestCount, 1);
+  assert.ok(usage.totals.inputTokens > 0);
+  assert.ok(usage.totals.outputTokens > 0);
+  assert.equal(usage.totals.totalTokens, usage.totals.inputTokens + usage.totals.outputTokens);
+  assert.deepEqual(
+    usage.models.map((model) => [model.model, model.requestCount, model.inputTokens > 0, model.outputTokens > 0, model.totalTokens]),
+    [["estimate-model", 1, true, true, usage.totals.totalTokens]],
+  );
+});
+
+test("model gateway estimates input usage for failed requests when provider omits usage", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "usage-failed-estimate",
+      name: "Usage Failed Estimate",
+      appScopes: ["openclaw"],
+      baseUrl: "https://usage-failed-estimate.example/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "none",
+      models: {
+        defaultModel: "failed-estimate-model",
+        models: [{ id: "failed-estimate-model" }],
+      },
+    },
+  });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { message: "upstream failure without usage" },
+  }), {
+    status: 500,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const result = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "openclaw" },
+        body: {
+          model: "failed-estimate-model",
+          messages: [{ role: "user", content: "Estimate this failed request when upstream omits usage." }],
+        },
+      });
+      assert.equal(result.status, 500);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const usage = ctx.services.modelGateway.getUsageLedger();
+  assert.equal(usage.totals.requestCount, 1);
+  assert.ok(usage.totals.inputTokens > 0);
+  assert.equal(usage.totals.outputTokens, 0);
+  assert.equal(usage.totals.totalTokens, usage.totals.inputTokens);
+  assert.deepEqual(
+    usage.models.map((model) => [model.model, model.requestCount, model.inputTokens > 0, model.outputTokens, model.totalTokens]),
+    [["failed-estimate-model", 1, true, 0, usage.totals.inputTokens]],
+  );
 });
 
 test("model gateway starts Codex account login and creates an account-backed provider", async () => {
@@ -3842,14 +3957,28 @@ test("model gateway Codex account provider smoke uses account request normalizat
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
     const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    const body = JSON.parse(String(init.body || "{}"));
     upstreamCalls.push({
       url: String(url),
       authorization: headers.get("authorization"),
       accountId: headers.get("chatgpt-account-id"),
       accept: headers.get("accept"),
-      body: JSON.parse(String(init.body || "{}")),
+      body,
     });
+    const responseText = JSON.stringify(body).includes("input_image") ? "red" : "ok";
     return new Response([
+      "event: response.created",
+      `data: ${JSON.stringify({
+        type: "response.created",
+        response: {
+          id: "resp_provider_smoke",
+          object: "response",
+          status: "in_progress",
+          output: [],
+        },
+      })}`,
+      "",
+      "event: response.completed",
       `data: ${JSON.stringify({
         type: "response.completed",
         response: {
@@ -3859,7 +3988,7 @@ test("model gateway Codex account provider smoke uses account request normalizat
           output: [{
             type: "message",
             role: "assistant",
-            content: [{ type: "output_text", text: "ok" }],
+            content: [{ type: "output_text", text: responseText }],
           }],
         },
       })}`,
@@ -3880,11 +4009,19 @@ test("model gateway Codex account provider smoke uses account request normalizat
     });
     assert.equal(result.ok, true);
     assert.equal(result.statusCode, 200);
+
+    const vision = await service.testProvider(undefined, "codex-smoke", {
+      kind: "vision",
+      routeId: "openai_responses",
+      model: "gpt-5.5",
+    });
+    assert.equal(vision.ok, true);
+    assert.equal(vision.responsePreview, "red");
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
   assert.equal(upstreamCalls[0].authorization, "Bearer codex-smoke-access");
   assert.equal(upstreamCalls[0].accountId, "acct_smoke");
@@ -3894,6 +4031,15 @@ test("model gateway Codex account provider smoke uses account request normalizat
   assert.equal(upstreamCalls[0].body.store, false);
   assert.deepEqual(upstreamCalls[0].body.include, ["reasoning.encrypted_content"]);
   assert.equal(Array.isArray(upstreamCalls[0].body.input), true);
+  assert.equal(upstreamCalls[1].body.model, "gpt-5.5");
+  assert.equal(upstreamCalls[1].accept, "text/event-stream");
+  assert.equal(upstreamCalls[1].body.stream, true);
+  assert.equal(upstreamCalls[1].body.store, false);
+  assert.deepEqual(upstreamCalls[1].body.include, ["reasoning.encrypted_content"]);
+  assert.equal(Object.hasOwn(upstreamCalls[1].body, "max_output_tokens"), false);
+  assert.equal(upstreamCalls[1].body.input[0].content[0].type, "input_text");
+  assert.equal(upstreamCalls[1].body.input[0].content[1].type, "input_image");
+  assert.match(upstreamCalls[1].body.input[0].content[1].image_url, /^data:image\/jpeg;base64,/);
 });
 
 test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
@@ -5963,6 +6109,136 @@ test("model gateway probes open circuit provider after retry window for requeste
   assert.match(decision.failoverReason || "", /retry window elapsed/);
 });
 
+test("model gateway provider smoke reports safe proxy fetch diagnostics", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "proxy-fail",
+      name: "Proxy Fail",
+      appScopes: ["opencode"],
+      baseUrl: "https://proxy-fail.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-proxy",
+        models: [{ id: "glm-proxy" }],
+      },
+      network: {
+        proxyUrl: "http://proxy-user:proxy-secret@127.0.0.1:7897",
+      },
+    },
+    secret: { apiKey: "sk-proxy-fail" },
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:7897"), {
+      code: "ECONNREFUSED",
+      errno: -111,
+      syscall: "connect",
+      address: "127.0.0.1",
+      port: 7897,
+    });
+    throw new TypeError("fetch failed", { cause });
+  };
+
+  try {
+    const result = await service.testProvider(undefined, "proxy-fail", {
+      routeId: "openai_chat_completions",
+      appScope: "opencode",
+      model: "glm-proxy",
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.diagnostics?.network?.causeCode, "ECONNREFUSED");
+    assert.equal(result.error?.diagnostics?.network?.causeAddress, "127.0.0.1");
+    assert.equal(result.error?.diagnostics?.network?.causePort, 7897);
+    assert.equal(result.error?.diagnostics?.network?.proxy.source, "provider");
+    assert.match(result.error?.diagnostics?.network?.proxy.url || "", /127\.0\.0\.1:7897/);
+    assert.doesNotMatch(JSON.stringify(result.error), /proxy-secret/);
+    assert.match(result.error?.message || "", /ECONNREFUSED/);
+    assert.match(result.error?.message || "", /provider proxy/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const provider = service.listProviders().providers.find((item) => item.id === "proxy-fail");
+  assert.equal(provider?.health.circuitState, "closed");
+  assert.equal(provider?.health.consecutiveFailures, 1);
+  assert.match(provider?.health.lastError || "", /ECONNREFUSED/);
+  assert.doesNotMatch(provider?.health.lastError || "", /proxy-secret/);
+});
+
+test("model gateway provider health reset endpoint clears provider and endpoint circuits", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "health-reset",
+      name: "Health Reset",
+      appScopes: ["codex"],
+      baseUrl: "https://health-reset.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      health: {
+        circuitState: "open",
+        lastSuccessAt: "2026-07-01T00:00:00.000Z",
+        lastFailureAt: "2026-07-02T00:00:00.000Z",
+        retryAfterUntil: "2026-07-03T00:00:00.000Z",
+        lastLatencyMs: 5000,
+        lastError: "fetch failed",
+        consecutiveFailures: 5,
+      },
+      endpointProfiles: [{
+        id: "responses-fast",
+        name: "Responses Fast",
+        appScopes: ["codex"],
+        baseUrl: "https://health-reset-fast.example.test/v1",
+        apiFormat: "openai_responses",
+        authStrategy: "bearer",
+        health: {
+          circuitState: "open",
+          lastFailureAt: "2026-07-02T00:00:00.000Z",
+          retryAfterUntil: "2026-07-03T00:00:00.000Z",
+          lastLatencyMs: 3000,
+          lastError: "endpoint fetch failed",
+          consecutiveFailures: 4,
+        },
+      }],
+    },
+    secret: { apiKey: "sk-health-reset" },
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  await withServer(handler, async (baseUrl) => {
+    const reset = await requestJson(`${baseUrl}/api/model-gateway/providers/health-reset/health/reset`, {
+      method: "POST",
+      body: {},
+    });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.body.ok, true);
+    assert.deepEqual(reset.body.reset, {
+      provider: true,
+      endpointProfiles: ["responses-fast"],
+    });
+    assert.equal(reset.body.provider.health.circuitState, "closed");
+    assert.equal(reset.body.provider.health.lastSuccessAt, "2026-07-01T00:00:00.000Z");
+    assert.equal(reset.body.provider.health.lastFailureAt, null);
+    assert.equal(reset.body.provider.health.retryAfterUntil, null);
+    assert.equal(reset.body.provider.health.lastLatencyMs, null);
+    assert.equal(reset.body.provider.health.lastError, null);
+    assert.equal(reset.body.provider.health.consecutiveFailures, 0);
+    const endpoint = reset.body.provider.endpointProfiles.find((profile) => profile.id === "responses-fast");
+    assert.equal(endpoint.health.circuitState, "closed");
+    assert.equal(endpoint.health.lastFailureAt, null);
+    assert.equal(endpoint.health.lastError, null);
+    assert.equal(endpoint.health.consecutiveFailures, 0);
+  });
+});
+
 test("model gateway respects Retry-After when opening provider circuits", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -6506,7 +6782,9 @@ test("model gateway client key protects client endpoints and stays separate from
       assert.ok(usageByGatewayKey.body.totals.requestCount >= 1);
       assert.ok(usageByGatewayKey.body.models.some((model) => model.model === "auth-model" && model.requestCount >= 1));
       assert.ok(!JSON.stringify(usageByGatewayKey.body).includes("sk-local-client-one"));
-      assert.equal("query" in usageByGatewayKey.body, false);
+      assert.equal(usageByGatewayKey.body.query.range, "week");
+      assert.match(usageByGatewayKey.body.query.dateFrom, /^\d{4}-\d{2}-\d{2}$/);
+      assert.match(usageByGatewayKey.body.query.dateTo, /^\d{4}-\d{2}-\d{2}$/);
       assert.equal("entries" in usageByGatewayKey.body, false);
 
       const usageByGatewayKeyHash = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKeyHash=${sha256Short("sk-local-client-one")}&limit=20`);
@@ -8263,14 +8541,12 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
       user_id: "tracevane-gateway-smoke",
       session_id: "active-route-smoke",
     });
-    assert.ok(Array.isArray(calls[0].body.tools));
-    assert.equal(calls[0].body.tools[0].name, "gateway_smoke_tool");
-    assert.deepEqual(calls[0].body.tool_choice, { type: "auto" });
+    assert.equal("tools" in calls[0].body, false);
+    assert.equal("tool_choice" in calls[0].body, false);
     assert.equal(calls[1].body.model, "gpt-5.5");
     assert.equal(calls[1].anthropicBeta, null);
-    assert.ok(Array.isArray(calls[1].body.tools));
-    assert.equal(calls[1].body.tools[0].function.name, "gateway_smoke_tool");
-    assert.equal(calls[1].body.tool_choice, "auto");
+    assert.equal("tools" in calls[1].body, false);
+    assert.equal("tool_choice" in calls[1].body, false);
     assert.equal("reasoning_effort" in calls[1].body, false);
     assert.equal(calls[2].body.stream, false);
     assert.deepEqual(calls[2].body.metadata, {
@@ -9245,16 +9521,24 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
 
     const usageLedger = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/usage`);
     assert.equal(usageLedger.status, 200);
-    assert.equal(usageLedger.body.readWindow.entryCount, 1);
     assert.equal(usageLedger.body.totals.requestCount, 1);
+    assert.equal(usageLedger.body.totals.inputTokens, 3);
+    assert.equal(usageLedger.body.totals.outputTokens, 2);
     assert.equal(usageLedger.body.totals.totalTokens, 5);
     assert.deepEqual(
-      usageLedger.body.models.map((model) => [model.model, model.requestCount, model.totalTokens]),
-      [["daemon-model", 1, 5]],
+      usageLedger.body.models.map((model) => [model.model, model.requestCount, model.inputTokens, model.outputTokens, model.totalTokens]),
+      [["daemon-model", 1, 3, 2, 5]],
     );
-    assert.equal(usageLedger.body.paths.ledger, paths.usageLedger);
+    assert.equal(usageLedger.body.daily.length, 1);
+    assert.equal(usageLedger.body.daily[0].requestCount, 1);
+    assert.equal(usageLedger.body.daily[0].totalTokens, 5);
+    assert.equal(usageLedger.body.query.range, "week");
+    assert.match(usageLedger.body.query.dateFrom, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(usageLedger.body.query.dateTo, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(fs.existsSync(paths.usageLedger), true);
     assert.ok(!JSON.stringify(usageLedger.body).includes("sk-daemon-secret-123456"));
+    assert.equal("readWindow" in usageLedger.body, false);
+    assert.equal("paths" in usageLedger.body, false);
     assert.equal("entries" in usageLedger.body, false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -10344,7 +10628,7 @@ test("model gateway exposes non-streaming responses mcp outputs through chat and
   const expectedText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]"
     + "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]"
     + "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_delete_1 arguments: {\"path\":\"danger.txt\"}]"
-    + "[OpenAI Responses web_search_call {\"status\":\"completed\",\"action\":{\"query\":\"Tracevane gateway\"}}]";
+    + "[OpenAI Responses web_search_call {\"status\":\"completed\",\"action\":{\"query\":\"Tracevane gateway\"},\"id\":\"ws_1\"}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -11037,7 +11321,7 @@ test("model gateway exposes streaming responses mcp outputs through chat and ant
   const expectedListText = "[OpenAI Responses mcp_list_tools repo-tools: read_file, search]";
   const expectedCallText = "[OpenAI Responses mcp_call repo-tools.read_file output: {\"path\":\"README.md\",\"text\":\"Hello from MCP\"}]";
   const expectedApprovalText = "[OpenAI Responses mcp_approval_request repo-tools.delete_file id: mcpr_stream_delete_1 arguments: {\"path\":\"danger.txt\"}]";
-  const expectedBuiltinText = "[OpenAI Responses file_search_call {\"status\":\"completed\",\"queries\":[\"README.md\"],\"results\":[{\"file_id\":\"file_1\",\"filename\":\"README.md\"}]}]";
+  const expectedBuiltinText = "[OpenAI Responses file_search_call {\"status\":\"completed\",\"queries\":[\"README.md\"],\"results\":[{\"file_id\":\"file_1\",\"filename\":\"README.md\"}],\"id\":\"fs_stream_1\"}]";
 
   try {
     await withServer(handler, async (baseUrl) => {
@@ -12876,6 +13160,147 @@ test("model gateway preserves malformed Chat tool history through Responses and 
     { role: "user", content: 'OpenAI Chat tool message missing tool_call_id for Anthropic Messages: {"role":"tool","content":"orphan tool result"}' },
     { role: "user", content: 'OpenAI Chat function message missing name for Anthropic Messages: {"role":"function","content":"orphan function result"}' },
   ]);
+});
+
+test("model gateway sanitizes malformed tool history for native upstream protocols", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "native-chat-malformed-tool-history",
+      name: "Native Chat Malformed Tool History",
+      appScopes: ["opencode"],
+      baseUrl: "https://native-chat-malformed-tool-history.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: { apiKey: "sk-native-chat-malformed-tool-history" },
+    setActiveScopes: ["opencode"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "native-anthropic-malformed-tool-history",
+      name: "Native Anthropic Malformed Tool History",
+      appScopes: ["claude-code"],
+      baseUrl: "https://native-anthropic-malformed-tool-history.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: { apiKey: "sk-native-anthropic-malformed-tool-history" },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const upstreamUrl = String(url);
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({
+      url: upstreamUrl,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body,
+    });
+    if (upstreamUrl.includes("native-anthropic-malformed-tool-history")) {
+      return new Response(JSON.stringify({
+        id: "msg_native_malformed_tool_history",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "native anthropic malformed ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 8, output_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_native_malformed_tool_history",
+      object: "chat.completion",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "native chat malformed ok" },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "opencode" },
+        body: {
+          model: "gpt-tool-history",
+          messages: [
+            {
+              role: "assistant",
+              content: null,
+              function_call: { arguments: "{\"query\":\"docs\"}" },
+              tool_calls: [
+                { type: "function", function: { arguments: "{\"value\":\"GATEWAY_OK\"}" } },
+              ],
+            },
+            { role: "tool", content: "GATEWAY_OK" },
+            { role: "function", content: "GATEWAY_OK" },
+            { role: "user", content: "Reply GATEWAY_OK" },
+          ],
+        },
+      });
+      assert.equal(chat.status, 200, chat.body);
+      assert.equal(chat.body.choices[0].message.content, "native chat malformed ok");
+
+      const anthropic = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "x-tracevane-app-scope": "claude-code" },
+        body: {
+          model: "claude-native",
+          max_tokens: 256,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "tool_use", name: "gateway_smoke_tool", input: { value: "GATEWAY_OK" } },
+              { type: "tool_result", content: "GATEWAY_OK" },
+              { type: "mcp_tool_result", content: [{ type: "text", text: "GATEWAY_OK" }] },
+              { type: "text", text: "Reply GATEWAY_OK" },
+            ],
+          }],
+        },
+      });
+      assert.equal(anthropic.status, 200, anthropic.body);
+      assert.equal(anthropic.body.content[0].text, "native anthropic malformed ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://native-chat-malformed-tool-history.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-native-chat-malformed-tool-history");
+  assert.deepEqual(upstreamCalls[0].body.messages, [
+    {
+      role: "assistant",
+      content: [
+        'OpenAI Chat malformed function_call for Chat Completions: {"arguments":"{\\"query\\":\\"docs\\"}"}',
+        'OpenAI Chat malformed tool_call for Chat Completions: {"type":"function","function":{"arguments":"{\\"value\\":\\"GATEWAY_OK\\"}"}}',
+      ].join("\n"),
+    },
+    { role: "user", content: 'OpenAI Chat tool message missing tool_call_id for Chat Completions: {"role":"tool","content":"GATEWAY_OK"}' },
+    { role: "user", content: 'OpenAI Chat function message missing name for Chat Completions: {"role":"function","content":"GATEWAY_OK"}' },
+    { role: "user", content: "Reply GATEWAY_OK" },
+  ]);
+  assert.equal(upstreamCalls[1].url, "https://native-anthropic-malformed-tool-history.example.test/v1/messages");
+  assert.equal(upstreamCalls[1].xApiKey, "sk-native-anthropic-malformed-tool-history");
+  assert.deepEqual(upstreamCalls[1].body.messages, [{
+    role: "user",
+    content: [
+      { type: "text", text: 'Anthropic Messages malformed tool_use for Anthropic Messages: {"type":"tool_use","name":"gateway_smoke_tool","input":{"value":"GATEWAY_OK"}}' },
+      { type: "text", text: 'Anthropic Messages malformed tool_result for Anthropic Messages: {"type":"tool_result","content":"GATEWAY_OK"}' },
+      { type: "text", text: 'Anthropic Messages malformed mcp_tool_result for Anthropic Messages: {"type":"mcp_tool_result","content":[{"type":"text","text":"GATEWAY_OK"}]}' },
+      { type: "text", text: "Reply GATEWAY_OK" },
+    ],
+  }]);
 });
 
 test("model gateway returns legacy Chat function_call for legacy functions clients", async () => {

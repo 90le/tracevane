@@ -364,9 +364,9 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     );
   }
 
-  const savePolicy = (restartAfterSave = false) => {
+  const savePolicy = (applyAfterSave = false) => {
     if (!config) return;
-    setPolicyNotice({ tone: "warn", text: restartAfterSave ? "正在保存策略并重启 IM 守护……" : "正在保存策略……" });
+    setPolicyNotice({ tone: "warn", text: applyAfterSave ? "正在保存策略并应用到 IM 守护……" : "正在保存策略……" });
     saveConfigMutation.mutate(
       {
         config: {
@@ -380,29 +380,38 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           const savedPolicy = saved.config.agentSessionPolicy ?? policyDraft;
           setPolicyDraft(savedPolicy);
           void configQuery.refetch();
-          if (restartAfterSave) {
-            setPolicyNotice({ tone: "warn", text: "策略已保存，正在重启 IM 守护并等待运行态刷新……" });
+          if (applyAfterSave) {
+            setPolicyNotice({ tone: "warn", text: "策略已保存，正在请求 IM 守护按空闲策略热重载……" });
             restartDaemonMutation.mutate(
-              { action: "restart", apply: true, runCommands: true },
+              { action: "reload", apply: true, reloadMode: "when-idle" },
               {
-                onSuccess: () => {
-                  setPolicyNotice({ tone: "ok", text: "已保存并重启 IM 守护；新的并发/队列策略已写入 daemon 配置。" });
-                  toast.success("已保存并重启 IM 守护", { description: "新的全局并发/队列策略已写入 daemon 配置。" });
+                onSuccess: (result) => {
+                  const reload = result.reload;
+                  if (reload?.status === "applied") {
+                    setPolicyNotice({ tone: "ok", text: "已保存并热重载 IM 守护；新的并发/队列策略已生效。" });
+                    toast.success("已保存并应用 IM 守护", { description: "新的全局并发/队列策略已热重载。" });
+                  } else if (reload?.status === "pending") {
+                    setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn 运行中，结束后自动热重载。` });
+                    toast.info("策略已保存，等待任务结束后应用", { description: "IM 守护将在空闲后自动热重载。" });
+                  } else {
+                    setPolicyNotice({ tone: "bad", text: `策略已保存，但应用失败：${reload?.error || reload?.restartRequiredReason || "daemon reload failed"}` });
+                    toast.error("保存成功，但应用失败", { description: reload?.error || reload?.restartRequiredReason || "daemon reload failed" });
+                  }
                   void sessionsQuery.refetch();
                   window.setTimeout(() => {
                     void sessionsQuery.refetch();
                   }, 1200);
                 },
                 onError: (error) => {
-                  setPolicyNotice({ tone: "bad", text: `策略已保存，但重启失败：${error.message}` });
-                  toast.error("保存成功，但重启失败", { description: error.message });
+                  setPolicyNotice({ tone: "bad", text: `策略已保存，但应用失败：${error.message}` });
+                  toast.error("保存成功，但应用失败", { description: error.message });
                 },
               },
             );
             return;
           }
-          setPolicyNotice({ tone: "ok", text: "策略已保存；点击“保存并重启”可立即让运行中 daemon 生效。" });
-          toast.success("已保存 IM Agent 并发策略", { description: "点击“保存并重启”可立即让运行中 daemon 生效。" });
+          setPolicyNotice({ tone: "ok", text: "策略已保存；点击“保存并应用”可让运行中 daemon 在空闲后热重载。" });
+          toast.success("已保存 IM Agent 并发策略", { description: "点击“保存并应用”可让运行中 daemon 生效。" });
         },
         onError: (error) => {
           setPolicyNotice({ tone: "bad", text: `保存并发策略失败：${error.message}` });
@@ -532,7 +541,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           <span className="flex gap-2">
             <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => setPolicyDraft(persistedPolicy)}>撤销</Button>
             <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => savePolicy(false)}>保存策略</Button>
-            <Button variant="primary" size="sm" disabled={pending || (!policyDirty && runtimeMatchesDraft)} onClick={() => savePolicy(true)}>保存并重启</Button>
+            <Button variant="primary" size="sm" disabled={pending || (!policyDirty && runtimeMatchesDraft)} onClick={() => savePolicy(true)}>保存并应用</Button>
           </span>
         </div>
       </Panel>

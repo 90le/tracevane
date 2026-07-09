@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Search, Upload } from "lucide-react";
+import { AlertTriangle, Search, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/design/lib/utils";
+import { ConfirmDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
 import {
   filesKeys,
@@ -208,6 +209,8 @@ export function FileManagerPage() {
   const [onlineEditorOpen, setOnlineEditorOpen] = React.useState(false);
   const [onlineEditorWindowMode, setOnlineEditorWindowMode] =
     React.useState<FileOnlineEditorWindowMode>("normal");
+  const [closeAllOnlineEditorsConfirmOpen, setCloseAllOnlineEditorsConfirmOpen] =
+    React.useState(false);
   const [onlineEditorDrafts, setOnlineEditorDrafts] = React.useState<Record<string, string>>({});
   const [onlineEditorViewStates, setOnlineEditorViewStates] = React.useState<
     Record<string, CodeEditorViewState>
@@ -1657,6 +1660,8 @@ export function FileManagerPage() {
     ],
   );
 
+  const dirtyOnlineEditorCount = Object.keys(onlineEditorDrafts).length;
+
   return (
     <div
       className="relative flex h-full min-h-0 min-w-0 flex-col outline-none"
@@ -2026,8 +2031,10 @@ export function FileManagerPage() {
               variant="ghost"
               size="sm"
               onClick={() => {
-                const dirtyCount = Object.keys(onlineEditorDrafts).length;
-                if (dirtyCount > 0 && !window.confirm(`有 ${dirtyCount} 个文件存在未保存修改，确定关闭全部并放弃修改吗？`)) return;
+                if (dirtyOnlineEditorCount > 0) {
+                  setCloseAllOnlineEditorsConfirmOpen(true);
+                  return;
+                }
                 closeAllOnlineEditorTabs();
               }}
             >
@@ -2036,6 +2043,21 @@ export function FileManagerPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={closeAllOnlineEditorsConfirmOpen}
+        title="关闭全部在线编辑器"
+        description={`有 ${dirtyOnlineEditorCount} 个文件存在未保存修改。关闭全部会放弃这些未保存草稿。`}
+        icon={<AlertTriangle />}
+        tone="warning"
+        confirmLabel="关闭并放弃修改"
+        contentDataAttr="file-manager-close-all-editors"
+        onCancel={() => setCloseAllOnlineEditorsConfirmOpen(false)}
+        onConfirm={() => {
+          setCloseAllOnlineEditorsConfirmOpen(false);
+          closeAllOnlineEditorTabs();
+        }}
+      />
 
       {onlineEditorOpen && onlineEditorTabs.length > 0 ? (
         <FileManagerModalErrorBoundary

@@ -938,6 +938,50 @@ function tomlString(value: string): string {
   return JSON.stringify(value);
 }
 
+let cachedPrivateModeTempRoot: string | null | undefined;
+
+function channelConnectorPrivateModeTempRoot(): string {
+  if (cachedPrivateModeTempRoot !== undefined) return cachedPrivateModeTempRoot || os.tmpdir();
+  const candidates = [
+    normalizeString(process.env.TRACEVANE_CHANNEL_CONNECTORS_TMPDIR),
+    normalizeString(process.env.TRACEVANE_TEST_TMPDIR),
+    normalizeString(process.env.TEST_TMPDIR),
+    process.platform === "win32" ? "" : "/tmp",
+    os.tmpdir(),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true });
+      if (supportsPrivateFileMode(candidate)) {
+        cachedPrivateModeTempRoot = candidate;
+        return candidate;
+      }
+    } catch {
+      // Try the next temp candidate.
+    }
+  }
+  cachedPrivateModeTempRoot = null;
+  return os.tmpdir();
+}
+
+function supportsPrivateFileMode(parentDir: string): boolean {
+  const probeDir = fs.mkdtempSync(path.join(parentDir, "tracevane-channel-mode-check-"));
+  const probeFile = path.join(probeDir, "secret");
+  try {
+    fs.writeFileSync(probeFile, "", { mode: 0o600 });
+    fs.chmodSync(probeFile, 0o600);
+    return (fs.statSync(probeFile).mode & 0o777) === 0o600;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(probeDir, { recursive: true, force: true });
+  }
+}
+
+function mkChannelConnectorTempDir(prefix: string): string {
+  return fs.mkdtempSync(path.join(channelConnectorPrivateModeTempRoot(), prefix));
+}
+
 const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_NAMES = new Set([
   "octo_bot_api",
   "feishu_app_scopes",
@@ -964,7 +1008,7 @@ function createCodexGatewayHome(input: {
   agentRuntimeDir?: string | null;
 }): { codexHome: string; cleanupRoot: string } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
-  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-codex-"));
+  const cleanupRoot = runtimeDir || mkChannelConnectorTempDir("tracevane-channel-codex-");
   const codexHome = path.join(cleanupRoot, "codex-home");
   fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
   try {
@@ -1029,7 +1073,7 @@ function createClaudeConfigHome(input: {
   agentRuntimeDir?: string | null;
 }): { configHome: string; cleanupRoot: string } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
-  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-claude-"));
+  const cleanupRoot = runtimeDir || mkChannelConnectorTempDir("tracevane-channel-claude-");
   const configHome = path.join(cleanupRoot, "claude-config");
   fs.mkdirSync(configHome, { recursive: true, mode: 0o700 });
   try {
@@ -1070,7 +1114,7 @@ function createOpenCodeGatewayHome(input: {
 } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
   const envDataHome = normalizeString(process.env.XDG_DATA_HOME);
-  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-opencode-"));
+  const cleanupRoot = mkChannelConnectorTempDir("tracevane-channel-opencode-");
   const configHome = path.join(cleanupRoot, "config");
   const dataHome = runtimeDir
     ? path.join(runtimeDir, "opencode-data")

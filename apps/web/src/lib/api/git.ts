@@ -2,6 +2,7 @@ import { apiRequest } from "./client";
 import type {
   GitCommitDetailPayload,
   GitBlamePayload,
+  GitCommitMessagePayload,
   GitDiffPayload,
   GitGraphPayload,
   GitStashListPayload,
@@ -22,9 +23,11 @@ import type {
  * Bound here (write POST — all return the refreshed `GitStatusPayload`):
  *  - POST /api/git/stage     → stage paths (empty `paths` = `git add -A`)
  *  - POST /api/git/unstage   → unstage paths (empty `paths` = restore all)
+ *  - POST /api/git/discard   → discard local working tree changes for paths
  *  - POST /api/git/commit    → commit staged changes with a message
  *  - POST /api/git/branches  → create a branch (optionally checkout, from ref)
  *  - POST /api/git/checkout  → checkout a branch/ref (optionally detached)
+ *  - POST /api/git/revert    → revert one commit with a new inverse commit
  *  - POST /api/git/fetch     → fetch upstream/remote tracking refs
  *  - POST /api/git/pull      → fast-forward pull from upstream/remote
  *  - POST /api/git/push      → push to upstream/remote
@@ -185,6 +188,18 @@ export function unstageFiles(params: GitUnstageParams): Promise<GitStatusPayload
   });
 }
 
+/** POST /api/git/discard — discard local changes for explicit paths. */
+export interface GitDiscardParams extends GitMutationParams {
+  paths: string[];
+}
+export function discardFiles(params: GitDiscardParams): Promise<GitStatusPayload> {
+  const { rootId, path, paths } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/discard`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", paths }),
+  });
+}
+
 /** POST /api/git/commit — commit staged changes with a message (required). */
 export interface GitCommitParams extends GitMutationParams {
   message: string;
@@ -194,6 +209,19 @@ export function commitFiles(params: GitCommitParams): Promise<GitStatusPayload> 
   return apiRequest<GitStatusPayload>(`${BASE}/commit`, {
     method: "POST",
     body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", message }),
+  });
+}
+
+/** POST /api/git/commit-message — generate a commit message from real Git diff context. */
+export interface GitCommitMessageParams extends GitMutationParams {
+  staged?: boolean;
+  model?: string;
+}
+export function generateGitCommitMessage(params: GitCommitMessageParams): Promise<GitCommitMessagePayload> {
+  const { rootId, path, staged, model } = params;
+  return apiRequest<GitCommitMessagePayload>(`${BASE}/commit-message`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", staged, model }),
   });
 }
 
@@ -226,6 +254,18 @@ export function checkoutBranch(params: GitCheckoutParams): Promise<GitStatusPayl
   return apiRequest<GitStatusPayload>(`${BASE}/checkout`, {
     method: "POST",
     body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", target, detach }),
+  });
+}
+
+/** POST /api/git/revert — create an inverse commit for one commit hash/ref. */
+export interface GitRevertCommitParams extends GitMutationParams {
+  hash: string;
+}
+export function revertCommit(params: GitRevertCommitParams): Promise<GitStatusPayload> {
+  const { rootId, path, hash } = params;
+  return apiRequest<GitStatusPayload>(`${BASE}/revert`, {
+    method: "POST",
+    body: JSON.stringify({ rootId: gitApiRootId(rootId), path: path ?? "", hash }),
   });
 }
 

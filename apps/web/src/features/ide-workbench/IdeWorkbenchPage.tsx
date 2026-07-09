@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import type { SerializedDockview } from "dockview-react";
 import {
   AlertCircle,
@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { NAV_ITEMS } from "@/app/navigation";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/design/ui/dialog";
@@ -74,6 +75,8 @@ const PANEL_ICONS: Record<WorkbenchPanelId, React.ReactNode> = {
   output: <ListChecks />,
   debugConsole: <Bug />,
 };
+
+const IDE_WORKFLOW_NAV_PATHS = new Set(["/file-manager", "/ide", "/cli-agents"]);
 
 interface IdeEditorCloseRequest {
   tabIds: string[];
@@ -185,8 +188,6 @@ export function IdeWorkbenchPage() {
 
   const openSearchResult = React.useCallback((request: IdeSearchResultOpenRequest) => {
     if (request.kind === "directory") {
-      layoutApi.setExplorerDirectoryPath(request.path);
-      layoutApi.setActiveActivityId("explorer");
       return;
     }
     openFilePath({ rootId: request.rootId, path: request.path }, {
@@ -195,7 +196,7 @@ export function IdeWorkbenchPage() {
         ? { lineNumber: request.lineNumber, column: request.column ?? 1 }
         : undefined,
     });
-  }, [layoutApi, openFilePath]);
+  }, [openFilePath]);
 
   const openGitChangeDiff = React.useCallback((request: { rootId: string; change: IdeGitDecoratedChange }) => {
     const { change } = request;
@@ -658,7 +659,7 @@ export function IdeWorkbenchPage() {
           ) : null}
           <div
             className={cn(
-              "col-start-1 row-start-1 min-h-0 min-w-0 overflow-hidden",
+              "col-start-1 row-start-1 h-full max-h-full min-h-0 min-w-0 overflow-hidden",
               sidebarOverlay && "absolute inset-y-0 left-0 z-30 w-[min(320px,calc(100vw-44px))] max-w-[calc(100vw-44px)] overflow-hidden shadow-2xl",
             )}
             data-ide-sidebar-shell
@@ -1130,46 +1131,116 @@ function WorkbenchHeader({
   onTogglePanel: () => void;
   onOpenCommandPalette: () => void;
 }) {
+  const navigate = useNavigate();
+  const readyNavItems = React.useMemo(
+    () => NAV_ITEMS.filter((item) => item.status === "ready"),
+    [],
+  );
+  const workflowNavItems = React.useMemo(
+    () => readyNavItems.filter((item) => IDE_WORKFLOW_NAV_PATHS.has(item.path)),
+    [readyNavItems],
+  );
+  const rootTitle = rootPath && rootPath !== "/" ? rootPath : rootLabel;
+
   return (
-    <header className="flex min-h-[50px] min-w-0 items-center gap-3 border-b border-line bg-panel px-3" data-ide-header>
-      <div className="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-ink">
-        IDE
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-ink-strong">
-          Tracevane IDE Workbench
+    <header className="grid min-h-[56px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 border-b border-line bg-panel px-2.5 py-1.5 lg:grid-cols-[minmax(210px,0.62fr)_minmax(260px,1fr)_auto]" data-ide-header>
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="grid size-8 shrink-0 place-items-center rounded-sm bg-primary text-sm font-semibold text-primary-ink">
+          IDE
         </div>
-        <div className="truncate text-xs text-subtle">
-          {rootLabel} · {rootPath}
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-semibold text-ink-strong">
+              IDE 工作台
+            </span>
+            <span className="hidden shrink-0 rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 text-2xs font-medium text-muted sm:inline-flex">
+              {rootLabel}
+            </span>
+          </div>
         </div>
       </div>
-      {panelCollapsed ? (
+
+      <nav
+        className="order-3 col-span-2 flex min-w-0 items-center gap-1 lg:order-none lg:col-span-1"
+        aria-label="Tracevane 域导航"
+        data-ide-domain-nav
+      >
+        <div className="hidden min-w-0 shrink items-center rounded-sm border border-line bg-panel-2 p-0.5 lg:flex">
+          {workflowNavItems.map((item) => {
+            const Icon = item.icon;
+            const active = item.path === "/ide";
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "inline-flex h-7 max-w-[118px] items-center gap-1.5 rounded-sm px-2 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)]",
+                  active
+                    ? "bg-panel text-primary shadow-sm"
+                    : "text-muted hover:bg-panel hover:text-ink-strong",
+                )}
+                aria-current={active ? "page" : undefined}
+                title={item.title}
+                data-ide-domain-nav-item={active ? "active" : "inactive"}
+              >
+                {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+                <span className="min-w-0 truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="relative min-w-0 flex-1 md:max-w-[210px]">
+          <select
+            value="/ide"
+            onChange={(event) => navigate(event.target.value)}
+            className="h-8 w-full appearance-none rounded-sm border border-line bg-panel-2 py-1 pl-2.5 pr-7 text-xs font-medium text-ink-strong outline-none hover:border-primary-line focus-visible:shadow-[var(--ring)]"
+            aria-label="切换 Tracevane 功能域"
+            title="切换 Tracevane 功能域"
+            data-ide-domain-nav-select
+          >
+            {readyNavItems.map((item) => (
+              <option key={item.path} value={item.path}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
+        </div>
+      </nav>
+
+      <div className="flex shrink-0 items-center justify-end gap-1">
+        {panelCollapsed ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onTogglePanel}
+            aria-label="展开底部/右侧面板"
+            title={panelPlacement === "right" ? "展开右侧面板" : "展开底部面板"}
+            data-ide-panel-restore-button
+          >
+            {panelPlacement === "right" ? <PanelRightOpen /> : <PanelBottomOpen />}
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="sm"
-          onClick={onTogglePanel}
-          aria-label="展开底部/右侧面板"
-          title={panelPlacement === "right" ? "展开右侧面板" : "展开底部面板"}
-          data-ide-panel-restore-button
+          onClick={onOpenCommandPalette}
+          title="命令面板（F1 / Ctrl+Shift+P）"
+          aria-label="打开命令面板"
+          data-ide-command-palette-button
         >
-          {panelPlacement === "right" ? <PanelRightOpen /> : <PanelBottomOpen />}
+          <Command />
+          <span className="hidden sm:inline">命令</span>
         </Button>
-      ) : null}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onOpenCommandPalette}
-        title="命令面板（F1 / Ctrl+Shift+P）"
-        aria-label="打开命令面板"
-        data-ide-command-palette-button
-      >
-        <Command />
-        <span className="hidden sm:inline">命令</span>
-      </Button>
-      <Button variant="ghost" size="sm" onClick={onResetLayout}>
-        <RotateCcw />
-        <span className="hidden sm:inline">重置布局</span>
-      </Button>
+        <Button variant="ghost" size="sm" onClick={onResetLayout} title="重置布局">
+          <RotateCcw />
+          <span className="hidden sm:inline">重置布局</span>
+        </Button>
+      </div>
+      <span className="sr-only" data-ide-header-root-title>
+        {rootTitle}
+      </span>
     </header>
   );
 }

@@ -12,6 +12,7 @@ import type {
   FilesCreateDirectoryPayload,
   FilesCreateFilePayload,
   FilesDeletePayload,
+  FileEntryKind,
   FilesFavoriteBookmarksUpdatePayload,
   FilesRenamePayload,
   FilesTransferDryRunPayload,
@@ -49,6 +50,10 @@ function readDirectorySortKey(value: string | null): "name" | "size" | "modified
 
 function readDirectorySortDirection(value: string | null): "asc" | "desc" {
   return value === "desc" ? "desc" : "asc";
+}
+
+function readFileSearchResultKind(value: string | null): FileEntryKind | "all" {
+  return value === "file" || value === "directory" ? value : "all";
 }
 
 async function readBinaryBody(req: http.IncomingMessage): Promise<Buffer> {
@@ -149,6 +154,7 @@ export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiCo
           caseSensitive: readFlag(url.searchParams.get("caseSensitive"), false),
           regex: readFlag(url.searchParams.get("regex"), false),
           limit: readNumber(url.searchParams.get("limit")),
+          resultKind: readFileSearchResultKind(url.searchParams.get("kind")),
         },
       ),
     );

@@ -1,11 +1,14 @@
 import { apiRequest } from "./client";
 import type {
   ChannelConnectorAgentSessionActionRequest,
+  ChannelConnectorBindingSecretsResponse,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandActionResponse,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandSurfaceResponse,
+  ChannelConnectorFeishuAppRegistrationSessionResponse,
+  ChannelConnectorFeishuAppRegistrationStartRequest,
   ChannelConnectorFeishuTransportSmokeRequest,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeRequest,
@@ -58,6 +61,17 @@ export function getChannelConnectorsConfig(
   return apiRequest<ChannelConnectorsNativeConfigResponse>(`${BASE}/config`, { signal });
 }
 
+/** GET /api/channel-connectors/config/bindings/:bindingId/secrets */
+export function getChannelConnectorBindingSecrets(
+  bindingId: string,
+  signal?: AbortSignal,
+): Promise<ChannelConnectorBindingSecretsResponse> {
+  return apiRequest<ChannelConnectorBindingSecretsResponse>(
+    `${BASE}/config/bindings/${encodeURIComponent(bindingId)}/secrets`,
+    { signal },
+  );
+}
+
 /** PUT /api/channel-connectors/config — replace the native config document. */
 export function saveChannelConnectorsConfig(
   payload: ChannelConnectorsSaveNativeConfigRequest,
@@ -66,6 +80,40 @@ export function saveChannelConnectorsConfig(
     method: "PUT",
     body: jsonBody(payload),
   });
+}
+
+/** POST /api/channel-connectors/accounts/feishu/registration/start */
+export function startFeishuAppRegistration(
+  payload: ChannelConnectorFeishuAppRegistrationStartRequest = {},
+): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse> {
+  return apiRequest<ChannelConnectorFeishuAppRegistrationSessionResponse>(
+    `${BASE}/accounts/feishu/registration/start`,
+    {
+      method: "POST",
+      body: jsonBody(payload),
+    },
+  );
+}
+
+/** GET /api/channel-connectors/accounts/feishu/registration/:sessionId */
+export function getFeishuAppRegistration(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse> {
+  return apiRequest<ChannelConnectorFeishuAppRegistrationSessionResponse>(
+    `${BASE}/accounts/feishu/registration/${encodeURIComponent(sessionId)}`,
+    { signal },
+  );
+}
+
+/** POST /api/channel-connectors/accounts/feishu/registration/:sessionId/cancel */
+export function cancelFeishuAppRegistration(
+  sessionId: string,
+): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse> {
+  return apiRequest<ChannelConnectorFeishuAppRegistrationSessionResponse>(
+    `${BASE}/accounts/feishu/registration/${encodeURIComponent(sessionId)}/cancel`,
+    { method: "POST", body: jsonBody({}) },
+  );
 }
 
 // ---------------------------------------------------------------------------
