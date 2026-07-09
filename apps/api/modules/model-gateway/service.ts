@@ -4334,17 +4334,20 @@ function normalizeCodexAccountResponsesInputItem(source: unknown): unknown {
       call_id: callId,
     };
   }
-  if (
-    itemType === "function_call_output"
-    || itemType === "custom_tool_call_output"
-    || itemType === "local_shell_call_output"
-    || itemType === "shell_call_output"
-  ) {
+  if (itemType === "function_call_output" || itemType === "custom_tool_call_output" || itemType === "shell_call_output") {
     const callId = normalizeString(source.call_id);
     if (!callId) return codexAccountUnsupportedInputItemNote(itemType, source);
     return {
       ...source,
       call_id: callId,
+    };
+  }
+  if (itemType === "local_shell_call_output") {
+    const itemId = normalizeString(source.id);
+    if (!itemId) return codexAccountUnsupportedInputItemNote(itemType, source);
+    return {
+      ...source,
+      id: itemId,
     };
   }
   const normalized: Record<string, unknown> = source.role === "system" ? { ...source, role: "developer" } : { ...source };
@@ -4422,7 +4425,7 @@ const CODEX_ACCOUNT_RESPONSES_INPUT_ITEM_FIELDS_BY_TYPE: Record<string, Set<stri
   function_call_output: new Set(["id", "type", "status", "call_id", "output"]),
   custom_tool_call: new Set(["id", "type", "status", "call_id", "name", "input"]),
   custom_tool_call_output: new Set(["id", "type", "status", "call_id", "output"]),
-  local_shell_call_output: new Set(["id", "type", "status", "call_id", "output"]),
+  local_shell_call_output: new Set(["id", "type", "status", "output"]),
   shell_call_output: new Set(["id", "type", "status", "call_id", "output"]),
 };
 

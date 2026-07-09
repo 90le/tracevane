@@ -335,6 +335,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
         if (disposed || model.isDisposed()) return;
         monaco.editor.setModelLanguage(model, loadedLanguage);
         setDetectedLanguage(loadedLanguage);
+        setActionDiagnostics(readMonacoActionDiagnostics(editor));
         onLanguageChangeRef.current?.(loadedLanguage);
         requestAnimationFrame(() => editor.layout());
       });

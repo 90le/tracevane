@@ -7,8 +7,10 @@ const RESPONSES_BUILTIN_TOOL_ITEM_TYPES = new Set([
   "computer_call",
   "image_generation_call",
   "local_shell_call",
+  "shell_call",
   "computer_call_output",
   "local_shell_call_output",
+  "shell_call_output",
 ]);
 
 const RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS = [
@@ -16,6 +18,7 @@ const RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS = [
   "action",
   "query",
   "queries",
+  "commands",
   "results",
   "code",
   "outputs",
@@ -26,6 +29,7 @@ const RESPONSES_BUILTIN_TOOL_SUMMARY_FIELDS = [
   "image",
   "image_url",
   "call_id",
+  "id",
 ] as const;
 
 export function isResponsesBuiltinToolItem(item: JsonRecord): boolean {

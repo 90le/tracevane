@@ -422,6 +422,7 @@ export function IdeEditorFilePanel({
       data-ide-editor-file-path={tab.ref.path}
       data-ide-editor-model-uri={editorModelUriString(tab.ref)}
       data-ide-editor-readonly={metadata.readonly ? "true" : "false"}
+      data-ide-editor-language={metadata.language || "plaintext"}
       data-ide-editor-external-state={tab.externalState ?? "none"}
       data-ide-editor-debug-breakpoint-count={debugBreakpoints.length}
       data-ide-editor-debug-stopped-line={debugStoppedLine ?? ""}

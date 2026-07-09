@@ -145,7 +145,8 @@
     "test:system:lsp-java-jdtls-provider": "npm run build:api && node --test tests/system/lsp-java-jdtls-provider.test.mjs",
     "smoke:ide:editor-edge-files": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-editor-edge-files.smoke.mjs",
     "smoke:ide:responsive-mainline": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-responsive-mainline.smoke.mjs",
-    "smoke:ide:mainline-persistence": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-mainline-persistence.smoke.mjs"
+    "smoke:ide:mainline-persistence": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke.sh\" --port ${TRACEVANE_WEB_PORT:-5176} -- node tests/ide-workbench/ide-mainline-persistence.smoke.mjs",
+    "smoke:ide:web-stack-mainline": "npm run build:api && TRACEVANE_API_PORT=${TRACEVANE_API_PORT:-3907} TRACEVANE_WEB_PORT=${TRACEVANE_WEB_PORT:-5216} python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"exec bash scripts/dev-web-smoke-external-api.sh\" --port ${TRACEVANE_WEB_PORT:-5216} -- node tests/ide-workbench/ide-web-stack-mainline.smoke.mjs"
   },
   "author": "binbin",
   "license": "MIT",

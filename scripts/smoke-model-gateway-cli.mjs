@@ -324,12 +324,16 @@ function openAiShellDiagnosticResponse(model) {
     status: "completed",
     model,
     output: [{
-      id: "fc_cli_exec_command_diag",
-      type: "function_call",
+      id: "codex_tool_diag_call",
+      type: "local_shell_call",
       status: "completed",
       call_id: "codex_tool_diag_call",
-      name: "exec_command",
-      arguments: JSON.stringify({ cmd: "printf GATEWAY_OK" }),
+      action: {
+        type: "exec",
+        command: ["bash", "-lc", "printf GATEWAY_OK"],
+        env: {},
+        timeout_ms: 30000,
+      },
     }],
     usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
   };

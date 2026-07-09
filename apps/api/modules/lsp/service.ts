@@ -1441,38 +1441,30 @@ function createTypeScriptLanguageService(
 ): { service: ts.LanguageService; fileName: string; sourceFile: () => ts.SourceFile } {
   const fileName = validated.absolutePath.replace(/\\/g, "/");
   const scriptVersion = String(version ?? 1);
-  const compilerOptions: ts.CompilerOptions = {
-    allowJs: validated.language === "javascript" || validated.language === "javascriptreact",
-    checkJs: validated.language === "javascript" || validated.language === "javascriptreact",
-    jsx: validated.language === "typescriptreact" || validated.language === "javascriptreact" ? ts.JsxEmit.ReactJSX : ts.JsxEmit.Preserve,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Node10,
-    noEmit: true,
-    skipLibCheck: true,
-    strict: false,
-    target: ts.ScriptTarget.ES2022,
-  };
+  const compilerContext = typeScriptCompilerContext(validated.rootRealPath, validated.absolutePath, validated.language);
   const sourceFile = () => ts.createSourceFile(fileName, validated.content, ts.ScriptTarget.ES2022, true, scriptKindForLanguage(validated.language));
   const host: ts.LanguageServiceHost = {
-    getCompilationSettings: () => compilerOptions,
-    getCurrentDirectory: () => validated.rootRealPath,
+    getCompilationSettings: () => compilerContext.compilerOptions,
+    getCurrentDirectory: () => compilerContext.currentDirectory,
     getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
     getScriptFileNames: () => [fileName],
     getScriptVersion: (name) => sameTsFile(name, fileName) ? scriptVersion : "0",
     getScriptSnapshot: (name) => {
       if (sameTsFile(name, fileName)) return ts.ScriptSnapshot.fromString(validated.content);
-      if (!isAllowedTypeScriptLibraryFile(name)) return undefined;
+      if (!isAllowedTypeScriptDependencyFile(validated.rootRealPath, name)) return undefined;
       const text = ts.sys.readFile(name);
       return typeof text === "string" ? ts.ScriptSnapshot.fromString(text) : undefined;
     },
-    fileExists: (name) => sameTsFile(name, fileName) || (isAllowedTypeScriptLibraryFile(name) && Boolean(ts.sys.fileExists(name))),
+    fileExists: (name) => sameTsFile(name, fileName) || (isAllowedTypeScriptDependencyFile(validated.rootRealPath, name) && Boolean(ts.sys.fileExists(name))),
     readFile: (name) => {
       if (sameTsFile(name, fileName)) return validated.content;
-      return isAllowedTypeScriptLibraryFile(name) ? ts.sys.readFile(name) : undefined;
+      return isAllowedTypeScriptDependencyFile(validated.rootRealPath, name) ? ts.sys.readFile(name) : undefined;
     },
-    readDirectory: () => [],
-    directoryExists: (directoryName) => ts.sys.directoryExists?.(directoryName) ?? false,
-    getDirectories: (directoryName) => ts.sys.getDirectories?.(directoryName) ?? [],
+    readDirectory: (directoryName, extensions, exclude, include, depth) => isWithinRoot(validated.rootRealPath, directoryName)
+      ? ts.sys.readDirectory?.(directoryName, extensions, exclude, include, depth) ?? []
+      : [],
+    directoryExists: (directoryName) => isAllowedTypeScriptDirectory(validated.rootRealPath, directoryName) && (ts.sys.directoryExists?.(directoryName) ?? false),
+    getDirectories: (directoryName) => isAllowedTypeScriptDirectory(validated.rootRealPath, directoryName) ? ts.sys.getDirectories?.(directoryName) ?? [] : [],
     useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
   };
   return {
@@ -1487,17 +1479,7 @@ function createWorkspaceTypeScriptLanguageService(
   files: WorkspaceSymbolSourceFile[],
 ): { service: ts.LanguageService; filesByName: Map<string, WorkspaceSymbolSourceFile> } {
   const filesByName = new Map(files.map((file) => [file.fileName, file]));
-  const compilerOptions: ts.CompilerOptions = {
-    allowJs: true,
-    checkJs: false,
-    jsx: ts.JsxEmit.ReactJSX,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Node10,
-    noEmit: true,
-    skipLibCheck: true,
-    strict: false,
-    target: ts.ScriptTarget.ES2022,
-  };
+  const compilerOptions = typeScriptCompilerContext(rootRealPath, path.join(rootRealPath, "__workspace__.ts"), "typescript").compilerOptions;
   const host: ts.LanguageServiceHost = {
     getCompilationSettings: () => compilerOptions,
     getCurrentDirectory: () => rootRealPath,
@@ -1507,15 +1489,17 @@ function createWorkspaceTypeScriptLanguageService(
     getScriptSnapshot: (name) => {
       const source = filesByName.get(normalizeTsFileName(name));
       if (source) return ts.ScriptSnapshot.fromString(source.content);
-      if (!isAllowedTypeScriptLibraryFile(name)) return undefined;
+      if (!isAllowedTypeScriptDependencyFile(rootRealPath, name)) return undefined;
       const text = ts.sys.readFile(name);
       return typeof text === "string" ? ts.ScriptSnapshot.fromString(text) : undefined;
     },
-    fileExists: (name) => filesByName.has(normalizeTsFileName(name)) || (isAllowedTypeScriptLibraryFile(name) && Boolean(ts.sys.fileExists(name))),
-    readFile: (name) => filesByName.get(normalizeTsFileName(name))?.content ?? (isAllowedTypeScriptLibraryFile(name) ? ts.sys.readFile(name) : undefined),
-    readDirectory: () => [],
-    directoryExists: (directoryName) => ts.sys.directoryExists?.(directoryName) ?? false,
-    getDirectories: (directoryName) => ts.sys.getDirectories?.(directoryName) ?? [],
+    fileExists: (name) => filesByName.has(normalizeTsFileName(name)) || (isAllowedTypeScriptDependencyFile(rootRealPath, name) && Boolean(ts.sys.fileExists(name))),
+    readFile: (name) => filesByName.get(normalizeTsFileName(name))?.content ?? (isAllowedTypeScriptDependencyFile(rootRealPath, name) ? ts.sys.readFile(name) : undefined),
+    readDirectory: (directoryName, extensions, exclude, include, depth) => isWithinRoot(rootRealPath, directoryName)
+      ? ts.sys.readDirectory?.(directoryName, extensions, exclude, include, depth) ?? []
+      : [],
+    directoryExists: (directoryName) => isAllowedTypeScriptDirectory(rootRealPath, directoryName) && (ts.sys.directoryExists?.(directoryName) ?? false),
+    getDirectories: (directoryName) => isAllowedTypeScriptDirectory(rootRealPath, directoryName) ? ts.sys.getDirectories?.(directoryName) ?? [] : [],
     useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
   };
   return {
@@ -1701,6 +1685,70 @@ function normalizeTsFileName(fileName: string): string {
   return path.resolve(fileName).replace(/\\/g, "/");
 }
 
+function typeScriptCompilerContext(
+  rootRealPath: string,
+  absolutePath: string,
+  language: string,
+): { compilerOptions: ts.CompilerOptions; currentDirectory: string } {
+  const tsconfigPath = findNearestTsconfig(rootRealPath, absolutePath);
+  if (tsconfigPath) {
+    const configFile = ts.readConfigFile(tsconfigPath, (fileName) => fs.readFileSync(fileName, "utf8"));
+    if (!configFile.error) {
+      const configDirectory = path.dirname(tsconfigPath);
+      const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, configDirectory);
+      return {
+        compilerOptions: normalizeTypeScriptCompilerOptions(parsed.options, language),
+        currentDirectory: configDirectory,
+      };
+    }
+  }
+  return {
+    compilerOptions: normalizeTypeScriptCompilerOptions({}, language),
+    currentDirectory: rootRealPath,
+  };
+}
+
+function normalizeTypeScriptCompilerOptions(base: ts.CompilerOptions, language: string): ts.CompilerOptions {
+  return {
+    ...base,
+    allowJs: base.allowJs ?? (language === "javascript" || language === "javascriptreact"),
+    checkJs: base.checkJs ?? (language === "javascript" || language === "javascriptreact"),
+    jsx: base.jsx ?? (language === "typescriptreact" || language === "javascriptreact" ? ts.JsxEmit.ReactJSX : ts.JsxEmit.Preserve),
+    module: base.module ?? ts.ModuleKind.NodeNext,
+    moduleResolution: base.moduleResolution ?? ts.ModuleResolutionKind.NodeNext,
+    noEmit: true,
+    skipLibCheck: true,
+    target: base.target ?? ts.ScriptTarget.ES2022,
+  };
+}
+
+function findNearestTsconfig(rootRealPath: string, absolutePath: string): string | null {
+  let current = path.dirname(path.resolve(absolutePath));
+  const root = path.resolve(rootRealPath);
+  while (isWithinRoot(root, current)) {
+    const candidate = path.join(current, "tsconfig.json");
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+    if (current === root) break;
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+function isWithinRoot(rootRealPath: string, targetPath: string): boolean {
+  const root = path.resolve(rootRealPath);
+  const target = path.resolve(targetPath);
+  const relative = path.relative(root, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isAllowedTypeScriptDependencyFile(rootRealPath: string, fileName: string): boolean {
+  return isAllowedTypeScriptLibraryFile(fileName) || isWithinRoot(rootRealPath, fileName);
+}
+
+function isAllowedTypeScriptDirectory(rootRealPath: string, directoryName: string): boolean {
+  return isWithinRoot(rootRealPath, directoryName) || directoryName.replace(/\\/g, "/").includes("/node_modules/typescript/lib");
+}
+
 function textSpanToRange(sourceFile: ts.SourceFile, textSpan: ts.TextSpan): { startLine: number; startColumn: number; endLine: number; endColumn: number } {
   const start = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start, sourceFile.text.length));
   const end = sourceFile.getLineAndCharacterOfPosition(clampOffset(textSpan.start + Math.max(1, textSpan.length), sourceFile.text.length));
@@ -1784,7 +1832,7 @@ async function diagnoseDocument(
       resolved.relativePath,
       "typescript",
       language,
-      diagnoseTypeScriptLike(content, resolved.absolutePath, language),
+      diagnoseTypeScriptLike(content, resolved.root.realPath, resolved.absolutePath, language),
     );
   }
   if (provider?.id === "css") {
@@ -2046,32 +2094,34 @@ function responseFor(
   };
 }
 
-function diagnoseTypeScriptLike(content: string, absolutePath: string, language: string): LspDiagnostic[] {
+function diagnoseTypeScriptLike(content: string, rootRealPath: string, absolutePath: string, language: string): LspDiagnostic[] {
   if (!content.trim()) return [];
-  const compilerOptions: ts.CompilerOptions = {
-    allowJs: language === "javascript" || language === "javascriptreact",
-    checkJs: language === "javascript" || language === "javascriptreact",
-    jsx: language === "typescriptreact" || language === "javascriptreact" ? ts.JsxEmit.ReactJSX : ts.JsxEmit.Preserve,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Node10,
-    noEmit: true,
-    skipLibCheck: true,
-    strict: false,
-    target: ts.ScriptTarget.ES2022,
-  };
+  const compilerOptions = typeScriptCompilerContext(rootRealPath, absolutePath, language).compilerOptions;
   const normalizedFileName = absolutePath.replace(/\\/g, "/");
   const host = ts.createCompilerHost(compilerOptions, true);
   const originalGetSourceFile = host.getSourceFile.bind(host);
   const originalReadFile = host.readFile?.bind(host);
   const originalFileExists = host.fileExists?.bind(host);
+  const originalDirectoryExists = host.directoryExists?.bind(host);
+  const originalReadDirectory = host.readDirectory?.bind(host);
+  const originalGetDirectories = host.getDirectories?.bind(host);
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
     if (sameTsFile(fileName, normalizedFileName)) {
       return ts.createSourceFile(fileName, content, languageVersion, true, scriptKindForLanguage(language));
     }
+    if (!isAllowedTypeScriptDependencyFile(rootRealPath, fileName)) return undefined;
     return originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
   };
-  host.readFile = (fileName) => sameTsFile(fileName, normalizedFileName) ? content : originalReadFile?.(fileName);
-  host.fileExists = (fileName) => sameTsFile(fileName, normalizedFileName) || Boolean(originalFileExists?.(fileName));
+  host.readFile = (fileName) => {
+    if (sameTsFile(fileName, normalizedFileName)) return content;
+    return isAllowedTypeScriptDependencyFile(rootRealPath, fileName) ? originalReadFile?.(fileName) : undefined;
+  };
+  host.fileExists = (fileName) => sameTsFile(fileName, normalizedFileName) || (isAllowedTypeScriptDependencyFile(rootRealPath, fileName) && Boolean(originalFileExists?.(fileName)));
+  host.directoryExists = (directoryName) => isAllowedTypeScriptDirectory(rootRealPath, directoryName) && Boolean(originalDirectoryExists?.(directoryName));
+  host.readDirectory = (directoryName, extensions, exclude, include, depth) => isWithinRoot(rootRealPath, directoryName)
+    ? originalReadDirectory?.(directoryName, extensions, exclude, include, depth) ?? []
+    : [];
+  host.getDirectories = (directoryName) => isAllowedTypeScriptDirectory(rootRealPath, directoryName) ? originalGetDirectories?.(directoryName) ?? [] : [];
 
   const program = ts.createProgram([normalizedFileName], compilerOptions, host);
   const sourceFile = program.getSourceFile(normalizedFileName);
