@@ -174,6 +174,8 @@ test("Overview view derives content from live status/providers/connections queri
   assert.match(overview, /useModelGatewayAppConnectionsQuery/);
   // Attention/health lists are filtered from live provider data.
   assert.match(overview, /providersQuery\.data|providerList/);
+  assert.match(overview, /providers\?\.summary/);
+  assert.match(overview, /providerSummary/);
 });
 
 test("Overview view can smoke each visible active route by scope", () => {

@@ -2,10 +2,14 @@ import * as React from "react";
 import {
   Activity,
   Check,
+  CircleAlert,
   KeyRound,
   Loader2,
+  Network,
   RouteOff,
+  ServerCog,
   Terminal,
+  Users,
   ZapOff,
 } from "lucide-react";
 
@@ -40,6 +44,12 @@ import type {
 import type { ModelGatewayViewProps } from "./types";
 import { formatModelBudgetPair } from "../budget-format";
 import { GatewayKeyDialog } from "./GatewayKeyDialog";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
 import { RuntimeDiagnosticsPanel } from "./RuntimeDiagnosticsPanel";
 import { DaemonServicePanel } from "./DaemonServicePanel";
 
@@ -317,6 +327,12 @@ function routeBudgetLabel(
 
 const OVERVIEW_STALE_MS = 30_000;
 
+const LIVE_COMPARISON: GatewayComparison = {
+  label: "实时",
+  tone: "primary",
+  direction: "flat",
+};
+
 export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const statusQuery = useModelGatewayStatusQuery({
     staleTime: OVERVIEW_STALE_MS,
@@ -375,6 +391,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const activeRoutes = providers?.activeRoutes ?? [];
   const routeAlerts = providers?.activeRouteAlerts ?? [];
   const providerList = providers?.providers ?? [];
+  const providerSummary = providers?.summary;
+  const routeSummary = providerSummary?.routes;
+  const accountSummary = providerSummary?.accounts;
+  const providerCounts = providerSummary?.providers;
   const appConnections = connections?.connections ?? [];
   const checkableRoutes = activeRoutes.filter((route) =>
     Boolean(route.resolvedProviderId),
@@ -389,12 +409,24 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const health = status?.healthSummary;
   const listener = status?.listener;
   const clientAuthConfigured = status?.registry.clientAuth.enabled ?? false;
-
   // Attention items are built ONLY from live provider health — no fabrication.
   const attentionProviders = providerList.filter(providerNeedsAttention);
   const healthyProviders = providerList.filter(
     (provider) => !providerNeedsAttention(provider),
   );
+  const routeReady = routeSummary?.ready ?? activeRoutes.filter((route) => route.state !== "missing").length;
+  const routeTotal = routeSummary?.total ?? activeRoutes.length;
+  const routeMissing = routeSummary?.missing ?? activeRoutes.filter((route) => route.state === "missing").length;
+  const routeFallback = routeSummary?.fallback ?? activeRoutes.filter((route) => route.state === "fallback").length;
+  const providerHealthy = providerCounts?.healthy ?? health?.okProviders ?? healthyProviders.length;
+  const providerTotal = providerCounts?.total ?? status?.registry.providerCount ?? providerList.length;
+  const providerDegraded = providerCounts?.degraded ?? health?.degradedProviders ?? 0;
+  const openCircuitCount = providerCounts?.openCircuits ?? health?.openCircuits ?? 0;
+  const accountsReady = accountSummary?.ready ?? 0;
+  const accountsTotal = accountSummary?.total ?? 0;
+  const accountsAttention = accountSummary?.attention ?? 0;
+  const clientConfigured = configuredConnectionCount;
+  const clientTotal = appConnections.length;
 
   const degraded =
     (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
@@ -475,88 +507,106 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-[18px]">
-      {/* Hero: live listener + route-alert summary */}
-      <section className="rounded-md border border-line bg-panel-2 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          {routeAlerts.length > 0 ? (
-            <Badge variant="warn" className="gap-1.5">
-              <RouteOff className="size-3.5" />
-              {routeAlerts.length} 条路由告警
-            </Badge>
-          ) : (
-            <Badge variant="ok" className="gap-1.5">
-              <Check className="size-3.5" />
-              路由正常
-            </Badge>
-          )}
-          <span className="text-sm text-muted">
-            {listener
-              ? `Gateway ${listener.host}:${listener.port}`
-              : "Gateway 监听信息不可用"}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto"
-            onClick={() => setKeyDialogOpen(true)}
-          >
-            <KeyRound />
-            网关密钥
-            <Badge
-              variant={clientAuthConfigured ? "ok" : "mute"}
-              className="ml-0.5"
-            >
-              {clientAuthConfigured ? "已配置" : "未配置"}
-            </Badge>
-          </Button>
+      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={routeAlerts.length > 0 ? "warn" : "ok"} className="gap-1.5">
+                {routeAlerts.length > 0 ? <RouteOff className="size-3.5" /> : <Check className="size-3.5" />}
+                {routeAlerts.length > 0 ? `${routeAlerts.length} 条路由告警` : "路由正常"}
+              </Badge>
+              <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="gap-1.5">
+                <KeyRound className="size-3.5" />
+                {clientAuthConfigured ? "网关密钥已启用" : "网关密钥未启用"}
+              </Badge>
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-ink-strong">
+              模型网关运营总览
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+              汇总真实 Provider 健康、客户端路由、账号池可用性和最近 smoke 结果；配置和运行态分离，避免用静态卡片误判网关状态。
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 tabular-nums">
+                <Network className="size-3.5 text-primary" />
+                {listener ? `${listener.host}:${listener.port}` : "监听信息不可用"}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 tabular-nums">
+                <ServerCog className="size-3.5 text-primary" />
+                {providerTotal} Providers · {routeTotal} routes
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Button variant="outline" size="sm" onClick={() => goToView("providers")}>
+              <ServerCog className="size-3.5" />
+              服务商
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setKeyDialogOpen(true)}>
+              <KeyRound className="size-3.5" />
+              网关密钥
+            </Button>
+          </div>
         </div>
-        {/* At-a-glance health anchor — derived only from live status. */}
-        <p className="mt-3 text-base text-ink-strong">
-          {listener ? "网关在线" : "网关状态未知"}
-          <span className="text-muted"> · </span>
-          {activeRoutes.length} 个路由
-          <span className="text-muted"> · </span>
-          {health?.okProviders ?? healthyProviders.length} 个 Provider 健康
-          {degraded > 0 && (
-            <>
-              <span className="text-muted"> / </span>
-              <span className="text-amber">{degraded} 降级</span>
-            </>
-          )}
-        </p>
-        <dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-3">
-          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
-            <dt className="text-xs text-subtle">健康 Provider</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
-              {health?.okProviders ?? 0}
-              <small className="ml-0.5 text-sm font-normal text-muted">
-                /{status?.registry.providerCount ?? providerList.length}
-              </small>
-            </dd>
-            <dd className="truncate text-xs text-muted">
-              {health?.degradedProviders ?? 0} 降级 ·{" "}
-              {health?.openCircuits ?? 0} 熔断
-            </dd>
+
+        <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+          <GatewayMetricCard
+            icon={<RouteOff />}
+            tone="primary"
+            label="路由可用"
+            value={`${routeReady}/${routeTotal}`}
+            sub={`${routeFallback} 降级 · ${routeMissing} 未配置`}
+            accent={`${routeAlerts.length} 告警`}
+            meter={routeTotal > 0 ? routeReady / routeTotal : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<ServerCog />}
+            tone="teal"
+            label="Provider 健康"
+            value={`${providerHealthy}/${providerTotal}`}
+            sub={`${providerDegraded} 降级 · ${openCircuitCount} 熔断`}
+            accent={`${providerCounts?.enabled ?? providerList.filter((item) => item.enabled).length} 启用`}
+            meter={providerTotal > 0 ? providerHealthy / providerTotal : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Users />}
+            tone="violet"
+            label="账号池可用"
+            value={accountsTotal > 0 ? `${accountsReady}/${accountsTotal}` : "0"}
+            sub={accountsTotal > 0 ? `${accountsAttention} 个账号需处理` : "未启用账号池 Provider"}
+            accent={accountsTotal > 0 ? `${accountsReady} ready` : "API key"}
+            meter={accountsTotal > 0 ? accountsReady / accountsTotal : 1}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<Terminal />}
+            tone="primary"
+            label="客户端接入"
+            value={`${clientConfigured}/${clientTotal}`}
+            sub={`${appConnectionIssues.length} 个配置项需关注`}
+            accent={clientAuthConfigured ? "key on" : "key off"}
+            meter={clientTotal > 0 ? clientConfigured / clientTotal : 0}
+            comparison={LIVE_COMPARISON}
+          />
+        </div>
+
+        {routeAlerts.length > 0 && (
+          <div className="border-t border-line px-4 py-3">
+            <div className="flex flex-wrap items-start gap-2 text-sm text-amber">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <div className="grid gap-1">
+                {routeAlerts.slice(0, 3).map((alert) => (
+                  <span key={alert}>{alert}</span>
+                ))}
+                {routeAlerts.length > 3 && (
+                  <span className="text-muted">另有 {routeAlerts.length - 3} 条路由告警</span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
-            <dt className="text-xs text-subtle">客户端 scope</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
-              {activeRoutes.length}
-            </dd>
-            <dd className="truncate text-xs text-muted">
-              {routeAlerts.length} 条告警
-            </dd>
-          </div>
-          <div className="min-w-0 px-3 py-2.5">
-            <dt className="text-xs text-subtle">需关注</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">
-              {degraded}
-            </dd>
-            <dd className="truncate text-xs text-muted">
-              降级 / 熔断 Provider
-            </dd>
-          </div>
-        </dl>
+        )}
       </section>
 
       {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. */}
@@ -672,11 +722,16 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                     </TableCell>
                     <TableCell className="min-w-0">
                       <div className="min-w-0">
-                        <div
-                          className="break-words text-sm font-medium leading-5 text-ink-strong"
-                          title={routeLine}
-                        >
-                          {routeLine}
+                        <div className="flex min-w-0 items-start gap-2">
+                          {route?.resolvedProviderName ? (
+                            <GatewayMark identity={providerIdentityFromText(route.resolvedProviderName)} size="sm" />
+                          ) : null}
+                          <div
+                            className="min-w-0 break-words text-sm font-medium leading-5 text-ink-strong"
+                            title={routeLine}
+                          >
+                            {routeLine}
+                          </div>
                         </div>
                         <div
                           className="break-all text-xs leading-5 text-muted"
