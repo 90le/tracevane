@@ -37,6 +37,12 @@ import type {
   ModelGatewayProviderView,
 } from "../types";
 import type { ModelGatewayViewProps } from "./types";
+import {
+  GatewayMark,
+  GatewayMetricCard,
+  providerIdentityFromText,
+  type GatewayComparison,
+} from "./GatewayUi";
 
 const ACCOUNT_STATE_BADGE: Record<
   ModelGatewayAccountState,
@@ -49,6 +55,19 @@ const ACCOUNT_STATE_BADGE: Record<
   disabled: { variant: "mute", label: "停用" },
   error: { variant: "bad", label: "异常" },
 };
+
+const LIVE_COMPARISON: GatewayComparison = {
+  label: "实时",
+  tone: "primary",
+  direction: "flat",
+};
+
+function accountStateRank(account: ModelGatewayAccountEntry): number {
+  if (!account.enabled || account.state === "disabled") return 3;
+  if (account.state === "error" || account.state === "needs-login") return 0;
+  if (account.state === "cooldown" || account.state === "refreshing") return 1;
+  return 2;
+}
 
 /** Format an ISO timestamp into a short local string, or a dash. */
 function fmtTime(value: string | null): string {
@@ -249,13 +268,16 @@ function AccountRow({
   return (
     <TableRow>
       <TableCell>
-        <div className="grid min-w-0 gap-0.5">
-          <strong className="truncate text-base text-ink-strong">
-            {account.emailMasked ?? account.accountHash ?? account.id}
-          </strong>
-          <span className="truncate text-sm text-muted">
-            {[account.plan, account.kind].filter(Boolean).join(" · ") || "—"}
-          </span>
+        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+          <GatewayMark identity={providerIdentityFromText(account.emailMasked ?? account.accountHash ?? account.id)} size="md" />
+          <div className="grid min-w-0 gap-0.5">
+            <strong className="truncate text-base text-ink-strong">
+              {account.emailMasked ?? account.accountHash ?? account.id}
+            </strong>
+            <span className="truncate text-sm text-muted">
+              {[account.plan, account.kind].filter(Boolean).join(" · ") || "—"}
+            </span>
+          </div>
         </div>
       </TableCell>
       <TableCell>
@@ -394,30 +416,93 @@ export function AccountPoolView({ selectedProvider, goToView }: ModelGatewayView
 
   const accounts = provider.accountProvider.accounts;
   const routing = provider.accountProvider.routing;
+  const sortedAccounts = [...accounts].sort((left, right) => (
+    accountStateRank(left) - accountStateRank(right)
+    || (right.updatedAt || "").localeCompare(left.updatedAt || "")
+    || left.id.localeCompare(right.id)
+  ));
+  const readyAccounts = accounts.filter((account) => account.enabled && account.state === "ready").length;
+  const enabledAccounts = accounts.filter((account) => account.enabled).length;
+  const attentionAccounts = accounts.filter((account) => (
+    !account.enabled
+    || account.state === "needs-login"
+    || account.state === "error"
+    || account.state === "cooldown"
+  )).length;
+  const cooldownAccounts = accounts.filter((account) => account.state === "cooldown").length;
+  const lastSuccessAt = accounts
+    .map((account) => account.lastSuccessAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-ink-strong">
-            账号池 · {provider.name}
-          </h2>
-          <p className="text-sm text-muted">
-            账号制 Provider 的多账号轮换、配额、登录与刷新。路由策略：
-            <Badge variant="outline" className="ml-1">
-              {routing.strategy}
-            </Badge>
-            {routing.sessionAffinity && (
-              <Badge variant="outline" className="ml-1">
-                会话粘性
-              </Badge>
-            )}
-          </p>
+      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
+        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--violet)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+          <GatewayMark identity={providerIdentityFromText(provider.name)} size="lg" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={readyAccounts > 0 ? "ok" : "warn"}>{readyAccounts > 0 ? "可路由" : "无 ready 账号"}</Badge>
+              <Badge variant="outline">{routing.strategy}</Badge>
+              {routing.sessionAffinity && <Badge variant="outline">会话粘性</Badge>}
+            </div>
+            <h2 className="mt-2 truncate text-2xl font-semibold text-ink-strong" title={provider.name}>
+              账号池 · {provider.name}
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+              账号制 Provider 的多账号轮换、登录、冷却和 token 刷新。这里展示的是实时账号池状态，不替代客户端 active-route smoke。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
+              返回 Provider 列表
+            </Button>
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
-          返回 Provider 列表
-        </Button>
-      </div>
+        <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
+          <GatewayMetricCard
+            icon={<Users />}
+            tone="violet"
+            label="Ready 账号"
+            value={`${readyAccounts}/${accounts.length}`}
+            sub={`${enabledAccounts} 启用 · ${attentionAccounts} 需处理`}
+            accent="accounts"
+            meter={accounts.length > 0 ? readyAccounts / accounts.length : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<LogIn />}
+            tone="primary"
+            label="轮换策略"
+            value={routing.strategy}
+            sub={routing.sessionAffinity ? "会话粘性已启用" : "无会话粘性"}
+            accent={routing.maxConcurrentPerAccount ? `${routing.maxConcurrentPerAccount}/acct` : "auto"}
+            meter={readyAccounts > 0 ? 1 : 0}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<SnowflakeIcon />}
+            tone="teal"
+            label="冷却账号"
+            value={`${cooldownAccounts}`}
+            sub={cooldownAccounts > 0 ? "冷却结束后可重新参与路由" : "当前无冷却账号"}
+            accent={cooldownAccounts > 0 ? "cooldown" : "clear"}
+            meter={accounts.length > 0 ? 1 - cooldownAccounts / accounts.length : 1}
+            comparison={LIVE_COMPARISON}
+          />
+          <GatewayMetricCard
+            icon={<RefreshCw />}
+            tone="primary"
+            label="最近成功"
+            value={lastSuccessAt ? "已记录" : "—"}
+            sub={fmtTime(lastSuccessAt)}
+            accent="token"
+            meter={lastSuccessAt ? 1 : 0}
+            comparison={LIVE_COMPARISON}
+          />
+        </div>
+      </section>
 
       <CodexLoginPanel providerId={provider.id} />
 
@@ -439,7 +524,7 @@ export function AccountPoolView({ selectedProvider, goToView }: ModelGatewayView
             </TableRow>
           </TableHeader>
           <TableBody>
-            {accounts.map((account) => (
+            {sortedAccounts.map((account) => (
               <AccountRow key={account.id} provider={provider} account={account} />
             ))}
           </TableBody>

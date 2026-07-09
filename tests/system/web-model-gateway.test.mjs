@@ -326,6 +326,23 @@ test("Provider config view explains provider smoke versus active-route smoke", (
   assert.match(config, /provider 模型目录未按 OpenAI API 能力更新/);
 });
 
+test("Account pool view exposes account readiness controls from live provider accounts", () => {
+  const accounts = read(`${VIEWS_DIR}/AccountPoolView.tsx`);
+  assert.match(accounts, /useModelGatewayProvidersQuery/);
+  assert.match(accounts, /provider\.accountProvider\.accounts/);
+  assert.match(accounts, /GatewayMetricCard/);
+  assert.match(accounts, /GatewayMark/);
+  assert.match(accounts, /providerIdentityFromText/);
+  assert.match(accounts, /accountStateRank/);
+  assert.match(accounts, /sortedAccounts/);
+  assert.match(accounts, /Ready 账号/);
+  assert.match(accounts, /轮换策略/);
+  assert.match(accounts, /冷却账号/);
+  assert.match(accounts, /Codex 设备授权/);
+  assert.match(accounts, /useUpdateModelGatewayProviderAccountMutation/);
+  assert.match(accounts, /useRefreshModelGatewayProviderAccountMutation/);
+});
+
 test("Models view surfaces declared model context and output budgets", () => {
   const models = read(`${VIEWS_DIR}/ModelsView.tsx`);
   assert.match(models, /contextWindow/);
